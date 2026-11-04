@@ -30,6 +30,7 @@ For entity `Invoice` in package `Billing`:
 | `operation-endpoints` | `overwrite` | `each operation` | Only with `endpointsFolder` set: `<endpointsFolder>/Operations/Billing/SendInvoiceEndpoint.g.cs`, one route that calls the handler (see Operations) |
 | `registrations` | file blocks | `model` | `Billing/BillingRepositories.g.cs`: one per package with repositories; `Queries/QueryRegistrations.g.cs` when the model has queries |
 | `type-handlers` | `overwrite` | `model` | `DapperTypeHandlers.g.cs`: the Dapper type handlers and `UlidGenerator` |
+| `code-points` | `overwrite` (file block) | `model` | When an entity has checks or a process guard is written in the expression language: `CodePoints.g.cs`, `CodePoints.Compare`, the order of strings by code point that rendered checks and guards use (see Checks) |
 | `seed-loader` | `overwrite` (file block) | `model` | With `seedLoader`: `SeedDataLoader.g.cs`, `SeedDataLoader` and `SeedDialect`. `new SeedDataLoader(connection, SeedDialect.PostgreSql, "data/main").LoadAsync("dev")` applies the seed-data pack's files for a database (`manifest.json` and its CSVs, or `seed-data.json`) in their order: a seed's rows when it belongs to every environment or to the one given, inserted when their key is missing (`once`), or also updated (`converge`, deleting the rows the seed does not hold with `delete`), with parameterized statements found by the table's key. `SeedHash` lets an application skip a load it has done. Nothing calls it. |
 | `gitignore` | `block`, `createFile` | `model` | Only with `gitignorePath` set: a managed block in that ignore file listing the generated folder (see Keeping the generated folder out of version control) |
 
@@ -48,22 +49,27 @@ value must be given is the attribute's `required`. A derived entity's `Validate(
 public virtual IReadOnlyList<(string Pointer, string Code, string Message)> Validate()
 {
     var errors = new List<(string Pointer, string Code, string Message)>();
-    if ((IssuedOn is null || DueOn is null ? (bool?)null : (IssuedOn.Value <= DueOn.Value)) == false)
+    bool? ok = (IssuedOn, DueOn) switch { ({ } v1, { } v2) => (bool?)(v1 <= v2), _ => null };
+    if (ok == false)
         errors.Add(("/issuedOn", "dueAfterIssue", "An invoice is due on or after the day it is issued."));
     return errors;
 }
 ```
 
+Each answer goes through the local `ok`, so a check that is constant, such as `number is not null` on a required `number`, is no
+unreachable code under warnings as errors.
+
 `expr_cs(condition, spec)` in `helpers.js` writes the C#. It is an **example renderer, a starting point to copy** into your own
 pack and adapt, not a contract: the engine ships no C# emitter, and every pack renders the typed tree (`node`, `op`, `call`,
-`args`, `value`, `type` with `kind` and `bits`, `nullable`, `text`) in its own language. It keeps the language's answers:
+`args`, `value` with its exact text `valueText`, `type` with `kind` and `bits`, `nullable`, `text`) in its own language. It keeps
+the language's answers:
 
 | The language | C# |
 | --- | --- |
 | Unknown (null) and Kleene's `and`, `or`, `not`, `implies` | `bool?` with `&`, `\|` and `!`; `&&` and `\|\|` when nothing may be null |
-| A comparison, arithmetic, `\|\|` or a function with a null operand is null | an explicit `x is null ? null : …` where C#'s lifted operators would answer `false` (ordering) or skip the null (concatenation) |
-| `decimal` exact, integer arithmetic without overflow | `decimal`; integer arithmetic in `long` |
-| Strings compare by code point; `trim` removes spaces; `length` counts code points | `string.CompareOrdinal`, `Trim(' ')`, `EnumerateRunes()` |
+| A comparison, `\|\|` or a function with a null operand is null | Each operand that may be null is bound once by a pattern, `(A, B) switch { ({ } v1, { } v2) => (bool?)(v1 <= v2), _ => null }`, where C#'s lifted operators would answer `false` (ordering) or skip the null (concatenation): no operand is written or evaluated twice, however deep the nesting, and C# knows the bound values are not null. Arithmetic uses C#'s lifted operators, which give null |
+| `decimal` exact; integer arithmetic never overflows, as in PostgreSQL's `numeric` | `decimal`; integer arithmetic in `System.Numerics.BigInteger`, since `long` would wrap to a wrong answer and `decimal` would throw past 28 digits; literals from their exact text (`valueText`), and a decimal literal of more than 28 digits is not rendered, since C# would round it. Decimal arithmetic itself keeps about 28 significant digits, where PostgreSQL keeps every digit, so a result longer than that can round |
+| Strings compare equal ordinally and order by code point; `trim` removes spaces; `length` counts code points | `string.Equals(…, StringComparison.Ordinal)`; `CodePoints.Compare` (from the `code-points` unit) for `<`, `<=`, `>`, `>=` and `between`, since `string.CompareOrdinal` orders UTF-16 code units, which puts U+E000 to U+FFFF above the characters beyond the basic plane; `Trim(' ')`; `EnumerateRunes()` |
 | `add_months` clamps to the month's last day; offsets compute in UTC | `AddMonths`; `UtcDateTime`, `ToUniversalTime()` |
 | `matches` in the portable subset | `Regex.IsMatch` with `RegexOptions.NonBacktracking` (linear time, it never backtracks) and `Singleline` (`.` matches a newline); `$` becomes `\z`, since .NET's `$` also matches before a final newline; case counts. .NET counts UTF-16 code units where the language counts code points, so a pattern that counts characters beyond the basic plane can differ |
 
@@ -71,7 +77,9 @@ What it does not render returns `""`, and the unit falls back: a check becomes a
 Invoice.cs"), a guard a stub in the handlers companion. That is division (its rounding is PostgreSQL's), the `json_` functions,
 reference-type codes, a `datetime` against a `datetimeoffset`, `now()` (a guard's call carries no clock), value object members
 and a `case` over enum members. The spec names what each path reads: `"path|C# expression|C# type|kind|member=C# member,..."`
-joined with `;` (`_csharp.scriban` `expr_entry` writes one entry; `entity.scriban` maps attributes to properties).
+joined with `;` (`_csharp.scriban` `expr_entry` writes one entry; `entity.scriban` maps attributes to properties), and an entry
+named `compare()` the function that orders strings (`expr_functions`, `global::<namespace>.CodePoints.Compare`); without it a
+string order is not rendered.
 
 ## The pair pattern
 
@@ -417,9 +425,10 @@ started through the invoke host and reports back like a service task (the engine
 
 ### Guard and action expressions
 
-A guard written in the expression language (its `condition`) is rendered by `expr_cs` (see Checks and the expression renderer):
-it reads `total` as `call.Context.Total` and `event.amount` as `call.Event.Get<decimal?>("amount")`, a missing payload member
-reading as null, and holds only when the condition is true, as in the engine. Anything `expr_cs` does not render becomes a stub.
+A guard written in the expression language (its `condition`) is rendered by `expr_cs_holds`, `expr_cs` compared with `true` (see
+Checks and the expression renderer): it reads `total` as `call.Context.Total` and `event.amount` as
+`call.Event.Get<decimal?>("amount")`, a missing payload member reading as null, and holds only when the condition is true, as in
+the engine; a condition that is always null is `false`. Anything `expr_cs` does not render becomes a stub.
 
 For JavaScript guards and actions, `helpers.js` translates the documented subset of the model's JavaScript expressions to C#
 (`cs_expression`); anything else becomes a stub in the handlers companion, with the expression as a comment:
@@ -483,24 +492,25 @@ Set them in `maquettiste.json` under `packs.csharp-dapper.parameters`.
 ## Tests
 
 `tests/billing-small/` is the pack's case: a package `Billing` with the entities `Customer` and `Invoice` (with four checks)
-and the enum `InvoiceStatus`, and under `expected/` the files the pack writes for it (both halves of each entity, the enum and the
-type handlers). `tests/helpers.test.js` tests each helper of `helpers.js`. Copy the pack folder, `tests/` included, into
+and the enum `InvoiceStatus`, and under `expected/` the files the pack writes for it (both halves of each entity, the enum, the
+type handlers and the code point order). `tests/helpers.test.js` tests each helper of `helpers.js`. Copy the pack folder, `tests/` included, into
 a project's `.maquettiste/templates/` and run `maquettiste pack test csharp-dapper`: the case runs as a project of its
 own and its output is compared byte for byte with `expected/`. `--update` rewrites `expected/` from the output; review
 the diff before keeping it. In this repository `ShippedPackTests` in `tests/Maquettiste.Cli.Tests` runs it, and
-`MAQUETTISTE_UPDATE_GOLDEN=1` updates it.
+`MAQUETTISTE_UPDATE_GOLDEN=1` updates it. `ExprCsTests` in `tests/Maquettiste.Packs.Tests` compiles the `Validate()` of a check
+of each shape that is easy to get wrong in C# with warnings as errors, and compares its answer on several rows with the engine's.
 
 ## Files
 
 | File | Holds |
 | --- | --- |
 | `pack.json` | Units and parameter defaults. |
-| `helpers.js` | `join_path`, `package_folder`, `cs_ident` (escapes C# keywords), `cs_value_type`, `cs_expression` (the JavaScript expression translator), `expr_cs` (the example renderer of the expression language), `cs_line` (one comment line: every line break becomes a space, for every comment context of the process units) and `ulid_uuid`. |
+| `helpers.js` | `join_path`, `package_folder`, `cs_ident` (escapes C# keywords), `cs_value_type`, `cs_expression` (the JavaScript expression translator), `expr_cs` (the example renderer of the expression language) and `expr_cs_holds` (a guard's form), `cs_unwrap` (an expression without its outer parentheses), `cs_line` (one comment line: every line break becomes a space, for every comment context of the process units) and `ulid_uuid`. |
 | `tests/` | The `billing-small` case and `helpers.test.js` (see Tests); the starter the CLI embeds leaves them out. |
-| `_csharp.scriban` | Shared functions: namespaces, property names and types, XML documentation, file header, and the spec entries `expr_cs` reads (`expr_entry`). |
+| `_csharp.scriban` | Shared functions: namespaces, property names and types, XML documentation, file header, and the spec entries `expr_cs` reads (`expr_entry`, `expr_functions`). |
 | `_dapper.scriban` | Mapping choice, the row model and the entity/row conversions. |
 | `entity.scriban`, `entity.partial.scriban` | The generated and hand-written halves of an entity. |
-| `enum.scriban`, `value-object.scriban`, `repository.scriban`, `registrations.scriban`, `type-handlers.scriban` | The other units. |
+| `enum.scriban`, `value-object.scriban`, `repository.scriban`, `registrations.scriban`, `type-handlers.scriban`, `code-points.scriban` | The other units. |
 | `_binding.scriban` | The repository of a bound entity, from its binding's statements (included by `repository.scriban`). |
 | `_operation.scriban` | Shared functions of the operation units: the type name, member and return types, paging, key parameters, fired events and the HTTP mapping. |
 | `operation-contracts.scriban` | The contracts of an operation. |

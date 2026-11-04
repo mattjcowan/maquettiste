@@ -359,7 +359,7 @@ public sealed class CompileTests
         Console.WriteLine("bindings round trip ok");
         """;
 
-    private static void WriteProject(string folder, string generated, string? program, bool web = false, string? second = null)
+    internal static void WriteProject(string folder, string generated, string? program, bool web = false, string? second = null)
     {
         Directory.CreateDirectory(folder);
         var framework = web ? """    <FrameworkReference Include="Microsoft.AspNetCore.App" />""" : "";
@@ -394,7 +394,7 @@ public sealed class CompileTests
             File.WriteAllText(Path.Combine(folder, "Program.cs"), program);
     }
 
-    private static async Task BuildOrSkipAsync(string project)
+    internal static async Task BuildOrSkipAsync(string project)
     {
         var restore = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, ["restore", "RoundTrip.csproj"], project, TimeSpan.FromMinutes(5));
         if (restore.ExitCode != 0)

@@ -371,23 +371,33 @@ maquettiste.helper("cs_expression", (expression, kind, contextSpec, payloadSpec)
 // an example renderer, a starting point to copy and adapt, not a contract: the engine ships no emitter, and a pack renders the tree
 // in its own language. It keeps the language's answers:
 // - three-valued logic through C#'s lifted operators: a value that may be null is a nullable type, & and | on bool? are Kleene's and
-//   and or, ! keeps null, and a comparison, arithmetic or function with a null operand is null (written as an explicit test where
-//   C#'s own lifting would answer false or skip the null, as for ordering and concatenation);
-// - decimals stay decimal, integer arithmetic is done in long, strings compare ordinally, trim removes spaces only, length counts
-//   code points and add_months clamps to the month's end, as in PostgreSQL;
+//   and or, ! keeps null, and arithmetic with a null operand is null. Where C#'s lifting would answer otherwise (ordering answers
+//   false for null, equality true or false, concatenation skips it) and for functions, the operands are bound once by a pattern,
+//   (A, B) switch { ({ } v1, { } v2) => (bool?)(v1 <= v2), _ => null }, so no operand is written or evaluated twice and C# knows the
+//   bound values are not null;
+// - integer arithmetic is done in System.Numerics.BigInteger, which never overflows, as PostgreSQL's numeric and the runtime's BigInt
+//   do: long would wrap to a wrong answer, and decimal would throw past 28 digits. Decimals stay decimal, literals are written from
+//   their exact text (valueText; value, a 64-bit integer, is a double in a script), strings compare equal ordinally and order by code
+//   point through the spec's compare() entry (string.CompareOrdinal orders UTF-16 units, which puts U+E000 to U+FFFF above the
+//   characters beyond the basic plane), trim removes spaces only, length counts code points and add_months clamps to the month's
+//   end, as in PostgreSQL;
 // - matches uses .NET's linear-time engine (RegexOptions.NonBacktracking), so a pattern never backtracks, with the portable
 //   subset's meaning: ^ and $ anchor the whole string ($ becomes \z, since .NET's $ also matches before a final newline), . matches
 //   a newline (Singleline) and case counts. .NET works in UTF-16 code units where the language counts code points, so a pattern
 //   that counts characters beyond the basic plane can differ.
-// The result is C# of type bool? (or bool when nothing may be null) for a condition, or the value's type for a derived value; a
-// check fails on false, a guard holds on true. spec lists what paths read, one entry per value: "path|C# expression|C# type|kind|
-// member=C# member,..." joined with ";", path as the expression's text writes it (total, event.amount), kind enum with its members'
-// C# names, else value; an entry named now() gives the clock. Anything else returns "" so the pack falls back: division (its
-// rounding is PostgreSQL's), the json functions, reference-type codes, a datetime against a datetimeoffset, now() without a clock,
-// value object members and a literal it cannot read.
+// The result is C# of type bool? (or bool when nothing may be null) for a condition, or the value's type for a derived value (an
+// integer computed by arithmetic is a BigInteger); a check fails on false, a guard holds on true. Pattern variables are v1, v2...,
+// scoped to their switch arm. spec lists what paths read, one entry per value: "path|C# expression|C# type|kind|member=C# member,..."
+// joined with ";", path as the expression's text writes it (total, event.amount), kind enum with its members' C# names, else value;
+// an entry named now() gives the clock and one named compare() the function that orders two strings by code point. Anything else
+// returns "" so the pack falls back: division (its rounding is PostgreSQL's), the json functions, reference-type codes, a datetime
+// against a datetimeoffset, now() without a clock, string order without compare(), value object members and a literal C# cannot
+// hold exactly (a decimal of more than 28 digits).
 
 const exprKinds = { bool: "bool", decimal: "decimal", double: "double", string: "string", date: "DateOnly", time: "TimeOnly",
   datetime: "DateTime", datetimeoffset: "DateTimeOffset", uuid: "Guid" };
+
+const bigInteger = "System.Numerics.BigInteger";
 
 function exprBase(type) {
   if (type.kind === "int") return type.bits === 16 ? "short" : type.bits === 32 ? "int" : "long";
@@ -396,43 +406,134 @@ function exprBase(type) {
   return base;
 }
 
-// A rendered node: its C# text, its type without "?", whether it is a value type and whether it may be null.
-const csValue = (cs, base, nullable, extra) => ({ ...extra, cs, base, nullable, vt: valueTypes.has(base) || !!(extra && extra.vt) });
+// A rendered node: its C# text, its type without "?", whether it is a value type and whether it may be null. Its text is a primary
+// expression (a name, a literal, a call, anything in parentheses), a cast, or ! or - before one.
+const csValue = (cs, base, nullable, extra) =>
+  ({ ...extra, cs, base, nullable, vt: valueTypes.has(base) || base === bigInteger || !!(extra && extra.vt) });
 
-// The operand where it is known not to be null: .Value of a nullable value type, ! of a reference type.
-const known = (r) => (!r.nullable ? r.cs : r.vt ? r.cs + ".Value" : r.cs + "!");
+// The null of a type, which every operator but is null, is distinct from, coalesce and nonnull_count passes on.
+const nullOf = (base) => csValue("(" + base + "?)null", base, true, { nullLiteral: true });
 
-// A C# result over operands, null when one of them is: the test is written out, so no lifted operator answers false for null.
-function lifted(operands, base, core) {
-  if (operands.some((o) => o.nullLiteral)) return csValue("(" + base + "?)null", base, true);
-  const tests = operands.filter((o) => o.nullable).map((o) => o.cs + " is null");
-  const text = core(...operands.map(known));
-  return tests.length === 0 ? csValue(text, base, false) : csValue("(" + tests.join(" || ") + " ? (" + base + "?)null : " + text + ")", base, true);
+const constant = (value) => csValue(value ? "true" : "false", "bool", false, { literal: true });
+
+// The index after the C# string or char literal that starts at i.
+function skipLiteral(text, i) {
+  const quote = text[i];
+  for (i++; i < text.length && text[i] !== quote; i++) {
+    if (text[i] === "\\") i++;
+  }
+  return i + 1;
+}
+
+// Whether C# text is wrapped whole in one pair of parentheses.
+function enclosed(text) {
+  if (text[0] !== "(") return false;
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") {
+      i = skipLiteral(text, i) - 1;
+    } else if (c === "(") {
+      depth++;
+    } else if (c === ")" && --depth === 0) {
+      return i === text.length - 1;
+    }
+  }
+  return false;
+}
+
+// Whether C# text is one primary expression, which a cast, a member access, a switch or a unary operator takes as it is: anything in
+// parentheses, or a name, literal, member access or call with no space outside its parentheses and literals.
+function primary(text) {
+  if (enclosed(text)) return true;
+  if (!/^[A-Za-z_@"]/.test(text)) return false;
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"' || c === "'") i = skipLiteral(text, i) - 1;
+    else if (c === "(") depth++;
+    else if (c === ")") depth--;
+    else if (depth === 0 && /\s/.test(c)) return false;
+  }
+  return true;
+}
+
+const atom = (text) => (primary(text) ? text : "(" + text + ")");
+
+// Whether a node may be written more than once: a literal, or a name or member chain (a property, call.Context.Total), which reads a
+// value without computing it.
+const plain = (r) => !!r.literal || /^@?[A-Za-z_][A-Za-z0-9_]*(\.@?[A-Za-z_][A-Za-z0-9_]*)*$/.test(r.cs);
+
+// A node's text as another numeric type where C# does not convert on its own: an integer computed in BigInteger meeting a decimal or a
+// double (int widens to both in the language; the conversion throws past decimal's range rather than answer wrong). nullable says
+// whether the text may be null here.
+function widen(r, base, text, nullable) {
+  return r.base === bigInteger && (base === "decimal" || base === "double") ? "(" + base + (nullable ? "?" : "") + ")" + atom(text) : text;
+}
+
+// A node's text in a wider type of the same kind (an int as long, a long as BigInteger, an int as decimal), for coalesce and case.
+const convert = (r, base) => (r.base === base ? r.cs : "(" + base + (r.nullable ? "?" : "") + ")" + atom(r.cs));
+
+// The C# type of values of one type that some operands hold as BigInteger: an integer is BigInteger when any of them is.
+const commonBase = (type, rs) => (type.kind === "int" && rs.some((r) => r.base === bigInteger) ? bigInteger : exprBase(type));
+
+// A C# result over operands, null when one of them is. core receives each operand's text: a non-null one as it is (unless the core
+// reads it more than once, many, and it is not plain), every other one bound once to a pattern variable, { } vN when it may be null,
+// so the core reads it as not null, else var vN. Nothing is written or evaluated twice, however deep the nesting.
+function lifted(ctx, operands, base, core, many) {
+  if (operands.some((o) => o.nullLiteral)) return nullOf(base);
+  const subjects = [];
+  const patterns = [];
+  const texts = operands.map((o) => {
+    if (!o.nullable && (!many || plain(o))) return o.cs;
+    const name = "v" + ++ctx.next;
+    subjects.push(o.cs);
+    patterns.push((o.nullable ? "{ } " : "var ") + name);
+    return name;
+  });
+  const text = core(...texts);
+  if (subjects.length === 0) return csValue(text, base, false);
+  const one = subjects.length === 1;
+  const subject = one ? atom(subjects[0]) : "(" + subjects.join(", ") + ")";
+  const pattern = one ? patterns[0] : "(" + patterns.join(", ") + ")";
+  if (!operands.some((o) => o.nullable)) return csValue("(" + subject + " switch { " + pattern + " => " + text + " })", base, false);
+  return csValue("(" + subject + " switch { " + pattern + " => (" + base + "?)" + atom(text) + ", _ => null })", base, true);
 }
 
 const comparisons = { eq: "==", ne: "!=", lt: "<", le: "<=", gt: ">", ge: ">=" };
 const temporal = new Set(["DateTime", "DateTimeOffset"]);
 
-function compare(op, l, r) {
+function compare(ctx, op, l, r) {
   if (temporal.has(l.base) && temporal.has(r.base) && l.base !== r.base) throw new Error("datetime against datetimeoffset");
-  return lifted([l, r], "bool", (a, b) => {
-    if (l.base === "string" && r.base === "string")
-      return op === "eq" || op === "ne"
-        ? (op === "ne" ? "!" : "") + "string.Equals(" + a + ", " + b + ", StringComparison.Ordinal)"
-        : "(string.CompareOrdinal(" + a + ", " + b + ") " + comparisons[op] + " 0)";
-    return "(" + a + " " + comparisons[op] + " " + b + ")";
+  const strings = l.base === "string" && r.base === "string";
+  // A value against itself (issuedOn <= issuedOn) is known, and C# warns of the comparison (CS1718): equal, as in PostgreSQL, where NaN
+  // equals NaN too.
+  if (!strings && !l.nullable && !r.nullable && plain(l) && !l.literal && l.cs === r.cs) return constant(op === "eq" || op === "le" || op === "ge");
+  const order = strings && op !== "eq" && op !== "ne" ? ctx.entries.get("compare()") : null;
+  if (strings && op !== "eq" && op !== "ne" && !order) throw new Error("string order without compare()");
+  return lifted(ctx, [l, r], "bool", (a, b) => {
+    if (order) return "(" + order.cs + "(" + a + ", " + b + ") " + comparisons[op] + " 0)";
+    if (strings) return (op === "ne" ? "!" : "") + "string.Equals(" + a + ", " + b + ", StringComparison.Ordinal)";
+    return "(" + widen(l, r.base, a, false) + " " + comparisons[op] + " " + widen(r, l.base, b, false) + ")";
   });
 }
 
 // A boolean operand as bool? for & and |.
-const asNullable = (r) => (r.nullable ? r.cs : "(bool?)" + r.cs);
+const asNullable = (r) => (r.nullable ? r.cs : "(bool?)" + atom(r.cs));
 
 function logic(op, l, r) {
+  if (l.nullLiteral && r.nullLiteral) return l;
   if (!l.nullable && !r.nullable) return csValue("(" + l.cs + (op === "and" ? " && " : " || ") + r.cs + ")", "bool", false);
   return csValue("(" + asNullable(l) + (op === "and" ? " & " : " | ") + asNullable(r) + ")", "bool", true);
 }
 
-const not = (r) => csValue("!" + r.cs, "bool", r.nullable);
+const not = (r) => (r.nullLiteral ? r : csValue("!" + atom(r.cs), "bool", r.nullable));
+
+// x is null (or, negated, is not null): a constant when x cannot be null or is the null.
+function isNull(r, negated) {
+  if (r.nullLiteral || !r.nullable) return constant(!!r.nullLiteral !== negated);
+  return csValue("(" + atom(r.cs) + (negated ? " is not null)" : " is null)"), "bool", false);
+}
 
 // The pattern for .NET: an unescaped $ outside a bracket class anchors the end of the string (\z).
 function dotnetPattern(pattern) {
@@ -460,43 +561,76 @@ function dotnetPattern(pattern) {
 
 const regexOptions = "System.Text.RegularExpressions.RegexOptions.NonBacktracking | System.Text.RegularExpressions.RegexOptions.Singleline";
 
+// A literal's text exactly as the tree holds it: valueText, else value (a script holds an integer above 2^53 inexactly in value).
+const literalText = (node) => (node.valueText !== null && node.valueText !== undefined ? String(node.valueText) : String(node.value));
+
+// An integer literal as C#: int when it fits, else long with L; the digits are the tree's own.
+function intLiteral(digits) {
+  if (!/^-?[0-9]+$/.test(digits)) throw new Error("literal " + digits);
+  const n = BigInt(digits);
+  if (n >= -2147483648n && n <= 2147483647n) return csValue(n.toString(), "int", false, { literal: true });
+  if (n >= -9223372036854775808n && n <= 9223372036854775807n) return csValue(n.toString() + "L", "long", false, { literal: true });
+  throw new Error("literal " + digits);
+}
+
+// A decimal literal as C#, which holds 28 significant digits at a scale of at most 28; more would be rounded silently, so it is refused.
+function decimalLiteral(text) {
+  const m = /^(-?)([0-9]*)(?:\.([0-9]+))?$/.exec(text);
+  if (!m || (m[2] + (m[3] ?? "")).length === 0) throw new Error("literal " + text);
+  const digits = (m[2] + (m[3] ?? "")).replace(/^0+/, "");
+  if (digits.length > 28 || (m[3] ?? "").length > 28) throw new Error("decimal literal " + text);
+  return csValue(text + "m", "decimal", false, { literal: true });
+}
+
 // A literal of the language as C#; a ref (an enum member) takes the type of the path it is compared with.
 function exprLiteral(node, hint) {
-  const text = String(node.value);
+  const text = literalText(node);
   const parts = (re) => {
     const m = re.exec(text);
     if (!m) throw new Error("literal " + text);
     return m.slice(1).map((x) => (x === undefined ? 0 : Number(x)));
   };
   switch (node.type.kind) {
-    case "int":
-      return csValue(text + (node.type.bits === 64 ? "L" : ""), exprBase(node.type), false);
+    case "int": {
+      const r = intLiteral(text);
+      return node.type.bits === 64 && r.base === "int" ? csValue(r.cs + "L", "long", false, { literal: true }) : r;
+    }
     case "decimal":
-      return csValue(text + "m", "decimal", false);
+      return decimalLiteral(text);
     case "double":
-      return csValue(text + "d", "double", false);
+      if (!/^-?([0-9]+(\.[0-9]+)?|\.[0-9]+)([eE][-+]?[0-9]+)?$/.test(text)) throw new Error("literal " + text);
+      return csValue(text + "d", "double", false, { literal: true });
     case "string":
-      return csValue(JSON.stringify(text), "string", false);
+      return csValue(JSON.stringify(text), "string", false, { literal: true });
     case "bool":
-      return csValue(node.value ? "true" : "false", "bool", false);
+      return constant(node.value === true || text === "true");
     case "date":
-      return csValue("new DateOnly(" + parts(/^(\d{4})-(\d{2})-(\d{2})$/).join(", ") + ")", "DateOnly", false);
+      return csValue("new DateOnly(" + parts(/^(\d{4})-(\d{2})-(\d{2})$/).join(", ") + ")", "DateOnly", false, { literal: true });
     case "time":
-      return csValue("new TimeOnly(" + parts(/^(\d{2}):(\d{2})(?::(\d{2}))?$/).join(", ") + ")", "TimeOnly", false);
+      return csValue("new TimeOnly(" + parts(/^(\d{2}):(\d{2})(?::(\d{2}))?$/).join(", ") + ")", "TimeOnly", false, { literal: true });
     case "datetime":
-      return csValue("new DateTime(" + parts(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/).join(", ") + ")", "DateTime", false);
+      return csValue("new DateTime(" + parts(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/).join(", ") + ")", "DateTime", false, { literal: true });
     case "datetimeoffset": {
       const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(text);
       if (!m) throw new Error("literal " + text);
       const at = m.slice(1, 7).map((x) => (x === undefined ? 0 : Number(x)));
       const offset = m[7] === "Z" ? "TimeSpan.Zero" : "new TimeSpan(" + m[8] + Number(m[9]) + ", " + m[8] + Number(m[10]) + ", 0)";
-      return csValue("new DateTimeOffset(" + at.join(", ") + ", " + offset + ")", "DateTimeOffset", false);
+      return csValue("new DateTimeOffset(" + at.join(", ") + ", " + offset + ")", "DateTimeOffset", false, { literal: true });
     }
     case "uuid":
-      return hint && hint.base === "string" ? csValue(JSON.stringify(text), "string", false) : csValue("new Guid(" + JSON.stringify(text) + ")", "Guid", false);
+      return hint && hint.base === "string"
+        ? csValue(JSON.stringify(text), "string", false, { literal: true })
+        : csValue("new Guid(" + JSON.stringify(text) + ")", "Guid", false, { literal: true });
     default:
       throw new Error("literal of " + node.type.kind);
   }
+}
+
+// -x of a literal, as a literal of its kind.
+function negatedLiteral(node) {
+  const text = literalText(node);
+  const negated = text.startsWith("-") ? text.slice(1) : "-" + text;
+  return exprLiteral({ node: "value", value: negated, valueText: negated, type: node.type });
 }
 
 // The path a node reads, for a ref beside it: the node itself or the first path among its operands.
@@ -514,7 +648,7 @@ function exprRef(node, hint) {
   if (!path || path.entry.kind !== "enum" || node.type.kind !== "enum") throw new Error("ref");
   const member = path.entry.members.get(String(node.value));
   if (!member) throw new Error("enum member " + node.value);
-  return csValue(path.base + "." + member, path.base, false, { vt: true });
+  return csValue(path.base + "." + member, path.base, false, { vt: true, literal: true });
 }
 
 function list(items) {
@@ -523,7 +657,7 @@ function list(items) {
   return out;
 }
 
-function exprNode(node, spec, hint) {
+function exprNode(node, ctx, hint) {
   switch (node.node) {
     case "value":
       return exprLiteral(node, hint);
@@ -532,174 +666,224 @@ function exprNode(node, spec, hint) {
     case "ref":
       return exprRef(node, hint);
     case "now": {
-      const clock = spec.get("now()");
+      const clock = ctx.entries.get("now()");
       if (!clock) throw new Error("now");
       return csValue(clock.cs, clock.type.replace(/\?$/, ""), /\?$/.test(clock.type));
     }
     case "path": {
-      const entry = spec.get(node.text);
+      const entry = ctx.entries.get(node.text);
       if (!entry) throw new Error("path " + node.text);
       const base = entry.type.replace(/\?$/, "");
       return csValue(entry.cs, base, /\?$/.test(entry.type), { vt: entry.kind === "enum", entry });
     }
     case "op":
-      return exprOp(node, spec);
+      return exprOp(node, ctx);
     case "call":
-      return exprCall(node, spec);
+      return exprCall(node, ctx);
     case "case":
-      return exprCase(node, spec);
+      return exprCase(node, ctx);
     default:
       throw new Error("node " + node.node);
   }
 }
 
 // Two operands of one type: a literal, a null or a ref beside a path renders in the path's type.
-function pair(args, spec) {
+function pair(args, ctx) {
   const simple = (n) => n.node === "value" || n.node === "null" || n.node === "ref";
   if (simple(args[0]) && !simple(args[1])) {
-    const r = exprNode(args[1], spec);
-    return [exprNode(args[0], spec, r), r];
+    const r = exprNode(args[1], ctx);
+    return [exprNode(args[0], ctx, r), r];
   }
-  const l = exprNode(args[0], spec);
-  return [l, exprNode(args[1], spec, l)];
+  const l = exprNode(args[0], ctx);
+  return [l, exprNode(args[1], ctx, l)];
 }
 
-function exprOp(node, spec) {
+function exprOp(node, ctx) {
   const args = list(node.args);
   const op = node.op;
   if (comparisons[op]) {
-    const [l, r] = pair(args, spec);
-    return { ...compare(op, l, r), operands: [l, r] };
+    const [l, r] = pair(args, ctx);
+    return { ...compare(ctx, op, l, r), operands: [l, r] };
   }
   switch (op) {
     case "and":
     case "or":
-      return logic(op, exprNode(args[0], spec), exprNode(args[1], spec));
+      return logic(op, exprNode(args[0], ctx), exprNode(args[1], ctx));
     case "implies":
-      return logic("or", not(exprNode(args[0], spec)), exprNode(args[1], spec));
+      return logic("or", not(exprNode(args[0], ctx)), exprNode(args[1], ctx));
     case "not":
-      return not(exprNode(args[0], spec));
+      return not(exprNode(args[0], ctx));
     case "isNull":
-    case "isNotNull": {
-      const r = exprNode(args[0], spec);
-      if (!r.nullable || r.nullLiteral) return csValue((op === "isNull") === !!r.nullLiteral ? "true" : "false", "bool", false);
-      return csValue("(" + r.cs + (op === "isNull" ? " is null)" : " is not null)"), "bool", false);
-    }
+    case "isNotNull":
+      return isNull(exprNode(args[0], ctx), op === "isNotNull");
     case "distinct":
     case "notDistinct": {
-      const [l, r] = pair(args, spec);
-      const same = l.base === "string" && r.base === "string" ? "string.Equals(" + l.cs + ", " + r.cs + ", StringComparison.Ordinal)" : "(" + l.cs + " == " + r.cs + ")";
+      const [l, r] = pair(args, ctx);
+      if (l.nullLiteral || r.nullLiteral) return isNull(l.nullLiteral ? r : l, op === "distinct");
+      if (plain(l) && !l.literal && l.cs === r.cs) return constant(op === "notDistinct");
+      const same = l.base === "string" && r.base === "string"
+        ? "string.Equals(" + l.cs + ", " + r.cs + ", StringComparison.Ordinal)"
+        : "(" + widen(l, r.base, l.cs, l.nullable) + " == " + widen(r, l.base, r.cs, r.nullable) + ")";
       return csValue(op === "distinct" ? "!" + same : same, "bool", false);
     }
     case "between": {
-      const x = exprNode(args[0], spec);
-      const low = exprNode(args[1], spec, x);
-      const high = exprNode(args[2], spec, x);
-      return logic("and", compare("le", low, x), compare("le", x, high));
+      // low <= x and x <= high under Kleene's and, with x bound once: when x is null both comparisons are, and so is the answer.
+      const x = exprNode(args[0], ctx);
+      const low = exprNode(args[1], ctx, x);
+      const high = exprNode(args[2], ctx, x);
+      if (x.nullLiteral) return nullOf("bool");
+      if (!x.nullable && plain(x)) return logic("and", compare(ctx, "le", low, x), compare(ctx, "le", x, high));
+      const name = "v" + ++ctx.next;
+      const bound = { ...x, cs: name, nullable: false };
+      const test = logic("and", compare(ctx, "le", low, bound), compare(ctx, "le", bound, high));
+      return x.nullable
+        ? csValue("(" + atom(x.cs) + " switch { { } " + name + " => " + asNullable(test) + ", _ => null })", "bool", true)
+        : csValue("(" + atom(x.cs) + " switch { var " + name + " => " + test.cs + " })", "bool", test.nullable);
     }
     case "in":
     case "notIn": {
-      const x = exprNode(args[0], spec);
-      const items = args.slice(1).map((a) => exprNode(a, spec, x));
-      const test = lifted([x], "bool", (v) => "(" + items.map((i) => compare("eq", { ...x, cs: v, nullable: false }, i).cs).join(" || ") + ")");
+      const x = exprNode(args[0], ctx);
+      const items = args.slice(1).map((a) => exprNode(a, ctx, x));
+      const test = lifted(ctx, [x], "bool", (v) => "(" + items.map((i) => compare(ctx, "eq", { ...x, cs: v, nullable: false }, i).cs).join(" || ") + ")", true);
       return op === "in" ? test : not(test);
     }
     case "add":
     case "sub":
     case "mul": {
-      const [l, r] = pair(args, spec);
-      const base = exprBase(node.type);
+      const [l, r] = pair(args, ctx);
       const sign = op === "add" ? " + " : op === "sub" ? " - " : " * ";
-      const left = base === "long" ? "(long" + (l.nullable ? "?" : "") + ")" + l.cs : l.cs;
-      return csValue("(" + left + sign + r.cs + ")", base, l.nullable || r.nullable);
+      if (node.type.kind === "int") {
+        // In BigInteger, so nothing overflows: a left operand that is not one yet is cast, and the right one converts on its own.
+        if (l.nullLiteral || r.nullLiteral) return nullOf(bigInteger);
+        const left = l.base === bigInteger || r.base === bigInteger ? l.cs : "(" + bigInteger + (l.nullable ? "?" : "") + ")" + atom(l.cs);
+        return csValue("(" + left + sign + r.cs + ")", bigInteger, l.nullable || r.nullable);
+      }
+      const base = exprBase(node.type);
+      if (l.nullLiteral || r.nullLiteral) return nullOf(base);
+      return csValue("(" + widen(l, base, l.cs, l.nullable) + sign + widen(r, base, r.cs, r.nullable) + ")", base, l.nullable || r.nullable);
     }
     case "neg": {
-      const r = exprNode(args[0], spec);
-      return csValue("(-" + r.cs + ")", r.base, r.nullable);
+      if (args[0].node === "value") return negatedLiteral(args[0]);
+      const r = exprNode(args[0], ctx);
+      if (node.type.kind === "int") {
+        if (r.nullLiteral) return nullOf(bigInteger);
+        return csValue("(-" + (r.base === bigInteger ? atom(r.cs) : "(" + bigInteger + (r.nullable ? "?" : "") + ")" + atom(r.cs)) + ")", bigInteger, r.nullable);
+      }
+      return r.nullLiteral ? nullOf(r.base) : csValue("(-" + atom(r.cs) + ")", r.base, r.nullable);
     }
     case "concat":
-      return lifted(args.map((a) => exprNode(a, spec)), "string", (a, b) => "(" + a + " + " + b + ")");
+      return lifted(ctx, args.map((a) => exprNode(a, ctx)), "string", (...xs) => "(" + xs.join(" + ") + ")");
     case "coalesce": {
-      const base = exprBase(node.type);
-      const parts = [];
-      let nullable = true;
+      const rs = [];
       for (const a of args) {
-        const r = exprNode(a, spec);
-        parts.push(r.base === base || r.nullLiteral ? r.cs : "(" + base + (r.nullable ? "?" : "") + ")" + r.cs);
-        if (!r.nullable) {
-          nullable = false;
-          break;
-        }
+        const r = exprNode(a, ctx);
+        rs.push(r);
+        if (!r.nullable) break;
       }
-      return csValue("(" + parts.join(" ?? ") + ")", base, nullable);
+      const base = commonBase(node.type, rs);
+      const nullable = rs[rs.length - 1].nullable;
+      return csValue("(" + rs.map((r) => (r.nullLiteral ? r.cs : convert(r, base))).join(" ?? ") + ")", base, nullable);
     }
     default:
       throw new Error("operator " + op);
   }
 }
 
-function exprCall(node, spec) {
+// A day or month count as the int AddDays and AddMonths take: a long or a BigInteger converts checked, so a count past int's range
+// throws rather than wraps.
+const count = (r, text) => (r.base === "int" || r.base === "short" ? text : r.base === bigInteger ? "(int)" + atom(text) : "checked((int)" + text + ")");
+
+function exprCall(node, ctx) {
   const args = list(node.args);
-  const one = () => exprNode(args[0], spec);
+  const one = () => exprNode(args[0], ctx);
   switch (node.call) {
     case "trim":
-      return lifted([one()], "string", (s) => s + ".Trim(' ')");
+      return lifted(ctx, [one()], "string", (s) => atom(s) + ".Trim(' ')");
     case "length":
-      return lifted([one()], "int", (s) => "System.Linq.Enumerable.Count(" + s + ".EnumerateRunes())");
+      return lifted(ctx, [one()], "int", (s) => "System.Linq.Enumerable.Count(" + atom(s) + ".EnumerateRunes())");
     case "matches":
-      return lifted([one()], "bool", (s) => "System.Text.RegularExpressions.Regex.IsMatch(" + s + ", " + JSON.stringify(dotnetPattern(String(args[1].value))) + ", " + regexOptions + ")");
-    case "nonnull_count":
-      return csValue("(" + args.map((a) => exprNode(a, spec)).map((r) => (r.nullLiteral ? "0" : r.nullable ? "(" + r.cs + " is null ? 0 : 1)" : "1")).join(" + ") + ")", "int", false);
+      return lifted(ctx, [one()], "bool",
+        (s) => "System.Text.RegularExpressions.Regex.IsMatch(" + s + ", " + JSON.stringify(dotnetPattern(literalText(args[1]))) + ", " + regexOptions + ")");
+    case "nonnull_count": {
+      const terms = args.map((a) => exprNode(a, ctx)).map((r) => (r.nullLiteral ? "0" : r.nullable ? "(" + atom(r.cs) + " is null ? 0 : 1)" : "1"));
+      return csValue(terms.length === 1 ? terms[0] : "(" + terms.join(" + ") + ")", "int", false);
+    }
     case "add_days":
     case "add_months": {
       const d = one();
-      const n = exprNode(args[1], spec);
+      const n = exprNode(args[1], ctx);
       const utc = d.base === "DateTimeOffset" && node.call === "add_months" ? ".ToUniversalTime()" : "";
-      return lifted([d, n], d.base, (x, y) => x + utc + (node.call === "add_days" ? ".AddDays(" : ".AddMonths(") + "(int)" + y + ")");
+      return lifted(ctx, [d, n], d.base, (x, y) => atom(x) + utc + (node.call === "add_days" ? ".AddDays(" : ".AddMonths(") + count(n, y) + ")");
     }
     case "date_part": {
-      const part = String(args[0].value);
-      const d = exprNode(args[1], spec);
+      const part = literalText(args[0]);
+      const d = exprNode(args[1], ctx);
       const utc = d.base === "DateTimeOffset" ? ".UtcDateTime" : "";
       const field = { year: ".Year", month: ".Month", day: ".Day", hour: ".Hour", minute: ".Minute" }[part];
-      return lifted([d], "int", (x) => (part === "isodow" ? "(((int)" + x + utc + ".DayOfWeek + 6) % 7 + 1)" : x + utc + field));
+      if (part !== "isodow" && !field) throw new Error("date part " + part);
+      return lifted(ctx, [d], "int", (x) => (part === "isodow" ? "(((int)" + atom(x) + utc + ".DayOfWeek + 6) % 7 + 1)" : atom(x) + utc + field));
     }
     case "date_of": {
       const t = one();
-      return lifted([t], "DateOnly", (x) => "DateOnly.FromDateTime(" + x + (t.base === "DateTimeOffset" ? ".UtcDateTime" : "") + ")");
+      return lifted(ctx, [t], "DateOnly", (x) => "DateOnly.FromDateTime(" + atom(x) + (t.base === "DateTimeOffset" ? ".UtcDateTime" : "") + ")");
     }
-    case "round":
-      return lifted([one()], "decimal", (x) => "Math.Round((decimal)" + x + ", " + String(args[1].value) + ", MidpointRounding.AwayFromZero)");
+    case "round": {
+      const digits = literalText(args[1]);
+      if (!/^[0-9]+$/.test(digits)) throw new Error("round digits " + digits);
+      return lifted(ctx, [one()], "decimal", (x) => "Math.Round((decimal)" + atom(x) + ", " + digits + ", MidpointRounding.AwayFromZero)");
+    }
     default:
       throw new Error("function " + node.call);
   }
 }
 
 // case when ... then ... else ... end: a branch is taken only when its condition is true; no branch and no else is null.
-function exprCase(node, spec) {
+function exprCase(node, ctx) {
   const args = list(node.args);
-  const base = exprBase(node.type);
   const branches = [];
-  let fallback = csValue("(" + base + "?)null", base, true);
-  for (let i = 0; i + 1 < args.length; i += 2) branches.push([exprNode(args[i], spec), exprNode(args[i + 1], spec)]);
-  if (args.length % 2 === 1) fallback = exprNode(args[args.length - 1], spec);
+  for (let i = 0; i + 1 < args.length; i += 2) branches.push([exprNode(args[i], ctx), exprNode(args[i + 1], ctx)]);
+  const given = args.length % 2 === 1 ? exprNode(args[args.length - 1], ctx) : null;
+  const base = commonBase(node.type, [...branches.map(([, then]) => then), ...(given ? [given] : [])]);
+  const fallback = given ?? nullOf(base);
   const nullable = fallback.nullable || branches.some(([, then]) => then.nullable);
-  const cast = (r) => (r.nullLiteral || !nullable ? r.cs : "(" + base + "?)" + r.cs);
+  const cast = (r) => (r.nullLiteral || (r.nullable && r.base === base) ? r.cs : nullable ? "(" + base + "?)" + atom(r.cs) : convert(r, base));
   let text = cast(fallback);
+  let taken = false;
   for (let i = branches.length - 1; i >= 0; i--) {
     const [when, then] = branches[i];
-    text = "(" + (when.nullable ? when.cs + " == true" : when.cs) + " ? " + cast(then) + " : " + text + ")";
+    if (when.nullLiteral) continue; // never true, so never taken
+    taken = true;
+    text = "(" + (when.nullable ? atom(when.cs) + " == true" : when.cs) + " ? " + cast(then) + " : " + text + ")";
   }
-  return csValue(text, base, nullable);
+  return !taken && fallback.nullLiteral ? nullOf(base) : csValue(text, base, nullable);
 }
 
 maquettiste.helper("expr_cs", (condition, spec) => {
   try {
     if (!condition) return "";
-    return exprNode(condition, parseSpec(spec)).cs;
+    return exprNode(condition, { entries: parseSpec(spec), next: 0 }).cs;
   } catch {
     return "";
   }
+});
+
+// expr_cs_holds(condition, spec): C# that is true exactly when a condition holds, as a guard needs it (only true holds): the condition
+// == true, or false for one that is always null, which C# refuses to compare with true (CS0472).
+maquettiste.helper("expr_cs_holds", (condition, spec) => {
+  try {
+    if (!condition) return "";
+    const r = exprNode(condition, { entries: parseSpec(spec), next: 0 });
+    return r.nullLiteral ? "false" : atom(r.cs) + " == true";
+  } catch {
+    return "";
+  }
+});
+
+// C# text without one pair of parentheses around the whole of it, for an expression that stands alone (the right side of an
+// assignment): "(Total >= 0)" -> "Total >= 0".
+maquettiste.helper("cs_unwrap", (text) => {
+  const s = String(text ?? "");
+  return enclosed(s) ? s.slice(1, -1) : s;
 });
 
 // Text for a one-line comment or an XML documentation line: every line break (\r\n, \r, \n) becomes a space, so a multi-line

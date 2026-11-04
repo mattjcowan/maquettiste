@@ -24,13 +24,17 @@ public partial class Invoice
     public virtual IReadOnlyList<(string Pointer, string Code, string Message)> Validate()
     {
         var errors = new List<(string Pointer, string Code, string Message)>();
-        if ((IssuedOn is null || DueOn is null ? (bool?)null : (IssuedOn.Value <= DueOn.Value)) == false)
+        bool? ok = (IssuedOn, DueOn) switch { ({ } v1, { } v2) => (bool?)(v1 <= v2), _ => null };
+        if (ok == false)
             errors.Add(("/issuedOn", "dueAfterIssue", "An invoice is due on or after the day it is issued."));
-        if ((Total >= 0) == false)
+        ok = Total >= 0;
+        if (ok == false)
             errors.Add(("/total", "totalNotNegative", "total >= 0"));
-        if (System.Text.RegularExpressions.Regex.IsMatch(Number, "^INV-[0-9]+\\z", System.Text.RegularExpressions.RegexOptions.NonBacktracking | System.Text.RegularExpressions.RegexOptions.Singleline) == false)
+        ok = System.Text.RegularExpressions.Regex.IsMatch(Number, "^INV-[0-9]+\\z", System.Text.RegularExpressions.RegexOptions.NonBacktracking | System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (ok == false)
             errors.Add(("/number", "numberFormat", "An invoice number is INV- and digits."));
-        if (((Status == InvoiceStatus.Draft) || (IssuedOn is not null)) == false)
+        ok = (Status == InvoiceStatus.Draft) || (IssuedOn is not null);
+        if (ok == false)
             errors.Add(("/issuedOn", "issuedUnlessDraft", "status = InvoiceStatus.Draft or issuedOn is not null"));
         return errors;
     }

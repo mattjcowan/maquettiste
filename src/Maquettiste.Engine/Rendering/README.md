@@ -213,9 +213,11 @@ golden tree).
   expression's own keys are those of the object it was read from. `expression_runtime` returns `ExprRuntime.Source` and
   records nothing: the runtime changes with the engine, whose version every static hash holds. An expression node's `type`
   (`ExprType`) is template-visible through `MemberCatalog.IsProxyType`, which scripts share, so packs read `type.kind` and
-  `type.bits` in either language. `TrackingTemplateContext` needed no new member: `RExpression` and `ExprType` record nothing
-  themselves, and reading `entity.checks`, `check.condition`, `derived.value`, `guard.condition` or `operation.guards` records
-  only the keys of the object read, so a unit that reads none of them keeps its incremental keys.
+  `type.bits` in either language. A literal's `ValueText` is its text as the tree holds it, since a script reads `Value`'s
+  64-bit integer as a double, exact only to 2^53. `TrackingTemplateContext` needed no new member: `RExpression` and
+  `ExprType` record nothing themselves, and reading `entity.checks`, `check.condition`, `derived.value`, `guard.condition`
+  or `operation.guards` records only the keys of the object read, so a unit that reads none of them keeps its incremental
+  keys.
 
 ## Exports (next-phase-2-design.md section 5.3)
 

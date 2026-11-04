@@ -119,7 +119,7 @@ public sealed partial class ModelStore
         var database = DatabaseOf(snapshot, request.Database);
         var site = SiteOf(snapshot, element, sub, request);
 
-        var scope = ExprSites.Scope(snapshot, element, document, site, everything: request.Text is not null);
+        var scope = ExprSites.Scope(snapshot, element, document, site, text: request.Text is not null);
         var problems = new List<Diagnostic>();
         Expr tree;
         if (request.Text is { } text)
@@ -159,6 +159,9 @@ public sealed partial class ModelStore
         return new ExpressionPreview(detail, Outcomes.Sort(problems));
     }
 
+    /// <summary>An element's kind after its article, to begin a sentence: "An entity", "A table".</summary>
+    private static string AKind(Element element) => (BuiltinRules.Article(element.KindName) == "an" ? "An " : "A ") + element.KindName;
+
     /// <summary>The database a request names by id, else by name; <see langword="null"/> for none.</summary>
     private static Database? DatabaseOf(ModelSnapshot snapshot, string? key)
     {
@@ -185,7 +188,7 @@ public sealed partial class ModelStore
             if (!SiteKinds.TryGetValue(request.Site!, out var kind))
                 throw new ArgumentException($"site must be check, value, guard or the pointer of a site, not '{request.Site}'.", nameof(request));
             return ExprSites.Free(snapshot, element, kind)
-                ?? throw new ArgumentException($"A {element.KindName} has no {request.Site} site: a table, stereotype, entity or constraint has checks, an entity derived values, "
+                ?? throw new ArgumentException($"{AKind(element)} has no {request.Site} site: a table, stereotype, entity or constraint has checks, an entity derived values, "
                     + "a process or an operation guards.", nameof(request));
         }
 
@@ -233,7 +236,7 @@ public sealed partial class ModelStore
             case Process:
                 return (null, "A process guard reads the process's context and the event, not a table: it runs as JavaScript only.");
             default:
-                return (null, $"A {element.KindName} guard reads its input, not a table: it runs as JavaScript only.");
+                return (null, $"{AKind(element)} guard reads its input, not a table: it runs as JavaScript only.");
         }
     }
 

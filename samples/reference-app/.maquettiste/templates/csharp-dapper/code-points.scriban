@@ -1,0 +1,60 @@
+{{-
+# The order of strings by code point (CodePoints.g.cs), which expr_cs (helpers.js) writes for <, <=, >, >= and between on strings
+# through the spec entry compare() (_csharp.scriban expr_functions). Written once, into the base namespace, when an entity has checks
+# or a process guard is written in the expression language; else nothing calls it and no file is written.
+include "_csharp.scriban"
+needed = false
+for e in model.entities
+  if e.checks.size > 0
+    needed = true
+    break
+  end
+end
+for p in model.processes
+  for g in p.guards
+    if g.condition
+      needed = true
+    end
+  end
+end
+if !needed
+  ret
+end
+capture content
+-}}
+{{ header() }}
+using System;
+
+namespace {{ base_ns }};
+
+/// <summary>
+/// The order of strings by code point, as PostgreSQL orders them under <c>COLLATE "C"</c> and the expression language does: the checks
+/// and guards the pack renders from the language call it for <c>&lt;</c>, <c>&lt;=</c>, <c>&gt;</c>, <c>&gt;=</c> and <c>between</c> on
+/// strings. <see cref="string.CompareOrdinal(string, string)"/> orders UTF-16 code units instead, which puts U+E000 to U+FFFF above the
+/// characters beyond the basic plane, whose surrogates come first.
+/// </summary>
+public static partial class CodePoints
+{
+    /// <summary>Compares two strings by code point: a surrogate sorts above every other UTF-16 code unit.</summary>
+    /// <param name="a">The first string.</param>
+    /// <param name="b">The second string.</param>
+    /// <returns>Less than zero when <paramref name="a"/> comes first, zero when the strings are equal, greater than zero otherwise.</returns>
+    public static int Compare(string a, string b)
+    {
+        var n = Math.Min(a.Length, b.Length);
+        for (var i = 0; i < n; i++)
+        {
+            char x = a[i], y = b[i];
+            if (x == y)
+                continue;
+            var surrogate = char.IsSurrogate(x);
+            if (surrogate != char.IsSurrogate(y))
+                return surrogate ? 1 : -1;
+            return x < y ? -1 : 1;
+        }
+
+        return a.Length.CompareTo(b.Length);
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder "CodePoints.g.cs") content -}}

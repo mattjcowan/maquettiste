@@ -137,6 +137,26 @@ public sealed class ExprContainer
 }
 
 /// <summary>
+/// Where a scope built for text finds what the text names (next-phase-3-design.md section 3.1): the scope asks once per name, on the
+/// first lookup that needs it, and the source adds what it finds, so a parse reads only what the text names rather than every enum,
+/// reference type, seed and constraint of the model.
+/// </summary>
+internal interface IExprNames
+{
+    /// <summary>Adds the enum, else the reference type, that text names <paramref name="name"/> (<c>Status</c> in <c>Status.Paid</c>).</summary>
+    /// <param name="scope">The scope to add it to.</param>
+    /// <param name="name">The name.</param>
+    /// <returns>Its id, or <see langword="null"/> when nothing has the name.</returns>
+    string? Set(ExprScope scope, string name);
+
+    /// <summary>Adds the constraint named <paramref name="name"/>, with what its condition names by id.</summary>
+    /// <param name="scope">The scope to add it to.</param>
+    /// <param name="name">The name.</param>
+    /// <returns>Its id, or <see langword="null"/> when no constraint has the name.</returns>
+    string? Constraint(ExprScope scope, string name);
+}
+
+/// <summary>
 /// What an expression at one site can read (next-phase-3-design.md section 3.1), built by the engine per site: the site's kind, the
 /// members and navigations, the enums, reference types and constraints its names resolve to, the type a value site needs and where
 /// the expression sits for diagnostics.
@@ -148,6 +168,8 @@ public sealed class ExprScope
     private readonly Dictionary<string, string> _setsByName;
     private readonly Dictionary<string, ExprConstraint> _constraints;
     private readonly Dictionary<string, ExprConstraint> _constraintsByName;
+    private readonly Dictionary<string, string?> _namedSets;
+    private readonly Dictionary<string, string?> _namedConstraints;
 
     /// <summary>Creates an empty scope for a site.</summary>
     /// <param name="site">The site's kind.</param>
@@ -161,6 +183,8 @@ public sealed class ExprScope
         _setsByName = new(StringComparer.Ordinal);
         _constraints = new(StringComparer.Ordinal);
         _constraintsByName = new(StringComparer.Ordinal);
+        _namedSets = new(StringComparer.Ordinal);
+        _namedConstraints = new(StringComparer.Ordinal);
     }
 
     private ExprScope(ExprScope parent, ExprConstraint constraint)
@@ -171,6 +195,9 @@ public sealed class ExprScope
         _setsByName = parent._setsByName;
         _constraints = parent._constraints;
         _constraintsByName = parent._constraintsByName;
+        _namedSets = parent._namedSets;
+        _namedConstraints = parent._namedConstraints;
+        Names = parent.Names;
         AllowsNow = true;
         AllowsNavigation = false;
         ConstraintId = constraint.Id;
@@ -212,6 +239,14 @@ public sealed class ExprScope
 
     /// <summary>The constraint whose own condition this scope types, or <see langword="null"/>.</summary>
     public string? ConstraintId { get; }
+
+    /// <summary>
+    /// For a scope built for text: where the names the text writes before a member or code, or after <c>satisfies</c>, are looked up, once
+    /// each, on the first parse that needs them; <see langword="null"/> when the scope already holds what it can name. What a lookup adds
+    /// is shared with <see cref="ForConstraint"/>'s scopes. Lookups happen while text is parsed, which the scope's builder does before
+    /// sharing the scope; printing and typing a parsed tree read ids only.
+    /// </summary>
+    internal IExprNames? Names { get; init; }
 
     /// <summary>Adds an enum, so <c>Status.Paid</c> names a member.</summary>
     /// <param name="id">The enum's id.</param>
@@ -266,11 +301,25 @@ public sealed class ExprScope
         _refs.TryGetValue(id, out var r) ? (_sets[r.Owner].Name, r.Name) : null;
 
     /// <summary>The id of the member or code a set's name and a member name or code name.</summary>
-    internal string? FindRef(string set, string name) =>
-        _setsByName.TryGetValue(set, out var owner) && _sets[owner].ByName.TryGetValue(name, out var id) ? id : null;
+    internal string? FindRef(string set, string name)
+    {
+        var owner = Names is { } names ? Named(_namedSets, set, names.Set) : _setsByName.GetValueOrDefault(set);
+        return owner is not null && _sets.TryGetValue(owner, out var found) && found.ByName.TryGetValue(name, out var id) ? id : null;
+    }
 
     /// <summary>The constraint the text names, or <see langword="null"/>.</summary>
-    internal ExprConstraint? FindConstraint(string name) => _constraintsByName.GetValueOrDefault(name);
+    internal ExprConstraint? FindConstraint(string name) =>
+        Names is { } names
+            ? Named(_namedConstraints, name, names.Constraint) is { } id ? _constraints.GetValueOrDefault(id) : null
+            : _constraintsByName.GetValueOrDefault(name);
+
+    /// <summary>The id a name stands for, looked up through <see cref="Names"/> on its first use.</summary>
+    private string? Named(Dictionary<string, string?> found, string name, Func<ExprScope, string, string?> lookUp)
+    {
+        if (!found.TryGetValue(name, out var id))
+            found[name] = id = lookUp(this, name);
+        return id;
+    }
 
     private ExprScope AddSet(string id, string name, bool code, IEnumerable<(string Id, string Name)> members)
     {

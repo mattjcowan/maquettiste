@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Expressions;
+using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
 
@@ -167,29 +168,24 @@ internal static class ExprSites
             : null;
 
     /// <summary>
-    /// The scope of a site: its members, then the enums, reference types and constraints its tree names (every one of the model
-    /// with <paramref name="everything"/>, or when the tree, or a constraint it cites, holds text, since text can name any of them).
+    /// The scope of a site: its members, then the enums, reference types and constraints its tree names by id. When the tree, or a
+    /// constraint it cites, holds text, or with <paramref name="text"/> (text is about to be parsed there), the names the text writes are
+    /// looked up on first use (<see cref="ModelNames"/>): a parse reads only the enums, reference types, seeds and constraints it names,
+    /// never every one of the model, which may hold hundreds of lookup types.
     /// </summary>
-    public static ExprScope Scope(ModelSnapshot model, Element element, ElementDocument? document, ExprSite site, bool everything)
+    public static ExprScope Scope(ModelSnapshot model, Element element, ElementDocument? document, ExprSite site, bool text)
     {
-        var scope = new ExprScope(site.Kind) { ValueType = site.ValueType, ElementId = site.SubId, FilePath = document?.Path, Pointer = site.Pointer };
-        site.Fill(scope);
         var constraints = new Dictionary<string, Constraint>(StringComparer.Ordinal);
         var refs = new HashSet<string>(StringComparer.Ordinal);
         if (site.Constraint is { } own)
             constraints[own.Id] = own;
         var pending = new Stack<Expr>();
-        if (!everything && site.Tree is { } tree)
+        if (site.Tree is { } tree)
             pending.Push(tree);
         while (pending.Count > 0)
         {
             var e = pending.Pop();
-            if (e.Text is not null)
-            {
-                everything = true;
-                break;
-            }
-
+            text |= e.Text is not null;
             if (e.Ref is { } r)
                 refs.Add(r);
             if (e.Satisfies is { } cited && !constraints.ContainsKey(cited) && model.Get<Constraint>(cited) is { } found)
@@ -202,32 +198,97 @@ internal static class ExprSites
                 pending.Push(child);
         }
 
-        if (everything)
+        var scope = new ExprScope(site.Kind)
         {
-            foreach (var e in model.All<EnumType>())
-                AddEnum(scope, e);
-            foreach (var type in model.All<ReferenceType>())
-                AddCodes(scope, model, type);
-            foreach (var c in model.All<Constraint>())
-                constraints[c.Id] = c;
-        }
-        else
-        {
-            var sets = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var r in refs)
-            {
-                if (!model.TryGetEntry(r, out var entry) || !sets.Add(entry.OwnerId))
-                    continue;
-                if (model.Get<EnumType>(entry.OwnerId) is { } e)
-                    AddEnum(scope, e);
-                else if (model.Get<Seed>(entry.OwnerId) is { } seed && model.Get<ReferenceType>(seed.Target) is { } type && sets.Add(type.Id))
-                    AddCodes(scope, model, type);
-            }
-        }
-
+            ValueType = site.ValueType, ElementId = site.SubId, FilePath = document?.Path, Pointer = site.Pointer,
+            Names = text ? new ModelNames(model) : null,
+        };
+        site.Fill(scope);
+        AddRefs(scope, model, refs);
         foreach (var c in constraints.Values.OrderBy(c => c.Id, StringComparer.Ordinal))
             scope.AddConstraint(ToExpr(model, c));
         return site.Constraint is { } constraint ? scope.ForConstraint(scope.Constraint(constraint.Id)!) : scope;
+    }
+
+    /// <summary>The enums and reference types that hold the members and codes of some refs, each once.</summary>
+    private static void AddRefs(ExprScope scope, ModelSnapshot model, IEnumerable<string> refs)
+    {
+        var sets = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var r in refs)
+        {
+            if (!model.TryGetEntry(r, out var entry) || !sets.Add(entry.OwnerId))
+                continue;
+            if (model.Get<EnumType>(entry.OwnerId) is { } e)
+                AddEnum(scope, e);
+            else if (model.Get<Seed>(entry.OwnerId) is { } seed && model.Get<ReferenceType>(seed.Target) is { } type && sets.Add(type.Id))
+                AddCodes(scope, model, type);
+        }
+    }
+
+    /// <summary>
+    /// The enums, reference types and constraints text names, found by name in the model's name indexes when a parse first asks: the
+    /// enum of that name with the smallest id, else the reference type, and the constraint with the smallest id, as a scope that held every
+    /// one of them would resolve the name; a constraint comes with what its condition names by id.
+    /// </summary>
+    private sealed class ModelNames(ModelSnapshot model) : IExprNames
+    {
+        public string? Set(ExprScope scope, string name)
+        {
+            if (Named<EnumType>(model, "enum", name) is { } e)
+            {
+                AddEnum(scope, e);
+                return e.Id;
+            }
+
+            if (Named<ReferenceType>(model, "reference-type", name) is { } type)
+            {
+                AddCodes(scope, model, type);
+                return type.Id;
+            }
+
+            return null;
+        }
+
+        public string? Constraint(ExprScope scope, string name)
+        {
+            if (Named<Constraint>(model, "constraint", name) is not { } found)
+                return null;
+            var refs = new HashSet<string>(StringComparer.Ordinal);
+            var added = new SortedDictionary<string, Constraint>(StringComparer.Ordinal);
+            var pending = new Stack<Constraint>([found]);
+            while (pending.Count > 0)
+            {
+                var c = pending.Pop();
+                if (scope.Constraint(c.Id) is not null || !added.TryAdd(c.Id, c))
+                    continue;
+                foreach (var node in Nodes(c.Condition))
+                {
+                    if (node.Ref is { } r)
+                        refs.Add(r);
+                    if (node.Satisfies is { } cited && model.Get<Constraint>(cited) is { } next)
+                        pending.Push(next);
+                }
+            }
+
+            AddRefs(scope, model, refs);
+            foreach (var c in added.Values)
+                scope.AddConstraint(ToExpr(model, c));
+            return found.Id;
+        }
+
+        /// <summary>The element of a kind with this exact name and the smallest id, through the kind's name index.</summary>
+        private static T? Named<T>(ModelSnapshot model, string kind, string name) where T : Element
+        {
+            T? named = null;
+            foreach (var entry in model.Names(kind).Find(QualifiedName.Create(kind, [name]).Path))
+            {
+                if (model.Get<T>(entry.Id) is { } e && string.Equals(e.Name, name, StringComparison.Ordinal)
+                    && (named is null || string.CompareOrdinal(e.Id, named.Id) < 0))
+                    named = e;
+            }
+
+            return named;
+        }
     }
 
     /// <summary>A constraint as the typer reads it.</summary>
@@ -264,6 +325,23 @@ internal static class ExprSites
 
     /// <summary>The ids each path of a tree names, every segment.</summary>
     public static IEnumerable<string> PathIds(Expr e) => Nodes(e).SelectMany(n => n.Path ?? []);
+
+    /// <summary>
+    /// The paths of a tree, each its ids: as the tree holds them, or, when it holds text, whose paths exist only once it is parsed, as its
+    /// typed form holds them (none without one). A cited constraint's own condition is not walked: its paths name its parameters.
+    /// </summary>
+    /// <param name="tree">The tree as stored.</param>
+    /// <param name="typed">The tree typed, or <see langword="null"/> when it does not type.</param>
+    /// <returns>The paths.</returns>
+    public static IEnumerable<IReadOnlyList<string>> PathsOf(Expr tree, TypedExpr? typed)
+    {
+        if (!HasText(tree))
+            return Nodes(tree).Select(n => n.Path).OfType<IReadOnlyList<string>>();
+        return typed is null ? [] : Typed(typed);
+
+        static IEnumerable<IReadOnlyList<string>> Typed(TypedExpr t) =>
+            (t.Node.Path is { } path ? [path] : Enumerable.Empty<IReadOnlyList<string>>()).Concat(t.Args.SelectMany(Typed));
+    }
 
     /// <summary>
     /// The context attribute named <c>event</c> that a process guard's typed condition reads, or <see langword="null"/>. A condition's
@@ -308,11 +386,17 @@ internal static class ExprSites
 
     private static void AddEnum(ExprScope scope, EnumType e) => scope.AddEnum(e.Id, e.Name, e.Members.Select(m => (m.Id, m.Name)));
 
-    /// <summary>A reference type's codes: the code cell of each row of each seed of the type (its <c>code</c> column).</summary>
+    /// <summary>
+    /// A reference type's codes: the code cell of each row of each seed of the type (its <c>code</c> column), the seeds in (name, id)
+    /// order, found through the references to the type rather than among every seed.
+    /// </summary>
     private static void AddCodes(ExprScope scope, ModelSnapshot model, ReferenceType type)
     {
         var codes = new List<(string Id, string Code)>();
-        foreach (var seed in model.All<Seed>().Where(s => s.Target == type.Id))
+        var seeds = model.ReferencesTo(type.Id).Select(r => model.Get<Seed>(r.FromElementId)).OfType<Seed>()
+            .Where(s => string.Equals(s.Target, type.Id, StringComparison.Ordinal)).DistinctBy(s => s.Id)
+            .OrderBy(s => s.Name, StringComparer.Ordinal).ThenBy(s => s.Id, StringComparer.Ordinal);
+        foreach (var seed in seeds)
         {
             var at = seed.Columns.ToList().IndexOf("code");
             if (at < 0)
@@ -483,7 +567,7 @@ internal static class ExpressionRules
             if (site.Tree is not { } tree)
                 continue;
             trees[site.SubId] = tree;
-            var scope = ExprSites.Scope(model, element, report.Document, site, everything: false);
+            var scope = ExprSites.Scope(model, element, report.Document, site, text: false);
             var problems = new List<Diagnostic>();
             var typed = ExprTyper.Type(tree, scope, problems);
             foreach (var problem in problems)
@@ -507,7 +591,7 @@ internal static class ExpressionRules
                     + "the guard is left a stub; rename the context attribute.", site.Pointer, site.SubId);
             }
 
-            var read = ExprSites.PathIds(tree).ToHashSet(StringComparer.Ordinal);
+            var read = ExprSites.PathsOf(tree, typed).SelectMany(p => p).ToHashSet(StringComparer.Ordinal);
             if (site.Reads is { } wanted && !read.Contains(wanted) && !read.Contains(wanted.Split('.', '@', ':')[^1]))
             {
                 report.Add("MQ3114", element is Entity
@@ -685,7 +769,7 @@ internal static class ExpressionRules
     private static string? Unenforceable(ModelSnapshot model, EntityBinding binding, Table table, Expr tree, TypedExpr? typed)
     {
         var columns = new Dictionary<string, Column>(StringComparer.Ordinal);
-        foreach (var path in ExprSites.Nodes(tree).Where(n => n.Path is { Count: > 0 }).Select(n => n.Path![0]).Distinct(StringComparer.Ordinal))
+        foreach (var path in ExprSites.PathsOf(tree, typed).Where(p => p.Count > 0).Select(p => p[0]).Distinct(StringComparer.Ordinal))
         {
             var field = binding.Fields.FirstOrDefault(f => f.Attribute == path);
             if (field is null)

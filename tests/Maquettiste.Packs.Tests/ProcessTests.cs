@@ -508,12 +508,7 @@ public sealed class ProcessTests
         || output.Contains("Name or service not known", StringComparison.OrdinalIgnoreCase);
 }
 
-/// <summary>
-/// Process guards written in the expression language through the C# example pack (next-phase-3-design.md section 3.1). They run alone:
-/// generation replays the scenarios with the expression runtime loaded into the sandbox, whose regular expressions have a 250 ms
-/// bound, and a machine saturated by the other tests' builds can stall a thread past it.
-/// </summary>
-[Collection(nameof(ExpressionGuardCollection))]
+/// <summary>Process guards written in the expression language through the C# example pack (next-phase-3-design.md section 3.1).</summary>
 public sealed class ExpressionGuardTests
 {
     [Fact]
@@ -542,7 +537,3 @@ public sealed class ExpressionGuardTests
         Assert.True(test.ExitCode == 0 && test.Output.Contains("Total: 14, Errors: 0, Failed: 0,", StringComparison.Ordinal), test.Output);
     }
 }
-
-/// <summary>Tests that load the expression runtime into the sandbox while generating; they must not run next to the builds of other tests.</summary>
-[CollectionDefinition(nameof(ExpressionGuardCollection), DisableParallelization = true)]
-public sealed class ExpressionGuardCollection;

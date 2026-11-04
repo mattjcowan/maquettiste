@@ -88,7 +88,7 @@ public sealed partial class ModelStore
         {
             if (!ExprSites.HasText(site.Tree))
                 continue;
-            var scope = ExprSites.Scope(snapshot, element, document, site, everything: true);
+            var scope = ExprSites.Scope(snapshot, element, document, site, text: true);
             var before = problems.Count;
             var tree = Convert(site.Tree!, scope, problems);
             if (problems.Count > before)

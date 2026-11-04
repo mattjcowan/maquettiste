@@ -426,4 +426,49 @@ public sealed class TemplateCacheAndHelperTests
 
         Assert.Equal(Engine.Expressions.ExprRuntime.Source, (await Adhoc.RenderAsync("{{ expression_runtime }}", model: model)).Text());
     }
+
+    /// <summary>
+    /// A literal's exact text (next-phase-3-design.md section 3.1, "Templates"): an integer beyond 2^53 is a 64-bit integer in
+    /// <c>value</c>, which a script holds as a double, so <c>value_text</c> (<c>valueText</c> in a script) keeps its digits, and a
+    /// decimal's text keeps its scale.
+    /// </summary>
+    [Fact]
+    public async Task A_literal_reads_as_its_exact_text_in_templates_and_scripts()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = Expressions.ExpressionRuleTests.Repo();
+        const string price = Expressions.ExpressionRuleTests.PriceId;
+        Expressions.ExpressionRuleTests.Edit(repo, Expressions.ExpressionRuleTests.EntityPath, e => e["checks"] = System.Text.Json.Nodes.JsonNode.Parse($$"""
+            [ { "id": "01K9EXH0000000000000000C02", "name": "idBound", "attribute": "01K6BFX0000000000000000022",
+                "condition": { "op": "le", "args": [{ "path": ["01K6BFX0000000000000000022"] }, { "value": 9007199254740993 }] } },
+              { "id": "01K9EXH0000000000000000C03", "name": "priceFloor", "attribute": "{{price}}",
+                "condition": { "op": "ge", "args": [{ "path": ["{{price}}"] }, { "value": "0.50", "type": "decimal" }] } } ]
+            """));
+        var model = await new Engine.Resolution.ModelResolver(repo.Options).ResolveAsync(await new ModelStore(repo.Options).GetSnapshotAsync(ct), null, ct);
+        var product = model.Entities.Single(e => e.Name == "Product");
+        var helpers = new Dictionary<string, string>
+        {
+            ["helpers.js"] = "maquettiste.helper(\"js_text\", (n) => n.valueText);\nmaquettiste.helper(\"js_value\", (n) => String(n.value));\n",
+        };
+
+        var unit = await Adhoc.RenderAsync(
+            "{{ for c in entity.checks }}{{ v = c.condition.args[1] }}{{ v.value_text }} {{ js_text v }} {{ js_value v }};{{ end }}{{ entity.checks[0].condition.value_text ?? 'none' }}",
+            product, files: helpers, model: model);
+
+        Assert.Equal("9007199254740993 9007199254740993 9007199254740992;0.50 0.50 0.50;none", unit.Text());
+    }
+
+    /// <summary>Reading <c>entity.checks</c> on an entity that has none records no key beyond those of the entity itself.</summary>
+    [Fact]
+    public async Task Reading_the_checks_of_an_entity_without_checks_keeps_its_incremental_keys()
+    {
+        var model = await BillingModel.GetAsync();
+        var invoice = model.Entities.Single(e => e.Name == "Invoice");
+        const string plain = "{{ entity.name }}{{ for a in entity.attributes }}{{ a.name }}{{ end }}";
+
+        var without = await Adhoc.RenderAsync(plain, invoice, model: model);
+        var with = await Adhoc.RenderAsync(plain + "{{ for c in entity.checks }}{{ c.name }}{{ end }}{{ entity.checks.size }}", invoice, model: model);
+
+        Assert.Equal(without.ReadKeys, with.ReadKeys);
+    }
 }

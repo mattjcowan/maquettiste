@@ -38,6 +38,13 @@ public sealed class RExpression
     public object? Value { get; internal set; }
 
     /// <summary>
+    /// For a <c>value</c> node: the literal as text, exactly as the tree holds it (an integer's digits, a typed literal's text, a string,
+    /// <c>true</c> or <c>false</c>), for a pack that writes literals in its own language: a script reads <see cref="Value"/>'s 64-bit
+    /// integer as a double, exact only to 2^53. Else <see langword="null"/>.
+    /// </summary>
+    public string? ValueText { get; internal set; }
+
+    /// <summary>
     /// The operands: an operator's or function's, in order; a case's when, then, when, then… and the else last when there is one.
     /// </summary>
     public IReadOnlyList<RExpression> Args { get; internal set; } = [];
@@ -76,7 +83,8 @@ public sealed class RExpression
     /// <summary>A copy of the node that can print otherwise: an inlined constraint whose condition is one of its own arguments.</summary>
     internal RExpression Copy() => new()
     {
-        Node = Node, Op = Op, Call = Call, Value = Value, Args = Args, Target = Target, Type = Type, Nullable = Nullable, PrintNode = PrintNode, PrintScope = PrintScope,
+        Node = Node, Op = Op, Call = Call, Value = Value, ValueText = ValueText, Args = Args, Target = Target, Type = Type, Nullable = Nullable,
+        PrintNode = PrintNode, PrintScope = PrintScope,
     };
 }
 
@@ -183,7 +191,7 @@ internal static class ExprResolution
         {
             if (!string.Equals(site.SubId, subId, StringComparison.Ordinal) || site.Tree is not { } tree)
                 continue;
-            var scope = ExprSites.Scope(model, element, model.GetDocument(element.Id), site, everything: false);
+            var scope = ExprSites.Scope(model, element, model.GetDocument(element.Id), site, text: false);
             var problems = new List<Diagnostic>();
             var typed = ExprTyper.Type(tree, scope, problems);
             if (typed is null || problems.Any(p => p.Severity == DiagnosticSeverity.Error))
@@ -398,6 +406,7 @@ internal static class ExprResolution
             {
                 r.Node = "value";
                 r.Value = e.Type is not null ? value.GetString() : Plain(value);
+                r.ValueText = value.ValueKind == JsonValueKind.String ? value.GetString() : value.GetRawText();
             }
             else if (e.Null is not null)
             {

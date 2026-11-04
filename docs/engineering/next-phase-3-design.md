@@ -534,11 +534,12 @@ public sealed partial class ModelStore
 ```
 
 Resolved: `RExpression` (`Node`, `Type`, `Nullable`, `Args`, `Target`, the `RAttribute`, `RColumn` or member a path
-ends at, `Text`, and a lazy `JavaScript`); `RCheck.Condition`; `RMemberOrigin.Source` value `binding`;
-`REntity.Checks` (`REntityCheck`: `Attribute`, `Condition`, `Message`, `Bindings`); `RDerived.Value`;
-`RGuard.Condition`; `ROperation.Guards` (`ROperationGuard`: `Condition`, `Error`); `ResolvedModel.Constraints`
-(`RConstraint`). API records in `openapi.yaml`: `ExpressionRecord` (`text`, `type`, `nullable`, `tree`), `checks` on
-`EntityRecord`, `condition` on the check and guard records, `guards` on `OperationRecord`, and `ConstraintRecord`.
+ends at, `Value` and `ValueText`, a literal's exact text, `Text`, and a lazy `JavaScript`); `RCheck.Condition`;
+`RMemberOrigin.Source` value `binding`; `REntity.Checks` (`REntityCheck`: `Attribute`, `Condition`, `Message`,
+`Bindings`); `RDerived.Value`; `RGuard.Condition`; `ROperation.Guards` (`ROperationGuard`: `Condition`, `Error`);
+`ResolvedModel.Constraints` (`RConstraint`). API records in `openapi.yaml`: `ExpressionRecord` (`text`, `type`,
+`nullable`, `tree`), `checks` on `EntityRecord`, `condition` on the check and guard records, `guards` on
+`OperationRecord`, and `ConstraintRecord`.
 
 #### CLI and MCP
 
@@ -557,7 +558,8 @@ ends at, `Text`, and a lazy `JavaScript`); `RCheck.Condition`; `RMemberOrigin.So
 
 Packs read the typed tree: `entity.checks` (`name`, `attribute`, `message`, `condition`), `check.condition` on table
 checks while `check.expression` stays the SQL, `attribute.derived.value`, `guard.condition`, `operation.guards`
-(`condition`, `error`) and `model.constraints`. A condition exposes `node`, `op`, `call`, `args`, `value`, `target`,
+(`condition`, `error`) and `model.constraints`. A condition exposes `node`, `op`, `call`, `args`, `value`, `value_text`
+(`valueText` in scripts: a literal's exact text, since a script holds `value`'s 64-bit integer as a double), `target`,
 `type` (with `bits` for an `int`), `nullable`, `text` and `javascript`. Two template functions:
 `expression_sql(expr, binding)`, the PostgreSQL text through a binding, and `expression_runtime`, the runtime's text
 for packs that write JavaScript. Units that read none of these keep their incremental keys.

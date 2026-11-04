@@ -23,7 +23,8 @@ for c in storage_columns(entity, m)
 end
 binding_keys = bind_key_fields(entity)
 # The entity's checks in the expression language (next-phase-3-design.md section 3.1) become Validate(); a derived entity whose checks
-# are all its base's keeps the base's.
+# are all its base's keeps the base's. Each answer goes through the local ok, so a check that is constant (number is not null on a
+# required number) is no unreachable code.
 own_checks = []
 for c in entity.checks
   if !c.is_inherited
@@ -31,12 +32,12 @@ for c in entity.checks
   end
 end
 
-# What the checks read, for expr_cs: each attribute by its property.
+# What the checks read, for expr_cs: each attribute by its property, and how strings order.
 func check_spec(e, owner)
-  $out = ""
+  $out = expr_functions()
   for a in e.attributes
     if !a.collection
-      $out = $out + ($out == "" ? "" : ";") + expr_entry(a.name, prop_name(a, owner), prop_type(a), a)
+      $out = $out + ";" + expr_entry(a.name, prop_name(a, owner), prop_type(a), a)
     end
   end
   ret $out
@@ -82,11 +83,14 @@ namespace {{ ns(entity) }};
     public {{ entity.base && entity.base.checks.size > 0 ? "override" : "virtual" }} IReadOnlyList<(string Pointer, string Code, string Message)> Validate()
     {
         var errors = new List<(string Pointer, string Code, string Message)>();
+{{- declared = false }}
 {{- for c in entity.checks }}
 {{- cs = c.condition ? (expr_cs c.condition spec) : "" }}
 {{- if cs != "" }}
-        if ({{ cs }} == false)
+        {{ declared ? "" : "bool? " }}ok = {{ cs_unwrap cs }};
+        if (ok == false)
             errors.Add(({{ json (c.attribute ? "/" + c.attribute.name : "") }}, {{ json c.name }}, {{ json (c.message ?? c.condition.text) }}));
+{{- declared = true }}
 {{- else }}
         // Check {{ c.name }}{{ if c.condition }} ({{ cs_line c.condition.text }}){{ end }} is outside what expr_cs renders: validate it in {{ name }}.cs.
 {{- end }}
