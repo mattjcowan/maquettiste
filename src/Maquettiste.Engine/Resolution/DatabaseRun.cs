@@ -520,21 +520,25 @@ internal sealed partial class DatabaseRun
         return check;
     }
 
-    /// <summary>Lowers a check to the columns its paths read, reporting what the lowering finds (MQ4056 on another dialect).</summary>
-    private LoweredCheck? LowerCheck(ExprRoot source, IReadOnlyDictionary<string, RColumn> columns, string what, string elementId, string? pointer)
+    /// <summary>
+    /// Lowers a check to the columns its paths read, reporting what the lowering finds: MQ4056 on another dialect, and a code its column
+    /// cannot store under <paramref name="misfit"/> (MQ3103 at a table, MQ3110 for a binding's check, as validation reports it).
+    /// </summary>
+    private LoweredCheck? LowerCheck(ExprRoot source, IReadOnlyDictionary<string, RColumn> columns, string what, string elementId, string? pointer,
+        string misfit = "MQ3103")
     {
         var problems = new List<Diagnostic>();
         var lowered = ExprResolution.LowerCheck(_run.Model, _rdb, _db.Quoting, source, columns, elementId, _run.Model.GetDocument(elementId)?.Path,
             _run.EnumMemberOf, problems);
-        ReportLowering(problems, what, elementId, pointer);
+        ReportLowering(problems, what, elementId, pointer, misfit);
         return lowered;
     }
 
-    /// <summary>Reports what a lowering found, on the check's element at its pointer, naming the check.</summary>
-    private void ReportLowering(List<Diagnostic> problems, string what, string elementId, string? pointer)
+    /// <summary>Reports what a lowering found, on the check's element at its pointer, naming the check; MQ3103 goes under <paramref name="misfit"/>.</summary>
+    private void ReportLowering(List<Diagnostic> problems, string what, string elementId, string? pointer, string misfit = "MQ3103")
     {
         foreach (var problem in problems)
-            _run.AddDiagnostic(problem.Rule, what + ": " + problem.Message, elementId, pointer);
+            _run.AddDiagnostic(problem.Rule == "MQ3103" ? misfit : problem.Rule, what + ": " + problem.Message, elementId, pointer);
     }
 
     private string? SchemaName(string? schemaId) =>

@@ -266,8 +266,9 @@ internal sealed partial class DatabaseRun
     }
 
     /// <summary>
-    /// MQ4008 for an overlay key, index or check that names a column of a stereotype the synthesized table skips (decision 1): validation
-    /// judges an overlay on its candidate set, which still holds those columns, so only the resolver knows they are not there.
+    /// MQ4008 for an overlay key, index or check (by its <c>column</c> or a path of its condition) that names a column of a stereotype the
+    /// synthesized table skips (decision 1): validation judges an overlay on its candidate set, which still holds those columns, so only
+    /// the resolver knows they are not there.
     /// </summary>
     private void ReportSkippedMemberUses(TableBuild t, Table overlay, HashSet<string> skip)
     {
@@ -324,7 +325,16 @@ internal sealed partial class DatabaseRun
         }
 
         for (var c = 0; c < overlay.Checks.Count; c++)
-            Check(overlay.Checks[c].Column, At("/checks", c) + "/column");
+        {
+            var check = overlay.Checks[c];
+            Check(check.Column, At("/checks", c) + "/column");
+            // A check in the expression language names the column in its condition too; the resolver would leave it out of the DDL.
+            if (check.Condition is { } condition)
+            {
+                foreach (var id in ExprSites.PathIds(condition).Distinct(StringComparer.Ordinal))
+                    Check(id, At("/checks", c) + "/condition");
+            }
+        }
     }
 
     /// <summary>

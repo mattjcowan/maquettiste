@@ -143,7 +143,7 @@ internal static class ExprSql
             else if (e.Path is not null)
                 return Path(t, env, form);
             else if (e.Ref is { } id)
-                node = RefLiteral(id, form ?? ExprStoredForm.Text);
+                node = RefLiteral(t, id, form ?? ExprStoredForm.Text);
             else if (e.Member is not null)
             {
                 Report("MQ3102", t.Pointer, "A 'member' node reads a declared rule's object, which has no SQL form.");
@@ -234,15 +234,33 @@ internal static class ExprSql
             return node;
         }
 
-        private RQueryExpression RefLiteral(string id, ExprStoredForm form)
+        /// <summary>
+        /// An enum member or code as a literal in its stored form. A code that is not an integer where the column stores integers (a
+        /// reference type's text code mapped to an integer column) is MQ3103 and fails the lowering, so no conversion can throw.
+        /// </summary>
+        private RQueryExpression RefLiteral(TypedExpr t, string id, ExprStoredForm form)
         {
-            var literal = columns.RefLiteral(id, form);
-            return form switch
+            var literal = columns.Ref?.Invoke(id, form);
+            if (literal is null)
             {
-                ExprStoredForm.Integer => Literal(System.Convert.ToInt64(literal, CultureInfo.InvariantCulture), "int64"),
-                ExprStoredForm.Uuid => Typed("UUID", literal.ToString()!),
-                _ => Literal(literal.ToString()!, "string"),
-            };
+                Report("MQ3102", t.Pointer, "No enum member or reference-type code has the id '" + id + "'.");
+                return new RQueryExpression { Node = "null" };
+            }
+
+            var text = System.Convert.ToString(literal, CultureInfo.InvariantCulture)!;
+            switch (form)
+            {
+                case ExprStoredForm.Integer when literal is long or int:
+                    return Literal(System.Convert.ToInt64(literal, CultureInfo.InvariantCulture), "int64");
+                case ExprStoredForm.Integer:
+                    Report("MQ3103", t.Pointer, "The code '" + text + "' is not an integer, but the column it meets stores its codes as integers: "
+                        + "the code's type does not match the column.");
+                    return new RQueryExpression { Node = "null" };
+                case ExprStoredForm.Uuid:
+                    return Typed("UUID", text);
+                default:
+                    return Literal(text, "string");
+            }
         }
 
         private ExprStoredForm? FormOf(TypedExpr t, IReadOnlyDictionary<string, Bound>? env)

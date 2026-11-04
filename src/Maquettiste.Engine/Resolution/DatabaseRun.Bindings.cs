@@ -62,8 +62,8 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// Adds the files of the entities bound to an object (its id or key) to its dependency keys: its <c>BoundBy</c> lists them. A binding
-    /// that lists entity checks also adds what their conditions name (an enum, a seed, a constraint), since the checks it writes into its
-    /// table read them.
+    /// that lists entity checks also adds what each check depends on (<see cref="REntityCheck.DependsOn"/>: the base that declares an
+    /// inherited one, a value object a path reads, an enum, a seed, a constraint), since the checks it writes into its table read them.
     /// </summary>
     private void AddBinderKeys(DependencySet deps, string key)
     {
@@ -78,8 +78,8 @@ internal sealed partial class DatabaseRun
             {
                 if (_bindingByEntity[entityId].Binding.Checks.Contains(check.Id, StringComparer.Ordinal))
                 {
-                    foreach (var name in check.Names)
-                        deps.Element(name);
+                    foreach (var id in check.DependsOn)
+                        deps.Element(id);
                 }
             }
         }
@@ -160,8 +160,8 @@ internal sealed partial class DatabaseRun
     /// The entity checks a binding lists (next-phase-3-design.md section 3.1, decision 16), each lowered through the binding's field map
     /// onto its write table and added to that table's checks after its own, named by the naming convention from the check's name, with
     /// <see cref="RMemberOrigin.Source"/> <c>binding</c>; each check lists the binding. A check whose paths the binding does not map to
-    /// varying columns of its write table, or a binding without one, adds nothing (MQ3110); on a dialect other than PostgreSQL the DDL
-    /// leaves it out (MQ4056).
+    /// varying columns of its write table, or a binding without one, adds nothing (MQ3110), nor does one holding a code its column cannot
+    /// store (MQ3110 here too); on a dialect other than PostgreSQL the DDL leaves it out (MQ4056).
     /// </summary>
     private void AddBindingChecks(REntity entity, EntityBinding file, int index, REntityBinding binding)
     {
@@ -187,7 +187,7 @@ internal sealed partial class DatabaseRun
 
             var name = Render(_conv.CheckName, ("table", table.Name), ("name", check.Name));
             if (LowerCheck(source, columns, $"Check '{name}' that the binding of entity '{entity.Name}' writes into table '{table.Name}' of database '{_db.Name}'",
-                entity.Id, Pointer(index) + "/checks/" + k.ToString(CultureInfo.InvariantCulture)) is not { } lowered)
+                entity.Id, Pointer(index) + "/checks/" + k.ToString(CultureInfo.InvariantCulture), misfit: "MQ3110") is not { } lowered)
                 continue;
             added.Add(new RCheck
             {

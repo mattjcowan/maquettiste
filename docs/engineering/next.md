@@ -77,6 +77,7 @@ rules (5.6) in #9; the model diff and impact before apply (6.1, 6.2) follow. 0.1
 | Editor screens for the items above | yes | Later | Screens for operations and project-defined kinds come first, since the JSON form handles their nested members worst. Each item ships in the engine, the CLI and MCP first; the generic JSON form edits what has no screen yet. Each design section lists its screens under "Editor follow-ups". |
 | Sealing facts into a revision, and squashing (6.2) | yes | Later | Built with the live planner (6.1): squashing must check each environment's ledger, which only 6.1 reads. Facts stay open until then. |
 | Rationale, decision and status in templates for enum members, stereotypes and categories (3.11) | yes | Built, 0.12.0 | |
+| Expression checks on a table an entity's mapping projects, naming the entity's columns (3.8) | yes | Later | An overlay's tree check reads only the overlay's own and contributed columns today; checking a condition against the projected columns needs the resolved table, so validation would check it there. Entity checks listed by a binding and SQL text checks on the overlay cover the need meanwhile. |
 
 ## Phase 2: not built yet
 

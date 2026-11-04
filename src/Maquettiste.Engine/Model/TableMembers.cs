@@ -425,7 +425,10 @@ internal static class TableMembers
         a.Count == b.Count && a.All(kv => b.TryGetValue(kv.Key, out var other) && kv.Value.Count == other.Count
             && kv.Value.All(p => other.TryGetValue(p.Key, out var v) && JsonElement.DeepEquals(p.Value, v)));
 
-    /// <summary>The members of a set that name a keyed column, as messages list them (<c>index '&lt;id&gt;'</c>), in set order.</summary>
+    /// <summary>
+    /// The members of a set that name a keyed column, as messages list them (<c>index '&lt;id&gt;'</c>), in set order: a check by its
+    /// <c>column</c> or a path of its condition.
+    /// </summary>
     private static List<string> UsersOf(TableMemberSet set, string columnKey)
     {
         var users = new List<string>();
@@ -454,9 +457,11 @@ internal static class TableMembers
                 users.Add("index '" + x.MemberId + "'");
         }
 
+        // A check in the expression language names the column in its condition too, by the stereotype's own column id.
         foreach (var c in set.Checks)
         {
-            if (string.Equals(c.Member.Column, columnKey, StringComparison.Ordinal))
+            if (string.Equals(c.Member.Column, columnKey, StringComparison.Ordinal) || (c.Member.Condition is { } condition
+                && Validation.ExprSites.PathIds(condition).Any(id => string.Equals(ContributedMembers.KeyOf(set.TableKey, id), columnKey, StringComparison.Ordinal))))
                 users.Add("check '" + c.MemberId + "'");
         }
 

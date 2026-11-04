@@ -119,8 +119,12 @@ public sealed class REntityCheck : RElement
     /// <summary>The bindings collected while the databases resolve.</summary>
     internal List<REntityBinding> ListedBy { get; } = [];
 
-    /// <summary>The ids of the elements the condition names beyond its entity: enums, seeds and reference types of its refs, constraints.</summary>
-    internal IReadOnlyList<string> Names { get; set; } = [];
+    /// <summary>
+    /// The ids of the elements the condition depends on beyond the entity that lists it: the entity that declares it (a base for an
+    /// inherited check), those that hold the members its paths read (a base, a value object), and the enums, seeds and reference types
+    /// of its refs and the constraints it cites. A table a binding writes the check into depends on them too.
+    /// </summary>
+    internal IReadOnlyList<string> DependsOn { get; set; } = [];
 }
 
 /// <summary>
@@ -215,6 +219,25 @@ internal static class ExprResolution
         return [.. names];
     }
 
+    /// <summary>
+    /// The ids of the elements that hold the members the paths of a tree read: an attribute's entity (a base's for an inherited one) and,
+    /// for a value object member (<c>attributeId.memberId</c>), the value object too.
+    /// </summary>
+    public static IReadOnlyList<string> Holders(ModelSnapshot model, TypedExpr typed)
+    {
+        var holders = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var path in Paths(typed))
+        {
+            foreach (var segment in path.Split('.'))
+            {
+                if (model.TryGetEntry(segment, out var entry))
+                    holders.Add(entry.OwnerId);
+            }
+        }
+
+        return [.. holders];
+    }
+
     /// <summary>The ids of the members the paths of a tree read in its own scope (a cited constraint's parameters are bound, not read).</summary>
     public static IReadOnlyList<string> Paths(TypedExpr typed)
     {
@@ -252,9 +275,9 @@ internal static class ExprResolution
             return null;
         }
 
-        if (model.Get<Seed>(entry.OwnerId) is not { } seed || model.Get<ReferenceType>(seed.Target) is not { } type)
+        if (model.Get<Seed>(entry.OwnerId) is not { } seed || model.Get<ReferenceType>(seed.Target) is null)
             return null;
-        var at = seed.Columns.ToList().IndexOf(type.Code.Id);
+        var at = seed.Columns.ToList().IndexOf("code");
         var row = seed.Rows.FirstOrDefault(r => string.Equals(r.Id, id, StringComparison.Ordinal));
         if (at < 0 || row is null || at >= row.Values.Count)
             return null;

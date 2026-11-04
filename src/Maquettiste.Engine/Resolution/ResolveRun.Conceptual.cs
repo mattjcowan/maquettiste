@@ -519,7 +519,8 @@ internal sealed partial class ResolveRun
     /// An entity's expressions (next-phase-3-design.md section 3.1): its checks, the root base's first, each typed in the scope of the
     /// entity that declares it (an inherited check is the base's, by id), and the tree value of each derived attribute it declares or
     /// inherits. Paths end at the entity's own attribute objects; what a condition names beyond them (an enum, a seed, a constraint)
-    /// joins the dependency keys of the check or attribute. An entity without checks or tree values does nothing here.
+    /// joins the dependency keys of the check or attribute, and a check's also the files that hold what its paths read (a base, a value
+    /// object). An entity without checks or tree values does nothing here.
     /// </summary>
     private void ResolveExpressions(REntity r, List<Entity> chain, List<(ModelAttribute Attribute, Entity Declaring, AppliedStereotype? Applied)> flattened,
         List<RAttribute> attributes, List<IResolvedObject> registrations)
@@ -550,9 +551,10 @@ internal sealed partial class ResolveRun
                     var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Check,
                         ExprResolution.ApiColumns(Model, check.Id, Model.GetDocument(level.Id)?.Path));
                     c.Condition = ExprResolution.Build(root, Target, EnumMemberOf);
-                    c.Names = ExprResolution.Names(Model, typed.Typed);
-                    foreach (var name in c.Names)
-                        deps.Element(name);
+                    c.DependsOn = [.. new SortedSet<string>([level.Id, .. ExprResolution.Holders(Model, typed.Typed), .. ExprResolution.Names(Model, typed.Typed)],
+                        StringComparer.Ordinal)];
+                    foreach (var id in c.DependsOn)
+                        deps.Element(id);
                 }
 
                 checks.Add(c);

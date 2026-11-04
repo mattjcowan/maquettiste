@@ -1,6 +1,8 @@
+using System.Text;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.Tests.Editor;
 using Maquettiste.Engine.Tests.Resolution;
 using Maquettiste.Testing;
 using static Maquettiste.Engine.Tests.Expressions.ExpressionRuleTests;
@@ -20,6 +22,11 @@ public sealed class ExpressionResolutionTests
     private const string ConstraintId = "01K9EXR0000000000000000K01";
     private const string ParameterId = "01K9EXR0000000000000000K02";
     private const string DatabasePath = ".maquettiste/model/databases/main/database.json";
+    private const string DerivedId = "01K9EXR0000000000000000B01";
+    private const string DiscountId = "01K9EXR0000000000000000B02";
+    private const string DerivedTableId = "01K9EXR0000000000000000T01";
+    private const string KeyAttributeId = "01K6BFX0000000000000000022";
+    private const string KeyColumnId = "01K6BFX0000000000000000003";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -51,6 +58,50 @@ public sealed class ExpressionResolutionTests
                 ((JsonObject)e["bindings"]![0]!)["checks"] = new JsonArray(EntityCheckId);
         });
     }
+
+    /// <summary>
+    /// The entity DiscountedProduct, derived from Product with a discount attribute, bound to <paramref name="source"/> with id, price and
+    /// (when given) discount mapped, its binding listing the inherited check pricePositive.
+    /// </summary>
+    private static void DiscountedProduct(TempRepo repo, string source, string idColumn, string priceColumn, string? discountColumn)
+    {
+        var fields = new JsonArray(
+            new JsonObject { ["attribute"] = KeyAttributeId, ["column"] = idColumn },
+            new JsonObject { ["attribute"] = PriceId, ["column"] = priceColumn });
+        if (discountColumn is not null)
+            fields.Add(new JsonObject { ["attribute"] = DiscountId, ["column"] = discountColumn });
+        repo.WriteFile(".maquettiste/model/entities/discounted-product.json", $$"""
+            {
+              "kind": "entity",
+              "id": "{{DerivedId}}",
+              "name": "DiscountedProduct",
+              "package": "01K6BFX0000000000000000001",
+              "base": "{{ProductId}}",
+              "attributes": [ { "id": "{{DiscountId}}", "name": "discount", "type": "decimal", "precision": 5, "scale": 2 } ],
+              "bindings": [ { "id": "01K9EXR0000000000000000B10", "database": "01K6BFX0000000000000000002", "source": "{{source}}",
+                "fields": {{fields.ToJsonString()}}, "checks": ["{{EntityCheckId}}"] } ]
+            }
+            """);
+    }
+
+    /// <summary>The stereotype audited: created_at, updated_at and the check ck_updated_after_created (<c>updated_at &gt;= created_at</c>).</summary>
+    private static void Audited(TempRepo repo) => repo.WriteFile(".maquettiste/model/vocabularies/stereotypes/audited.json", """
+        {
+          "kind": "stereotype",
+          "id": "01K9EXR0000000000000000S01",
+          "key": "audited",
+          "name": "Audited",
+          "appliesTo": ["table"],
+          "columns": [
+            { "id": "01K9EXR0000000000000000S02", "name": "created_at", "type": "datetimeoffset", "nullable": false, "defaultSql": { "*": "now()" } },
+            { "id": "01K9EXR0000000000000000S03", "name": "updated_at", "type": "datetimeoffset" }
+          ],
+          "checks": [
+            { "id": "01K9EXR0000000000000000S04", "name": "ck_updated_after_created",
+              "condition": { "op": "ge", "args": [{ "path": ["01K9EXR0000000000000000S03"] }, { "path": ["01K9EXR0000000000000000S02"] }] } }
+          ]
+        }
+        """);
 
     /// <summary>The constraint PositiveAmount(amount: decimal): <c>amount &gt; 0</c>.</summary>
     private static void PositiveAmount(TempRepo repo) => repo.WriteFile(".maquettiste/model/constraints/positive-amount.json", $$"""
@@ -99,23 +150,7 @@ public sealed class ExpressionResolutionTests
     public async Task A_stereotype_check_resolves_on_each_table_that_carries_it()
     {
         using var repo = Repo();
-        repo.WriteFile(".maquettiste/model/vocabularies/stereotypes/audited.json", """
-            {
-              "kind": "stereotype",
-              "id": "01K9EXR0000000000000000S01",
-              "key": "audited",
-              "name": "Audited",
-              "appliesTo": ["table"],
-              "columns": [
-                { "id": "01K9EXR0000000000000000S02", "name": "created_at", "type": "datetimeoffset", "nullable": false, "defaultSql": { "*": "now()" } },
-                { "id": "01K9EXR0000000000000000S03", "name": "updated_at", "type": "datetimeoffset" }
-              ],
-              "checks": [
-                { "id": "01K9EXR0000000000000000S04", "name": "ck_updated_after_created",
-                  "condition": { "op": "ge", "args": [{ "path": ["01K9EXR0000000000000000S03"] }, { "path": ["01K9EXR0000000000000000S02"] }] } }
-              ]
-            }
-            """);
+        Audited(repo);
         Edit(repo, TablePath, t => t["stereotypes"] = new JsonArray("audited"));
         var model = await ResolveAsync(repo);
 
@@ -283,5 +318,219 @@ public sealed class ExpressionResolutionTests
 
         Assert.Empty(Products(model).Checks);
         Assert.DoesNotContain(model.Diagnostics, d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_code_its_column_cannot_store_leaves_the_check_out_and_the_model_resolves()
+    {
+        // Unit's codes are text. The binding maps unit to an int32 column, and a table check meets an int32 column typed by Unit: neither
+        // check can hold kg, so each is reported where validation reports it and left out, and the rest of the model resolves.
+        using var repo = Repo();
+        IntegerUnitColumn(repo, typeRef: false);
+        KgOnly(repo);
+        Edit(repo, TablePath, t => t["columns"]!.AsArray().Add(JsonNode.Parse("""
+            { "id": "01K9EXR0000000000000000R08", "name": "pack_unit", "type": "int32", "typeRef": { "ref": "01K9EXR0000000000000000R01" } }
+            """)));
+        TableCheck(repo, $$"""{ "op": "eq", "args": [{ "path": ["01K9EXR0000000000000000R08"] }, { "ref": "{{KgId}}" }] }""");
+        var model = await ResolveAsync(repo);
+
+        Assert.Empty(Products(model).Checks);
+        Assert.Contains(model.Diagnostics, d => d.Rule == "MQ3110" && d.ElementId == ProductId && d.JsonPointer == "/bindings/0/checks/0");
+        Assert.Contains(model.Diagnostics, d => d.Rule == "MQ3103" && d.ElementId == ProductsId && d.JsonPointer == "/checks/0/condition");
+        // The entity's own check reads the API's form, the code's text.
+        Assert.Contains("\"kg\"", Assert.Single(model.Entity("Product").Checks).Condition!.JavaScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_table_check_lowers_a_code_to_the_text_its_column_stores()
+    {
+        // The seed holds Unit's codes in its code column; a string column typed by Unit stores them as they are.
+        using var repo = Repo();
+        IntegerUnitColumn(repo, typeRef: true);
+        Edit(repo, TablePath, t => t["columns"]!.AsArray().Add(JsonNode.Parse("""
+            { "id": "01K9EXR0000000000000000R09", "name": "unit_code", "type": "string", "length": 8, "typeRef": { "ref": "01K9EXR0000000000000000R01" } }
+            """)));
+        TableCheck(repo, $$"""{ "op": "eq", "args": [{ "path": ["01K9EXR0000000000000000R09"] }, { "ref": "{{KgId}}" }] }""");
+        Assert.DoesNotContain(await ValidateAsync(repo), d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal));
+        var check = Assert.Single(Products(await ResolveAsync(repo)).Checks);
+
+        Assert.Equal("unit_code COLLATE \"C\" = 'kg' COLLATE \"C\"", check.Expression);
+        Assert.Equal(("ref", "kg"), (check.Condition!.Args[1].Node, check.Condition.Args[1].Value));
+    }
+
+    [Fact]
+    public async Task A_binding_check_lowers_an_enum_member_to_the_value_its_column_stores()
+    {
+        using var repo = Repo();
+        repo.WriteFile(".maquettiste/model/enums/status.json", """
+            {
+              "kind": "enum",
+              "id": "01K9EXR0000000000000000N01",
+              "name": "Status",
+              "package": "01K6BFX0000000000000000001",
+              "members": [ { "id": "01K9EXR0000000000000000N02", "name": "Active", "value": 10 },
+                           { "id": "01K9EXR0000000000000000N03", "name": "Discontinued", "code": "GONE", "value": 20 } ]
+            }
+            """);
+        Edit(repo, TablePath, t => t["columns"]!.AsArray().Add(JsonNode.Parse("""{ "id": "01K9EXR0000000000000000N05", "name": "status", "type": "int32" }""")));
+        Edit(repo, EntityPath, e =>
+        {
+            e["attributes"]!.AsArray().Add(JsonNode.Parse("""{ "id": "01K9EXR0000000000000000N04", "name": "status", "type": { "ref": "01K9EXR0000000000000000N01" } }"""));
+            ((JsonObject)e["bindings"]![0]!)["fields"]!.AsArray().Add(JsonNode.Parse("""{ "attribute": "01K9EXR0000000000000000N04", "column": "01K9EXR0000000000000000N05" }"""));
+            e["checks"] = JsonNode.Parse($$"""
+                [ { "id": "{{EntityCheckId}}", "name": "notGone", "attribute": "01K9EXR0000000000000000N04",
+                    "condition": { "op": "ne", "args": [{ "path": ["01K9EXR0000000000000000N04"] }, { "ref": "01K9EXR0000000000000000N03" }] } } ]
+                """);
+            ((JsonObject)e["bindings"]![0]!)["checks"] = new JsonArray(EntityCheckId);
+        });
+        Assert.DoesNotContain(await ValidateAsync(repo), d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal) && d.Severity == DiagnosticSeverity.Error);
+        var model = await ResolveAsync(repo);
+
+        // The table stores the member's value; the entity's own check reads the API's form, its code.
+        var check = Assert.Single(Products(model).Checks);
+        Assert.Equal("status <> 20", check.Expression);
+        Assert.Contains("20", check.Condition!.JavaScript, StringComparison.Ordinal);
+        Assert.Contains("\"GONE\"", Assert.Single(model.Entity("Product").Checks).Condition!.JavaScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_binding_check_keeps_its_name_and_shape_across_a_column_and_an_attribute_rename()
+    {
+        using var repo = Repo();
+        EntityCheck(repo, listed: true);
+        var before = Assert.Single(Products(await ResolveAsync(repo)).Checks);
+
+        Edit(repo, TablePath, t => t["columns"]![3]!["name"] = "unit_price");
+        Edit(repo, EntityPath, e => e["attributes"]![3]!["name"] = "unitPrice");
+        var model = await ResolveAsync(repo);
+
+        var after = Assert.Single(Products(model).Checks);
+        Assert.Equal(("unit_price > 0", before.Name, before.Shape), (after.Expression, after.Name, after.Shape));
+        Assert.Equal("unitPrice > 0", Assert.Single(model.Entity("Product").Checks).Condition!.Text);
+    }
+
+    [Fact]
+    public async Task A_check_two_bindings_write_into_one_table_is_reported_by_its_name()
+    {
+        // Product and DiscountedProduct both bind to products and list pricePositive, so the table would hold two checks of one name.
+        using var repo = Repo();
+        EntityCheck(repo, listed: true);
+        DiscountedProduct(repo, ProductsId, KeyColumnId, PriceColumnId, null);
+        var model = await ResolveAsync(repo);
+
+        Assert.Equal(2, Products(model).Checks.Count);
+        Assert.Contains(model.Diagnostics, d => d.Message.Contains("ck_products_price_positive", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_binding_check_makes_its_table_depend_on_the_base_that_declares_it()
+    {
+        // DiscountedProduct inherits pricePositive and writes it into discounted_products: editing the condition in Product's file
+        // changes that table's DDL, so the table depends on Product.
+        using var repo = Repo();
+        EntityCheck(repo, listed: false);
+        repo.WriteFile(".maquettiste/model/databases/main/tables/discounted-products.json", $$"""
+            {
+              "kind": "table",
+              "id": "{{DerivedTableId}}",
+              "name": "discounted_products",
+              "database": "01K6BFX0000000000000000002",
+              "columns": [
+                { "id": "01K9EXR0000000000000000T02", "name": "id", "type": "int64", "nullable": false, "generated": "identity" },
+                { "id": "01K9EXR0000000000000000T03", "name": "price", "type": "decimal", "precision": 12, "scale": 2, "nullable": false },
+                { "id": "01K9EXR0000000000000000T04", "name": "discount", "type": "decimal", "precision": 5, "scale": 2 }
+              ],
+              "primaryKey": { "columns": ["01K9EXR0000000000000000T02"] }
+            }
+            """);
+        DiscountedProduct(repo, DerivedTableId, "01K9EXR0000000000000000T02", "01K9EXR0000000000000000T03", "01K9EXR0000000000000000T04");
+        Assert.DoesNotContain(await ValidateAsync(repo), d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal) && d.Severity == DiagnosticSeverity.Error);
+        var table = (await ResolveAsync(repo)).Db("main").Table("discounted_products");
+
+        Assert.Equal("price > 0", Assert.Single(table.Checks).Expression);
+        Assert.Contains("e:" + DerivedId, table.Dependencies);
+        Assert.Contains("e:" + ProductId, table.Dependencies);
+    }
+
+    [Fact]
+    public async Task A_binding_check_makes_its_table_depend_on_the_value_object_it_reads()
+    {
+        using var repo = Repo();
+        repo.WriteFile(".maquettiste/model/types/money.json", """
+            {
+              "kind": "value-object",
+              "id": "01K9EXR0000000000000000V01",
+              "name": "Money",
+              "package": "01K6BFX0000000000000000001",
+              "attributes": [ { "id": "01K9EXR0000000000000000V02", "name": "amount", "type": "decimal", "precision": 18, "scale": 2, "required": true } ]
+            }
+            """);
+        Edit(repo, TablePath, t => t["columns"]!.AsArray().Add(JsonNode.Parse("""
+            { "id": "01K9EXR0000000000000000V05", "name": "total_amount", "type": "decimal", "precision": 18, "scale": 2 }
+            """)));
+        Edit(repo, EntityPath, e =>
+        {
+            e["attributes"]!.AsArray().Add(JsonNode.Parse("""{ "id": "01K9EXR0000000000000000V04", "name": "total", "type": { "ref": "01K9EXR0000000000000000V01" } }"""));
+            ((JsonObject)e["bindings"]![0]!)["fields"]!.AsArray().Add(JsonNode.Parse("""
+                { "attribute": "01K9EXR0000000000000000V04.01K9EXR0000000000000000V02", "column": "01K9EXR0000000000000000V05" }
+                """));
+            e["checks"] = JsonNode.Parse($$"""
+                [ { "id": "{{EntityCheckId}}", "name": "totalNotNegative", "attribute": "01K9EXR0000000000000000V04.01K9EXR0000000000000000V02",
+                    "condition": { "op": "ge", "args": [{ "path": ["01K9EXR0000000000000000V04.01K9EXR0000000000000000V02"] }, { "value": 0 }] } } ]
+                """);
+            ((JsonObject)e["bindings"]![0]!)["checks"] = new JsonArray(EntityCheckId);
+        });
+        var products = Products(await ResolveAsync(repo));
+
+        Assert.Equal("total_amount >= 0", Assert.Single(products.Checks).Expression);
+        Assert.Contains("e:01K9EXR0000000000000000V01", products.Dependencies);
+    }
+
+    [Fact]
+    public async Task Excluding_a_column_a_stereotype_check_reads_is_MQ2028_on_the_exclusion()
+    {
+        // products excludes created_at but keeps ck_updated_after_created, which reads it: the DDL cannot hold the check, so the
+        // exclusion is reported as for a check whose column it excludes.
+        using var repo = Repo();
+        Audited(repo);
+        Edit(repo, TablePath, t =>
+        {
+            t["stereotypes"] = new JsonArray("audited");
+            t["excludes"] = new JsonArray("01K9EXR0000000000000000S02");
+        });
+        var diagnostics = await ValidateAsync(repo);
+
+        Assert.Contains(diagnostics, d => d.Rule == "MQ2028" && d.ElementId == ProductsId && d.JsonPointer == "/excludes/0"
+            && d.Message.Contains("check '01K9EXR0000000000000000S04'", StringComparison.Ordinal));
+        Assert.Empty(Products(await ResolveAsync(repo)).Checks);
+    }
+
+    [Fact]
+    public async Task An_overlay_check_on_a_column_of_a_stereotype_its_table_skips_is_MQ4008_at_the_check()
+    {
+        // Invoice carries audited, so its table stores audited's attributes as columns and skips audited's members: an overlay check on
+        // audited's created_at, which the overlay's candidate members still hold, is reported rather than left out of the DDL silently.
+        await using var r = EditorRepo.Create(packs: false);
+        const string CreatedAt = "01K9EXR0000000000000000S12";
+        EditOnDisk(r, ".maquettiste/model/vocabularies/stereotypes/audited.json", s => s["columns"] = JsonNode.Parse($$"""
+            [ { "id": "{{CreatedAt}}", "name": "created_at", "type": "datetimeoffset" } ]
+            """));
+        EditOnDisk(r, ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json", t => t["checks"]!.AsArray().Add(JsonNode.Parse($$"""
+            { "id": "01K9EXR0000000000000000S13", "name": "ck_invoices_created",
+              "condition": { "op": "isNotNull", "args": [{ "path": ["{{EditorRepo.InvoiceId}}@{{EditorRepo.MainDatabaseId}}.{{CreatedAt}}"] }] } }
+            """)));
+        var model = await new ModelResolver(r.Repo.Options).ResolveAsync(await r.Store.GetSnapshotAsync(Ct), null, Ct);
+
+        Assert.Contains(model.Diagnostics, d => d.Rule == "MQ4008" && d.ElementId == EditorRepo.OverlayTableId && d.JsonPointer == "/checks/1/condition");
+        var invoices = model.Db("main").Tables.Single(t => t.Entity?.Id == EditorRepo.InvoiceId && t.Attribute is null);
+        Assert.DoesNotContain(invoices.Checks, c => c.Id == "01K9EXR0000000000000000S13");
+    }
+
+    /// <summary>Rewrites a model file of an editor repo on disk before the store reads it.</summary>
+    private static void EditOnDisk(EditorRepo r, string path, Action<JsonObject> change)
+    {
+        var node = JsonNode.Parse(File.ReadAllText(r.Repo.PathOf(path)))!.AsObject();
+        change(node);
+        File.WriteAllText(r.Repo.PathOf(path), node.ToJsonString(), new UTF8Encoding(false));
     }
 }

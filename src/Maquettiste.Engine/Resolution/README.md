@@ -416,9 +416,15 @@ Tests: `Resolution/ResolverBehaviorTests.cs` (the stereotype member cases), `Mod
 - A table's, overlay's or stereotype's tree check is typed when its file is read (`DatabaseRun.TypeCheck`, so what it names joins
   the table's keys before they freeze) and lowered once the columns are final (`DatabaseRun.ResolveCheck`, from `FinishTables`), into
   `RCheck.Expression`; a stereotype's check reads its columns under their keyed ids. On another dialect it is left out with MQ4056.
+  An overlay check on a column of a stereotype the synthesized table skips is MQ4008 at its condition (`ReportSkippedMemberUses`), and
+  excluding a column a kept stereotype check reads is MQ2028 (`TableMembers.CheckLinks`), so neither leaves the DDL silently.
 - A binding's `checks` are lowered through its field map (`AddBindingChecks`, as each binding resolves in `Publish`) and appended to
   its write table's checks with `MemberOrigin.Source` `binding`; `CheckIdentifiers` and `CheckNames` therefore run after `Publish`.
-  The table depends on what the listed checks name (`AddBinderKeys`).
+  The table depends on what each listed check depends on (`AddBinderKeys`, `REntityCheck.DependsOn`): the base that declares an
+  inherited check, a value object a path reads, and what the condition names.
+- A code the column it meets cannot store (a text code where the column stores integers) fails the lowering instead of converting:
+  the check is left out with MQ3103 at a table, MQ3110 for a binding's check, the rules validation reports by lowering any check that
+  holds a code (`ExpressionRules.CodeMisfits`). A seed holds a reference type's codes in its `code` column.
 - Entity checks resolve with the entity's attributes (`ResolveRun.Conceptual.cs`, `ResolveExpressions`, on the parallel phase): the
   root base's first, an inherited one per derived entity (registered once, by its declaring entity); derived values (`RDerived.Value`)
   for the attributes an entity declares or inherits. Constraints resolve after reference types (`ResolveConstraints`); a
