@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Model;
@@ -32,7 +33,12 @@ internal sealed record MaterializeOp(BatchOp Op, string Id, string? Hash, JsonOb
 /// <c>check</c> entries, each with its table's key), which the write's <c>rekey</c> lists after its table's columns.</param>
 internal sealed record MaterializeResult(string? Refusal, IReadOnlyList<MaterializeOp> Ops, IReadOnlyList<string> Notes, string? Database = null,
     IReadOnlyList<SchemaDiff.TableRekey>? Rekeys = null, IReadOnlyDictionary<string, string>? Sequences = null,
-    IReadOnlyList<MigrationRekey>? MemberRekeys = null);
+    IReadOnlyList<MigrationRekey>? MemberRekeys = null)
+{
+    /// <summary>The rule a refusal is reported under when it is not the operation's own (MQ4055, MQ4089): an overlay check held as text
+    /// that does not parse or type is refused under the expression rule it breaks.</summary>
+    public string? RefusalRule { get; init; }
+}
 
 /// <summary>
 /// The two materialize operations (erratum E43, engine-design.md section 7, "Bindings and materialize"): <c>materialize-tables</c>
@@ -93,6 +99,13 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
             if (table is null)
                 return Refused($"Entity '{entity.Name}' has no table of its own in database '{db.Name}'.");
             var overlay = snapshot.All<Table>().FirstOrDefault(t => t.Database == db.Id && t.Origin == TableOrigin.Synthesized && t.Entity == entity.Id && t.Attribute is null);
+            if (overlay is not null)
+            {
+                (overlay, var unparsed) = WithTrees(entity, overlay);
+                if (unparsed is not null)
+                    return unparsed;
+            }
+
             var tableId = overlay?.Id ?? Reused(table.Key, "table") ?? ids.NewId();
             var known = AliasOf(table.Key, "table") is { } alias && alias.Alias == tableId ? alias.Columns : null;
             var columns = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -183,6 +196,47 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The overlay with each check in the expression language that holds text (a hand-edited file may, MQ3108), at its root or inside
+    /// its tree, turned into a tree in the overlay's scope as <c>text-to-trees</c> turns it, so its paths move to the designed table's
+    /// column ids like any tree check's: the designed table no longer reads the entity's attributes by name, so the text would no longer
+    /// parse there. A text that does not parse or type in the overlay's scope refuses the operation under the rule it breaks (MQ3101,
+    /// MQ3102, MQ3103...), naming the check and the reason; the check is never dropped or moved as text.
+    /// </summary>
+    private (Table Overlay, MaterializeResult? Refusal) WithTrees(Entity entity, Table overlay)
+    {
+        if (!overlay.Checks.Any(c => c.Expression.Count == 0 && ExprSites.HasText(c.Condition)))
+            return (overlay, null);
+        var document = snapshot.GetDocument(overlay.Id);
+        var sites = ExprSites.Of(snapshot, overlay);
+        var checks = overlay.Checks.ToList();
+        for (var i = 0; i < checks.Count; i++)
+        {
+            var check = checks[i];
+            if (check.Expression.Count > 0 || !ExprSites.HasText(check.Condition))
+                continue;
+            // A table's sites are its checks, in order.
+            var site = sites[i];
+            var scope = ExprSites.Scope(snapshot, overlay, document, site, text: true);
+            var problems = new List<Diagnostic>();
+            var tree = ExprSites.ParseTexts(check.Condition!, scope, problems);
+            var parsed = problems.Count == 0;
+            if (parsed)
+                ExprTyper.Type(tree, scope, problems);
+            if (problems.FirstOrDefault(p => p.Severity == DiagnosticSeverity.Error) is { } problem)
+            {
+                return (overlay, Refused($"Check '{check.Name ?? check.Id}' of the overlay of entity '{entity.Name}' holds its condition as text, which does not "
+                    + $"{(parsed ? "type" : "parse")} in the overlay's scope ({problem.Rule} at {site.Pointer} of the overlay): {problem.Message.TrimEnd('.')}. "
+                    + "The text has to become a tree before the check moves into the designed table, where it would no longer read the entity's attributes "
+                    + "by name. Fix the text, or change or remove the check, then materialize again.", problem.Rule));
+            }
+
+            checks[i] = check with { Condition = tree };
+        }
+
+        return (overlay with { Checks = checks }, null);
     }
 
     /// <summary>
@@ -313,8 +367,9 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         node["foreignKeys"] = foreignKeys;
         // The overlay's checks move in as its file defines them, each one whether the DDL holds it or not (a tree check on a dialect
         // other than PostgreSQL is MQ4056 and left out, as is a SQL text check without a text for the dialect), so the model loses none;
-        // a check in the expression language keeps its tree, each path's column key turned into the designed table's column id (a
-        // contributed column's keyed id moves with the table key). A check an entity's binding writes stays with the binding.
+        // a check in the expression language keeps its tree (one held as text became its tree first, WithTrees), each path's column key
+        // turned into the designed table's column id (a contributed column's keyed id moves with the table key). A check an entity's
+        // binding writes stays with the binding.
         var checks = new JsonArray();
         string Remap(string key) => columns.GetValueOrDefault(key, key);
         bool Own(RCheck c) => c.MemberOrigin.MemberId is null && c.MemberOrigin.Source != "binding";
@@ -1389,7 +1444,7 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
 
     // ---- working set ------------------------------------------------------------------------------------------------------------
 
-    private MaterializeResult Refused(string why) => new(why, [], []);
+    private MaterializeResult Refused(string why, string? rule = null) => new(why, [], []) { RefusalRule = rule };
 
     private void Put(string id, string? hash, JsonObject? node, BatchOp op, string because)
     {

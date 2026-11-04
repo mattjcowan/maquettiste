@@ -444,6 +444,31 @@ internal static class ExprSites
     /// <summary>Whether a tree holds a <c>text</c> node anywhere.</summary>
     public static bool HasText(Expr? e) => e is not null && Nodes(e).Any(n => n.Text is not null);
 
+    /// <summary>
+    /// A tree with each text node, at its root or inside it, parsed in the scope: what a write and <c>text-to-trees</c> store, and what
+    /// <c>materialize-tables</c> moves into a designed table. A text that does not parse stays text, and its problem (MQ3101, or the
+    /// parser's own) goes to <paramref name="problems"/>.
+    /// </summary>
+    public static Expr ParseTexts(Expr e, ExprScope scope, List<Diagnostic> problems)
+    {
+        if (e.Text is { } text)
+        {
+            var parsed = ExprText.Parse(text, scope);
+            if (parsed.Tree is { } tree)
+                return tree;
+            problems.Add(parsed.Problem ?? RuleCatalog.Create("MQ3101", "The expression '" + text + "' does not parse.", scope.ElementId, scope.FilePath, scope.Pointer));
+            return e;
+        }
+
+        return e with
+        {
+            Args = e.Args is { } args ? [.. args.Select(a => ParseTexts(a, scope, problems))] : null,
+            Case = e.Case is { } branches ? [.. branches.Select(w => new ExprWhen { When = ParseTexts(w.When, scope, problems), Then = ParseTexts(w.Then, scope, problems) })] : null,
+            Else = e.Else is { } otherwise ? ParseTexts(otherwise, scope, problems) : null,
+            With = e.With is { } with ? [.. with.Select(a => a with { Value = ParseTexts(a.Value, scope, problems) })] : null,
+        };
+    }
+
     /// <summary>The expression type of a type reference: a built-in, an enum, a reference type's code, a scalar type's base.</summary>
     public static ExprType TypeOf(ModelSnapshot model, TypeRef? type)
     {

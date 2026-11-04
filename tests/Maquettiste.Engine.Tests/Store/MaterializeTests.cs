@@ -8,6 +8,7 @@ using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Tests.Expressions;
 using Maquettiste.Engine.Tests.Editor;
+using Maquettiste.Engine.Validation;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Store;
@@ -865,6 +866,68 @@ public sealed class MaterializeTests
             [("ck_invoices_due_after_issue", "issued_on <= due_on", "issued_on <= due_on"),
              ("ck_invoices_number", "total_amount >= 0 AND char_length(number) >= 3", "total_amount >= 0 and length(number) >= 3")],
             invoices.Checks.Where(c => c.Condition is not null).Select(c => (c.Name, c.Expression, c.Condition!.Text)));
+    }
+
+    [Fact]
+    public async Task Materialize_tables_turns_an_overlay_check_held_as_text_into_a_tree_on_the_new_columns()
+    {
+        // A hand-edited overlay holds its checks as text (MQ3108), one whole and one inside a tree: the text names Invoice's
+        // attributes, which the designed table no longer has as members, so materialize parses it in the overlay's scope first and the
+        // designed table's checks hold trees that read the new column ids. The model validates clean and the DDL does not change.
+        await using var r = EditorRepo.Create();
+        ExpressionResolutionTests.OverlayChecks(r, """
+            { "id": "01K9EXR0000000000000000W81", "name": "ck_invoices_due_after_issue", "condition": { "text": "issuedOn <= dueOn" } }
+            """, $$"""
+            { "id": "01K9EXR0000000000000000W82", "name": "ck_invoices_number",
+              "condition": { "op": "and", "args": [
+                { "text": "length(number) >= 3" }, { "op": "ge", "args": [{ "path": ["{{ExpressionResolutionTests.TotalAmount}}"] }, { "value": 0 }] }] } }
+            """);
+        Assert.Equal(RunOutcome.Succeeded, (await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct)).Outcome);
+        const string Script = "db/main/billing/tables/invoices.sql";
+        var ddl = r.Repo.ReadFile(Script);
+        Assert.Contains("CHECK (issued_on <= due_on)", ddl, StringComparison.Ordinal);
+        Assert.Contains("CHECK (char_length(number) >= 3 AND total_amount >= 0)", ddl, StringComparison.Ordinal);
+
+        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
+
+        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        var file = r.Store.Current!.Get<Table>(EditorRepo.OverlayTableId)!;
+        string Id(string name) => file.Columns.Single(c => c.Name == name).Id;
+        var due = file.Checks.Single(c => c.Name == "ck_invoices_due_after_issue").Condition!;
+        Assert.Equal("le", due.Op);
+        Assert.Equal([Id("issued_on"), Id("due_on")], due.Args!.Select(a => a.Path![0]));
+        var number = file.Checks.Single(c => c.Name == "ck_invoices_number").Condition!;
+        Assert.Equal([Id("number"), Id("total_amount")], number.Args!.Select(a => a.Args![0].Path?[0] ?? a.Args[0].Args![0].Path![0]));
+        Assert.False(ExprSites.HasText(due) || ExprSites.HasText(number));
+        Assert.Equal("", Errors(await r.Store.ValidateAsync(ValidationScope.All, Ct)));
+        Assert.Equal(RunOutcome.Succeeded, (await r.Service.RunAsync(new GenerationRequest { Mode = GenerationMode.Apply, Packs = ["sql-ddl"] }, null, Ct)).Outcome);
+        Assert.Equal(ddl, r.Repo.ReadFile(Script));
+    }
+
+    [Fact]
+    public async Task Materialize_tables_refuses_an_overlay_check_held_as_text_that_does_not_parse()
+    {
+        // The text cannot become a tree in the overlay's scope, so the check could not move into the designed table: materialize names
+        // the check and the parser's finding under its rule, in the preview and the batch alike, and writes nothing.
+        await using var r = EditorRepo.Create(packs: false);
+        ExpressionResolutionTests.OverlayChecks(r, """
+            { "id": "01K9EXR0000000000000000W83", "name": "ck_invoices_due_after_issue", "condition": { "text": "issuedOn <= " } }
+            """);
+        var files = r.Files();
+        const string Message = "Check 'ck_invoices_due_after_issue' of the overlay of entity 'Invoice' holds its condition as text, which does not parse "
+            + "in the overlay's scope (MQ3101 at /checks/1/condition of the overlay): The text ends too soon (at position 13 of the text). The text has to "
+            + "become a tree before the check moves into the designed table, where it would no longer read the entity's attributes by name. Fix the "
+            + "text, or change or remove the check, then materialize again.";
+
+        var plan = await r.Store.PlanMaterializeAsync(new MaterializeRequest("materialize-tables", EditorRepo.MainDatabaseId, [EditorRepo.InvoiceId]), Ct);
+        var refused = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
+
+        Assert.False(plan.Valid);
+        Assert.Equal([("MQ3101", Message)], plan.Diagnostics.Select(d => (d.Rule, d.Message)));
+        Assert.NotEqual(SaveOutcome.Saved, refused.Outcome);
+        var diagnostic = Assert.Single(refused.Items.SelectMany(i => i.Diagnostics));
+        Assert.Equal(("MQ3101", Message), (diagnostic.Rule, diagnostic.Message));
+        Assert.Equal(files, r.Files());
     }
 
     [Fact]

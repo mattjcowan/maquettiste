@@ -31,11 +31,16 @@ public sealed partial class ModelStore
     /// <summary>Whether a materialize request names a binding operation (<see cref="IsBindingOperation"/>).</summary>
     private static bool IsBindingRequest(MaterializeRequest request) => request.Operation is "map-by-name" or "resync-binding";
 
-    private async Task<string?> MaterializeAsync(ModelSnapshot snapshot, BatchOperation o, List<PlannedChange> changes, List<MaterializeResult> results, CancellationToken ct)
+    /// <summary>
+    /// Expands a materialize or binding operation into <paramref name="changes"/>; the refusal, under <paramref name="rule"/> (or the
+    /// rule the materializer gives it) at the operation, or <see langword="null"/>.
+    /// </summary>
+    private async Task<IReadOnlyList<Diagnostic>?> MaterializeAsync(ModelSnapshot snapshot, BatchOperation o, string rule, string pointer, List<PlannedChange> changes,
+        List<MaterializeResult> results, CancellationToken ct)
     {
         var result = await RunMaterializerAsync(snapshot, ToRequest(o), ct).ConfigureAwait(false);
         if (result.Refusal is not null)
-            return result.Refusal;
+            return [RuleCatalog.Create(result.RefusalRule ?? rule, result.Refusal, o.Id, null, pointer)];
         changes.AddRange(ToChanges(result, o.ExpectedHashes));
         results.Add(result);
         return null;
@@ -107,8 +112,9 @@ public sealed partial class ModelStore
     /// <summary>
     /// What a materialize or binding operation would do, planned and validated like the batch operation without writing anything: the
     /// elements it creates, updates and deletes (with the documents it would write), what it leaves as it is, and the diagnostics the
-    /// change would have. A materialize refusal is MQ4055, and the binding rules MQ4044 to MQ4054 come from resolving the model after the
-    /// change. A binding operation's refusal is MQ4089, and its binding rules (MQ4044 to MQ4054, MQ4087 and MQ4088) come from resolving
+    /// change would have. A materialize refusal is MQ4055 (an overlay check held as text that does not parse or type is refused under the
+    /// expression rule it breaks), and the binding rules MQ4044 to MQ4054 come from resolving the model after the change. A binding
+    /// operation's refusal is MQ4089, and its binding rules (MQ4044 to MQ4054, MQ4087 and MQ4088) come from resolving
     /// the conceptual layer and the named database only, never the whole model (next-phase-2-design.md section 3.3, decision 10).
     /// </summary>
     /// <param name="request">The operation.</param>
@@ -121,7 +127,10 @@ public sealed partial class ModelStore
         var binding = IsBindingRequest(request);
         var result = await RunMaterializerAsync(snapshot, request, ct).ConfigureAwait(false);
         if (result.Refusal is not null)
-            return new MaterializePlan(request.Operation, request.Database, false, [], [], [], [], [RuleCatalog.Create(binding ? "MQ4089" : "MQ4055", result.Refusal, null, null, null)]);
+        {
+            return new MaterializePlan(request.Operation, request.Database, false, [], [], [], [],
+                [RuleCatalog.Create(result.RefusalRule ?? (binding ? "MQ4089" : "MQ4055"), result.Refusal, null, null, null)]);
+        }
 
         var plan = Plan(snapshot, [.. ToChanges(result)], ct);
         if (!plan.Failed)
@@ -230,7 +239,7 @@ public sealed record MaterializeRequest(string Operation, string Database, IRead
 /// <param name="Updates">The elements it changes.</param>
 /// <param name="Deletes">The elements it deletes.</param>
 /// <param name="Notes">What it leaves as it is, in words.</param>
-/// <param name="Diagnostics">The refusal (MQ4055), the errors that would refuse the change, and the binding findings after it.</param>
+/// <param name="Diagnostics">The refusal (MQ4055, or the expression rule an overlay check held as text breaks), the errors that would refuse the change, and the binding findings after it.</param>
 public sealed record MaterializePlan(string Operation, string Database, bool Valid, IReadOnlyList<MaterializeChange> Creates,
     IReadOnlyList<MaterializeChange> Updates, IReadOnlyList<MaterializeChange> Deletes, IReadOnlyList<string> Notes, IReadOnlyList<Diagnostic> Diagnostics);
 

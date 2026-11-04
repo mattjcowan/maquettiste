@@ -2487,8 +2487,10 @@ attribute's `required`, never the expression's concern.
   text, which reads the attribute, so a check that reads either is MQ3102 until the column is renamed. An attribute the
   table does not store, because the mapping ignores it or does not store it, or a value object member stored as JSON, is
   MQ4008 at the check, and the DDL leaves the check out; `materialize-tables` refuses the entity until the check reads
-  stored members only. The preview of an overlay's check reads `--values` by the names its text prints, a value
-  object's members nested.
+  stored members only. It turns a check held as text into a tree in the overlay's scope before moving it, since the
+  designed table no longer reads the attributes by name; text that does not parse or type there refuses it under the
+  rule the text breaks (such as MQ3101 or MQ3103), and nothing is written. The preview of an overlay's check reads
+  `--values` by the names its text prints, a value object's members nested.
 - **Entity checks.** `attribute` is the attribute a failure points at (`/issuedOn` in an API error) and must be one
   the condition reads (MQ3114), and `message` is the text a failure reports. A table enforces an entity check only
   through a binding that lists it ([Checks a binding enforces](#checks-a-binding-enforces)). A derived entity inherits
