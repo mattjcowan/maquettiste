@@ -70,6 +70,15 @@ rules (5.6) in #9; the model diff and impact before apply (6.1, 6.2) follow. 0.1
 | 7.2 | Impact before apply: a batch's dry run lists referrers, diagnostics added and removed, reached databases and, per pack, the touched units and files | yes | Built, 0.12.0 | [6.1](next-phase-2-design.md#61-impact-before-apply) |
 | 7.3 | A model diff between snapshots, folders and the working model, graded and grouped by package, with a Markdown form | yes | Built, 0.12.0 | [6.2](next-phase-2-design.md#62-a-model-diff-between-two-models) |
 
+## Phase 3: built in 0.12.0
+
+The design, `next-phase-3-design.md`, was approved on 2026-11-03 and merged in pull request #14; tasks H1 to H14 build
+it. 0.12.0 is not released yet.
+
+| # | Item | Requested | Status | Notes |
+| --- | --- | --- | --- | --- |
+| 3.8 | One expression language for checks, validations, derived values and guards, lowered to SQL and JavaScript | yes | Built, 0.12.0 | [3.1](next-phase-3-design.md#31-one-expression-language-for-checks-validations-derived-values-and-guards). PostgreSQL only (MQ4056 elsewhere); actions stay JavaScript until operations replace them (4.6). The editor's text box for expressions is with the other screens below. |
+
 ## Left over from built items
 
 | Item | Requested | Status | Notes |
@@ -95,7 +104,6 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 
 | # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
-| 3.8 | One expression language for checks, validations, derived values and guards, lowered to SQL and JavaScript | yes | Build next | Large. Designed in `next-phase-3-design.md`, approved 2026-11-03. The first half is built: the core, both lowerings, the corpus, the rules and the writes (tasks H1 to H6). The second half (H7 to H14) is next. |
 | 3.12 | Projections | no | Later | Added by the roadmap's review; operation payloads and scenarios use them. Needs 3.8. |
 | 5.5 | The query kind for hand-written SQL, and CTEs in the structured query | yes | Later | For database-first teams. Written tables and result columns are declared, not read from the SQL text. Includes raw SQL as a binding's read source (from the bindings work below). |
 | 6.1 | A live PostgreSQL planner: `db plan`, `db apply`, `db adopt` | yes | Later | Large, PostgreSQL only. Built when more than one team manages databases with Maquettiste. |
@@ -151,7 +159,7 @@ Decided on 2026-10-30, each with what to use instead.
 | A physical snapshot committed with each revision | One hash per object; baselines from a model snapshot or a folder (6.2). The committed physical snapshot stays as an option. | no |
 | Prompting for migration facts | One classifier records facts on every write; only intent is left pending (6.2) | no |
 | Redefinition by restating a whole member | Redefinition by facet, keeping the inherited id (3.3) | no |
-| JavaScript guards on operations until the expression language | No guard on operations until 3.8 (3.6) | no |
+| JavaScript guards on operations | Operation guards in the expression language (3.8) | no |
 
 ## Other open work
 

@@ -58,6 +58,7 @@ nav:
       - A first model in ten minutes: guides/first-model.md
       - Start from a database: guides/start-from-a-database.md
       - Bind entities to tables: guides/bind-entities.md
+      - Write a check once: guides/expressions.md
       - Reference data and seeds: guides/reference-data-and-seeds.md
       - Processes: guides/processes.md
       - Generate code: guides/generate-code.md
