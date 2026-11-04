@@ -600,8 +600,9 @@ public sealed class ExpressionResolutionTests
     [Fact]
     public async Task An_overlay_check_on_attributes_keeps_its_shape_when_their_columns_are_renamed()
     {
-        // The snapshot's shape is the check lowered with column keys for names: an overlay entry that renames issued_on changes the
-        // DDL's text, not the shape, so the migration renames the column and leaves the check alone.
+        // The snapshot's shape is the check lowered with column keys for names: an overlay entry that renames issued_on, or a rename
+        // of dueOn that the convention turns into due_date, changes the DDL's text, not the shape, so the migration renames the column
+        // and leaves the check alone.
         await using var r = EditorRepo.Create(packs: false);
         OverlayChecks(r, DueAfterIssue);
         var before = Invoices(await ResolveAsync(r)).Checks.Single(c => c.Name == "ck_invoices_due_after_issue");
@@ -610,9 +611,12 @@ public sealed class ExpressionResolutionTests
             { "id": "01K9EXR0000000000000000W21", "attribute": "{{IssuedOnId}}", "name": "issue_date" }
             """)));
         var after = Invoices(await ResolveAsync(r)).Checks.Single(c => c.Name == "ck_invoices_due_after_issue");
+        EditOnDisk(r, InvoicePath, e => e["attributes"]!.AsArray().First(a => a!["id"]!.GetValue<string>() == DueOnId)!["name"] = "dueDate");
+        var renamed = Invoices(await ResolveAsync(r)).Checks.Single(c => c.Name == "ck_invoices_due_after_issue");
 
-        Assert.Equal(("issued_on <= due_on", "issue_date <= due_on"), (before.Expression, after.Expression));
+        Assert.Equal(("issued_on <= due_on", "issue_date <= due_on", "issue_date <= due_date"), (before.Expression, after.Expression, renamed.Expression));
         Assert.Equal(("issuedOn <= dueOn", before.Shape), (after.Condition!.Text, after.Shape));
+        Assert.Equal(("issuedOn <= dueDate", before.Shape), (renamed.Condition!.Text, renamed.Shape));
         Assert.NotNull(after.Shape);
     }
 
@@ -665,6 +669,110 @@ public sealed class ExpressionResolutionTests
 
         var check = Assert.Single(model.Db("main").Tables.Single(t => t.Entity?.Id == RecurringId && t.Attribute is null).Checks);
         Assert.Equal(("issued_on < next_issue_on", "issuedOn < nextIssueOn"), (check.Expression, check.Condition!.Text));
+    }
+
+    [Fact]
+    public async Task An_overlay_check_on_a_value_object_stored_as_JSON_is_MQ4008_naming_its_JSON_column()
+    {
+        // The mapping stores total as JSON, so total.amount is in the table but in no column of its own: the finding says where it is.
+        await using var r = EditorRepo.Create(packs: false);
+        EditOnDisk(r, ".maquettiste/model/mappings/invoice-in-main.json", m =>
+        {
+            var total = m["attributes"]!.AsArray().First(a => a!["attribute"]!.GetValue<string>() == TotalAmount.Split('.')[0])!.AsObject();
+            total.Remove("prefix");
+            total["storage"] = "json";
+        });
+        OverlayChecks(r, $$"""
+            { "id": "01K9EXR0000000000000000W12", "name": "ck_invoices_total",
+              "condition": { "op": "ge", "args": [{ "path": ["{{TotalAmount}}"] }, { "value": 0 }] } }
+            """);
+        var model = await ResolveAsync(r);
+
+        var finding = Assert.Single(model.Diagnostics, d => d.Rule == "MQ4008" && d.ElementId == EditorRepo.OverlayTableId);
+        Assert.Equal("/checks/1/condition", finding.JsonPointer);
+        Assert.Contains("reads 'total.amount', which the table stores as JSON in its column 'total'", finding.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("another table", finding.Message, StringComparison.Ordinal);
+        Assert.Equal(["ck_invoice_status"], Invoices(model).Checks.Select(c => c.Name));
+    }
+
+    [Fact]
+    public async Task An_overlay_check_on_a_base_attribute_that_a_table_per_type_stores_in_the_base_table_is_MQ4008()
+    {
+        // With table per type, RecurringInvoice's table holds its own attributes and the key; Invoice's issuedOn is in Invoice's table.
+        await using var r = EditorRepo.Create(packs: false);
+        const string RecurringId = "01K9EXR0000000000000000W31", NextIssueOnId = "01K9EXR0000000000000000W32";
+        const string RecurringPath = ".maquettiste/model/databases/main/tables/recurring-invoices.json", KeyId = "01J92P0V0Q9EK961M5HAQ3C5MY";
+        EditOnDisk(r, ".maquettiste/model/mappings/invoice-in-main.json", m => m["inheritance"] = "tpt");
+        File.WriteAllText(r.Repo.PathOf(".maquettiste/model/entities/recurring-invoice.json"), $$"""
+            { "kind": "entity", "id": "{{RecurringId}}", "name": "RecurringInvoice", "package": "{{EditorRepo.BillingPackageId}}",
+              "base": "{{EditorRepo.InvoiceId}}", "attributes": [ { "id": "{{NextIssueOnId}}", "name": "nextIssueOn", "type": "date" } ] }
+            """, new UTF8Encoding(false));
+        File.WriteAllText(r.Repo.PathOf(RecurringPath), $$"""
+            { "kind": "table", "id": "01K9EXR0000000000000000W33", "database": "{{EditorRepo.MainDatabaseId}}", "origin": "synthesized",
+              "entity": "{{RecurringId}}",
+              "checks": [
+                { "id": "01K9EXR0000000000000000W34", "name": "ck_recurring_next_after_issue",
+                  "condition": { "op": "lt", "args": [{ "path": ["{{IssuedOnId}}"] }, { "path": ["{{NextIssueOnId}}"] }] } },
+                { "id": "01K9EXR0000000000000000W35", "name": "ck_recurring_key_and_own",
+                  "condition": { "op": "and", "args": [{ "op": "isNotNull", "args": [{ "path": ["{{KeyId}}"] }] },
+                    { "op": "isNotNull", "args": [{ "path": ["{{NextIssueOnId}}"] }] }] } } ] }
+            """, new UTF8Encoding(false));
+        var model = await ResolveAsync(r);
+
+        var finding = Assert.Single(model.Diagnostics, d => d.Rule == "MQ4008" && d.ElementId == "01K9EXR0000000000000000W33");
+        Assert.Equal("/checks/0/condition", finding.JsonPointer);
+        Assert.Contains("reads 'issuedOn', which the table does not store", finding.Message, StringComparison.Ordinal);
+        var check = Assert.Single(model.Db("main").Tables.Single(t => t.Entity?.Id == RecurringId && t.Attribute is null).Checks);
+        Assert.Equal(("ck_recurring_key_and_own", "id IS NOT NULL AND next_issue_on IS NOT NULL"), (check.Name, check.Expression));
+    }
+
+    [Fact]
+    public async Task A_column_check_on_an_overlay_may_name_an_attributes_key_as_its_column()
+    {
+        // column names dueOn's and total.amount's column keys, which no overlay entry holds: the checks read them and point at their columns.
+        await using var r = EditorRepo.Create(packs: false);
+        OverlayChecks(r, $$"""
+            { "id": "01K9EXR0000000000000000W71", "name": "ck_due", "column": "{{DueOnId}}",
+              "condition": { "op": "isNotNull", "args": [{ "path": ["{{DueOnId}}"] }] } }
+            """, $$"""
+            { "id": "01K9EXR0000000000000000W72", "name": "ck_total", "column": "{{TotalAmount}}",
+              "condition": { "op": "ge", "args": [{ "path": ["{{TotalAmount}}"] }, { "value": 0 }] } }
+            """);
+        Assert.DoesNotContain((await r.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics,
+            d => d.FilePath == OverlayPath && d.Rule.StartsWith("MQ31", StringComparison.Ordinal));
+        var invoices = Invoices(await ResolveAsync(r));
+
+        Assert.Equal([("ck_due", "due_on IS NOT NULL", "due_on"), ("ck_total", "total_amount >= 0", "total_amount")],
+            invoices.Checks.Where(c => c.Condition is not null).Select(c => (c.Name, c.Expression, c.Column?.Name)));
+    }
+
+    [Fact]
+    public async Task An_overlay_check_is_judged_in_each_database_by_what_its_table_there_stores()
+    {
+        // A second database projects Invoice through a mapping that ignores dueOn: its overlay's copy of the check is MQ4008 there, and
+        // main's is unaffected.
+        await using var r = EditorRepo.Create(packs: false);
+        const string Second = "01K9EXR0000000000000000D02", SecondOverlay = "01K9EXR0000000000000000D03";
+        OverlayChecks(r, DueAfterIssue);
+        Directory.CreateDirectory(r.Repo.PathOf(".maquettiste/model/databases/second/tables"));
+        File.WriteAllText(r.Repo.PathOf(".maquettiste/model/databases/second/database.json"), $$"""
+            { "kind": "database", "id": "{{Second}}", "name": "second", "dialect": "postgresql", "version": "16" }
+            """, new UTF8Encoding(false));
+        File.WriteAllText(r.Repo.PathOf(".maquettiste/model/mappings/invoice-in-second.json"), $$"""
+            { "kind": "mapping", "id": "01K9EXR0000000000000000D04", "name": "Invoice in second", "database": "{{Second}}",
+              "entity": "{{EditorRepo.InvoiceId}}", "attributes": [ { "attribute": "{{DueOnId}}", "ignore": true } ] }
+            """, new UTF8Encoding(false));
+        File.WriteAllText(r.Repo.PathOf(".maquettiste/model/databases/second/tables/invoices.json"), $$"""
+            { "kind": "table", "id": "{{SecondOverlay}}", "database": "{{Second}}", "origin": "synthesized", "entity": "{{EditorRepo.InvoiceId}}",
+              "checks": [ {{DueAfterIssue.Replace("01K9EXR0000000000000000W11", "01K9EXR0000000000000000D05", StringComparison.Ordinal)}} ] }
+            """, new UTF8Encoding(false));
+        var model = await ResolveAsync(r);
+
+        var finding = Assert.Single(model.Diagnostics, d => d.Rule == "MQ4008");
+        Assert.Equal((SecondOverlay, "/checks/0/condition"), (finding.ElementId, finding.JsonPointer));
+        Assert.Contains("in database 'second' reads 'dueOn'", finding.Message, StringComparison.Ordinal);
+        Assert.Equal([["ck_invoice_status", "ck_invoices_due_after_issue"], []],
+            model.Databases.Select(d => d.Tables.Single(t => t.Entity?.Id == EditorRepo.InvoiceId && t.Attribute is null).Checks.Select(c => c.Name).ToList()));
     }
 
     /// <summary>Rewrites a model file of an editor repo on disk before the store reads it.</summary>

@@ -11,9 +11,12 @@ one.
   table names the entity's attributes and value object members by attribute name, as an entity check does
   (`issuedOn <= dueOn`), and the DDL names the columns the table gives them, so a change of naming convention never
   touches the check. An overlay entry of an attribute's column, which often has no name, now prints as the attribute
-  rather than as `""`. An attribute the table does not store, because the mapping ignores it or does not store it, is
-  MQ4008 at the check, and the DDL leaves the check out. `materialize-tables` turns such a check into one on the new
-  table's columns. The [user guide](user-guide.md#where-expressions-go) has the details.
+  rather than as `""`; it has the type the entry gives the column, and text may still write the entry's own name. A
+  column of the overlay's own that has an attribute's name is MQ3102 at a check that reads either. An attribute the
+  table does not store, because the mapping ignores it or does not store it, or a value object member stored as JSON,
+  is MQ4008 at the check, and the DDL leaves the check out. `materialize-tables` turns a check on attributes into one
+  on the new table's columns, and refuses while a check reads a member the table does not store. The
+  [user guide](user-guide.md#where-expressions-go) has the details.
 
 ## 0.12.0 (2026-11-04)
 

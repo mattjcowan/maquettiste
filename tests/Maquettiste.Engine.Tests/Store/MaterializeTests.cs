@@ -868,6 +868,31 @@ public sealed class MaterializeTests
     }
 
     [Fact]
+    public async Task Materialize_tables_refuses_while_an_overlay_check_reads_an_attribute_its_table_does_not_store()
+    {
+        // The mapping ignores notes, which an overlay check reads (MQ4008 there): the designed table would have no column for it, so
+        // materialize names the attribute and the finding, and changes nothing, rather than drop the check or write one that cannot type.
+        await using var r = EditorRepo.Create(packs: false);
+        EditOnDisk(r, ".maquettiste/model/mappings/invoice-in-main.json", m => m["attributes"]!.AsArray().Add(JsonNode.Parse("""
+            { "attribute": "01J92P0V0WKRGKH7YBKA2V30NC", "ignore": true }
+            """)));
+        ExpressionResolutionTests.OverlayChecks(r, ExpressionResolutionTests.DueAfterIssue, """
+            { "id": "01K9EXR0000000000000000W14", "name": "ck_invoices_notes",
+              "condition": { "op": "isNotNull", "args": [{ "path": ["01J92P0V0WKRGKH7YBKA2V30NC"] }] } }
+            """);
+        var before = File.ReadAllText(r.Repo.PathOf(ExpressionResolutionTests.OverlayPath));
+
+        var refused = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
+
+        Assert.NotEqual(SaveOutcome.Saved, refused.Outcome);
+        var diagnostic = Assert.Single(refused.Items.SelectMany(i => i.Diagnostics));
+        Assert.Equal(("MQ4055", "Check 'ck_invoices_notes' of the overlay of entity 'Invoice' reads 'notes', which table 'invoices' stores in no column "
+            + "of its own (MQ4008 at /checks/2/condition of the overlay), so the designed table would have no column for it. Store 'notes' in the table, or "
+            + "change or remove the check, then materialize again."), (diagnostic.Rule, diagnostic.Message));
+        Assert.Equal(before, File.ReadAllText(r.Repo.PathOf(ExpressionResolutionTests.OverlayPath)));
+    }
+
+    [Fact]
     public async Task Materialize_columns_maps_an_attribute_to_an_inherited_column_of_its_name()
     {
         // vendors carries audited and inherits created_at and updated_at; Vendor carries audited too, so its projection has those columns.

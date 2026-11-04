@@ -532,8 +532,9 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// MQ4008 at an overlay's own tree check for each path that reads no column of the table: an attribute of its entity, or an override
-    /// entry of one, that the projection does not store (the mapping ignores it, it is derived and not stored, or a base's table per type
-    /// holds it), so the check is reported where it is written rather than left out of the DDL silently. A stereotype's column is left
+    /// entry of one, that the projection does not store in a column (the mapping ignores it, it is derived and not stored, a base's table
+    /// per type holds it, or its value object is stored as JSON), so the check is reported where it is written rather than left out of
+    /// the DDL silently. A stereotype's column is left
     /// to the findings that already name it (MQ4008 for a skipped stereotype, MQ2028 for an excluded member); a designed table's check
     /// reads only its own columns, as validation proves.
     /// </summary>
@@ -547,9 +548,12 @@ internal sealed partial class DatabaseRun
             if (id.StartsWith(contributed, StringComparison.Ordinal))
                 continue;
             var member = ExprText.Print(new Expr { Path = [id] }, tree.Source.Scope);
-            _run.AddDiagnostic("MQ4008",
-                $"Check '{name}' of table '{t.Table.Name}' in database '{_db.Name}' reads '{member}', which the table does not store: its mapping ignores it, does not store it, or stores it in another table. The check is left out of the DDL; store it in this table, or read another member.",
-                overlay.Id, tree.Pointer);
+            // A value object member whose value object the table stores as JSON is in the table, in that one column.
+            var key = overlay.Columns.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.Ordinal))?.Attribute ?? id;
+            var why = key.IndexOf('.', StringComparison.Ordinal) is > 0 and var dot && t.Resolve(key[..dot]) is { Type: "json" } json
+                ? $"which the table stores as JSON in its column '{json.Name}', not in a column of its own. The check is left out of the DDL; store the value object in columns (storage embedded), or read another member."
+                : "which the table does not store: its mapping ignores it, does not store it, or stores it in another table. The check is left out of the DDL; store it in this table, or read another member.";
+            _run.AddDiagnostic("MQ4008", $"Check '{name}' of table '{t.Table.Name}' in database '{_db.Name}' reads '{member}', {why}", overlay.Id, tree.Pointer);
         }
     }
 
