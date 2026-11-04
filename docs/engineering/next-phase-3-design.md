@@ -412,7 +412,7 @@ that cannot answer is MQ5002 or MQ5003 for its rule, not a finding. Nothing else
 
 | Site | Paths may name | Mode | `now` | What stays |
 | --- | --- | --- | --- | --- |
-| Table and column check | The table's columns: own, inherited and contributed | check | no | SQL text per dialect |
+| Table and column check | The table's columns: own, inherited and contributed; on an overlay of an entity's table, also the entity's attributes and value object members, by attribute name | check | no | SQL text per dialect |
 | Entity check | The entity's attributes, inherited ones and value object members | check | no | `validation` facets and JavaScript rules |
 | Derived value | The entity's other attributes | value | no | `derived.expression` text |
 | Process guard | Context attributes; payload attributes of every event whose transitions use the guard | guard | yes | `expression` JavaScript |
@@ -426,7 +426,13 @@ that cannot answer is MQ5002 or MQ5003 for its rule, not a finding. Nothing else
   in `RCheck.Condition`; the snapshot records `shape`, the hash of the lowered check with column keys in place of
   column names, so a column rename keeps the check while a change to a cited constraint, a binding's field map or an
   enum's stored value changes it. The migration classifier already compares the resolved
-  database before and after a write, so a changed tree check records its fact like a text check.
+  database before and after a write, so a changed tree check records its fact like a text check. An overlay of an
+  entity's table names the entity's attributes and value object members by attribute name, as an entity check does,
+  under the column keys the resolver gives their columns (`attributeId`, `attributeId.memberId`): the naming
+  conventions decide the physical names only at resolution, so validation cannot know them, and a convention change
+  then never touches the model. An override entry reads as its attribute; foreign key columns are not attributes, so
+  only an entry that names one reads it. Resolution lowers the check through the resolved table's columns, and a path
+  to an attribute the projection does not store is MQ4008 at the check, which is left out.
 - **Entity checks (attribute and entity validations).** `checks` on the entity hold cross-attribute rules and
   single-attribute rules alike; `attribute` is where a failure points, `/issuedOn` in an API error. A binding's `checks`
   lowers each listed check through its field map into an `RCheck` on its write table, named by the naming convention

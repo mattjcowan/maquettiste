@@ -41,10 +41,10 @@ internal sealed record ExprSite(string Pointer, Expr? Tree, bool Raw, string Sub
 
 /// <summary>
 /// The expression sites of the model and the scope each reads (next-phase-3-design.md section 3.1): a table's columns (with those its
-/// stereotypes contribute, by keyed id) or a stereotype's at its checks; an entity's attributes (its bases' too, value-object members
-/// as <c>attribute.member</c>) at its checks and derived values; an operation's input and its subject's attributes (under
-/// <c>subject</c>) at its guards; a process's context and the payloads of the events that use a guard (under <c>event</c>) at the
-/// guard; a constraint's parameters at its condition.
+/// stereotypes contribute, by keyed id, and on the overlay of an entity's table the entity's attributes) or a stereotype's at its
+/// checks; an entity's attributes (its bases' too, value-object members as <c>attribute.member</c>) at its checks and derived values;
+/// an operation's input and its subject's attributes (under <c>subject</c>) at its guards; a process's context and the payloads of the
+/// events that use a guard (under <c>event</c>) at the guard; a constraint's parameters at its condition.
 /// </summary>
 internal static class ExprSites
 {
@@ -154,12 +154,32 @@ internal static class ExprSites
         _ => null,
     };
 
-    /// <summary>A table's columns: its own and those its stereotypes contribute, by their keyed ids.</summary>
+    /// <summary>
+    /// A table's columns: its own and those its stereotypes contribute, by their keyed ids. On the overlay of an entity's table the
+    /// entity's attributes and value object members come first, named as an entity check names them and held under the keys the
+    /// resolver gives their columns (<c>attributeId</c>, <c>attributeId.memberId</c>): validation cannot know the physical names the
+    /// naming conventions decide. An override entry of one of them reads as that member under the entry's id too; foreign key columns
+    /// are not attributes, so only an entry that names one reads it.
+    /// </summary>
     private static void TableColumns(ExprScope scope, ModelSnapshot model, Table table)
     {
+        if (OverlaidEntity(model, table) is { } entity)
+        {
+            AddAttributes(scope.Root, model, AttributesOf(model, entity), null);
+            foreach (var column in table.Columns)
+            {
+                if (column.Attribute is { } key && scope.Root.Member(key) is { } overridden)
+                    scope.Root.Add(overridden with { Id = column.Id });
+            }
+        }
+
         Columns(scope, model, table.Columns);
         Columns(scope, model, [.. TableMembers.Of(model, table).Columns.Select(m => m.Member)]);
     }
+
+    /// <summary>The entity whose own table an overlay overrides (not one of its child tables), or <see langword="null"/>.</summary>
+    private static Entity? OverlaidEntity(ModelSnapshot model, Table table) =>
+        table is { Origin: TableOrigin.Synthesized, Entity: { } id, Attribute: null } ? model.Get<Entity>(id) : null;
 
     /// <summary>The ids of the members an operation's subject offers a guard (its attributes and navigations), for MQ3111; none without one.</summary>
     private static HashSet<string>? SubjectIds(ModelSnapshot model, Operation operation) =>
@@ -592,7 +612,8 @@ internal static class ExpressionRules
             }
 
             var read = ExprSites.PathsOf(tree, typed).SelectMany(p => p).ToHashSet(StringComparer.Ordinal);
-            if (site.Reads is { } wanted && !read.Contains(wanted) && !read.Contains(wanted.Split('.', '@', ':')[^1]))
+            if (site.Reads is { } wanted && !read.Contains(wanted) && !read.Contains(wanted.Split('.', '@', ':')[^1])
+                && !(element is Table table && ReadsThroughOverride(table, read, wanted)))
             {
                 report.Add("MQ3114", element is Entity
                     ? "The entity check does not read its attribute, so a failure points at a member the condition does not judge; point attribute at a member it reads."
@@ -618,6 +639,15 @@ internal static class ExpressionRules
         if (element is Entity entity)
             CheckBindings(model, entity, trees, typedTrees, report);
     }
+
+    /// <summary>
+    /// Whether an overlay's column check reads its column through the other id of an override entry: the key the entry overrides where
+    /// <c>column</c> names the entry, or the entry where it names the key. Both read the same column.
+    /// </summary>
+    private static bool ReadsThroughOverride(Table table, HashSet<string> read, string column) =>
+        table.Origin == TableOrigin.Synthesized && table.Columns.Any(c => c.Attribute is { } key
+            && ((string.Equals(c.Id, column, StringComparison.Ordinal) && read.Contains(key))
+                || (string.Equals(key, column, StringComparison.Ordinal) && read.Contains(c.Id))));
 
     /// <summary>The columns a table's or stereotype's checks read, by the id their paths hold (a contributed column's keyed id).</summary>
     private static Dictionary<string, Column> ColumnsOf(ModelSnapshot model, Element element)

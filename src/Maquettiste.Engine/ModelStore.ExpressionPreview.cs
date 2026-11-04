@@ -246,7 +246,8 @@ public sealed partial class ModelStore
         var byId = new Dictionary<string, Column>(StringComparer.Ordinal);
         if (holder is Table table)
         {
-            foreach (var column in table.Columns)
+            // An overlay's override entry without a name leaves the column's name to resolution: its path reads the member's name.
+            foreach (var column in table.Columns.Where(c => c.Name.Length > 0))
                 byId.TryAdd(column.Id, column);
             foreach (var inherited in TableMembers.Of(snapshot, table).Columns)
                 byId.TryAdd(inherited.Member.Id, inherited.Member);

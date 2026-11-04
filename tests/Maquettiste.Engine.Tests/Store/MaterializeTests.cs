@@ -6,6 +6,7 @@ using Maquettiste.Engine.Ledger;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.Tests.Expressions;
 using Maquettiste.Engine.Tests.Editor;
 using Maquettiste.Testing;
 
@@ -831,6 +832,39 @@ public sealed class MaterializeTests
         Assert.Equal(["ck_invoice_status", "ck_invoices_extra"], file.Checks.Select(c => c.Name));
         var check = file.Checks.Single(c => c.Id == CheckId);
         Assert.Equal((Flag, true), (check.Condition!.Args![0].Path![0], check.Expression.Count == 0));
+    }
+
+    [Fact]
+    public async Task Materialize_tables_turns_an_overlay_check_on_attributes_into_one_on_the_new_columns()
+    {
+        // The overlay's checks read Invoice's attributes by their column keys, and number through its override entry: the designed
+        // table's checks read the columns the projection gave them, by their new ids (number's is the entry's id), and print by their names.
+        await using var r = EditorRepo.Create(packs: false);
+        ExpressionResolutionTests.OverlayChecks(r, ExpressionResolutionTests.DueAfterIssue, $$"""
+            { "id": "01K9EXR0000000000000000W51", "name": "ck_invoices_number",
+              "condition": { "op": "and", "args": [
+                { "op": "ge", "args": [{ "path": ["{{ExpressionResolutionTests.TotalAmount}}"] }, { "value": 0 }] },
+                { "op": "ge", "args": [{ "call": "length", "args": [{ "path": ["{{ExpressionResolutionTests.NumberEntryId}}"] }] }, { "value": 3 }] }] } }
+            """);
+
+        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
+
+        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        var file = r.Store.Current!.Get<Table>(EditorRepo.OverlayTableId)!;
+        string Id(string name) => file.Columns.Single(c => c.Name == name).Id;
+        Assert.Equal(ExpressionResolutionTests.NumberEntryId, Id("number"));
+        var due = file.Checks.Single(c => c.Name == "ck_invoices_due_after_issue").Condition!;
+        Assert.Equal([Id("issued_on"), Id("due_on")], due.Args!.Select(a => a.Path![0]));
+        var number = file.Checks.Single(c => c.Name == "ck_invoices_number").Condition!;
+        Assert.Equal([Id("total_amount"), Id("number")], number.Args!.Select(a => a.Args![0].Path?[0] ?? a.Args[0].Args![0].Path![0]));
+        Assert.Equal("", Errors(await r.Store.ValidateAsync(ValidationScope.All, Ct)));
+
+        var resolved = await new ModelResolver(r.Repo.Options).ResolveAsync(r.Store.Current!, null, Ct);
+        var invoices = resolved.Databases.Single(d => d.Id == EditorRepo.MainDatabaseId).Tables.Single(t => t.Name == "invoices");
+        Assert.Equal(
+            [("ck_invoices_due_after_issue", "issued_on <= due_on", "issued_on <= due_on"),
+             ("ck_invoices_number", "total_amount >= 0 AND char_length(number) >= 3", "total_amount >= 0 and length(number) >= 3")],
+            invoices.Checks.Where(c => c.Condition is not null).Select(c => (c.Name, c.Expression, c.Condition!.Text)));
     }
 
     [Fact]

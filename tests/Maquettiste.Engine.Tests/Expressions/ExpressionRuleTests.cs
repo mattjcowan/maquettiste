@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Tests.Editor;
 using Maquettiste.Testing;
+using static Maquettiste.Engine.Tests.Expressions.ExpressionResolutionTests;
 
 namespace Maquettiste.Engine.Tests.Expressions;
 
@@ -384,6 +386,29 @@ public sealed class ExpressionRuleTests
 
         Edit(repo, EntityPath, e => e["checks"]![0]!["attribute"] = SkuAttributeId);
         await AssertRuleAsync(repo, "MQ3114", "/checks/0/condition");
+    }
+
+    [Fact]
+    public async Task An_overlay_check_reads_its_entitys_attributes_and_a_column_check_its_column_through_either_key()
+    {
+        // On Invoice's overlay, number's override entry and number's column key read the same column, so a column check on either reads
+        // it through the other; one on number that reads only issuedOn does not, and Customer's name is no member of Invoice's table.
+        await using var r = EditorRepo.Create(packs: false);
+        const string CustomerName = "01J92P0V0MS09YFZHX07JQ3KMN";
+        static string Long(string path) => $$"""{ "op": "ge", "args": [{ "call": "length", "args": [{ "path": ["{{path}}"] }] }, { "value": 3 }] }""";
+        OverlayChecks(r,
+            DueAfterIssue,
+            $$"""{ "id": "01K9EXR0000000000000000W41", "name": "ck_a", "column": "{{NumberEntryId}}", "condition": {{Long(NumberId)}} }""",
+            $$"""{ "id": "01K9EXR0000000000000000W42", "name": "ck_b", "column": "{{NumberId}}", "condition": {{Long(NumberEntryId)}} }""",
+            $$"""
+            { "id": "01K9EXR0000000000000000W43", "name": "ck_c", "column": "{{NumberId}}",
+              "condition": { "op": "isNotNull", "args": [{ "path": ["{{IssuedOnId}}"] }] } }
+            """,
+            $$"""{ "id": "01K9EXR0000000000000000W44", "name": "ck_d", "condition": {{Long(CustomerName)}} }""");
+        var diagnostics = (await r.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics.Where(d => d.FilePath == OverlayPath).ToList();
+
+        Assert.Equal([("MQ3114", "/checks/4/condition"), ("MQ3102", "/checks/5/condition/args/0/args/0")],
+            diagnostics.Where(d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal)).Select(d => (d.Rule, d.JsonPointer)));
     }
 
     [Fact]

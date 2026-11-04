@@ -2461,7 +2461,7 @@ most 64 deep (MQ3113).
 
 | Site | Where in the file | What it reads | Mode | `now()` | What stays beside it |
 | --- | --- | --- | --- | --- | --- |
-| Table and column check | `checks[].condition` of a table file, an overlay or a stereotype | the table's columns: own, inherited and contributed (on an overlay, its own and contributed columns only, for now; on a stereotype, its own columns) | check | no | `expression`, SQL text per dialect |
+| Table and column check | `checks[].condition` of a table file, an overlay or a stereotype | the table's columns: own, inherited and contributed (on an overlay of an entity's table, also the entity's attributes and value object members, by attribute name; on a stereotype, its own columns) | check | no | `expression`, SQL text per dialect |
 | Entity check | the entity's `checks`: `name`, `attribute`, `condition`, `message` | the entity's attributes, inherited ones and value object members | check | no | `validation` facets and JavaScript rules |
 | Derived value | an attribute's `derived.value` | the entity's other attributes | value | no | `derived.expression`, text for templates |
 | Process guard | `guards[].condition` | context attributes; `event.amount` for a payload attribute (so a context attribute named `event` cannot be read, MQ3102) | guard | the simulation's clock | `expression`, JavaScript |
@@ -2478,7 +2478,11 @@ attribute's `required`, never the expression's concern.
 - **Table and column checks.** The engine writes a tree check into the DDL of the database that holds the table, so
   sql-ddl prints it with no template change; on a database that is not PostgreSQL, the DDL leaves it out (MQ4056). A
   column check must read its `column` (MQ3114). A check keeps its identity when a column it reads is renamed: the
-  migration renames the column and leaves the check alone.
+  migration renames the column and leaves the check alone. On an overlay of an entity's table, a check names the
+  entity's attributes as an entity check does (`issuedOn <= dueOn` on Invoice's overlay), and the DDL names the columns
+  the table gives them, so a change of naming convention never touches the check; a path through the overlay entry of
+  an attribute's column reads as the attribute. An attribute the table does not store, because the mapping ignores it
+  or does not store it, is MQ4008 at the check, and the DDL leaves the check out.
 - **Entity checks.** `attribute` is the attribute a failure points at (`/issuedOn` in an API error) and must be one
   the condition reads (MQ3114), and `message` is the text a failure reports. A table enforces an entity check only
   through a binding that lists it ([Checks a binding enforces](#checks-a-binding-enforces)). A derived entity inherits

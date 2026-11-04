@@ -417,7 +417,10 @@ Tests: `Resolution/ResolverBehaviorTests.cs` (the stereotype member cases), `Mod
   the table's keys before they freeze) and lowered once the columns are final (`DatabaseRun.ResolveCheck`, from `FinishTables`), into
   `RCheck.Expression`; a stereotype's check reads its columns under their keyed ids. On another dialect it is left out with MQ4056.
   An overlay check on a column of a stereotype the synthesized table skips is MQ4008 at its condition (`ReportSkippedMemberUses`), and
-  excluding a column a kept stereotype check reads is MQ2028 (`TableMembers.CheckLinks`), so neither leaves the DDL silently.
+  excluding a column a kept stereotype check reads is MQ2028 (`TableMembers.CheckLinks`), so neither leaves the DDL silently. An
+  entity's overlay check names the entity's attributes by their column keys (`ExprSites`), resolved through `TableBuild.ByKey`, where
+  an override entry's id names its column too; a path the projection gives no column (an ignored or unstored attribute, a base's in
+  a table per type) is MQ4008 at the check (`ReportUnstored`), which is left out.
 - A binding's `checks` are lowered through its field map (`AddBindingChecks`, as each binding resolves in `Publish`) and appended to
   its write table's checks with `MemberOrigin.Source` `binding`; `CheckIdentifiers` and `CheckNames` therefore run after `Publish`.
   The table depends on what each listed check depends on (`AddBinderKeys`, `REntityCheck.DependsOn`): the base that declares an
