@@ -490,8 +490,9 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// A table's resolved check: a SQL text check as its spec says; a check in the expression language lowered to PostgreSQL through the
-    /// table's final columns (a stereotype's check reads its columns under their keyed ids), with its condition and shape. <see langword="null"/>
-    /// leaves a tree check out when it reads a column the table does not have (validation, or MQ4008 for a skipped stereotype, says so).
+    /// table's final columns (a stereotype's check reads its columns under their keyed ids, an overlay's check an entity's attributes by
+    /// their column keys), with its condition and shape. <see langword="null"/> leaves a tree check out when it reads a column the table
+    /// does not have (validation, MQ4008 for a skipped stereotype, or <see cref="ReportUnstored"/> for an overlay's check, says so).
     /// </summary>
     private RCheck? ResolveCheck(TableBuild t, CheckSpec c)
     {
@@ -506,10 +507,19 @@ internal sealed partial class DatabaseRun
         if (c.Tree is not { } tree)
             return check;
         var columns = new Dictionary<string, RColumn>(StringComparer.Ordinal);
+        List<string>? missing = null;
         foreach (var id in ExprResolution.Paths(tree.Source.Typed))
         {
             if (((tree.KeyPrefix is { } prefix ? t.Resolve(ContributedMembers.KeyOf(prefix, id)) : null) ?? t.Resolve(id)) is { } column)
                 columns[id] = column;
+            else
+                (missing ??= []).Add(id);
+        }
+
+        if (missing is not null)
+        {
+            ReportUnstored(t, check.Name, tree, missing);
+            return null;
         }
 
         if (LowerCheck(tree.Source, columns, $"Check '{check.Name}' of table '{t.Table.Name}' in database '{_db.Name}'", tree.ElementId, tree.Pointer) is not { } lowered)
@@ -518,6 +528,33 @@ internal sealed partial class DatabaseRun
         check.Condition = lowered.Condition;
         check.Shape = lowered.Shape;
         return check;
+    }
+
+    /// <summary>
+    /// MQ4008 at an overlay's own tree check for each path that reads no column of the table: an attribute of its entity, or an override
+    /// entry of one, that the projection does not store in a column (the mapping ignores it, it is derived and not stored, a base's table
+    /// per type holds it, or its value object is stored as JSON), so the check is reported where it is written rather than left out of
+    /// the DDL silently. A stereotype's column is left
+    /// to the findings that already name it (MQ4008 for a skipped stereotype, MQ2028 for an excluded member); a designed table's check
+    /// reads only its own columns, as validation proves.
+    /// </summary>
+    private void ReportUnstored(TableBuild t, string name, TreeCheck tree, List<string> missing)
+    {
+        if (t.Overlay is not { } overlay || tree.KeyPrefix is not null || !string.Equals(tree.ElementId, overlay.Id, StringComparison.Ordinal))
+            return;
+        var contributed = t.Table.Key + ".";
+        foreach (var id in missing)
+        {
+            if (id.StartsWith(contributed, StringComparison.Ordinal))
+                continue;
+            var member = ExprText.Print(new Expr { Path = [id] }, tree.Source.Scope);
+            // A value object member whose value object the table stores as JSON is in the table, in that one column.
+            var key = overlay.Columns.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.Ordinal))?.Attribute ?? id;
+            var why = key.IndexOf('.', StringComparison.Ordinal) is > 0 and var dot && t.Resolve(key[..dot]) is { Type: "json" } json
+                ? $"which the table stores as JSON in its column '{json.Name}', not in a column of its own. The check is left out of the DDL; store the value object in columns (storage embedded), or read another member."
+                : "which the table does not store: its mapping ignores it, does not store it, or stores it in another table. The check is left out of the DDL; store it in this table, or read another member.";
+            _run.AddDiagnostic("MQ4008", $"Check '{name}' of table '{t.Table.Name}' in database '{_db.Name}' reads '{member}', {why}", overlay.Id, tree.Pointer);
+        }
     }
 
     /// <summary>

@@ -412,7 +412,7 @@ that cannot answer is MQ5002 or MQ5003 for its rule, not a finding. Nothing else
 
 | Site | Paths may name | Mode | `now` | What stays |
 | --- | --- | --- | --- | --- |
-| Table and column check | The table's columns: own, inherited and contributed | check | no | SQL text per dialect |
+| Table and column check | The table's columns: own, inherited and contributed; on an overlay of an entity's table, also the entity's attributes and value object members, by attribute name | check | no | SQL text per dialect |
 | Entity check | The entity's attributes, inherited ones and value object members | check | no | `validation` facets and JavaScript rules |
 | Derived value | The entity's other attributes | value | no | `derived.expression` text |
 | Process guard | Context attributes; payload attributes of every event whose transitions use the guard | guard | yes | `expression` JavaScript |
@@ -426,7 +426,18 @@ that cannot answer is MQ5002 or MQ5003 for its rule, not a finding. Nothing else
   in `RCheck.Condition`; the snapshot records `shape`, the hash of the lowered check with column keys in place of
   column names, so a column rename keeps the check while a change to a cited constraint, a binding's field map or an
   enum's stored value changes it. The migration classifier already compares the resolved
-  database before and after a write, so a changed tree check records its fact like a text check.
+  database before and after a write, so a changed tree check records its fact like a text check. An overlay of an
+  entity's table names the entity's attributes and value object members by attribute name, as an entity check does,
+  under the column keys the resolver gives their columns (`attributeId`, `attributeId.memberId`): the naming
+  conventions decide the physical names only at resolution, so validation cannot know them, and a convention change
+  then never touches the model. An override entry reads as its attribute, typed as the entry types the column (its
+  `type`, unless the attribute is an enum or a code; its `nullable`; a fixed length), and its own name is another name
+  text may write for the attribute unless a member or column already has it; foreign key columns are not attributes,
+  so only an entry that names one reads it. An overlay's column named like an attribute is MQ3102 at a check that
+  reads either, since text reads the attribute by that name. Resolution lowers the check through the resolved table's
+  columns, and a path to an attribute the projection does not store in a column of its own is MQ4008 at the check,
+  which is left out; `materialize-tables` refuses such a check rather than move it. The preview lowers an overlay's
+  check to JavaScript over the names its text prints, as an entity check's.
 - **Entity checks (attribute and entity validations).** `checks` on the entity hold cross-attribute rules and
   single-attribute rules alike; `attribute` is where a failure points, `/issuedOn` in an API error. A binding's `checks`
   lowers each listed check through its field map into an `RCheck` on its write table, named by the naming convention
@@ -468,7 +479,7 @@ types where the core refuses mixed ones), so a hand conversion must check them.
 | Id | Severity | Rule | Quick fix |
 | --- | --- | --- | --- |
 | MQ3101 | E | An expression does not parse, or a node is malformed: an unknown operator or function, a wrong number of operands. | Fix the text or the node |
-| MQ3102 | E | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, a payload attribute some using event lacks, or a context attribute named `event`, under which a guard reads the payload. | Name a member of the site |
+| MQ3102 | E | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, a payload attribute some using event lacks, a context attribute named `event`, under which a guard reads the payload, or an overlay's column named like an attribute of its entity, which text reads as the attribute. | Name a member of the site |
 | MQ3103 | E | The types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, `+` on a date, `date_part` of `hour` or `minute` on a date, a site result that is not bool, a derived value of another type, a type the core does not have (`float` among them), a `ref` against a value of no enum or reference type, or a code the column it is compared with cannot store. | Use `date_of`, `add_days` or a member of the right type; keep SQL text for `float` |
 | MQ3104 | E | `now` at a check site, a value site or a rule condition, directly or through a constraint. | Move the rule to a guard |
 | MQ3105 | E | A regular expression outside the portable subset. | Rewrite it in the subset |

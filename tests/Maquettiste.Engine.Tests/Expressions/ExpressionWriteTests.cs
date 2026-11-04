@@ -1,7 +1,10 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Tests.Editor;
 using Maquettiste.Testing;
+using static Maquettiste.Engine.Tests.Expressions.ExpressionResolutionTests;
 using static Maquettiste.Engine.Tests.Expressions.ExpressionRuleTests;
 
 namespace Maquettiste.Engine.Tests.Expressions;
@@ -140,6 +143,125 @@ public sealed class ExpressionWriteTests
         var stored = JsonNode.Parse(repo.ReadFile(TablePath))!;
         var discount = stored["columns"]![4]!["id"]!.GetValue<string>();
         Assert.Equal($$"""{"op":"lt","args":[{"path":["{{discount}}"]},{"path":["{{PriceColumnId}}"]}]}""", stored["checks"]![0]!["condition"]!.ToJsonString());
+    }
+
+    [Fact]
+    public async Task Text_on_an_overlay_check_names_the_entitys_attributes_and_previews_by_their_names()
+    {
+        // On Invoice's overlay, text names Invoice's attributes as an entity check does, so a save stores their column keys; the preview
+        // prints that check, and one stored through number's override entry, which has no name, by the attributes' names.
+        await using var r = EditorRepo.Create(packs: false);
+        OverlayChecks(r);
+        var overlay = (await r.Store.GetElementAsync(EditorRepo.OverlayTableId, Ct))!;
+        var node = JsonNode.Parse(overlay.Json.GetRawText())!.AsObject();
+        node["checks"]!.AsArray().Add(JsonNode.Parse("""
+            { "id": "01K9EXW0000000000000000W01", "name": "ck_invoices_due_after_issue", "condition": { "text": "issuedOn <= dueOn and total.amount >= 0" } }
+            """));
+        node["checks"]!.AsArray().Add(JsonNode.Parse($$"""
+            { "id": "01K9EXW0000000000000000W02", "name": "ck_invoices_number",
+              "condition": { "op": "ge", "args": [{ "call": "length", "args": [{ "path": ["{{NumberEntryId}}"] }] }, { "value": 3 }] } }
+            """));
+        var saved = await r.Store.SaveAsync(EditorRepo.OverlayTableId, Encoding.UTF8.GetBytes(node.ToJsonString()), overlay.Hash, ChangeSource.Editor, Ct);
+
+        Assert.True(saved.Outcome == SaveOutcome.Saved, string.Join("; ", saved.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        var stored = JsonNode.Parse(File.ReadAllText(r.Repo.PathOf(OverlayPath)))!["checks"]![1]!["condition"]!.ToJsonString();
+        Assert.Equal($$"""
+            {"op":"and","args":[{"op":"le","args":[{"path":["{{IssuedOnId}}"]},{"path":["{{DueOnId}}"]}]},{"op":"ge","args":[{"path":["{{TotalAmount}}"]},{"value":0}]}]}
+            """, stored);
+
+        var due = (await r.Store.PreviewExpressionAsync(new ExpressionPreviewRequest { Element = "01K9EXW0000000000000000W01" }, Ct)).Preview!;
+        Assert.Equal(("issuedOn <= dueOn and total.amount >= 0", "bool", null), (due.Text, due.Type, due.Sql));
+        Assert.Contains("synthesized", due.SqlNote, StringComparison.Ordinal);
+        using var values = JsonDocument.Parse("""{ "number": "INV" }""");
+        var number = (await r.Store.PreviewExpressionAsync(new ExpressionPreviewRequest { Element = "01K9EXW0000000000000000W02", Values = values.RootElement }, Ct)).Preview!;
+        Assert.Equal(("length(number) >= 3", true), (number.Text, number.Answer));
+        var text = (await r.Store.PreviewExpressionAsync(new ExpressionPreviewRequest
+        {
+            Element = EditorRepo.OverlayTableId, Text = "length(number) < 3", Site = "check", Values = values.RootElement,
+        }, Ct)).Preview!;
+        Assert.Equal(("length(number) < 3", false), (text.Text, text.Answer));
+    }
+
+    [Fact]
+    public async Task Preview_of_an_overlay_check_reads_values_by_the_names_its_text_prints()
+    {
+        // The check reads issuedOn through an override entry that renames its column issue_date, and total.amount: the preview prints
+        // them by the attributes' names, so its JavaScript reads values by those names (a value object's members nested), as an entity
+        // check's does, and answers by them.
+        await using var r = EditorRepo.Create(packs: false);
+        const string EntryId = "01K9EXR0000000000000000W21";
+        OverlayChecks(r, $$"""
+            { "id": "01K9EXR0000000000000000W22", "name": "ck_entry", "condition": { "op": "le", "args": [{ "path": ["{{EntryId}}"] }, { "path": ["{{DueOnId}}"] }] } }
+            """, $$"""
+            { "id": "01K9EXR0000000000000000W12", "name": "ck_invoices_total", "condition": { "op": "ge", "args": [{ "path": ["{{TotalAmount}}"] }, { "value": 0 }] } }
+            """);
+        EditOnDisk(r, OverlayPath, t => t["columns"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "{{EntryId}}", "attribute": "{{IssuedOnId}}", "name": "issue_date" }""")));
+        async Task<ExpressionPreviewDetail> PreviewAsync(string element, string values)
+        {
+            using var row = JsonDocument.Parse(values);
+            return (await r.Store.PreviewExpressionAsync(new ExpressionPreviewRequest { Element = element, Values = row.RootElement }, Ct)).Preview!;
+        }
+
+        var late = await PreviewAsync("01K9EXR0000000000000000W22", """{ "issuedOn": "2024-03-01", "dueOn": "2024-02-01" }""");
+        var early = await PreviewAsync("01K9EXR0000000000000000W22", """{ "issuedOn": "2024-01-01", "dueOn": "2024-02-01" }""");
+        var negative = await PreviewAsync("01K9EXR0000000000000000W12", """{ "total": { "amount": -1 } }""");
+
+        Assert.Equal(("issuedOn <= dueOn", "(row) => mq.passes(mq.le(mq.date(mq.at(row, \"issuedOn\")), mq.date(mq.at(row, \"dueOn\"))))", false),
+            (late.Text, late.JavaScript, late.Answer));
+        Assert.Equal(true, early.Answer);
+        Assert.Equal(("total.amount >= 0", false), (negative.Text, negative.Answer));
+        Assert.Contains("mq.at(row, \"total\", \"amount\")", negative.JavaScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preview_of_an_overlay_check_reads_an_attribute_as_its_override_entry_makes_its_column()
+    {
+        // dueOn's entry makes its column not null and number's makes it char(32), so a check on them is not nullable and reads number
+        // without its trailing spaces.
+        await using var r = EditorRepo.Create(packs: false);
+        OverlayChecks(r, DueAfterIssue, $$"""
+            { "id": "01K9EXR0000000000000000W13", "name": "ck_invoices_number",
+              "condition": { "op": "ge", "args": [{ "call": "length", "args": [{ "path": ["{{NumberId}}"] }] }, { "value": 3 }] } }
+            """);
+        EditOnDisk(r, OverlayPath, t =>
+        {
+            t["columns"]![0]!["nativeType"] = "char(32)";
+            t["columns"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "01K9EXR0000000000000000W24", "attribute": "{{DueOnId}}", "nullable": false }"""));
+        });
+
+        var due = (await r.Store.PreviewExpressionAsync(new ExpressionPreviewRequest { Element = "01K9EXR0000000000000000W11" }, Ct)).Preview!;
+        var number = (await r.Store.PreviewExpressionAsync(new ExpressionPreviewRequest { Element = "01K9EXR0000000000000000W13" }, Ct)).Preview!;
+
+        Assert.False(due.Nullable);
+        Assert.Contains("mq.fixed(mq.at(row, \"number\"))", number.JavaScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Text_on_an_overlay_check_may_name_an_override_entry_by_its_own_name_unless_another_member_has_it()
+    {
+        // issuedOn's entry renames its column issue_date, which text may write for issuedOn, and prints as issuedOn; number's entry renames
+        // its column dueOn, the name of Invoice's attribute dueOn, which text keeps reading.
+        await using var r = EditorRepo.Create(packs: false);
+        OverlayChecks(r);
+        EditOnDisk(r, OverlayPath, t =>
+        {
+            t["columns"]![0]!["name"] = "dueOn";
+            t["columns"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "01K9EXR0000000000000000W21", "attribute": "{{IssuedOnId}}", "name": "issue_date" }"""));
+        });
+        var overlay = (await r.Store.GetElementAsync(EditorRepo.OverlayTableId, Ct))!;
+        var node = JsonNode.Parse(overlay.Json.GetRawText())!.AsObject();
+        node["checks"]!.AsArray().Add(JsonNode.Parse("""
+            { "id": "01K9EXW0000000000000000W03", "name": "ck_invoices_due_after_issue", "condition": { "text": "issue_date <= dueOn and length(number) > 0" } }
+            """));
+        var saved = await r.Store.SaveAsync(EditorRepo.OverlayTableId, Encoding.UTF8.GetBytes(node.ToJsonString()), overlay.Hash, ChangeSource.Editor, Ct);
+
+        Assert.True(saved.Outcome == SaveOutcome.Saved, string.Join("; ", saved.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        var stored = JsonNode.Parse(File.ReadAllText(r.Repo.PathOf(OverlayPath)))!["checks"]![1]!["condition"]!.ToJsonString();
+        Assert.Equal($$"""
+            {"op":"and","args":[{"op":"le","args":[{"path":["{{IssuedOnId}}"]},{"path":["{{DueOnId}}"]}]},{"op":"gt","args":[{"call":"length","args":[{"path":["{{NumberId}}"]}]},{"value":0}]}]}
+            """, stored);
+        var preview = (await r.Store.PreviewExpressionAsync(new ExpressionPreviewRequest { Element = "01K9EXW0000000000000000W03" }, Ct)).Preview!;
+        Assert.Equal("issuedOn <= dueOn and length(number) > 0", preview.Text);
     }
 
     [Fact]

@@ -41,10 +41,10 @@ internal sealed record ExprSite(string Pointer, Expr? Tree, bool Raw, string Sub
 
 /// <summary>
 /// The expression sites of the model and the scope each reads (next-phase-3-design.md section 3.1): a table's columns (with those its
-/// stereotypes contribute, by keyed id) or a stereotype's at its checks; an entity's attributes (its bases' too, value-object members
-/// as <c>attribute.member</c>) at its checks and derived values; an operation's input and its subject's attributes (under
-/// <c>subject</c>) at its guards; a process's context and the payloads of the events that use a guard (under <c>event</c>) at the
-/// guard; a constraint's parameters at its condition.
+/// stereotypes contribute, by keyed id, and on the overlay of an entity's table the entity's attributes) or a stereotype's at its
+/// checks; an entity's attributes (its bases' too, value-object members as <c>attribute.member</c>) at its checks and derived values;
+/// an operation's input and its subject's attributes (under <c>subject</c>) at its guards; a process's context and the payloads of the
+/// events that use a guard (under <c>event</c>) at the guard; a constraint's parameters at its condition.
 /// </summary>
 internal static class ExprSites
 {
@@ -154,11 +154,87 @@ internal static class ExprSites
         _ => null,
     };
 
-    /// <summary>A table's columns: its own and those its stereotypes contribute, by their keyed ids.</summary>
+    /// <summary>
+    /// A table's columns: its own and those its stereotypes contribute, by their keyed ids. On the overlay of an entity's table the
+    /// entity's attributes and value object members come first, named as an entity check names them and held under the keys the
+    /// resolver gives their columns (<c>attributeId</c>, <c>attributeId.memberId</c>): validation cannot know the physical names the
+    /// naming conventions decide. An override entry of one of them reads as that member under the entry's id too, typed as the entry
+    /// makes its column (<see cref="Overridden"/>), and its name, when it gives one, is another name text may write for the member, unless
+    /// a member or column already has it; foreign key columns are not attributes, so only an entry that names one reads it.
+    /// </summary>
     private static void TableColumns(ExprScope scope, ModelSnapshot model, Table table)
     {
+        var entity = OverlaidEntity(model, table);
+        if (entity is not null)
+        {
+            Dictionary<string, Column>? entries = null;
+            foreach (var column in table.Columns)
+            {
+                if (column.Attribute is { } key)
+                    (entries ??= new(StringComparer.Ordinal)).TryAdd(key, column);
+            }
+
+            AddAttributes(scope.Root, model, AttributesOf(model, entity), null,
+                entries is null ? null : m => entries.TryGetValue(m.Id, out var entry) ? Overridden(m, entry) : m);
+            foreach (var column in table.Columns)
+            {
+                if (column.Attribute is { } key && scope.Root.Member(key) is { } overridden)
+                    scope.Root.Add(overridden with { Id = column.Id });
+            }
+        }
+
         Columns(scope, model, table.Columns);
         Columns(scope, model, [.. TableMembers.Of(model, table).Columns.Select(m => m.Member)]);
+        if (entity is null)
+            return;
+        foreach (var column in table.Columns)
+        {
+            if (column is { Attribute: { } key, Name.Length: > 0 })
+                scope.Root.Alias(key, column.Name);
+        }
+    }
+
+    /// <summary>
+    /// An attribute or value object member as an override entry makes its column: of the entry's <c>type</c> when it sets one (an enum
+    /// or a code keeps its type, since the entry sets only how its column stores it), nullable as the entry says, fixed-length when the
+    /// entry makes it so, with the entry's scale; as the resolver applies the entry. A <c>typeRef</c> on such an entry is MQ4082, and the
+    /// resolver ignores it.
+    /// </summary>
+    private static ExprMember Overridden(ExprMember member, Column entry) => member with
+    {
+        Type = entry.Type is { } keyword && member.Type.Kind is not ("enum" or "code" or "value-object") ? ExprType.FromBuiltin(keyword) : member.Type,
+        Nullable = entry.Nullable ?? member.Nullable,
+        FixedLength = member.FixedLength || entry.FixedLength || (entry.NativeType?.StartsWith("char(", StringComparison.OrdinalIgnoreCase) ?? false),
+        Scale = entry.Scale ?? member.Scale,
+    };
+
+    /// <summary>The entity whose own table an overlay overrides (not one of its child tables), or <see langword="null"/>.</summary>
+    internal static Entity? OverlaidEntity(ModelSnapshot model, Table table) =>
+        table is { Origin: TableOrigin.Synthesized, Entity: { } id, Attribute: null } ? model.Get<Entity>(id) : null;
+
+    /// <summary>
+    /// The columns of an overlay of an entity's table (its own, and those its stereotypes contribute) whose name an attribute of the
+    /// entity has in a check's scope, each with that attribute: text that writes the name reads the attribute, so it cannot name the
+    /// column, and a check that reads the column prints as one that reads the attribute (MQ3102 where a check reads either). Empty on
+    /// any other table.
+    /// </summary>
+    internal static IReadOnlyList<(ExprMember Attribute, Column Column)> Shadowed(ModelSnapshot model, Table table, ExprScope scope)
+    {
+        if (OverlaidEntity(model, table) is null)
+            return [];
+        List<(ExprMember, Column)>? shadowed = null;
+        List<Column> columns = [.. table.Columns, .. TableMembers.Of(model, table).Columns.Select(m => m.Member)];
+        var ids = columns.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var column in columns)
+        {
+            // An entry of an attribute reads as the attribute; any other column whose name a member that is no column has is shadowed.
+            if (column.Name.Length == 0 || (column.Attribute is { } key && scope.Root.Member(key) is not null))
+                continue;
+            if (scope.Root.Find([column.Name]) is ExprMember named && !string.Equals(named.Id, column.Id, StringComparison.Ordinal) && !ids.Contains(named.Id))
+                (shadowed ??= []).Add((named, column));
+        }
+
+        return shadowed ?? [];
     }
 
     /// <summary>The ids of the members an operation's subject offers a guard (its attributes and navigations), for MQ3111; none without one.</summary>
@@ -444,27 +520,34 @@ internal static class ExprSites
 
     private static void Attributes(ExprScope scope, ModelSnapshot model, Entity entity) => AddAttributes(scope.Root, model, AttributesOf(model, entity), null);
 
-    private static void AddAttributes(ExprContainer container, ModelSnapshot model, IEnumerable<ModelAttribute> attributes, string? prefix)
+    /// <summary>
+    /// Adds attributes, and the members of each value object one holds as <c>attribute.member</c>; <paramref name="overridden"/>, when
+    /// given, changes each member before it is added (an overlay entry's type).
+    /// </summary>
+    private static void AddAttributes(ExprContainer container, ModelSnapshot model, IEnumerable<ModelAttribute> attributes, string? prefix,
+        Func<ExprMember, ExprMember>? overridden = null)
     {
         foreach (var attribute in attributes)
         {
             var type = TypeOf(model, attribute.Type);
-            container.Add(new ExprMember(attribute.Id, attribute.Name, type, !attribute.Required)
+            var own = new ExprMember(attribute.Id, attribute.Name, type, !attribute.Required)
             {
                 Prefix = prefix,
                 Collection = attribute.Collection,
                 Scale = attribute.Scale,
-            });
+            };
+            container.Add(overridden is null ? own : overridden(own));
             if (type.Kind != "value-object" || model.Get<ValueObject>(type.Of!) is not { } valueObject)
                 continue;
             foreach (var member in valueObject.Attributes)
             {
-                container.Add(new ExprMember(attribute.Id + "." + member.Id, member.Name, TypeOf(model, member.Type), !attribute.Required || !member.Required)
+                var inner = new ExprMember(attribute.Id + "." + member.Id, member.Name, TypeOf(model, member.Type), !attribute.Required || !member.Required)
                 {
                     Prefix = prefix is null ? attribute.Name : prefix + "." + attribute.Name,
                     Collection = member.Collection,
                     Scale = member.Scale,
-                });
+                };
+                container.Add(overridden is null ? inner : overridden(inner));
             }
         }
     }
@@ -553,6 +636,7 @@ internal static class ExpressionRules
         var trees = new Dictionary<string, Expr>(StringComparer.Ordinal);
         var typedTrees = new Dictionary<string, TypedExpr>(StringComparer.Ordinal);
         Dictionary<string, Column>? columns = null;
+        IReadOnlyList<(ExprMember Attribute, Column Column)>? clashes = null;
         foreach (var site in sites)
         {
             if (site.Raw && site.Tree is not null)
@@ -572,6 +656,9 @@ internal static class ExpressionRules
             var typed = ExprTyper.Type(tree, scope, problems);
             foreach (var problem in problems)
                 report.Add(problem);
+            // Read from the stored paths, so a check that does not type because the name read the attribute still says why.
+            if (element is Table overlay && (clashes ??= ExprSites.Shadowed(model, overlay, scope)).Count > 0)
+                ReportShadowed(model, overlay, site, ExprSites.PathsOf(tree, typed).SelectMany(p => p), clashes, report);
             if (typed is null)
                 continue;
             if (problems.All(p => p.Severity != DiagnosticSeverity.Error))
@@ -592,7 +679,8 @@ internal static class ExpressionRules
             }
 
             var read = ExprSites.PathsOf(tree, typed).SelectMany(p => p).ToHashSet(StringComparer.Ordinal);
-            if (site.Reads is { } wanted && !read.Contains(wanted) && !read.Contains(wanted.Split('.', '@', ':')[^1]))
+            if (site.Reads is { } wanted && !read.Contains(wanted) && !read.Contains(wanted.Split('.', '@', ':')[^1])
+                && !(element is Table table && ReadsThroughOverride(table, read, wanted)))
             {
                 report.Add("MQ3114", element is Entity
                     ? "The entity check does not read its attribute, so a failure points at a member the condition does not judge; point attribute at a member it reads."
@@ -618,6 +706,39 @@ internal static class ExpressionRules
         if (element is Entity entity)
             CheckBindings(model, entity, trees, typedTrees, report);
     }
+
+    /// <summary>
+    /// MQ3102 at an overlay's check that reads an attribute, or a column of the attribute's name (<see cref="ExprSites.Shadowed"/>): text
+    /// that writes the name reads the attribute, so it cannot name the column, and a check that reads the column prints as one that
+    /// reads the attribute. The name keeps reading the attribute; renaming the column ends the clash.
+    /// </summary>
+    private static void ReportShadowed(ModelSnapshot model, Table overlay, ExprSite site, IEnumerable<string> paths,
+        IReadOnlyList<(ExprMember Attribute, Column Column)> shadowed, Report report)
+    {
+        var read = paths.ToHashSet(StringComparer.Ordinal);
+        foreach (var (attribute, column) in shadowed)
+        {
+            var readsAttribute = read.Contains(attribute.Id)
+                || overlay.Columns.Any(c => string.Equals(c.Attribute, attribute.Id, StringComparison.Ordinal) && read.Contains(c.Id));
+            if (!readsAttribute && !read.Contains(column.Id))
+                continue;
+            var own = overlay.Columns.Any(c => string.Equals(c.Id, column.Id, StringComparison.Ordinal));
+            var entity = ExprSites.OverlaidEntity(model, overlay)?.Name;
+            report.Add("MQ3102", $"The check reads '{column.Name}', a name both attribute '{attribute.Name}' of entity '{entity}' and "
+                + (own ? $"the overlay's column '{column.Name}' have" : $"column '{column.Name}', which a stereotype gives the table, have")
+                + ": text that writes it reads the attribute, so it cannot name the column. Rename the column" + (own ? "." : " in its stereotype."),
+                site.Pointer, site.SubId);
+        }
+    }
+
+    /// <summary>
+    /// Whether an overlay's column check reads its column through the other id of an override entry: the key the entry overrides where
+    /// <c>column</c> names the entry, or the entry where it names the key. Both read the same column.
+    /// </summary>
+    private static bool ReadsThroughOverride(Table table, HashSet<string> read, string column) =>
+        table.Origin == TableOrigin.Synthesized && table.Columns.Any(c => c.Attribute is { } key
+            && ((string.Equals(c.Id, column, StringComparison.Ordinal) && read.Contains(key))
+                || (string.Equals(key, column, StringComparison.Ordinal) && read.Contains(c.Id))));
 
     /// <summary>The columns a table's or stereotype's checks read, by the id their paths hold (a contributed column's keyed id).</summary>
     private static Dictionary<string, Column> ColumnsOf(ModelSnapshot model, Element element)

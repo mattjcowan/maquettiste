@@ -46,9 +46,10 @@ public sealed record ExpressionPreviewRequest
     public string? Database { get; init; }
 
     /// <summary>
-    /// The row the expression reads, a JSON object of members by name: a table's column names, an entity's attribute names (a value
-    /// object's members nested), a process's context attributes with the event's payload under <c>event</c>, an operation's input
-    /// members with the subject under <c>subject</c>. <see langword="null"/> previews no answer.
+    /// The row the expression reads, a JSON object of members by name: a table's column names (on a synthesized table, the names its
+    /// text prints: an overlay's attributes as an entity's), an entity's attribute names (a value object's members nested), a process's
+    /// context attributes with the event's payload under <c>event</c>, an operation's input members with the subject under
+    /// <c>subject</c>. <see langword="null"/> previews no answer.
     /// </summary>
     public JsonElement? Values { get; init; }
 }
@@ -149,8 +150,9 @@ public sealed partial class ModelStore
                 note = lowering.FirstOrDefault()?.Message ?? "The expression does not lower to SQL.";
         }
 
-        // A table's checks read the row by column names; every other site reads the API's values by member name.
-        var columns = element is Table or Stereotype
+        // A table's checks read the row by column names; every other site reads the API's values by member name, and so does a synthesized
+        // table's, whose column names only resolution knows: by the names its text prints (an attribute, a value object's members nested).
+        var columns = element is Table { Origin: not TableOrigin.Synthesized } or Stereotype
             ? TableMapping(snapshot, element, null, site.SubId, document.Path)
             : ExprResolution.ApiColumns(snapshot, site.SubId, document.Path);
         var javaScript = ExprLowering.ToJavaScript(typed, site.Kind, columns);

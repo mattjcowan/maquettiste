@@ -2461,7 +2461,7 @@ most 64 deep (MQ3113).
 
 | Site | Where in the file | What it reads | Mode | `now()` | What stays beside it |
 | --- | --- | --- | --- | --- | --- |
-| Table and column check | `checks[].condition` of a table file, an overlay or a stereotype | the table's columns: own, inherited and contributed (on an overlay, its own and contributed columns only, for now; on a stereotype, its own columns) | check | no | `expression`, SQL text per dialect |
+| Table and column check | `checks[].condition` of a table file, an overlay or a stereotype | the table's columns: own, inherited and contributed (on an overlay of an entity's table, also the entity's attributes and value object members, by attribute name; on a stereotype, its own columns) | check | no | `expression`, SQL text per dialect |
 | Entity check | the entity's `checks`: `name`, `attribute`, `condition`, `message` | the entity's attributes, inherited ones and value object members | check | no | `validation` facets and JavaScript rules |
 | Derived value | an attribute's `derived.value` | the entity's other attributes | value | no | `derived.expression`, text for templates |
 | Process guard | `guards[].condition` | context attributes; `event.amount` for a payload attribute (so a context attribute named `event` cannot be read, MQ3102) | guard | the simulation's clock | `expression`, JavaScript |
@@ -2478,7 +2478,17 @@ attribute's `required`, never the expression's concern.
 - **Table and column checks.** The engine writes a tree check into the DDL of the database that holds the table, so
   sql-ddl prints it with no template change; on a database that is not PostgreSQL, the DDL leaves it out (MQ4056). A
   column check must read its `column` (MQ3114). A check keeps its identity when a column it reads is renamed: the
-  migration renames the column and leaves the check alone.
+  migration renames the column and leaves the check alone. On an overlay of an entity's table, a check names the
+  entity's attributes as an entity check does (`issuedOn <= dueOn` on Invoice's overlay), and the DDL names the columns
+  the table gives them, so a change of naming convention never touches the check. A path through the overlay entry of an
+  attribute's column reads as the attribute, with the type the entry gives the column (an entry that stores `number` as
+  `int32` makes `length(number)` an error), and text may also write the entry's own name (`issue_date` for `issuedOn`),
+  which prints back as the attribute. A column of the overlay's own that has an attribute's name cannot be named in
+  text, which reads the attribute, so a check that reads either is MQ3102 until the column is renamed. An attribute the
+  table does not store, because the mapping ignores it or does not store it, or a value object member stored as JSON, is
+  MQ4008 at the check, and the DDL leaves the check out; `materialize-tables` refuses the entity until the check reads
+  stored members only. The preview of an overlay's check reads `--values` by the names its text prints, a value
+  object's members nested.
 - **Entity checks.** `attribute` is the attribute a failure points at (`/issuedOn` in an API error) and must be one
   the condition reads (MQ3114), and `message` is the text a failure reports. A table enforces an entity check only
   through a binding that lists it ([Checks a binding enforces](#checks-a-binding-enforces)). A derived entity inherits
@@ -2642,7 +2652,7 @@ reports one MQ5003 or MQ5002 instead of a finding on every object. MQ3112 is not
 | Rule | Severity | What it reports |
 | --- | --- | --- |
 | MQ3101 | error | An expression does not parse, or a node is malformed: an unknown operator or function, a wrong number of operands. A save whose text does not parse is refused |
-| MQ3102 | error | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, a payload attribute that an event using the guard lacks, or a context attribute named `event`, under which a guard's condition reads the payload |
+| MQ3102 | error | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, a payload attribute that an event using the guard lacks, a context attribute named `event`, under which a guard's condition reads the payload, or an overlay's column named like an attribute of its entity, which text reads as the attribute |
 | MQ3103 | error | The types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, `+` on a date, `date_part` of `hour` or `minute` on a date, a site's answer that is not a boolean, a derived value of another type than its attribute, a type the language does not have (`float` among them), an enum member or code against a value of no enum or reference type, or a code the column it is compared with cannot store |
 | MQ3104 | error | `now()` at a check, a value or a rule condition, directly or through a constraint; only guards read the clock |
 | MQ3105 | error | A regular expression outside the portable subset |

@@ -5,6 +5,19 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.12.1 (unreleased)
+
+- **Overlay checks read the entity's attributes.** A check in the expression language on the overlay of an entity's
+  table names the entity's attributes and value object members by attribute name, as an entity check does
+  (`issuedOn <= dueOn`), and the DDL names the columns the table gives them, so a change of naming convention never
+  touches the check. An overlay entry of an attribute's column, which often has no name, now prints as the attribute
+  rather than as `""`; it has the type the entry gives the column, and text may still write the entry's own name. A
+  column of the overlay's own that has an attribute's name is MQ3102 at a check that reads either. An attribute the
+  table does not store, because the mapping ignores it or does not store it, or a value object member stored as JSON,
+  is MQ4008 at the check, and the DDL leaves the check out. `materialize-tables` turns a check on attributes into one
+  on the new table's columns, and refuses while a check reads a member the table does not store. The
+  [user guide](user-guide.md#where-expressions-go) has the details.
+
 ## 0.12.0 (2026-11-04)
 
 - **Library packs.** A pack can list other packs in `uses`, each with a version range: its templates include their

@@ -87,6 +87,22 @@ public sealed class ExprContainer
         return this;
     }
 
+    /// <summary>
+    /// Adds another name the text may write for a member already added (an overlay entry's own name for its attribute's column): text
+    /// by either name reads the member, which prints by its own name. Ignored when the name is taken, so an alias never hides another
+    /// member's name and the first name added wins, or when no member has the id. Like <see cref="Add(ExprMember)"/>, called while the
+    /// container is built: by its fill, which holds the lock, or before it is shared.
+    /// </summary>
+    /// <param name="id">The member's id.</param>
+    /// <param name="name">The other name, written without a prefix.</param>
+    /// <returns>This container.</returns>
+    internal ExprContainer Alias(string id, string name)
+    {
+        if (_members.TryGetValue(id, out var member))
+            _byName.TryAdd(Key(null, name), member);
+        return this;
+    }
+
     /// <summary>Adds a navigation; a second navigation with the same id or name is ignored.</summary>
     /// <param name="navigation">The navigation.</param>
     /// <returns>This container.</returns>

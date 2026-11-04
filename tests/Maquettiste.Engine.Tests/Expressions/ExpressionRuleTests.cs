@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Tests.Editor;
 using Maquettiste.Testing;
+using static Maquettiste.Engine.Tests.Expressions.ExpressionResolutionTests;
 
 namespace Maquettiste.Engine.Tests.Expressions;
 
@@ -384,6 +386,81 @@ public sealed class ExpressionRuleTests
 
         Edit(repo, EntityPath, e => e["checks"]![0]!["attribute"] = SkuAttributeId);
         await AssertRuleAsync(repo, "MQ3114", "/checks/0/condition");
+    }
+
+    [Fact]
+    public async Task An_overlay_check_reads_its_entitys_attributes_and_a_column_check_its_column_through_either_key()
+    {
+        // On Invoice's overlay, number's override entry and number's column key read the same column, so a column check on either reads
+        // it through the other; one on number that reads only issuedOn does not, and Customer's name is no member of Invoice's table.
+        await using var r = EditorRepo.Create(packs: false);
+        const string CustomerName = "01J92P0V0MS09YFZHX07JQ3KMN";
+        static string Long(string path) => $$"""{ "op": "ge", "args": [{ "call": "length", "args": [{ "path": ["{{path}}"] }] }, { "value": 3 }] }""";
+        OverlayChecks(r,
+            DueAfterIssue,
+            $$"""{ "id": "01K9EXR0000000000000000W41", "name": "ck_a", "column": "{{NumberEntryId}}", "condition": {{Long(NumberId)}} }""",
+            $$"""{ "id": "01K9EXR0000000000000000W42", "name": "ck_b", "column": "{{NumberId}}", "condition": {{Long(NumberEntryId)}} }""",
+            $$"""
+            { "id": "01K9EXR0000000000000000W43", "name": "ck_c", "column": "{{NumberId}}",
+              "condition": { "op": "isNotNull", "args": [{ "path": ["{{IssuedOnId}}"] }] } }
+            """,
+            $$"""{ "id": "01K9EXR0000000000000000W44", "name": "ck_d", "condition": {{Long(CustomerName)}} }""");
+        var diagnostics = (await r.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics.Where(d => d.FilePath == OverlayPath).ToList();
+
+        Assert.Equal([("MQ3114", "/checks/4/condition"), ("MQ3102", "/checks/5/condition/args/0/args/0")],
+            diagnostics.Where(d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal)).Select(d => (d.Rule, d.JsonPointer)));
+    }
+
+    [Fact]
+    public async Task An_overlay_check_types_an_attribute_as_its_override_entry_types_the_column()
+    {
+        // number's entry stores it as int32, so length(number) does not type, by number's key or by the entry's id, as the column's
+        // char_length would not run; status's entry stores the enum as int16, which keeps it an enum, so status = InvoiceStatus.Paid types.
+        await using var r = EditorRepo.Create(packs: false);
+        const string StatusId = "01J92P0V0VB1Z49SWERMAGR4TV", PaidId = "01J92P0V0C731P7ME05AVZSCT8";
+        static string Long(string path) => $$"""{ "op": "ge", "args": [{ "call": "length", "args": [{ "path": ["{{path}}"] }] }, { "value": 3 }] }""";
+        OverlayChecks(r,
+            $$"""{ "id": "01K9EXR0000000000000000W61", "name": "ck_a", "condition": {{Long(NumberId)}} }""",
+            $$"""{ "id": "01K9EXR0000000000000000W62", "name": "ck_b", "condition": {{Long(NumberEntryId)}} }""",
+            $$"""
+            { "id": "01K9EXR0000000000000000W63", "name": "ck_c",
+              "condition": { "op": "eq", "args": [{ "path": ["{{StatusId}}"] }, { "ref": "{{PaidId}}" }] } }
+            """);
+        EditOnDisk(r, OverlayPath, t =>
+        {
+            var number = t["columns"]![0]!.AsObject();
+            number.Remove("nativeType");
+            number["type"] = "int32";
+            t["columns"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "01K9EXR0000000000000000W64", "attribute": "{{StatusId}}", "type": "int16" }"""));
+        });
+        var diagnostics = (await r.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics.Where(d => d.FilePath == OverlayPath).ToList();
+
+        Assert.Equal([("MQ3103", "/checks/1/condition/args/0/args/0"), ("MQ3103", "/checks/2/condition/args/0/args/0")],
+            diagnostics.Where(d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal)).Select(d => (d.Rule, d.JsonPointer)));
+        Assert.All(diagnostics.Where(d => d.Rule == "MQ3103"), d => Assert.Equal("length() takes string, not int32.", d.Message));
+    }
+
+    [Fact]
+    public async Task MQ3102_an_overlay_column_named_like_an_attribute_of_its_entity()
+    {
+        // The overlay's extra column dueOn has the name of Invoice's attribute dueOn, which text reads by that name: a check that reads
+        // either is MQ3102 naming both, and one that reads neither is not. The name keeps reading the attribute.
+        await using var r = EditorRepo.Create(packs: false);
+        const string ExtraId = "01K9EXR0000000000000000X01";
+        OverlayChecks(r,
+            $$"""{ "id": "01K9EXR0000000000000000X02", "name": "ck_extra", "condition": { "op": "ge", "args": [{ "path": ["{{ExtraId}}"] }, { "value": 0 }] } }""",
+            DueAfterIssue,
+            $$"""{ "id": "01K9EXR0000000000000000X03", "name": "ck_issued", "condition": { "op": "isNotNull", "args": [{ "path": ["{{IssuedOnId}}"] }] } }""");
+        EditOnDisk(r, OverlayPath, t => t["columns"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "{{ExtraId}}", "name": "dueOn", "type": "int32" }""")));
+        var diagnostics = (await r.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics.Where(d => d.FilePath == OverlayPath).ToList();
+
+        Assert.Equal([("MQ3102", "/checks/1/condition"), ("MQ3102", "/checks/2/condition")],
+            diagnostics.Where(d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal)).Select(d => (d.Rule, d.JsonPointer)));
+        Assert.All(diagnostics.Where(d => d.Rule == "MQ3102"), d => Assert.Equal(
+            "The check reads 'dueOn', a name both attribute 'dueOn' of entity 'Invoice' and the overlay's column 'dueOn' have: text that writes it "
+            + "reads the attribute, so it cannot name the column. Rename the column.", d.Message));
+        var text = (await r.Store.PreviewExpressionAsync(new ExpressionPreviewRequest { Element = EditorRepo.OverlayTableId, Text = "dueOn is null", Site = "check" }, Ct)).Preview!;
+        Assert.Contains("mq.date(mq.at(row, \"dueOn\"))", text.JavaScript, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -1,11 +1,13 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Text;
+using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Loading;
 
@@ -113,6 +115,8 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
                 columns[column.Key] = id;
             }
 
+            if (overlay is not null && UnstoredRead(entity, table, overlay, columns) is { } unstored)
+                return Refused(unstored);
             tables[table.Key] = (entity, table, overlay, tableId, columns);
             if (overlay is not null)
                 tables[overlay.Id] = tables[table.Key];
@@ -149,6 +153,36 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
             SetRelationForeignKey(db, relationId, fkId);
         RewriteReferences(db, rdb, tables);
         return Result();
+    }
+
+    /// <summary>
+    /// Why an overlay's check in the expression language cannot move into the designed table: a path reads an attribute of the entity,
+    /// or a value object member, or an override entry of one, that the projected table stores in no column (MQ4008 at the check), so the
+    /// designed table would have no column for it. <see langword="null"/> when every such path reads a column. The check is never
+    /// dropped: materialize refuses until it reads stored members only.
+    /// </summary>
+    private string? UnstoredRead(Entity entity, RTable table, Table overlay, Dictionary<string, string> columns)
+    {
+        HashSet<string>? attributes = null;
+        foreach (var check in overlay.Checks)
+        {
+            if (check.Condition is not { } condition || check.Expression.Count > 0)
+                continue;
+            foreach (var id in ExprSites.PathIds(condition))
+            {
+                var key = overlay.Columns.FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.Ordinal))?.Attribute ?? id;
+                attributes ??= ExprSites.AttributesOf(snapshot, entity).Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+                if (columns.ContainsKey(key) || !attributes.Contains(key.Split('.')[0]))
+                    continue;
+                var site = ExprSites.Of(snapshot, overlay).First(s => string.Equals(s.SubId, check.Id, StringComparison.Ordinal));
+                var member = ExprText.Print(new Expr { Path = [id] }, ExprSites.Scope(snapshot, overlay, snapshot.GetDocument(overlay.Id), site, text: false));
+                return $"Check '{check.Name ?? check.Id}' of the overlay of entity '{entity.Name}' reads '{member}', which table '{table.Name}' stores in no column "
+                    + $"of its own (MQ4008 at {site.Pointer} of the overlay), so the designed table would have no column for it. Store '{member}' in the table, or "
+                    + "change or remove the check, then materialize again.";
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
