@@ -15,8 +15,9 @@ one.
   column of the overlay's own that has an attribute's name is MQ3102 at a check that reads either. An attribute the
   table does not store, because the mapping ignores it or does not store it, or a value object member stored as JSON,
   is MQ4008 at the check, and the DDL leaves the check out. `materialize-tables` turns a check on attributes into one
-  on the new table's columns, and refuses while a check reads a member the table does not store. The
-  [user guide](user-guide.md#where-expressions-go) has the details.
+  on the new table's columns, and refuses while a check reads a member the table does not store. It also converts a
+  check held as text into a tree first; text that does not parse or type is refused under the rule it breaks (such as
+  MQ3101 or MQ3103) and nothing is written. The [user guide](user-guide.md#where-expressions-go) has the details.
 
 ## 0.12.0 (2026-11-04)
 

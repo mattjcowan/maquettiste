@@ -3,7 +3,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
-using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
@@ -90,7 +89,7 @@ public sealed partial class ModelStore
                 continue;
             var scope = ExprSites.Scope(snapshot, element, document, site, text: true);
             var before = problems.Count;
-            var tree = Convert(site.Tree!, scope, problems);
+            var tree = ExprSites.ParseTexts(site.Tree!, scope, problems);
             if (problems.Count > before)
                 continue;
             SetValue(root, site.Pointer, JsonSerializer.SerializeToNode(tree, EngineJson.Options)!);
@@ -98,27 +97,6 @@ public sealed partial class ModelStore
         }
 
         return changed;
-    }
-
-    /// <summary>A tree with each text node parsed in the scope.</summary>
-    private static Expr Convert(Expr e, ExprScope scope, List<Diagnostic> problems)
-    {
-        if (e.Text is { } text)
-        {
-            var parsed = ExprText.Parse(text, scope);
-            if (parsed.Tree is { } tree)
-                return tree;
-            problems.Add(parsed.Problem ?? RuleCatalog.Create("MQ3101", "The expression '" + text + "' does not parse.", scope.ElementId, scope.FilePath, scope.Pointer));
-            return e;
-        }
-
-        return e with
-        {
-            Args = e.Args is { } args ? [.. args.Select(a => Convert(a, scope, problems))] : null,
-            Case = e.Case is { } branches ? [.. branches.Select(w => new ExprWhen { When = Convert(w.When, scope, problems), Then = Convert(w.Then, scope, problems) })] : null,
-            Else = e.Else is { } otherwise ? Convert(otherwise, scope, problems) : null,
-            With = e.With is { } with ? [.. with.Select(a => a with { Value = Convert(a.Value, scope, problems) })] : null,
-        };
     }
 
     /// <summary>

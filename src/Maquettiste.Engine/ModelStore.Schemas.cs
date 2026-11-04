@@ -38,8 +38,8 @@ public sealed partial class ModelStore
             var pointer = "/operations/" + i.ToString(CultureInfo.InvariantCulture);
             IReadOnlyList<Diagnostic>? Wrap(string rule, string? refusal) => refusal is null ? null : [RuleCatalog.Create(rule, refusal, o.Id, null, pointer)];
             var refusals = IsSchemaOperation(o.Op) ? Wrap("MQ4015", work.Apply(o))
-                : IsMaterializeOperation(o.Op) ? Wrap("MQ4055", await MaterializeAsync(snapshot, o, materialized, materializeResults, ct).ConfigureAwait(false))
-                : IsBindingOperation(o.Op) ? Wrap("MQ4089", await MaterializeAsync(snapshot, o, materialized, materializeResults, ct).ConfigureAwait(false))
+                : IsMaterializeOperation(o.Op) ? await MaterializeAsync(snapshot, o, "MQ4055", pointer, materialized, materializeResults, ct).ConfigureAwait(false)
+                : IsBindingOperation(o.Op) ? await MaterializeAsync(snapshot, o, "MQ4089", pointer, materialized, materializeResults, ct).ConfigureAwait(false)
                 : o.Op == BatchOp.Retag ? Wrap("MQ1002", Retag(snapshot, o, materialized))
                 : o.Op == BatchOp.TagsToProperty ? TagsToProperty(snapshot, o, materialized, pointer)
                 : o.Op == BatchOp.NamesToIds ? NamesToIds(snapshot, o, materialized, pointer)
