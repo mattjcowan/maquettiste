@@ -559,7 +559,7 @@ test.describe("explorer at scale (?mock=large)", () => {
     within(info, m, CHANGE_MISS);
   });
 
-  test("General-mode editor: next entity on the Mappings tab (walk 20)", async ({ page }, info) => {
+  test("General-mode editor: next entity on the Storage tab (walk 20)", async ({ page }, info) => {
     await watchExplorer(page);
     await openLarge(page);
     const tree = page.getByTestId("explorer-tree");
@@ -594,14 +594,14 @@ test.describe("explorer at scale (?mock=large)", () => {
     await page.keyboard.press("Enter");
     const editor = page.getByTestId("element-editor");
     await expect(editor).toHaveAttribute("data-id", first);
-    await editor.getByRole("tab", { name: "Mappings" }).click();
+    await editor.getByRole("tab", { name: "Storage" }).click();
     await page.getByTestId("follow-selection").click();
     await expect(page.getByTestId("follow-selection")).toHaveAttribute("aria-pressed", "true");
     await tree.focus();
 
     // Each step clicks the next entity row (a click selects; the following tab shows the selection).
     const CLICK = `document.querySelector('[data-testid="explorer-tree"] [data-key="' + arg + '"]').click();`;
-    const SHOWN = `const e = document.querySelector('[data-testid="element-editor"]'); return !!e && e.getAttribute("data-id") === arg && !!e.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.includes("Mappings");`;
+    const SHOWN = `const e = document.querySelector('[data-testid="element-editor"]'); return !!e && e.getAttribute("data-id") === arg && !!e.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.includes("Storage");`;
     const times: number[] = [];
     let current = first;
     for (let i = 0; i < 20; i++) {
@@ -617,7 +617,7 @@ test.describe("explorer at scale (?mock=large)", () => {
     const sorted = [...times].sort((a, b) => a - b);
     const median = sorted[Math.floor(sorted.length / 2)];
     const m = record(info, {
-      name: "General-mode editor, next entity on the Mappings tab (median of 20)",
+      name: "General-mode editor, next entity on the Storage tab (median of 20)",
       ms: median,
       mockMs: 0,
       targetMs: 100,
@@ -626,7 +626,7 @@ test.describe("explorer at scale (?mock=large)", () => {
     within(
       info,
       m,
-      "About 155 to 178 ms a step when first measured; 100.3 to 106.1 ms median after the 2026-09-29 close-out (the entity editor stays mounted from one entity to the next, the base entity picker's 5,000 options are built once per index); what remains is the Mappings tab's per-entity queries and the explorer's selection commit.",
+      "About 155 to 178 ms a step when first measured; 100.3 to 106.1 ms median after the 2026-09-29 close-out (the entity editor stays mounted from one entity to the next, the base entity picker's 5,000 options are built once per index); what remains is the Storage tab's per-entity queries and the explorer's selection commit.",
     );
   });
 
