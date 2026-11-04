@@ -130,4 +130,20 @@ public sealed class DeclaredRuleExpressionTests
         Assert.Empty(await harness.FoundOnAsync(report, "x/long-rationale"));
         Assert.Equal(["Customer"], await harness.FoundOnAsync(report, "x/not-customer"));
     }
+
+    [Fact]
+    public async Task Text_in_a_rule_file_stays_text_and_reads_members_by_name_with_no_MQ3108()
+    {
+        // A rule file names members by path text, so a tree would hold the same text: MQ3108's advice (convert it to a tree) does not
+        // apply, and text judges the objects as the tree does.
+        await using var harness = DeclaredRuleHarness.WithRules(
+            Rule("long-retention", Audited, """{ "text": "properties.retentionDays >= 3000" }"""),
+            Rule("not-customer", Entities, """{ "text": "name <> 'Customer'" }"""));
+
+        var report = await harness.ValidateAsync();
+
+        Assert.DoesNotContain(report.Diagnostics, d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal) || d.Rule is "MQ5016" or "MQ5017");
+        Assert.Equal(["Customer", "Payment"], await harness.FoundOnAsync(report, "x/long-retention"));
+        Assert.Equal(["Customer"], await harness.FoundOnAsync(report, "x/not-customer"));
+    }
 }

@@ -320,24 +320,28 @@ internal static class DeclaredRuleChecks
         /// An expression condition (next-phase-3-design.md section 3.1): each member path is walked as a has path is (MQ5016), and the
         /// tree is typed at a rule-condition site, members typed by the values their paths end at in the resolved record of the kinds
         /// it reads, and <c>properties.x</c> by the property schemas that declare <c>x</c> for one of them. A list is a collection and an
-        /// object no value, which no expression reads; <c>count</c> and <c>has</c> stay for them.
+        /// object no value, which no expression reads; <c>count</c> and <c>has</c> stay for them. Text stays text: its names are member
+        /// paths, walked as the parser meets them, which a tree would hold as the same text, so MQ3108 (convert it to a tree) does not apply.
         /// </summary>
         private void Expression(Expr expression, string at, IReadOnlyList<Type?> starts)
         {
             var members = new Dictionary<string, ExprMember?>(StringComparer.Ordinal);
-            foreach (var node in ExprSites.Nodes(expression).Where(n => n.Member is not null))
+            ExprMember? Read(string text)
             {
-                var text = node.Member!;
-                if (members.ContainsKey(text))
-                    continue;
+                if (members.TryGetValue(text, out var member))
+                    return member;
                 var ends = Walk(text, at, starts, "The path '" + text + "'");
-                members[text] = ends is null ? null : MemberOf(text, ends.FirstOrDefault(e => e is not null), starts);
+                return members[text] = ends is null ? null : MemberOf(text, ends.FirstOrDefault(e => e is not null), starts);
             }
 
-            var scope = new ExprScope(ExprSiteKind.RuleCondition) { FilePath = path, Pointer = pointer + at, MemberPaths = text => members.GetValueOrDefault(text) };
+            foreach (var node in ExprSites.Nodes(expression).Where(n => n.Member is not null))
+                Read(node.Member!);
+
+            var scope = new ExprScope(ExprSiteKind.RuleCondition) { FilePath = path, Pointer = pointer + at, MemberPaths = Read };
             var problems = new List<Diagnostic>();
             var typed = ExprTyper.Type(expression, scope, problems);
-            found.AddRange(problems.Where(p => p.Rule != "MQ3102" || !p.Message.Contains("member", StringComparison.Ordinal) || members.Values.All(m => m is not null)));
+            found.AddRange(problems.Where(p => p.Rule != "MQ3108"
+                && (p.Rule != "MQ3102" || !p.Message.Contains("member", StringComparison.Ordinal) || members.Values.All(m => m is not null))));
             if (Typed is not null && typed is not null && !problems.Any(p => p.Severity == DiagnosticSeverity.Error))
                 Typed[expression] = typed;
         }

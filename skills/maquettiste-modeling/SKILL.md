@@ -31,7 +31,8 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (a `subject` entity, optionally a bound enum attribute) or `orchestration` |
 | actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; may sit in a domain through `package` |
 | scenarios/<process>/ | scenario: a recorded run of one process, each step with what it expects | owned by its process and deleted with it |
-| operations/<subject>/ | operation: one command over the model (`subject`, `level`, `effect`, `input`, `outcomes`, `errors`, `redefines`, `excludes`, `fires`, `requires`) | in `operations/` itself without a subject; the subject is not owning, so deleting the entity is refused while an operation names it |
+| operations/<subject>/ | operation: one command over the model (`subject`, `level`, `effect`, `input`, `outcomes`, `errors`, `guards`, `redefines`, `excludes`, `fires`, `requires`) | in `operations/` itself without a subject; the subject is not owning, so deleting the entity is refused while an operation names it |
+| constraints/ | named constraint (`kind: "constraint"`): one condition in the expression language over typed `parameters`, with a `message` | cited by any check or guard with `satisfies`; see "Expressions" |
 | custom/<type>/ | custom element (`kind: "custom"`): an element of a kind the project declares in `extensions/kinds/<type>.json`, its fields under `content` | see Custom kinds below |
 | diagrams/ | canvas membership and positions only (a process's diagram holds its chart's places) | never own elements |
 | vocabularies/ | tags, categories, stereotypes | |
@@ -169,8 +170,9 @@ and the prompt `modeling-conventions` carry this text.
 A process is a statechart in one file: states nest in `states` (types atomic, compound, parallel, final, history, choice),
 `transitions` are in priority order, and events, guards, actions and invokes are declared in the process and referenced by
 id. Guards and actions carry an optional JavaScript `expression` (a guard returns a boolean, an action an object of context
-updates); one without an expression is a named stub that the generated code asks the team to implement. A lifecycle's
-root-level states must equal its bound enum's members, in order (MQ9203).
+updates); one without an expression is a named stub that the generated code asks the team to implement. A guard may
+hold a `condition` in the expression language instead (see "Expressions"), never both. A lifecycle's root-level states
+must equal its bound enum's members, in order (MQ9203).
 
 - Tools: `simulate_process` runs inputs through the engine's interpreter and keeps no state (send the whole input list each
   time; `enabled` says what can happen next); `record_scenario` saves a run as a scenario with every step's expectations
@@ -220,6 +222,42 @@ entity; model only the commands asked for.
   `get_resolved_model` has the scope `operations`. csharp-dapper's `operation-contracts` unit writes each operation's
   request, result, error codes and handler interface, and `operation-endpoints` one HTTP route per operation when the
   pack parameter `endpointsFolder` is set.
+
+## Expressions
+
+Checks, derived values and guards are written in one small language that reads like SQL (`issuedOn <= dueOn`). Files
+hold it as a tree of ids, so a rename never breaks it; the text is printed from current names.
+
+- Write text, never trees: wherever a tree goes, send `{ "text": "issuedOn <= dueOn" }` to `save_element`,
+  `create_element`, `patch_element` or `apply_batch`; the engine reads it with the site's names and stores the tree.
+  Text that does not parse refuses the write (MQ3101, with the position). Never write a tree's ids by hand. A rule
+  file keeps a declared rule's `expression` text as written: its paths are member names by design, so no tree is
+  needed.
+- Sites: a table or column check's `condition` (beside the SQL text of `expression`), the entity's `checks` (`name`,
+  `attribute` a failure points at, `condition`, `message`), an attribute's `derived.value`, a process guard's
+  `condition` (beside the JavaScript `expression`), an operation's `guards` (`condition`, the `error` it reports) and a
+  declared rule's `expression` (`member` paths). A rule used in several places is a `constraint` element, cited as
+  `satisfies PositiveAmount(amount: total.amount)`. A site holds its raw form or its tree, never both (MQ3107).
+- Names are the site's: attribute or column names, `total.amount` for a value object member, `InvoiceStatus.Paid` for
+  an enum member; at process guards also `event.amount` and `now()`; at operation guards also `subject.status`, to-one
+  navigations from the subject (`subject.customer.customerSince`) and `now()`. Checks and derived values read one row.
+  Dates move with `add_days` and `add_months`, a date meets a timestamp through `date_of`, times are UTC, and patterns
+  write `[0-9]`, never `\d`.
+- Nulls: a check passes when the answer is unknown, as a CHECK does; a guard or a rule condition holds only on true.
+  Whether a value must be given is the attribute's `required`: never write it into the expression.
+- An entity check reaches a table only when a binding lists its id in the binding's `checks`; then sql-ddl writes the
+  CHECK. MQ3115 warns on a check that a binding could enforce and none lists; ask before listing it.
+- Before saving, `preview_expression` (`element`, an id, then `at` for a stored expression or `text` with `site`:
+  `check`, `value`, `guard` or a site's pointer; `values` by member name adds the answer) shows the printed text, the
+  type, the JavaScript and the PostgreSQL text. It reads one element and writes nothing (CLI
+  `maquettiste expression preview`). `get_resolved_model` gives each entity check, derived value, guard and constraint
+  condition as `{ text, type, nullable, tree }`; read a table check's text with `preview_expression`.
+- Text left in a file by hand is MQ3108: `apply_batch` `{"op":"text-to-trees"}` (optionally `"elementIds":[...]`)
+  converts it; run it with `dryRun: true` first.
+- Never convert a process's JavaScript guards unasked. When asked: preview the text at the guard's pointer
+  (`/guards/0/condition`), compare its answers with the JavaScript's in `simulate_process`, mind null values, `!` on a
+  boolean that may be null and loose `==` (JavaScript reads them otherwise), then save `condition` and remove
+  `expression` in one write and run `verify_scenarios`.
 
 ## Custom kinds
 

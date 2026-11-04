@@ -289,6 +289,54 @@ one.
   them as `exports`. A changed name renders again exactly the files that read it. `maquettiste pack exports` and the MCP
   tool `get_pack_exports` (74 tools) show the names; plans record them. New rules MQ6047 to MQ6050. Unit states move to
   format 5, so the first run after the upgrade renders every unit once.
+- **One expression language.** A rule about values is written once, in a small typed language that reads like SQL
+  (`issuedOn <= dueOn`), and every place where it must hold reads the same text: table and column checks (`condition`,
+  beside the SQL text of `expression`), entity checks (the entity's new `checks`, each with the `attribute` a failure
+  points at and a `message`), derived values (`derived.value`), process guards (`condition`, beside the JavaScript
+  `expression`), operation guards (the operation's new `guards`, each with the `error` it reports) and declared rule
+  conditions (`expression`). The new kind `constraint` holds one named condition over typed parameters, which any site
+  cites with `satisfies PositiveAmount(amount: total.amount)`. Files hold a tree of ids, printed as text from current
+  names, so renaming an attribute or a column never breaks an expression. Every write accepts text in place of a tree
+  (`{ "text": "issuedOn <= dueOn" }`: the editor's JSON tab, `save_element`, `create_element`, `patch_element`,
+  `apply_batch`, `maquettiste model apply`) and stores the tree; text that does not parse refuses the save, and text
+  left in a file by hand converts with the batch operation `text-to-trees` or the Problems fix **Convert expressions to
+  trees**. Nulls follow SQL everywhere: a check passes when the answer is unknown, a guard or a rule condition holds
+  only when it is true. Integers and decimals are exact, strings compare by code point, times are UTC, and regular
+  expressions keep to a portable subset; `float` is not in the language, so its checks stay SQL text. A project that
+  writes no expression sees no change. The [user guide](user-guide.md#expressions) and the new [Write a check
+  once](guides/expressions.md) guide have the details.
+- **Checks in the DDL, guards in simulation.** sql-ddl writes a check held as a tree into the table's DDL on
+  PostgreSQL with no template change (`CONSTRAINT ck_invoices_due_after_issue CHECK (issued_on <= due_on)`); on another
+  dialect it is left out with MQ4056. An entity check reaches a table only through a binding that lists it in its new
+  `checks`, lowered through the field map, and MQ3115 warns about a check a binding could enforce and none lists. A
+  schema snapshot keeps a tree check across a rename of a column it reads, so the migration renames the column and
+  leaves the check alone. Simulation, scenario replay and `verify_scenarios` evaluate a guard held as a tree, with
+  `now()` reading the simulation's clock. Existing JavaScript guards stay as they are: the user guide shows how to
+  rewrite one by hand. A corpus of cases runs every operator and function in PostgreSQL and in JavaScript and requires
+  the same answers from both.
+- **Expressions for tools and packs.** `maquettiste expression preview`, the MCP tool `preview_expression` (77 tools)
+  and `POST /api/model/expressions/preview` show an expression's text, type, JavaScript and PostgreSQL text, and with
+  a row of values its answer, reading one element only. `get_resolved_model` gives each entity check, derived value,
+  guard and constraint condition as `{ text, type, nullable, tree }` (a table check's text is read with a preview) and
+  gains the scope `constraints`. Templates read the typed trees
+  (`entity.checks`, `check.condition`, `attribute.derived.value`, `guard.condition`, `operation.guards`,
+  `model.constraints`); `expression_sql` gives the PostgreSQL text through a binding and `expression_runtime` the
+  JavaScript runtime, for packs that write JavaScript. csharp-dapper renders conditions with `expr_cs`, an example
+  renderer to copy: an entity with checks gains `Validate()`, one error per failed check at the JSON pointer of its
+  attribute, and a guard held as a tree renders from its condition, matching patterns with .NET's linear-time mode.
+
+### Before you upgrade
+
+- **New rules.** MQ3101 to MQ3111 and MQ3113 to MQ3115 check expressions, and MQ4056 also reports a check written in
+  the expression language on a database that is not PostgreSQL. A model without expressions reports none of them.
+- **Times are UTC.** In the expression language, `date_of`, `date_part` and `add_months` of a `datetimeoffset` work on
+  its UTC date and time, and a `datetime` compared with a `datetimeoffset` reads as UTC, so "today" at a guard is the
+  UTC date. A project time zone may come later.
+- **Three known limits.** PostgreSQL and JavaScript answer the same everywhere but in three cases, listed under
+  [Portable rules](user-guide.md#portable-rules) in the user guide.
+- **Refresh the schema copies.** The kind schemas gain `checks`, `condition`, `guards` and the `constraint` kind. Run
+  `maquettiste init`, or start the editor, which refreshes them; until then `validate` and `generate` warn MQ1008 and
+  editors that check files against the copies do not know the new keys.
 
 ## 0.11.0 (unreleased)
 

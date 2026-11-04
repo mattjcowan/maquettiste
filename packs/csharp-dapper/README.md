@@ -49,7 +49,7 @@ value must be given is the attribute's `required`. A derived entity's `Validate(
 public virtual IReadOnlyList<(string Pointer, string Code, string Message)> Validate()
 {
     var errors = new List<(string Pointer, string Code, string Message)>();
-    bool? ok = (IssuedOn, DueOn) switch { ({ } v1, { } v2) => (bool?)(v1 <= v2), _ => null };
+    bool? ok = DueOn switch { { } v1 => (bool?)(IssuedOn <= v1), _ => null };
     if (ok == false)
         errors.Add(("/issuedOn", "dueAfterIssue", "An invoice is due on or after the day it is issued."));
     return errors;
