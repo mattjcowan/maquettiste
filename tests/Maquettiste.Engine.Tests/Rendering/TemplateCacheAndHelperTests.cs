@@ -385,4 +385,90 @@ public sealed class TemplateCacheAndHelperTests
         Assert.Contains("under tests/", error.Diagnostics[0].Message, StringComparison.Ordinal);
         Assert.Equal("A", new TemplateCache().Get(loaded, "a.scriban", null).Render());
     }
+
+    /// <summary>
+    /// <c>expression_sql</c> and <c>expression_runtime</c> (next-phase-3-design.md section 3.1, "Templates"), over the bindings fixture's
+    /// Product with the check pricePositive (<c>price &gt; 0</c>) and the derived attribute doubled (<c>price * 2</c>): each lowers through
+    /// the binding to products, a node's type reads as kind and width, and the runtime is the engine's.
+    /// </summary>
+    [Fact]
+    public async Task Expression_sql_lowers_through_a_binding_and_expression_runtime_is_the_engine_runtime()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = Expressions.ExpressionRuleTests.Repo();
+        const string price = Expressions.ExpressionRuleTests.PriceId;
+        Expressions.ExpressionRuleTests.Edit(repo, Expressions.ExpressionRuleTests.EntityPath, e =>
+        {
+            e["checks"] = System.Text.Json.Nodes.JsonNode.Parse($$"""
+                [ { "id": "01K9EXH0000000000000000C01", "name": "pricePositive", "attribute": "{{price}}",
+                    "condition": { "op": "gt", "args": [{ "path": ["{{price}}"] }, { "value": 0 }] } } ]
+                """);
+            e["attributes"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse($$"""
+                { "id": "01K9EXH0000000000000000A01", "name": "doubled", "type": "decimal", "precision": 14, "scale": 2,
+                  "derived": { "value": { "op": "mul", "args": [{ "path": ["{{price}}"] }, { "value": 2 }] } } }
+                """));
+        });
+        var model = await new Engine.Resolution.ModelResolver(repo.Options).ResolveAsync(await new ModelStore(repo.Options).GetSnapshotAsync(ct), null, ct);
+        var product = model.Entities.Single(e => e.Name == "Product");
+
+        var unit = await Adhoc.RenderAsync(
+            "{{ c = entity.checks[0].condition }}{{ expression_sql c entity.bindings.main }}|{{ c.type.kind }}:{{ c.args[0].type.kind }}:{{ c.args[1].type.bits }}|"
+            + "{{ for a in entity.attributes }}{{ if a.derived }}{{ expression_sql a.derived.value entity.bindings.main }}{{ end }}{{ end }}",
+            product, model: model);
+
+        Assert.Equal("price > 0|bool:decimal:32|(price * 2)", unit.Text());
+        Assert.Contains(unit.ReadKeys, k => k.Contains(Expressions.ExpressionRuleTests.ProductsId, StringComparison.Ordinal));
+        var operand = (await Adhoc.RenderAsync("{{ expression_sql entity.checks[0].condition.args[0] entity.bindings.main }}", product, model: model)).Error();
+        Assert.Equal("MQ6006", operand.Rule);
+        Assert.Contains("not one of its operands", operand.Message, StringComparison.Ordinal);
+        var notBinding = (await Adhoc.RenderAsync("{{ expression_sql entity.checks[0].condition 'main' }}", product, model: model)).Error();
+        Assert.Contains("takes a binding", notBinding.Message, StringComparison.Ordinal);
+
+        Assert.Equal(Engine.Expressions.ExprRuntime.Source, (await Adhoc.RenderAsync("{{ expression_runtime }}", model: model)).Text());
+    }
+
+    /// <summary>
+    /// A literal's exact text (next-phase-3-design.md section 3.1, "Templates"): an integer beyond 2^53 is a 64-bit integer in
+    /// <c>value</c>, which a script holds as a double, so <c>value_text</c> (<c>valueText</c> in a script) keeps its digits, and a
+    /// decimal's text keeps its scale.
+    /// </summary>
+    [Fact]
+    public async Task A_literal_reads_as_its_exact_text_in_templates_and_scripts()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = Expressions.ExpressionRuleTests.Repo();
+        const string price = Expressions.ExpressionRuleTests.PriceId;
+        Expressions.ExpressionRuleTests.Edit(repo, Expressions.ExpressionRuleTests.EntityPath, e => e["checks"] = System.Text.Json.Nodes.JsonNode.Parse($$"""
+            [ { "id": "01K9EXH0000000000000000C02", "name": "idBound", "attribute": "01K6BFX0000000000000000022",
+                "condition": { "op": "le", "args": [{ "path": ["01K6BFX0000000000000000022"] }, { "value": 9007199254740993 }] } },
+              { "id": "01K9EXH0000000000000000C03", "name": "priceFloor", "attribute": "{{price}}",
+                "condition": { "op": "ge", "args": [{ "path": ["{{price}}"] }, { "value": "0.50", "type": "decimal" }] } } ]
+            """));
+        var model = await new Engine.Resolution.ModelResolver(repo.Options).ResolveAsync(await new ModelStore(repo.Options).GetSnapshotAsync(ct), null, ct);
+        var product = model.Entities.Single(e => e.Name == "Product");
+        var helpers = new Dictionary<string, string>
+        {
+            ["helpers.js"] = "maquettiste.helper(\"js_text\", (n) => n.valueText);\nmaquettiste.helper(\"js_value\", (n) => String(n.value));\n",
+        };
+
+        var unit = await Adhoc.RenderAsync(
+            "{{ for c in entity.checks }}{{ v = c.condition.args[1] }}{{ v.value_text }} {{ js_text v }} {{ js_value v }};{{ end }}{{ entity.checks[0].condition.value_text ?? 'none' }}",
+            product, files: helpers, model: model);
+
+        Assert.Equal("9007199254740993 9007199254740993 9007199254740992;0.50 0.50 0.50;none", unit.Text());
+    }
+
+    /// <summary>Reading <c>entity.checks</c> on an entity that has none records no key beyond those of the entity itself.</summary>
+    [Fact]
+    public async Task Reading_the_checks_of_an_entity_without_checks_keeps_its_incremental_keys()
+    {
+        var model = await BillingModel.GetAsync();
+        var invoice = model.Entities.Single(e => e.Name == "Invoice");
+        const string plain = "{{ entity.name }}{{ for a in entity.attributes }}{{ a.name }}{{ end }}";
+
+        var without = await Adhoc.RenderAsync(plain, invoice, model: model);
+        var with = await Adhoc.RenderAsync(plain + "{{ for c in entity.checks }}{{ c.name }}{{ end }}{{ entity.checks.size }}", invoice, model: model);
+
+        Assert.Equal(without.ReadKeys, with.ReadKeys);
+    }
 }

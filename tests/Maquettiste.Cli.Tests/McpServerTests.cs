@@ -14,7 +14,7 @@ public sealed class McpSurfaceTests
         "export_process", "export_seed_csv", "fold_migrations", "format_model", "generate", "get_binding_drift", "get_calculated", "get_database_view", "get_element", "get_elements", "get_ledger_ddl", "get_materialize_status", "get_model_index", "get_model_kinds", "get_pack",
         "get_pack_exports", "get_pack_outputs", "get_plan", "get_plan_diff", "get_project", "get_references", "get_resolved_model", "get_schema", "get_settings", "get_template_context",
         "get_translations", "import_process", "import_seed_csv", "list_extension_files", "list_migrations", "list_pack_files", "list_packs", "list_snapshots", "list_validation_rules",
-        "localization_status", "move_extension_file", "move_pack_file", "new_pack", "patch_element", "plan", "preview_binding_sql", "preview_materialize", "preview_query_sql", "preview_seed_rows", "preview_unit", "read_extension_file", "read_pack_file", "record_scenario",
+        "localization_status", "move_extension_file", "move_pack_file", "new_pack", "patch_element", "plan", "preview_binding_sql", "preview_expression", "preview_materialize", "preview_query_sql", "preview_seed_rows", "preview_unit", "read_extension_file", "read_pack_file", "record_scenario",
         "reference_type_usage", "rename_pack", "restore_snapshot", "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "simulate_process",
         "sync_enum_from_process", "tag_usage", "test_pack", "unit_paths", "validate", "verify_scenarios", "write_extension_file", "write_pack_file",
     ];
@@ -55,7 +55,7 @@ public sealed class McpSurfaceTests
         var ct = TestContext.Current.CancellationToken;
         await using var session = await McpSession.StartAsync(ct: ct);
         var tools = await session.Client.ListToolsAsync(cancellationToken: ct);
-        Assert.Equal(30, Engine.AgentTools.All.Count);
+        Assert.Equal(31, Engine.AgentTools.All.Count);
         foreach (var tool in Engine.AgentTools.All)
         {
             var listed = tools.Single(t => t.Name == tool.Name).ProtocolTool;
@@ -1276,6 +1276,43 @@ public sealed class McpReadTests
         Assert.Equal(printed.Out, (string)answer["markdown"]!);
         Assert.Null(answer["next"]); // one page: the diff holds three elements
         Assert.Contains("- added migration `rename column billing.invoices.number`", printed.Out, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Preview_expression_reads_one_element()
+    {
+        // next-phase-3-design.md section 3.1, decision 24: the bindings fixture's Product holds the check pricePositive, listed by its
+        // binding to products. A broken entity elsewhere keeps the model from validating, so a preview that resolves the model answers
+        // nothing; the expression preview reads the one element and the binding's table, and answers.
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = ExpressionCommandTests.Bindings();
+        await using var session = await McpSession.StartAsync(repo, ct);
+        Assert.NotEqual(0, (int)(await session.OkAsync("validate"))["errors"]!);
+        Assert.Null((await session.OkAsync("preview_query_sql", new { id = "01K6BFX0000000000000000021" }))["preview"]);
+
+        // A stored check, named by its own id: printed, typed, lowered through the binding to products, and judged as a CHECK.
+        var stored = (await session.OkAsync("preview_expression", new { element = ExpressionCommandTests.CheckId }))["preview"]!;
+        Assert.Equal(("price > 0", "bool", false), ((string)stored["text"]!, (string)stored["type"]!, (bool)stored["nullable"]!));
+        Assert.Equal("(row) => mq.passes(mq.gt(mq.dec(mq.at(row, \"price\"), 2), mq.dec(\"0\")))", (string)stored["javascript"]!);
+        Assert.Equal(("price > 0", null, null), ((string?)stored["sql"], (string?)stored["sqlNote"], (string?)stored["answer"]));
+        var atPointer = await session.OkAsync("preview_expression", new { element = ExpressionCommandTests.ProductId, at = "/checks/0", values = new { price = "0.00" } });
+        Assert.False((bool)atPointer["preview"]!["answer"]!);
+        Assert.Empty(atPointer["diagnostics"]!.AsArray());
+        var unknown = await session.OkAsync("preview_expression", new { element = ExpressionCommandTests.ProductId, values = new { price = (string?)null } });
+        Assert.True((bool)unknown["preview"]!["answer"]!); // unknown passes a check
+
+        // Text at the table's check site reads the table's own columns, by their physical names.
+        var text = (await session.OkAsync("preview_expression", new { element = "01K6BFX0000000000000000007", text = "length(sku) >= 3", site = "check" }))["preview"]!;
+        Assert.Equal(("length(sku) >= 3", "char_length(sku) >= 3"), ((string)text["text"]!, (string)text["sql"]!));
+        Assert.StartsWith("(row) => mq.passes(mq.ge(mq.length(mq.str(mq.at(row, \"sku\")))", (string)text["javascript"]!, StringComparison.Ordinal);
+
+        // Text that does not parse previews nothing; a request that names nothing is refused.
+        var bad = await session.OkAsync("preview_expression", new { element = ExpressionCommandTests.ProductId, text = "price >", site = "check" });
+        Assert.Null(bad["preview"]);
+        Assert.Equal("MQ3101", (string)Assert.Single(bad["diagnostics"]!.AsArray())!["rule"]!);
+        Assert.Equal("not-found", (await session.ErrorAsync("preview_expression", new { element = "01K9EXP0000000000000000X99" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("preview_expression", new { element = ExpressionCommandTests.ProductId, at = "/checks/0", text = "price > 1", site = "check" })).Code);
+        Assert.Equal("bad-request", (await session.ErrorAsync("preview_expression", new { element = ExpressionCommandTests.ProductId, text = "price > 1", site = "guard" })).Code);
     }
 }
 

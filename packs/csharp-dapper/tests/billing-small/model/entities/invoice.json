@@ -39,6 +39,104 @@
       "id": "01JD0000000000000000000A15",
       "name": "issuedOn",
       "type": "date"
+    },
+    {
+      "id": "01JD0000000000000000000A16",
+      "name": "dueOn",
+      "type": "date"
+    }
+  ],
+  "checks": [
+    {
+      "id": "01JD0000000000000000000C01",
+      "name": "dueAfterIssue",
+      "attribute": "01JD0000000000000000000A15",
+      "condition": {
+        "op": "le",
+        "args": [
+          {
+            "path": [
+              "01JD0000000000000000000A15"
+            ]
+          },
+          {
+            "path": [
+              "01JD0000000000000000000A16"
+            ]
+          }
+        ]
+      },
+      "message": "An invoice is due on or after the day it is issued."
+    },
+    {
+      "id": "01JD0000000000000000000C02",
+      "name": "totalNotNegative",
+      "attribute": "01JD0000000000000000000A14",
+      "condition": {
+        "op": "ge",
+        "args": [
+          {
+            "path": [
+              "01JD0000000000000000000A14"
+            ]
+          },
+          {
+            "value": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JD0000000000000000000C03",
+      "name": "numberFormat",
+      "attribute": "01JD0000000000000000000A12",
+      "condition": {
+        "call": "matches",
+        "args": [
+          {
+            "path": [
+              "01JD0000000000000000000A12"
+            ]
+          },
+          {
+            "value": "^INV-[0-9]+$"
+          }
+        ]
+      },
+      "message": "An invoice number is INV- and digits."
+    },
+    {
+      "id": "01JD0000000000000000000C04",
+      "name": "issuedUnlessDraft",
+      "attribute": "01JD0000000000000000000A15",
+      "condition": {
+        "op": "or",
+        "args": [
+          {
+            "op": "eq",
+            "args": [
+              {
+                "path": [
+                  "01JD0000000000000000000A13"
+                ]
+              },
+              {
+                "ref": "01JD0000000000000000000V01"
+              }
+            ]
+          },
+          {
+            "op": "isNotNull",
+            "args": [
+              {
+                "path": [
+                  "01JD0000000000000000000A15"
+                ]
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

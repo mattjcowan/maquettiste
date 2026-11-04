@@ -453,6 +453,36 @@ public static class ModelEndpoints
         return Api.Json(await store.GetReferencesAsync(id, ct).ConfigureAwait(false));
     });
 
+    /// <summary>
+    /// One expression's text, type, JavaScript and PostgreSQL text, and with values its answer (next-phase-3-design.md section 3.1; the
+    /// MCP tool <c>preview_expression</c>): a stored one, or text at a site. Reads that element only and writes nothing.
+    /// </summary>
+    /// <param name="context">The request: <c>{ element, at, text, site, database, values }</c>.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the preview, 404 for an element that does not exist, or 400.</returns>
+    [HttpPost("/api/model/expressions/preview")]
+    public static Task<IResult> PreviewExpression(HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(store);
+        var (request, error) = await Api.ReadJsonAsync<ExpressionPreviewRequest>(context.Request, null, ct).ConfigureAwait(false);
+        if (error is not null)
+            return error;
+        if (string.IsNullOrEmpty(request!.Element))
+            return Api.BadRequest("element is required.");
+        if (await store.GetElementAsync(request.Element, ct).ConfigureAwait(false) is null)
+            return Api.NotFound("element", request.Element);
+        try
+        {
+            return Api.Json(await store.PreviewExpressionAsync(request, ct).ConfigureAwait(false));
+        }
+        catch (ArgumentException ex)
+        {
+            return Api.BadRequest(ex.Message.Split(" (Parameter", 2)[0]);
+        }
+    });
+
     /// <summary>The save both <c>PUT /api/model/elements/{id}</c> and <c>PUT /api/diagrams/{id}</c> run.</summary>
     /// <param name="id">The element id.</param>
     /// <param name="context">The request.</param>

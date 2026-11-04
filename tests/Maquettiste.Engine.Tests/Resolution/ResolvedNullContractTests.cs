@@ -92,6 +92,7 @@ public sealed class ResolvedNullContractTests
         ["RConstraint"] = "named constraints: ExpressionResolutionTests",
         ["RConstraintParameter"] = "named constraints: ExpressionResolutionTests",
         ["ROperationGuard"] = "operation guards: OperationGuardTests",
+        ["ExprType"] = "the type of an expression node: ExpressionResolutionTests",
     };
 
     [Fact]

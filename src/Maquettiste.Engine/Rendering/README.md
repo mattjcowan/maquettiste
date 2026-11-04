@@ -206,6 +206,18 @@ golden tree).
   `LedgerSchema` (PostgreSQL only), else `""`. It records the database and `s:migrations` (the hash of
   `migrations.ledgerSchema`), as `type_of` records `s:typeMaps`, so a changed schema re-renders every script that writes
   ledger rows.
+- **Expressions (next-phase-3-design.md section 3.1, task H12).** `expression_sql expr binding` lowers a whole condition or value
+  (`RExpression` with its root) to PostgreSQL through an `REntityBinding`'s fields, the written columns at a check and the read
+  ones elsewhere, through `ExprLowering`, the lowering resolution uses; another dialect gives `""` (the DDL leaves such a check
+  out, MQ4056), an operand or a path the binding does not map is MQ6006. It records the binding like `binding_sql`; the
+  expression's own keys are those of the object it was read from. `expression_runtime` returns `ExprRuntime.Source` and
+  records nothing: the runtime changes with the engine, whose version every static hash holds. An expression node's `type`
+  (`ExprType`) is template-visible through `MemberCatalog.IsProxyType`, which scripts share, so packs read `type.kind` and
+  `type.bits` in either language. A literal's `ValueText` is its text as the tree holds it, since a script reads `Value`'s
+  64-bit integer as a double, exact only to 2^53. `TrackingTemplateContext` needed no new member: `RExpression` and
+  `ExprType` record nothing themselves, and reading `entity.checks`, `check.condition`, `derived.value`, `guard.condition`
+  or `operation.guards` records only the keys of the object read, so a unit that reads none of them keeps its incremental
+  keys.
 
 ## Exports (next-phase-2-design.md section 5.3)
 

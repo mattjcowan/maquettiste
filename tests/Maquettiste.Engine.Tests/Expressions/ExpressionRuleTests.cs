@@ -228,7 +228,7 @@ public sealed class ExpressionRuleTests
     [Fact]
     public async Task MQ3108_alone_for_text_that_names_an_enum_member_and_a_constraint()
     {
-        // Text can name any enum, reference type or constraint, so its site reads them all, as text-to-trees does.
+        // Text can name any enum, reference type or constraint, so its site looks up each name the text writes, as text-to-trees does.
         using var repo = Repo();
         repo.WriteFile(".maquettiste/model/enums/product-status.json", """
             {
@@ -360,6 +360,29 @@ public sealed class ExpressionRuleTests
     {
         using var repo = Repo();
         TableCheck(repo, $$"""{ "op": "gt", "args": [{{Price}}, { "value": 0 }] }""", column: SkuColumnId);
+        await AssertRuleAsync(repo, "MQ3114", "/checks/0/condition");
+    }
+
+    [Fact]
+    public async Task MQ3114_and_MQ3115_read_the_paths_of_a_check_held_as_text()
+    {
+        // A check held as text names no ids until it is parsed, so the rules read its typed form: an entity check whose text reads its
+        // attribute is not MQ3114, and one whose text reads an attribute the binding does not map is no MQ3115, since no binding
+        // could enforce it.
+        using var repo = Repo();
+        Edit(repo, EntityPath, e =>
+        {
+            e["attributes"]!.AsArray().Add(new JsonObject { ["id"] = "01K9EXR0000000000000000E09", ["name"] = "notes", ["type"] = "string" });
+            e["checks"] = JsonNode.Parse($$"""
+                [ { "id": "01K9EXR0000000000000000E01", "name": "pricePositive", "attribute": "{{PriceId}}", "condition": { "text": "price > 0" } },
+                  { "id": "01K9EXR0000000000000000E02", "name": "notesGiven", "attribute": "01K9EXR0000000000000000E09", "condition": { "text": "notes <> ''" } } ]
+                """);
+            ((JsonObject)e["bindings"]![0]!)["checks"] = new JsonArray("01K9EXR0000000000000000E01");
+        });
+        var diagnostics = await ValidateAsync(repo);
+        Assert.Equal(["MQ3108", "MQ3108"], diagnostics.Where(d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal)).Select(d => d.Rule));
+
+        Edit(repo, EntityPath, e => e["checks"]![0]!["attribute"] = SkuAttributeId);
         await AssertRuleAsync(repo, "MQ3114", "/checks/0/condition");
     }
 

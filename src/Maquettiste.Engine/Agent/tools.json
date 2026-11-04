@@ -548,12 +548,12 @@
     {
       "name": "get_resolved_model",
       "title": "Resolved model",
-      "description": "The resolved model, what templates read, as flat records in pages: {items, next, diagnostics}. Each record has id, kind and name; other objects appear by id. entities: attributes resolved (type, default, isKey, isInherited for the base's; an attribute without a description of its own shows the comment of the column a binding maps it to, and descriptionColumn names that column), key, alternate keys, base and derived, navigations, relations, mappings per database (table and columns), annotations. relations: ends, attributes, mappings. processes: every state, transition, event, guard, action, gate and invoke, actors by id. operations: subject, level, effect, input members (type, keyOf or file with mediaTypes), outcomes (isDefault, completes, returns with members, entity or file, list, paging and maxPageSize), errors (code, input, and memberOrigin for an error a stereotype contributes, keyed <operationId>.<errorId>), defaultOutcome, fires and requires by id. custom-elements: one custom element per record with type, package, content as written and members (id, name, array, parent, pointer), every member at any depth. databases: the database view (tables with columns, keys, foreign keys and indexes, members a stereotype contributes keyed <tableKey>.<memberId> with their memberOrigin, and on a table without a file the stereotypes its schema and package defaults give it; views, sequences, routines, database types, SQL objects, queries with their SQL); tables, routines, database-types, sql-objects, queries: one object per record. migrations: one open migration fact per record, by database name then applied order, with its state, missing intent, after links, object, current key, from, to and content hash. Also packages, enums, value-objects, scalar-types, reference-types (with rows), seeds, actors, scenarios; all is every scope but tables, routines, database-types, sql-objects and queries, which databases holds. Each page also carries calculated: the calculated values of its records and the sub-objects they list, by site (the object id, or <holder id>/<attribute id> for an attribute its holder does not own) then name; a value that fails is left out and its diagnostic joins diagnostics. A model with errors returns no items and the errors in diagnostics, unless its only errors are pending migration facts (MQ4101): those still return items.",
+      "description": "The resolved model, what templates read, as flat records in pages: {items, next, diagnostics}. Each record has id, kind and name; other objects appear by id. entities: attributes resolved (type, default, isKey, isInherited for the base's; an attribute without a description of its own shows the comment of the column a binding maps it to, and descriptionColumn names that column), key, alternate keys, base and derived, navigations, relations, mappings per database (table and columns), annotations. relations: ends, attributes, mappings. processes: every state, transition, event, guard, action, gate and invoke, actors by id. operations: subject, level, effect, input members (type, keyOf or file with mediaTypes), outcomes (isDefault, completes, returns with members, entity or file, list, paging and maxPageSize), errors (code, input, and memberOrigin for an error a stereotype contributes, keyed <operationId>.<errorId>), defaultOutcome, fires and requires by id. custom-elements: one custom element per record with type, package, content as written and members (id, name, array, parent, pointer), every member at any depth. constraints: one named constraint per record with its typed parameters, condition and message; an entity's checks, a derived attribute's value and a process or operation guard's condition are written in the same expression language, each {text (printed from current names), type, nullable, tree (the ids the file holds)}, keys a model without expressions does not have. databases: the database view (tables with columns, keys, foreign keys and indexes, members a stereotype contributes keyed <tableKey>.<memberId> with their memberOrigin, and on a table without a file the stereotypes its schema and package defaults give it; views, sequences, routines, database types, SQL objects, queries with their SQL); tables, routines, database-types, sql-objects, queries: one object per record. migrations: one open migration fact per record, by database name then applied order, with its state, missing intent, after links, object, current key, from, to and content hash. Also packages, enums, value-objects, scalar-types, reference-types (with rows), seeds, actors, scenarios; all is every scope but tables, routines, database-types, sql-objects and queries, which databases holds. Each page also carries calculated: the calculated values of its records and the sub-objects they list, by site (the object id, or <holder id>/<attribute id> for an attribute its holder does not own) then name; a value that fails is left out and its diagnostic joins diagnostics. A model with errors returns no items and the errors in diagnostics, unless its only errors are pending migration facts (MQ4101): those still return items.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "scope": {
-            "description": "all (default), packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, operations, databases, tables, routines, database-types, sql-objects, queries or migrations.",
+            "description": "all (default), packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, operations, custom-elements, constraints, databases, tables, routines, database-types, sql-objects, queries or migrations.",
             "type": [
               "string",
               "null"
@@ -777,6 +777,67 @@
         "required": [
           "entity",
           "binding"
+        ]
+      }
+    },
+    {
+      "name": "preview_expression",
+      "title": "Preview expression",
+      "description": "One expression of the expression language (a check, an entity check, a derived value, a process or operation guard, a constraint's condition), read from one element and never the whole model: {preview: {text, type, nullable, javascript, sql, sqlNote, answer}, diagnostics}. text is printed from current names; type is bool, int16, int32, int64, decimal, double, string, date, time, datetime, datetimeoffset, uuid, json, enum <id> or code <id>; javascript is the function over a row that calls the expression runtime as mq; sql is the PostgreSQL text through the one table the site reads (a table's own columns; for an entity's check or value, its binding's field map onto the binding's table), else null with sqlNote saying why (a guard or a constraint reads no table, another dialect is MQ4056). Preview a stored expression with element (the element, or the check, guard or attribute that holds it) and at (its pointer, /checks/0/condition; optional when the element holds one), or text that is not saved with element, text and site: check, value or guard, or the pointer of a site, whose scope and mode the text takes (a JavaScript guard's /guards/0/condition reads the payloads of the events that use it; use it to rewrite a guard by hand and compare with simulate_process). values (a JSON object of the row by member name: a table's column names, an entity's attribute names, a process's context with the event's payload under event, an operation's input with the subject under subject) adds answer under the site's mode: a check passes on true or unknown, a guard holds on true only, a value answers itself (a decimal as exact text); now() reads the sandbox's fixed clock, 2000-01-01T00:00:00Z. Send numbers with many digits as strings. preview is null when the text does not parse or the expression does not type (MQ3101 to MQ3113 in diagnostics). An unknown element is not-found; a request without element, with both at and text, an unknown site or database, is bad-request. Nothing is written.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "element": {
+            "description": "The id of the element, or of the check, guard or derived attribute, that holds the expression, or on which text is written; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "at": {
+            "description": "The pointer of a stored expression in the element's file (/checks/0/condition, /guards/1/condition, /attributes/3/derived/value) or of what holds it (/checks/0); omit when the element holds one, and with text.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "text": {
+            "description": "Text to preview instead of a stored expression, for example issuedOn <= dueOn; needs site.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "site": {
+            "description": "With text: check (a table, stereotype, entity or constraint), value (an entity's derived value) or guard (a process or operation), or the pointer of one of the element's sites.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "database": {
+            "description": "A database id or name: an entity's expression lowers to SQL through its binding to that database; omit for the binding that lists the check, or the only one.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "values": {
+            "description": "The row the expression reads, members by name; adds answer.",
+            "type": [
+              "object",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "element"
         ]
       }
     },

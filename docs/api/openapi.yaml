@@ -2854,6 +2854,55 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
+  /api/model/expressions/preview:
+    post:
+      tags: [model]
+      operationId: previewExpression
+      summary: One expression's text, type, JavaScript and SQL
+      description: |
+        Previews one expression of the expression language (next-phase-3-design.md section 3.1): a check, an entity check, a
+        derived value, a process or operation guard, or a constraint's condition. `element` names the element, or the check,
+        guard or derived attribute, that holds it; `at` is the stored expression's pointer (`/checks/0/condition`), optional
+        when the element holds one. Or `text` that is not saved, with `site`: `check`, `value` or `guard`, or the pointer of one
+        of the element's sites, whose scope and mode the text takes (a JavaScript guard's `/guards/0/condition` reads the
+        payloads of the events that use it). The answer has the text printed from current names, the type, whether it may be
+        null, the JavaScript function over a row that calls the expression runtime as `mq`, and the PostgreSQL text through the
+        one table the site reads (a table's own columns; an entity's check or value through its binding's field map onto the
+        binding's table, `database` choosing the binding), else `sql` null and `sqlNote` saying why (a guard or a constraint
+        reads no table; another dialect is MQ4056). `values`, the row by member name, adds `answer` under the site's mode: a
+        check passes on true or unknown, a guard holds on true only, a value answers itself (a decimal as exact text);
+        `now()` reads the sandbox's fixed clock, 2000-01-01T00:00:00Z. `preview` is null when the text does not parse or the
+        expression does not type, with MQ3101 to MQ3113 in `diagnostics`. The preview reads that element and what its
+        expression names; the model is neither validated nor resolved, and nothing is written. The MCP tool `preview_expression` and `maquettiste expression preview` answer the same.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ModelStore.PreviewExpressionAsync(request) (404 when ModelStore.GetElementAsync finds nothing)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpressionPreviewRequest'
+            example:
+              element: 01J92P0V0FJ23CGSNKM7P1W5V7
+              text: issuedOn <= dueOn
+              site: check
+              values: { issuedOn: '2026-01-31', dueOn: null }
+      responses:
+        '200':
+          description: The forms of the expression, or the diagnostics that prevented them.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpressionPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ModelUnavailable'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
   /api/model/queries/{id}/sql:
     parameters:
       - $ref: '#/components/parameters/ElementId'
@@ -9117,6 +9166,81 @@ components:
           type: object
           additionalProperties: true
           description: The tree as the file holds it (`common.json#/$defs/expr`), paths, enum members, codes and constraints by id.
+    ExpressionPreviewRequest:
+      x-engine-record: Maquettiste.Engine.ExpressionPreviewRequest
+      description: 'What `previewExpression` previews: a stored expression (`at`), or `text` at a `site`.'
+      type: object
+      required: [element]
+      properties:
+        element:
+          type: string
+          description: The id of the element, or of the check, guard or derived attribute, that holds the expression or takes the text.
+        at:
+          type: [string, 'null']
+          description: The pointer of a stored expression in the element's file, or of what holds it; omit when the element holds one, and with text.
+        text:
+          type: [string, 'null']
+          description: Text to preview instead of a stored expression; needs `site`.
+        site:
+          type: [string, 'null']
+          description: With `text`, `check`, `value` or `guard`, or the pointer of one of the element's sites.
+        database:
+          type: [string, 'null']
+          description: A database id or name, choosing the binding an entity's expression lowers to SQL through.
+        values:
+          type: [object, 'null']
+          additionalProperties: true
+          description: The row the expression reads, members by name (a process guard's payload under `event`, an operation's subject under `subject`).
+    ExpressionPreview:
+      x-engine-record: Maquettiste.Engine.ExpressionPreview
+      type: object
+      required: [preview, diagnostics]
+      properties:
+        preview:
+          oneOf:
+            - $ref: '#/components/schemas/ExpressionPreviewDetail'
+            - type: 'null'
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+      example:
+        preview:
+          text: issuedOn <= dueOn
+          type: bool
+          nullable: true
+          javascript: '(row) => mq.passes(mq.le(mq.date(mq.at(row, "issuedOn")), mq.date(mq.at(row, "dueOn"))))'
+          sql: issued_on <= due_on
+          sqlNote: null
+          answer: true
+        diagnostics: []
+    ExpressionPreviewDetail:
+      x-engine-record: Maquettiste.Engine.ExpressionPreviewDetail
+      description: The forms of one expression.
+      type: object
+      required: [text, type, nullable, javascript, sql, sqlNote, answer]
+      properties:
+        text:
+          type: string
+          description: The text, printed from current names.
+        type:
+          type: string
+          description: The type as messages write it (`bool`, `int32`, `decimal`, `date`, `enum <id>`, `code <id>`).
+        nullable:
+          type: boolean
+        javascript:
+          type: string
+          description: The function over a row that calls the expression runtime as `mq`.
+        sql:
+          type: [string, 'null']
+          description: The PostgreSQL text through the one table the site reads; null when there is none.
+        sqlNote:
+          type: [string, 'null']
+          description: Why `sql` is null; null when there is SQL.
+        answer:
+          description: >-
+            With values, the answer under the site's mode (a check's or guard's boolean, a value's JSON form, a decimal as exact
+            text); null without values.
     EntityCheckRecord:
       x-engine-record: Maquettiste.Engine.EntityCheckRecord
       description: 'An entity check: a condition every record of the entity meets, unknown passing. A binding that lists it writes it into its table.'

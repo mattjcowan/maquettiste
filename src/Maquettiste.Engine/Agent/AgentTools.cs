@@ -102,6 +102,7 @@ public sealed partial class AgentTools
             ["list_validation_rules"] = ListValidationRulesAsync,
             ["localization_status"] = LocalizationStatusAsync,
             ["preview_binding_sql"] = PreviewBindingSqlAsync,
+            ["preview_expression"] = PreviewExpressionAsync,
             ["preview_materialize"] = PreviewMaterializeAsync,
             ["preview_query_sql"] = PreviewQuerySqlAsync,
             ["preview_seed_rows"] = PreviewSeedRowsAsync,
@@ -328,6 +329,8 @@ public sealed partial class AgentTools
         public string[]? Strings(string name) => TryGet(name, out var v) && v.ValueKind == JsonValueKind.Array
             ? [.. v.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.String ? e.GetString()! : e.GetRawText())]
             : null;
+
+        public JsonElement? Json(string name) => TryGet(name, out var v) ? v : null;
 
         public T? Deserialize<T>(string name, JsonSerializerOptions options) where T : class =>
             TryGet(name, out var v) ? v.Deserialize<T>(options) : null;

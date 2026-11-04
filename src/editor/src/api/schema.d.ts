@@ -560,6 +560,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/model/expressions/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * One expression's text, type, JavaScript and SQL
+         * @description Previews one expression of the expression language (next-phase-3-design.md section 3.1): a check, an entity check, a
+         *     derived value, a process or operation guard, or a constraint's condition. `element` names the element, or the check,
+         *     guard or derived attribute, that holds it; `at` is the stored expression's pointer (`/checks/0/condition`), optional
+         *     when the element holds one. Or `text` that is not saved, with `site`: `check`, `value` or `guard`, or the pointer of one
+         *     of the element's sites, whose scope and mode the text takes (a JavaScript guard's `/guards/0/condition` reads the
+         *     payloads of the events that use it). The answer has the text printed from current names, the type, whether it may be
+         *     null, the JavaScript function over a row that calls the expression runtime as `mq`, and the PostgreSQL text through the
+         *     one table the site reads (a table's own columns; an entity's check or value through its binding's field map onto the
+         *     binding's table, `database` choosing the binding), else `sql` null and `sqlNote` saying why (a guard or a constraint
+         *     reads no table; another dialect is MQ4056). `values`, the row by member name, adds `answer` under the site's mode: a
+         *     check passes on true or unknown, a guard holds on true only, a value answers itself (a decimal as exact text);
+         *     `now()` reads the sandbox's fixed clock, 2000-01-01T00:00:00Z. `preview` is null when the text does not parse or the
+         *     expression does not type, with MQ3101 to MQ3113 in `diagnostics`. The preview reads that element and what its
+         *     expression names; the model is neither validated nor resolved, and nothing is written. The MCP tool `preview_expression` and `maquettiste expression preview` answer the same.
+         */
+        post: operations["previewExpression"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/model/queries/{id}/sql": {
         parameters: {
             query?: never;
@@ -3524,6 +3557,57 @@ export interface components {
             tree: {
                 [key: string]: unknown;
             };
+        };
+        /** @description What `previewExpression` previews: a stored expression (`at`), or `text` at a `site`. */
+        ExpressionPreviewRequest: {
+            /** @description The id of the element, or of the check, guard or derived attribute, that holds the expression or takes the text. */
+            element: string;
+            /** @description The pointer of a stored expression in the element's file, or of what holds it; omit when the element holds one, and with text. */
+            at?: string | null;
+            /** @description Text to preview instead of a stored expression; needs `site`. */
+            text?: string | null;
+            /** @description With `text`, `check`, `value` or `guard`, or the pointer of one of the element's sites. */
+            site?: string | null;
+            /** @description A database id or name, choosing the binding an entity's expression lowers to SQL through. */
+            database?: string | null;
+            /** @description The row the expression reads, members by name (a process guard's payload under `event`, an operation's subject under `subject`). */
+            values?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
+         * @example {
+         *       "preview": {
+         *         "text": "issuedOn <= dueOn",
+         *         "type": "bool",
+         *         "nullable": true,
+         *         "javascript": "(row) => mq.passes(mq.le(mq.date(mq.at(row, \"issuedOn\")), mq.date(mq.at(row, \"dueOn\"))))",
+         *         "sql": "issued_on <= due_on",
+         *         "sqlNote": null,
+         *         "answer": true
+         *       },
+         *       "diagnostics": []
+         *     }
+         */
+        ExpressionPreview: {
+            preview: components["schemas"]["ExpressionPreviewDetail"] | null;
+            diagnostics: components["schemas"]["Diagnostic"][];
+        };
+        /** @description The forms of one expression. */
+        ExpressionPreviewDetail: {
+            /** @description The text, printed from current names. */
+            text: string;
+            /** @description The type as messages write it (`bool`, `int32`, `decimal`, `date`, `enum <id>`, `code <id>`). */
+            type: string;
+            nullable: boolean;
+            /** @description The function over a row that calls the expression runtime as `mq`. */
+            javascript: string;
+            /** @description The PostgreSQL text through the one table the site reads; null when there is none. */
+            sql: string | null;
+            /** @description Why `sql` is null; null when there is SQL. */
+            sqlNote: string | null;
+            /** @description With values, the answer under the site's mode (a check's or guard's boolean, a value's JSON form, a decimal as exact text); null without values. */
+            answer: unknown;
         };
         /** @description An entity check: a condition every record of the entity meets, unknown passing. A binding that lists it writes it into its table. */
         EntityCheckRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -12464,6 +12548,45 @@ export interface operations {
                 };
             };
             428: components["responses"]["PreconditionRequired"];
+        };
+    };
+    previewExpression: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "element": "01J92P0V0FJ23CGSNKM7P1W5V7",
+                 *       "text": "issuedOn <= dueOn",
+                 *       "site": "check",
+                 *       "values": {
+                 *         "issuedOn": "2026-01-31",
+                 *         "dueOn": null
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ExpressionPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description The forms of the expression, or the diagnostics that prevented them. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ModelUnavailable"];
         };
     };
     getQuerySql: {

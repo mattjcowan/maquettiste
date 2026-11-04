@@ -144,8 +144,36 @@ func payload_spec(p)
   ret member_spec($list, "")
 end
 
-# The C# translation of a guard or action expression (7.1 subset), or "" when it is outside the subset (a stub).
+# What a guard written in the expression language reads, for expr_cs (helpers.js): each context attribute as call.Context.<Member>, and
+# each payload attribute of the events as event.<name>, read with call.Event.Get<T?> so a missing one is null; and how strings order.
+func condition_spec(p)
+  $owner = p_name(p) + "Context"
+  $out = expr_functions()
+  for a in p.context
+    $out = $out + ";" + expr_entry(a.name, "call.Context." + prop_name(a, $owner), attr_type(a), a)
+  end
+  $seen = []
+  for e in p.events
+    for a in e.payload
+      if !($seen | array.contains a.name) && !a.collection
+        $seen[$seen.size] = a.name
+        $t = (type_of a.type "csharp") + "?"
+        $out = $out + ";" + expr_entry("event." + a.name, "call.Event.Get<" + $t + ">(" + (json a.name) + ")", $t, a)
+      end
+    end
+  end
+  ret $out
+end
+
+# The C# translation of a guard or action, or "" when it is outside what the pack translates (a stub): a guard written in the
+# expression language through expr_cs_holds (it holds only when true), else a JavaScript guard or action in the 7.1 subset
+# (cs_expression).
 func translate(p, node, kind)
+  if kind == "guard"
+    if node.condition
+      ret expr_cs_holds node.condition (condition_spec(p))
+    end
+  end
   if !node.expression
     ret ""
   end

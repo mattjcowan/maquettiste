@@ -68,11 +68,15 @@ internal sealed class MemberCatalog
     private readonly ConcurrentDictionary<Type, FrozenDictionary<string, string>> _enumNames = new();
     private readonly ConcurrentDictionary<Type, bool> _immutable = new();
 
-    /// <summary>Whether values of a type cross into scripts as read-only proxies.</summary>
+    /// <summary>
+    /// Whether values of a type cross into scripts as read-only proxies (and are readable in templates): the resolved-model types, the
+    /// generation hints, and the type of an expression node (<see cref="RExpression.Type"/>), whose kind and width packs render from.
+    /// </summary>
     /// <param name="type">The runtime type.</param>
     /// <returns><see langword="true"/> for resolved-model types and their helper types.</returns>
     public static bool IsProxyType(Type type) =>
         type == typeof(GenerationHints)
+        || type == typeof(Expressions.ExprType)
         || (type.IsClass && type.IsPublic && !type.IsGenericType && string.Equals(type.Namespace, ResolutionNamespace, StringComparison.Ordinal)
             && !typeof(IEnumerable).IsAssignableFrom(type));
 

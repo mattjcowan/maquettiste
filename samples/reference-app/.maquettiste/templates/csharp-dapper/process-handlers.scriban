@@ -1,6 +1,7 @@
 {{-
-# The guards and actions of a process (the generated half of a pair). Guards and actions whose expression is in the
-# translatable subset (helpers.js cs_expression) are implemented here; every other one is a partial method the companion
+# The guards and actions of a process (the generated half of a pair). Guards written in the expression language that helpers.js
+# expr_cs renders, and guards and actions whose JavaScript is in the translatable subset (cs_expression), are implemented here;
+# every other one is a partial method the companion
 # <P>Handlers.cs implements, so a new stub fails the build until it is written. Methods are Guard<Name> and Action<Name>, so a
 # guard and an action may share a name. Also the command handler: load the instance
 # through the store, run the machine, save, and return the result with the events for the outbox.
@@ -48,7 +49,7 @@ public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>
 {{- for g in p.guards }}
 {{- cs = translate(p, g, "guard") }}
 
-    /// <summary>Guard {{ g.name }}{{ if g.expression }}: <c>{{ cs_line g.expression | escape_xml }}</c>{{ end }}{{ if cs == "" }} (implemented in {{ name }}Handlers.cs){{ end }}.</summary>
+    /// <summary>Guard {{ g.name }}{{ if g.expression }}: <c>{{ cs_line g.expression | escape_xml }}</c>{{ else if g.condition }}: <c>{{ cs_line g.condition.text | escape_xml }}</c>{{ end }}{{ if cs == "" }} (implemented in {{ name }}Handlers.cs){{ end }}.</summary>
 {{- if cs != "" }}
     private static bool Guard{{ pascal g.name }}({{ call }} call) => {{ cs }};
 {{- else }}

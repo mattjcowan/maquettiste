@@ -86,6 +86,11 @@
       "output": "{{ join_path pack.params.generatedFolder \"DapperTypeHandlers.g.cs\" }}"
     },
     {
+      "id": "code-points",
+      "template": "code-points.scriban",
+      "for": "model"
+    },
+    {
       "id": "process-states",
       "template": "process-states.scriban",
       "for": "each process",
