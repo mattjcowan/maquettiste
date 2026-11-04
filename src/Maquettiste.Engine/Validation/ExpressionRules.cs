@@ -54,12 +54,7 @@ internal static class ExprSites
         switch (element)
         {
             case Table table:
-                // A table's checks read its own columns and those its stereotypes contribute, by their keyed ids.
-                AddChecks(sites, table.Checks, s =>
-                {
-                    Columns(s, model, table.Columns);
-                    Columns(s, model, [.. TableMembers.Of(model, table).Columns.Select(m => m.Member)]);
-                });
+                AddChecks(sites, table.Checks, s => TableColumns(s, model, table));
                 break;
             case Stereotype stereotype:
                 AddChecks(sites, stereotype.Checks, s => Columns(s, model, stereotype.Columns));
@@ -88,9 +83,7 @@ internal static class ExprSites
 
                 break;
             case Operation operation:
-                var subject = operation.Guards.Count > 0 && operation.Subject is { } subjectId && model.Get<Entity>(subjectId) is { } subjectEntity
-                    ? AttributesOf(model, subjectEntity).Select(a => a.Id).Concat(NavigationsOf(model, subjectEntity).Select(n => n.To.Id)).ToHashSet(StringComparer.Ordinal)
-                    : null;
+                var subject = operation.Guards.Count > 0 ? SubjectIds(model, operation) : null;
                 for (var i = 0; i < operation.Guards.Count; i++)
                 {
                     var guard = operation.Guards[i];
@@ -135,6 +128,43 @@ internal static class ExprSites
             }
         }
     }
+
+    /// <summary>
+    /// A site for an expression written as text and not stored anywhere yet (<c>preview_expression</c> with <c>text</c> and a site
+    /// kind): the scope a site of <paramref name="kind"/> on the element reads. A check at a table, a stereotype or a constraint (its
+    /// parameters); a check or a value, of no required type, at an entity; a guard at an operation, or at a process, where the payload
+    /// of every event reads under <c>event</c>. <see langword="null"/> when the element has no site of that kind.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="element">The element the text is written on.</param>
+    /// <param name="kind">The site's kind.</param>
+    /// <returns>The site, with no tree.</returns>
+    public static ExprSite? Free(ModelSnapshot model, Element element, ExprSiteKind kind) => (element, kind) switch
+    {
+        (Table table, ExprSiteKind.Check) => new ExprSite("", null, false, table.Id, kind, s => TableColumns(s, model, table)),
+        (Stereotype stereotype, ExprSiteKind.Check) => new ExprSite("", null, false, stereotype.Id, kind, s => Columns(s, model, stereotype.Columns)),
+        (Entity entity, ExprSiteKind.Check or ExprSiteKind.Value) => new ExprSite("", null, false, entity.Id, kind, s => Attributes(s, model, entity)),
+        (Operation operation, ExprSiteKind.Guard) => new ExprSite("", null, false, operation.Id, kind, s => Operation(s, model, operation))
+        {
+            Subject = SubjectIds(model, operation),
+        },
+        (Process process, ExprSiteKind.Guard) => new ExprSite("", null, false, process.Id, kind, s => Process(s, model, process, process.Events)),
+        (Constraint constraint, ExprSiteKind.Check) => new ExprSite("/condition", null, false, constraint.Id, kind, _ => { }) { Constraint = constraint },
+        _ => null,
+    };
+
+    /// <summary>A table's columns: its own and those its stereotypes contribute, by their keyed ids.</summary>
+    private static void TableColumns(ExprScope scope, ModelSnapshot model, Table table)
+    {
+        Columns(scope, model, table.Columns);
+        Columns(scope, model, [.. TableMembers.Of(model, table).Columns.Select(m => m.Member)]);
+    }
+
+    /// <summary>The ids of the members an operation's subject offers a guard (its attributes and navigations), for MQ3111; none without one.</summary>
+    private static HashSet<string>? SubjectIds(ModelSnapshot model, Operation operation) =>
+        operation.Subject is { } subjectId && model.Get<Entity>(subjectId) is { } subject
+            ? AttributesOf(model, subject).Select(a => a.Id).Concat(NavigationsOf(model, subject).Select(n => n.To.Id)).ToHashSet(StringComparer.Ordinal)
+            : null;
 
     /// <summary>
     /// The scope of a site: its members, then the enums, reference types and constraints its tree names (every one of the model

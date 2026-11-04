@@ -22,6 +22,25 @@ for c in storage_columns(entity, m)
   end
 end
 binding_keys = bind_key_fields(entity)
+# The entity's checks in the expression language (next-phase-3-design.md section 3.1) become Validate(); a derived entity whose checks
+# are all its base's keeps the base's.
+own_checks = []
+for c in entity.checks
+  if !c.is_inherited
+    own_checks[own_checks.size] = c
+  end
+end
+
+# What the checks read, for expr_cs: each attribute by its property.
+func check_spec(e, owner)
+  $out = ""
+  for a in e.attributes
+    if !a.collection
+      $out = $out + ($out == "" ? "" : ";") + expr_entry(a.name, prop_name(a, owner), prop_type(a), a)
+    end
+  end
+  ret $out
+end
 -}}
 {{ header() }}
 using System;
@@ -51,5 +70,28 @@ namespace {{ ns(entity) }};
 {{- for f in binding_keys }}
     public {{ bind_row_type(f) }} {{ cs_ident (pascal f.name) }} { get; set; }{{ if !bind_nullable(f) && !(cs_value_type bind_row_type(f)) }} = default!;{{ end }}
 {{- end }}
+{{- end }}
+{{- if own_checks.size > 0 }}
+{{- spec = check_spec(entity, name) }}
+
+    /// <summary>
+    /// The checks of {{ entity.name | escape_xml }} this record fails, one error each: the JSON pointer of the attribute it points at, the
+    /// check's name as its code, and its message. A check whose answer is unknown (a value it reads is null) passes, as a CHECK does.
+    /// </summary>
+    /// <returns>The errors; empty when every check passes.</returns>
+    public {{ entity.base && entity.base.checks.size > 0 ? "override" : "virtual" }} IReadOnlyList<(string Pointer, string Code, string Message)> Validate()
+    {
+        var errors = new List<(string Pointer, string Code, string Message)>();
+{{- for c in entity.checks }}
+{{- cs = c.condition ? (expr_cs c.condition spec) : "" }}
+{{- if cs != "" }}
+        if ({{ cs }} == false)
+            errors.Add(({{ json (c.attribute ? "/" + c.attribute.name : "") }}, {{ json c.name }}, {{ json (c.message ?? c.condition.text) }}));
+{{- else }}
+        // Check {{ c.name }}{{ if c.condition }} ({{ cs_line c.condition.text }}){{ end }} is outside what expr_cs renders: validate it in {{ name }}.cs.
+{{- end }}
+{{- end }}
+        return errors;
+    }
 {{- end }}
 }

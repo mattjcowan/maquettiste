@@ -385,4 +385,45 @@ public sealed class TemplateCacheAndHelperTests
         Assert.Contains("under tests/", error.Diagnostics[0].Message, StringComparison.Ordinal);
         Assert.Equal("A", new TemplateCache().Get(loaded, "a.scriban", null).Render());
     }
+
+    /// <summary>
+    /// <c>expression_sql</c> and <c>expression_runtime</c> (next-phase-3-design.md section 3.1, "Templates"), over the bindings fixture's
+    /// Product with the check pricePositive (<c>price &gt; 0</c>) and the derived attribute doubled (<c>price * 2</c>): each lowers through
+    /// the binding to products, a node's type reads as kind and width, and the runtime is the engine's.
+    /// </summary>
+    [Fact]
+    public async Task Expression_sql_lowers_through_a_binding_and_expression_runtime_is_the_engine_runtime()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = Expressions.ExpressionRuleTests.Repo();
+        const string price = Expressions.ExpressionRuleTests.PriceId;
+        Expressions.ExpressionRuleTests.Edit(repo, Expressions.ExpressionRuleTests.EntityPath, e =>
+        {
+            e["checks"] = System.Text.Json.Nodes.JsonNode.Parse($$"""
+                [ { "id": "01K9EXH0000000000000000C01", "name": "pricePositive", "attribute": "{{price}}",
+                    "condition": { "op": "gt", "args": [{ "path": ["{{price}}"] }, { "value": 0 }] } } ]
+                """);
+            e["attributes"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse($$"""
+                { "id": "01K9EXH0000000000000000A01", "name": "doubled", "type": "decimal", "precision": 14, "scale": 2,
+                  "derived": { "value": { "op": "mul", "args": [{ "path": ["{{price}}"] }, { "value": 2 }] } } }
+                """));
+        });
+        var model = await new Engine.Resolution.ModelResolver(repo.Options).ResolveAsync(await new ModelStore(repo.Options).GetSnapshotAsync(ct), null, ct);
+        var product = model.Entities.Single(e => e.Name == "Product");
+
+        var unit = await Adhoc.RenderAsync(
+            "{{ c = entity.checks[0].condition }}{{ expression_sql c entity.bindings.main }}|{{ c.type.kind }}:{{ c.args[0].type.kind }}:{{ c.args[1].type.bits }}|"
+            + "{{ for a in entity.attributes }}{{ if a.derived }}{{ expression_sql a.derived.value entity.bindings.main }}{{ end }}{{ end }}",
+            product, model: model);
+
+        Assert.Equal("price > 0|bool:decimal:32|(price * 2)", unit.Text());
+        Assert.Contains(unit.ReadKeys, k => k.Contains(Expressions.ExpressionRuleTests.ProductsId, StringComparison.Ordinal));
+        var operand = (await Adhoc.RenderAsync("{{ expression_sql entity.checks[0].condition.args[0] entity.bindings.main }}", product, model: model)).Error();
+        Assert.Equal("MQ6006", operand.Rule);
+        Assert.Contains("not one of its operands", operand.Message, StringComparison.Ordinal);
+        var notBinding = (await Adhoc.RenderAsync("{{ expression_sql entity.checks[0].condition 'main' }}", product, model: model)).Error();
+        Assert.Contains("takes a binding", notBinding.Message, StringComparison.Ordinal);
+
+        Assert.Equal(Engine.Expressions.ExprRuntime.Source, (await Adhoc.RenderAsync("{{ expression_runtime }}", model: model)).Text());
+    }
 }

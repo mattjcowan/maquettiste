@@ -6,6 +6,8 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Ledger;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
@@ -120,7 +122,7 @@ internal static class BuiltinHelpers
         "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_calculated", "has_tag", "in_category", "lookup",
         "banner", "file", "row", "row_uuid", "stable_id", "seed_named", "custom_named", "seed_row", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
         "state_path", "iso_duration_ms", "query_sql", "query_collection_sql", "query_sql_parameters",
-        "binding_sql", "binding_sql_parameters", "ledger_ddl", "array_index_of", "array_find", "table_named", "column_named", "toposort", "exported");
+        "binding_sql", "binding_sql_parameters", "expression_sql", "expression_runtime", "ledger_ddl", "array_index_of", "array_find", "table_named", "column_named", "toposort", "exported");
 
     /// <summary>The unit variables (engine-design.md section 8); pack helpers may not use these names either.</summary>
     public static readonly FrozenSet<string> Variables = FrozenSet.Create(StringComparer.Ordinal,
@@ -188,6 +190,8 @@ internal static class BuiltinHelpers
         Add(builtins, "query_sql_parameters", 1, 3, (c, a) => QuerySqlText(c, "query_sql_parameters", a));
         Add(builtins, "binding_sql", 2, 4, (c, a) => BindingSqlText(c, "binding_sql", a));
         Add(builtins, "binding_sql_parameters", 2, 4, (c, a) => BindingSqlText(c, "binding_sql_parameters", a));
+        Add(builtins, "expression_sql", 2, 2, (c, a) => ExpressionSql(c, a[0], a[1]));
+        Add(builtins, "expression_runtime", 0, 0, (_, _) => ExprRuntime.Source);
         Add(builtins, "ledger_ddl", 1, 1, (c, a) => LedgerDdl(c, a[0]));
         Add(builtins, "indent", 2, 2, (_, a) => Indent(AsText(a[0]), IndentPrefix(a[1])));
         Add(builtins, "dedent", 1, 1, (_, a) => Dedent(AsText(a[0])));
@@ -687,6 +691,56 @@ internal static class BuiltinHelpers
         if (result.Diagnostics.Count > 0)
             throw new RenderHelperException(result.Diagnostics[0].Rule, result.Diagnostics[0].Message);
         return name == "binding_sql_parameters" ? new ScriptArray(result.Parameters) : result.Sql;
+    }
+
+    /// <summary>
+    /// <c>expression_sql(expr, binding)</c> (next-phase-3-design.md section 3.1, "Templates"): the PostgreSQL text of a condition or a
+    /// derived value (<c>entity.checks[i].condition</c>, <c>attribute.derived.value</c>) lowered through an entity binding's field map, as
+    /// a pack that computes in SQL needs it: a check reads the columns the binding writes, any other site the columns it reads. Empty
+    /// when the binding's database is not PostgreSQL, whose DDL leaves such a check out too (MQ4056). A path the binding maps to no
+    /// column, or an argument that is not a whole condition and a binding, fails the unit with MQ6006. It records the binding's
+    /// dependencies; the expression's are those of the object it was read from. <c>expression_runtime</c> is the text of the
+    /// JavaScript runtime lowered expressions call as <c>mq</c> (<see cref="ExprRuntime.Source"/>), for packs that write JavaScript;
+    /// it changes with the engine only, whose version every unit's static hash holds, so it records nothing.
+    /// </summary>
+    private static string ExpressionSql(TrackingTemplateContext context, object? value, object? target)
+    {
+        if (value is not RExpression { Root: { } root })
+        {
+            throw new RenderHelperException("MQ6006", value is RExpression
+                ? "`expression_sql` takes a whole condition or value (check.condition, attribute.derived.value), not one of its operands."
+                : $"`expression_sql` takes a condition or a derived value (check.condition, attribute.derived.value), not a {TemplateValues.TypeName(value)}.");
+        }
+
+        if (target is not REntityBinding binding)
+            throw new RenderHelperException("MQ6006", $"`expression_sql` takes a binding (entity.bindings[database name]) second, not a {TemplateValues.TypeName(target)}.");
+        context.Recorder.RecordObject(binding);
+        var check = root.Site == ExprSiteKind.Check;
+        var columns = new Dictionary<string, ExprColumn>(StringComparer.Ordinal);
+        foreach (var id in ExprResolution.Paths(root.Typed))
+        {
+            var field = binding.Fields.FirstOrDefault(f => string.Equals(f.AttributeRef, id, StringComparison.Ordinal));
+            if ((check ? field?.WriteColumn : field?.SourceColumn) is not { } column)
+            {
+                throw new RenderHelperException("MQ6006", $"`expression_sql`: the binding of entity '{binding.Entity.Name}' to database '{binding.Database.Name}' "
+                    + $"maps '{field?.Name ?? id}' to no column it {(check ? "writes" : "reads")}.");
+            }
+
+            columns[id] = ExprResolution.ColumnOf(column);
+        }
+
+        if (!SqlDialects.TryParseQuoting(binding.Database.Quoting, out var quoting))
+            quoting = Quoting.Reserved;
+        var mapping = new ExprColumns
+        {
+            Column = t => t.Member is { } m && columns.TryGetValue(m.Id, out var c) ? c : null,
+            Ref = root.Columns.Ref,
+            Dialect = binding.Database.Dialect,
+            Quoting = quoting,
+            ElementId = root.Columns.ElementId,
+            FilePath = root.Columns.FilePath,
+        };
+        return ExprLowering.ToPostgreSql(root.Typed, mapping, root.Site, new List<Diagnostic>()) ?? "";
     }
 
     /// <summary>

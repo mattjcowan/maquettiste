@@ -263,6 +263,15 @@ public sealed class CliApp(CliEnvironment environment)
                                   their column (--keep-names keeps every name), retype, map by name, add attributes for added
                                   columns, drop the fields of removed ones: --column <key|name> (repeatable, one entity),
                                   --dry-run, --format text|json
+          expression preview <element> [--at <pointer>]
+                                One expression in the expression language (a check, a derived value, a guard) of an element or
+                                  of the check, guard or attribute that holds it: its text, type, nullability, JavaScript and
+                                  PostgreSQL text (or why there is none), reading that element only. --at <pointer> (the site,
+                                  /checks/0/condition; needed when the element holds several), --database <id|name> (the binding
+                                  an entity's expression lowers through), --values <json|file|-> (the row it reads, by member
+                                  name: also print its answer under the site's mode), --format text|json
+          expression preview --text <text> --on <element> --site check|value|guard|<pointer>
+                                The same for text that is not saved, at a site of that kind or at the site the pointer names
           snapshot create <name>
                                 Take a snapshot of the model (a zip under .maquettiste/model-snapshots/): --description,
                                   --packs (hold the template packs too), --format text|json
@@ -334,6 +343,7 @@ public sealed class CliApp(CliEnvironment environment)
                 "process" => await ProcessCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "model" => await ModelCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "binding" => await BindingCommand.RunAsync(context, ct).ConfigureAwait(false),
+                "expression" => await ExpressionCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "snapshot" => await SnapshotCommand.RunAsync(context, ct).ConfigureAwait(false),
                 "mcp" => await McpCommand.RunAsync(context, ct).ConfigureAwait(false),
                 _ => throw new UsageException($"Unknown command '{command}'. Run 'maquettiste --help'."),

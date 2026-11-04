@@ -21,7 +21,7 @@ namespace Maquettiste.Packs.Tests;
 /// </summary>
 public sealed class ProcessTests
 {
-    private const string Generated = "src/Processes.Data/Generated";
+    internal const string Generated = "src/Processes.Data/Generated";
     private const string Custom = "src/Processes.Data/Custom";
     private const string Tests = "src/Processes.Tests/Generated";
     private const string ApproveEvent = "01JQPRX0000000000000000016";
@@ -468,7 +468,7 @@ public sealed class ProcessTests
         return map;
     }
 
-    private static async Task BuildOrSkipAsync(PackRepo repo)
+    internal static async Task BuildOrSkipAsync(PackRepo repo)
     {
         var solution = repo.PathOf("src/Processes.slnx");
         var restore = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, ["restore", solution], repo.Repo.RepoRoot, TimeSpan.FromMinutes(5));
@@ -485,7 +485,7 @@ public sealed class ProcessTests
     }
 
     // The xunit v3 test project is an executable: run it directly, without a test host or build nodes.
-    private static Task<ProcessRunner.Result> TestAsync(PackRepo repo, IReadOnlyDictionary<string, string>? environment = null) =>
+    internal static Task<ProcessRunner.Result> TestAsync(PackRepo repo, IReadOnlyDictionary<string, string>? environment = null) =>
         ProcessRunner.RunAsync(ProcessRunner.Dotnet, [repo.PathOf("src/Processes.Tests/bin/Debug/net10.0/Processes.Tests.dll"), "-noColor"], repo.Repo.RepoRoot,
             TimeSpan.FromMinutes(5), environment: environment);
 
@@ -507,3 +507,42 @@ public sealed class ProcessTests
         || output.Contains("No such host", StringComparison.OrdinalIgnoreCase)
         || output.Contains("Name or service not known", StringComparison.OrdinalIgnoreCase);
 }
+
+/// <summary>
+/// Process guards written in the expression language through the C# example pack (next-phase-3-design.md section 3.1). They run alone:
+/// generation replays the scenarios with the expression runtime loaded into the sandbox, whose regular expressions have a 250 ms
+/// bound, and a machine saturated by the other tests' builds can stall a thread past it.
+/// </summary>
+[Collection(nameof(ExpressionGuardCollection))]
+public sealed class ExpressionGuardTests
+{
+    [Fact]
+    public async Task A_guard_written_in_the_expression_language_renders_with_expr_cs_and_passes_the_scenarios()
+    {
+        // next-phase-3-design.md section 3.1, decision 19: exceedsCreditLimit rewritten by hand as total > creditLimit. The handler renders
+        // it with expr_cs (the context's attributes have defaults, so their C# types cannot be null), and the generated scenario tests,
+        // which call the real guards, pass as the engine's replay of the tree guard does.
+        using var repo = PackRepo.Processes(sources: true);
+        repo.EditJson(".maquettiste/model/processes/sales-order-lifecycle.json", process =>
+        {
+            var guard = process["guards"]!.AsArray().Single(g => (string)g!["name"]! == "exceedsCreditLimit")!.AsObject();
+            guard.Remove("expression");
+            guard["condition"] = JsonNode.Parse("""
+                { "op": "gt", "args": [{ "path": ["01JQATT0000000000000000101"] }, { "path": ["01JQATT0000000000000000102"] }] }
+                """);
+        });
+        await repo.GenerateCleanlyAsync();
+        var generated = repo.Read(ProcessTests.Generated + "/Processes/SalesOrderLifecycle/SalesOrderLifecycleHandlers.g.cs");
+        Assert.Contains("/// <summary>Guard exceedsCreditLimit: <c>total &gt; creditLimit</c>.</summary>", generated, StringComparison.Ordinal);
+        Assert.Contains("private static bool GuardExceedsCreditLimit(StatechartCall<SalesOrderLifecycleContext> call) => (call.Context.Total > call.Context.CreditLimit) == true;",
+            generated, StringComparison.Ordinal);
+
+        await ProcessTests.BuildOrSkipAsync(repo);
+        var test = await ProcessTests.TestAsync(repo);
+        Assert.True(test.ExitCode == 0 && test.Output.Contains("Total: 14, Errors: 0, Failed: 0,", StringComparison.Ordinal), test.Output);
+    }
+}
+
+/// <summary>Tests that load the expression runtime into the sandbox while generating; they must not run next to the builds of other tests.</summary>
+[CollectionDefinition(nameof(ExpressionGuardCollection), DisableParallelization = true)]
+public sealed class ExpressionGuardCollection;

@@ -364,6 +364,34 @@ public sealed partial class AgentTools
         }
     }
 
+    private async Task<AgentToolResult> PreviewExpressionAsync(ToolArguments args, CancellationToken ct)
+    {
+        var element = args.String("element");
+        if (string.IsNullOrEmpty(element))
+            return BadRequest("element is required.");
+        await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        // One element and what its expression names are read; the model is neither validated nor resolved (decision 24).
+        if (await _store.GetElementAsync(element, ct).ConfigureAwait(false) is null)
+            return NotFound("element", element);
+        var request = new ExpressionPreviewRequest
+        {
+            Element = element,
+            At = args.String("at") is { Length: > 0 } at ? at : null,
+            Text = args.String("text"),
+            Site = args.String("site") is { Length: > 0 } site ? site : null,
+            Database = args.String("database") is { Length: > 0 } database ? database : null,
+            Values = args.Json("values"),
+        };
+        try
+        {
+            return Ok(await _store.PreviewExpressionAsync(request, ct).ConfigureAwait(false));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message.Split(" (Parameter", 2)[0]);
+        }
+    }
+
     private async Task<AgentToolResult> PreviewMaterializeAsync(ToolArguments args, CancellationToken ct)
     {
         var database = args.String("database");

@@ -19,7 +19,7 @@ For entity `Invoice` in package `Billing`:
 
 | Unit | Mode | For | Writes |
 | --- | --- | --- | --- |
-| `entity` | `pair` | `each entity` | `Billing/Invoice.g.cs` every run, and its companion `Billing/Invoice.cs` once |
+| `entity` | `pair` | `each entity` | `Billing/Invoice.g.cs` every run (with `Validate()` when the entity has checks; see Checks), and its companion `Billing/Invoice.cs` once |
 | `enum` | `overwrite` | `each enum` | `Billing/InvoiceStatus.g.cs`: the enum and an `InvoiceStatusCodes` class (`ToCode`, `Parse`) for text storage |
 | `value-object` | `overwrite` | `each value object` | `Billing/Money.g.cs`: a `sealed partial record` with `init` properties |
 | `reference-type` | `overwrite` | `each reference type` | `ReferenceData/UnitOfMeasure.g.cs`: a `sealed record` and a static class of rows (see Reference types) |
@@ -35,6 +35,43 @@ For entity `Invoice` in package `Billing`:
 
 Folders follow the package tree (`Billing/Catalog/` for package `Catalog` inside `Billing`), and namespaces follow it too:
 `<namespace>.Billing.Catalog`.
+
+## Checks and the expression renderer
+
+An entity's checks, written in the expression language (an entity's `checks`, each with a `condition`, the `attribute` a failure
+points at and a `message`), become `Validate()` on its generated half. It returns one error per failed check: the JSON pointer of
+the attribute (`/issuedOn`), the check's name as its code (`dueAfterIssue`) and its message, else the condition's text. A check
+whose answer is unknown, because a value it reads is null, passes, as the CHECK a binding writes into the table does; whether a
+value must be given is the attribute's `required`. A derived entity's `Validate()` overrides its base's and checks both.
+
+```csharp
+public virtual IReadOnlyList<(string Pointer, string Code, string Message)> Validate()
+{
+    var errors = new List<(string Pointer, string Code, string Message)>();
+    if ((IssuedOn is null || DueOn is null ? (bool?)null : (IssuedOn.Value <= DueOn.Value)) == false)
+        errors.Add(("/issuedOn", "dueAfterIssue", "An invoice is due on or after the day it is issued."));
+    return errors;
+}
+```
+
+`expr_cs(condition, spec)` in `helpers.js` writes the C#. It is an **example renderer, a starting point to copy** into your own
+pack and adapt, not a contract: the engine ships no C# emitter, and every pack renders the typed tree (`node`, `op`, `call`,
+`args`, `value`, `type` with `kind` and `bits`, `nullable`, `text`) in its own language. It keeps the language's answers:
+
+| The language | C# |
+| --- | --- |
+| Unknown (null) and Kleene's `and`, `or`, `not`, `implies` | `bool?` with `&`, `\|` and `!`; `&&` and `\|\|` when nothing may be null |
+| A comparison, arithmetic, `\|\|` or a function with a null operand is null | an explicit `x is null ? null : …` where C#'s lifted operators would answer `false` (ordering) or skip the null (concatenation) |
+| `decimal` exact, integer arithmetic without overflow | `decimal`; integer arithmetic in `long` |
+| Strings compare by code point; `trim` removes spaces; `length` counts code points | `string.CompareOrdinal`, `Trim(' ')`, `EnumerateRunes()` |
+| `add_months` clamps to the month's last day; offsets compute in UTC | `AddMonths`; `UtcDateTime`, `ToUniversalTime()` |
+| `matches` in the portable subset | `Regex.IsMatch` with `RegexOptions.NonBacktracking` (linear time, it never backtracks) and `Singleline` (`.` matches a newline); `$` becomes `\z`, since .NET's `$` also matches before a final newline; case counts. .NET counts UTF-16 code units where the language counts code points, so a pattern that counts characters beyond the basic plane can differ |
+
+What it does not render returns `""`, and the unit falls back: a check becomes a comment in `Validate()` ("validate it in
+Invoice.cs"), a guard a stub in the handlers companion. That is division (its rounding is PostgreSQL's), the `json_` functions,
+reference-type codes, a `datetime` against a `datetimeoffset`, `now()` (a guard's call carries no clock), value object members
+and a `case` over enum members. The spec names what each path reads: `"path|C# expression|C# type|kind|member=C# member,..."`
+joined with `;` (`_csharp.scriban` `expr_entry` writes one entry; `entity.scriban` maps attributes to properties).
 
 ## The pair pattern
 
@@ -380,8 +417,12 @@ started through the invoke host and reports back like a service task (the engine
 
 ### Guard and action expressions
 
-`helpers.js` translates the documented subset of the model's JavaScript expressions to C#; anything else becomes a stub in the
-handlers companion, with the expression as a comment:
+A guard written in the expression language (its `condition`) is rendered by `expr_cs` (see Checks and the expression renderer):
+it reads `total` as `call.Context.Total` and `event.amount` as `call.Event.Get<decimal?>("amount")`, a missing payload member
+reading as null, and holds only when the condition is true, as in the engine. Anything `expr_cs` does not render becomes a stub.
+
+For JavaScript guards and actions, `helpers.js` translates the documented subset of the model's JavaScript expressions to C#
+(`cs_expression`); anything else becomes a stub in the handlers companion, with the expression as a comment:
 
 | JavaScript | C# |
 | --- | --- |
@@ -441,8 +482,8 @@ Set them in `maquettiste.json` under `packs.csharp-dapper.parameters`.
 
 ## Tests
 
-`tests/billing-small/` is the pack's case: a package `Billing` with the entities `Customer` and `Invoice` and the enum
-`InvoiceStatus`, and under `expected/` the files the pack writes for it (both halves of each entity, the enum and the
+`tests/billing-small/` is the pack's case: a package `Billing` with the entities `Customer` and `Invoice` (with four checks)
+and the enum `InvoiceStatus`, and under `expected/` the files the pack writes for it (both halves of each entity, the enum and the
 type handlers). `tests/helpers.test.js` tests each helper of `helpers.js`. Copy the pack folder, `tests/` included, into
 a project's `.maquettiste/templates/` and run `maquettiste pack test csharp-dapper`: the case runs as a project of its
 own and its output is compared byte for byte with `expected/`. `--update` rewrites `expected/` from the output; review
@@ -454,9 +495,9 @@ the diff before keeping it. In this repository `ShippedPackTests` in `tests/Maqu
 | File | Holds |
 | --- | --- |
 | `pack.json` | Units and parameter defaults. |
-| `helpers.js` | `join_path`, `package_folder`, `cs_ident` (escapes C# keywords), `cs_value_type`, `cs_expression` (the expression translator), `cs_line` (one comment line: every line break becomes a space, for every comment context of the process units) and `ulid_uuid`. |
+| `helpers.js` | `join_path`, `package_folder`, `cs_ident` (escapes C# keywords), `cs_value_type`, `cs_expression` (the JavaScript expression translator), `expr_cs` (the example renderer of the expression language), `cs_line` (one comment line: every line break becomes a space, for every comment context of the process units) and `ulid_uuid`. |
 | `tests/` | The `billing-small` case and `helpers.test.js` (see Tests); the starter the CLI embeds leaves them out. |
-| `_csharp.scriban` | Shared functions: namespaces, property names and types, XML documentation, file header. |
+| `_csharp.scriban` | Shared functions: namespaces, property names and types, XML documentation, file header, and the spec entries `expr_cs` reads (`expr_entry`). |
 | `_dapper.scriban` | Mapping choice, the row model and the entity/row conversions. |
 | `entity.scriban`, `entity.partial.scriban` | The generated and hand-written halves of an entity. |
 | `enum.scriban`, `value-object.scriban`, `repository.scriban`, `registrations.scriban`, `type-handlers.scriban` | The other units. |

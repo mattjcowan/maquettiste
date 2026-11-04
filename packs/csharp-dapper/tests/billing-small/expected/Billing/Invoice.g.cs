@@ -14,4 +14,24 @@ public partial class Invoice
     public InvoiceStatus Status { get; set; }
     public decimal Total { get; set; }
     public DateOnly? IssuedOn { get; set; }
+    public DateOnly? DueOn { get; set; }
+
+    /// <summary>
+    /// The checks of Invoice this record fails, one error each: the JSON pointer of the attribute it points at, the
+    /// check's name as its code, and its message. A check whose answer is unknown (a value it reads is null) passes, as a CHECK does.
+    /// </summary>
+    /// <returns>The errors; empty when every check passes.</returns>
+    public virtual IReadOnlyList<(string Pointer, string Code, string Message)> Validate()
+    {
+        var errors = new List<(string Pointer, string Code, string Message)>();
+        if ((IssuedOn is null || DueOn is null ? (bool?)null : (IssuedOn.Value <= DueOn.Value)) == false)
+            errors.Add(("/issuedOn", "dueAfterIssue", "An invoice is due on or after the day it is issued."));
+        if ((Total >= 0) == false)
+            errors.Add(("/total", "totalNotNegative", "total >= 0"));
+        if (System.Text.RegularExpressions.Regex.IsMatch(Number, "^INV-[0-9]+\\z", System.Text.RegularExpressions.RegexOptions.NonBacktracking | System.Text.RegularExpressions.RegexOptions.Singleline) == false)
+            errors.Add(("/number", "numberFormat", "An invoice number is INV- and digits."));
+        if (((Status == InvoiceStatus.Draft) || (IssuedOn is not null)) == false)
+            errors.Add(("/issuedOn", "issuedUnlessDraft", "status = InvoiceStatus.Draft or issuedOn is not null"));
+        return errors;
+    }
 }

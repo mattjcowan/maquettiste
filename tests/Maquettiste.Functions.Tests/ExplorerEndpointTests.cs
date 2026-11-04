@@ -77,6 +77,34 @@ public sealed class ExplorerEndpointTests
         Recorder.Json("elements-read.json", response);
     }
 
+    [Fact]
+    public async Task An_expression_preview_answers_in_contract_shape()
+    {
+        // next-phase-3-design.md section 3.1: text at Invoice's check site, typed, printed, lowered and judged; Invoice has no binding,
+        // so the SQL is null with the reason. An unknown element is 404, text without a site 400.
+        await using var host = EditorHost.Create();
+
+        var response = await host.SendJsonAsync("POST", "/api/model/expressions/preview", new JsonObject
+        {
+            ["element"] = EditorHost.InvoiceId,
+            ["text"] = "issuedOn <= date '2026-12-31'",
+            ["site"] = "check",
+            ["values"] = new JsonObject { ["issuedOn"] = "2026-01-31" },
+        });
+
+        Assert.Equal(200, response.Status);
+        Contract.AssertResponse(response, "/api/model/expressions/preview");
+        var preview = response.Json["preview"]!;
+        Assert.Equal(("issuedOn <= date '2026-12-31'", "bool", true), ((string)preview["text"]!, (string)preview["type"]!, (bool)preview["answer"]!));
+        Assert.Null(preview["sql"]);
+        Assert.Equal("Entity 'Invoice' has no binding, so no table holds its values.", (string)preview["sqlNote"]!);
+        var missing = await host.SendJsonAsync("POST", "/api/model/expressions/preview", new JsonObject { ["element"] = Unknown, ["at"] = "/checks/0" });
+        Assert.Equal(404, missing.Status);
+        var bad = await host.SendJsonAsync("POST", "/api/model/expressions/preview", new JsonObject { ["element"] = EditorHost.InvoiceId, ["text"] = "true" });
+        Assert.Equal(400, bad.Status);
+        Contract.AssertResponse(bad, "/api/model/expressions/preview");
+    }
+
     [Theory]
     [InlineData("{}")]
     [InlineData("{\"ids\":[\"not-an-id\"]}")]

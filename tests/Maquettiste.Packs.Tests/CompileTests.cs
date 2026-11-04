@@ -1,3 +1,4 @@
+using Maquettiste.Engine;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Packs.Tests;
@@ -122,6 +123,80 @@ public sealed class CompileTests
 
         await BuildOrSkipAsync(project);
     }
+
+    [Fact]
+    public async Task Csharp_dapper_entity_checks_compile_and_validate_as_the_language_answers()
+    {
+        // next-phase-3-design.md section 3.1: Invoice's checks in the expression language, written as text and turned into trees, become
+        // Validate() through expr_cs; the output compiles with warnings as errors and a program judges two invoices. A check the renderer
+        // leaves out (a value object member) is a comment.
+        using var repo = PackRepo.Billing();
+        await AddInvoiceChecksAsync(repo);
+        await repo.GenerateCleanlyAsync(packs: ["csharp-dapper"]);
+        var invoice = File.ReadAllText(Directory.GetFiles(repo.PathOf("src/Generated"), "Invoice.g.cs", SearchOption.AllDirectories).Single());
+        Assert.Contains("public virtual IReadOnlyList<(string Pointer, string Code, string Message)> Validate()", invoice, StringComparison.Ordinal);
+        Assert.Contains("RegexOptions.NonBacktracking", invoice, StringComparison.Ordinal);
+        Assert.Contains("// Check totalNotNegative (total.amount >= 0) is outside what expr_cs renders: validate it in Invoice.cs.", invoice, StringComparison.Ordinal);
+        var project = Path.Combine(repo.Repo.Root, "checks");
+        WriteProject(project, repo.PathOf("src/Generated"), ChecksProgram);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll")], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("checks ok", StringComparison.Ordinal), run.Output);
+    }
+
+    /// <summary>Gives the billing fixture's Invoice nine checks, written as text, then converted to trees by <c>text-to-trees</c>.</summary>
+    internal static async Task AddInvoiceChecksAsync(PackRepo repo)
+    {
+        const string number = "01J92P0V0R3VSP7D5238DTNZX1", issuedOn = "01J92P0V0SNXS6PZ42VDK42HP9", total = "01J92P0V0T6EA0XM025XQX8GBW", notes = "01J92P0V0WKRGKH7YBKA2V30NC";
+        (string Name, string Attribute, string Text)[] checks =
+        [
+            ("issuedAfter2000", issuedOn, "issuedOn >= date '2000-01-01'"),
+            ("voidNeedsNotes", notes, "status <> InvoiceStatus.Void or notes is not null"),
+            ("numberLength", number, "length(trim(number)) between 3 and 32"),
+            ("numberFormat", number, "matches(number, '^[A-Z]+-[0-9]+$')"),
+            ("notesShort", notes, "coalesce(length(notes), 0) <= 2000"),
+            ("issuedWeekday", issuedOn, "date_part('isodow', add_months(issuedOn, 1)) between 1 and 7"),
+            ("totalNotNegative", total, "total.amount >= 0"),
+            ("paidHasNotes", notes, "case when status = InvoiceStatus.Paid then notes is not null else true end"),
+            ("somethingGiven", number, "nonnull_count(notes, number) >= 1"),
+        ];
+        repo.EditJson(".maquettiste/model/entities/invoice.json", invoice => invoice["checks"] = new System.Text.Json.Nodes.JsonArray([.. checks.Select((c, i) =>
+            (System.Text.Json.Nodes.JsonNode)new System.Text.Json.Nodes.JsonObject
+            {
+                ["id"] = "01K9CHK00000000000000000" + (i + 1).ToString("D2", System.Globalization.CultureInfo.InvariantCulture),
+                ["name"] = c.Name,
+                ["attribute"] = c.Attribute,
+                ["condition"] = new System.Text.Json.Nodes.JsonObject { ["text"] = c.Text },
+            })]));
+        await using var store = new ModelStore(repo.Repo.Options);
+        var parsed = store.ParseBatch("""{ "operations": [ { "op": "text-to-trees" } ] }"""u8);
+        var applied = await store.ApplyBatchAsync(parsed.Batch!, ChangeSource.Cli, TestContext.Current.CancellationToken);
+        Assert.True(applied.Outcome == SaveOutcome.Saved, string.Join("; ", applied.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+    }
+
+    private const string ChecksProgram = """
+        using System;
+        using System.Linq;
+        using App.Model.Billing;
+
+        // Two invoices judged by the generated Validate(): a valid one, and one that fails four checks, each at its attribute's pointer.
+        // A number with a final newline fails the pattern, whose $ anchors the end of the string as in PostgreSQL.
+        static void Check(bool condition, string what)
+        {
+            if (!condition)
+                throw new InvalidOperationException("Failed: " + what);
+        }
+
+        var valid = new Invoice { Number = "INV-12", IssuedOn = new DateOnly(2026, 1, 31), Status = InvoiceStatus.Paid, Notes = "paid by card" };
+        Check(valid.Validate().Count == 0, "a valid invoice: " + string.Join(", ", valid.Validate().Select(e => e.Code)));
+        var voided = new Invoice { Number = "x", IssuedOn = new DateOnly(1999, 12, 31), Status = InvoiceStatus.Void };
+        var codes = voided.Validate().Select(e => e.Pointer + " " + e.Code).ToArray();
+        Check(codes.SequenceEqual(["/issuedOn issuedAfter2000", "/notes voidNeedsNotes", "/number numberLength", "/number numberFormat"]), string.Join(", ", codes));
+        var newline = new Invoice { Number = "INV-12\n", IssuedOn = new DateOnly(2026, 1, 31), Status = InvoiceStatus.Draft };
+        Check(newline.Validate().Select(e => e.Code).SequenceEqual(["numberFormat"]), "a final newline");
+        Console.WriteLine("checks ok");
+        """;
 
     [Fact]
     public async Task Csharp_dapper_repositories_round_trip_through_the_sql_ddl_schema_on_sqlite()
