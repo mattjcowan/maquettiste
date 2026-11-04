@@ -14,12 +14,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The .NET suites, each OS in five parallel parts so the slowest part, not the sum, sets the time. Every part builds
+  # the whole solution (warnings are errors). A part's tests are a project, or one half of one: each "b" filter is the
+  # exact complement of its "a" filter, so no test is left out or run twice. The editor's functions run in the
+  # functions job below.
   build-and-test:
-    name: build and test (${{ matrix.os }})
+    name: build and test (${{ matrix.os }}, ${{ matrix.part }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        part: [engine-a, engine-b, cli-a, cli-b, packs]
+        include:
+          - part: engine-a
+            projects: tests/Maquettiste.Engine.Tests/Maquettiste.Engine.Tests.csproj
+            filter: FullyQualifiedName~Maquettiste.Engine.Tests.Integration.|FullyQualifiedName~Maquettiste.Engine.Tests.Editor.|FullyQualifiedName~Maquettiste.Engine.Tests.Store.
+          - part: engine-b
+            projects: tests/Maquettiste.Engine.Tests/Maquettiste.Engine.Tests.csproj
+            filter: FullyQualifiedName!~Maquettiste.Engine.Tests.Integration.&FullyQualifiedName!~Maquettiste.Engine.Tests.Editor.&FullyQualifiedName!~Maquettiste.Engine.Tests.Store.
+          - part: cli-a
+            projects: tests/Maquettiste.Cli.Tests/Maquettiste.Cli.Tests.csproj
+            filter: FullyQualifiedName~Maquettiste.Cli.Tests.BenchTests.|FullyQualifiedName~Maquettiste.Cli.Tests.McpReadTests.|FullyQualifiedName~Maquettiste.Cli.Tests.McpWriteTests.
+          - part: cli-b
+            projects: tests/Maquettiste.Cli.Tests/Maquettiste.Cli.Tests.csproj
+            filter: FullyQualifiedName!~Maquettiste.Cli.Tests.BenchTests.&FullyQualifiedName!~Maquettiste.Cli.Tests.McpReadTests.&FullyQualifiedName!~Maquettiste.Cli.Tests.McpWriteTests.
+          - part: packs
+            projects: tests/Maquettiste.Packs.Tests/Maquettiste.Packs.Tests.csproj tests/Maquettiste.Bench.Tests/Maquettiste.Bench.Tests.csproj
+            filter: ""
     runs-on: ${{ matrix.os }}
     env:
       DOTNET_NOLOGO: "true"
@@ -39,23 +60,31 @@ jobs:
         run: dotnet build maquettiste.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test maquettiste.slnx --configuration Release --no-build --logger "trx;LogFilePrefix=${{ matrix.os }}" --results-directory TestResults
+        shell: bash
+        env:
+          FILTER: ${{ matrix.filter }}
+        run: |
+          status=0
+          for project in ${{ matrix.projects }}; do
+            dotnet test "$project" --configuration Release --no-build ${FILTER:+--filter "$FILTER"} \
+              --logger "trx;LogFilePrefix=${{ matrix.os }}-${{ matrix.part }}" --results-directory TestResults || status=1
+          done
+          exit $status
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.os }}
+          name: test-results-${{ matrix.os }}-${{ matrix.part }}
           path: TestResults
           if-no-files-found: ignore
 
-  # The TypeScript sample pack's process units (phase-3-design.md section 7.5), after the C# packs' tests: generated over the
+  # The TypeScript sample pack's process units (phase-3-design.md section 7.5), beside the C# packs' tests: generated over the
   # gate 3 fixture, type-checked with the editor's TypeScript compiler (tsc --noEmit), and its scenario tests run on node's test
   # runner, each step compared with the engine's replay (TypeScriptPackTests). MAQUETTISTE_REQUIRE_TYPESCRIPT turns the tests'
   # skip (no node or compiler) into a failure. Not a gate 3 criterion.
   typescript-pack:
     name: typescript pack
-    needs: build-and-test
     runs-on: ubuntu-latest
     env:
       DOTNET_NOLOGO: "true"
