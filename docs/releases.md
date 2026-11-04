@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.12.0 (unreleased)
+## 0.12.0 (2026-11-04)
 
 - **Library packs.** A pack can list other packs in `uses`, each with a version range: its templates include their
   partials by a prefixed name (`{{ include "naming:partials/header.scriban" }}`) and call their helpers through a
@@ -338,7 +338,10 @@ one.
   `maquettiste init`, or start the editor, which refreshes them; until then `validate` and `generate` warn MQ1008 and
   editors that check files against the copies do not know the new keys.
 
-## 0.11.0 (unreleased)
+## 0.11.0 (previews only)
+
+0.11.0 was published only as previews (`0.11.0-preview.1` and `0.11.0-preview.2`); its changes are released in 0.12.0.
+Moving from 0.10.1, read this section and the one above.
 
 - **Table seeds follow their foreign keys.** `model.seeds_in_order` puts a table seed after the seeds that hold the
   rows its foreign keys name, in every environment it loads in. A table whose rows name rows of the same table orders
