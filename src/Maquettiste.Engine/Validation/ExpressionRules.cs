@@ -38,10 +38,11 @@ internal sealed record ExprSite(string Pointer, Expr? Tree, bool Raw, string Sub
 }
 
 /// <summary>
-/// The expression sites of the model and the scope each reads (next-phase-3-design.md section 3.1): a table's or stereotype's
-/// columns at its checks; an entity's attributes (its bases' too, value-object members as <c>attribute.member</c>) at its checks and
-/// derived values; an operation's input and its subject's attributes (under <c>subject</c>) at its guards; a process's context and
-/// the payloads of the events that use a guard (under <c>event</c>) at the guard; a constraint's parameters at its condition.
+/// The expression sites of the model and the scope each reads (next-phase-3-design.md section 3.1): a table's columns (with those its
+/// stereotypes contribute, by keyed id) or a stereotype's at its checks; an entity's attributes (its bases' too, value-object members
+/// as <c>attribute.member</c>) at its checks and derived values; an operation's input and its subject's attributes (under
+/// <c>subject</c>) at its guards; a process's context and the payloads of the events that use a guard (under <c>event</c>) at the
+/// guard; a constraint's parameters at its condition.
 /// </summary>
 internal static class ExprSites
 {
@@ -52,7 +53,12 @@ internal static class ExprSites
         switch (element)
         {
             case Table table:
-                AddChecks(sites, table.Checks, s => Columns(s, model, table.Columns));
+                // A table's checks read its own columns and those its stereotypes contribute, by their keyed ids.
+                AddChecks(sites, table.Checks, s =>
+                {
+                    Columns(s, model, table.Columns);
+                    Columns(s, model, [.. TableMembers.Of(model, table).Columns.Select(m => m.Member)]);
+                });
                 break;
             case Stereotype stereotype:
                 AddChecks(sites, stereotype.Checks, s => Columns(s, model, stereotype.Columns));
@@ -248,13 +254,13 @@ internal static class ExprSites
 
     private static void AddEnum(ExprScope scope, EnumType e) => scope.AddEnum(e.Id, e.Name, e.Members.Select(m => (m.Id, m.Name)));
 
-    /// <summary>A reference type's codes: the code cell of each row of each seed of the type.</summary>
+    /// <summary>A reference type's codes: the code cell of each row of each seed of the type (its <c>code</c> column).</summary>
     private static void AddCodes(ExprScope scope, ModelSnapshot model, ReferenceType type)
     {
         var codes = new List<(string Id, string Code)>();
         foreach (var seed in model.All<Seed>().Where(s => s.Target == type.Id))
         {
-            var at = seed.Columns.ToList().IndexOf(type.Code.Id);
+            var at = seed.Columns.ToList().IndexOf("code");
             if (at < 0)
                 continue;
             foreach (var row in seed.Rows)
@@ -363,6 +369,8 @@ internal static class ExpressionRules
         if (sites.Count == 0 && !(element is Entity { Bindings.Count: > 0 } bound && bound.Bindings.Any(b => b.Checks.Count > 0)))
             return;
         var trees = new Dictionary<string, Expr>(StringComparer.Ordinal);
+        var typedTrees = new Dictionary<string, TypedExpr>(StringComparer.Ordinal);
+        Dictionary<string, Column>? columns = null;
         foreach (var site in sites)
         {
             if (site.Raw && site.Tree is not null)
@@ -384,6 +392,17 @@ internal static class ExpressionRules
                 report.Add(problem);
             if (typed is null)
                 continue;
+            if (problems.All(p => p.Severity != DiagnosticSeverity.Error))
+            {
+                typedTrees[site.SubId] = typed;
+                if (element is Table or Stereotype)
+                {
+                    var known = columns ??= ColumnsOf(model, element);
+                    foreach (var misfit in CodeMisfits(model, typed, id => known.GetValueOrDefault(id), site.SubId, report.Document.Path))
+                        report.Add(misfit with { Message = misfit.Message + " Type the column by the code's type, or compare it with a code of the column's type." });
+                }
+            }
+
             var read = ExprSites.PathIds(tree).ToHashSet(StringComparer.Ordinal);
             if (site.Reads is { } wanted && !read.Contains(wanted) && !read.Contains(wanted.Split('.', '@', ':')[^1]))
             {
@@ -409,8 +428,53 @@ internal static class ExpressionRules
         }
 
         if (element is Entity entity)
-            CheckBindings(model, entity, trees, report);
+            CheckBindings(model, entity, trees, typedTrees, report);
     }
+
+    /// <summary>The columns a table's or stereotype's checks read, by the id their paths hold (a contributed column's keyed id).</summary>
+    private static Dictionary<string, Column> ColumnsOf(ModelSnapshot model, Element element)
+    {
+        var columns = new Dictionary<string, Column>(StringComparer.Ordinal);
+        IEnumerable<Column> all = element switch
+        {
+            Table table => [.. table.Columns, .. TableMembers.Of(model, table).Columns.Select(m => m.Member)],
+            Stereotype stereotype => stereotype.Columns,
+            _ => [],
+        };
+        foreach (var column in all)
+            columns.TryAdd(column.Id, column);
+        return columns;
+    }
+
+    /// <summary>
+    /// What the SQL lowering of a check finds about the codes it holds (MQ3103): a reference-type code that is not an integer where the
+    /// column it meets stores integers (<paramref name="columnOf"/> gives the column each path reads). Lowered for PostgreSQL whatever
+    /// the database's dialect, since the column stores its codes so on every one; a tree that holds no code is not lowered.
+    /// </summary>
+    private static IEnumerable<Diagnostic> CodeMisfits(ModelSnapshot model, TypedExpr typed, Func<string, Column?> columnOf, string elementId, string? filePath)
+    {
+        if (!HasCode(typed))
+            return [];
+        var problems = new List<Diagnostic>();
+        ExprLowering.ToPostgreSql(typed, new ExprColumns
+        {
+            Column = t => t.Member is { } m && columnOf(m.Id) is { } c ? new ExprColumn(c.Name) { Form = FormOf(c) } : null,
+            Ref = (id, form) => Resolution.ExprResolution.RefLiteral(model, id, form),
+            ElementId = elementId,
+            FilePath = filePath,
+        }, ExprSiteKind.Check, problems);
+        return problems.Where(p => p.Rule == "MQ3103");
+
+        static bool HasCode(TypedExpr t) => (t.Node.Ref is not null && t.Type.Kind == "code") || (t.Body is { } body && HasCode(body)) || t.Args.Any(HasCode);
+    }
+
+    /// <summary>How a column file stores an enum member or code, by its physical type, as the resolver's <c>ExprResolution.FormOf</c> does.</summary>
+    private static ExprStoredForm FormOf(Column column) => column.Type switch
+    {
+        "int16" or "int32" or "int64" => ExprStoredForm.Integer,
+        "uuid" or "ulid" => ExprStoredForm.Uuid,
+        _ => ExprStoredForm.Text,
+    };
 
     private static void CheckOperationGuard(ModelSnapshot model, Operation operation, ExprSite site, HashSet<string> read, Report report)
     {
@@ -435,11 +499,26 @@ internal static class ExpressionRules
         }
     }
 
-    /// <summary>MQ3110 on the checks a binding lists; MQ3115 on an entity check no binding lists though one could enforce it.</summary>
-    private static void CheckBindings(ModelSnapshot model, Entity entity, Dictionary<string, Expr> trees, Report report)
+    /// <summary>
+    /// MQ3110 on the checks a binding lists, which may be the entity's own or, by id, its bases'; MQ3115 on an entity check no binding
+    /// lists though one could enforce it.
+    /// </summary>
+    private static void CheckBindings(ModelSnapshot model, Entity entity, Dictionary<string, Expr> trees, Dictionary<string, TypedExpr> typedTrees, Report report)
     {
         if (entity.Checks.Count == 0 && entity.Bindings.All(b => b.Checks.Count == 0))
             return;
+        var inherited = new Dictionary<string, (Expr Tree, Entity Declaring)>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
+        for (var b = entity.Base is { } first ? model.Get<Entity>(first) : null; b is not null && seen.Add(b.Id); b = b.Base is { } next ? model.Get<Entity>(next) : null)
+        {
+            foreach (var check in b.Checks)
+                inherited.TryAdd(check.Id, (check.Condition, b));
+        }
+
+        // A base's check is typed in the scope of the entity that declares it, as the resolver lowers it.
+        TypedExpr? TypedOf(string id) => typedTrees.TryGetValue(id, out var own) ? own
+            : inherited.TryGetValue(id, out var from) ? Resolution.ExprResolution.Type(model, from.Declaring, id)?.Typed : null;
+
         var listed = new HashSet<string>(StringComparer.Ordinal);
         var enforceable = new HashSet<string>(StringComparer.Ordinal);
         for (var j = 0; j < entity.Bindings.Count; j++)
@@ -448,7 +527,7 @@ internal static class ExpressionRules
             var table = WriteTable(model, binding);
             foreach (var check in entity.Checks)
             {
-                if (table is not null && trees.TryGetValue(check.Id, out var tree) && Unmapped(model, binding, table, tree) is null)
+                if (table is not null && trees.TryGetValue(check.Id, out var tree) && Unenforceable(model, binding, table, tree, TypedOf(check.Id)) is null)
                     enforceable.Add(check.Id);
             }
 
@@ -456,9 +535,9 @@ internal static class ExpressionRules
             {
                 var id = binding.Checks[k];
                 var at = Ptr.At(Ptr.At("/bindings", j) + "/checks", k);
-                if (entity.Checks.All(c => c.Id != id))
+                if (entity.Checks.All(c => c.Id != id) && !inherited.ContainsKey(id))
                 {
-                    report.Add("MQ3110", $"The binding lists '{id}', which is not a check of this entity; list one of the entity's checks.", at, binding.Id);
+                    report.Add("MQ3110", $"The binding lists '{id}', which is not a check of this entity or of its bases; list one of the entity's checks.", at, binding.Id);
                     continue;
                 }
 
@@ -469,7 +548,7 @@ internal static class ExpressionRules
                 }
 
                 listed.Add(id);
-                if (trees.TryGetValue(id, out var tree) && Unmapped(model, binding, table, tree) is { } problem)
+                if ((trees.GetValueOrDefault(id) ?? inherited.GetValueOrDefault(id).Tree) is { } tree && Unenforceable(model, binding, table, tree, TypedOf(id)) is { } problem)
                     report.Add("MQ3110", problem, at, binding.Id);
             }
         }
@@ -494,22 +573,42 @@ internal static class ExpressionRules
         return model.Get<Table>(id);
     }
 
-    /// <summary>Why a binding cannot enforce a check: an attribute it reads that the binding does not map to a varying column of the table.</summary>
-    private static string? Unmapped(ModelSnapshot model, EntityBinding binding, Table table, Expr tree)
+    /// <summary>
+    /// Why a binding cannot enforce a check: an attribute it reads that the binding does not map to a varying column of the table (a
+    /// value object member needs its own field, <c>attributeId.memberId</c>, as the resolver lowers it), or a code the check holds that
+    /// the column it meets cannot store (<see cref="CodeMisfits"/>); <see langword="null"/> when it can.
+    /// </summary>
+    private static string? Unenforceable(ModelSnapshot model, EntityBinding binding, Table table, Expr tree, TypedExpr? typed)
     {
+        var columns = new Dictionary<string, Column>(StringComparer.Ordinal);
         foreach (var path in ExprSites.Nodes(tree).Where(n => n.Path is { Count: > 0 }).Select(n => n.Path![0]).Distinct(StringComparer.Ordinal))
         {
-            var field = binding.Fields.FirstOrDefault(f => f.Attribute == path || f.Attribute.Split('.')[0] == path.Split('.')[0]);
+            var field = binding.Fields.FirstOrDefault(f => f.Attribute == path);
             if (field is null)
                 return $"The binding lists a check that reads '{path}', which the binding does not map to its write table; map the attribute, or remove the check from the binding.";
-            var columnId = field.Column.Split('.', '@')[^1];
-            var column = table.Columns.FirstOrDefault(c => c.Id == columnId || c.Id == field.Column);
-            if (column is not null && (column.FixedLength || (column.NativeType?.StartsWith("char(", StringComparison.OrdinalIgnoreCase) ?? false)))
+            if (FieldColumn(model, table, field) is not { } column)
+                continue;
+            if (column.FixedLength || (column.NativeType?.StartsWith("char(", StringComparison.OrdinalIgnoreCase) ?? false))
                 return $"The binding lists a check that reads '{path}', which it maps to the fixed-length column '{column.Name}'; map the attribute to a varying column, or remove the check from the binding.";
+            columns[path] = column;
         }
 
-        _ = model;
+        if (typed is not null && CodeMisfits(model, typed, id => columns.GetValueOrDefault(id), binding.Id, null).FirstOrDefault() is { } misfit)
+        {
+            return "The binding lists a check its write table cannot hold. " + misfit.Message
+                + " Map the attribute to a column of the code's type, or remove the check from the binding.";
+        }
+
         return null;
+    }
+
+    /// <summary>The column of a write table a binding field names: by its id (or the last segment of a keyed one), a contributed column's keyed id, or its name.</summary>
+    private static Column? FieldColumn(ModelSnapshot model, Table table, BindingField field)
+    {
+        var columnId = field.Column.Split('.', '@')[^1];
+        return table.Columns.FirstOrDefault(c => c.Id == columnId || c.Id == field.Column)
+            ?? TableMembers.Of(model, table).Columns.Select(m => m.Member).FirstOrDefault(c => c.Id == field.Column)
+            ?? table.Columns.FirstOrDefault(c => string.Equals(c.Name, field.Column, StringComparison.Ordinal));
     }
 
     /// <summary>The position text of an index, for messages.</summary>

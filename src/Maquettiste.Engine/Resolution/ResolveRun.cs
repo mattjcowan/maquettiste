@@ -204,6 +204,7 @@ internal sealed partial class ResolveRun
             Scenarios = new RList<RScenario>(_scenarioOrder, [ScenarioKind]),
             Operations = new RList<ROperation>(_operationOrder, [OperationKind]),
             CustomElements = new RList<RCustom>(_customOrder, [CustomKind]),
+            Constraints = new RList<RConstraint>(_constraintOrder, ["k:constraint"]),
             Databases = new RList<RDatabase>(resolvedDatabases, ["k:database"]),
             Migrations = new RList<RMigration>(_migrationOrder, MigrationMembership()),
             Locales = new RList<RLocale>(RLocale.Of(Settings.Localization), [RLocale.SettingsKey]),

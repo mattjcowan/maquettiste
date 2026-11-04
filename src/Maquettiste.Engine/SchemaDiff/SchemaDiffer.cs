@@ -532,10 +532,16 @@ internal sealed class SchemaDiffer : ISchemaDiffer
         return list;
     }
 
+    /// <summary>
+    /// A check's properties outside its key: its expression, unless both sides are checks written in the expression language with equal
+    /// shapes (next-phase-3-design.md section 3.1, decision 22). Then the texts differ only by the names of columns a rename changed,
+    /// which PostgreSQL follows inside the check, so dropping and adding it would only rescan the table.
+    /// </summary>
     private static List<PropertyChange> CheckProperties(SnapshotCheck a, SnapshotCheck b)
     {
         var list = new List<PropertyChange>();
-        Property(list, "expression", a.Expression, b.Expression);
+        if (a.Shape is null || !string.Equals(a.Shape, b.Shape, StringComparison.Ordinal))
+            Property(list, "expression", a.Expression, b.Expression);
         return list;
     }
 

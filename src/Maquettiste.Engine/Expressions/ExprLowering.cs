@@ -49,7 +49,8 @@ public sealed class ExprColumns
 
     /// <summary>
     /// The literal of an enum member or reference-type code (by id) in a stored form: a <see cref="long"/> for
-    /// <see cref="ExprStoredForm.Integer"/>, a <see cref="string"/> otherwise.
+    /// <see cref="ExprStoredForm.Integer"/>, a <see cref="string"/> otherwise. A code that is not an integer stays its text in the
+    /// integer form, which the SQL lowering reports (MQ3103) instead of converting.
     /// </summary>
     public Func<string, ExprStoredForm, object?>? Ref { get; init; }
 

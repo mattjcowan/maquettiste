@@ -60,6 +60,12 @@ public sealed class REntity : RElement
     /// <summary>Alternate keys.</summary>
     public IReadOnlyList<RAlternateKey> AlternateKeys { get; internal set; } = [];
 
+    /// <summary>
+    /// The entity checks (next-phase-3-design.md section 3.1): the root base's first, then each level's down to the entity's own, in file
+    /// order; a database enforces one only through a binding that lists it.
+    /// </summary>
+    public RList<REntityCheck> Checks { get; internal set; } = RList<REntityCheck>.Empty;
+
     /// <summary>Navigation properties generated on this entity.</summary>
     public RList<RNavigation> Navigations { get; internal set; } = RList<RNavigation>.Empty;
 
@@ -200,11 +206,17 @@ public sealed class RAttribute : RElement
     public RReferenceUsage? Reference { get; internal set; }
 }
 
-/// <summary>A resolved derivation.</summary>
+/// <summary>A resolved derivation: its raw text, or its value written in the expression language.</summary>
 public sealed class RDerived
 {
-    /// <summary>The expression.</summary>
+    /// <summary>The raw expression, interpreted by templates; empty when the value is written in the expression language.</summary>
     public string Expression { get; internal set; } = "";
+
+    /// <summary>
+    /// The value written in the expression language (next-phase-3-design.md section 3.1), typed against the entity's attributes; its
+    /// JavaScript computes it from a record. <see langword="null"/> for a raw expression, outside an entity, or when it does not type.
+    /// </summary>
+    public RExpression? Value { get; internal set; }
 
     /// <summary>Whether the computed value is stored.</summary>
     public bool Stored { get; internal set; }

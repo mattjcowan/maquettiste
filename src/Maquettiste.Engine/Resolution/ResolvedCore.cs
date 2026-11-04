@@ -306,6 +306,9 @@ public sealed class ResolvedModel
     /// <summary>Custom elements, by (type, name, id) (next-phase-2-design.md section 4.2). <see cref="Find"/> reaches their members.</summary>
     public RList<RCustom> CustomElements { get; internal init; } = RList<RCustom>.Empty;
 
+    /// <summary>Named constraints, by (package qualified name, name, id) (next-phase-3-design.md section 3.1).</summary>
+    public RList<RConstraint> Constraints { get; internal init; } = RList<RConstraint>.Empty;
+
     /// <summary>Databases, by name.</summary>
     public RList<RDatabase> Databases { get; internal init; } = RList<RDatabase>.Empty;
 

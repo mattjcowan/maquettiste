@@ -396,17 +396,33 @@ public sealed class RCheck
     /// <summary>The constraint name.</summary>
     public string Name { get; internal set; } = "";
 
-    /// <summary>The expression for the database's dialect.</summary>
+    /// <summary>
+    /// The expression for the database's dialect: the file's SQL text, or a check written in the expression language lowered to
+    /// PostgreSQL (next-phase-3-design.md section 3.1).
+    /// </summary>
     public string Expression { get; internal set; } = "";
+
+    /// <summary>
+    /// A check written in the expression language: its condition over the table's columns (paths end at <see cref="RColumn"/>s);
+    /// <see langword="null"/> for a SQL text check.
+    /// </summary>
+    public RExpression? Condition { get; internal set; }
 
     /// <summary>For a column check: the column it constrains; <see langword="null"/> for a table check.</summary>
     public RColumn? Column { get; internal set; }
 
     /// <summary>
     /// Where the check comes from (next-phase-2-design.md section 3.1): the table's own (<see cref="RMemberOrigin.Source"/> <c>own</c>, one
-    /// shared instance), or a stereotype of its effective set that contributes it, with the facets the table redefined.
+    /// shared instance), a stereotype of its effective set that contributes it, with the facets the table redefined, or an entity check
+    /// a binding lists (<c>binding</c>, next-phase-3-design.md section 3.1).
     /// </summary>
     public RMemberOrigin MemberOrigin { get; internal set; } = RMemberOrigin.Own;
+
+    /// <summary>
+    /// For a check written in the expression language: the hash of the check written with column keys in place of column names, which a
+    /// snapshot records so a column rename keeps the check (decision 22); <see langword="null"/> for a SQL text check.
+    /// </summary>
+    internal string? Shape { get; set; }
 }
 
 /// <summary>A resolved index.</summary>
@@ -453,9 +469,13 @@ public sealed class RMemberOrigin
     /// <summary>The instance every own member shares.</summary>
     internal static RMemberOrigin Own { get; } = new();
 
+    /// <summary>The instance every check an entity's binding adds shares (next-phase-3-design.md section 3.1).</summary>
+    internal static RMemberOrigin Binding { get; } = new() { Source = "binding" };
+
     /// <summary>
     /// <c>own</c>, <c>stereotype</c> (a stereotype the table lists or one it implies), <c>schema-default</c> or <c>package-default</c>
-    /// (a stereotype a database schema's or a package's <c>defaultStereotypes</c> gives the table, or one such a stereotype implies).
+    /// (a stereotype a database schema's or a package's <c>defaultStereotypes</c> gives the table, or one such a stereotype implies), or
+    /// <c>binding</c> for a check an entity's binding lists (<see cref="RCheck"/> only).
     /// </summary>
     public string Source { get; internal set; } = "own";
 

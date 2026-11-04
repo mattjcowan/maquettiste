@@ -52,6 +52,59 @@ public sealed class ExpressionRuleTests
         t["checks"] = new JsonArray(check);
     });
 
+    internal const string UnitAttributeId = "01K9EXR0000000000000000R06";
+    internal const string UnitColumnId = "01K9EXR0000000000000000R07";
+    internal const string KgId = "01K9EXR0000000000000000R05";
+
+    /// <summary>
+    /// The reference type Unit, whose codes are text (one seed row, <c>kg</c>), and a unit column of products typed int32: with
+    /// <paramref name="typeRef"/> the column is typed by Unit, else Product gains a unit attribute of Unit that its binding maps to it.
+    /// </summary>
+    internal static void IntegerUnitColumn(TempRepo repo, bool typeRef)
+    {
+        repo.WriteFile(".maquettiste/model/reference-types/unit.json", """
+            {
+              "kind": "reference-type",
+              "id": "01K9EXR0000000000000000R01",
+              "name": "Unit",
+              "package": "01K6BFX0000000000000000001",
+              "code": { "id": "01K9EXR0000000000000000R02", "length": 8 },
+              "label": { "id": "01K9EXR0000000000000000R03", "length": 64 }
+            }
+            """);
+        repo.WriteFile(".maquettiste/model/seeds/unit/unit.json", $$"""
+            {
+              "kind": "seed",
+              "id": "01K9EXR0000000000000000R04",
+              "name": "Unit",
+              "target": "01K9EXR0000000000000000R01",
+              "columns": ["code", "label"],
+              "rows": [ { "id": "{{KgId}}", "values": ["kg", "Kilogram"] } ]
+            }
+            """);
+        var column = new JsonObject { ["id"] = UnitColumnId, ["name"] = "unit", ["type"] = "int32" };
+        if (typeRef)
+            column["typeRef"] = new JsonObject { ["ref"] = "01K9EXR0000000000000000R01" };
+        Edit(repo, TablePath, t => t["columns"]!.AsArray().Add(column));
+        if (typeRef)
+            return;
+        Edit(repo, EntityPath, e =>
+        {
+            e["attributes"]!.AsArray().Add(JsonNode.Parse($$"""{ "id": "{{UnitAttributeId}}", "name": "unit", "type": { "ref": "01K9EXR0000000000000000R01" } }"""));
+            ((JsonObject)e["bindings"]![0]!)["fields"]!.AsArray().Add(JsonNode.Parse($$"""{ "attribute": "{{UnitAttributeId}}", "column": "{{UnitColumnId}}" }"""));
+        });
+    }
+
+    /// <summary>The entity check kgOnly (<c>unit = Unit.kg</c>), listed by Product's binding.</summary>
+    internal static void KgOnly(TempRepo repo) => Edit(repo, EntityPath, e =>
+    {
+        e["checks"] = JsonNode.Parse($$"""
+            [ { "id": "01K9EXR0000000000000000E02", "name": "kgOnly", "attribute": "{{UnitAttributeId}}",
+                "condition": { "op": "eq", "args": [{ "path": ["{{UnitAttributeId}}"] }, { "ref": "{{KgId}}" }] } } ]
+            """);
+        ((JsonObject)e["bindings"]![0]!)["checks"] = new JsonArray("01K9EXR0000000000000000E02");
+    });
+
     private static async Task<IReadOnlyList<Diagnostic>> ValidateAsync(TempRepo repo)
     {
         var store = new ModelStore(repo.Options);
@@ -102,6 +155,17 @@ public sealed class ExpressionRuleTests
         Edit(repo, TablePath, t => t["columns"]!.AsArray().Add(new JsonObject { ["id"] = Overlay, ["attribute"] = "01K9EXR0000000000000000X96" }));
         TableCheck(repo, $$"""{ "op": "eq", "args": [{ "path": ["{{Overlay}}"] }, { "value": "x" }] }""");
         await AssertRuleAsync(repo, "MQ3103", "/checks/0/condition/args/0");
+    }
+
+    [Fact]
+    public async Task MQ3103_a_code_its_column_cannot_store()
+    {
+        // Unit's codes are text; a column typed by Unit but stored as int32 cannot hold kg, so the check cannot lower.
+        using var repo = Repo();
+        IntegerUnitColumn(repo, typeRef: true);
+        TableCheck(repo, $$"""{ "op": "eq", "args": [{ "path": ["{{UnitColumnId}}"] }, { "ref": "{{KgId}}" }] }""");
+        await AssertRuleAsync(repo, "MQ3103", "/checks/0/condition/args/1");
+        Assert.Contains(await ValidateAsync(repo), d => d.Rule == "MQ3103" && d.Message.Contains("the code's type does not match the column", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -208,6 +272,51 @@ public sealed class ExpressionRuleTests
     {
         using var repo = Repo();
         Edit(repo, EntityPath, e => ((JsonObject)e["bindings"]![0]!)["checks"] = new JsonArray("01K9EXR0000000000000000X97"));
+        await AssertRuleAsync(repo, "MQ3110", "/bindings/0/checks/0");
+    }
+
+    [Fact]
+    public async Task MQ3110_a_binding_check_whose_code_the_mapped_column_cannot_store()
+    {
+        // The binding maps unit, typed by Unit (text codes), to an int32 column: the check's kg cannot be written there.
+        using var repo = Repo();
+        IntegerUnitColumn(repo, typeRef: false);
+        KgOnly(repo);
+        await AssertRuleAsync(repo, "MQ3110", "/bindings/0/checks/0");
+        Assert.Contains(await ValidateAsync(repo), d => d.Rule == "MQ3110" && d.Message.Contains("the code's type does not match the column", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task MQ3110_a_binding_check_on_a_value_object_member_the_binding_does_not_map()
+    {
+        // The binding maps total.amount, not total.currency, so the check on total.currency cannot reach the table.
+        using var repo = Repo();
+        repo.WriteFile(".maquettiste/model/types/money.json", """
+            {
+              "kind": "value-object",
+              "id": "01K9EXR0000000000000000V01",
+              "name": "Money",
+              "package": "01K6BFX0000000000000000001",
+              "attributes": [
+                { "id": "01K9EXR0000000000000000V02", "name": "amount", "type": "decimal", "precision": 18, "scale": 2, "required": true },
+                { "id": "01K9EXR0000000000000000V03", "name": "currency", "type": "string", "length": 3, "required": true }
+              ]
+            }
+            """);
+        Edit(repo, TablePath, t => t["columns"]!.AsArray().Add(JsonNode.Parse("""
+            { "id": "01K9EXR0000000000000000V05", "name": "total_amount", "type": "decimal", "precision": 18, "scale": 2 }
+            """)));
+        Edit(repo, EntityPath, e =>
+        {
+            e["attributes"]!.AsArray().Add(JsonNode.Parse("""{ "id": "01K9EXR0000000000000000V04", "name": "total", "type": { "ref": "01K9EXR0000000000000000V01" } }"""));
+            var binding = (JsonObject)e["bindings"]![0]!;
+            binding["fields"]!.AsArray().Add(JsonNode.Parse("""{ "attribute": "01K9EXR0000000000000000V04.01K9EXR0000000000000000V02", "column": "01K9EXR0000000000000000V05" }"""));
+            e["checks"] = JsonNode.Parse("""
+                [ { "id": "01K9EXR0000000000000000E03", "name": "usdOnly", "attribute": "01K9EXR0000000000000000V04.01K9EXR0000000000000000V03",
+                    "condition": { "op": "eq", "args": [{ "path": ["01K9EXR0000000000000000V04.01K9EXR0000000000000000V03"] }, { "value": "USD" }] } } ]
+                """);
+            binding["checks"] = new JsonArray("01K9EXR0000000000000000E03");
+        });
         await AssertRuleAsync(repo, "MQ3110", "/bindings/0/checks/0");
     }
 

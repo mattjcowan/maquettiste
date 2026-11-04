@@ -338,7 +338,7 @@
                   "type": "string"
                 },
                 "shape": {
-                  "description": "A tree check's hash of its id tree: equal shapes are the same check, though a renamed column changes its text.",
+                  "description": "A tree check's hash of its lowered SQL with column keys in place of column names: equal shapes are the same check, though a renamed column changes its text.",
                   "type": "string",
                   "minLength": 1
                 }

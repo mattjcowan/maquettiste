@@ -5,6 +5,7 @@ using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Ledger;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Tests.Editor;
 using Maquettiste.Testing;
 
@@ -586,6 +587,7 @@ public sealed class MaterializeTests
     // ---- stereotypes that contribute structure (next-phase-2-design.md section 3.1, D16) ------------------------------------------
 
     private const string AuditedPath = ".maquettiste/model/vocabularies/stereotypes/audited.json";
+    private const string OverlayPath = ".maquettiste/model/databases/main/tables/01j92p0v1t0j6rh4my9h81nyb4.json";
     private const string ProductId = "01J92P0V0JR8BE8253SKT29ZG7";
     private const string CreatedAt = "01JC7AVD1TC0000000000000C1", UpdatedAt = "01JC7AVD1TC0000000000000C2", CreatedIndex = "01JC7AVD1TC0000000000000X1";
 
@@ -772,6 +774,63 @@ public sealed class MaterializeTests
         var table = (await r.Service.GetDatabaseViewAsync(EditorRepo.MainDatabaseId, Ct)).View!.Tables.Single(t => t.Name == "products");
         var stamped = table.Columns.Single(c => c.Name == "stamped_at");
         Assert.Equal((file.Id + "." + StampedAt, "package-default"), (stamped.Key, stamped.MemberOrigin!.Source));
+    }
+
+    [Fact]
+    public async Task Materialize_tables_moves_an_overlay_tree_check_on_a_contributed_column_to_the_new_key()
+    {
+        // The overlay's check reads stamp, which stamped contributes, by its keyed id under the projected table's key; the designed
+        // table's check reads it under the table's id, as its columns, keys and redefinitions do, so the write is not refused.
+        await using var r = EditorRepo.Create(packs: false);
+        const string Stamp = "01K9EXR0000000000000000M02", CheckId = "01K9EXR0000000000000000M03";
+        File.WriteAllText(r.Repo.PathOf(".maquettiste/model/vocabularies/stereotypes/stamped.json"), $$"""
+            {"kind": "stereotype", "id": "01K9EXR0000000000000000M01", "key": "stamped", "name": "Stamped", "appliesTo": ["table"],
+             "columns": [{"id": "{{Stamp}}", "name": "stamp", "type": "datetimeoffset"}]}
+            """, new UTF8Encoding(false));
+        EditOnDisk(r, OverlayPath, t =>
+        {
+            t["stereotypes"] = new JsonArray("audited", "stamped");
+            t["checks"]!.AsArray().Add(JsonNode.Parse($$"""
+                {"id": "{{CheckId}}", "name": "ck_invoices_stamp",
+                 "condition": {"op": "isNotNull", "args": [{"path": ["{{EditorRepo.InvoiceId}}@{{EditorRepo.MainDatabaseId}}.{{Stamp}}"] }] } }
+                """));
+        });
+
+        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
+
+        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        var check = Assert.Single(r.Store.Current!.Get<Table>(EditorRepo.OverlayTableId)!.Checks, c => c.Id == CheckId);
+        Assert.Equal(EditorRepo.OverlayTableId + "." + Stamp, check.Condition!.Args![0].Path![0]);
+        Assert.Equal("", Errors(await r.Store.ValidateAsync(ValidationScope.All, Ct)));
+        var resolved = await new ModelResolver(r.Repo.Options).ResolveAsync(r.Store.Current!, null, Ct);
+        var invoices = resolved.Databases.Single(d => d.Id == EditorRepo.MainDatabaseId).Tables.Single(t => t.Name == "invoices");
+        Assert.Contains(invoices.Checks, c => c.Name == "ck_invoices_stamp" && c.Expression == "stamp IS NOT NULL");
+    }
+
+    [Fact]
+    public async Task Materialize_tables_keeps_an_overlay_tree_check_the_DDL_of_its_dialect_leaves_out()
+    {
+        // On SQL Server a tree check is MQ4056 and out of the DDL, so the projected table has no such check; the designed table still
+        // holds it as the overlay defined it.
+        await using var r = EditorRepo.Create(packs: false);
+        const string Flag = "01K9EXR0000000000000000M11", CheckId = "01K9EXR0000000000000000M12";
+        EditOnDisk(r, ".maquettiste/model/databases/main/database.json", d => d["dialect"] = "sqlserver");
+        EditOnDisk(r, OverlayPath, t =>
+        {
+            t["columns"]!.AsArray().Add(JsonNode.Parse($$"""{"id": "{{Flag}}", "name": "extra_flag", "type": "bool"}"""));
+            t["checks"]!.AsArray().Add(JsonNode.Parse($$"""
+                {"id": "{{CheckId}}", "name": "ck_invoices_extra", "condition": {"op": "eq", "args": [{"path": ["{{Flag}}"]}, {"value": true}] } }
+                """));
+        });
+        Assert.Contains((await r.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ4056" && d.ElementId == EditorRepo.OverlayTableId);
+
+        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
+
+        Assert.Equal(SaveOutcome.Saved, stored.Outcome);
+        var file = r.Store.Current!.Get<Table>(EditorRepo.OverlayTableId)!;
+        Assert.Equal(["ck_invoice_status", "ck_invoices_extra"], file.Checks.Select(c => c.Name));
+        var check = file.Checks.Single(c => c.Id == CheckId);
+        Assert.Equal((Flag, true), (check.Condition!.Args![0].Path![0], check.Expression.Count == 0));
     }
 
     [Fact]

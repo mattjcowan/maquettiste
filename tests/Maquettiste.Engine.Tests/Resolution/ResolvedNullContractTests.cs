@@ -85,6 +85,12 @@ public sealed class ResolvedNullContractTests
         ["RReferenceBindingField"] = "reference type bindings: ReferenceBindingTests",
         // A table seed's foreign-key entry (next-phase-2-design.md section 3.4); TableSeedTests and ReferenceDataResolutionTests resolve it.
         ["RDataRef"] = "foreign-key entries of table seeds: TableSeedTests",
+        // Expressions (next-phase-3-design.md section 3.1): no fixture model holds one, so that their golden output stays as it was;
+        // ExpressionResolutionTests resolves them.
+        ["RExpression"] = "expression trees: ExpressionResolutionTests",
+        ["REntityCheck"] = "entity checks: ExpressionResolutionTests",
+        ["RConstraint"] = "named constraints: ExpressionResolutionTests",
+        ["RConstraintParameter"] = "named constraints: ExpressionResolutionTests",
     };
 
     [Fact]

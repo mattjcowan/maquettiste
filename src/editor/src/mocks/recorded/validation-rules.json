@@ -658,7 +658,7 @@
   {
     "id": "MQ3103",
     "defaultSeverity": "error",
-    "description": "An expression's types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, + on a date, date_part of hour or minute on a date, a site result that is not bool, a derived value of another type, a type the core does not have (float among them), or an enum member or code against a value of no enum or reference type.",
+    "description": "An expression's types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, + on a date, date_part of hour or minute on a date, a site result that is not bool, a derived value of another type, a type the core does not have (float among them), or an enum member or code against a value of no enum or reference type, or a code the column it is compared with cannot store.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true
@@ -715,7 +715,7 @@
   {
     "id": "MQ3110",
     "defaultSeverity": "error",
-    "description": "A binding lists a check that is not its entity's, or one that reads an attribute the binding does not map to its write table or maps to a fixed-length column, or the binding has no write table.",
+    "description": "A binding lists a check that is not its entity's, or one that reads an attribute the binding does not map to its write table or maps to a fixed-length column or to a column that cannot store a code it names, or the binding has no write table.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true

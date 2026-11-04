@@ -73,10 +73,18 @@ internal sealed partial class DatabaseRun
                 FromFile: true, Id: m.Key, Storage: Storage([index.Storage]), Origin: OriginOf(t, m)));
         }
 
-        // Inherited checks continue the own checks' ordinal.
+        // Inherited checks continue the own checks' ordinal; one in the expression language reads the stereotype's columns, keyed in the table.
         var ordinal = t.Checks.Count;
         foreach (var m in set.Checks)
         {
+            if (m.Member.Expression.Count == 0 && m.Member.Condition is not null)
+            {
+                var (pinId, pointer) = MemberPin(t, m.MemberId, m.From);
+                if (TypeCheck(t, m.From.Stereotype, m.MemberId, m.Member.Name, set.TableKey, pinId, pointer) is { } tree)
+                    t.Checks.Add(new CheckSpec("", m.Member.Name, ++ordinal, m.Key, m.Member.Column, OriginOf(t, m)) { Tree = tree });
+                continue;
+            }
+
             if (ForDialect(m.Member.Expression) is { } expression)
                 t.Checks.Add(new CheckSpec(expression, m.Member.Name, ++ordinal, m.Key, m.Member.Column, OriginOf(t, m)));
         }
@@ -258,8 +266,9 @@ internal sealed partial class DatabaseRun
     }
 
     /// <summary>
-    /// MQ4008 for an overlay key, index or check that names a column of a stereotype the synthesized table skips (decision 1): validation
-    /// judges an overlay on its candidate set, which still holds those columns, so only the resolver knows they are not there.
+    /// MQ4008 for an overlay key, index or check (by its <c>column</c> or a path of its condition) that names a column of a stereotype the
+    /// synthesized table skips (decision 1): validation judges an overlay on its candidate set, which still holds those columns, so only
+    /// the resolver knows they are not there.
     /// </summary>
     private void ReportSkippedMemberUses(TableBuild t, Table overlay, HashSet<string> skip)
     {
@@ -316,7 +325,16 @@ internal sealed partial class DatabaseRun
         }
 
         for (var c = 0; c < overlay.Checks.Count; c++)
-            Check(overlay.Checks[c].Column, At("/checks", c) + "/column");
+        {
+            var check = overlay.Checks[c];
+            Check(check.Column, At("/checks", c) + "/column");
+            // A check in the expression language names the column in its condition too; the resolver would leave it out of the DDL.
+            if (check.Condition is { } condition)
+            {
+                foreach (var id in ExprSites.PathIds(condition).Distinct(StringComparer.Ordinal))
+                    Check(id, At("/checks", c) + "/condition");
+            }
+        }
     }
 
     /// <summary>

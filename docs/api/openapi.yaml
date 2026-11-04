@@ -876,6 +876,10 @@ paths:
           `completes`, `returns`), the errors (`code`, `input`), and `fires` and `requires` by id.
         - `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and
           its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.
+        - `constraints`: `ConstraintRecord`, one named constraint per record with its typed `parameters`, its `condition` and its
+          `message`. An entity's `checks` and a derived attribute's `value` are written in the same expression language: each
+          `ExpressionRecord` has the `text` printed from current names, its `type`, whether it is `nullable` and the `tree` of ids
+          the file holds; a model without expressions has none of these keys.
         - `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and
           indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,
           for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,
@@ -901,7 +905,7 @@ paths:
           description: What to read.
           schema:
             type: string
-            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, operations, custom-elements, databases, tables, routines, database-types, sql-objects, queries, migrations]
+            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, operations, custom-elements, constraints, databases, tables, routines, database-types, sql-objects, queries, migrations]
             default: all
         - name: database
           in: query
@@ -8794,6 +8798,7 @@ components:
             - $ref: '#/components/schemas/ScenarioRecord'
             - $ref: '#/components/schemas/OperationRecord'
             - $ref: '#/components/schemas/CustomRecord'
+            - $ref: '#/components/schemas/ConstraintRecord'
             - $ref: '#/components/schemas/DatabaseRecord'
             - $ref: '#/components/schemas/TableRecord'
             - $ref: '#/components/schemas/RoutineRecord'
@@ -8977,6 +8982,11 @@ components:
             description: The entity's bindings (erratum E43), one per database it is bound to, by database name. A bound entity has no mapping in that database.
             items:
               $ref: '#/components/schemas/EntityBindingRecord'
+          checks:
+            type: array
+            description: The entity checks (next-phase-3-design.md section 3.1), the root base's first; absent for an entity without any.
+            items:
+              $ref: '#/components/schemas/EntityCheckRecord'
     AttributeRecord:
       x-engine-record: Maquettiste.Engine.AttributeRecord
       description: A resolved attribute.
@@ -9082,8 +9092,60 @@ components:
       properties:
         expression:
           type: string
+          description: The raw expression; empty when the value is written in the expression language.
         stored:
           type: boolean
+        value:
+          $ref: '#/components/schemas/ExpressionRecord'
+          description: The value written in the expression language; absent for a raw expression.
+    ExpressionRecord:
+      x-engine-record: Maquettiste.Engine.ExpressionRecord
+      description: An expression of the one expression language (next-phase-3-design.md section 3.1).
+      type: object
+      required: [text, type, nullable, tree]
+      properties:
+        text:
+          type: string
+          description: The text form, printed from current names, so a rename changes it and never the file.
+        type:
+          type: string
+          description: The type as messages write it (`bool`, `int32`, `decimal`, `date`, `enum <id>`, `code <id>`).
+        nullable:
+          type: boolean
+        tree:
+          type: object
+          additionalProperties: true
+          description: The tree as the file holds it (`common.json#/$defs/expr`), paths, enum members, codes and constraints by id.
+    EntityCheckRecord:
+      x-engine-record: Maquettiste.Engine.EntityCheckRecord
+      description: 'An entity check: a condition every record of the entity meets, unknown passing. A binding that lists it writes it into its table.'
+      allOf:
+      - $ref: '#/components/schemas/ResolvedAnnotations'
+      - type: object
+        required: [id, name, attribute, condition, message, isInherited, bindings]
+        properties:
+          id:
+            type: string
+          name:
+            type: string
+          attribute:
+            type: [string, 'null']
+            description: The attribute a failure points at.
+          condition:
+            oneOf:
+            - $ref: '#/components/schemas/ExpressionRecord'
+            - type: 'null'
+            description: The condition; null when it does not type (validation says why).
+          message:
+            type: [string, 'null']
+          isInherited:
+            type: boolean
+            description: Comes from a base entity.
+          bindings:
+            type: array
+            items:
+              type: string
+            description: The ids of the bindings that list it, by database name.
     ValidationRecord:
       x-engine-record: Maquettiste.Engine.ValidationRecord
       description: Validation of an attribute or scalar type.
@@ -10133,6 +10195,50 @@ components:
         pointer:
           type: string
           description: Its JSON pointer in the element's file.
+    ConstraintRecord:
+      x-engine-record: Maquettiste.Engine.ConstraintRecord
+      description: 'A named constraint (next-phase-3-design.md section 3.1): one condition over typed parameters, inlined where a site cites it with `satisfies`.'
+      allOf:
+      - $ref: '#/components/schemas/ResolvedAnnotations'
+      - type: object
+        required: [id, kind, name, package, parameters, condition, message]
+        properties:
+          id:
+            type: string
+          kind:
+            type: string
+            const: constraint
+          name:
+            type: string
+          package:
+            type: [string, 'null']
+          parameters:
+            type: array
+            items:
+              $ref: '#/components/schemas/ConstraintParameterRecord'
+          condition:
+            oneOf:
+            - $ref: '#/components/schemas/ExpressionRecord'
+            - type: 'null'
+            description: The condition over the parameters; null when it does not type (validation says why).
+          message:
+            type: [string, 'null']
+    ConstraintParameterRecord:
+      x-engine-record: Maquettiste.Engine.ConstraintParameterRecord
+      description: A typed parameter of a named constraint.
+      type: object
+      required: [id, name, type, displayName, description]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          $ref: '#/components/schemas/TypeRecord'
+        displayName:
+          type: string
+        description:
+          type: [string, 'null']
     OperationMemberRecord:
       x-engine-record: Maquettiste.Engine.OperationMemberRecord
       description: A member of an operation's input or of an outcome's returns, a typed value, a record key or a file.

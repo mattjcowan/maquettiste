@@ -277,16 +277,33 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         }
 
         node["foreignKeys"] = foreignKeys;
+        // The overlay's checks move in as its file defines them, each one whether the DDL holds it or not (a tree check on a dialect
+        // other than PostgreSQL is MQ4056 and left out, as is a SQL text check without a text for the dialect), so the model loses none;
+        // a check in the expression language keeps its tree, each path's column key turned into the designed table's column id (a
+        // contributed column's keyed id moves with the table key). A check an entity's binding writes stays with the binding.
         var checks = new JsonArray();
-        foreach (var check in table.Checks.Where(c => c.MemberOrigin.MemberId is null))
+        string Remap(string key) => columns.GetValueOrDefault(key, key);
+        bool Own(RCheck c) => c.MemberOrigin.MemberId is null && c.MemberOrigin.Source != "binding";
+        foreach (var file in overlay?.Checks ?? [])
         {
-            var file = overlay?.Checks.FirstOrDefault(x => x.Id == check.Id);
-            var checkNode = new JsonObject
-            {
-                ["id"] = check.Id ?? ids.NewId(),
-                ["name"] = check.Name,
-                ["expression"] = file is not null ? JsonSerializer.SerializeToNode(file.Expression) : new JsonObject { ["*"] = check.Expression },
-            };
+            var resolved = table.Checks.FirstOrDefault(c => Own(c) && c.Id == file.Id);
+            var checkNode = new JsonObject { ["id"] = file.Id };
+            if ((resolved?.Name ?? file.Name) is { } name)
+                checkNode["name"] = name;
+            if (file.Condition is { } condition && file.Expression.Count == 0)
+                checkNode["condition"] = RemapPaths(JsonSerializer.SerializeToNode(condition, EngineJson.Options)!, Remap);
+            else
+                checkNode["expression"] = JsonSerializer.SerializeToNode(file.Expression);
+            if (resolved?.Column is { } checkColumn)
+                checkNode["column"] = Col(checkColumn);
+            else if (file.Column is { } fileColumn)
+                checkNode["column"] = Remap(fileColumn);
+            checks.Add(checkNode);
+        }
+
+        foreach (var check in table.Checks.Where(c => Own(c) && overlay?.Checks.Any(x => x.Id == c.Id) != true))
+        {
+            var checkNode = new JsonObject { ["id"] = check.Id ?? ids.NewId(), ["name"] = check.Name, ["expression"] = new JsonObject { ["*"] = check.Expression } };
             if (check.Column is { } checkColumn)
                 checkNode["column"] = Col(checkColumn);
             checks.Add(checkNode);
@@ -319,6 +336,42 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
                 x["where"] = where;
             return (JsonNode)x;
         })]);
+        return node;
+    }
+
+    /// <summary>A condition as JSON with each segment of each path turned by <paramref name="remap"/> (a column key into a column id).</summary>
+    private static JsonNode RemapPaths(JsonNode node, Func<string, string> remap)
+    {
+        switch (node)
+        {
+            case JsonObject o:
+                foreach (var (name, child) in o.ToList())
+                {
+                    if (name == "path" && child is JsonArray path)
+                    {
+                        for (var i = 0; i < path.Count; i++)
+                        {
+                            if (path[i]?.GetValue<string>() is { } segment)
+                                path[i] = remap(segment);
+                        }
+                    }
+                    else if (child is not null)
+                    {
+                        RemapPaths(child, remap);
+                    }
+                }
+
+                break;
+            case JsonArray a:
+                foreach (var child in a)
+                {
+                    if (child is not null)
+                        RemapPaths(child, remap);
+                }
+
+                break;
+        }
+
         return node;
     }
 

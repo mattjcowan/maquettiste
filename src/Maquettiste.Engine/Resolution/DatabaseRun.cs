@@ -1,4 +1,7 @@
+using System.Globalization;
 using System.Text.Json;
+using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Text;
 
@@ -106,9 +109,11 @@ internal sealed partial class DatabaseRun
         ReportUnusedOverlays();
         BuildEntityMappings();
         BuildJoins();
+        // Names are judged once the bindings, which Publish resolves, have added the entity checks they list to their write tables.
+        var database = Publish();
         CheckIdentifiers();
         CheckNames();
-        return Publish();
+        return database;
     }
 
     // ---- designed and imported tables, views, sequences, overlays ------------------------------------------------------------
@@ -263,8 +268,17 @@ internal sealed partial class DatabaseRun
         }
 
         var ordinal = t.Checks.Count;
-        foreach (var check in table.Checks)
+        for (var i = 0; i < table.Checks.Count; i++)
         {
+            var check = table.Checks[i];
+            if (check.Expression.Count == 0 && check.Condition is not null)
+            {
+                // A check in the expression language is typed now and lowered once the columns are final; on another dialect it is left out.
+                if (TypeCheck(t, table, check.Id, check.Name, null, table.Id, "/checks/" + i.ToString(CultureInfo.InvariantCulture) + "/condition") is { } tree)
+                    t.Checks.Add(new CheckSpec("", check.Name, ++ordinal, check.Id, check.Column) { Tree = tree });
+                continue;
+            }
+
             var expression = ForDialect(check.Expression);
             if (expression is not null)
                 t.Checks.Add(new CheckSpec(expression, check.Name, ++ordinal, check.Id, check.Column));
@@ -441,6 +455,91 @@ internal sealed partial class DatabaseRun
 
     private string? ForDialect(IReadOnlyDictionary<string, string> values) =>
         values.TryGetValue(_dialect, out var value) ? value : values.TryGetValue("*", out var any) ? any : null;
+
+    // ---- checks in the expression language (next-phase-3-design.md section 3.1, "Where lowering runs") ----------------------------
+
+    /// <summary>
+    /// Types a table's, overlay's or stereotype's check written in the expression language, in the scope of the file that holds it, and
+    /// adds what its condition names (an enum, a seed, a constraint) to the table's dependency keys. <see langword="null"/> when it does
+    /// not type (validation reports why) or the database is not PostgreSQL (MQ4056: the DDL leaves it out).
+    /// </summary>
+    /// <param name="t">The table.</param>
+    /// <param name="holder">The table file or stereotype that holds the check.</param>
+    /// <param name="checkId">The check's id in the holder.</param>
+    /// <param name="name">The check's name, or <see langword="null"/>.</param>
+    /// <param name="keyPrefix">For a stereotype's check, the table key its columns are keyed under.</param>
+    /// <param name="elementId">The element a finding goes on.</param>
+    /// <param name="pointer">The finding's pointer there.</param>
+    /// <returns>The typed check.</returns>
+    private TreeCheck? TypeCheck(TableBuild t, Element holder, string checkId, string? name, string? keyPrefix, string elementId, string? pointer)
+    {
+        if (ExprResolution.Type(_run.Model, holder, checkId) is not { } typed)
+            return null;
+        if (_db.Dialect != Dialect.PostgreSql)
+        {
+            var problems = new List<Diagnostic>();
+            ExprLowering.ToPostgreSql(typed.Typed, new ExprColumns { Dialect = _dialect }, ExprSiteKind.Check, problems);
+            ReportLowering(problems, $"Check '{name ?? checkId}' of table '{t.Table.Name}' in database '{_db.Name}'", elementId, pointer);
+            return null;
+        }
+
+        foreach (var id in ExprResolution.Names(_run.Model, typed.Typed))
+            t.Deps.Element(id);
+        return new TreeCheck(new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Check, ExprColumns.None), keyPrefix, elementId, pointer);
+    }
+
+    /// <summary>
+    /// A table's resolved check: a SQL text check as its spec says; a check in the expression language lowered to PostgreSQL through the
+    /// table's final columns (a stereotype's check reads its columns under their keyed ids), with its condition and shape. <see langword="null"/>
+    /// leaves a tree check out when it reads a column the table does not have (validation, or MQ4008 for a skipped stereotype, says so).
+    /// </summary>
+    private RCheck? ResolveCheck(TableBuild t, CheckSpec c)
+    {
+        var check = new RCheck
+        {
+            Id = c.Id,
+            Name = c.Name ?? Render(_conv.CheckName, ("table", t.Table.Name), ("name", c.Ordinal.ToString(CultureInfo.InvariantCulture))),
+            Expression = c.Expression,
+            Column = c.Column is null ? null : t.Resolve(c.Column),
+            MemberOrigin = c.Origin ?? RMemberOrigin.Own,
+        };
+        if (c.Tree is not { } tree)
+            return check;
+        var columns = new Dictionary<string, RColumn>(StringComparer.Ordinal);
+        foreach (var id in ExprResolution.Paths(tree.Source.Typed))
+        {
+            if (((tree.KeyPrefix is { } prefix ? t.Resolve(ContributedMembers.KeyOf(prefix, id)) : null) ?? t.Resolve(id)) is { } column)
+                columns[id] = column;
+        }
+
+        if (LowerCheck(tree.Source, columns, $"Check '{check.Name}' of table '{t.Table.Name}' in database '{_db.Name}'", tree.ElementId, tree.Pointer) is not { } lowered)
+            return null;
+        check.Expression = lowered.Sql;
+        check.Condition = lowered.Condition;
+        check.Shape = lowered.Shape;
+        return check;
+    }
+
+    /// <summary>
+    /// Lowers a check to the columns its paths read, reporting what the lowering finds: MQ4056 on another dialect, and a code its column
+    /// cannot store under <paramref name="misfit"/> (MQ3103 at a table, MQ3110 for a binding's check, as validation reports it).
+    /// </summary>
+    private LoweredCheck? LowerCheck(ExprRoot source, IReadOnlyDictionary<string, RColumn> columns, string what, string elementId, string? pointer,
+        string misfit = "MQ3103")
+    {
+        var problems = new List<Diagnostic>();
+        var lowered = ExprResolution.LowerCheck(_run.Model, _rdb, _db.Quoting, source, columns, elementId, _run.Model.GetDocument(elementId)?.Path,
+            _run.EnumMemberOf, problems);
+        ReportLowering(problems, what, elementId, pointer, misfit);
+        return lowered;
+    }
+
+    /// <summary>Reports what a lowering found, on the check's element at its pointer, naming the check; MQ3103 goes under <paramref name="misfit"/>.</summary>
+    private void ReportLowering(List<Diagnostic> problems, string what, string elementId, string? pointer, string misfit = "MQ3103")
+    {
+        foreach (var problem in problems)
+            _run.AddDiagnostic(problem.Rule == "MQ3103" ? misfit : problem.Rule, what + ": " + problem.Message, elementId, pointer);
+    }
 
     private string? SchemaName(string? schemaId) =>
         schemaId is not null && _schemaNames.TryGetValue(schemaId, out var name) ? name : _rdb.DefaultSchema;
