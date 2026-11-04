@@ -316,8 +316,9 @@ one.
   the same answers from both.
 - **Expressions for tools and packs.** `maquettiste expression preview`, the MCP tool `preview_expression` (77 tools)
   and `POST /api/model/expressions/preview` show an expression's text, type, JavaScript and PostgreSQL text, and with
-  a row of values its answer, reading one element only. `get_resolved_model` gives each expression as
-  `{ text, type, nullable, tree }` and gains the scope `constraints`. Templates read the typed trees
+  a row of values its answer, reading one element only. `get_resolved_model` gives each entity check, derived value,
+  guard and constraint condition as `{ text, type, nullable, tree }` (a table check's text is read with a preview) and
+  gains the scope `constraints`. Templates read the typed trees
   (`entity.checks`, `check.condition`, `attribute.derived.value`, `guard.condition`, `operation.guards`,
   `model.constraints`); `expression_sql` gives the PostgreSQL text through a binding and `expression_runtime` the
   JavaScript runtime, for packs that write JavaScript. csharp-dapper renders conditions with `expr_cs`, an example
@@ -331,6 +332,8 @@ one.
 - **Times are UTC.** In the expression language, `date_of`, `date_part` and `add_months` of a `datetimeoffset` work on
   its UTC date and time, and a `datetime` compared with a `datetimeoffset` reads as UTC, so "today" at a guard is the
   UTC date. A project time zone may come later.
+- **Three known limits.** PostgreSQL and JavaScript answer the same everywhere but in three cases, listed under
+  [Portable rules](user-guide.md#portable-rules) in the user guide.
 - **Refresh the schema copies.** The kind schemas gain `checks`, `condition`, `guards` and the `constraint` kind. Run
   `maquettiste init`, or start the editor, which refreshes them; until then `validate` and `generate` warn MQ1008 and
   editors that check files against the copies do not know the new keys.

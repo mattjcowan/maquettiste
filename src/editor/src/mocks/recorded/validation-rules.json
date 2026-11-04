@@ -715,7 +715,7 @@
   {
     "id": "MQ3110",
     "defaultSeverity": "error",
-    "description": "A binding lists a check that is not its entity's, or one that reads an attribute the binding does not map to its write table or maps to a fixed-length column or to a column that cannot store a code it names, or the binding has no write table.",
+    "description": "A binding lists a check that is neither its entity's nor a base's, or one that reads an attribute the binding does not map to its write table or maps to a fixed-length column or to a column that cannot store a code it names, or the binding has no write table.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true

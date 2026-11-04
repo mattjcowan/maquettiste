@@ -91,7 +91,8 @@ public sealed class ExpressionAcceptanceTests
         var code = repo.Repo.ReadFile(Assert.Single(repo.Repo.ListFiles(),
             p => p.StartsWith("src/Generated/", StringComparison.Ordinal) && p.EndsWith("/Invoice.g.cs", StringComparison.Ordinal))).ReplaceLineEndings("\n");
         Assert.True(code.Contains("""
-                    if ((DueOn is null ? (bool?)null : (IssuedOn <= DueOn.Value)) == false)
+                    bool? ok = DueOn switch { { } v1 => (bool?)(IssuedOn <= v1), _ => null };
+                    if (ok == false)
                         errors.Add(("/issuedOn", "dueAfterIssue", "An invoice is due on or after the day it is issued."));
             """, StringComparison.Ordinal), code);
 

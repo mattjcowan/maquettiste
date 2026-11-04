@@ -230,24 +230,28 @@ hold it as a tree of ids, so a rename never breaks it; the text is printed from 
 
 - Write text, never trees: wherever a tree goes, send `{ "text": "issuedOn <= dueOn" }` to `save_element`,
   `create_element`, `patch_element` or `apply_batch`; the engine reads it with the site's names and stores the tree.
-  Text that does not parse refuses the write (MQ3101, with the position). Never write a tree's ids by hand.
+  Text that does not parse refuses the write (MQ3101, with the position). Never write a tree's ids by hand. A rule
+  file keeps a declared rule's `expression` text as written: its paths are member names by design, so no tree is
+  needed.
 - Sites: a table or column check's `condition` (beside the SQL text of `expression`), the entity's `checks` (`name`,
   `attribute` a failure points at, `condition`, `message`), an attribute's `derived.value`, a process guard's
   `condition` (beside the JavaScript `expression`), an operation's `guards` (`condition`, the `error` it reports) and a
   declared rule's `expression` (`member` paths). A rule used in several places is a `constraint` element, cited as
   `satisfies PositiveAmount(amount: total.amount)`. A site holds its raw form or its tree, never both (MQ3107).
 - Names are the site's: attribute or column names, `total.amount` for a value object member, `InvoiceStatus.Paid` for
-  an enum member; at guards also `event.amount`, `subject.status`, to-one navigations and `now()`. Checks and derived
-  values read one row. Dates move with `add_days` and `add_months`, a date meets a timestamp through `date_of`, times
-  are UTC, and patterns write `[0-9]`, never `\d`.
+  an enum member; at process guards also `event.amount` and `now()`; at operation guards also `subject.status`, to-one
+  navigations from the subject (`subject.customer.customerSince`) and `now()`. Checks and derived values read one row.
+  Dates move with `add_days` and `add_months`, a date meets a timestamp through `date_of`, times are UTC, and patterns
+  write `[0-9]`, never `\d`.
 - Nulls: a check passes when the answer is unknown, as a CHECK does; a guard or a rule condition holds only on true.
   Whether a value must be given is the attribute's `required`: never write it into the expression.
 - An entity check reaches a table only when a binding lists its id in the binding's `checks`; then sql-ddl writes the
   CHECK. MQ3115 warns on a check that a binding could enforce and none lists; ask before listing it.
-- Before saving, `preview_expression` (`element`, then `at` for a stored expression or `text` with `site`: `check`,
-  `value`, `guard` or a site's pointer; `values` by member name adds the answer) shows the printed text, the type, the
-  JavaScript and the PostgreSQL text. It reads one element and writes nothing (CLI `maquettiste expression preview`).
-  `get_resolved_model` gives every expression as `{ text, type, nullable, tree }`.
+- Before saving, `preview_expression` (`element`, an id, then `at` for a stored expression or `text` with `site`:
+  `check`, `value`, `guard` or a site's pointer; `values` by member name adds the answer) shows the printed text, the
+  type, the JavaScript and the PostgreSQL text. It reads one element and writes nothing (CLI
+  `maquettiste expression preview`). `get_resolved_model` gives each entity check, derived value, guard and constraint
+  condition as `{ text, type, nullable, tree }`; read a table check's text with `preview_expression`.
 - Text left in a file by hand is MQ3108: `apply_batch` `{"op":"text-to-trees"}` (optionally `"elementIds":[...]`)
   converts it; run it with `dryRun: true` first.
 - Never convert a process's JavaScript guards unasked. When asked: preview the text at the guard's pointer

@@ -6,9 +6,15 @@ the database accepts a row the API refused, or a guard passes in simulation and 
 writes the rule once, as `issuedOn <= dueOn` on the billing sample's `Invoice`, follows it into the table's DDL and the
 generated C#, uses the same text in a guard, then renames the attribute and the column to see the rule follow.
 
-You need the billing sample: `sh docker/dev-billing.sh` serves a copy of it in `tmp/billing`, with the sql-ddl and
-csharp-dapper packs, and the commands below run in that folder. The [user guide](../user-guide.md#expressions) describes
-the whole language.
+You need the billing sample. From the repository root, build the image, then serve a copy of the sample in
+`tmp/billing`, with the sql-ddl and csharp-dapper packs:
+
+```sh
+docker build -f docker/Dockerfile -t mattjcowan/maquettiste:dev .
+sh docker/dev-billing.sh
+```
+
+The commands below run in `tmp/billing`. The [user guide](../user-guide.md#expressions) describes the whole language.
 
 ## 1. Bind Invoice and add a due date
 
@@ -80,8 +86,9 @@ maquettiste expression preview Invoice --at /checks/0 --values '{ "issuedOn": "2
 ```
 
 With `dueOn` null the comparison is unknown, and a check passes on unknown, exactly as a CHECK does. Whether `dueOn`
-must be given is its attribute's `required`, not the check's concern. An agent calls `preview_expression` with the same
-arguments; it reads Invoice and what the expression names, never the whole model.
+must be given is its attribute's `required`, not the check's concern. An agent calls `preview_expression` with
+`element` set to Invoice's id, `01J92P0V0FJ23CGSNKM7P1W5V7` (the tool takes an id, not a name), and the same `at` and
+`values`; it reads Invoice and what the expression names, never the whole model.
 
 ## 4. List the check in the binding
 
@@ -124,7 +131,8 @@ csharp-dapper gives `src/Generated/Billing/Invoice.g.cs` a `Validate()` method:
 public virtual IReadOnlyList<(string Pointer, string Code, string Message)> Validate()
 {
     var errors = new List<(string Pointer, string Code, string Message)>();
-    if ((DueOn is null ? (bool?)null : (IssuedOn <= DueOn.Value)) == false)
+    bool? ok = DueOn switch { { } v1 => (bool?)(IssuedOn <= v1), _ => null };
+    if (ok == false)
         errors.Add(("/issuedOn", "dueAfterIssue", "An invoice is due on or after the day it is issued."));
     return errors;
 }
@@ -187,13 +195,13 @@ written with column keys in place of names, so a renamed column is not a new che
   session's time zone never enters.
 - **Three known limits.** The two targets agree everywhere except in three cases:
     - A pattern with a repetition inside a repetition, such as `^(a+)+$`, can take a very long time to fail in
-      JavaScript, where PostgreSQL stays fast. The engine stops such a match after 250 ms, and the C# example pack
-      matches with .NET's linear-time mode, so generated C# never takes that long. Avoid a repeated group inside a
-      repeated group.
+      JavaScript, where PostgreSQL stays fast. The engine stops such a match after 250 ms, tried once more, so about
+      half a second at most, and the C# example pack matches with .NET's linear-time mode, so generated C# never takes
+      that long. Avoid a repeated group inside a repeated group.
     - A `double` that overflows is an error in PostgreSQL and infinity in JavaScript.
     - A JSON value that is `null` as a whole (not inside a document) reads as SQL null in JavaScript, so `json_type`
       answers null there and `'null'` in PostgreSQL.
-- **One row.** A check and a derived value read one row: no navigation to another entity, and no `now()`. Guards may
-  read both.
+- **One row.** A check and a derived value read one row: no navigation to another entity, and no `now()`. Guards read
+  `now()`; an operation guard may also follow a to-one navigation from its subject.
 - **PostgreSQL first.** On a database of another dialect, a check written in the language is left out of the DDL with
   the warning MQ4056; keep SQL text in the check's `expression` there. A check on a `float` column stays SQL text too.

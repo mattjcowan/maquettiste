@@ -2041,15 +2041,16 @@ Nothing converts the JavaScript guards a model already holds: a rewrite changes 
 and for JavaScript's loose rules, so a person decides each one. To rewrite one by hand:
 
 1. Write the condition as text and preview it at the guard's own site, whose scope includes the payloads of the events
-   that use the guard: MCP `preview_expression` with `element` the process, `text` and `site` the guard's pointer, or
-   `maquettiste expression preview --text "amount <= limit" --on InvoiceReview --site /guards/0/condition`.
+   that use the guard: MCP `preview_expression` with `element` the process's id, `text` and `site` the guard's pointer,
+   or, for a process of your own whose context holds the dates `issuedOn` and `dueOn`,
+   `maquettiste expression preview --text "issuedOn <= dueOn" --on <your process> --site /guards/0/condition`.
 2. Try it with the values the process's scenarios use (`values`: the context by name, the payload under `event`), and
    compare its answers with the JavaScript guard's in `simulate_process` or the simulation panel.
 3. Check every value that may be null. JavaScript reads null as 0 in a comparison or a sum (`null >= 0` is true,
    `null + 5` is 5), where the language answers unknown, and a guard fails on unknown. `!` on a boolean that may be null
    and loose `==` differ from JavaScript too: `!null` is true in JavaScript and unknown here, and `==` converts one type
-   into another where the language refuses to compare values of different types (MQ3103). Write `coalesce(approved,
-   false)` or `dueOn is null or …` where the old guard relied on those rules.
+   into another where the language refuses to compare values of different types (MQ3103). Write `coalesce(x, false)`
+   for a boolean `x` that may be null, or `dueOn is null or …`, where the old guard relied on those rules.
 4. Save `condition` and remove `expression` in one write (a guard with both is MQ3107), then run **Verify scenarios**
    (`verify_scenarios`, or `maquettiste process verify`).
 
@@ -2419,12 +2420,14 @@ ids of `issuedOn` and `dueOn`:
 }
 ```
 
-Text that does not parse refuses the save with MQ3101 at its pointer, which gives the position in the text, and so
-does text that names something the site cannot read (MQ3102). A file edited by hand may still hold a `text` node: it
-loads and is checked like a tree, with the warning MQ3108 that renames will not follow it. The fix button **Convert
-expressions to trees** in Problems, or the batch operation `text-to-trees` (optional `elementIds`), stores it as a
-tree. To read an expression as text, preview it (below) or read it from `get_resolved_model`, where each expression
-is `{ text, type, nullable, tree }`.
+Text that does not parse refuses the save with MQ3101 at the site's pointer, its message giving the position in the
+text, and so does text that names something the site cannot read (MQ3102). A file edited by hand may still hold a
+`text` node: it loads and is checked like a tree, with the warning MQ3108 that renames will not follow it. The fix
+button **Convert expressions to trees** in Problems, or the batch operation `text-to-trees` (optional `elementIds`),
+stores it as a tree. A rule file keeps a declared rule's `expression` as written, text or tree, with no MQ3108: its
+paths are member names by design, so no tree is needed. To read an expression as text, preview it (below) or read it
+from `get_resolved_model`, where each entity check, derived value, guard and constraint condition is
+`{ text, type, nullable, tree }`; a table check's text is read with a preview.
 
 **The text form** reads like SQL:
 
@@ -2432,8 +2435,9 @@ is `{ text, type, nullable, tree }`.
   `date '2026-01-31'`, `time '09:30'`, `datetime '2026-01-31T09:30'`, `datetimeoffset '2026-01-31T09:30Z'`,
   `uuid '…'` and `double '1.5'`.
 - Names: what the site reads (the table below), by their current names. A member of a value object is `total.amount`,
-  a to-one navigation at a guard `customer.customerSince`, and a column whose name is not an identifier is
-  double-quoted. An enum member is `InvoiceStatus.Paid`, a reference type's code `PaymentTerm.NET30`.
+  a to-one navigation at an operation guard `subject.customer.customerSince`, and a column whose name is not an
+  identifier is double-quoted. An enum member is `InvoiceStatus.Paid`, a reference type's code `PaymentTerm.net30`
+  (the type of the [reference data guide](guides/reference-data-and-seeds.md); codes are case-sensitive).
 - Operators, the loosest first: `implies` (grouping from the right), `or`, `and`, `not`; the comparisons `=`, `<>` (or
   `!=`), `<`, `<=`, `>`, `>=`, `is null`, `is not null`, `is distinct from` and `is not distinct from`;
   `x between a and b`, `x in (…)` and `x not in (…)`; `||` (joins strings); `+` and `-`; `*` and `/`; unary `-`. And
@@ -2442,23 +2446,25 @@ is `{ text, type, nullable, tree }`.
   [named constraint](#named-constraints).
 
 The engine prints lower-case keywords, the fewest parentheses and one space around each operator, so the text you get
-back differs from the text you wrote only in that layout.
+back differs from the text you wrote in that layout and in a few spellings: `!=` is stored as `ne` and prints as
+`<>`, and quotes a name does not need are dropped.
 
 **Types.** `bool`; `int`, 16, 32 or 64 bits wide (from `int16`, `int32` and `int64`); `decimal`; `double`; `string`
 (from `string` and `text`); `date`; `time` (compared only); `datetime`; `datetimeoffset`; `uuid` (from `uuid` and
 `ulid`, compared for equality only); `json` (read through the `json_` functions only); an enum; a reference type's
-code. `float`, `binary`, `duration`, ranges and collections are not in the language (MQ3103), so a check on a `float`
-column stays SQL text. The two sides of a comparison have one type: an `int` widens to `decimal` or `double`, and
-`decimal` with `double` is an error. An expression holds at most 512 nodes and nests at most 64 deep (MQ3113).
+code. `float`, `binary`, `duration` and ranges are not in the language (MQ3103), so a check on a `float` column stays
+SQL text, and no expression reads a collection (MQ3102). The two sides of a comparison have one type: an `int` widens
+to `decimal` or `double`, and `decimal` with `double` is an error. An expression holds at most 512 nodes and nests at
+most 64 deep (MQ3113).
 
 ### Where expressions go
 
 | Site | Where in the file | What it reads | Mode | `now()` | What stays beside it |
 | --- | --- | --- | --- | --- | --- |
-| Table and column check | `checks[].condition` of a table file, an overlay or a stereotype | the table's columns: own, inherited and contributed | check | no | `expression`, SQL text per dialect |
+| Table and column check | `checks[].condition` of a table file, an overlay or a stereotype | the table's columns: own, inherited and contributed (on an overlay, its own and contributed columns only, for now; on a stereotype, its own columns) | check | no | `expression`, SQL text per dialect |
 | Entity check | the entity's `checks`: `name`, `attribute`, `condition`, `message` | the entity's attributes, inherited ones and value object members | check | no | `validation` facets and JavaScript rules |
 | Derived value | an attribute's `derived.value` | the entity's other attributes | value | no | `derived.expression`, text for templates |
-| Process guard | `guards[].condition` | context attributes; `event.amount` for a payload attribute | guard | the simulation's clock | `expression`, JavaScript |
+| Process guard | `guards[].condition` | context attributes; `event.amount` for a payload attribute (so a context attribute named `event` cannot be read, MQ3102) | guard | the simulation's clock | `expression`, JavaScript |
 | Operation guard | the operation's `guards`: `name`, `condition`, `error` | input members; `subject.status` at record level, to-one navigations included | guard | yes | |
 | Declared rule condition | `expression` in a rule's `require` | `member` paths of the selected object | guard | no | the other conditions |
 | Named constraint | the constraint's `condition` | its parameters | the citing site's | the citing site's | |
@@ -2482,9 +2488,9 @@ attribute's `required`, never the expression's concern.
   column, and `stored` keeps its meaning.
 - **Process guards.** See [Guards in the expression language](#guards-in-the-expression-language).
 - **Operation guards.** See the `guards` key under [Operations](#operations).
-- **Declared rule conditions.** Written as a tree whose `member` nodes take the path syntax of the other conditions
-  (`{ "member": "properties.retentionDays" }`), typed from the resolved record of the selected kind. Lists and objects
-  are not values: `count` and `has` stay for them.
+- **Declared rule conditions.** Written as text (`properties.retentionDays >= 3000`) or as a tree whose `member` nodes
+  take the path syntax of the other conditions (`{ "member": "properties.retentionDays" }`), typed from the resolved
+  record of the selected kind. Lists and objects are not values: `count` and `has` stay for them.
 
 Check sites and value sites read one row: they take no navigation (MQ3102) and no `now()` (MQ3104), since a CHECK must
 not depend on the clock and a derived value must be the same wherever it is computed. Paths through to-many
@@ -2529,8 +2535,8 @@ one change.
 | `json_type(j)` | `'object'`, `'array'`, `'string'`, `'number'`, `'boolean'` or `'null'` | null |
 | `json_length(j)` | the length of a JSON array | null unless an array |
 
-`/` always gives a decimal with 16 digits after the point, rounded as PostgreSQL rounds it, and null when the divisor
-is zero.
+`/` on integers and decimals gives a decimal with 16 digits after the point, rounded as PostgreSQL rounds it; on a
+`double` it gives a `double`. Either is null when the divisor is zero.
 
 ### Portable rules
 
@@ -2559,8 +2565,9 @@ Each rule removes a case where PostgreSQL and JavaScript would answer differentl
 Three differences between the two targets remain:
 
 - A pattern with a repetition inside a repetition, such as `^(a+)+$`, can take a very long time to fail in JavaScript,
-  where PostgreSQL stays fast. The engine stops such a match after 250 ms, and the C# example pack matches with .NET's
-  linear-time mode, so generated C# never takes that long. Avoid a repeated group inside a repeated group.
+  where PostgreSQL stays fast. The engine stops such a match after 250 ms, tried once more, so about half a second at
+  most, and the C# example pack matches with .NET's linear-time mode, so generated C# never takes that long. Avoid a
+  repeated group inside a repeated group.
 - A `double` that overflows is an error in PostgreSQL and infinity in JavaScript.
 - A JSON value that is `null` as a whole (not inside a document) reads as SQL null in JavaScript, so `json_type`
   answers null there and `'null'` in PostgreSQL.
@@ -2601,48 +2608,49 @@ maquettiste expression preview Invoice --at /checks/0 --values '{ "issuedOn": "2
 maquettiste expression preview --text "dueOn is null or add_days(issuedOn, 90) >= dueOn" --on Invoice --site check
 ```
 
-The element is an id or a name. `--at` is the pointer of a stored expression, or of the check, guard or attribute that
-holds it; it can be left out when the element holds one. `--text` previews text that is not saved, at `--site`: `check`,
-`value`, `guard`, or the pointer of one of the element's sites, whose names and mode the text then takes.
-`--database` names the database whose binding an entity's expression lowers through. `--values` (a JSON object, a
-file, or `-` for standard input) gives the row by member name, the payload under `event` and the subject under
-`subject`, and prints the answer in the site's mode; `now()` reads a fixed clock there, 2000-01-01T00:00:00Z.
-`--format json` prints the same as JSON. The PostgreSQL text is `none` for a guard or a constraint, which read no
-table, and for another dialect. The preview reads that element and what its expression names, never the whole model,
-and writes nothing; it exits 1 when the expression does not parse or does not type. MCP `preview_expression` and
-`POST /api/model/expressions/preview` answer the same.
+The element is an id or a name (MCP and HTTP take an id). `--at` is the pointer of a stored expression, or of the check,
+guard or attribute that holds it; it can be left out when the element holds one. `--text` previews text that is not
+saved, at `--site`: `check`, `value`, `guard`, or the pointer of one of the element's sites, whose names and mode the
+text then takes. `--database` names the database whose binding an entity's expression lowers through. `--values` (a
+JSON object, a file, or `-` for standard input) gives the row by member name, the payload under `event` and the
+subject under `subject`, and prints the answer in the site's mode; `now()` reads a fixed clock there,
+2000-01-01T00:00:00Z. `--format json` prints the same as JSON. The PostgreSQL text is `none` for a guard or a
+constraint, which read no table, and for another dialect. The preview reads that element and what its expression
+names, never the whole model, and writes nothing; it exits 1 when the expression does not parse or does not type, or
+its answer cannot be computed. MCP `preview_expression` and `POST /api/model/expressions/preview` answer the same.
 
 ### Expressions in templates
 
 Packs read the typed trees: `entity.checks` (each with `name`, `attribute`, `message`, `condition` and
 `is_inherited`), `check.condition` on a table check (whose `check.expression` stays the SQL text),
 `attribute.derived.value`, `guard.condition` on a process guard, `operation.guards` (`condition`, `error`) and
-`model.constraints`. A condition's nodes have `node`, `op`, `call`, `args`, `value`, `target` (the attribute, column
-or member a path ends at), `type` (`kind`, and `bits` for an `int`), `nullable` and `text`; the root also has
-`javascript`, the lowered function. `expression_sql condition binding` gives the PostgreSQL text through a binding
-(`entity.bindings["main"]`), and `expression_runtime` the text of the JavaScript runtime, for packs that write
-JavaScript. sql-ddl needs no change. The C# example pack renders conditions with `expr_cs`, an example renderer to
-copy and adapt: entities gain `Validate()`, and guards written as trees render from their condition
-(packs/csharp-dapper/README.md).
+`model.constraints`. A condition's nodes have `node`, `op`, `call`, `args`, `value`, `value_text` (the literal's exact
+text), `target` (the attribute, column or member a path ends at), `type` (`kind`, and `bits` for an `int`), `nullable`
+and `text`; the root also has `javascript`, the lowered function. `expression_sql condition binding` gives the
+PostgreSQL text through a binding (`entity.bindings["main"]`), and `expression_runtime` the text of the JavaScript
+runtime, for packs that write JavaScript. sql-ddl needs no change. The C# example pack renders conditions with
+`expr_cs`, an example renderer to copy and adapt: entities gain `Validate()`, and guards written as trees render from
+their condition (packs/csharp-dapper/README.md).
 
 ### The rules for expressions (MQ31xx)
 
 Every rule below has a row in **Settings › Validation**, where its severity can be changed. They run where the
 element's other rules run: on every save and every `validate`. A declared rule's `expression` is checked with the
-rule file's other conditions. MQ3112 is not used.
+rule file's other conditions; when it cannot answer for an object, because it stopped at a limit or threw, the rule
+reports one MQ5003 or MQ5002 instead of a finding on every object. MQ3112 is not used.
 
 | Rule | Severity | What it reports |
 | --- | --- | --- |
 | MQ3101 | error | An expression does not parse, or a node is malformed: an unknown operator or function, a wrong number of operands. A save whose text does not parse is refused |
-| MQ3102 | error | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, or a payload attribute that an event using the guard lacks |
-| MQ3103 | error | The types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, `+` on a date, `date_part` of `hour` or `minute` on a date, a site's answer that is not a boolean, a derived value of another type than its attribute, a type the language does not have (`float` among them), or an enum member or code against a value of no enum or reference type |
+| MQ3102 | error | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, a payload attribute that an event using the guard lacks, or a context attribute named `event`, under which a guard's condition reads the payload |
+| MQ3103 | error | The types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, `+` on a date, `date_part` of `hour` or `minute` on a date, a site's answer that is not a boolean, a derived value of another type than its attribute, a type the language does not have (`float` among them), an enum member or code against a value of no enum or reference type, or a code the column it is compared with cannot store |
 | MQ3104 | error | `now()` at a check, a value or a rule condition, directly or through a constraint; only guards read the clock |
 | MQ3105 | error | A regular expression outside the portable subset |
 | MQ3106 | error | An argument that must be a literal is not (a pattern, a `date_part` part, the digits of `round`, an `in` list item), or an `in` list holds null |
 | MQ3107 | error | A site holds both its raw form and a tree, or neither; a process guard with neither is a stub and is not reported |
-| MQ3108 | warning | A file holds an expression as text, so renames will not follow it. Fix button: **Convert expressions to trees** |
+| MQ3108 | warning | A file holds an expression as text, so renames will not follow it; a rule file's text is not reported. Fix button: **Convert expressions to trees** |
 | MQ3109 | error | A `satisfies` names no constraint, misses or adds a parameter, binds one to a value of another type, or names a constraint whose condition does not type as a boolean; or constraints cite each other in a cycle |
-| MQ3110 | error | A binding lists a check that is not its entity's, or one that reads an attribute the binding does not map to its write table or maps to a fixed-length column, or the binding has no write table |
+| MQ3110 | error | A binding lists a check that is neither its entity's nor a base's, or one that reads an attribute the binding does not map to its write table or maps to a fixed-length column or to a column that cannot store a code it names, or the binding has no write table |
 | MQ3111 | error | An operation guard's `error` is not an error of the operation, own or inherited, or the guard reads the subject of an operation without a record subject |
 | MQ3113 | error | An expression has more than 512 nodes or nests deeper than 64; split it into constraints |
 | MQ3114 | warning | A column check does not read its column, or an entity check does not read its `attribute` |

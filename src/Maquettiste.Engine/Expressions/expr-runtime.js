@@ -36,17 +36,60 @@ const mq = (() => {
     return r * 2n >= d ? (n < 0n ? q - 1n : q + 1n) : q;
   };
 
+  // Scanning ----------------------------------------------------------------------------------------------------------
+
+  // The runtime reads its fixed formats by hand: a regular expression in the engine's sandbox runs under a wall-clock
+  // limit, which a busy machine can reach on any input, so the only one is the pattern matches() is given.
+  const isDigit = (t, i) => i < t.length && t.charCodeAt(i) >= 48 && t.charCodeAt(i) <= 57;
+
+  // The end of the run of digits that starts at i.
+  function digitsEnd(t, i) {
+    while (isDigit(t, i)) i++;
+    return i;
+  }
+
+  // The number written by exactly n digits at i, or -1.
+  function fixed(t, i, n) {
+    let v = 0;
+    for (let k = i; k < i + n; k++) {
+      if (!isDigit(t, k)) return -1;
+      v = v * 10 + (t.charCodeAt(k) - 48);
+    }
+    return v;
+  }
+
   // Numbers -----------------------------------------------------------------------------------------------------------
 
+  // [+-]digits[.digits][e[+-]digits], with digits on at least one side of the point.
   function parseDec(text) {
-    const m = /^([+-]?)([0-9]*)(?:\.([0-9]*))?(?:[eE]([+-]?[0-9]+))?$/.exec(String(text).trim());
-    if (m === null) return null;
-    const whole = m[2], frac = m[3] === undefined ? "" : m[3];
+    const t = String(text).trim();
+    let i = 0;
+    const neg = t[0] === "-";
+    if (t[0] === "+" || t[0] === "-") i++;
+    const wholeEnd = digitsEnd(t, i);
+    const whole = t.slice(i, wholeEnd);
+    let frac = "", j = wholeEnd;
+    if (t[j] === ".") {
+      const fracEnd = digitsEnd(t, j + 1);
+      frac = t.slice(j + 1, fracEnd);
+      j = fracEnd;
+    }
     if (whole === "" && frac === "") return null;
+    let e = 0;
+    if (t[j] === "e" || t[j] === "E") {
+      let k = j + 1;
+      const sign = t[k] === "-" ? -1 : 1;
+      if (t[k] === "+" || t[k] === "-") k++;
+      const end = digitsEnd(t, k);
+      if (end === k) return null;
+      e = sign * Number(t.slice(k, end));
+      j = end;
+    }
+    if (j !== t.length) return null;
     let u = BigInt((whole === "" ? "0" : whole) + frac);
-    let s = frac.length - (m[4] === undefined ? 0 : Number(m[4]));
+    let s = frac.length - e;
     if (s < 0) { u *= pow10(-s); s = 0; }
-    return new Dec(m[1] === "-" ? -u : u, s);
+    return new Dec(neg ? -u : u, s);
   }
 
   function rescale(d, s) {
@@ -201,8 +244,13 @@ const mq = (() => {
   function uuid(v) {
     const s = toStr(v);
     if (s === null) return null;
-    const hex = s.replace(/[{}-]/g, "").toLowerCase();
-    if (!/^[0-9a-f]{32}$/.test(hex)) return null;
+    let hex = "";
+    for (const c of s.toLowerCase()) {
+      if (c === "{" || c === "}" || c === "-") continue;
+      if (!((c >= "0" && c <= "9") || (c >= "a" && c <= "f"))) return null;
+      hex += c;
+    }
+    if (hex.length !== 32) return null;
     return hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) + "-" + hex.slice(16, 20) + "-" + hex.slice(20);
   }
 
@@ -249,40 +297,90 @@ const mq = (() => {
     return ((h * 60 + mi) * 60 + s) * 1000000 + us;
   }
 
+  // yyyy-mm-dd at the start of t: the day number, or null.
+  function dayAt(t) {
+    const y = fixed(t, 0, 4), m = fixed(t, 5, 2), d = fixed(t, 8, 2);
+    if (y < 0 || m < 0 || d < 0 || t[4] !== "-" || t[7] !== "-") return null;
+    return days(y, m, d);
+  }
+
+  // h[h]:mm[:ss[.digits]] at i: the parts and where they end, or null.
+  function clockAt(t, i) {
+    const hEnd = digitsEnd(t, i);
+    if (hEnd - i < 1 || hEnd - i > 2 || t[hEnd] !== ":") return null;
+    const mi = fixed(t, hEnd + 1, 2);
+    if (mi < 0) return null;
+    let end = hEnd + 3, sec = 0, frac;
+    if (t[end] === ":") {
+      sec = fixed(t, end + 1, 2);
+      if (sec < 0) return null;
+      end += 3;
+      if (t[end] === ".") {
+        const fracEnd = digitsEnd(t, end + 1);
+        frac = t.slice(end + 1, fracEnd);
+        end = fracEnd;
+      }
+    }
+    return { us: clock(Number(t.slice(i, hEnd)), mi, sec, frac), end };
+  }
+
   function date(v) {
     if (none(v)) return null;
     if (v instanceof Day) return v;
-    const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(String(v).trim());
-    if (m === null) return null;
-    const d = days(Number(m[1]), Number(m[2]), Number(m[3]));
+    const t = String(v).trim();
+    const d = t.length === 10 ? dayAt(t) : null;
     return d === null ? null : new Day(d);
   }
 
   function time(v) {
     if (none(v)) return null;
     if (v instanceof Time) return v;
-    const m = /^([0-9]{1,2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]*))?)?$/.exec(String(v).trim());
-    if (m === null) return null;
-    const us = clock(Number(m[1]), Number(m[2]), m[3] === undefined ? 0 : Number(m[3]), m[4]);
-    return us === null ? null : new Time(us);
+    const t = String(v).trim();
+    const c = clockAt(t, 0);
+    return c === null || c.end !== t.length || c.us === null ? null : new Time(c.us);
   }
 
   // A timestamp; with zoned, its offset moves it to UTC (none reads as UTC); without, an offset is ignored, as
   // PostgreSQL ignores one in a timestamp without time zone.
+  // yyyy-mm-dd[(T| )h[h]:mm[:ss[.digits]]][ ][Z|z|(+|-)hh[[:]mm]]
   function stamp(v, zoned) {
     if (none(v)) return null;
     if (v instanceof Ts) return v;
-    const m = /^([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[T ]([0-9]{1,2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]*))?)?)? ?(Z|z|[+-][0-9]{2}(?::?[0-9]{2})?)?$/.exec(String(v).trim());
-    if (m === null) return null;
-    const d = days(Number(m[1]), Number(m[2]), Number(m[3]));
-    const us = m[4] === undefined ? 0 : clock(Number(m[4]), Number(m[5]), m[6] === undefined ? 0 : Number(m[6]), m[7]);
-    if (d === null || us === null) return null;
-    let total = BigInt(d) * DAY_US + BigInt(us);
-    if (zoned && m[8] !== undefined && m[8] !== "Z" && m[8] !== "z") {
-      const z = m[8].replace(":", "");
-      const minutes = Number(z.slice(1, 3)) * 60 + (z.length > 3 ? Number(z.slice(3, 5)) : 0);
-      total -= BigInt((z[0] === "-" ? -minutes : minutes) * 60000000);
+    const t = String(v).trim();
+    const d = dayAt(t);
+    if (d === null) return null;
+    let i = 10, us = 0;
+    if (t[i] === "T" || t[i] === " ") {
+      const c = clockAt(t, i + 1);
+      if (c !== null) {
+        if (c.us === null) return null;
+        us = c.us;
+        i = c.end;
+      }
     }
+    if (t[i] === " ") i++;
+    let offset = 0;
+    if (t[i] === "Z" || t[i] === "z") {
+      i++;
+    } else if (t[i] === "+" || t[i] === "-") {
+      const sign = t[i] === "-" ? -1 : 1;
+      const hh = fixed(t, i + 1, 2);
+      if (hh < 0) return null;
+      i += 3;
+      let mm = 0;
+      if (t[i] === ":") {
+        mm = fixed(t, i + 1, 2);
+        if (mm < 0) return null;
+        i += 3;
+      } else if (fixed(t, i, 2) >= 0) {
+        mm = fixed(t, i, 2);
+        i += 2;
+      }
+      offset = sign * (hh * 60 + mm);
+    }
+    if (i !== t.length) return null;
+    let total = BigInt(d) * DAY_US + BigInt(us);
+    if (zoned) total -= BigInt(offset * 60000000);
     return new Ts(total);
   }
 
@@ -296,7 +394,11 @@ const mq = (() => {
   function clockText(us) {
     const s = Math.floor(us / 1000000), f = us % 1000000;
     const text = pad(Math.floor(s / 3600), 2) + ":" + pad(Math.floor(s / 60) % 60, 2) + ":" + pad(s % 60, 2);
-    return f === 0 ? text : text + "." + pad(f, 6).replace(/0+$/, "");
+    if (f === 0) return text;
+    const digits = pad(f, 6);
+    let end = digits.length;
+    while (digits[end - 1] === "0") end--;
+    return text + "." + digits.slice(0, end);
   }
 
   function splitTs(t) {

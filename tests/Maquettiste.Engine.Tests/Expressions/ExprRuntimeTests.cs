@@ -201,28 +201,25 @@ public sealed class ExprRuntimeTests
     }
 
     [Fact]
-    public void Loading_the_runtime_builds_no_regular_expression()
+    public void The_runtime_builds_no_regular_expression_but_the_pattern_matches_is_given()
     {
-        // A sandbox loads the runtime under a wall-clock bound on regular expressions, which a busy machine can pass, so nothing the load
-        // evaluates (the top level, and the body of the function that builds mq) builds one: each sits in a function a call runs.
-        var atLoad = new List<string>();
-        var inCalls = 0;
-        Walk(ExprRuntime.Prepared.Program.Program!, 0);
-        Assert.True(atLoad.Count == 0, "Regular expressions built while the runtime loads, at lines " + string.Join(", ", atLoad));
-        Assert.True(inCalls > 0, "The walk found no regular expression in the runtime's functions, so it does not reach them.");
+        // A regular expression in the sandbox runs under a wall-clock bound, which a busy machine can pass on any input, so the runtime reads
+        // its fixed formats (decimals, dates, times, timestamps, uuids) by hand: its only regular expression is the one matches() builds from
+        // the pattern an expression gives it.
+        var literals = new List<string>();
+        var built = 0;
+        Walk(ExprRuntime.Prepared.Program.Program!);
+        Assert.True(literals.Count == 0, "Regular expression literals in the runtime, at lines " + string.Join(", ", literals));
+        Assert.Equal(1, built);
 
-        void Walk(Ast.Node node, int depth)
+        void Walk(Ast.Node node)
         {
-            if (node is Ast.RegExpLiteral or Ast.NewExpression { Callee: Ast.Identifier { Name: "RegExp" } } or Ast.CallExpression { Callee: Ast.Identifier { Name: "RegExp" } })
-            {
-                if (depth <= 1)
-                    atLoad.Add(node.Location.Start.Line.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                else
-                    inCalls++;
-            }
-
+            if (node is Ast.RegExpLiteral)
+                literals.Add(node.Location.Start.Line.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            else if (node is Ast.NewExpression { Callee: Ast.Identifier { Name: "RegExp" } } or Ast.CallExpression { Callee: Ast.Identifier { Name: "RegExp" } })
+                built++;
             foreach (var child in node.ChildNodes)
-                Walk(child, child is Ast.IFunction ? depth + 1 : depth);
+                Walk(child);
         }
     }
 

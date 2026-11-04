@@ -160,7 +160,7 @@ internal static class DeclaredRuleEvaluator
             var expressions = new ExpressionConditions();
             var files = snapshot.DeclaredRules.ToDictionary(f => f.Path, StringComparer.Ordinal);
             var pools = new Dictionary<string, (ExprEvaluator? Evaluator, Dictionary<string, string> Functions)>(StringComparer.Ordinal);
-            var pending = new List<(Expr Tree, string Hash, string Id)>();
+            var pending = new List<(Expr Tree, string Hash, string Id, List<string> Members)>();
             foreach (var group in rules.Where(r => HasExpression(r.Rule.Require)).GroupBy(r => r.Path, StringComparer.Ordinal))
             {
                 var hash = files.TryGetValue(group.Key, out var file) ? file.Hash : group.Key;
@@ -171,7 +171,8 @@ internal static class DeclaredRuleEvaluator
                     foreach (var (tree, typed) in DeclaredRuleChecks.TypedExpressions(snapshot, rule, group.Key, index))
                     {
                         pool.Functions.TryAdd(typed.Pointer, ExprLowering.ToJavaScript(typed, ExprSiteKind.RuleCondition));
-                        pending.Add((tree, hash, typed.Pointer));
+                        // The members from the typed form: text holds its member paths only once it is parsed.
+                        pending.Add((tree, hash, typed.Pointer, [.. MembersOf(typed).Distinct(StringComparer.Ordinal)]));
                     }
                 }
             }
@@ -183,13 +184,13 @@ internal static class DeclaredRuleEvaluator
                 pools[hash] = (evaluator, functions);
             }
 
-            foreach (var (tree, hash, id) in pending)
-            {
-                var members = ExprSites.Nodes(tree).Select(n => n.Member).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+            foreach (var (tree, hash, id, members) in pending)
                 expressions._compiled[tree] = (pools[hash].Evaluator!, id, members);
-            }
 
             return expressions;
+
+            static IEnumerable<string> MembersOf(TypedExpr t) =>
+                (t.Node.Member is { } member ? [member] : Enumerable.Empty<string>()).Concat(t.Args.SelectMany(MembersOf));
         }
 
         /// <summary>

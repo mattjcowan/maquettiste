@@ -146,7 +146,7 @@ public static class RuleCatalog
         new("MQ3107", E, "An expression site holds both its raw form and a tree, or neither; a process guard is reported only for both, since a guard with neither is a stub."),
         new("MQ3108", W, "A file holds an expression as text; renames will not follow it. Convert it to a tree.", "text-to-trees"),
         new("MQ3109", E, "A satisfies names no constraint, misses or adds a parameter, binds one to another type, names a constraint whose condition is not a boolean that types, or constraints cite each other in a cycle."),
-        new("MQ3110", E, "A binding lists a check that is not its entity's, or one that reads an attribute the binding does not map to its write table or maps to a fixed-length column or to a column that cannot store a code it names, or the binding has no write table."),
+        new("MQ3110", E, "A binding lists a check that is neither its entity's nor a base's, or one that reads an attribute the binding does not map to its write table or maps to a fixed-length column or to a column that cannot store a code it names, or the binding has no write table."),
         new("MQ3111", E, "An operation guard's error is not an error of the operation, or the guard reads the subject of an operation without a record subject."),
         new("MQ3113", E, "An expression has more than 512 nodes or nests deeper than 64."),
         new("MQ3114", W, "A column check does not read its column, or an entity check does not read its attribute."),
