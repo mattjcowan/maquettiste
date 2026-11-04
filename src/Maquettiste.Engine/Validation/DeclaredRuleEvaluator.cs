@@ -21,7 +21,9 @@ namespace Maquettiste.Engine.Validation;
 /// judgment reads a calculated value that failed gives nothing: the failure is reported once, on the value. An <c>expression</c>
 /// condition (next-phase-3-design.md section 3.1, "Declared rule conditions") is typed as the static pass types it, lowered to
 /// JavaScript once per run and judged as a guard, only true holding, in one sandbox pool per rule-file hash; one that does not type
-/// holds (the static pass reports it). A project whose rules hold no expression loads no runtime.
+/// holds (the static pass reports it). A condition that cannot answer for an object, a limit (MQ5003) or a throw (MQ5002), is reported
+/// once for its rule, at the condition, and the rule reports no finding in that run. A project whose rules hold no expression loads no
+/// runtime.
 /// </summary>
 internal static class DeclaredRuleEvaluator
 {
@@ -82,7 +84,28 @@ internal static class DeclaredRuleEvaluator
 
             judged += selected.Count;
             var results = new Diagnostic?[selected.Count];
-            Parallel.For(0, selected.Count, options, i => results[i] = new Judge(snapshot, expressions, ct).Finding(rule, parts, selected[i]));
+            var failures = new ConditionFailedException?[selected.Count];
+            Parallel.For(0, selected.Count, options, i =>
+            {
+                try
+                {
+                    results[i] = new Judge(snapshot, expressions, ct).Finding(rule, parts, selected[i]);
+                }
+                catch (ConditionFailedException failure)
+                {
+                    failures[i] = failure;
+                }
+            });
+
+            // A condition that could not judge every object would leave its rule's findings partial: the first failure, in object order,
+            // stands for them.
+            var failed = Array.FindIndex(failures, f => f is not null);
+            if (failed >= 0)
+            {
+                found.Add(failures[failed]!.Report(rule.Id, selected[failed], path));
+                continue;
+            }
+
             foreach (var result in results)
             {
                 if (result is not null)
@@ -91,6 +114,35 @@ internal static class DeclaredRuleEvaluator
         }
 
         return found;
+    }
+
+    /// <summary>
+    /// An expression condition that could not answer for an object: it reached a limit or threw, while it ran or while its sandbox
+    /// loaded. It stops the object's judgment, and its rule reports it instead of findings (<see cref="Report"/>).
+    /// </summary>
+    /// <param name="pointer">The condition's pointer in its rule file.</param>
+    /// <param name="inner">The sandbox's <see cref="ScriptLimitException"/> or <see cref="ScriptErrorException"/>.</param>
+    private sealed class ConditionFailedException(string pointer, Exception inner) : Exception(inner.Message, inner)
+    {
+        /// <summary>MQ5003 for a limit, MQ5002 for a throw, at the condition, naming the rule and the object it stopped on.</summary>
+        public Diagnostic Report(string ruleId, RAnnotated value, string path)
+        {
+            var on = $"{value.Kind} '{(value is RElement { Name.Length: > 0 } element ? element.Name : value.Id)}'";
+            return InnerException is ScriptLimitException limit
+                ? RuleCatalog.Create("MQ5003", $"The expression condition of rule '{ruleId}' stopped on {on}: {Reason(limit.Diagnostic.Message)} Simplify the "
+                    + "condition; the rule reports no finding until it runs.", null, path, pointer)
+                : RuleCatalog.Create("MQ5002", $"The expression condition of rule '{ruleId}' threw on {on}: {Reason(((ScriptErrorException)InnerException!).Diagnostic.Message)} "
+                    + "Fix the condition; the rule reports no finding until it runs.", null, path, pointer);
+        }
+
+        /// <summary>The sandbox's message without the helper it names (the condition's pointer, which the diagnostic carries).</summary>
+        private static string Reason(string message)
+        {
+            const string Helper = "Helper '";
+            var end = message.StartsWith(Helper, StringComparison.Ordinal) ? message.IndexOf("' ", Helper.Length, StringComparison.Ordinal) : -1;
+            var text = (end < 0 ? message : message[(end + 2)..]).Trim();
+            return text.EndsWith('.') ? text : text + ".";
+        }
     }
 
     /// <summary>
@@ -141,8 +193,8 @@ internal static class DeclaredRuleEvaluator
         }
 
         /// <summary>
-        /// Whether an expression condition holds of an item: <see langword="true"/> only when it answers true, so one that stops at a
-        /// limit does not hold, as a guard that cannot answer fails; one that did not type holds.
+        /// Whether an expression condition holds of an item: <see langword="true"/> only when it answers true, as a guard; one that did
+        /// not type holds. One that stops at a limit or throws is a <see cref="ConditionFailedException"/>, which its rule reports.
         /// </summary>
         public bool Holds(Expr tree, Func<string, object?> read, CancellationToken ct)
         {
@@ -154,7 +206,7 @@ internal static class DeclaredRuleEvaluator
             }
             catch (Exception ex) when (ex is ScriptLimitException or ScriptErrorException)
             {
-                return false;
+                throw new ConditionFailedException(compiled.Id, ex);
             }
         }
 

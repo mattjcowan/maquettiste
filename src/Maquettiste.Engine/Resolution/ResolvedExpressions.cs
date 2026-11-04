@@ -173,7 +173,10 @@ internal sealed record LoweredCheck(string Sql, RExpression Condition, string Sh
 /// </summary>
 internal static class ExprResolution
 {
-    /// <summary>Types one site of an element, its sub-element's id given; <see langword="null"/> when it holds no tree or does not type.</summary>
+    /// <summary>
+    /// Types one site of an element, its sub-element's id given; <see langword="null"/> when it holds no tree, does not type, or is a
+    /// process guard that reads a context attribute named <c>event</c> (<see cref="ExprSites.EventContextRead"/>).
+    /// </summary>
     public static (Expr Tree, TypedExpr Typed, ExprScope Scope)? Type(ModelSnapshot model, Element element, string subId)
     {
         foreach (var site in ExprSites.Of(model, element))
@@ -183,7 +186,9 @@ internal static class ExprResolution
             var scope = ExprSites.Scope(model, element, model.GetDocument(element.Id), site, everything: false);
             var problems = new List<Diagnostic>();
             var typed = ExprTyper.Type(tree, scope, problems);
-            return typed is null || problems.Any(p => p.Severity == DiagnosticSeverity.Error) ? null : (tree, typed, scope);
+            if (typed is null || problems.Any(p => p.Severity == DiagnosticSeverity.Error))
+                return null;
+            return element is Process process && ExprSites.EventContextRead(process, typed) is not null ? null : (tree, typed, scope);
         }
 
         return null;
@@ -191,7 +196,8 @@ internal static class ExprResolution
 
     /// <summary>
     /// The ids of the elements a typed tree names beyond its site, which its holder depends on: the enum, or the seed and its reference
-    /// type, of each ref, and each constraint it cites with what that constraint names.
+    /// type, of each ref; each constraint it cites with what that constraint names; and for a path through a relation, the relation, the
+    /// entity each navigation leads to with every base of it (whose attributes and navigations the path reads) and the attribute's owner.
     /// </summary>
     public static IReadOnlyList<string> Names(ModelSnapshot model, TypedExpr typed)
     {
@@ -208,11 +214,20 @@ internal static class ExprResolution
                     names.Add(seed.Target);
             }
 
-            // A path through a relation depends on the relation and on the record it reads.
+            // A path through a relation depends on the relation and on the record it reads: the entity at the far end and its bases.
             foreach (var navigation in t.Through)
             {
-                if (model.TryGetEntry(navigation.Id, out var end))
-                    names.Add(end.OwnerId);
+                if (!model.TryGetEntry(navigation.Id, out var end))
+                    continue;
+                names.Add(end.OwnerId);
+                var far = model.Get<Relation>(end.OwnerId)?.Ends.FirstOrDefault(e => string.Equals(e.Id, navigation.Id, StringComparison.Ordinal))?.Entity;
+                var entity = far is null ? null : model.Get<Entity>(far);
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                while (entity is not null && seen.Add(entity.Id))
+                {
+                    names.Add(entity.Id);
+                    entity = entity.Base is { } b ? model.Get<Entity>(b) : null;
+                }
             }
 
             if (t.Through.Count > 0 && t.Member is { } member && model.TryGetEntry(member.Id.Split('.')[0], out var attribute))

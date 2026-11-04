@@ -16,7 +16,7 @@ Tests: `tests/Maquettiste.Engine.Tests/Scripting/`.
 | --- | --- |
 | `ScriptingContracts.cs` | The public §10 contract (scaffold; unchanged). |
 | `ScriptSandboxFactory.cs` | Prepares every script once per pool (`Engine.PrepareScript`, shared by the pool's engines) and creates the pool. |
-| `ScriptSandboxPool.cs` | One engine per worker, rented for a whole unit. The first engine is built eagerly, so load errors surface from `CreatePool`. |
+| `ScriptSandboxPool.cs` | One engine per worker, rented for a whole unit. The first engine is built eagerly, so load errors surface from `CreatePool`. `LazySandboxPool` builds a pool on its first rent instead, for expression evaluators and process sessions, whose callers report a load failure as that call's limit or error. |
 | `ScriptSandbox.cs`, `ScriptSandbox.Calls.cs` | Engine options, the `maquettiste` global, calls, error and limit mapping, the validation-rule model view. |
 | `JsModelProxy.cs` | `JsModelProxy : ObjectInstance` and `JsListProxy : ArrayLikeObject`. |
 | `ScriptValues.cs` | CLR ↔ JavaScript conversion; `ScriptObjectMap` (plain objects leaving a script); `ExactJson` (numbers as exact text for tree expressions). |

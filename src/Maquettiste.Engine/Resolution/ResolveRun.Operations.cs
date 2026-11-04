@@ -190,7 +190,8 @@ internal sealed partial class ResolveRun
     /// An operation's guards, in file order: each condition typed at a guard site over the input members and the subject's attributes,
     /// its paths ending at the <see cref="ROperationMember"/>s and the subject's <see cref="RAttribute"/>s, and the error it reports
     /// found among the resolved errors, an inherited one by its keyed id or its stereotype id. A guard depends on its file, the subject
-    /// whose attributes it reads, what its condition names beyond them (an enum, a seed, a constraint) and the keys of the errors.
+    /// and every base of it, whose attributes and navigations it reads, what its condition names beyond them (an enum, a seed, a
+    /// constraint, a relation it reads through and the entity at its far end) and the keys of the errors.
     /// </summary>
     private List<ROperationGuard> ResolveGuards(Operation operation, ROperation r, DependencySet errorKeys)
     {
@@ -207,7 +208,15 @@ internal sealed partial class ResolveRun
             FillCommon(guard, source, null, deps);
             deps.Element(operation.Id);
             if (operation.Subject is { } subjectId)
+            {
                 deps.Element(subjectId);
+                if (EntitySource(subjectId) is { } subjectEntity)
+                {
+                    foreach (var level in Chain(subjectEntity))
+                        deps.Element(level.Id);
+                }
+            }
+
             guard.Package = r.Package;
             if (source.Error is { } error)
             {

@@ -30,8 +30,9 @@ public sealed record ExpressionProblem(string Id, string Pointer, string Name, s
 /// A process's guard and action expressions compiled once (phase-3-design.md section 4.2): each expression that parses becomes a
 /// prepared sandbox script <c>(context, event) =&gt; (expression)</c> registered under the guard or action id. Parsing never runs code
 /// (MQ9501). A guard's condition, written in the expression language (next-phase-3-design.md section 3.1, "Process guards"), is typed in
-/// its process's scope and lowered to JavaScript into the same script, after the expression runtime as a prelude; a process without one
-/// loads no runtime. Compiled forms are cached by the content of the process's expressions and lowered conditions.
+/// its process's scope and lowered to JavaScript into the same script, which then loads after the expression runtime, prepared once for
+/// every process (<see cref="ExprRuntime.Prepared"/>); a process without one loads no runtime. Compiled forms are cached by the content
+/// of the process's expressions and lowered conditions.
 /// </summary>
 public sealed class ProcessExpressions
 {
@@ -51,8 +52,6 @@ public sealed class ProcessExpressions
     private const int CacheLimit = 512;
     private static readonly ConcurrentDictionary<string, ProcessExpressions> Cache = new(StringComparer.Ordinal);
 
-    private readonly IReadOnlyList<PreparedScript> _scripts;
-
     private ProcessExpressions(Process process, IReadOnlyList<LoweredCondition> conditions)
     {
         var code = new StringBuilder();
@@ -61,8 +60,8 @@ public sealed class ProcessExpressions
         Problems = Collect(process, compiled, code, replaced);
         if (conditions.Count > 0)
         {
-            // The runtime and the clock first, so a condition's function closes over them; the JavaScript expressions keep their form.
-            code.Insert(0, Prelude);
+            // The runtime and the clock load first, as a script of their own, so a condition's function reads them from the global
+            // scope; the JavaScript expressions keep their form.
             foreach (var condition in conditions)
             {
                 if (!compiled.Add(condition.Id))
@@ -75,14 +74,9 @@ public sealed class ProcessExpressions
         Compiled = compiled;
         Conditions = conditions.Select(c => c.Id).Where(compiled.Contains).ToHashSet(StringComparer.Ordinal);
         Script = compiled.Count == 0 ? "" : code.ToString();
-        _scripts = compiled.Count == 0 ? [] : PreparedScript.PrepareAll([new ScriptSource("process:" + process.Name + ".js", Script, "")], Limits);
+        var own = compiled.Count == 0 ? [] : PreparedScript.PrepareAll([new ScriptSource("process:" + process.Name + ".js", Script, "")], Limits);
+        Scripts = conditions.Count > 0 ? [ExprRuntime.Prepared, .. own] : own;
     }
-
-    /// <summary>
-    /// The prelude of a process with conditions: the expression runtime, and <c>mqAt</c>, the runtime whose <c>now()</c> is the
-    /// simulation's clock, which a condition that reads <c>now</c> receives as its second argument, so replays stay deterministic.
-    /// </summary>
-    private static string Prelude => ExprRuntime.Source + "\nconst mqAt = (now) => Object.freeze({ ...mq, now: () => mq.tsz(now) });\n";
 
     /// <summary>The sandbox limits of an expression: 50 ms and 100,000 statements; the other limits are the sandbox defaults.</summary>
     public static SandboxLimits Limits { get; } = new() { ScriptTimeoutMs = DeadlineMs, ScriptStatements = StatementLimit };
@@ -105,8 +99,17 @@ public sealed class ProcessExpressions
     /// <summary>The ids of the guards whose conditions compiled: each answers only true or false, a null operand failing it.</summary>
     public IReadOnlySet<string> Conditions { get; }
 
-    /// <summary>The prepared script's text (empty when nothing compiled), for tests.</summary>
+    /// <summary>
+    /// The text of the process's own script (empty when nothing compiled), for tests: the registrations of its expressions and
+    /// conditions, without the runtime.
+    /// </summary>
     internal string Script { get; }
+
+    /// <summary>
+    /// The scripts a session's engines load, in order (for tests): with conditions, the shared runtime (<see cref="ExprRuntime.Prepared"/>)
+    /// and then the process's own; else the process's own, or none when nothing compiled.
+    /// </summary>
+    internal IReadOnlyList<PreparedScript> Scripts { get; }
 
     /// <summary>
     /// The compiled expressions of a process (held by the process object, and shared by the expressions' content). A guard's condition
@@ -246,7 +249,10 @@ public sealed class ProcessExpressions
         }
     }
 
-    /// <summary>Opens a session: a sandbox pool over the compiled expressions, bound to <paramref name="ct"/>.</summary>
+    /// <summary>
+    /// Opens a session: a sandbox pool over the compiled expressions, bound to <paramref name="ct"/>, built on the session's first
+    /// evaluation, so a failure to load is that evaluation's MQ9502 or MQ9503.
+    /// </summary>
     /// <param name="size">The most sandboxes kept idle.</param>
     /// <param name="ct">The run's cancellation.</param>
     /// <returns>The session; dispose it when done.</returns>
@@ -264,11 +270,25 @@ public sealed class ProcessExpressions
     /// <returns>The session; dispose it when done.</returns>
     public ProcessExpressionSession Open(int size, CancellationToken ct, SandboxLimits limits)
     {
-        if (_scripts.Count == 0)
+        if (Scripts.Count == 0)
             return new ProcessExpressionSession(null, Compiled, Conditions);
-        var pool = new ScriptSandboxPool(_scripts, Conditions.Count > 0 ? limits with { ScriptTimeoutMs = 0 } : limits, Math.Max(1, size), ct);
-        WarmUp(pool, Compiled.First(), ct);
-        return new ProcessExpressionSession(pool, Compiled, Conditions);
+        var scripts = Scripts;
+        var effective = Conditions.Count > 0 ? limits with { ScriptTimeoutMs = 0 } : limits;
+        var first = Compiled.First();
+        return new ProcessExpressionSession(new LazySandboxPool(() =>
+        {
+            var pool = new ScriptSandboxPool(scripts, effective, Math.Max(1, size), ct);
+            try
+            {
+                WarmUp(pool, first, ct);
+                return pool;
+            }
+            catch
+            {
+                pool.Dispose();
+                throw;
+            }
+        }), Compiled, Conditions);
     }
 
     // The first call into a fresh engine pays the runtime's one-time costs (code paths compiled on first use), which
@@ -325,9 +345,9 @@ public sealed record ExpressionResult(object? Value, Diagnostic? Diagnostic);
 public sealed class ProcessExpressionSession : IDisposable
 {
     private static readonly IReadOnlyDictionary<string, object?> NoParameters = ImmutableDictionary<string, object?>.Empty;
-    private readonly IScriptSandboxPool? _pool;
+    private readonly LazySandboxPool? _pool;
 
-    internal ProcessExpressionSession(IScriptSandboxPool? pool, IReadOnlySet<string> compiled, IReadOnlySet<string> conditions)
+    internal ProcessExpressionSession(LazySandboxPool? pool, IReadOnlySet<string> compiled, IReadOnlySet<string> conditions)
     {
         _pool = pool;
         Compiled = compiled;
@@ -353,9 +373,10 @@ public sealed class ProcessExpressionSession : IDisposable
     {
         if (_pool is null)
             throw new InvalidOperationException($"{label} has no compiled expression.");
-        using var lease = _pool.Rent();
         try
         {
+            // Renting may load an engine (the session's first, or one after a limit dropped the last): a failure there is this call's.
+            using var lease = _pool.Rent();
             return new ExpressionResult(lease.Sandbox.CallHelper(id, [context, @event], new ScriptCallContext(null, seed, NoParameters, ct)), null);
         }
         catch (ScriptLimitException ex)
@@ -386,9 +407,9 @@ public sealed class ProcessExpressionSession : IDisposable
         if (_pool is null)
             throw new InvalidOperationException($"{label} has no compiled condition.");
         var row = Row(context, @event);
-        using var lease = _pool.Rent();
         try
         {
+            using var lease = _pool.Rent();
             var value = lease.Sandbox.CallHelper(id, [new ExactJson(row), now], new ScriptCallContext(null, seed, NoParameters, ct));
             return new ExpressionResult(value is true, null);
         }
@@ -402,7 +423,8 @@ public sealed class ProcessExpressionSession : IDisposable
         }
     }
 
-    // The row a condition reads: the context's members, then the payload as event (a context attribute named event gives way to it).
+    // The row a condition reads: the context's members, then the payload as event. A context attribute named event gives way to it; no
+    // condition reads one (MQ3102 leaves such a guard unlowered).
     private static JsonElement Row(JsonElement context, JsonElement @event)
     {
         var buffer = new System.Buffers.ArrayBufferWriter<byte>();

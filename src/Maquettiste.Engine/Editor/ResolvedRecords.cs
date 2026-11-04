@@ -569,7 +569,7 @@ public sealed record EventRecord(string Id, string Name, IReadOnlyList<Attribute
 /// <param name="Id">The guard id.</param>
 /// <param name="Name">The name.</param>
 /// <param name="Expression">The JavaScript expression, or <see langword="null"/> for a stub or a guard written as a condition.</param>
-/// <param name="IsStub">Whether the guard has neither an expression nor a condition.</param>
+/// <param name="IsStub">Whether the guard has nothing that runs: neither an expression nor a condition that types.</param>
 /// <param name="UsedBy">The ids of the transitions it guards.</param>
 /// <param name="DisplayName">The display name.</param>
 /// <param name="Description">The description.</param>

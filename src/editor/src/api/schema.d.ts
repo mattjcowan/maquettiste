@@ -3855,7 +3855,7 @@ export interface components {
             name: string;
             /** @description The JavaScript expression; null for a stub or a guard written as a condition. */
             expression: string | null;
-            /** @description The guard has neither an expression nor a condition. */
+            /** @description The guard has nothing that runs, neither an expression nor a condition that types. */
             isStub: boolean;
             usedBy: string[];
             /** @description The condition written in the expression language, only true passing; absent for a guard without one. */

@@ -240,12 +240,16 @@ public sealed class RGuard : RProcessNode
     /// <summary>
     /// The condition written in the expression language (next-phase-3-design.md section 3.1, "Process guards"), over the context's
     /// attributes and the payload attributes of the events whose transitions use the guard; only true passes, so a null operand fails
-    /// it. <see langword="null"/> for a guard without one, or one that does not type (validation says why). Its paths end at the
-    /// context's and payloads' <see cref="RAttribute"/>s, and its JavaScript is the function simulation runs.
+    /// it. <see langword="null"/> for a guard without one, or one that does not type or reads a context attribute named <c>event</c>
+    /// (validation says why). Its paths end at the context's and payloads' <see cref="RAttribute"/>s, and its JavaScript is the function
+    /// simulation runs.
     /// </summary>
     public RExpression? Condition { get; internal set; }
 
-    /// <summary>Whether the guard has neither an expression nor a condition (the host answers it).</summary>
+    /// <summary>
+    /// Whether the guard has nothing that runs: neither an expression nor a <see cref="Condition"/>, which a condition that does not type
+    /// leaves <see langword="null"/>. The host answers it, and a scenario step assumes it.
+    /// </summary>
     public bool IsStub { get; internal set; }
 
     /// <summary>The transitions it guards, in priority order.</summary>

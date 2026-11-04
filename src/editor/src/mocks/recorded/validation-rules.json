@@ -650,7 +650,7 @@
   {
     "id": "MQ3102",
     "defaultSeverity": "error",
-    "description": "An expression's path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a member path outside a rule condition, or a payload attribute some using event lacks.",
+    "description": "An expression's path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a member path outside a rule condition, a payload attribute some using event lacks, or a context attribute named event, under which a process guard's condition reads the payload.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true

@@ -124,6 +124,36 @@ public sealed class ExprTyperTests
         Assert.False(Typed("satisfies PositiveAmount(amount: total)", guard).Nullable);
     }
 
+    [Fact]
+    public async Task A_container_filled_on_first_read_fills_once_and_a_reader_meanwhile_waits_for_it()
+    {
+        // Threads that print one resolved condition's text read its scope at once: the one that comes while another fills it must see
+        // the whole fill, not an empty container.
+        var ct = TestContext.Current.CancellationToken;
+        var filling = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        var fills = 0;
+        var container = new ExprContainer(c =>
+        {
+            Interlocked.Increment(ref fills);
+            filling.SetResult();
+            release.Wait(ct);
+            c.Add(new ExprMember(CreditLimit, "creditLimit", ExprType.Decimal, false));
+        });
+
+        var first = Task.Run(() => container.Member(CreditLimit), ct);
+        await filling.Task.WaitAsync(ct);
+        var second = Task.Run(() => container.Member(CreditLimit), ct);
+        await Task.WhenAny(second, Task.Delay(TimeSpan.FromMilliseconds(200), ct));
+        Assert.False(second.IsCompleted, "A read during the fill answered before the fill ended.");
+        release.Set();
+
+        Assert.Equal(CreditLimit, (await first)?.Id);
+        Assert.Equal(CreditLimit, (await second)?.Id);
+        Assert.Equal(1, fills);
+        Assert.Single(container.Members);
+    }
+
     [Theory]
     [InlineData("customer.creditLimit > 0", "only a guard reads through a relation")]
     [InlineData("lines.amount > 0", "leads to many records")]

@@ -1,6 +1,8 @@
 using System.Text;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Scripting;
 
 namespace Maquettiste.Engine.Expressions;
 
@@ -141,4 +143,26 @@ public static class ExprRuntime
 
     /// <summary>The runtime's source: it declares <c>const mq</c>.</summary>
     public static string Source => Text.Value;
+
+    /// <summary>The path <see cref="Prepared"/> loads under, which a limit or an error inside the runtime names.</summary>
+    internal const string PreparedPath = "expressions:runtime.js";
+
+    /// <summary>
+    /// What <see cref="Prepared"/> holds after <see cref="Source"/>: <c>mqAt(now)</c>, the runtime whose <c>now()</c> is the instant
+    /// given, which a process guard that reads <c>now</c> receives with the simulation's clock, so replays stay deterministic.
+    /// </summary>
+    internal const string Clock = "\nconst mqAt = (now) => Object.freeze({ ...mq, now: () => mq.tsz(now) });\n";
+
+    private static readonly Lazy<PreparedScript> Shared = new(() =>
+        PreparedScript.PrepareAll([new ScriptSource(PreparedPath, Source + Clock, "")], ExprEvaluator.Limits)[0]);
+
+    /// <summary>
+    /// The runtime and <see cref="Clock"/>, prepared once for the whole process: every sandbox that runs lowered expressions (an
+    /// <see cref="ExprEvaluator"/>'s, a process session's) loads it as its first script, and its own script, which registers the
+    /// functions, reads <c>mq</c> and <c>mqAt</c> from the global scope the scripts of one engine share. A prepared copy holds the
+    /// runtime's syntax tree, about 450 KiB, so pools share this one rather than each preparing its own. It is prepared under
+    /// <see cref="ExprEvaluator.Limits"/>, the limits every pool that loads it runs under, so its regular expressions match within the
+    /// same bound (250 ms; a pool with a lower bound lowers it, <see cref="ScriptSandbox"/>).
+    /// </summary>
+    internal static PreparedScript Prepared => Shared.Value;
 }

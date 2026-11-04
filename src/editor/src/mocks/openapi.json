@@ -15528,7 +15528,7 @@
               },
               "isStub": {
                 "type": "boolean",
-                "description": "The guard has neither an expression nor a condition."
+                "description": "The guard has nothing that runs, neither an expression nor a condition that types."
               },
               "usedBy": {
                 "type": "array",

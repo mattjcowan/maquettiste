@@ -15,7 +15,9 @@ namespace Maquettiste.Engine.Tests.Processes;
 /// Process guards written in the expression language (next-phase-3-design.md section 3.1, "Process guards", task H8), over the bindings
 /// fixture with an invented process InvoiceReview: each guard's condition compiles into the process's prepared script after the
 /// runtime, and simulation, scenario replay and <c>verify_scenarios</c> run it through the interpreter. Only true passes, so a null
-/// operand fails a guard; decimals compare exactly; <c>now()</c> is the simulation's clock; and the compiled forms re-key on a rename.
+/// operand fails a guard; decimals compare exactly; <c>now()</c> is the simulation's clock; and the compiled forms re-key on a rename. A
+/// second invented process, Settlement, covers 64-bit integers, payloads, value objects, JavaScript beside conditions and a context
+/// attribute named event, which no condition may read.
 /// </summary>
 public sealed class ProcessConditionTests
 {
@@ -97,15 +99,21 @@ public sealed class ProcessConditionTests
         return repo;
     }
 
-    /// <summary>Simulates one event from a start context (attribute id to JSON value) and clock; the event's trace.</summary>
-    private static async Task<StepTrace> SimulateAsync(ModelStore store, string @event, string context, string at = "2026-01-01T00:00:00Z")
+    /// <summary>
+    /// Simulates one event, with its payload (attribute id to JSON value) when given, from a start context and clock; the event's trace.
+    /// </summary>
+    private static async Task<StepTrace> SimulateAsync(ModelStore store, string @event, string context, string at = "2026-01-01T00:00:00Z", string? payload = null,
+        string process = ProcessId)
     {
+        var step = payload is null
+            ? $$"""{ "input": "event", "event": "{{@event}}" }"""
+            : $$"""{ "input": "event", "event": "{{@event}}", "payload": {{payload}} }""";
         var request = new SimulateRequest
         {
             Start = JsonDocument.Parse($$"""{ "context": {{context}}, "at": "{{at}}" }""").RootElement.Clone(),
-            Steps = [JsonDocument.Parse($$"""{ "input": "event", "event": "{{@event}}" }""").RootElement.Clone()],
+            Steps = [JsonDocument.Parse(step).RootElement.Clone()],
         };
-        var call = await store.SimulateProcessAsync(ProcessId, request, Ct);
+        var call = await store.SimulateProcessAsync(process, request, Ct);
         Assert.True(call.Status == ProcessCallStatus.Ok, call.Detail);
         return call.Value!.Trace[^1];
     }
@@ -130,10 +138,12 @@ public sealed class ProcessConditionTests
         Assert.Equal("(row) => mq.holds(mq.le(mq.date(mq.at(row, \"issuedOn\")), mq.date(mq.at(row, \"dueOn\"))))", condition.JavaScript);
         Assert.Equal("status = ReviewStatus.Closed", process.Guards.Single(g => g.Id == Closable).Condition!.Text);
 
-        // One lowering: the prepared script holds the resolved condition's JavaScript after the runtime.
+        // One lowering: the process's script holds the resolved condition's JavaScript, and loads after the runtime every process shares.
         var compiled = ProcessExpressions.Get(snapshot, snapshot.Get<Process>(ProcessId)!);
         Assert.Equal([DueAfterIssue, Exact, Closable, Over, Expired], compiled.Conditions);
-        Assert.StartsWith(ExprRuntime.Source, compiled.Script, StringComparison.Ordinal);
+        Assert.Equal(2, compiled.Scripts.Count);
+        Assert.Same(ExprRuntime.Prepared, compiled.Scripts[0]);
+        Assert.DoesNotContain("const mq", compiled.Script, StringComparison.Ordinal);
         Assert.Contains(condition.JavaScript!, compiled.Script, StringComparison.Ordinal);
 
         // The editor's record carries the condition.
@@ -258,6 +268,225 @@ public sealed class ProcessConditionTests
         var stub = await SimulateAsync(store, Submit, "{}");
         Assert.Equal(GuardSource.Missing, Assert.Single(stub.Guards).Source);
         Assert.False((await SimulateAsync(store, Check, $$"""{ "{{Amount}}": 0.1 }""")).Accepted);
+    }
+
+    [Fact]
+    public async Task A_condition_that_does_not_type_resolves_a_stub_as_simulation_treats_it()
+    {
+        using var repo = ReviewRepo();
+        Edit(repo, ProcessPath, p => p["guards"]![0]!["condition"] = JsonNode.Parse($$"""{ "op": "le", "args": [{{Path(IssuedOn)}}, {{Path(Amount)}}] }"""));
+        await using var store = new ModelStore(repo.Options);
+        Assert.Contains((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ3103" && d.JsonPointer == "/guards/0/condition");
+
+        // Nothing runs: the record says so, and simulation asks for an assume value (MQ9306), as for a guard with neither form.
+        var model = await new ModelResolver(repo.Options).ResolveAsync(await store.GetSnapshotAsync(Ct), null, Ct);
+        var guard = model.Processes.Single(p => p.Id == ProcessId).Guards.Single(g => g.Id == DueAfterIssue);
+        Assert.Null(guard.Expression);
+        Assert.Null(guard.Condition);
+        Assert.True(guard.IsStub);
+        var record = (ProcessRecord)ResolvedRecords.Entries(model, "processes", null).Single(e => e.Id == ProcessId).Project();
+        Assert.True(record.Guards.Single(g => g.Id == DueAfterIssue).IsStub);
+        var trace = await SimulateAsync(store, Submit, $$"""{ "{{IssuedOn}}": "2026-01-01", "{{Amount}}": 1 }""");
+        Assert.Equal(GuardSource.Missing, Assert.Single(trace.Guards).Source);
+        Assert.Contains(trace.Diagnostics, d => d.Rule == "MQ9306");
+    }
+
+    [Fact]
+    public async Task A_sandbox_that_fails_to_load_is_the_evaluations_MQ9503_not_an_exception()
+    {
+        // Twenty statements are enough for the sandbox's own setup but not for loading the runtime: the session opens, and each
+        // evaluation reports the load.
+        using var repo = ReviewRepo();
+        await using var store = new ModelStore(repo.Options);
+        var snapshot = await store.GetSnapshotAsync(Ct);
+        var compiled = ProcessExpressions.Get(snapshot, snapshot.Get<Process>(ProcessId)!);
+        using var session = compiled.Open(1, Ct, ProcessExpressions.Limits with { ScriptStatements = 20 });
+        using var context = JsonDocument.Parse($$"""{ "{{IssuedOn}}": "2026-01-01", "{{DueOn}}": "2026-02-01" }""");
+        using var @event = JsonDocument.Parse("{}");
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var result = session.EvaluateCondition(DueAfterIssue, "Guard 'dueAfterIssue'", context.RootElement, @event.RootElement, "2026-01-01T00:00:00Z", "seed", Ct);
+            Assert.Null(result.Value);
+            Assert.Equal("MQ9503", result.Diagnostic?.Rule);
+            Assert.Contains("failed while loading", result.Diagnostic!.Message, StringComparison.Ordinal);
+        }
+    }
+
+    private const string Settlement = "01K9PCX0000000000000000P01";
+    private const string EventContext = "01K9PCX0000000000000000A01";
+    private const string Due = "01K9PCX0000000000000000A02";
+    private const string Big = "01K9PCX0000000000000000A03";
+    private const string Ceiling = "01K9PCX0000000000000000A04";
+    private const string Total = "01K9PCX0000000000000000A05";
+    private const string Paid = "01K9PCX0000000000000000A06";
+    private const string Go = "01K9PCX0000000000000000E01";
+    private const string Spin = "01K9PCX0000000000000000E02";
+    private const string Compare = "01K9PCX0000000000000000E03";
+    private const string Pay = "01K9PCX0000000000000000E04";
+    private const string Nested = "01K9PCX0000000000000000E05";
+    private const string Stall = "01K9PCX0000000000000000E06";
+    private const string ReadsEvent = "01K9PCX0000000000000000G01";
+    private const string Owed = "01K9PCX0000000000000000G02";
+    private const string BigOverCeiling = "01K9PCX0000000000000000G03";
+    private const string PaidEnough = "01K9PCX0000000000000000G04";
+    private const string TotalPositive = "01K9PCX0000000000000000G05";
+    private const string Runaway = "01K9PCX0000000000000000G06";
+    private const string Loop = "01K9PCX0000000000000000X01";
+    private const string Pending = "01K9PCX0000000000000000S01";
+    private const string Settled = "01K9PCX0000000000000000S02";
+    private const string Money = "01K9PCX0000000000000000V01";
+    private const string MoneyAmount = "01K9PCX0000000000000000V02";
+
+    /// <summary>
+    /// The bindings fixture with the value object Money and the process Settlement, whose context holds an attribute named event: from
+    /// pending, go needs <c>event = 'go'</c> (that attribute), spin needs <c>due &gt; 0</c> and runs a JavaScript action that never ends,
+    /// compare needs <c>big &gt; ceiling</c> (two int64s), pay needs its payload's <c>event.paid &gt; 0.5</c>, nested needs
+    /// <c>total.amount &gt; 0</c> (a Money) and stall has a JavaScript guard that never ends.
+    /// </summary>
+    private static TempRepo SettlementRepo()
+    {
+        var repo = Repo();
+        repo.WriteFile(".maquettiste/model/value-objects/money.json", $$"""
+            {
+              "kind": "value-object",
+              "id": "{{Money}}",
+              "name": "Money",
+              "attributes": [
+                { "id": "{{MoneyAmount}}", "name": "amount", "type": "decimal", "required": true },
+                { "id": "01K9PCX0000000000000000V03", "name": "currency", "type": "string" }
+              ]
+            }
+            """);
+        var loop = $$""", "actions": ["{{Loop}}"]""";
+        var transitions = new[] { (Go, ReadsEvent), (Spin, Owed), (Compare, BigOverCeiling), (Pay, PaidEnough), (Nested, TotalPositive), (Stall, Runaway) }
+            .Select((t, i) => $$"""{ "id": "01K9PCX0000000000000000T0{{i + 1}}", "source": "{{Pending}}", "event": "{{t.Item1}}", "guard": "{{t.Item2}}", "targets": ["{{Settled}}"]{{(t.Item1 == Spin ? loop : "")}} }""");
+        repo.WriteFile(".maquettiste/model/processes/settlement.json", $$"""
+            {
+              "kind": "process",
+              "id": "{{Settlement}}",
+              "name": "Settlement",
+              "context": [
+                { "id": "{{EventContext}}", "name": "event", "type": "string" },
+                { "id": "{{Due}}", "name": "due", "type": "decimal" },
+                { "id": "{{Big}}", "name": "big", "type": "int64" },
+                { "id": "{{Ceiling}}", "name": "ceiling", "type": "int64" },
+                { "id": "{{Total}}", "name": "total", "type": { "ref": "{{Money}}" } }
+              ],
+              "events": [
+                { "id": "{{Go}}", "name": "go" }, { "id": "{{Spin}}", "name": "spin" }, { "id": "{{Compare}}", "name": "compare" },
+                { "id": "{{Pay}}", "name": "pay", "payload": [ { "id": "{{Paid}}", "name": "paid", "type": "decimal" } ] },
+                { "id": "{{Nested}}", "name": "nested" }, { "id": "{{Stall}}", "name": "stall" }
+              ],
+              "guards": [
+                { "id": "{{ReadsEvent}}", "name": "readsEvent", "condition": { "op": "eq", "args": [{{Path(EventContext)}}, { "value": "go" }] } },
+                { "id": "{{Owed}}", "name": "owed", "condition": { "op": "gt", "args": [{{Path(Due)}}, { "value": 0 }] } },
+                { "id": "{{BigOverCeiling}}", "name": "bigOverCeiling", "condition": { "op": "gt", "args": [{{Path(Big)}}, {{Path(Ceiling)}}] } },
+                { "id": "{{PaidEnough}}", "name": "paidEnough", "condition": { "op": "gt", "args": [{{Path(Paid)}}, {{Dec("0.5")}}] } },
+                { "id": "{{TotalPositive}}", "name": "totalPositive", "condition": { "op": "gt", "args": [{{Path(Total + "." + MoneyAmount)}}, { "value": 0 }] } },
+                { "id": "{{Runaway}}", "name": "runaway", "expression": "(() => { while (true) {} })()" }
+              ],
+              "actions": [ { "id": "{{Loop}}", "name": "loop", "expression": "(() => { while (true) {} })()" } ],
+              "states": [ { "id": "{{Pending}}", "name": "pending" }, { "id": "{{Settled}}", "name": "settled" } ],
+              "transitions": [ {{string.Join(", ", transitions)}} ]
+            }
+            """);
+        return repo;
+    }
+
+    [Fact]
+    public async Task A_condition_that_reads_a_context_attribute_named_event_is_MQ3102_and_its_guard_a_stub()
+    {
+        // A condition's row holds the payload under event, so the read would see the payload: the guard is refused, not misread.
+        using var repo = SettlementRepo();
+        await using var store = new ModelStore(repo.Options);
+        var report = await store.ValidateAsync(ValidationScope.All, Ct);
+        var found = report.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error || d.Rule.StartsWith("MQ31", StringComparison.Ordinal)).ToList();
+        var refused = Assert.Single(found);
+        Assert.Equal(("MQ3102", "/guards/0/condition"), (refused.Rule, refused.JsonPointer));
+        Assert.Contains("'event'", refused.Message, StringComparison.Ordinal);
+
+        var snapshot = await store.GetSnapshotAsync(Ct);
+        var compiled = ProcessExpressions.Get(snapshot, snapshot.Get<Process>(Settlement)!);
+        Assert.Equal([Owed, BigOverCeiling, PaidEnough, TotalPositive], compiled.Conditions.Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(ReadsEvent, compiled.Compiled);
+        Assert.Contains(Runaway, compiled.Compiled);
+        Assert.Contains(Loop, compiled.Compiled);
+
+        // Every process with conditions, of any model, loads the one prepared runtime.
+        using var other = ReviewRepo();
+        await using var otherStore = new ModelStore(other.Options);
+        var review = await otherStore.GetSnapshotAsync(Ct);
+        Assert.Same(compiled.Scripts[0], ProcessExpressions.Get(review, review.Get<Process>(ProcessId)!).Scripts[0]);
+
+        var model = await new ModelResolver(repo.Options).ResolveAsync(snapshot, null, Ct);
+        var guard = model.Processes.Single(p => p.Id == Settlement).Guards.Single(g => g.Id == ReadsEvent);
+        Assert.Null(guard.Condition);
+        Assert.True(guard.IsStub);
+
+        var trace = await SimulateAsync(store, Go, $$"""{ "{{EventContext}}": "go" }""", process: Settlement);
+        Assert.False(trace.Accepted);
+        Assert.Equal(GuardSource.Missing, Assert.Single(trace.Guards).Source);
+    }
+
+    [Fact]
+    public async Task An_int64_beyond_2_to_the_53_compares_exactly()
+    {
+        using var repo = SettlementRepo();
+        await using var store = new ModelStore(repo.Options);
+        Assert.True((await SimulateAsync(store, Compare, $$"""{ "{{Big}}": 9007199254740993, "{{Ceiling}}": 9007199254740992 }""", process: Settlement)).Accepted);
+        Assert.False((await SimulateAsync(store, Compare, $$"""{ "{{Big}}": 9007199254740992, "{{Ceiling}}": 9007199254740992 }""", process: Settlement)).Accepted);
+    }
+
+    [Fact]
+    public async Task A_payload_attribute_is_read_under_event_in_simulation_and_scenario_replay()
+    {
+        using var repo = SettlementRepo();
+        repo.WriteFile(".maquettiste/model/scenarios/settlement/pays.json", $$"""
+            {
+              "kind": "scenario",
+              "id": "01K9PCX0000000000000000C01",
+              "name": "Pays",
+              "process": "{{Settlement}}",
+              "start": { "at": "2026-07-01T00:00:00Z" },
+              "steps": [ { "id": "01K9PCX0000000000000000C02", "event": "{{Pay}}", "payload": { "{{Paid}}": 0.6 }, "expect": { "accepted": true, "states": ["{{Settled}}"] } } ]
+            }
+            """);
+        await using var store = new ModelStore(repo.Options);
+        Assert.True((await SimulateAsync(store, Pay, "{}", payload: $$"""{ "{{Paid}}": 0.6 }""", process: Settlement)).Accepted);
+        Assert.False((await SimulateAsync(store, Pay, "{}", payload: $$"""{ "{{Paid}}": 0.4 }""", process: Settlement)).Accepted);
+        Assert.False((await SimulateAsync(store, Pay, "{}", process: Settlement)).Accepted);
+
+        // A replay answers the same each time.
+        for (var run = 0; run < 2; run++)
+        {
+            var verified = await store.VerifyScenariosAsync(Settlement, null, Ct);
+            Assert.True(verified.Status == ProcessCallStatus.Ok, verified.Detail);
+            var result = Assert.Single(verified.Value!.Results);
+            Assert.True(result.Passed, result.Failure?.Message);
+        }
+    }
+
+    [Fact]
+    public async Task A_value_object_context_attribute_reads_its_member()
+    {
+        using var repo = SettlementRepo();
+        await using var store = new ModelStore(repo.Options);
+        Assert.True((await SimulateAsync(store, Nested, $$"""{ "{{Total}}": { "amount": 1.5, "currency": "USD" } }""", process: Settlement)).Accepted);
+        Assert.False((await SimulateAsync(store, Nested, $$"""{ "{{Total}}": { "amount": 0, "currency": "USD" } }""", process: Settlement)).Accepted);
+        Assert.False((await SimulateAsync(store, Nested, $$"""{ "{{Total}}": null }""", process: Settlement)).Accepted);
+    }
+
+    [Fact]
+    public async Task Runaway_JavaScript_beside_conditions_stops_at_the_statement_limit()
+    {
+        // A process with conditions runs without the wall clock, so the statement limit alone stops a JavaScript guard or action.
+        using var repo = SettlementRepo();
+        await using var store = new ModelStore(repo.Options);
+        var action = await SimulateAsync(store, Spin, $$"""{ "{{Due}}": 1 }""", process: Settlement);
+        Assert.Contains(action.Diagnostics, d => d.Rule == "MQ9503" && d.Message.Contains("statement limit", StringComparison.Ordinal));
+        var guard = await SimulateAsync(store, Stall, "{}", process: Settlement);
+        Assert.False(guard.Accepted);
+        Assert.Contains(guard.Diagnostics, d => d.Rule == "MQ9503" && d.Message.Contains("statement limit", StringComparison.Ordinal));
     }
 
     /// <summary>Saves an edit of one element through the store; the new snapshot.</summary>

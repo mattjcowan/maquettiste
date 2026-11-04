@@ -146,3 +146,51 @@ internal sealed class ScriptSandboxPool : IScriptSandboxPool
         }
     }
 }
+
+/// <summary>
+/// A sandbox pool built on its first rent, so that a failure to load its scripts (a limit, or a script that throws) is that rent's
+/// <see cref="ScriptLimitException"/> or <see cref="ScriptErrorException"/>, which the caller reports as it reports a call's, rather
+/// than an exception where the pool is opened. A failed build is not kept: the next rent tries again. Thread-safe: one thread builds,
+/// and the reads after the build take no lock.
+/// </summary>
+/// <param name="open">Builds the pool.</param>
+internal sealed class LazySandboxPool(Func<IScriptSandboxPool> open) : IDisposable
+{
+    private readonly Lock _gate = new();
+    private IScriptSandboxPool? _pool;
+    private bool _disposed;
+
+    /// <summary>Rents an engine, building the pool first when no rent has yet.</summary>
+    /// <returns>The lease.</returns>
+    public IScriptSandboxLease Rent()
+    {
+        var pool = Volatile.Read(ref _pool);
+        if (pool is null)
+        {
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                pool = _pool;
+                if (pool is null)
+                {
+                    pool = open();
+                    Volatile.Write(ref _pool, pool);
+                }
+            }
+        }
+
+        return pool.Rent();
+    }
+
+    /// <inheritdoc/>
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            _pool?.Dispose();
+        }
+    }
+}

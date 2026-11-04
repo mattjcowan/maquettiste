@@ -9845,7 +9845,7 @@ components:
             description: The JavaScript expression; null for a stub or a guard written as a condition.
           isStub:
             type: boolean
-            description: The guard has neither an expression nor a condition.
+            description: The guard has nothing that runs, neither an expression nor a condition that types.
           usedBy:
             type: array
             items:

@@ -31,7 +31,7 @@ public sealed class OperationGuardTests
     /// The bindings fixture with the stereotype common-errors (the error stale) and the operation reprice on Product, whose guards are
     /// positive (<c>newPrice &gt; 0</c>, reporting tooLow) and changed (<c>newPrice &lt;&gt; subject.price</c>, reporting stale).
     /// </summary>
-    private static TempRepo RepriceRepo(string? positiveError = TooLow, string changedName = "changed")
+    private static TempRepo RepriceRepo(string? positiveError = TooLow, string changedName = "changed", bool excludeStale = false)
     {
         var repo = Repo();
         repo.WriteFile(".maquettiste/model/vocabularies/stereotypes/common-errors.json", $$"""
@@ -45,6 +45,7 @@ public sealed class OperationGuardTests
             }
             """);
         var error = positiveError is null ? "" : $$""", "error": "{{positiveError}}" """;
+        var excludes = excludeStale ? $$""", "excludes": ["{{Stale}}"]""" : "";
         repo.WriteFile(OperationPath, $$"""
             {
               "kind": "operation",
@@ -60,7 +61,7 @@ public sealed class OperationGuardTests
                 { "id": "{{Changed}}", "name": "{{changedName}}", "error": "{{Stale}}",
                   "condition": { "op": "ne", "args": [{ "path": ["{{NewPrice}}"] }, { "path": ["{{PriceId}}"] }] } }
               ],
-              "stereotypes": ["common-errors"]
+              "stereotypes": ["common-errors"]{{excludes}}
             }
             """);
         return repo;
@@ -208,6 +209,18 @@ public sealed class OperationGuardTests
     }
 
     [Fact]
+    public async Task An_error_the_operation_excludes_is_MQ3111_and_resolves_to_none()
+    {
+        // The guard's error is inherited from the stereotype, but the operation excludes it, so resolution does not link it.
+        using var repo = RepriceRepo(excludeStale: true);
+        var found = Assert.Single(await ValidateAsync(repo), d => d.Rule == "MQ3111");
+        Assert.Equal("/guards/1/error", found.JsonPointer);
+        var reprice = await ResolveAsync(repo);
+        Assert.DoesNotContain(reprice.Errors, e => e.Id == Reprice + "." + Stale);
+        Assert.Null(reprice.Guards[1].Error);
+    }
+
+    [Fact]
     public async Task Guard_names_are_identifiers_unique_in_the_operation()
     {
         using var repo = RepriceRepo(changedName: "positive");
@@ -223,5 +236,139 @@ public sealed class OperationGuardTests
         var reprice = await ResolveAsync(repo);
         Assert.Null(reprice.Guards[0].Error);
         Assert.Equal("newPrice > 0", reprice.Guards[0].Condition!.Text);
+    }
+
+    private const string Lone = "01K9GRD0000000000000000Q08";
+    private const string Special = "01K9GRD0000000000000000N01";
+    private const string Discount = "01K9GRD0000000000000000N02";
+    private const string Vendor = "01K9GRD0000000000000000N03";
+    private const string Tree = "01K9GRD0000000000000000R04";
+    private const string ParentEnd = "01K9GRD0000000000000000R05";
+    private const string ChildrenEnd = "01K9GRD0000000000000000R06";
+
+    /// <summary>
+    /// The bindings fixture with an operation reprice on <paramref name="subject"/> at <paramref name="level"/>, whose one guard lone reports
+    /// tooLow when <paramref name="condition"/> does not hold.
+    /// </summary>
+    private static TempRepo GuardRepo(string subject, string condition, string level = "record")
+    {
+        var repo = Repo();
+        repo.WriteFile(OperationPath, $$"""
+            {
+              "kind": "operation",
+              "id": "{{Reprice}}",
+              "name": "reprice",
+              "subject": "{{subject}}",
+              "level": "{{level}}",
+              "effect": "change",
+              "input": [ { "id": "{{NewPrice}}", "name": "newPrice", "type": "decimal", "precision": 12, "scale": 2 } ],
+              "outcomes": [ { "id": "{{Applied}}", "name": "applied" } ],
+              "errors": [ { "id": "{{TooLow}}", "name": "tooLow", "input": "{{NewPrice}}" } ],
+              "guards": [ { "id": "{{Lone}}", "name": "lone", "error": "{{TooLow}}", "condition": {{condition}} } ]
+            }
+            """);
+        return repo;
+    }
+
+    [Fact]
+    public async Task A_guard_depends_on_every_base_of_its_subject_and_of_the_entity_it_navigates_to()
+    {
+        // SpecialProduct derives from Product, which declares price: a change to Product changes what the guard reads.
+        using var derived = GuardRepo(Special, $$"""{ "op": "gt", "args": [{ "path": ["{{PriceId}}"] }, { "path": ["{{Discount}}"] }] }""");
+        derived.WriteFile(".maquettiste/model/entities/special-product.json", $$"""
+            {
+              "kind": "entity",
+              "id": "{{Special}}",
+              "name": "SpecialProduct",
+              "base": "{{ProductId}}",
+              "attributes": [ { "id": "{{Discount}}", "name": "discount", "type": "decimal", "precision": 12, "scale": 2 } ]
+            }
+            """);
+        var diagnostics = await ValidateAsync(derived);
+        Assert.True(!diagnostics.Any(d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal)), Describe(diagnostics));
+        var guard = (await ResolveAsync(derived)).Guards.Single();
+        Assert.Equal("subject.price > subject.discount", guard.Condition!.Text);
+        Assert.Contains("e:" + Special, guard.Dependencies);
+        Assert.Contains("e:" + ProductId, guard.Dependencies);
+
+        // Vendor derives from Customer, which declares email: the guard reads through supplies to a Vendor, so it depends on both.
+        using var navigated = GuardRepo(ProductId, $$"""{ "op": "isNotNull", "args": [{ "path": ["{{SupplierEnd}}", "{{EmailId}}"] }] }""");
+        navigated.WriteFile(".maquettiste/model/entities/vendor.json", $$"""
+            { "kind": "entity", "id": "{{Vendor}}", "name": "Vendor", "base": "{{CustomerId}}", "attributes": [] }
+            """);
+        navigated.WriteFile(".maquettiste/model/relations/supplies.json", $$"""
+            {
+              "kind": "relation",
+              "id": "{{Supplies}}",
+              "name": "supplies",
+              "ends": [
+                { "id": "{{SuppliedEnd}}", "entity": "{{ProductId}}", "role": "products" },
+                { "id": "{{SupplierEnd}}", "entity": "{{Vendor}}", "role": "supplier", "navigation": "supplier", "max": 1 }
+              ]
+            }
+            """);
+        diagnostics = await ValidateAsync(navigated);
+        Assert.True(!diagnostics.Any(d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal)), Describe(diagnostics));
+        guard = (await ResolveAsync(navigated)).Guards.Single();
+        Assert.Equal("subject.supplier.email is not null", guard.Condition!.Text);
+        Assert.Contains("e:" + Supplies, guard.Dependencies);
+        Assert.Contains("e:" + Vendor, guard.Dependencies);
+        Assert.Contains("e:" + CustomerId, guard.Dependencies);
+    }
+
+    [Fact]
+    public async Task A_self_relation_gives_a_to_one_and_a_to_many_navigation()
+    {
+        var relation = $$"""
+            {
+              "kind": "relation",
+              "id": "{{Tree}}",
+              "name": "tree",
+              "ends": [
+                { "id": "{{ParentEnd}}", "entity": "{{ProductId}}", "role": "parent", "navigation": "parent", "max": 1 },
+                { "id": "{{ChildrenEnd}}", "entity": "{{ProductId}}", "role": "children", "navigation": "children" }
+              ]
+            }
+            """;
+        using var one = GuardRepo(ProductId, $$"""{ "op": "gt", "args": [{ "path": ["{{ParentEnd}}", "{{PriceId}}"] }, { "value": 0 }] }""");
+        one.WriteFile(".maquettiste/model/relations/tree.json", relation);
+        var diagnostics = await ValidateAsync(one);
+        Assert.True(!diagnostics.Any(d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal)), Describe(diagnostics));
+        var guard = (await ResolveAsync(one)).Guards.Single();
+        Assert.Equal("subject.parent.price > 0", guard.Condition!.Text);
+        Assert.Equal("(row) => mq.holds(mq.gt(mq.dec(mq.at(row, \"subject\", \"parent\", \"price\"), 2), mq.dec(\"0\")))", guard.Condition.JavaScript);
+
+        using var many = GuardRepo(ProductId, $$"""{ "op": "gt", "args": [{ "path": ["{{ChildrenEnd}}", "{{PriceId}}"] }, { "value": 0 }] }""");
+        many.WriteFile(".maquettiste/model/relations/tree.json", relation);
+        Assert.Contains(await ValidateAsync(many), d => d.Rule == "MQ3102" && d.Message.Contains("many", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_far_end_without_a_navigation_is_not_followed()
+    {
+        // The supplier's end names no navigation, so Product cannot reach it; the products end's navigation is the supplier's way back.
+        using var repo = GuardRepo(ProductId, $$"""{ "op": "isNotNull", "args": [{ "path": ["{{SupplierEnd}}", "{{EmailId}}"] }] }""");
+        repo.WriteFile(".maquettiste/model/relations/supplies.json", $$"""
+            {
+              "kind": "relation",
+              "id": "{{Supplies}}",
+              "name": "supplies",
+              "ends": [
+                { "id": "{{SuppliedEnd}}", "entity": "{{ProductId}}", "role": "products", "navigation": "products" },
+                { "id": "{{SupplierEnd}}", "entity": "{{CustomerId}}", "role": "supplier", "max": 1 }
+              ]
+            }
+            """);
+        Assert.Contains(await ValidateAsync(repo), d => d.Rule == "MQ3102" && d.Message.Contains("no navigation", StringComparison.Ordinal));
+        Assert.Null((await ResolveAsync(repo)).Guards.Single().Condition);
+    }
+
+    [Fact]
+    public async Task A_guard_that_reads_the_subject_of_a_collection_operation_is_MQ3111_once()
+    {
+        using var repo = GuardRepo(ProductId, $$"""{ "op": "gt", "args": [{ "path": ["{{PriceId}}"] }, { "value": 0 }] }""", level: "collection");
+        var diagnostics = await ValidateAsync(repo);
+        var found = Assert.Single(diagnostics, d => d.Rule == "MQ3111");
+        Assert.Equal("/guards/0/condition", found.JsonPointer);
     }
 }

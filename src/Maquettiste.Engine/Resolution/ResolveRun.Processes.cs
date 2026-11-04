@@ -198,10 +198,13 @@ internal sealed partial class ResolveRun
         Dictionary<string, RAttribute>? readable = null;
         foreach (var source in process.Guards)
         {
-            var guard = Node(new RGuard { Name = source.Name, Expression = source.Expression, IsStub = source.Expression is null && source.Condition is null }, source.Id);
+            var guard = Node(new RGuard { Name = source.Name, Expression = source.Expression }, source.Id);
             FillNode(guard, source.DisplayName ?? source.Name, source.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
             if (source.Condition is not null)
                 ResolveCondition(guard, source);
+
+            // A condition that does not type runs no more than a missing one does (simulation asks for an assume value, MQ9306).
+            guard.IsStub = guard.Expression is null && guard.Condition is null;
             if (lookup.Guards.TryAdd(source.Id, guard))
                 guards.Add(guard);
         }

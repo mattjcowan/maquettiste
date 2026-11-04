@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Processes;
@@ -69,6 +70,7 @@ public sealed class ExpressionCostTests
                 Assert.Same(ProcessExpressions.Get(process), compiled);
                 Assert.Empty(compiled.Conditions);
                 Assert.DoesNotContain("const mq", compiled.Script, StringComparison.Ordinal);
+                Assert.DoesNotContain(compiled.Scripts, s => s.Source.Path == ExprRuntime.PreparedPath);
             }
         }
     }

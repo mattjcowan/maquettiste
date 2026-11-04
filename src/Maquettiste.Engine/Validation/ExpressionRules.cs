@@ -3,6 +3,7 @@ using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Resolution;
 
 namespace Maquettiste.Engine.Validation;
 
@@ -234,6 +235,28 @@ internal static class ExprSites
     /// <summary>The ids each path of a tree names, every segment.</summary>
     public static IEnumerable<string> PathIds(Expr e) => Nodes(e).SelectMany(n => n.Path ?? []);
 
+    /// <summary>
+    /// The context attribute named <c>event</c> that a process guard's typed condition reads, or <see langword="null"/>. A condition's
+    /// row holds the event's payload under <c>event</c>, so such a read would see the payload: validation reports it (MQ3102), and
+    /// resolution and simulation leave the guard's condition out, so the guard is a stub rather than one that misreads.
+    /// </summary>
+    /// <param name="process">The process.</param>
+    /// <param name="typed">The guard's typed condition.</param>
+    /// <returns>The attribute, or <see langword="null"/>.</returns>
+    public static ModelAttribute? EventContextRead(Process process, TypedExpr typed)
+    {
+        foreach (var attribute in process.Context)
+        {
+            if (!string.Equals(attribute.Name, "event", StringComparison.Ordinal))
+                continue;
+            var member = attribute.Id + ".";
+            if (ExprResolution.Paths(typed).Any(id => string.Equals(id, attribute.Id, StringComparison.Ordinal) || id.StartsWith(member, StringComparison.Ordinal)))
+                return attribute;
+        }
+
+        return null;
+    }
+
     /// <summary>Whether a tree holds a <c>text</c> node anywhere.</summary>
     public static bool HasText(Expr? e) => e is not null && Nodes(e).Any(n => n.Text is not null);
 
@@ -448,6 +471,12 @@ internal static class ExpressionRules
                 }
             }
 
+            if (element is Process process && ExprSites.EventContextRead(process, typed) is { } shadowed)
+            {
+                report.Add("MQ3102", $"The guard reads the context attribute '{shadowed.Name}', but a condition reads the event's payload under that name, so "
+                    + "the guard is left a stub; rename the context attribute.", site.Pointer, site.SubId);
+            }
+
             var read = ExprSites.PathIds(tree).ToHashSet(StringComparer.Ordinal);
             if (site.Reads is { } wanted && !read.Contains(wanted) && !read.Contains(wanted.Split('.', '@', ':')[^1]))
             {
@@ -527,10 +556,10 @@ internal static class ExpressionRules
         var guard = operation.Guards[index];
         if (guard.Error is { } error)
         {
-            var id = error.Split(':', '.')[^1];
-            var errors = operation.Errors.Select(e => e.Id)
-                .Concat(model.EffectiveStereotypes(operation).SelectMany(s => s.Stereotype.Errors).Select(e => e.Id));
-            if (!errors.Contains(id, StringComparer.Ordinal))
+            // The errors as resolution links them: its own by id, then the inherited ones less what it excludes, by keyed or stereotype id.
+            var own = error.Split(':', '.')[^1];
+            var errors = operation.Errors.Select(e => e.Id).Concat(OperationErrors.Of(model, operation).Select(e => e.Key));
+            if (!errors.Any(e => string.Equals(e, error, StringComparison.Ordinal) || string.Equals(e.Split('.')[^1], own, StringComparison.Ordinal)))
             {
                 report.Add("MQ3111", $"The guard's error '{error}' is not an error of the operation; name one of its own or inherited errors.",
                     Ptr.At("/guards", index) + "/error", guard.Id);

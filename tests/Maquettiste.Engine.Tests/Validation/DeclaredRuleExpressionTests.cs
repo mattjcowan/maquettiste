@@ -1,4 +1,6 @@
+using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Validation;
 
@@ -97,5 +99,35 @@ public sealed class DeclaredRuleExpressionTests
         Assert.DoesNotContain(report.Diagnostics, d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal) || d.Rule == "MQ5016");
         Assert.Equal(["Customer", "Payment"], await harness.FoundOnAsync(report, "x/long-retention"));
         Assert.Empty(await harness.FoundOnAsync(report, "x/has-total"));
+    }
+
+    [Fact]
+    public async Task A_condition_that_stops_at_a_limit_is_one_MQ5003_for_its_rule_and_no_finding()
+    {
+        // length counts code points one at a time, so Customer's long rationale runs the condition past the statement limit. The other
+        // entities fail it, but a rule that could not judge every object reports why, once, rather than findings that hide it.
+        await using var harness = DeclaredRuleHarness.Create(
+            new Dictionary<string, string>
+            {
+                ["extensions/rules/rules.json"] = DeclaredRuleHarness.File(
+                    Rule("long-rationale", Entities, $$"""{ "op": "gt", "args": [{ "call": "length", "args": [{{Member("rationale")}}] }, { "value": 200000 }] }"""),
+                    Rule("not-customer", Entities, $$"""{ "op": "ne", "args": [{{Member("name")}}, { "value": "Customer" }] }""")),
+            },
+            edit: root =>
+            {
+                var path = Path.Combine(root, "model", "entities", "customer.json");
+                var node = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+                node["rationale"] = new string('x', 150_000);
+                File.WriteAllBytes(path, TestServices.Json.Write(node, "entity.json", ".maquettiste/model/entities/customer.json"));
+            });
+
+        var report = await harness.ValidateAsync();
+
+        var stopped = Assert.Single(report.Diagnostics, d => d.Rule == "MQ5003");
+        Assert.Equal((".maquettiste/extensions/rules/rules.json", "/rules/0/require/expression"), (stopped.FilePath, stopped.JsonPointer));
+        Assert.Contains("rule 'long-rationale' stopped on entity 'Customer'", stopped.Message, StringComparison.Ordinal);
+        Assert.Contains("statement limit", stopped.Message, StringComparison.Ordinal);
+        Assert.Empty(await harness.FoundOnAsync(report, "x/long-rationale"));
+        Assert.Equal(["Customer"], await harness.FoundOnAsync(report, "x/not-customer"));
     }
 }
