@@ -25,7 +25,7 @@ suppressions (8.3); the model diff with impact before apply (7.3, 7.2).
 
 ## Phase 1: built in 0.11.0
 
-Designed in `next-phase-1-design.md`. 0.11.0 is a preview and not released yet.
+Designed in `next-phase-1-design.md`. 0.11.0 was published only as previews; its items are released in 0.12.0.
 
 | # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
@@ -50,7 +50,7 @@ Designed in `next-phase-1-design.md`. 0.11.0 is a preview and not released yet.
 Milestone D is designed in section 3 of `next-phase-2-design.md` and was merged in pull request #1. The first cut of
 operations (section 4.1) was merged in pull request #3, project-defined kinds (4.2) in #4, the small fixes in #5, and
 library packs with exports (5.2, 5.3) in #6, tests for packs (5.4) in #7, calculated values (5.5) in #8, declarative
-rules (5.6) in #9; the model diff and impact before apply (6.1, 6.2) follow. 0.12.0 is not released yet.
+rules (5.6) in #9, and the model diff and impact before apply (6.1, 6.2) in #10. 0.12.0 was released on 2026-11-04.
 
 | # | Item | Requested | Status | Design |
 | --- | --- | --- | --- | --- |
