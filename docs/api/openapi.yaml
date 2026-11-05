@@ -8333,7 +8333,8 @@ components:
       description: >-
         `upsert` (`id` a qualified name, `element`, optional `expectedHash`) is a `create` when the model as loaded has no
         element of that name and an `update` of the whole document when it has one, with the file's hash unless `expectedHash`
-        gives one; `id` must end in the name the element states.
+        gives one. `id` must be one of the names the element will have, an update keeps the longest of them (a seed its target
+        too), and an element that exists must send each part's id; each refusal is MQ1012 to MQ1015 at `/operations/<n>/id`.
         `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one
         is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema`
         (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema`
@@ -8425,12 +8426,12 @@ components:
         id:
           description: >-
             An id, a qualified name or a placeholder. A create's `id` must be an id; an update's or delete's names an element
-            that exists before the batch, never a placeholder. For a reference-type refactor, the reference type (for
+            that exists before the batch, never a placeholder; an upsert's must be a qualified name. For a reference-type refactor, the reference type (for
             `merge-reference-types`, the one merged away).
           type: [string, 'null']
         as:
           description: >-
-            Create and update: the placeholder (`$name`) that names the operation's element for the whole batch, so other
+            Create, update and upsert: the placeholder (`$name`) that names the operation's element for the whole batch, so other
             operations write it where the element's id goes. An object inside `element` whose schema requires an `id` may carry
             `as` too, naming that sub-element.
           type: [string, 'null']

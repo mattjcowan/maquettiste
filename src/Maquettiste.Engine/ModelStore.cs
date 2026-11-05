@@ -278,10 +278,11 @@ public sealed partial class ModelStore : IAsyncDisposable
     private async Task<BatchResult> ApplyBatchCoreAsync(ModelBatch batch, ChangeSource source, BatchPreviewSink? preview, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(batch);
+        Dictionary<int, QualifiedName>? upserts = null;
         if (batch.Operations.Any(static o => o.Op == BatchOp.Upsert))
         {
             var failures = new SaveResult?[batch.Operations.Count];
-            batch = ExpandUpserts(await LoadedAsync(ct).ConfigureAwait(false), batch, failures);
+            batch = ExpandUpserts(await LoadedAsync(ct).ConfigureAwait(false), batch, failures, out upserts);
             if (failures.Any(static r => r is not null))
                 return Invalid(batch, failures);
         }
@@ -335,6 +336,13 @@ public sealed partial class ModelStore : IAsyncDisposable
         }
 
         batch = resolved.Batch;
+        if (upserts is not null)
+        {
+            BatchNames.CheckUpserts(loaded, resolved, nodes, upserts, invalid);
+            if (invalid.Any(r => r is not null))
+                return Invalid(batch, invalid);
+            resolved = resolved with { Ids = resolved.Ids with { Names = WithUpsertNames(resolved.Ids.Names, upserts, nodes) } };
+        }
 
         // Expressions written as text become trees, read against the model as loaded (next-phase-3-design.md section 3.1): after 5.1's
         // resolver, so that every sub-element has its id and text names the columns and attributes the batch adds.

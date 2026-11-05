@@ -91,6 +91,9 @@ public static class AssistantProposals
         if (operations.Count > MaxOperations)
             return (null, Error($"A proposal holds at most {MaxOperations} operations; split the change."));
 
+        if (operations.Any(o => o is JsonObject op && OpName(op) == "upsert"))
+            return (null, Error("A proposal says exactly what it changes: use create or update, not upsert."));
+
         var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
         // Update and delete targets given by name resolve on the model as loaded and are pinned before their hashes are read; a name
         // that does not resolve fails like a parse failure, with its MQ1012 to MQ1015 diagnostics.
