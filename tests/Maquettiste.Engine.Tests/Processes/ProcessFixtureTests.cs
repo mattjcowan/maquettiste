@@ -27,9 +27,8 @@ public sealed class ProcessFixtureTests
 
         Assert.Empty(model.LoadDiagnostics);
         var report = await EngineServices.Create(h.Options).Validator.ValidateAsync(model, ValidationScope.All, null, Ct);
-        // Both processes name their subject in the deprecated one-subject form (lifecycle-design.md decision 6), the orchestration included.
-        Assert.All(report.Diagnostics, d => Assert.True((d.Severity == DiagnosticSeverity.Info && d.Rule == "MQ9005") || d.Rule == "MQ9209", d.Rule + " " + d.Message));
-        Assert.Equal(2, report.Diagnostics.Count(d => d.Rule == "MQ9209"));
+        // Both processes list their subject in `subjects`, so the deprecated form's MQ9209 does not appear (lifecycle-design.md decision 6).
+        Assert.All(report.Diagnostics, d => Assert.True(d.Severity == DiagnosticSeverity.Info && d.Rule == "MQ9005", d.Rule + " " + d.Message));
 
         Assert.Equal(["Purchasing", "Sales"], model.All<Package>().Select(p => p.Name));
         Assert.Equal(["GateSignature", "ProcessInstance", "PurchaseRequest", "SalesOrder", "SalesOrderHistory"], model.All<Entity>().Select(e => e.Name));

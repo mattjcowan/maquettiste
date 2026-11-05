@@ -180,13 +180,26 @@ describe("the mock agrees with the engine", () => {
   it("MQ9209 fires only on a subject and never on a library", () => {
     const backend = new MockBackend();
     create(backend, { kind: "process", id: "01JQZZZ0000000000000000040", name: "Shared", use: "library", subject: INVOICE, states: [] });
-    create(backend, { kind: "process", id: "01JQZZZ0000000000000000041", name: "Bare", boundAttribute: INVOICE_STATUS, states: [state("01JQZZZ0000000000000000042")] });
+    create(backend, {
+      kind: "process",
+      id: "01JQZZZ0000000000000000041",
+      name: "Bare",
+      boundAttribute: INVOICE_STATUS,
+      states: [state("01JQZZZ0000000000000000042")],
+    });
     expect(rule(backend, "MQ9209")).toEqual([]);
   });
 
   it("an empty subjects list reads as the engine's text at /subjects, and no subject keeps today's text at /use", () => {
     const backend = new MockBackend();
-    const empty = { kind: "process", id: "01JQZZZ0000000000000000043", name: "Empty", use: "lifecycle", subjects: [], states: [state("01JQZZZ0000000000000000044")] };
+    const empty = {
+      kind: "process",
+      id: "01JQZZZ0000000000000000043",
+      name: "Empty",
+      use: "lifecycle",
+      subjects: [],
+      states: [state("01JQZZZ0000000000000000044")],
+    };
     // The save is refused; the diagnostics say why.
     const refused = run(backend, [{ op: "create", element: empty }]);
     expect(refused.outcome).toBe("invalid");
