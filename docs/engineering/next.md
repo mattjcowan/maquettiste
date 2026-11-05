@@ -278,7 +278,7 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
   - Under a process: **States**, **Events**, **Guards and actions** and **Gates**, then **Scenarios**, failed ones
     first, each with its status.
   - **Actors** grouped by type: **People**, **Roles** and **Systems**. "Systems" is the folder's label only: the
-    actor type stays `external-system` in files, and its label elsewhere stays "External system". The system itself,
+    actor type stays `external-system` in files, and its label elsewhere stays "external system". The system itself,
     which a later item makes the actor of automatic moves, is labeled **Automatic**, so the two aren't confused. Once
     actors have membership, a role lists its members, and scenario personas sit with their scenarios.
   - In the Domain model explorer, an entity lists the lifecycles that govern it. An actor's row says where it acts.
