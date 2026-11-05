@@ -11,9 +11,10 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Processes;
 
 /// <summary>
-/// The process rules MQ9001 to MQ9022, MQ9101 to MQ9106 and MQ9201 to MQ9205 (phase-3-design.md section 3) over the
-/// <c>process-basics</c> fixture: the fixture raises none of them, each failing case mutates it so one rule fires, and each passing
-/// case makes a nearby change that must not raise the rule.
+/// The process rules MQ9001 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9206 and MQ9209 (phase-3-design.md section 3, lifecycle-design.md
+/// section 6) over the <c>process-basics</c> fixture: the fixture raises none of them but MQ9209, since it names its subject in the
+/// one-subject form, each failing case mutates it so one rule fires, and each passing case makes a nearby change that must not raise
+/// the rule.
 /// </summary>
 public sealed class ProcessRuleTests
 {
@@ -69,6 +70,18 @@ public sealed class ProcessRuleTests
         public JsonObject Enum => Files["model/enums/order-status.json"];
 
         public JsonObject Diagram => Files["model/diagrams/order-lifecycle.json"];
+
+        /// <summary>Rewrites the process in the subjects form, as use-subjects does: one entry with the subject and its binding.</summary>
+        public JsonObject UseSubjects()
+        {
+            var entry = new JsonObject { ["id"] = NewId(), ["entity"] = Process["subject"]!.GetValue<string>() };
+            if (Process["boundAttribute"] is { } bound)
+                entry["boundAttribute"] = bound.GetValue<string>();
+            Process.Remove("subject");
+            Process.Remove("boundAttribute");
+            Process["subjects"] = new JsonArray(entry);
+            return entry;
+        }
 
         public JsonArray Transitions => Process["transitions"]!.AsArray();
 
@@ -317,6 +330,57 @@ public sealed class ProcessRuleTests
         }),
         ["MQ9205 default is another state"] = m => m.Entity["attributes"]![1]!["default"] = "Review",
         ["MQ9205 no default"] = m => m.Entity["attributes"]![1]!.AsObject().Remove("default"),
+        ["MQ9201 empty subjects"] = m =>
+        {
+            m.UseSubjects();
+            m.Process["subjects"] = new JsonArray();
+        },
+        ["MQ9201 an entity listed twice"] = m =>
+        {
+            m.UseSubjects();
+            m.Process["subjects"]!.AsArray().Add(new JsonObject { ["id"] = NewId(), ["entity"] = Order });
+        },
+        ["MQ9201 entity names a lifecycle that does not list it"] = m =>
+        {
+            m.UseSubjects()["entity"] = "01JENT00000000000000000002";
+            m.Files["model/entities/customer.json"] = new JsonObject { ["kind"] = "entity", ["id"] = "01JENT00000000000000000002", ["name"] = "Customer" };
+        },
+        ["MQ9202 a subjects entry binds a non-enum attribute"] = m => m.UseSubjects()["boundAttribute"] = "01JATT00000000000000000001",
+        ["MQ9202 an orchestration's subject binds an attribute"] = m =>
+        {
+            m.UseSubjects();
+            m.Process.Remove("use");
+            m.Entity.Remove("lifecycle");
+        },
+        ["MQ9203 a subjects entry's enum drifts"] = m =>
+        {
+            m.UseSubjects();
+            m.Enum["members"]!.AsArray().RemoveAt(3);
+        },
+        ["MQ9206 two states share a code"] = m =>
+        {
+            m.State(Draft)["code"] = "D";
+            m.State(Pending)["code"] = "D";
+        },
+        ["MQ9206 1 and \"1\" are one code"] = m =>
+        {
+            m.State(Draft)["code"] = 1;
+            m.State(Closed)["code"] = "1";
+        },
+        ["MQ9206 strings and integers mixed"] = m =>
+        {
+            m.State(Draft)["code"] = "D";
+            m.State(Closed)["code"] = 9;
+        },
+        ["MQ9206 a code on a history state"] = m => m.State(Resume)["code"] = "R",
+        ["MQ9206 a code on a choice state"] = m => m.State(Decide)["code"] = "C",
+        ["MQ9209 the one-subject form"] = _ => { },
+        ["MQ9209 an orchestration in the one-subject form"] = m =>
+        {
+            m.Process.Remove("use");
+            m.Process.Remove("boundAttribute");
+            m.Entity.Remove("lifecycle");
+        },
     };
 
     private static readonly Dictionary<string, Action<Mutable>> Passing = new(StringComparer.Ordinal)
@@ -387,6 +451,34 @@ public sealed class ProcessRuleTests
         ["MQ9203 members in state order"] = _ => { },
         ["MQ9204 enum used once"] = _ => { },
         ["MQ9205 default is the initial state"] = _ => { },
+        ["MQ9201 subjects without the entity naming the lifecycle back"] = m =>
+        {
+            m.UseSubjects();
+            m.Entity.Remove("lifecycle");
+        },
+        ["MQ9201 the entity names a lifecycle that lists it"] = m => m.UseSubjects(),
+        ["MQ9202 a subjects entry binds an enum attribute"] = m => m.UseSubjects(),
+        ["MQ9203 a subjects entry's enum in state order"] = m => m.UseSubjects(),
+        ["MQ9206 unique codes of one kind, nested, with no binding"] = m =>
+        {
+            m.State(Draft)["code"] = "D";
+            m.State(Review)["code"] = "R";
+            m.State(Pending)["code"] = "RP";
+            m.State(Packing)["code"] = "FP";
+            m.State(Closed)["code"] = "C";
+        },
+        ["MQ9206 integer codes"] = m =>
+        {
+            m.State(Draft)["code"] = 1;
+            m.State(Closed)["code"] = 2;
+        },
+        ["MQ9209 the subjects form"] = m => m.UseSubjects(),
+        ["MQ9209 an orchestration with subjects"] = m =>
+        {
+            m.UseSubjects().Remove("boundAttribute");
+            m.Process.Remove("use");
+            m.Entity.Remove("lifecycle");
+        },
     };
 
     private static void AddRejected(Mutable m, bool final)
@@ -415,7 +507,32 @@ public sealed class ProcessRuleTests
     [Fact]
     public async Task The_fixture_raises_no_process_rule()
     {
-        Assert.Empty(await ValidateAsync(Load()));
+        // The fixture names its subject in the one-subject form, which is deprecated (lifecycle-design.md decision 6); it is not converted.
+        var only = Assert.Single(await ValidateAsync(Load()));
+        Assert.Equal(("MQ9209", "/subject", P), (only.Rule, only.JsonPointer, only.ElementId));
+    }
+
+    [Fact]
+    public async Task Use_subjects_gives_the_same_findings_but_the_deprecation_and_the_back_reference()
+    {
+        // Each failing lifecycle case in the one-subject form, converted: the findings stay but MQ9209 and the entity-names-it-back MQ9201.
+        foreach (var (name, mutate) in Failing.Where(c => c.Key[..6] is "MQ9202" or "MQ9203" or "MQ9204" or "MQ9205" && !c.Key.Contains("subjects entry", StringComparison.Ordinal)
+                     && !c.Key.Contains("orchestration", StringComparison.Ordinal)))
+        {
+            var before = Load();
+            mutate(before);
+            var after = Load();
+            mutate(after);
+            after.UseSubjects();
+
+            static string Rules(IEnumerable<Diagnostic> found) => string.Join(",", found.Select(d => d.Rule).Where(r => r != "MQ9209").Order(StringComparer.Ordinal));
+            var expected = Rules(await ValidateAsync(before));
+            Assert.Equal(name + ": " + expected, name + ": " + Rules(await ValidateAsync(after)));
+        }
+
+        var converted = Load();
+        converted.UseSubjects();
+        Assert.Empty(await ValidateAsync(converted));
     }
 
     [Theory]
@@ -458,7 +575,7 @@ public sealed class ProcessRuleTests
         var rules = RuleCatalog.All.Select(r => r.Id).Where(id => (id.StartsWith("MQ90", StringComparison.Ordinal)
             || id.StartsWith("MQ91", StringComparison.Ordinal) || id.StartsWith("MQ92", StringComparison.Ordinal)) && id != "MQ9019").ToList();
 
-        Assert.Equal(32, rules.Count);
+        Assert.Equal(34, rules.Count);
         Assert.Equal(rules, Failing.Keys.Select(k => k[..6]).Distinct().Order(StringComparer.Ordinal));
         Assert.Equal(rules, Passing.Keys.Select(k => k[..6]).Distinct().Order(StringComparer.Ordinal));
         Assert.All(rules, id => Assert.Contains(";", RuleCatalog.Get(id).Description, StringComparison.Ordinal));

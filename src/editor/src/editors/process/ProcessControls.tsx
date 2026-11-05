@@ -9,13 +9,13 @@ import { useElement, useIndex } from "@/api/queries";
 import type { AttributeDoc } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Field, Select } from "@/components/ui/input";
+import { Field, Input, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
 import { useServices } from "@/app/context";
 import { indexLookup } from "@/model/index";
-import { syncPlanLines } from "@/model/process";
+import { subjectsOf, syncPlanLines } from "@/model/process";
 import { MarkChips, NameAndDomain, domIdOf, type EditorContext } from "../EditorFrame";
-import { applySyncEnum, setLifecycle, syncEnum, type SyncEnumResult } from "./api";
+import { applySyncEnum, demoteLifecycle, setLifecycle, syncEnum, type SyncEnumResult } from "./api";
 import { useProblems } from "./shared";
 
 type Rec = Record<string, unknown>;
@@ -53,10 +53,17 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
   const { json, edit, flush, id } = ctx;
   const rec = json as Rec;
   const index = useIndex();
-  const entities = indexLookup(index.data).ofKind("entity");
+  const lookup = indexLookup(index.data);
+  const entities = lookup.ofKind("entity");
   const use = rec.use === "lifecycle" ? "lifecycle" : "orchestration";
-  const subject = typeof rec.subject === "string" ? rec.subject : undefined;
-  const bound = typeof rec.boundAttribute === "string" ? rec.boundAttribute : undefined;
+  // What the process governs, over both forms (lifecycle-design.md decisions 5 and 10): one subject is editable in the
+  // form the file has; two or more are shown read-only (the JSON view edits them).
+  const all = subjectsOf(rec);
+  const many = all.length > 1;
+  const sole = all.length === 1 ? all[0] : undefined;
+  const subject = sole?.entity;
+  const bound = sole?.boundAttribute;
+  const listForm = Array.isArray(rec.subjects);
   const { attributes, enumId } = useBinding(subject, bound);
   const problems = useProblems(id, ctx.diagnostics);
   const drift = problems.find((d) => d.rule === "MQ9203");
@@ -76,21 +83,54 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
       if (subject) bind(subject, id, `Make ${name} a lifecycle`);
       return;
     }
-    const bound = (subjectDoc.data?.json as Rec | undefined)?.lifecycle === id;
-    if (subject && bound) bind(subject, undefined, `Make ${name} an orchestration`);
+    // Demoting keeps the subjects and clears their bindings (decision 10). In the one-subject form the entity's own
+    // lifecycle name is released with it, as before.
+    const named = (subjectDoc.data?.json as Rec | undefined)?.lifecycle === id;
+    if (subject && named && !listForm) bind(subject, undefined, `Make ${name} an orchestration`);
+    else if (listForm && named)
+      void demoteLifecycle(qc, store, drafts, { process: id, label: `Make ${name} an orchestration` }).then((refused) => {
+        if (refused) store.getState().notify(`Make ${name} an orchestration: ${refused}`, "error");
+      });
     else set("use", undefined);
   };
   const setSubject = (next: string | undefined) => {
-    if (use === "lifecycle" && next) bind(next, id, `Set the subject of ${name}`);
-    else set("subject", next);
+    if (!listForm && !(all.length === 0 && next)) {
+      if (use === "lifecycle" && next) bind(next, id, `Set the subject of ${name}`);
+      else set("subject", next);
+      return;
+    }
+    // No subject yet: it gets `subjects`, from set-lifecycle for a lifecycle (decision 7). With a list: edit its one entry.
+    if (all.length === 0 && use === "lifecycle" && next) bind(next, id, `Set the subject of ${name}`);
+    else {
+      edit((j) => {
+        const r = j as Rec;
+        if (!next) delete r.subjects;
+        else if (Array.isArray(r.subjects) && r.subjects.length === 1) r.subjects = [{ id: (r.subjects[0] as Rec).id, entity: next }];
+        else r.subjects = [{ entity: next }];
+      });
+      flush();
+    }
   };
   const set = (key: string, value: string | undefined) => {
     edit((j) => {
       const r = j as Rec;
       if (value) r[key] = value;
       else delete r[key];
-      if (key === "use" && value !== "lifecycle") delete r.boundAttribute;
+      if (key === "use" && value !== "lifecycle") {
+        delete r.boundAttribute;
+        if (Array.isArray(r.subjects)) r.subjects = (r.subjects as Rec[]).map(({ boundAttribute: _unbound, ...entry }) => entry);
+      }
       if (key === "subject") delete r.boundAttribute;
+    });
+    flush();
+  };
+  const setBound = (value: string | undefined) => {
+    if (!listForm) return set("boundAttribute", value);
+    edit((j) => {
+      const entries = (j as Rec).subjects as Rec[] | undefined;
+      if (!entries?.[0]) return;
+      if (value) entries[0].boundAttribute = value;
+      else delete entries[0].boundAttribute;
     });
     flush();
   };
@@ -101,28 +141,39 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
           id={`${dom}-use`}
           value={use}
           title={PROCESS_LABELS.useMeaning[use as "lifecycle" | "orchestration"] ?? PROCESS_LABELS.useMeaning.orchestration}
+          disabled={many}
           onChange={(e) => setUse(e.target.value)}
         >
           <option value="orchestration">Orchestration</option>
-          <option value="lifecycle" disabled={!subject}>
-            {subject ? "Lifecycle" : "Lifecycle (choose a subject first)"}
+          <option value="lifecycle" disabled={all.length === 0}>
+            {all.length ? "Lifecycle" : "Lifecycle (choose a subject first)"}
           </option>
         </Select>
       </Field>
       <Field label="Subject" htmlFor={`${dom}-subject`}>
-        <Select id={`${dom}-subject`} value={subject ?? ""} onChange={(e) => setSubject(e.target.value || undefined)}>
-          {use === "lifecycle" && subject ? null : <option value="">{use === "lifecycle" ? "(choose an entity)" : "(none)"}</option>}
-          {entities.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.name}
-            </option>
-          ))}
-        </Select>
+        {many ? (
+          <Input
+            id={`${dom}-subject`}
+            readOnly
+            value={all.map((e) => lookup.byId.get(e.entity)?.name ?? e.entity).join(", ")}
+            title="Several subjects are edited in the JSON view."
+            data-testid="process-subjects"
+          />
+        ) : (
+          <Select id={`${dom}-subject`} value={subject ?? ""} onChange={(e) => setSubject(e.target.value || undefined)}>
+            {use === "lifecycle" && subject ? null : <option value="">{use === "lifecycle" ? "(choose an entity)" : "(none)"}</option>}
+            {entities.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </Select>
+        )}
       </Field>
-      {use === "lifecycle" ? (
+      {use === "lifecycle" && !many ? (
         <Field label="Bound attribute" htmlFor={`${dom}-bound`}>
           <div className="flex items-center gap-1">
-            <Select id={`${dom}-bound`} className="min-w-0 flex-1" value={bound ?? ""} onChange={(e) => set("boundAttribute", e.target.value || undefined)}>
+            <Select id={`${dom}-bound`} className="min-w-0 flex-1" value={bound ?? ""} onChange={(e) => setBound(e.target.value || undefined)}>
               <option value="">(none)</option>
               {attributes.map((a) => (
                 <option key={a.id} value={a.id}>

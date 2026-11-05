@@ -12,6 +12,7 @@ import type {
   TypeRef,
 } from "@/api/types";
 import { KIND_LABELS } from "./labels";
+import { subjectsOf } from "./process";
 
 export const BUILTIN_TYPES: BuiltinType[] = [
   "string",
@@ -158,7 +159,10 @@ function indexMembers(json: Record<string, unknown>): Partial<ElementSummary> {
   // Phase 3 (phase-3-design.md 2.1): a process's use, subject and state count; an actor's type; a scenario's process and steps.
   if (kind === "process") {
     out.use = json.use === "lifecycle" ? "lifecycle" : "orchestration";
-    if (typeof json.subject === "string") out.subject = json.subject;
+    // One subject, in either form, is `subject`; two or more are `subjects` (lifecycle-design.md decision 23).
+    const subjects = subjectsOf(json as Parameters<typeof subjectsOf>[0]);
+    if (subjects.length === 1) out.subject = subjects[0].entity;
+    else if (subjects.length > 1) out.subjects = subjects.map((s) => s.entity);
     const count = (states: unknown): number =>
       Array.isArray(states) ? (states as Record<string, unknown>[]).reduce((n, st) => n + 1 + count(st.states), 0) : 0;
     out.stateCount = count(json.states);

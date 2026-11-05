@@ -67,7 +67,9 @@ public sealed class ProcessModelTests
         Assert.Equal(4, model.All<Actor>().Count);
         Assert.Equal(2, model.All<Scenario>().Count);
         var report = await EngineServices.Create(h.Options).Validator.ValidateAsync(model, ValidationScope.All, null, Ct);
-        Assert.All(report.Diagnostics, d => Assert.Equal("MQ7204", d.Rule)); // 'fr' declared, nothing translated yet
+        // 'fr' declared, nothing translated yet; the process names its subject in the deprecated one-subject form (lifecycle-design.md decision 6).
+        Assert.All(report.Diagnostics, d => Assert.Contains(d.Rule, (string[])["MQ7204", "MQ9209"]));
+        Assert.Single(report.Diagnostics, d => d.Rule == "MQ9209");
 
         var process = model.Get<Process>(Process)!;
         Assert.Equal(ProcessUse.Lifecycle, process.Use);

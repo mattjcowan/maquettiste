@@ -4,7 +4,8 @@
 import { describe, expect, it } from "vitest";
 import type { Diagnostic, ModelJson } from "@/api/types";
 import { MockBackend } from "@/mocks/backend";
-import { PAYMENT_LIFECYCLE, PURCHASE_APPROVAL, QUICK_APPROVAL } from "@/mocks/model/processSeed";
+import { INVOICE, INVOICE_LIFECYCLE, PAYMENT_LIFECYCLE, PURCHASE_APPROVAL, QUICK_APPROVAL } from "@/mocks/model/processSeed";
+import { subjectsOf } from "@/model/process";
 import { deriveQuickFix, fixDocuments, hasQuickFix } from "@/problems/quickFix";
 import { applyQuickFix, freshQuickFix } from "@/problems/applyQuickFix";
 import { applySyncEnum, syncEnum } from "@/editors/process/api";
@@ -114,6 +115,28 @@ describe("quick fix derivation", () => {
     expect(fix?.kind === "update" && (fix.json.attributes as Json[])[0].default).toBe("Review");
   });
 
+  it("MQ9209 converts the one process to subjects, and MQ9205 reads the entry its pointer names", () => {
+    expect(hasQuickFix("MQ9209", undefined)).toBe(true);
+    expect(deriveQuickFix(diag("MQ9209", "P", "/subject"), "use-subjects", docs(process))).toEqual({
+      kind: "operation",
+      op: "use-subjects",
+      id: "P",
+      label: "Convert to subjects",
+      ids: ["P"],
+    });
+    const listed = {
+      ...process,
+      subject: undefined,
+      boundAttribute: undefined,
+      subjects: [
+        { id: "X1", entity: "F" },
+        { id: "X2", entity: "E", boundAttribute: "A" },
+      ],
+    } as unknown as ModelJson;
+    expect(fixDocuments(diag("MQ9205", "P", "/subjects/1/boundAttribute"), listed)).toEqual(["P", "E"]);
+    expect(deriveQuickFix(diag("MQ9205", "P", "/subjects/1/boundAttribute"), null, docs(listed, entity))).toMatchObject({ kind: "update", id: "E" });
+  });
+
   it("MQ9201 fixes a subject that names another lifecycle and an entity naming an orchestration, nothing else", () => {
     expect(deriveQuickFix(diag("MQ9201", "P", "/subject"), null, docs(process, entity))).toMatchObject({
       op: "set-lifecycle",
@@ -147,7 +170,58 @@ describe("the mock's process quick-fix operations", () => {
     const answer = model.batch({ operations: [{ op: "set-lifecycle", id: payment, target: PURCHASE_APPROVAL }] });
     expect((answer.body as { outcome: string }).outcome).toBe("saved");
     expect((model.get(payment)!.json as Json).lifecycle).toBe(PURCHASE_APPROVAL);
-    expect(model.get(PURCHASE_APPROVAL)!.json).toMatchObject({ use: "lifecycle", subject: payment });
+    expect(model.get(PURCHASE_APPROVAL)!.json).toMatchObject({ use: "lifecycle", subjects: [{ entity: payment }] });
+    expect(subjectsOf(model.get(PURCHASE_APPROVAL)!.json)[0].id).toMatch(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
+  });
+
+  it("set-lifecycle follows decision 9: subjects are added to, others left alone, a demoted lifecycle keeps its subjects", () => {
+    const model = new MockBackend().model;
+    const payment = "01J92P0V0HEGSC6MW92CST5KA6";
+    const run = (operations: unknown[]) => (model.batch({ operations } as never).body as { outcome: string }).outcome;
+    // The target gets a `subjects` list, then a second entity joins it: both stay listed.
+    expect(run([{ op: "set-lifecycle", id: INVOICE, target: PURCHASE_APPROVAL }])).toBe("saved");
+    expect(run([{ op: "set-lifecycle", id: payment, target: PURCHASE_APPROVAL }])).toBe("saved");
+    expect(subjectsOf(model.get(PURCHASE_APPROVAL)!.json).map((e) => e.entity)).toEqual([INVOICE, payment]);
+    // The invoice's old lifecycle uses `subjects`: it is left alone, since several lifecycles may govern an entity.
+    expect(model.get(INVOICE_LIFECYCLE)!.json).toMatchObject({ use: "lifecycle" });
+    expect(subjectsOf(model.get(INVOICE_LIFECYCLE)!.json)).toHaveLength(1);
+    // Clearing an entity's lifecycle takes it out of the list; at the last one the process is an orchestration.
+    expect(run([{ op: "set-lifecycle", id: INVOICE }])).toBe("saved");
+    expect(subjectsOf(model.get(PURCHASE_APPROVAL)!.json).map((e) => e.entity)).toEqual([payment]);
+    expect(run([{ op: "set-lifecycle", id: payment }])).toBe("saved");
+    expect(model.get(PURCHASE_APPROVAL)!.json).toMatchObject({ use: "orchestration" });
+    expect(model.get(PURCHASE_APPROVAL)!.json).not.toHaveProperty("subjects");
+  });
+
+  it("set-lifecycle turns the previous lifecycle in the one-subject form into an orchestration that keeps its subject", () => {
+    const model = new MockBackend({ scenarios: ["lifecycle"] }).model;
+    const run = (operations: unknown[]) => (model.batch({ operations } as never).body as { outcome: string }).outcome;
+    // In this scenario the invoice's lifecycle is in the one-subject form, and the entity does not name it.
+    expect(run([{ op: "set-lifecycle", id: INVOICE, target: INVOICE_LIFECYCLE }])).toBe("saved");
+    expect(model.get(INVOICE_LIFECYCLE)!.json).toMatchObject({ use: "lifecycle", subject: INVOICE });
+    expect(run([{ op: "set-lifecycle", id: INVOICE, target: PURCHASE_APPROVAL }])).toBe("saved");
+    expect(model.get(INVOICE_LIFECYCLE)!.json).toMatchObject({ use: "orchestration", subject: INVOICE });
+    expect(model.get(INVOICE_LIFECYCLE)!.json).not.toHaveProperty("boundAttribute");
+  });
+
+  it("the index row says subject for one subject in either form and subjects for two or more", () => {
+    const model = new MockBackend().model;
+    const payment = "01J92P0V0HEGSC6MW92CST5KA6";
+    const rowOf = () => model.index().find((r) => r.id === PURCHASE_APPROVAL)!;
+    model.batch({ operations: [{ op: "set-lifecycle", id: INVOICE, target: PURCHASE_APPROVAL }] } as never);
+    expect(rowOf().subject).toBe(INVOICE);
+    expect(rowOf().subjects).toBeUndefined();
+    model.batch({ operations: [{ op: "set-lifecycle", id: payment, target: PURCHASE_APPROVAL }] } as never);
+    expect(rowOf().subjects).toEqual([INVOICE, payment]);
+    expect(rowOf().subject).toBeUndefined();
+  });
+
+  it("deleting an entity takes its entry out of the subjects list, and an emptied list goes", () => {
+    const model = new MockBackend().model;
+    model.batch({ operations: [{ op: "set-lifecycle", id: INVOICE, target: PURCHASE_APPROVAL }] } as never);
+    const answer = model.delete(INVOICE, model.get(INVOICE)!.hash, "delete-dependents");
+    expect(answer.outcome).toBe("saved");
+    expect(model.get(PURCHASE_APPROVAL)!.json).not.toHaveProperty("subjects");
   });
 });
 

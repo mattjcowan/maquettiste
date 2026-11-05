@@ -113,5 +113,9 @@ test("each quick-fix kind applies on the lifecycle scenario", async ({ page }) =
   await expect(page.getByTestId("quick-fix-initial")).toBeVisible();
   await page.getByTestId("quick-fix-apply").click();
   await expect(problems.getByTestId("problem-MQ9001")).toHaveCount(0);
+
+  // The use-subjects operation: the one-subject form is deprecated (MQ9209), and the fix converts it.
+  await problems.getByTestId("problem-fix-MQ9209").click();
+  await expect(problems.getByTestId("problem-MQ9209")).toHaveCount(0);
   await expect(page.getByRole("tab", { name: /Problems/ })).toContainText("0");
 });

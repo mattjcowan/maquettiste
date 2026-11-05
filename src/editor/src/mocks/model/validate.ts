@@ -4,6 +4,7 @@
 import type { Diagnostic } from "@/api/types";
 import Ajv2020 from "ajv/dist/2020";
 import { schemaValidator } from "../contract";
+import { subjectsOf } from "@/model/process";
 import { referencesOf, subElementIds } from "./refs";
 import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
 
@@ -62,10 +63,17 @@ export interface ValidationContext extends ModelGlobals {
 }
 
 /** MQ9203: a lifecycle's root-level states (not history or choice) against its bound enum's members, in order. */
-export function enumDrift(json: Json, lookup: (id: string) => ModelEntry | undefined): { states: string[]; members: string[]; enumId: string } | null {
-  if (json.kind !== "process" || json.use !== "lifecycle" || typeof json.subject !== "string" || typeof json.boundAttribute !== "string") return null;
-  const subject = lookup(json.subject)?.json;
-  const attribute = arr(subject?.attributes).find((a) => a.id === json.boundAttribute);
+export function enumDrift(
+  json: Json,
+  lookup: (id: string) => ModelEntry | undefined,
+): { states: string[]; members: string[]; enumId: string; pointer: string } | null {
+  if (json.kind !== "process" || json.use !== "lifecycle") return null;
+  // The first binding of the one list (both forms); the pointer names it where the file keeps it.
+  const at = subjectsOf(json).findIndex((e) => e.boundAttribute !== undefined);
+  if (at < 0) return null;
+  const entry = subjectsOf(json)[at];
+  const subject = lookup(entry.entity)?.json;
+  const attribute = arr(subject?.attributes).find((a) => a.id === entry.boundAttribute);
   const ref = (attribute?.type as Json | undefined)?.ref;
   const enumEntry = typeof ref === "string" ? lookup(ref) : undefined;
   if (!enumEntry || enumEntry.json.kind !== "enum") return null;
@@ -73,7 +81,8 @@ export function enumDrift(json: Json, lookup: (id: string) => ModelEntry | undef
     .filter((st) => st.type !== "history" && st.type !== "choice")
     .map((st) => String(st.name));
   const members = arr(enumEntry.json.members).map((m) => String(m.name));
-  return states.join("\u0000") === members.join("\u0000") ? null : { states, members, enumId: enumEntry.id };
+  const pointer = Array.isArray(json.subjects) ? `/subjects/${at}/boundAttribute` : "/boundAttribute";
+  return states.join("\u0000") === members.join("\u0000") ? null : { states, members, enumId: enumEntry.id, pointer };
 }
 
 /** One tag vocabulary or category tree of a scope ("" is global, else the domain's package id). */
@@ -300,7 +309,7 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
           "error",
           `The bound enum's members (${drift.members.join(", ")}) differ from the lifecycle's states (${drift.states.join(", ")}); sync the enum from the process.`,
           entry,
-          "/boundAttribute",
+          drift.pointer,
         ),
       );
   }
@@ -442,38 +451,61 @@ function lifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationC
       walk(arr(st.states), at);
     });
   walk(arr(json.states), "");
+  // MQ9209: the deprecated one-subject form, on any process that uses it (a warning a project can turn off).
+  const listForm = Array.isArray(json.subjects);
+  if (json.subject !== undefined || json.boundAttribute !== undefined)
+    out.push(
+      diag(
+        "MQ9209",
+        "warning",
+        `Process '${name}' uses the one-subject form (subject, boundAttribute), which is deprecated; use subjects.`,
+        entry,
+        json.subject !== undefined ? "/subject" : "/boundAttribute",
+      ),
+    );
   if (json.use !== "lifecycle") return out;
-  if (typeof json.subject !== "string") {
+  const subjects = subjectsOf(json);
+  if (!subjects.length) {
     out.push(diag("MQ9201", "error", `Process '${name}' is a lifecycle without a subject; set subject to the entity it describes.`, entry, "/use"));
     return out;
   }
-  const subject = lookup?.(json.subject)?.json;
-  if (!subject || subject.kind !== "entity") return out;
-  if (subject.lifecycle !== entry.id)
-    out.push(
-      diag(
-        "MQ9201",
-        "error",
-        `Process '${name}' is the lifecycle of entity '${String(subject.name)}', but the entity's lifecycle is not this process; set the entity's lifecycle to this process.`,
-        entry,
-        "/subject",
-      ),
-    );
-  const attribute = arr(subject.attributes).find((a) => a.id === json.boundAttribute);
   const roots = arr(json.states);
   const initial = roots.find((st) => st.id === json.initial) ?? roots[0];
-  if (attribute && initial && initial.type !== "history" && initial.type !== "choice" && attribute.default !== initial.name) {
-    const current = attribute.default === undefined ? "is not set" : `is ${JSON.stringify(attribute.default)}`;
-    out.push(
-      diag(
-        "MQ9205",
-        "warning",
-        `The default of bound attribute '${String(attribute.name)}' ${current}, but process '${name}' starts in '${String(initial.name)}'; set the default to '${String(initial.name)}'.`,
-        entry,
-        "/boundAttribute",
-      ),
-    );
-  }
+  const seen = new Set<string>();
+  subjects.forEach((one, i) => {
+    const at = listForm ? `/subjects/${i}` : "";
+    if (seen.has(one.entity)) {
+      out.push(diag("MQ9201", "error", `Process '${name}' lists entity '${one.entity}' twice; list each subject once.`, entry, `${at}/entity`));
+      return;
+    }
+    seen.add(one.entity);
+    const subject = lookup?.(one.entity)?.json;
+    if (!subject || subject.kind !== "entity") return;
+    // With `subjects` the entity need not name the lifecycle, since several may govern it (decision 8).
+    if (!listForm && subject.lifecycle !== entry.id)
+      out.push(
+        diag(
+          "MQ9201",
+          "error",
+          `Process '${name}' is the lifecycle of entity '${String(subject.name)}', but the entity's lifecycle is not this process; set the entity's lifecycle to this process.`,
+          entry,
+          "/subject",
+        ),
+      );
+    const attribute = arr(subject.attributes).find((a) => a.id === one.boundAttribute);
+    if (attribute && initial && initial.type !== "history" && initial.type !== "choice" && attribute.default !== initial.name) {
+      const current = attribute.default === undefined ? "is not set" : `is ${JSON.stringify(attribute.default)}`;
+      out.push(
+        diag(
+          "MQ9205",
+          "warning",
+          `The default of bound attribute '${String(attribute.name)}' ${current}, but process '${name}' starts in '${String(initial.name)}'; set the default to '${String(initial.name)}'.`,
+          entry,
+          `${at}/boundAttribute`,
+        ),
+      );
+    }
+  });
   return out;
 }
 

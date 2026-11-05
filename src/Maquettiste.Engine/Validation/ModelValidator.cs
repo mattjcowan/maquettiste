@@ -1083,7 +1083,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         {
             foreach (var bound in model.All<Process>())
             {
-                if (bound.BoundAttribute is not null && model.GetDocument(bound.Id) is { } peer)
+                if (bound.Subjects.Any(s => s.BoundAttribute is not null) && model.GetDocument(bound.Id) is { } peer) // either form
                     yield return peer;
             }
         }
@@ -1097,7 +1097,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             var affected = element switch
             {
                 Process changed => string.Equals(candidate.Id, changed.Id, StringComparison.Ordinal) || ProcessRules.Callees(candidate).Contains(changed.Id),
-                Entity entity => string.Equals(candidate.Subject, entity.Id, StringComparison.Ordinal),
+                Entity entity => Governs(model, candidate, entity.Id),
                 EnumType or ValueObject or ScalarType => UsesType(candidate, element.Id),
                 _ => false,
             };
@@ -1112,6 +1112,23 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             if (replayed.Contains(scenario.Process) && model.GetDocument(scenario.Id) is { } peer)
                 yield return peer;
         }
+    }
+
+    // Whether a process lists the entity as a subject, in either form, or lists an entity derived from it (whose inherited attributes
+    // the entity's change reaches).
+    private static bool Governs(ModelSnapshot model, Process process, string entityId)
+    {
+        foreach (var subject in process.Subjects)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var current = subject.Entity; current is not null && seen.Add(current); current = model.Get<Entity>(current)?.Base)
+            {
+                if (string.Equals(current, entityId, StringComparison.Ordinal))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool UsesType(Process process, string typeId) =>

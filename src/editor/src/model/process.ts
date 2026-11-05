@@ -29,6 +29,8 @@ export interface StateDoc {
   name: string;
   displayName?: string;
   type?: StateType;
+  /** The state's stored value: a string, or an integer written as a JSON number (lifecycle-design.md decision 1). */
+  code?: string | number;
   initial?: string;
   history?: "shallow" | "deep";
   defaultTarget?: string;
@@ -96,12 +98,21 @@ export interface ExpressionDoc {
   description?: unknown;
 }
 
+/** One thing a process governs (lifecycle-design.md decision 5). */
+export interface SubjectDoc {
+  id: string;
+  entity: string;
+  boundAttribute?: string;
+}
+
 export interface ProcessDoc {
   kind: "process";
   id: string;
   name: string;
   package?: string;
   use?: "lifecycle" | "orchestration";
+  subjects?: SubjectDoc[];
+  /** The deprecated one-subject form (MQ9209); never written together with `subjects`. */
   subject?: string;
   boundAttribute?: string;
   context?: AttributeDoc[];
@@ -778,4 +789,39 @@ export function syncPlanLines(plan: {
   for (const r of plan.refused) lines.push(`Keeps ${r.member}: still used by ${r.referencedBy.length} ${r.referencedBy.length === 1 ? "element" : "elements"}`);
   if (!lines.length) lines.push("The enum already matches the states.");
   return lines;
+}
+
+/**
+ * Every reader of what a process governs goes through here, over both forms (lifecycle-design.md decision 5). In the
+ * one-subject form the one entry's id is the process's own id, as for findings.
+ */
+export function subjectsOf(doc: { id?: unknown; subjects?: unknown; subject?: unknown; boundAttribute?: unknown } | null | undefined): SubjectDoc[] {
+  if (!doc) return [];
+  if (Array.isArray(doc.subjects)) {
+    return (doc.subjects as Record<string, unknown>[]).flatMap((e) =>
+      e && typeof e.entity === "string"
+        ? [
+            {
+              id: typeof e.id === "string" ? e.id : "",
+              entity: e.entity,
+              ...(typeof e.boundAttribute === "string" ? { boundAttribute: e.boundAttribute } : {}),
+            },
+          ]
+        : [],
+    );
+  }
+  if (typeof doc.subject !== "string" || doc.subject === "") return [];
+  return [
+    {
+      id: typeof doc.id === "string" ? doc.id : "",
+      entity: doc.subject,
+      ...(typeof doc.boundAttribute === "string" ? { boundAttribute: doc.boundAttribute } : {}),
+    },
+  ];
+}
+
+/** The one subject of a process with exactly one, in either form; undefined with none or with two or more. */
+export function soleSubject(doc: Parameters<typeof subjectsOf>[0]): SubjectDoc | undefined {
+  const all = subjectsOf(doc);
+  return all.length === 1 ? all[0] : undefined;
 }

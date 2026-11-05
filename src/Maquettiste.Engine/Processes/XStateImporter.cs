@@ -136,8 +136,7 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
             document["package"] = options.Package;
         if (options.Use is { } use)
             document["use"] = use == ProcessUse.Lifecycle ? "lifecycle" : "orchestration";
-        if (options.Subject is not null)
-            document["subject"] = options.Subject;
+        Subjects(document);
         if (root["description"] is JsonValue description && description.GetValueKind() == JsonValueKind.String && document["description"] is null)
             document["description"] = description.GetValue<string>();
         document["context"] = Context(root, rootMeta);
@@ -753,6 +752,76 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
         if (_machine.Length > 0)
             return Identifier(_machine, "/id", "machine id");
         return options.Into?.Name ?? rootMeta?["name"]?.GetValue<string>() ?? "ImportedProcess";
+    }
+
+    /// <summary>
+    /// Writes the subjects in the form the process has (lifecycle-design.md decision 7), so no import changes a file's form unasked and
+    /// none creates the deprecated form from nothing. A re-import keeps the form of the process it goes into, and a process that has no
+    /// subject yet gets <c>subjects</c>; a new process keeps the form the config carries (so an exported file imports back byte for
+    /// byte), else gets <c>subjects</c>. Carried keys of the other form are dropped, except that a carried one-subject form becomes the
+    /// one entry of a process re-imported with no subject. <see cref="XStateImportOptions.Subject"/>, when given, is the subject in the
+    /// one-subject form, the one entry of a list of at most one, or an entry added to a longer list.
+    /// </summary>
+    private void Subjects(JsonObject document)
+    {
+        var subject = document["subject"]?.DeepClone();
+        var bound = document["boundAttribute"]?.DeepClone();
+        var listed = document["subjects"] as JsonArray;
+        document.Remove("subject");
+        document.Remove("boundAttribute");
+        document.Remove("subjects");
+        var oneSubjectForm = options.Into is { } into ? into.UsesOneSubjectForm : (subject is not null || bound is not null);
+        if (oneSubjectForm)
+        {
+            if (subject is not null)
+                document["subject"] = subject;
+            if (bound is not null)
+                document["boundAttribute"] = bound;
+            if (options.Subject is not null)
+                document["subject"] = options.Subject;
+            return;
+        }
+
+        var entries = new List<JsonObject>();
+        if (listed is not null)
+            entries.AddRange(listed.OfType<JsonObject>().Select(e => (JsonObject)e.DeepClone()));
+        else if (options.Into is { SubjectList: null or { Count: 0 } } && subject is JsonValue entity && entity.GetValueKind() == JsonValueKind.String)
+        {
+            var entry = new JsonObject { ["entity"] = entity.GetValue<string>() };
+            if (bound is not null)
+                entry["boundAttribute"] = bound;
+            entries.Add(entry);
+        }
+
+        string? EntityOf(JsonObject entry) => entry["entity"] is JsonValue v && v.GetValueKind() == JsonValueKind.String ? v.GetValue<string>() : null;
+        if (options.Subject is { } given && !entries.Any(e => EntityOf(e) == given))
+        {
+            if (entries.Count <= 1)
+                entries.Clear();
+            entries.Add(new JsonObject { ["entity"] = given });
+        }
+
+        if (entries.Count == 0)
+            return;
+        var intoEntries = options.Into?.SubjectList ?? [];
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            var entity = EntityOf(entry) ?? "";
+            var matched = intoEntries.FirstOrDefault(e => string.Equals(e.Entity, entity, StringComparison.Ordinal));
+            var id = Assign(Carried(entry), "subject", "/meta/maquettiste/subjects/" + i.ToString(CultureInfo.InvariantCulture) + "/id",
+                matched is null ? null : new JsonObject { ["id"] = matched.Id }, "subject:" + entity);
+            var ordered = new JsonObject { ["id"] = id };
+            foreach (var (key, value) in entry)
+            {
+                if (key != "id")
+                    ordered[key] = value?.DeepClone();
+            }
+
+            entries[i] = ordered;
+        }
+
+        document["subjects"] = new JsonArray([.. entries]);
     }
 
     private IEnumerable<(string Key, JsonNode? Value)> RootLeftovers(JsonObject? rootMeta)

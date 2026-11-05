@@ -7,6 +7,7 @@ import { clearProcessFocus, useProcessFocus, type ProcessTab } from "@/app/proce
 import { useServices } from "@/app/context";
 import { EmptyState } from "@/components/ui/misc";
 import { LIBRARY_LABELS, PROCESS_TAB_LABELS } from "@/model/labels";
+import { soleSubject } from "@/model/process";
 import { useEditor, type Draft } from "@/state/store";
 import { EditorLayout, useEditorContext, type EditorContext } from "../EditorFrame";
 import { setView } from "../tabs";
@@ -36,7 +37,7 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
   const view = useEditor(store, (s) => s.editors.view.process) ?? "chart";
   const focus = useProcessFocus(id);
   const [node, setNode] = useState<{ tab: ProcessTab; node: string | null } | null>(null);
-  const { members } = useBinding(process.subject, process.boundAttribute);
+  const { members } = useBinding(soleSubject(process)?.entity, soleSubject(process)?.boundAttribute);
 
   // A row of the Processes explorer asked for a tab and a node: show them, then clear the request.
   useEffect(() => {

@@ -188,6 +188,24 @@ public sealed class ModelIndexerPatchTests
             });
         }
 
+        for (var i = 0; i < 4; i++) // lifecycles: two in the one-subject form, two that list two subjects each (lifecycle-design.md decision 5)
+        {
+            var first = entities[i * 5];
+            var second = entities[i * 5 + 2];
+            var state = b.NewId();
+            b.Add(new Process
+            {
+                Id = b.NewId(), Name = "life" + i, Package = packages[i % 3].Id, Use = ProcessUse.Lifecycle,
+                Subject = i < 2 ? first.Id : null, BoundAttribute = i < 2 ? first.AttrId("status") : null,
+                SubjectList = i < 2 ? null :
+                [
+                    new ProcessSubject { Id = b.NewId(), Entity = first.Id, BoundAttribute = first.AttrId("status") },
+                    new ProcessSubject { Id = b.NewId(), Entity = second.Id },
+                ],
+                States = [new ProcessState { Id = state, Name = "Draft" }],
+            });
+        }
+
         var main = b.Database("main", Dialect.PostgreSql);
         b.Mapping(main, entities[1]).Storage("status", StorageKind.String);
         var documents = b.BuildDocuments().OrderBy(d => d.Path, StringComparer.Ordinal).ToList();
@@ -270,6 +288,24 @@ public sealed class ModelIndexerPatchTests
             case 8 when random.Next(4) == 0: // an id collision (full build; the first path wins)
                 list.Add(doc with { Path = doc.Path + ".dup" });
                 break;
+            case 9 when doc.Element is Process process: // re-point a lifecycle's subjects, switching its form (the index row's subject or subjects)
+            {
+                var targets = list.Where(d => d.Element is Entity).ToList();
+                var target = targets[random.Next(targets.Count)].Element.Id;
+                list[index] = doc with
+                {
+                    Element = process.SubjectList is { Count: > 0 } entries
+                        ? process with { SubjectList = random.Next(2) == 0 ? null : [entries[0] with { Entity = target }], Subject = random.Next(2) == 0 ? null : target }
+                        : process with
+                        {
+                            Subject = null, BoundAttribute = null,
+                            SubjectList = [new ProcessSubject { Id = NewId(random), Entity = target }, new ProcessSubject { Id = NewId(random), Entity = process.Subject ?? target }],
+                        },
+                    Hash = doc.Hash + "s",
+                };
+                break;
+            }
+
             case 9 when doc.Element is Operation operation: // re-point an operation's subject and key member, drop its errors
             {
                 var targets = list.Where(d => d.Element is Entity).ToList();

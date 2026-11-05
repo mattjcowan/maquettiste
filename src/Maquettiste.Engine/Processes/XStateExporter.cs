@@ -390,7 +390,7 @@ internal sealed class XStateExporter(JsonObject document, XStateExportOptions op
             yield return "display names";
         if (all.Any(s => s["type"]?.GetValue<string>() == "choice"))
             yield return "choice states";
-        if (document["use"] is not null || document["subject"] is not null || document["package"] is not null)
+        if (document["use"] is not null || document["subject"] is not null || document["subjects"] is not null || document["package"] is not null)
             yield return "package, use and subject";
         if (Array(document, "context").Count > 0)
             yield return "context types";

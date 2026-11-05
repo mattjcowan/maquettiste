@@ -204,6 +204,29 @@ internal sealed partial class ChangePlanner
             }
         }
 
+        // An entity a process lists in subjects (lifecycle-design.md decision 5): its entry goes in either resolution, the way an entity's
+        // binding does, and a list left empty goes whole, so a lifecycle is left with no subject (MQ9201), as when its one subject goes.
+        if (referrer.Element is Process && SubjectEntry(reference.JsonPointer) is { } subjectEntry)
+        {
+            var part = subjectEntry;
+            var entries = referrer.Json.TryGetProperty("subjects", out var listed) && listed.ValueKind == JsonValueKind.Array ? listed.GetArrayLength() : 0;
+            if (ops.Where(o => o.Remove && SubjectEntry(o.Pointer + "/entity") == o.Pointer).Select(o => o.Pointer).Append(subjectEntry).Distinct(StringComparer.Ordinal).Count() >= entries)
+                part = "/subjects";
+            var drop = new CascadeOp(part, true, reference, index);
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), drop];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
+                {
+                    if (pointer.Length > 0 && (pointer == part || IsUnder(pointer, part)))
+                        _cascadeQueue.Enqueue((index, subId, mode));
+                }
+
+                return;
+            }
+        }
+
         // An operation member's `type` or `keyOf` is its one form (MQ3024), as a returns' `entity` is (MQ3025), and the schema cannot
         // say so: clearing it would leave a part with neither. So the member or the returns goes with delete-dependents, and
         // remove-references refuses.
@@ -679,6 +702,13 @@ internal sealed partial class ChangePlanner
             return JsonPointer.Build(segments[..4]);
         return JsonPointer.Build(segments[..2]);
     }
+
+    /// <summary>The <c>subjects</c> entry (<c>/subjects/2</c>) whose <c>entity</c> a pointer is; <see langword="null"/> for any other pointer.</summary>
+    private static string? SubjectEntry(string pointer) =>
+        pointer.StartsWith("/subjects/", StringComparison.Ordinal) && JsonPointer.TryParse(pointer, out var segments) && segments.Length == 3
+            && segments[2] == "entity" && JsonPointer.TryIndex(segments[1], out _)
+            ? JsonPointer.Build(segments[..2])
+            : null;
 
     private bool Readable(string id, Working current)
     {

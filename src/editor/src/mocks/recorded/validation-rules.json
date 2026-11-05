@@ -2612,7 +2612,7 @@
   {
     "id": "MQ9019",
     "defaultSeverity": "error",
-    "description": "A process operation (sync-enum, set-lifecycle, set-initial, refresh-scenario) was refused: its element is not what the operation needs, the target is not a direct child or a process, the enum sync would remove members still in use, a scenario cannot be replayed to its last step, or another operation of the batch writes the process, enum or scenario it changes; fix the operation or the step, change the uses to a remaining member, or run it in a batch of its own.",
+    "description": "A process operation (sync-enum, set-lifecycle, set-initial, refresh-scenario, use-subjects) was refused: its element is not what the operation needs, the target is not a direct child or a process, the enum sync would remove members still in use, a scenario cannot be replayed to its last step, or another operation of the batch writes the process, enum or scenario it changes; fix the operation or the step, change the uses to a remaining member, or run it in a batch of its own.",
     "family": "MQ90xx",
     "familyLabel": "Processes",
     "canBeOff": true
@@ -2692,7 +2692,7 @@
   {
     "id": "MQ9201",
     "defaultSeverity": "error",
-    "description": "Lifecycle inconsistent: a lifecycle without a subject, a subject whose lifecycle does not name the process, or an entity whose lifecycle names an orchestration or another entity's lifecycle; set lifecycle on the subject to the process.",
+    "description": "Lifecycle inconsistent: a lifecycle without a subject, an empty subjects list or an entity listed twice, a one-subject form subject whose lifecycle does not name the process, or an entity whose lifecycle names an orchestration or a lifecycle that does not govern it or a base of it; list the entity in the lifecycle's subjects, or set lifecycle on the entity to a lifecycle that governs it.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true
@@ -2729,6 +2729,23 @@
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true
+  },
+  {
+    "id": "MQ9206",
+    "defaultSeverity": "error",
+    "description": "State codes clash: two states share a code (1 and \"1\" are one code), codes mix strings and integers, or a history or choice state has a code; give each state that rests its own code, all strings or all integers.",
+    "family": "MQ92xx",
+    "familyLabel": "Lifecycles",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9209",
+    "defaultSeverity": "warning",
+    "description": "The deprecated one-subject form: a process names its subject with subject and boundAttribute; list it in subjects instead.",
+    "family": "MQ92xx",
+    "familyLabel": "Lifecycles",
+    "canBeOff": true,
+    "quickFix": "use-subjects"
   },
   {
     "id": "MQ9301",

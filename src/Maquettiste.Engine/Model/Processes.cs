@@ -32,13 +32,38 @@ public sealed record Process : Element, IPackaged
     /// <summary>Whether the process is an entity's lifecycle or an orchestration.</summary>
     public ProcessUse Use { get; init; } = ProcessUse.Orchestration;
 
-    /// <summary>The entity whose lifecycle this is; required when <see cref="Use"/> is <see cref="ProcessUse.Lifecycle"/> (MQ9201).</summary>
+    /// <summary>
+    /// The file's <c>subjects</c>: the entities the process governs, each entry with its own id (lifecycle-design.md decision 5);
+    /// <see langword="null"/> when the file has none. Readers use <see cref="Subjects"/>, which serves both forms.
+    /// </summary>
+    [JsonPropertyName("subjects")]
+    public IReadOnlyList<ProcessSubject>? SubjectList { get; init; }
+
+    /// <summary>
+    /// The one-subject form, deprecated (MQ9209): the entity whose lifecycle this is. A lifecycle needs a subject in one form or the other
+    /// (MQ9201).
+    /// </summary>
     [ElementRef(ElementKind.Entity)]
     public string? Subject { get; init; }
 
-    /// <summary>An enum-typed attribute of the subject that holds the lifecycle state (MQ9202).</summary>
+    /// <summary>The one-subject form, deprecated (MQ9209): an enum-typed attribute of the subject that holds the lifecycle state (MQ9202).</summary>
     [ElementRef(IndexKinds = ["attribute"])]
     public string? BoundAttribute { get; init; }
+
+    /// <summary>
+    /// Every subject of the process in one list, whatever the form of the file (lifecycle-design.md decision 6): the entries of
+    /// <c>subjects</c>, else one entry for the one-subject form, whose id is the process's own and which holds <see cref="Subject"/> and
+    /// <see cref="BoundAttribute"/>; empty when the process has no subject.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<ProcessSubject> Subjects =>
+        SubjectList is { Count: > 0 } list ? list
+        : Subject is { } entity ? [new ProcessSubject { Id = Id, Entity = entity, BoundAttribute = BoundAttribute }]
+        : [];
+
+    /// <summary>Whether the file writes its subjects in the deprecated one-subject form (<c>subject</c> or <c>boundAttribute</c>, MQ9209).</summary>
+    [JsonIgnore]
+    public bool UsesOneSubjectForm => Subject is not null || BoundAttribute is not null;
 
     /// <summary>The running instance's data, in canonical order (stable-sorted by <see cref="ModelAttribute.Order"/>).</summary>
     public IReadOnlyList<ModelAttribute> Context { get; init; } = [];
@@ -83,6 +108,24 @@ public enum ProcessUse
     [JsonStringEnumMemberName("library")] Library,
 }
 
+/// <summary>
+/// An entry of a process's <c>subjects</c> (lifecycle-design.md decision 5): an entity the process governs, with the entities derived
+/// from it, and the attribute that holds its state.
+/// </summary>
+public sealed record ProcessSubject : IProcessNode
+{
+    /// <inheritdoc/>
+    public required string Id { get; init; }
+
+    /// <summary>The entity.</summary>
+    [ElementRef(ElementKind.Entity)]
+    public required string Entity { get; init; }
+
+    /// <summary>The entity's attribute that holds the lifecycle state, or <see langword="null"/>.</summary>
+    [ElementRef(IndexKinds = ["attribute"])]
+    public string? BoundAttribute { get; init; }
+}
+
 /// <summary>A state of a process; recursive through <see cref="States"/>.</summary>
 public sealed record ProcessState : IProcessNode
 {
@@ -97,6 +140,12 @@ public sealed record ProcessState : IProcessNode
 
     /// <summary>The state's type.</summary>
     public StateType Type { get; init; } = StateType.Atomic;
+
+    /// <summary>
+    /// The state's code: its stable stored value, a string or an integer as the file writes it (lifecycle-design.md decision 1);
+    /// <see langword="null"/> when it has none.
+    /// </summary>
+    public JsonElement? Code { get; init; }
 
     /// <summary>Compound only: the initial child; <see langword="null"/> means the first child (MQ9001).</summary>
     [ElementRef(IndexKinds = ["state"])]

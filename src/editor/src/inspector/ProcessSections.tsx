@@ -15,6 +15,7 @@ import {
   setInitial,
   setStateType,
   setTrigger,
+  soleSubject,
   stateIndex,
   stateRows,
   STATE_TYPES,
@@ -96,7 +97,7 @@ function StateSection({ pc, state }: { pc: ProcessContext; state: StateDoc }) {
   const { process, change, draftEdit, commit } = pc;
   const project = useProject();
   const dom = `${pc.id}-state`;
-  const { members } = useBinding(process.subject, process.boundAttribute);
+  const { members } = useBinding(soleSubject(process)?.entity, soleSubject(process)?.boundAttribute);
   const row = stateRows(process, members).find((r) => r.id === state.id);
   const info = stateIndex(process).get(state.id);
   const actionOptions = (process.actions ?? []).map((a) => ({ value: a.id, label: a.name }));

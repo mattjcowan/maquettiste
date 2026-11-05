@@ -1675,6 +1675,14 @@ public enum BatchOp
     [JsonStringEnumMemberName("refresh-scenario")] RefreshScenario,
 
     /// <summary>
+    /// <c>use-subjects</c> (lifecycle-design.md decision 6): rewrites each process <c>elementIds</c> lists, or without it every process,
+    /// that is in the deprecated one-subject form with a <c>subjects</c> list of one entry, with a new id, holding its <c>subject</c> and
+    /// <c>boundAttribute</c>. A process already using <c>subjects</c>, or with no subject, is left as it is; an id that is not a process
+    /// refuses the operation (MQ9019).
+    /// </summary>
+    [JsonStringEnumMemberName("use-subjects")] UseSubjects,
+
+    /// <summary>
     /// <c>retag</c>: removes <c>tags</c>, or renames the one tag to <c>name</c>, in the tag vocabulary of <c>package</c> (the global one
     /// without it) and in every element and sub-element whose use of the tag that vocabulary governs: uses inside the scope that the
     /// vocabulary declares, or that no vocabulary on their domain chain declares (<see cref="ModelStore.GetTagUsageAsync"/>). A
@@ -1807,8 +1815,8 @@ public enum BatchOp
 /// <param name="As">Create and update: the placeholder (<c>$name</c>) that names the operation's element for the whole batch
 /// (next-phase-1-design.md section 5.1). Every id field of an operation may hold an id, a qualified name (<c>@kind:path</c>) or a
 /// placeholder; the batch resolver turns them into ids before the operation is planned.</param>
-/// <param name="ElementIds">The elements <c>names-to-ids</c>, <c>tags-to-property</c> and <c>text-to-trees</c> act on, each an id, a qualified name or a
-/// placeholder; absent means every element they apply to.</param>
+/// <param name="ElementIds">The elements <c>names-to-ids</c>, <c>tags-to-property</c>, <c>text-to-trees</c> and <c>use-subjects</c> act on, each an id, a
+/// qualified name or a placeholder; absent means every element they apply to.</param>
 /// <param name="Prefix">The prefix of the tags that move into the property <c>name</c> (tags-to-property).</param>
 /// <param name="Redefine">fold-into-stereotype: write a <c>redefines</c> entry with the table's value for each redefinable facet in
 /// which an own member differs from the stereotype's, instead of refusing the table; absent means false.</param>

@@ -150,8 +150,7 @@ function lifecycle(
     name,
     package: BILLING,
     use: "lifecycle",
-    subject,
-    boundAttribute: attribute,
+    subjects: [{ id: M(n + 90), entity: subject, boundAttribute: attribute }],
     events,
     states: states.map(([sid, s]) => ({ id: sid, name: s })),
     transitions: moves.map(([e, from, to], i) => ({ id: M(n + 50 + i), source: ids.get(from), event: eventId.get(e), targets: [ids.get(to)] })),
@@ -261,12 +260,19 @@ export function bindLifecycles(files: SeedFile[]): SeedFile[] {
 /**
  * The `lifecycle` scenario: one finding per quick-fix kind. Invoice no longer names its lifecycle (MQ9201, the
  * set-lifecycle operation), its status defaults to Issued (MQ9205, a plain update), and Purchase approval's initial is
- * a nested state (MQ9001, the set-initial operation with a picker).
+ * a nested state (MQ9001, the set-initial operation with a picker). Its lifecycle is in the one-subject form, so it also
+ * carries MQ9209 (the use-subjects operation).
  */
 export function withLifecycleProblems(seed: Seed): Seed {
   let files = patch(seed.files, "model/entities/invoice.json", (json) => {
     delete json.lifecycle;
     for (const a of (json.attributes as Json[]) ?? []) if (a.id === INVOICE_STATUS) a.default = "Issued";
+  });
+  // The deprecated one-subject form is what MQ9201's entity check and the MQ9209 warning are about.
+  files = patch(files, "model/processes/invoice-lifecycle.json", (json) => {
+    const [entry] = json.subjects as Json[];
+    delete json.subjects;
+    Object.assign(json, { subject: entry.entity, boundAttribute: entry.boundAttribute });
   });
   files = patch(files, "model/processes/purchase-approval.json", (json) => {
     const compound = ((json.states as Json[]) ?? []).find((st) => Array.isArray(st.states) && st.states.length);

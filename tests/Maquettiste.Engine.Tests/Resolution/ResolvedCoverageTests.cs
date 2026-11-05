@@ -81,6 +81,7 @@ public sealed class ResolvedCoverageTests
         // Processes, actors and scenarios.
         new("process", "process.json", "", typeof(RProcess)),
         new("state", "process.json", "$defs/state", typeof(RState)),
+        new("subject", "process.json", "$defs/subject", typeof(RSubject)),
         new("transition", "process.json", "$defs/transition", typeof(RTransition)),
         new("event", "process.json", "$defs/event", typeof(REvent)),
         new("guard", "process.json", "$defs/guard", typeof(RGuard)),

@@ -31,6 +31,12 @@ export interface NewProcessInput {
   members?: readonly string[];
   /** The subject's current lifecycle process, when it has one: it turns back into an orchestration in the same batch. */
   previousDoc?: EntityDocument | null;
+  /** The other lifecycles that list the subject in `subjects` (the previous one may be among them). */
+  peerDocs?: readonly EntityDocument[];
+  /** Keep the subject's other lifecycles that use `subjects`; by default the new lifecycle becomes its only one. */
+  keepOthers?: boolean;
+  /** True while the documents of `peerDocs` are still loading. */
+  peersPending?: boolean;
   /** Names already used by types in the subject's domain, so the new enum gets a free one. */
   takenTypeNames?: ReadonlySet<string>;
 }
@@ -65,7 +71,7 @@ export function processProblem(input: NewProcessInput): string | null {
     if (!input.attribute) return "Choose the status attribute, or a new one.";
     if (!input.subjectDoc) return "Loading the entity…";
     const previous = input.subjectDoc.json.lifecycle;
-    if (typeof previous === "string" && !input.previousDoc) return "Loading the entity's lifecycle…";
+    if ((typeof previous === "string" && !input.previousDoc) || input.peersPending) return "Loading the entity's lifecycle…";
   }
   return null;
 }
@@ -108,16 +114,34 @@ export function buildProcessBatch(input: NewProcessInput, newId: () => string): 
     } else if (input.members?.length) stateNames = input.members;
     entity.lifecycle = processId;
     ops.push({ op: "update", id: String(entity.id), expectedHash: input.subjectDoc.hash, element: entity });
-    // The entity's previous lifecycle turns back into an orchestration, as the set-lifecycle operation does (MQ9201).
+    // The entity's other lifecycles, as the set-lifecycle operation treats them (lifecycle-design.md decision 9). The
+    // previous one in the one-subject form turns back into an orchestration (MQ9201). The others that list the entity
+    // in `subjects` lose its entry, and one left with no subject becomes an orchestration, unless the choice keeps them.
     const previous = input.previousDoc;
-    if (previous && previous.json.id === input.subjectDoc.json.lifecycle && previous.json.id !== processId) {
-      const unbound = structuredClone(previous.json);
-      delete unbound.use;
-      delete unbound.boundAttribute;
-      ops.push({ op: "update", id: String(unbound.id), expectedHash: previous.hash, element: unbound });
+    const seen = new Set<string>([processId]);
+    for (const other of [...(previous ? [previous] : []), ...(input.peerDocs ?? [])]) {
+      const otherId = String(other.json.id);
+      if (seen.has(otherId)) continue;
+      seen.add(otherId);
+      const next = structuredClone(other.json);
+      if (Array.isArray(next.subjects)) {
+        if (input.keepOthers || next.use !== "lifecycle") continue;
+        const rest = (next.subjects as Json[]).filter((e) => e.entity !== input.subject);
+        if (rest.length === (next.subjects as Json[]).length) continue;
+        if (rest.length) next.subjects = rest;
+        else {
+          delete next.subjects;
+          delete next.use;
+        }
+      } else if (otherId === input.subjectDoc.json.lifecycle || next.subject === input.subject) {
+        delete next.use;
+        delete next.boundAttribute;
+      } else continue;
+      ops.push({ op: "update", id: otherId, expectedHash: other.hash, element: next });
     }
-    Object.assign(process, { use: "lifecycle", subject: input.subject, boundAttribute: attribute });
-  } else if (input.subject) process.subject = input.subject;
+    // A new process is written as `subjects`; the engine mints the entry's id (decision 7).
+    Object.assign(process, { use: "lifecycle", subjects: [{ entity: input.subject, boundAttribute: attribute }] });
+  } else if (input.subject) process.subjects = [{ entity: input.subject }];
   process.states = stateNames.map((n) => ({ id: newId(), name: n }));
   ops.unshift({ op: "create", element: process });
   return { ops, processId };

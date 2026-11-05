@@ -93,13 +93,16 @@ public sealed record PackageRecord(string Id, string Kind, string Name, string? 
 /// <param name="Bindings">The entity's bindings, one per database it is bound to, by database name (erratum E43).</param>
 /// <param name="Checks">The entity checks, the root base's first (next-phase-3-design.md section 3.1); <see langword="null"/>, and left out of
 /// the JSON, for an entity without any.</param>
+/// <param name="Lifecycles">The ids of the lifecycles that govern the entity or a base of it, by name then id (lifecycle-design.md section 7);
+/// <see langword="null"/>, and left out of the JSON, unless one of them lists its subjects in <c>subjects</c>.</param>
 public sealed record EntityRecord(string Id, string Kind, string Name, string? Package, bool IsAbstract, string? Base, IReadOnlyList<string> Derived,
     IReadOnlyList<AttributeRecord> Attributes, KeyRecord? Key, IReadOnlyList<AlternateKeyRecord> AlternateKeys, IReadOnlyList<NavigationRecord> Navigations,
     IReadOnlyList<string> Relations, IReadOnlyList<EntityMappingRecord> Mappings, bool IsPromoted, string? PromotedFrom, IReadOnlyList<string> Seeds,
     string? Lifecycle, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
     IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
     IReadOnlyList<EntityBindingRecord> Bindings,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<EntityCheckRecord>? Checks = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<EntityCheckRecord>? Checks = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Lifecycles = null);
 
 /// <summary>
 /// An expression (next-phase-3-design.md section 3.1): its text printed from current names, its type, and the tree of ids the file holds.
@@ -492,12 +495,25 @@ public sealed record SeedRowRecord(string Id, int Order, IReadOnlyDictionary<str
 /// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+/// <param name="Subjects">The entries of <c>subjects</c> (lifecycle-design.md section 7); <see langword="null"/>, and left out of the JSON, for a
+/// process in the one-subject form or with no subject.</param>
+/// <param name="CodesMap">Whether the states' codes form a map (decision 4); <see langword="null"/>, and left out of the JSON, when no state has
+/// a code.</param>
 public sealed record ProcessRecord(string Id, string Kind, string Name, string? Package, string Use, string? Subject, string? BoundAttribute,
     string? BoundEnum, string? Initial, IReadOnlyList<AttributeRecord> Context, IReadOnlyList<StateRecord> States, IReadOnlyList<TransitionRecord> Transitions,
     IReadOnlyList<EventRecord> Events, IReadOnlyList<GuardRecord> Guards, IReadOnlyList<ActionRecord> Actions, IReadOnlyList<GateRecord> Gates,
     IReadOnlyList<InvokeRecord> Invokes, IReadOnlyList<string> Actors, IReadOnlyList<string> Scenarios, string DisplayName, string PluralName,
     string? Description, IReadOnlyList<string> Tags, string? Category, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
-    IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyDictionary<string, GenerationHints> Generation,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SubjectRecord>? Subjects = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? CodesMap = null);
+
+/// <summary>An entry of a process's <c>subjects</c> (lifecycle-design.md decision 5).</summary>
+/// <param name="Id">The entry's id.</param>
+/// <param name="Entity">The entity's id.</param>
+/// <param name="BoundAttribute">The bound attribute's id.</param>
+/// <param name="BoundEnum">The bound attribute's enum's id.</param>
+public sealed record SubjectRecord(string Id, string Entity, string? BoundAttribute, string? BoundEnum);
 
 /// <summary>A state of a process.</summary>
 /// <param name="Id">The state id.</param>
@@ -522,10 +538,13 @@ public sealed record ProcessRecord(string Id, string Kind, string Name, string? 
 /// <param name="Description">The description.</param>
 /// <param name="Stereotypes">The stereotype keys.</param>
 /// <param name="Properties">The custom properties.</param>
+/// <param name="Code">The state's code, a string or an integer (lifecycle-design.md decision 1); <see langword="null"/>, and left out of the
+/// JSON, when it has none.</param>
 public sealed record StateRecord(string Id, string Name, string Path, string Type, string? Parent, IReadOnlyList<string> Children, string? Initial,
     string? History, string? DefaultTarget, IReadOnlyList<string> Entry, IReadOnlyList<string> Exit, IReadOnlyList<string> Invoke, bool IsFinal, bool IsAtomic,
     int Depth, string? BoundMember, IReadOnlyList<string> TransitionsOut, int? RegionIndex, string DisplayName, string? Description,
-    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] object? Code = null);
 
 /// <summary>A transition of a process.</summary>
 /// <param name="Id">The transition id.</param>
@@ -1241,7 +1260,8 @@ public static class ResolvedRecords
                 [.. e.Bindings.OrderBy(b => b.Key, StringComparer.Ordinal).Select(b => BindingViews.Record(b.Value))],
                 e.Checks.Count == 0 ? null : [.. e.Checks.Select(c => new EntityCheckRecord(c.Id, c.Name, c.Attribute?.Id, Expression(c.Condition), c.Message,
                     c.IsInherited, Ids(c.Bindings), c.DisplayName!, c.PluralName!, c.Description, c.Tags, c.Category?.Id, Keys(c.Stereotypes), Plain(c.Properties),
-                    c.Generation))]);
+                    c.Generation))],
+                e.Lifecycles.Any(l => l.ListsSubjects) ? Ids(e.Lifecycles) : null);
         }
 
         public ConstraintRecord Constraint(RConstraint c) => new(c.Id, "constraint", c.Name, c.Package?.Id,
@@ -1316,7 +1336,7 @@ public static class ResolvedRecords
             [.. p.Context.Select(a => Attribute(a))],
             [.. p.AllStates.Select(s => new StateRecord(s.Id, s.Name, s.Path, s.Type, s.Parent?.Id, Ids(s.Children), s.Initial?.Id, s.History, s.DefaultTarget?.Id,
                 Ids(s.Entry), Ids(s.Exit), Ids(s.Invoke), s.IsFinal, s.IsAtomic, s.Depth, s.BoundMember?.Id, Ids(s.TransitionsOut), s.RegionIndex,
-                s.DisplayName, s.Description, Keys(s.Stereotypes), Plain(s.Properties)))],
+                s.DisplayName, s.Description, Keys(s.Stereotypes), Plain(s.Properties), s.Code))],
             [.. p.Transitions.Select(t => new TransitionRecord(t.Id, t.Source.Id, Ids(t.Targets), t.Trigger, t.Event?.Id, t.After, t.AfterMs, t.AfterTicks, t.Invoke?.Id,
                 t.Guard?.Id, t.GuardMissing, Ids(t.Actions), t.External, t.Gate?.Id, t.Label, t.IsTargetless, t.DisplayName, t.Description, Keys(t.Stereotypes), Plain(t.Properties)))],
             [.. p.Events.Select(e => new EventRecord(e.Id, e.Name, [.. e.Payload.Select(a => Attribute(a))], Ids(e.Actors), Ids(e.Transitions),
@@ -1330,7 +1350,9 @@ public static class ResolvedRecords
                 g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties)))],
             [.. p.Invokes.Select(i => new InvokeRecord(i.Id, i.Name, i.Type, i.Process?.Id, Ids(i.Actors), i.State.Id, i.DisplayName, i.Description, Keys(i.Stereotypes), Plain(i.Properties)))],
             Ids(p.Actors), Ids(p.Scenarios),
-            p.DisplayName!, p.PluralName!, p.Description, p.Tags, p.Category?.Id, Keys(p.Stereotypes), Plain(p.Properties), p.Generation);
+            p.DisplayName!, p.PluralName!, p.Description, p.Tags, p.Category?.Id, Keys(p.Stereotypes), Plain(p.Properties), p.Generation,
+            p.ListsSubjects ? [.. p.Subjects.Select(s => new SubjectRecord(s.Id, s.Entity.Id, s.BoundAttribute?.Id, s.BoundEnum?.Id))] : null,
+            p.HasCodes ? p.CodesMap : null);
 
         public ActorRecord Actor(RActor a) => new(a.Id, "actor", a.Name, a.Package?.Id, a.Type, Ids(a.Processes), Ids(a.Events), Ids(a.Gates),
             a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation);

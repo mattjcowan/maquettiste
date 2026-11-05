@@ -103,6 +103,7 @@ internal static class ModelIndexer
         _ when type == typeof(ProcessInvoke) => "invoke",
         _ when type == typeof(ProcessGate) => "gate",
         _ when type == typeof(GateMeaning) => "meaning",
+        _ when type == typeof(ProcessSubject) => "subject",
         _ when type == typeof(ScenarioStep) => "step",
         _ when type == typeof(OperationMember) => "operation-member",
         _ when type == typeof(OperationOutcome) => "outcome",
@@ -120,7 +121,7 @@ internal static class ModelIndexer
     {
         "attribute", "enum-member", "end", "column", "category", "schema", "reference-field", "row", "state", "transition", "event",
         "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key", "operation-member", "outcome", "error", "member",
-        "parameter",
+        "parameter", "subject",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
@@ -621,7 +622,7 @@ internal static class ModelIndexer
             Use: element is Process use ? (use.Use switch { ProcessUse.Lifecycle => "lifecycle", ProcessUse.Library => "library", _ => "orchestration" }) : null,
             Subject: element switch
             {
-                Process subject => subject.Subject,
+                Process { Subjects: [var one] } => one.Entity, // exactly one subject, in either form (lifecycle-design.md decision 23)
                 Operation operation => operation.Subject,
                 _ => null,
             },
@@ -640,7 +641,8 @@ internal static class ModelIndexer
             },
             StepCount: element is Scenario steps ? steps.Steps.Count : null,
             Effect: element is Operation effect ? (effect.Effect == OperationEffect.Change ? "change" : "read") : null,
-            Type: element is Custom typed ? typed.Type : null);
+            Type: element is Custom typed ? typed.Type : null,
+            Subjects: element is Process { Subjects.Count: > 1 } several ? [.. several.Subjects.Select(s => s.Entity)] : null);
 
     /// <summary>
     /// The members of a custom element (next-phase-2-design.md section 4.2), in walk order, through its custom kind's member tree; none

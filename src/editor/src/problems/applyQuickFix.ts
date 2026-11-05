@@ -33,7 +33,7 @@ export async function applyQuickFix(
   const operation =
     fix.kind === "update"
       ? { op: "update", id: fix.id, expectedHash: before[0].hash, element: fix.json }
-      : fix.op === "text-to-trees"
+      : fix.op === "text-to-trees" || fix.op === "use-subjects"
         ? { op: fix.op, elementIds: [fix.id] }
         : { op: fix.op, id: fix.id, ...((target ?? fix.target) ? { target: target ?? fix.target } : {}) };
   const result = await endpoints.applyBatch({ operations: [operation] } as never);

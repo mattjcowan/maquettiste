@@ -130,7 +130,13 @@ describe("process dialog models", () => {
     const { ops, processId } = buildProcessBatch(input, id);
     expect(ops.map((o) => o.op)).toEqual(["create", "update"]);
     const process = (ops[0] as { element: Record<string, unknown> }).element;
-    expect(process).toMatchObject({ kind: "process", id: processId, use: "lifecycle", subject: INVOICE, boundAttribute: INVOICE_STATUS, package: "P1" });
+    expect(process).toMatchObject({
+      kind: "process",
+      id: processId,
+      use: "lifecycle",
+      subjects: [{ entity: INVOICE, boundAttribute: INVOICE_STATUS }],
+      package: "P1",
+    });
     expect((process.states as { name: string }[]).map((s) => s.name)).toEqual(["Draft", "Paid"]);
     expect(ops[1]).toMatchObject({ op: "update", id: INVOICE, expectedHash: "h1", element: { lifecycle: processId } });
   });
@@ -158,6 +164,44 @@ describe("process dialog models", () => {
     expect(ops[2]).toMatchObject({ id: "OLD", expectedHash: "h2" });
     expect(unbound.use).toBeUndefined();
     expect(unbound.boundAttribute).toBeUndefined();
+    expect(unbound.subject).toBe(INVOICE);
+  });
+
+  it("by default removes the entity from its other subjects-form lifecycles, and keeps them when asked", () => {
+    const peer = {
+      json: { kind: "process", id: "PEER", name: "Billing", use: "lifecycle", subjects: [{ id: "X1", entity: INVOICE, boundAttribute: INVOICE_STATUS }] },
+      hash: "h3",
+    };
+    const shared = {
+      json: {
+        kind: "process",
+        id: "SHARED",
+        name: "Shared",
+        use: "lifecycle",
+        subjects: [
+          { id: "X2", entity: INVOICE },
+          { id: "X3", entity: "OTHER" },
+        ],
+      },
+      hash: "h4",
+    };
+    const input = {
+      name: "InvoiceFlow4",
+      domain: null,
+      use: "lifecycle" as const,
+      subject: INVOICE,
+      subjectDoc: invoice,
+      attribute: INVOICE_STATUS,
+      members: ["Draft"],
+      peerDocs: [peer, shared],
+    };
+    const dropped = buildProcessBatch(input, id).ops;
+    expect(dropped.map((o) => o.op)).toEqual(["create", "update", "update", "update"]);
+    const [emptied, narrowed] = [dropped[2], dropped[3]].map((o) => (o as { element: Record<string, unknown> }).element);
+    expect(emptied.use).toBeUndefined();
+    expect(emptied.subjects).toBeUndefined();
+    expect(narrowed.subjects).toEqual([{ id: "X3", entity: "OTHER" }]);
+    expect(buildProcessBatch({ ...input, keepOthers: true }, id).ops.map((o) => o.op)).toEqual(["create", "update"]);
   });
 
   it("creates a new status attribute and enum when asked, and an orchestration starts with Initial", () => {
