@@ -127,15 +127,25 @@ internal static partial class ProcessRules
         }
     }
 
-    // MQ2003 and MQ2004 on the marks of states, transitions and events (section 2.6); the process's own marks are checked as
-    // every element's are.
+    // MQ2003 and MQ2004 on the marks of states, transitions, events, guards, actions, invokes and gates (section 2.6); the process's own
+    // marks are checked as every element's are.
     private static void CheckNodeStereotypes(ValidationContext context, Process process, Report report)
     {
         Walk(process.States, "");
         for (var i = 0; i < process.Transitions.Count; i++)
-            BuiltinRules.CheckStereotypes(context, process.Transitions[i].Id, process.Transitions[i].Stereotypes, "/transitions/" + N(i), "transition", report);
+        {
+            var t = process.Transitions[i];
+            BuiltinRules.CheckStereotypes(context, t.Id, t.Stereotypes, "/transitions/" + N(i), "transition", report);
+            if (t.Gate is { } gate)
+                BuiltinRules.CheckStereotypes(context, gate.Id, gate.Stereotypes, "/transitions/" + N(i) + "/gate", "gate", report);
+        }
+
         for (var i = 0; i < process.Events.Count; i++)
             BuiltinRules.CheckStereotypes(context, process.Events[i].Id, process.Events[i].Stereotypes, "/events/" + N(i), "event", report);
+        for (var i = 0; i < process.Guards.Count; i++)
+            BuiltinRules.CheckStereotypes(context, process.Guards[i].Id, process.Guards[i].Stereotypes, "/guards/" + N(i), "guard", report);
+        for (var i = 0; i < process.Actions.Count; i++)
+            BuiltinRules.CheckStereotypes(context, process.Actions[i].Id, process.Actions[i].Stereotypes, "/actions/" + N(i), "action", report);
 
         void Walk(IReadOnlyList<ProcessState> states, string pointer)
         {
@@ -143,6 +153,8 @@ internal static partial class ProcessRules
             {
                 var at = pointer + "/states/" + N(i);
                 BuiltinRules.CheckStereotypes(context, states[i].Id, states[i].Stereotypes, at, "state", report);
+                for (var j = 0; j < states[i].Invoke.Count; j++)
+                    BuiltinRules.CheckStereotypes(context, states[i].Invoke[j].Id, states[i].Invoke[j].Stereotypes, at + "/invoke/" + N(j), "invoke", report);
                 Walk(states[i].States, at);
             }
         }

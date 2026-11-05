@@ -195,6 +195,32 @@ public sealed class CanonicalJsonTests
     }
 
     [Fact]
+    public void A_process_node_or_a_check_with_empty_annotations_writes_no_key()
+    {
+        const string process = """
+            {
+              "kind": "process", "id": "01JAX4P0000000000000000001", "name": "Flow",
+              "states": [ { "id": "01JAX4P0000000000000000002", "name": "Open",
+                "invoke": [ { "id": "01JAX4P0000000000000000003", "name": "review", "type": "service", "stereotypes": [], "properties": {} } ] } ],
+              "guards": [ { "id": "01JAX4P0000000000000000004", "name": "ready", "stereotypes": [], "properties": {} } ],
+              "actions": [ { "id": "01JAX4P0000000000000000005", "name": "notify", "stereotypes": [], "properties": {} } ],
+              "transitions": [ { "id": "01JAX4P0000000000000000006", "source": "01JAX4P0000000000000000002", "trigger": "event", "targets": [],
+                "gate": { "id": "01JAX4P0000000000000000007", "name": "sign", "signers": ["01JAX4P0000000000000000008"],
+                  "meanings": [ { "id": "01JAX4P0000000000000000009", "name": "ok" } ], "stereotypes": [], "properties": {} } } ]
+            }
+            """;
+        const string table = """
+            { "kind": "table", "id": "01JAX4T0000000000000000001", "database": "01JAX4T0000000000000000002", "name": "things",
+              "checks": [ { "id": "01JAX4T0000000000000000003", "expression": { "*": "1 = 1" }, "properties": {} } ] }
+            """;
+
+        var written = Write(process, "process.json", ".maquettiste/model/processes/flow.json") + Write(table, "table.json", ".maquettiste/model/databases/main/tables/things.json");
+
+        Assert.DoesNotContain("\"properties\"", written, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"stereotypes\"", written, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Default_objects_are_omitted_once_their_contents_are_defaults()
     {
         var settings = new ProjectSettings

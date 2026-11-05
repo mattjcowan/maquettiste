@@ -883,7 +883,7 @@
       "title": "Check constraint",
       "description": "A check: SQL text per dialect (expression) or an expression tree (condition), exactly one of the two (MQ3107).",
       "type": "object",
-      "x-order": ["id", "name", "column", "expression", "condition"],
+      "x-order": ["id", "name", "column", "expression", "condition", "properties"],
       "properties": {
         "id": {
           "$ref": "#/$defs/id"
@@ -904,6 +904,11 @@
         "condition": {
           "description": "The condition as an expression tree over the table's columns; unknown passes, as in any CHECK.",
           "$ref": "#/$defs/expr"
+        },
+        "properties": {
+          "description": "Custom property values, for a schema that applies to the kind check. They reach templates only, never the check's DDL.",
+          "$ref": "#/$defs/properties",
+          "default": {}
         }
       },
       "required": ["id"],

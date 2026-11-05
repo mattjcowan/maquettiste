@@ -63,10 +63,16 @@
               "state",
               "transition",
               "event",
+              "guard",
+              "action",
+              "invoke",
+              "gate",
               "operation",
               "operation-member",
               "outcome",
               "error",
+              "check",
+              "constraint",
               "custom"
             ]
           },

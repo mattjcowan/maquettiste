@@ -686,6 +686,8 @@ internal sealed class StereotypeFold
                     break;
                 case "check" when before.Checks.FirstOrDefault(x => x.Id == c.OwnId) is { } own && after.Checks.FirstOrDefault(x => x.Id == keyed) is { } inherited:
                     Name(own.Name, inherited.Name);
+                    if (Entry(Original(fold.File.Id), "checks", c.OwnId)?["properties"] is JsonObject { Count: > 0 })
+                        problems.Add($"{what} has custom properties, which no redefinition holds");
                     break;
                 default:
                     problems.Add($"{what} does not resolve on both sides");

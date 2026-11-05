@@ -367,7 +367,8 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
 - Typed links: a custom property whose schema has `x-ref` (`{"kind":"attribute","of":"$element"}`, `{"kind":"entity"}`)
   holds ids, never names, exactly like a reference field; `get_references` lists such values with their `schema`, and
   deletes clear or refuse them by the schema's `optional`. MQ2010 is a name where the id belongs, MQ2011 a target out
-  of the `of` or `sameDatabase` scope.
+  of the `of` or `sameDatabase` scope. Beside elements, attributes and states, a schema can apply to `guard`, `action`,
+  `invoke`, `gate`, `check` and `constraint`; properties on a check never change its SQL.
 - Stereotype rules: a stereotype's `group` (one per element), `requires`, `conflicts` and `implies` (one level) bind
   every element that carries it, implied stereotypes included (MQ2013 to MQ2017); its `parameters` type the
   `properties` of its carriers, with `defaultProperties` as defaults (MQ2018). Read the stereotype before adding or

@@ -412,6 +412,12 @@ public sealed class RCheck
     public RColumn? Column { get; internal set; }
 
     /// <summary>
+    /// Custom properties, as plain CLR values: the table's own check's, a stereotype's check's on each carrier, or those of the entity
+    /// check a binding writes. They never reach the check's DDL or a snapshot.
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> Properties { get; internal set; } = System.Collections.Frozen.FrozenDictionary<string, object?>.Empty;
+
+    /// <summary>
     /// Where the check comes from (next-phase-2-design.md section 3.1): the table's own (<see cref="RMemberOrigin.Source"/> <c>own</c>, one
     /// shared instance), a stereotype of its effective set that contributes it, with the facets the table redefined, or an entity check
     /// a binding lists (<c>binding</c>, next-phase-3-design.md section 3.1).

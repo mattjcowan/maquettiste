@@ -3975,7 +3975,7 @@ An extension schema declares properties that elements may carry in their `proper
 | --- | --- |
 | `name` | Required. A name for the set, shown nowhere else but in messages. |
 | `description` | Optional. Shown as the hint of the inspector's fields. |
-| `appliesTo.kinds` | The element kinds that get the properties: `entity`, `relation`, `enum`, `attribute`, `enum-member`, `column`, `table`, `process`, `actor` and the other kinds of the model. Empty or absent: every kind. |
+| `appliesTo.kinds` | The element kinds that get the properties: `entity`, `relation`, `enum`, `attribute`, `enum-member`, `column`, `check`, `table`, `process`, `guard`, `action`, `invoke`, `gate`, `actor`, `constraint` and the other kinds of the model. Empty or absent: every kind. |
 | `appliesTo.stereotypes` | Optional. Stereotype keys: when set, only elements that carry one of them get the properties. |
 | `properties` | Required. A JSON Schema `properties` object: one schema per property name (`type`, `enum`, `minimum`, `maximum`, `pattern`, `items` and the rest of JSON Schema). |
 | `required` | Optional. The property names an applicable element must set. |
@@ -3985,6 +3985,14 @@ you type: a member it does not know, a kind that does not exist or a missing `pr
 (marked `schema`) and in the editor. A save that does not pass is refused with MQ5004 and writes nothing; one that passes is
 written in the canonical form (the editor then shows the file as written). A file written by hand that is not valid is left
 out of the model with MQ5004, and its properties go unchecked until it is fixed.
+
+The parts of a process take properties too: a process's `guards`, `actions` and transition `gate`s, a state's `invoke`s and
+an operation's `guards`. The first four also take `stereotypes`, which judge and give defaults as they do on a state.
+
+`check` covers an entity's checks and a table's. Templates read `properties` on each, and a check that a stereotype gives its
+carriers, or that a binding writes into a table, brings the properties it was declared with. Properties on a check describe
+it for a pack: they never reach the check's SQL or a migration. A table's check holds `properties` only, not `stereotypes`.
+A fold into a stereotype refuses a table check that holds properties, since a redefinition cannot hold them.
 
 For example, `.maquettiste/extensions/retention.json` gives every entity with the `audited` stereotype a retention period:
 
@@ -4034,9 +4042,9 @@ A top-level string property of an extension file, or of a stereotype's `paramete
 ```
 
 The holders that are translated are the ones localization knows: the domain kinds and their attributes, enum members,
-process states, transitions and events. The keyword anywhere else is an error, MQ7212: under a nested schema, on a
+process states, transitions, events, guards, actions, invokes and gates. The keyword anywhere else is an error, MQ7212: under a nested schema, on a
 property that is not a string, or with a value that is not `true` or `false`. A mark on a schema whose `appliesTo` kinds
-all lack translations (tables and other physical objects, mappings, diagrams, the vocabulary containers) is the warning
+all lack translations (tables, checks and other physical objects, mappings, diagrams, the vocabulary containers) is the warning
 MQ7213, since it does nothing there. Both are reported on the extension file, or on the stereotype at
 `/parameters/properties/<name>/x-translatable`.
 

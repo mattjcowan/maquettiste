@@ -905,6 +905,21 @@ public sealed class MaterializeTests
     }
 
     [Fact]
+    public async Task Materialize_tables_keeps_the_custom_properties_of_an_overlay_check()
+    {
+        await using var r = EditorRepo.Create(packs: false);
+        ExpressionResolutionTests.OverlayChecks(r, """
+            { "id": "01K9EXR0000000000000000W84", "name": "ck_invoices_due_after_issue", "condition": { "text": "issuedOn <= dueOn" }, "properties": { "owner": "finance" } }
+            """);
+
+        var stored = await ApplyAsync(r, Tables(EditorRepo.InvoiceId));
+
+        Assert.True(stored.Outcome == SaveOutcome.Saved, string.Join("; ", stored.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        var check = r.Store.Current!.Get<Table>(EditorRepo.OverlayTableId)!.Checks.Single(c => c.Name == "ck_invoices_due_after_issue");
+        Assert.Equal("finance", check.Properties["owner"].GetString());
+    }
+
+    [Fact]
     public async Task Materialize_tables_refuses_an_overlay_check_held_as_text_that_does_not_parse()
     {
         // The text cannot become a tree in the overlay's scope, so the check could not move into the designed table: materialize names

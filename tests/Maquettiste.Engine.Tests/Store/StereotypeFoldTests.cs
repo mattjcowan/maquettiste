@@ -65,6 +65,24 @@ public sealed class StereotypeFoldTests
     private static void OwnCreatedAtIndex(EditorRepo r) =>
         EditOnDisk(r, NotesPath, t => t["indexes"]!.AsArray().Add(JsonNode.Parse($$"""{"id": "{{OwnIndex}}", "columns": [{"column": "{{NotesCreatedAt}}"}]}""")));
 
+    [Fact]
+    public async Task A_check_with_custom_properties_is_not_folded_away()
+    {
+        // A fold would leave the table with the stereotype's check and nowhere to hold the table's own values, so it refuses.
+        await using var r = EditorRepo.Create();
+        Members(r, CreatedAtColumn + "," + UpdatedAtColumn);
+        EditOnDisk(r, AuditedPath, s => s["checks"] = JsonNode.Parse("""[ { "id": "01JC7AVD1TC0000000000000K1", "expression": { "*": "created_at IS NOT NULL" } } ]"""));
+        EditOnDisk(r, NotesPath, t =>
+        {
+            t["columns"]!.AsArray().Add(JsonNode.Parse("""{ "id": "01K6BND0000000000000000030", "name": "updated_at", "type": "datetimeoffset" }"""));
+            t["checks"] = JsonNode.Parse("""[ { "id": "01K6BND0000000000000000031", "expression": { "*": "created_at IS NOT NULL" }, "properties": { "owner": "finance" } } ]""");
+        });
+
+        var refusal = Assert.Single(Refusals(await ApplyAsync(r, Fold())), m => m.Contains("custom properties", StringComparison.Ordinal));
+
+        Assert.Contains("has custom properties, which no redefinition holds", refusal, StringComparison.Ordinal);
+    }
+
     private static string Fold(string target = $$"""
         "tables": ["{{Notes}}"]
         """, bool redefine = false, bool excludeMissing = false) =>

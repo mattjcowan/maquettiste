@@ -275,13 +275,13 @@ internal sealed partial class DatabaseRun
             {
                 // A check in the expression language is typed now and lowered once the columns are final; on another dialect it is left out.
                 if (TypeCheck(t, table, check.Id, check.Name, null, table.Id, "/checks/" + i.ToString(CultureInfo.InvariantCulture) + "/condition") is { } tree)
-                    t.Checks.Add(new CheckSpec("", check.Name, ++ordinal, check.Id, check.Column) { Tree = tree });
+                    t.Checks.Add(new CheckSpec("", check.Name, ++ordinal, check.Id, check.Column) { Tree = tree, Properties = check.Properties });
                 continue;
             }
 
             var expression = ForDialect(check.Expression);
             if (expression is not null)
-                t.Checks.Add(new CheckSpec(expression, check.Name, ++ordinal, check.Id, check.Column));
+                t.Checks.Add(new CheckSpec(expression, check.Name, ++ordinal, check.Id, check.Column) { Properties = check.Properties });
         }
 
         t.Exclusions.AddRange(table.Exclusions);
@@ -504,6 +504,8 @@ internal sealed partial class DatabaseRun
             Column = c.Column is null ? null : t.Resolve(c.Column),
             MemberOrigin = c.Origin ?? RMemberOrigin.Own,
         };
+        if (c.Properties.Count > 0)
+            check.Properties = ResolutionValues.PlainMap(c.Properties);
         if (c.Tree is not { } tree)
             return check;
         var columns = new Dictionary<string, RColumn>(StringComparer.Ordinal);

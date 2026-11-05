@@ -209,6 +209,38 @@ public sealed class ExpressionResolutionTests
     }
 
     [Fact]
+    public async Task A_check_a_binding_writes_shows_the_properties_of_its_entity_check()
+    {
+        using var repo = Repo();
+        EntityCheck(repo, listed: true);
+        Edit(repo, EntityPath, e => e["checks"]![0]!["properties"] = JsonNode.Parse("""{ "owner": "finance" }"""));
+
+        var model = await ResolveAsync(repo);
+
+        Assert.Equal("finance", Assert.Single(model.Entity("Product").Checks).Properties["owner"]);
+        var written = Assert.Single(Products(model).Checks);
+        Assert.Equal("finance", written.Properties["owner"]);
+    }
+
+    [Fact]
+    public async Task A_stereotypes_check_gives_its_properties_to_each_carrier_and_a_tables_own_check_keeps_its_own()
+    {
+        using var repo = Repo();
+        Audited(repo);
+        Edit(repo, ".maquettiste/model/vocabularies/stereotypes/audited.json", s => s["checks"]![0]!["properties"] = JsonNode.Parse("""{ "owner": "platform" }"""));
+        Edit(repo, TablePath, t =>
+        {
+            t["stereotypes"] = new JsonArray("audited");
+            t["checks"] = JsonNode.Parse("""[ { "id": "01K9EXR0000000000000000T91", "name": "ck_own", "expression": { "*": "price > 0" }, "properties": { "owner": "sales" } } ]""");
+        });
+
+        var checks = Products(await ResolveAsync(repo)).Checks;
+
+        Assert.Equal("sales", checks.Single(c => c.Name == "ck_own").Properties["owner"]);
+        Assert.Equal("platform", checks.Single(c => c.Name == "ck_updated_after_created").Properties["owner"]);
+    }
+
+    [Fact]
     public async Task A_binding_that_lists_nothing_adds_nothing()
     {
         using var repo = Repo();

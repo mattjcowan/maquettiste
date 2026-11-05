@@ -16,6 +16,22 @@ public sealed class LocalizationRuleTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task X_translatable_for_a_guard_is_quiet_and_for_a_check_alone_is_MQ7213()
+    {
+        var (h, store) = await Kit.OpenAsync(h =>
+        {
+            Kit.Write(h, "extensions/nodes.json", """{ "name": "nodes", "appliesTo": { "kinds": ["guard", "action", "invoke", "gate"] }, "properties": { "caption": { "type": "string", "x-translatable": true } } }""");
+            Kit.Write(h, "extensions/checks.json", """{ "name": "checks", "appliesTo": { "kinds": ["check"] }, "properties": { "caption": { "type": "string", "x-translatable": true } } }""");
+        });
+        using var _ = h;
+        await using var __ = store;
+
+        var found = Assert.Single((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ7213");
+
+        Assert.EndsWith("checks.json", found.FilePath, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Nested_or_number_translatable_is_MQ7212_and_physical_only_MQ7213()
     {
         var (h, store) = await Kit.OpenAsync(h =>

@@ -128,6 +128,48 @@ public sealed class PropertySchemaSetTests
     }
 
     [Fact]
+    public void Guards_actions_invokes_gates_and_checks_are_property_hosts()
+    {
+        var b = new ModelBuilder();
+        var (process, state, nested, invoke, inner, guard, action, transition, gate, entity, entityCheck, table, tableCheck, stereotype, stereotypeCheck, operation, operationGuard) =
+            (b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId(), b.NewId());
+        var signer = b.NewId();
+        ProcessInvoke Invoke(string id, string name) => new() { Id = id, Name = name, Type = InvokeType.Service };
+        var always = new Maquettiste.Engine.Model.Expr { Value = System.Text.Json.JsonDocument.Parse("true").RootElement };
+        var built = new Process
+        {
+            Id = process,
+            Name = "Flow",
+            States = [new ProcessState { Id = state, Name = "Open", Invoke = [Invoke(invoke, "one")], States = [new ProcessState { Id = nested, Name = "Inner", Invoke = [Invoke(inner, "two")] }] }],
+            Guards = [new ProcessGuard { Id = guard, Name = "ready" }],
+            Actions = [new ProcessAction { Id = action, Name = "notify" }],
+            Transitions = [new ProcessTransition { Id = transition, Source = state, Trigger = TransitionTrigger.Event, Gate = new ProcessGate { Id = gate, Name = "sign", Signers = [signer], Meanings = [] } }],
+        };
+
+        Assert.Equal(
+            [
+                ("", process, "process"),
+                ("/states/0", state, "state"),
+                ("/states/0/states/0", nested, "state"),
+                ("/transitions/0", transition, "transition"),
+                ("/guards/0", guard, "guard"),
+                ("/actions/0", action, "action"),
+                ("/states/0/invoke/0", invoke, "invoke"),
+                ("/states/0/states/0/invoke/0", inner, "invoke"),
+                ("/transitions/0/gate", gate, "gate"),
+            ],
+            PropertyHost.Of(built, null).Select(h => (h.Pointer, h.Id, h.KindName)));
+        var withCheck = new Entity { Id = entity, Name = "Thing", Checks = [new EntityCheck { Id = entityCheck, Name = "ok", Condition = always }] };
+        Assert.Equal(("/checks/0", entityCheck, "check"), PropertyHost.Of(withCheck, null).Select(h => (h.Pointer, h.Id, h.KindName)).Last());
+        var withTableCheck = new Table { Id = table, Name = "things", Database = entity, Checks = [new CheckConstraint { Id = tableCheck }] };
+        Assert.Equal(("/checks/0", tableCheck, "check"), PropertyHost.Of(withTableCheck, null).Select(h => (h.Pointer, h.Id, h.KindName)).Last());
+        var withStereotypeCheck = new Stereotype { Id = stereotype, Key = "kept", Name = "Kept", Checks = [new CheckConstraint { Id = stereotypeCheck }] };
+        Assert.Equal(("/checks/0", stereotypeCheck, "check"), PropertyHost.Of(withStereotypeCheck, null).Select(h => (h.Pointer, h.Id, h.KindName)).Last());
+        var withGuard = new Operation { Id = operation, Name = "settle", Effect = OperationEffect.Change, Outcomes = [], Guards = [new OperationGuard { Id = operationGuard, Name = "open", Condition = always }] };
+        Assert.Equal(("/guards/0", operationGuard, "guard"), PropertyHost.Of(withGuard, null).Select(h => (h.Pointer, h.Id, h.KindName)).Last());
+    }
+
+    [Fact]
     public async Task A_package_default_types_the_properties_of_its_members()
     {
         // next-phase-2-design.md section 3.1: a stereotype a package default gives types its members' properties as an own one does:

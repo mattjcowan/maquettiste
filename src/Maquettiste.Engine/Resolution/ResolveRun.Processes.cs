@@ -199,7 +199,7 @@ internal sealed partial class ResolveRun
         foreach (var source in process.Guards)
         {
             var guard = Node(new RGuard { Name = source.Name, Expression = source.Expression }, source.Id);
-            FillNode(guard, source.DisplayName ?? source.Name, source.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
+            FillNode(guard, source.DisplayName ?? source.Name, source.Description, source.Stereotypes, source.Properties);
             if (source.Condition is not null)
                 ResolveCondition(guard, source);
 
@@ -230,7 +230,7 @@ internal sealed partial class ResolveRun
         foreach (var source in process.Actions)
         {
             var action = Node(new RAction { Name = source.Name, Expression = source.Expression, IsStub = source.Expression is null }, source.Id);
-            FillNode(action, source.DisplayName ?? source.Name, source.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
+            FillNode(action, source.DisplayName ?? source.Name, source.Description, source.Stereotypes, source.Properties);
             action.Raises = new RList<REvent>(source.Raises.Select(id => lookup.Events.GetValueOrDefault(id)).OfType<REvent>(), nodeKeys);
             if (actionsById.TryAdd(source.Id, action))
                 actions.Add(action);
@@ -270,7 +270,7 @@ internal sealed partial class ResolveRun
             foreach (var source2 in source.Invoke)
             {
                 var invoke = Node(new RInvoke { Name = source2.Name, Type = ResolutionValues.Kebab(source2.Type), State = state }, source2.Id);
-                FillNode(invoke, source2.DisplayName ?? source2.Name, source2.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
+                FillNode(invoke, source2.DisplayName ?? source2.Name, source2.Description, source2.Stereotypes, source2.Properties);
                 var invokeDeps = DepsOf(invoke);
                 if (source2.Process is { } sub)
                 {
@@ -324,7 +324,7 @@ internal sealed partial class ResolveRun
                     AllowRepeatSigner = g.AllowRepeatSigner,
                     ReasonRequired = g.ReasonRequired,
                 }, g.Id);
-                FillNode(gate, g.DisplayName ?? g.Name, g.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
+                FillNode(gate, g.DisplayName ?? g.Name, g.Description, g.Stereotypes, g.Properties);
                 var gateDeps = DepsOf(gate);
                 gate.Signers = ActorsOf(g.Signers, gateDeps);
                 gate.RequiredActors = ActorsOf(g.RequiredActors, gateDeps);
