@@ -163,7 +163,7 @@ export function stateIndex(process: Pick<ProcessDoc, "states">): Map<string, Sta
       out.set(state.id, { state, parent, depth, path: p, pointer: ptr });
       walk(state.states, state, depth + 1, p, ptr);
     });
-  walk(process.states, null, 0, "", "");
+  walk(process.states ?? [], null, 0, "", "");
   return out;
 }
 
@@ -550,6 +550,19 @@ export function idsOfNames(raw: string, options: { id: string; name: string }[])
     const id = byName.get(part.trim().toLowerCase());
     if (id && !out.includes(id)) out.push(id);
   }
+  return out;
+}
+
+/**
+ * The ids of a list of actions after its cell was edited: the names typed, with each action the cell cannot name (a library's) kept at its place,
+ * since the cell has no way to say it should stay.
+ */
+export function actionIdsOfNames(raw: string, own: { id: string; name: string }[], current: string[] | undefined): string[] {
+  const out = idsOfNames(raw, own);
+  const owned = new Set(own.map((o) => o.id));
+  (current ?? []).forEach((id, i) => {
+    if (!owned.has(id) && !out.includes(id)) out.splice(Math.min(i, out.length), 0, id);
+  });
   return out;
 }
 

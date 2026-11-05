@@ -1,6 +1,8 @@
 {{- include "_docs.scriban" -}}
 {{- p = process -}}
 {{- numbers = transition_numbers(p) -}}
+{{- own_states = {} -}}
+{{- for s in p.all_states }}{{ own_states[s.id] = true }}{{ end -}}
 {{ banner "<!--" }} -->
 
 # {{ md_cell p.display_name }}
@@ -87,7 +89,7 @@ and changes no state. Leaving the source state discards the signatures.
 ### {{ md_cell g.display_name }}
 
 - Name: {{ md_code g.name }}
-- On: transition {{ numbers[g.transition.id] }}, {{ trigger_text(g.transition) }} from {{ md_code g.transition.source.path }}{{ if !g.transition.is_targetless }} to {{ code_paths(g.transition.targets) }}{{ end }}
+{{ if g.transition }}- On: transition {{ numbers[g.transition.id] }}, {{ trigger_text(g.transition) }} from {{ md_code g.transition.source.path }}{{ if !g.transition.is_targetless }} to {{ code_paths(g.transition.targets) }}{{ end }}{{ else }}- On: {{ for t in p.transitions }}{{ if t.gate == g }}transition {{ numbers[t.id] }}, {{ end }}{{ end }}a gate from a library{{ end }}
 - Signatures required: {{ g.required }}, from {{ actor_links(g.signers, "../") }}
 {{- if g.required_actors.size > 0 }}
 - Required actors: at least one signature from each of {{ actor_links(g.required_actors, "../") }}
@@ -138,7 +140,7 @@ The data a running instance carries.
 | Guard | Expression | Used by transitions | Description |
 | --- | --- | --- | --- |
 {{- for g in p.guards }}
-| {{ md_code g.name }} | {{ g.is_stub ? "none: a named stub the host answers" : (md_code g.expression) }} | {{ for t in g.used_by }}{{ for.first ? "" : ", " }}{{ numbers[t.id] }}{{ end }} | {{ md_inline(g.description) }} |
+| {{ md_code g.name }} | {{ g.is_stub ? "none: a named stub the host answers" : (md_code g.expression) }} | {{ sep = "" }}{{ for t in g.used_by }}{{ if numbers[t.id] }}{{ sep }}{{ numbers[t.id] }}{{ sep = ", " }}{{ end }}{{ end }} | {{ md_inline(g.description) }} |
 {{- end }}
 {{- end }}
 {{- if p.actions.size > 0 }}
@@ -150,7 +152,7 @@ The data a running instance carries.
 {{- for a in p.actions }}
 {{- uses = [] }}
 {{- for u in a.used_by }}
-{{- if u.kind == "transition" }}{{ uses[uses.size] = "transition " + numbers[u.id] }}{{ else }}{{ uses[uses.size] = "state " + (md_code u.path) }}{{ end }}
+{{- if u.kind == "transition" }}{{ if numbers[u.id] }}{{ uses[uses.size] = "transition " + numbers[u.id] }}{{ end }}{{ else if own_states[u.id] }}{{ uses[uses.size] = "state " + (md_code u.path) }}{{ end }}
 {{- end }}
 | {{ md_code a.name }} | {{ a.is_stub ? "none: a named stub the host implements" : (md_code a.expression) }} | {{ code_names(a.raises) }} | {{ uses | array.join ", " }} | {{ md_inline(a.description) }} |
 {{- end }}

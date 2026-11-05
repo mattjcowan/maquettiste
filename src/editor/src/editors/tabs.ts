@@ -28,8 +28,10 @@ export const EDITOR_KINDS = [
 export type EditorKind = (typeof EDITOR_KINDS)[number];
 
 /** Whether an element opens in an editor; given its index row, a table overlay (a row naming its entity) does not. */
-export function hasEditor(kind: string | null | undefined, row?: { entity?: string | null }): kind is EditorKind {
+export function hasEditor(kind: string | null | undefined, row?: { entity?: string | null; use?: string | null }): kind is EditorKind {
   if (kind === "table" && row?.entity) return false;
+  // A library has no chart to open: the inspector's JSON view edits it.
+  if (kind === "process" && row?.use === "library") return false;
   return !!kind && (EDITOR_KINDS as readonly string[]).includes(kind);
 }
 

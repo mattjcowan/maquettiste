@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { MockBackend } from "@/mocks/backend";
 import { clone } from "@/lib/json";
 import {
+  actionIdsOfNames,
   addNamed,
   addSiblingState,
   addState,
@@ -239,5 +240,15 @@ describe("the mock behind the process editor", () => {
     expect(answer.status).toBe(200);
     expect((answer.body as { outcome: string }).outcome).toBe("saved");
     expect(model.get(QUICK_APPROVAL)).not.toBeNull();
+  });
+  it("keeps an action the cell cannot name when the cell is edited", () => {
+    const own = [
+      { id: "A", name: "first" },
+      { id: "B", name: "second" },
+    ];
+    expect(actionIdsOfNames("first, second", own, ["A", "LIBRARY", "B"])).toEqual(["A", "LIBRARY", "B"]);
+    expect(actionIdsOfNames("?, second", own, ["A", "LIBRARY", "B"])).toEqual(["B", "LIBRARY"]);
+    expect(actionIdsOfNames("", own, ["LIBRARY"])).toEqual(["LIBRARY"]);
+    expect(actionIdsOfNames("first", own, undefined)).toEqual(["A"]);
   });
 });

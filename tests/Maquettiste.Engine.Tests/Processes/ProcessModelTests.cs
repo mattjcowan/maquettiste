@@ -136,7 +136,6 @@ public sealed class ProcessModelTests
     }
 
     [Theory]
-    [InlineData("process.json", """{"kind":"process","id":"01JPRC00000000000000000009","name":"P","states":[]}""", "/states")]
     [InlineData("process.json", """{"kind":"process","id":"01JPRC00000000000000000009","name":"P","use":"flow","states":[{"id":"01JSTA00000000000000000001","name":"A"}]}""", "/use")]
     [InlineData("process.json", """{"kind":"process","id":"01JPRC00000000000000000009","name":"P","states":[{"id":"01JSTA00000000000000000001","name":"A","type":"junction"}]}""", "/states/0/type")]
     [InlineData("process.json", """{"kind":"process","id":"01JPRC00000000000000000009","name":"P","states":[{"id":"01JSTA00000000000000000001","name":"A"}],"transitions":[{"id":"01JTRN00000000000000000001","source":"01JSTA00000000000000000001","trigger":"timer"}]}""", "/transitions/0/trigger")]

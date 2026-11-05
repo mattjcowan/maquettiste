@@ -2903,7 +2903,7 @@ export interface components {
              * @description The process's use, on process rows (phase-3-design.md section 2.1).
              * @enum {string}
              */
-            use?: "lifecycle" | "orchestration";
+            use?: "lifecycle" | "orchestration" | "library";
             /** @description The entity whose lifecycle the process is, on process rows that have one; the entity an operation acts on, on operation rows that have one. */
             subject?: components["schemas"]["Ulid"];
             /** @description The number of states at every depth, on process rows. */
@@ -3967,7 +3967,10 @@ export interface components {
         GateRecord: components["schemas"]["ProcessNodeAnnotations"] & {
             id: string;
             name: string;
-            transition: string;
+            /** @description The transition's id; null for a library's gate. */
+            transition: string | null;
+            /** @description The ids of the transitions that use the gate. */
+            usedBy: string[];
             required: number;
             signers: string[];
             requiredActors: string[];
@@ -9681,6 +9684,8 @@ export interface components {
              */
             external?: boolean;
             gate?: components["schemas"]["gate"];
+            /** @description A library's gate, used here instead of an inline gate (MQ9021). Signatures still count per transition. */
+            gatePolicy?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
             /** @default [] */
             stereotypes?: components["schemas"]["keyList"];
@@ -9702,10 +9707,11 @@ export interface components {
             pluralName?: string;
             package?: components["schemas"]["id"];
             /**
+             * @description lifecycle: the states an entity goes through. orchestration: a flow of work. library: guards, actions and gates that other processes name by id; it holds nothing that runs (MQ9020).
              * @default orchestration
              * @enum {unknown}
              */
-            use?: "lifecycle" | "orchestration";
+            use?: "lifecycle" | "orchestration" | "library";
             /** @description The entity whose lifecycle this is; required when use is lifecycle. */
             subject?: components["schemas"]["id"];
             /** @description An enum-typed attribute of the subject that holds the state (lifecycle only). */
@@ -9736,8 +9742,16 @@ export interface components {
             guards?: components["schemas"]["guard"][];
             /** @default [] */
             actions?: components["schemas"]["action"][];
-            /** @description The root's children, in document order. */
-            states: components["schemas"]["state"][];
+            /**
+             * @description A library's gates, which a transition names with gatePolicy. A process that is not a library holds its gates on its transitions (MQ9020).
+             * @default []
+             */
+            gates?: components["schemas"]["gate"][];
+            /**
+             * @description The root's children, in document order. A process that is not a library has at least one, and a library has none (MQ9020).
+             * @default []
+             */
+            states?: components["schemas"]["state"][];
             /** @description The root's initial child; absent means the first. */
             initial?: components["schemas"]["id"];
             /**
@@ -9838,6 +9852,8 @@ export interface components {
                      */
                     external?: boolean;
                     gate?: components["schemas"]["gate"];
+                    /** @description A library's gate, used here instead of an inline gate (MQ9021). Signatures still count per transition. */
+                    gatePolicy?: components["schemas"]["id"];
                     description?: components["schemas"]["description"];
                     /** @default [] */
                     stereotypes?: components["schemas"]["keyList"];

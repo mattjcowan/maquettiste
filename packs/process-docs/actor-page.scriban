@@ -71,7 +71,7 @@
 | Gate | Process | Transition | Signatures | Its signature |
 | --- | --- | --- | --- | --- |
 {{- for x in gates }}
-| {{ md_cell x.gate.display_name }} ({{ md_code x.gate.name }}) | {{ process_link(x.process, "../") }} | {{ md_code x.gate.transition.label }} from {{ md_code x.gate.transition.source.path }} | {{ x.gate.required }} of {{ actor_links(x.gate.signers, "../") }} | {{ has_actor(x.gate.required_actors, a) ? "required" : "counts toward the total" }} |
+| {{ md_cell x.gate.display_name }} ({{ md_code x.gate.name }}) | {{ process_link(x.process, "../") }} | {{ if x.gate.transition }}{{ md_code x.gate.transition.label }} from {{ md_code x.gate.transition.source.path }}{{ else }}a gate from a library{{ end }} | {{ x.gate.required }} of {{ actor_links(x.gate.signers, "../") }} | {{ has_actor(x.gate.required_actors, a) ? "required" : "counts toward the total" }} |
 {{- end }}
 {{- end }}
 {{- if tasks.size > 0 }}

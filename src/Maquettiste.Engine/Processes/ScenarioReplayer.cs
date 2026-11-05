@@ -39,7 +39,7 @@ public sealed class ProcessRuntime : IDisposable
     /// <param name="processId">The process id.</param>
     /// <returns>The chart, or <see langword="null"/> when the id names no process.</returns>
     public StatechartModel? Chart(string processId) =>
-        Model.Get<Process>(processId) is { } process ? StatechartModel.Get(process, Model.GetDocument(processId)?.Hash) : null;
+        Model.Get<Process>(processId) is { } process ? ProcessLibraries.Chart(Model, process) : null;
 
     /// <summary>The expression session of a chart, or <see langword="null"/> when none of its expressions compiled.</summary>
     /// <param name="chart">The chart.</param>

@@ -128,6 +128,13 @@ Scenarios are tests of the model.
 When you change the chart on purpose, a scenario may fail with MQ9302 (the active states differ). Its fix, **Update
 expectations from replay**, rewrites the expectations from a fresh replay.
 
+## 10. Share a guard between processes
+
+When two processes need the same check, hold it once. Create a process with `"use": "library"` and move the guard into its `guards`. It has
+no states of its own. A transition of any process then names the guard by its id in `guard`, as it did before. The expression runs in the
+process that uses it, so it reads that process's `context`. [Libraries](../user-guide.md#libraries-shared-guards-actions-and-gate-policies)
+has the rest, with actions and gate policies.
+
 ## See also
 
 - [Processes, actors and scenarios](../user-guide.md#processes-actors-and-scenarios), including

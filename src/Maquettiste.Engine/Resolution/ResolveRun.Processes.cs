@@ -23,6 +23,14 @@ internal sealed partial class ResolveRun
     private readonly Dictionary<string, RActor> _actors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ProcessLookup> _processLookups = new(StringComparer.Ordinal);
     private List<RProcess> _processOrder = [];
+
+    /// <summary>The library processes, by (package qualified name, name, id); <see cref="_processOrder"/> holds those that run.</summary>
+    private List<RProcess> _libraryOrder = [];
+
+    private readonly Dictionary<string, RGuard> _libraryGuards = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RAction> _libraryActions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, RGate> _libraryGates = new(StringComparer.Ordinal);
+    private readonly Dictionary<RProcessNode, List<RProcessNode>> _libraryUsers = new(ReferenceEqualityComparer.Instance);
     private List<RActor> _actorOrder = [];
     private List<RScenario> _scenarioOrder = [];
 
@@ -57,6 +65,9 @@ internal sealed partial class ResolveRun
         public List<REvent> Events { get; } = [];
 
         public List<RGate> Gates { get; } = [];
+
+        /// <summary>The referrers keys of the library gates the actor signs: a process that starts naming one changes the actor's lists.</summary>
+        public List<string> LibraryGateKeys { get; } = [];
     }
 
     /// <summary>Resolves actors, processes and scenarios, the actors' uses and the entities' lifecycles.</summary>
@@ -88,13 +99,24 @@ internal sealed partial class ResolveRun
             Register(r);
         }
 
-        _processOrder = Sorted(_processes.Values);
+        _processOrder = Sorted(_processes.Values.Where(p => sources[p.Id].Use != ProcessUse.Library));
+        _libraryOrder = Sorted(_processes.Values.Where(p => sources[p.Id].Use == ProcessUse.Library));
         var uses = new Dictionary<string, ActorUses>(StringComparer.Ordinal);
-        foreach (var r in _processOrder)
+
+        // Libraries first: a using process's transitions point at their guards, actions and gates.
+        foreach (var r in _libraryOrder.Concat(_processOrder))
         {
             Ct.ThrowIfCancellationRequested();
             BuildProcess(sources[r.Id], r, uses);
         }
+
+        // Which transitions and states use a library's member changes when another process starts or stops naming it.
+        foreach (var guard in _libraryGuards.Values)
+            guard.UsedBy = new RList<RTransition>(LibraryUsers(guard).OfType<RTransition>(), [Keys.Referrers(guard.Id)]);
+        foreach (var action in _libraryActions.Values)
+            action.UsedBy = new RList<RProcessNode>(LibraryUsers(action), [Keys.Referrers(action.Id)]);
+        foreach (var gate in _libraryGates.Values)
+            gate.UsedBy = new RList<RTransition>(LibraryUsers(gate).OfType<RTransition>(), [Keys.Referrers(gate.Id)]);
 
         ResolveScenarios();
 
@@ -102,7 +124,7 @@ internal sealed partial class ResolveRun
         {
             var own = uses.GetValueOrDefault(actor.Id);
             // A process or scenario that starts or stops naming the actor changes its referrers.
-            IReadOnlyList<string> keys = [Keys.Referrers(actor.Id)];
+            IReadOnlyList<string> keys = [Keys.Referrers(actor.Id), .. own?.LibraryGateKeys ?? []];
             actor.Processes = new RList<RProcess>(own?.Processes ?? [], keys);
             actor.Events = new RList<REvent>(own?.Events ?? [], keys);
             actor.Gates = new RList<RGate>(own?.Gates ?? [], keys);
@@ -117,9 +139,12 @@ internal sealed partial class ResolveRun
         }
     }
 
+    private IReadOnlyList<RProcessNode> LibraryUsers(RProcessNode member) => _libraryUsers.TryGetValue(member, out var users) ? users : [];
+
     private void BuildProcess(Process process, RProcess r, Dictionary<string, ActorUses> uses)
     {
         var chart = StatechartModel.Get(process, null);
+        var libraryUses = ProcessLibraries.UsesOf(Model, process);
         var lookup = new ProcessLookup();
         _processLookups[process.Id] = lookup;
         var deps = DepsOf(r);
@@ -137,8 +162,11 @@ internal sealed partial class ResolveRun
             }
         }
 
-        // Every node of the process reads its file, and the subject and bound enum (a bound state's member).
+        // Every node of the process reads its file, the subject and bound enum (a bound state's member), and the libraries it names (a
+        // transition's label holds a library guard's name).
         var baseKeys = new DependencySet(Keys).Element(process.Id);
+        foreach (var use in libraryUses)
+            baseKeys.Element(use.Library.Id);
         if (r.Subject is { } s)
             baseKeys.Element(s.Id);
         if (r.BoundEnum is { } e)
@@ -207,7 +235,23 @@ internal sealed partial class ResolveRun
             guard.IsStub = guard.Expression is null && guard.Condition is null;
             if (lookup.Guards.TryAdd(source.Id, guard))
                 guards.Add(guard);
+            if (process.Use == ProcessUse.Library)
+                _libraryGuards.TryAdd(source.Id, guard);
         }
+
+        // The members this process names from libraries follow its own, so a pack that walks a process's guards, actions and gates meets
+        // every one its transitions name. Their own files are in the keys through each member; the process depends on them too.
+        var libraries = new List<RProcess>();
+        var ownGuards = guards.Count;
+        foreach (var use in libraryUses)
+        {
+            if (_processes.TryGetValue(use.Library.Id, out var library) && !libraries.Contains(library))
+                libraries.Add(library);
+            deps.Element(use.Library.Id);
+            if (use.Guard is { } shared && _libraryGuards.TryGetValue(shared.Id, out var guard) && lookup.Guards.TryAdd(shared.Id, guard))
+                guards.Add(guard);
+        }
+
 
         // A guard's condition (next-phase-3-design.md section 3.1): typed in the process's scope, its paths ending at the context's and
         // payloads' attributes; what it names beyond the process (an enum, a seed, a constraint) joins the guard's keys.
@@ -233,6 +277,15 @@ internal sealed partial class ResolveRun
             FillNode(action, source.DisplayName ?? source.Name, source.Description, source.Stereotypes, source.Properties);
             action.Raises = new RList<REvent>(source.Raises.Select(id => lookup.Events.GetValueOrDefault(id)).OfType<REvent>(), nodeKeys);
             if (actionsById.TryAdd(source.Id, action))
+                actions.Add(action);
+            if (process.Use == ProcessUse.Library)
+                _libraryActions.TryAdd(source.Id, action);
+        }
+
+        var ownActions = actions.Count;
+        foreach (var use in libraryUses)
+        {
+            if (use.Action is { } shared && _libraryActions.TryGetValue(shared.Id, out var action) && actionsById.TryAdd(shared.Id, action))
                 actions.Add(action);
         }
 
@@ -287,11 +340,48 @@ internal sealed partial class ResolveRun
             state.Invoke = new RList<RInvoke>(own, nodeKeys);
         }
 
+        RGate BuildGate(ProcessGate g)
+        {
+            var gate = Node(new RGate
+            {
+                Name = g.Name,
+                Required = g.Required,
+                AllowRepeatSigner = g.AllowRepeatSigner,
+                ReasonRequired = g.ReasonRequired,
+            }, g.Id);
+            FillNode(gate, g.DisplayName ?? g.Name, g.Description, g.Stereotypes, g.Properties);
+            var gateDeps = DepsOf(gate);
+            gate.Signers = ActorsOf(g.Signers, gateDeps);
+            gate.RequiredActors = ActorsOf(g.RequiredActors, gateDeps);
+            var meanings = new List<RMeaning>();
+            foreach (var m in g.Meanings)
+            {
+                var meaning = Node(new RMeaning { Name = m.Name }, m.Id);
+                FillNode(meaning, m.DisplayName ?? m.Name, m.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
+                meanings.Add(meaning);
+                lookup.Meanings.TryAdd(m.Id, meaning);
+            }
+
+            gate.Meanings = new RList<RMeaning>(meanings, nodeKeys);
+            var audit = Attributes(g.AuditAttributes, gate, lookup.Audit);
+            gate.AuditAttributes = new RList<RAttribute>(audit, nodeKeys);
+            gate.Audit = new RList<RAuditField>(AuditFields(gate, audit, gateDeps.ToList()), nodeKeys);
+            return gate;
+        }
+
         // Transitions in priority order, with the editor's edge label.
-        var names = new LabelNames(process);
+        var names = new LabelNames(ProcessLibraries.Effective(Model, process));
         var transitions = new List<RTransition>();
         var bySource = new Dictionary<RState, List<RTransition>>(ReferenceEqualityComparer.Instance);
         var gates = new List<RGate>();
+        foreach (var g in process.Gates)
+        {
+            var gate = BuildGate(g);
+            gates.Add(gate);
+            if (process.Use == ProcessUse.Library)
+                _libraryGates.TryAdd(g.Id, gate);
+        }
+
         foreach (var ct in chart.Transitions)
         {
             var t = ct.Transition;
@@ -316,33 +406,23 @@ internal sealed partial class ResolveRun
             FillNode(transition, t.DisplayName ?? label, t.Description, t.Stereotypes, t.Properties);
             if (t.Gate is { } g)
             {
-                var gate = Node(new RGate
-                {
-                    Name = g.Name,
-                    Transition = transition,
-                    Required = g.Required,
-                    AllowRepeatSigner = g.AllowRepeatSigner,
-                    ReasonRequired = g.ReasonRequired,
-                }, g.Id);
-                FillNode(gate, g.DisplayName ?? g.Name, g.Description, g.Stereotypes, g.Properties);
-                var gateDeps = DepsOf(gate);
-                gate.Signers = ActorsOf(g.Signers, gateDeps);
-                gate.RequiredActors = ActorsOf(g.RequiredActors, gateDeps);
-                var meanings = new List<RMeaning>();
-                foreach (var m in g.Meanings)
-                {
-                    var meaning = Node(new RMeaning { Name = m.Name }, m.Id);
-                    FillNode(meaning, m.DisplayName ?? m.Name, m.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
-                    meanings.Add(meaning);
-                    lookup.Meanings.TryAdd(m.Id, meaning);
-                }
-
-                gate.Meanings = new RList<RMeaning>(meanings, nodeKeys);
-                var audit = Attributes(g.AuditAttributes, gate, lookup.Audit);
-                gate.AuditAttributes = new RList<RAttribute>(audit, nodeKeys);
-                gate.Audit = new RList<RAuditField>(AuditFields(gate, audit, gateDeps.ToList()), nodeKeys);
+                var gate = BuildGate(g);
+                gate.Transition = transition;
+                gate.UsedBy = new RList<RTransition>([transition], nodeKeys);
                 transition.Gate = gate;
                 gates.Add(gate);
+            }
+            else if (t.GatePolicy is { } policy && _libraryGates.TryGetValue(policy, out var shared))
+            {
+                transition.Gate = shared;
+                if (!gates.Contains(shared))
+                {
+                    gates.Add(shared);
+                    foreach (var m in shared.Meanings)
+                        lookup.Meanings.TryAdd(m.Id, m);
+                    foreach (var a in shared.AuditAttributes)
+                        lookup.Audit.TryAdd(a.Id, a.Name);
+                }
             }
 
             transitions.Add(transition);
@@ -355,17 +435,40 @@ internal sealed partial class ResolveRun
             state.TransitionsOut = new RList<RTransition>(bySource.GetValueOrDefault(state) ?? [], nodeKeys);
         foreach (var ev in events)
             ev.Transitions = new RList<RTransition>(transitions.Where(t => ReferenceEquals(t.Event, ev) && t.Trigger == "event"), nodeKeys);
-        foreach (var guard in guards)
-            guard.UsedBy = new RList<RTransition>(transitions.Where(t => ReferenceEquals(t.Guard, guard)), nodeKeys);
-        var ordered = chart.States.Select(cs => states[cs]).ToList();
-        foreach (var action in actions)
+        void UsedAcross(RProcessNode member, IEnumerable<RProcessNode> users)
         {
-            IEnumerable<RProcessNode> users = transitions.Where(t => t.Actions.Contains(action));
-            users = users.Concat(ordered.Where(st => st.Entry.Contains(action) || st.Exit.Contains(action)));
-            action.UsedBy = new RList<RProcessNode>(users, nodeKeys);
+            if (!_libraryUsers.TryGetValue(member, out var all))
+                _libraryUsers[member] = all = [];
+            all.AddRange(users);
         }
 
+        for (var i = 0; i < guards.Count; i++)
+        {
+            var guard = guards[i];
+            var users = transitions.Where(t => ReferenceEquals(t.Guard, guard));
+            if (i < ownGuards)
+                guard.UsedBy = new RList<RTransition>(users, nodeKeys);
+            else
+                UsedAcross(guard, users);
+        }
+
+        var ordered = chart.States.Select(cs => states[cs]).ToList();
+        for (var i = 0; i < actions.Count; i++)
+        {
+            var action = actions[i];
+            IEnumerable<RProcessNode> users = transitions.Where(t => t.Actions.Contains(action));
+            users = users.Concat(ordered.Where(st => st.Entry.Contains(action) || st.Exit.Contains(action)));
+            if (i < ownActions)
+                action.UsedBy = new RList<RProcessNode>(users, nodeKeys);
+            else
+                UsedAcross(action, users);
+        }
+
+        foreach (var gate in gates.Where(g => g.Transition is null && process.Use != ProcessUse.Library))
+            UsedAcross(gate, transitions.Where(t => ReferenceEquals(t.Gate, gate)));
+
         r.Events = new RList<REvent>(events, nodeKeys);
+        r.Libraries = new RList<RProcess>(libraries.OrderBy(l => l.Name, StringComparer.Ordinal).ThenBy(l => l.Id, StringComparer.Ordinal), nodeKeys);
         r.Guards = new RList<RGuard>(guards, nodeKeys);
         r.Actions = new RList<RAction>(actions, nodeKeys);
         r.States = new RList<RState>(chart.Root.Children.Select(cs => states[cs]), nodeKeys);
@@ -393,7 +496,8 @@ internal sealed partial class ResolveRun
             if (!referenced.Contains(actor))
             {
                 referenced.Add(actor);
-                own.Processes.Add(r);
+                if (process.Use != ProcessUse.Library)
+                    own.Processes.Add(r);
             }
 
             add?.Invoke(own);
@@ -414,7 +518,13 @@ internal sealed partial class ResolveRun
         foreach (var gate in gates)
         {
             foreach (var actor in gate.Signers.Concat(gate.RequiredActors).Distinct())
-                Use(actor, u => u.Gates.Add(gate));
+                Use(actor, u =>
+                {
+                    if (!u.Gates.Contains(gate))
+                        u.Gates.Add(gate);
+                    if (process.Use == ProcessUse.Library && gate.Transition is null)
+                        u.LibraryGateKeys.Add(Keys.Referrers(gate.Id));
+                });
         }
 
         r.Actors = new RList<RActor>(referenced.OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.Id, StringComparer.Ordinal), actorListKeys);
@@ -483,7 +593,7 @@ internal sealed partial class ResolveRun
         foreach (var scenario in Model.All<Scenario>())
         {
             Ct.ThrowIfCancellationRequested();
-            if (!_processes.TryGetValue(scenario.Process, out var process))
+            if (!order.ContainsKey(scenario.Process) || !_processes.TryGetValue(scenario.Process, out var process))
                 continue; // a dangling process (MQ2001): the scenario has nothing to run
             var lookup = _processLookups[process.Id];
             var s = new RScenario();

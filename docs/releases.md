@@ -7,6 +7,15 @@ one.
 
 ## 0.12.2 (unreleased)
 
+- **Shared guards, actions and gates.** A process with `use: library` holds guards, actions and gates once, and any process names
+  them by id: `transition.guard`, `transition.actions`, `state.entry` and `state.exit` as before, and the new
+  `transition.gatePolicy` in place of an inline gate. A library's expression reads the using process's context and event, and
+  signatures still count per transition. Nothing in a library runs (MQ9020 to MQ9022). `each process` still lists only processes
+  that run; a pack that writes shared code reads `model.process_libraries`, and `process.guards`, `process.actions` and
+  `process.gates` also list the library members that process names. `gate.transition` is null for a library's gate, and `gate.used_by`
+  lists its transitions. `import_process` over a process that uses a library's members is refused, since it would drop those links. The
+  editor edits a library through the JSON view, and its simulation panel cannot yet sign a gate policy or assume a library's stub guard. The schema copies change, so `validate` warns MQ1008 until
+  `maquettiste init` or the editor refreshes them. A process with no `states` is now MQ9020 rather than a schema error.
 - **Custom properties on more parts of the model.** An extension or a stereotype can now apply to `guard`, `action`, `invoke`,
   `gate`, `check` and `constraint`, so a team can state its own facts there, or link them to another element with `x-ref`.
   `referenced_by`, `get_references`, deletes and templates see them. Guards, actions, invokes and gates also take

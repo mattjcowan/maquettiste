@@ -560,6 +560,12 @@ export const SIMULATION_LABELS = {
 /** An actor's type as a row shows it. */
 export const ACTOR_TYPE_LABELS = { person: "person", role: "role", "external-system": "external system" } as const;
 
+/** A library process, which has no chart to open. */
+export const LIBRARY_LABELS = {
+  noChartTitle: "A library has no chart",
+  noChartBody: "It shares guards, actions and gates with other processes. Edit it in the inspector's JSON tab.",
+} as const;
+
 /** The process editor's tabs (6.2). */
 export const PROCESS_TAB_LABELS = {
   chart: "Chart",

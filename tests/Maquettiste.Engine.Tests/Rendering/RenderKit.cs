@@ -184,6 +184,7 @@ internal static class Adhoc
         SeedsInOrderFactory = () => model.SeedsInOrder,
         Locales = model.Locales,
         Processes = model.Processes,
+        ProcessLibraries = model.ProcessLibraries,
         Actors = model.Actors,
         Scenarios = model.Scenarios,
         Operations = model.Operations,

@@ -2054,10 +2054,56 @@ and for JavaScript's loose rules, so a person decides each one. To rewrite one b
 4. Save `condition` and remove `expression` in one write (a guard with both is MQ3107), then run **Verify scenarios**
    (`verify_scenarios`, or `maquettiste process verify`).
 
+### Libraries: shared guards, actions and gate policies
+
+Once a team models more than one process, the same checks and effects recur. A process with `use: library` holds them once, in
+a package, and any process names them by id. A library holds `guards`, `actions` and `gates`, and nothing that runs: no states,
+initial state, transitions, context, events, subject or bound attribute, and its actions raise no events (MQ9020).
+
+```json
+{
+  "kind": "process",
+  "id": "01JF00000000000000000000L1",
+  "name": "BillingChecks",
+  "use": "library",
+  "guards": [ { "id": "01JF00000000000000000000G1", "name": "amount_positive", "expression": "context.amount > 0" } ]
+}
+```
+
+A transition of any process then says `"guard": "01JF00000000000000000000G1"`. `transition.actions`, `state.entry` and `state.exit`
+name a library's actions the same way, and `transition.gatePolicy` names a library's gate in place of an inline `gate` (MQ9021).
+
+- **What runs where.** A library's expression runs in the using process and reads that process's `context` and `event`. Nothing checks
+  that the context has the names an expression reads, so a scenario is the way to prove it. A library's guard holds an `expression`,
+  not a `condition`, since a condition names one process's attributes by id.
+- **Gates.** One policy on several transitions keeps separate signature counts, since signatures count per transition. A scenario step's
+  `meaning` may name a meaning of the policy. The transition's trigger and its event's actors are judged on the using process, and the
+  gate's own rules (MQ9101, MQ9102, MQ9104) on the library.
+- **Names.** Guard, action and gate names stay unique across a process's own and the library members it names (MQ3001), so a pack does
+  not generate two methods of one name.
+- **Links.** These are ordinary references: `get_references` lists each user, a delete refuses while one is used, and a process in another
+  package needs that package in `dependsOn` when layers are checked.
+- **Unused members.** A library's member that no process names is the warning MQ9013 on the library.
+- **What a save revisits.** Saving a library validates the processes that use it. It does not replay their scenarios, and saving a process does not
+  revisit its libraries, so `verify_scenarios` or the next full `validate` shows a scenario a library change broke, and the current state of a
+  library's "unused" warnings.
+- **Importing.** `import_process` over a process that uses a library's members is refused, since an import writes local parts only and would drop those
+  links and a gate policy's signatures. Edit the file instead.
+- **Nothing runs a library.** A process invoke or a scenario cannot name one (MQ9022), and `simulate_process`, `record_scenario`,
+  `export_process` and `sync_enum_from_process` refuse one. `export_process` on a using process writes the library's guards and actions
+  by name, like its own.
+- **Templates.** `each process` lists only processes that run. Each one's `guards`, `actions` and `gates` also list the library members it
+  names, after its own, and `process.libraries` lists the libraries. A pack that writes shared code reads `model.process_libraries`.
+  `guard.used_by`, `action.used_by` and `gate.used_by` span processes on a library's member, and `gate.transition` is null on a library's gate.
+- **In the editor.** A library does not open in the chart editor; its inspector's JSON view edits it. A process's grids show a library's action
+  as `?` and keep it when you edit the cell, and their pickers do not yet offer a library's members, so name them by id in the JSON view. The
+  simulation panel cannot yet give a signature for a gate policy or an assumed result for a library's stub guard: use `simulate_process` or
+  `maquettiste process simulate` for those.
+
 ### The rules for processes (MQ9xxx)
 
 Every rule below has a row in **Settings › Validation**, where its severity can be changed. The structural rules (MQ9001
-to MQ9018, MQ9101 to MQ9106, MQ9201 to MQ9205 and MQ9501) run on every save and every `validate`; MQ9019 is the answer
+to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9205 and MQ9501) run on every save and every `validate`; MQ9019 is the answer
 to a refused batch operation. The scenario rules (MQ93xx) and MQ9502 to MQ9507 come from replaying
 scenarios: `validate` replays every scenario of the processes it checks, **Verify scenarios** and `maquettiste process
 verify` replay on request, and the simulation panel shows them for its own run. A replay finding is reported on a save but
@@ -2086,6 +2132,9 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9017 | warning | A parallel state with one region | |
 | MQ9018 | warning | A `done` transition whose source can never reach a final state, so it never fires | |
 | MQ9019 | error | A process operation (Sync enum, set lifecycle, set initial, refresh a scenario) was refused: it names the wrong element, would remove an enum member still in use, cannot replay the scenario to its end, or shares a batch with a change to the same process, enum or scenario | |
+| MQ9020 | error | A library holds what only a running process has (states, an initial state, transitions, context, events, a subject, a bound attribute, an action that raises events, or a guard with a condition), or a process that is not a library has no states or lists gates of its own | Move the item, or change `use` |
+| MQ9021 | error | A transition sets both `gate` and `gatePolicy`, or its `gatePolicy` names a gate that no library holds | Keep one, or point at a library's gate |
+| MQ9022 | error | A process invoke or a scenario names a library, which has no states to run | Name a running process |
 | MQ9101 | error | A gate needs more signatures than its signers can give | |
 | MQ9102 | error | A gate's required actors are not all among its signers | **Add to signers** |
 | MQ9103 | error | A gate on a transition whose trigger is not an event, or two gates on one source and event | |

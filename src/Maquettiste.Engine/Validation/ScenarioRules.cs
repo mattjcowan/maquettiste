@@ -26,6 +26,9 @@ internal static class ScenarioRules
                 }
 
                 break;
+            case Scenario scenario when context.Model.Get<Process>(scenario.Process) is { Use: ProcessUse.Library } library:
+                report.Add("MQ9022", $"Scenario '{scenario.Name}' names library '{library.Name}', which has no states to run; name a running process.", "/process");
+                break;
             case Scenario scenario when runtime is not null:
                 if (ScenarioReplayer.Replay(scenario, runtime) is not { } replay)
                     break;

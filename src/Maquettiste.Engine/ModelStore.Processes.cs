@@ -93,7 +93,9 @@ public sealed partial class ModelStore
             if (snapshot.Get<Process>(processId) is not { } process)
                 return Problem($"'{processId}' is not a process; pass the id of a lifecycle process.");
             if (process.Use != ProcessUse.Lifecycle || process.BoundAttribute is null)
-                return Problem($"Process '{process.Name}' binds no attribute; set use to lifecycle and bind an enum attribute of the subject, then sync.");
+                return Problem(process.Use == ProcessUse.Library
+                    ? $"Process '{process.Name}' is a library, which has no states to sync; pass the id of a lifecycle process."
+                    : $"Process '{process.Name}' binds no attribute; set use to lifecycle and bind an enum attribute of the subject, then sync.");
             if (AttributeNode(process.BoundAttribute) is not { } attribute
                 || attribute["type"] is not JsonObject { } type || type["ref"]?.GetValue<string>() is not { } enumId
                 || snapshot.Get<EnumType>(enumId) is not { } enumType)

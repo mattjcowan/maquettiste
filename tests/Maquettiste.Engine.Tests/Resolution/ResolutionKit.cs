@@ -230,7 +230,7 @@ internal static partial class ResolutionKit
 
             foreach (var g in p.Gates)
             {
-                sb.Append("  gate ").Append(g.Name).Append(" on '").Append(g.Transition.Label).Append("' required=").Append(g.Required)
+                sb.Append("  gate ").Append(g.Name).Append(" on '").Append(g.Transition!.Label).Append("' required=").Append(g.Required)
                     .Append(" signers=").Append(Names(g.Signers, x => x.Name)).Append(" required-actors=").Append(Names(g.RequiredActors, x => x.Name))
                     .Append(" repeat=").Append(v(g.AllowRepeatSigner)).Append(" reason=").Append(v(g.ReasonRequired))
                     .Append(" meanings=").Append(Names(g.Meanings, x => x.Name + "('" + x.DisplayName + "')")).Append('\n');

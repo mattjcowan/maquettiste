@@ -11,7 +11,7 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Processes;
 
 /// <summary>
-/// The process rules MQ9001 to MQ9018, MQ9101 to MQ9106 and MQ9201 to MQ9205 (phase-3-design.md section 3) over the
+/// The process rules MQ9001 to MQ9022, MQ9101 to MQ9106 and MQ9201 to MQ9205 (phase-3-design.md section 3) over the
 /// <c>process-basics</c> fixture: the fixture raises none of them, each failing case mutates it so one rule fires, and each passing
 /// case makes a nearby change that must not raise the rule.
 /// </summary>
@@ -246,6 +246,16 @@ public sealed class ProcessRuleTests
         ["MQ9016 diagram member not a state"] = m => m.Diagram["members"]!.AsArray().Add(new JsonObject { ["element"] = Order }),
         ["MQ9017 parallel with one region"] = m => m.State(Fulfilment)["states"]!.AsArray().RemoveAt(1),
         ["MQ9018 done that never fires"] = m => m.State(Shipped).Remove("type"),
+        ["MQ9020 a library that holds what runs"] = m => m.Process["use"] = "library",
+        ["MQ9021 a gate policy beside a gate, naming a gate no library holds"] = m => m.Transition(5)["gatePolicy"] = m.Gate["id"]!.DeepClone(),
+        ["MQ9022 an invoke naming a library"] = m =>
+        {
+            m.Files["model/processes/library.json"] = JsonNode.Parse("""{ "kind": "process", "id": "01JSTA000000000000000000M0", "name": "Shared", "use": "library" }""")!.AsObject();
+            var invoke = ManagerReviewInvoke(m);
+            invoke["type"] = "process";
+            invoke.Remove("actors");
+            invoke["process"] = "01JSTA000000000000000000M0";
+        },
         ["MQ9101 too few person signers"] = m =>
         {
             m.Actor(Manager)["type"] = "person";
@@ -349,6 +359,9 @@ public sealed class ProcessRuleTests
         ["MQ9016 diagram member a state"] = m => m.Diagram["members"]!.AsArray().Add(new JsonObject { ["element"] = Packing }),
         ["MQ9017 parallel with two regions"] = _ => { },
         ["MQ9018 done with a reachable final"] = _ => { },
+        ["MQ9020 a process with states"] = _ => { },
+        ["MQ9021 an inline gate alone"] = _ => { },
+        ["MQ9022 an invoke naming a process"] = _ => { },
         ["MQ9101 repeat signers allowed"] = m =>
         {
             m.Actor(Manager)["type"] = "person";
@@ -445,7 +458,7 @@ public sealed class ProcessRuleTests
         var rules = RuleCatalog.All.Select(r => r.Id).Where(id => (id.StartsWith("MQ90", StringComparison.Ordinal)
             || id.StartsWith("MQ91", StringComparison.Ordinal) || id.StartsWith("MQ92", StringComparison.Ordinal)) && id != "MQ9019").ToList();
 
-        Assert.Equal(29, rules.Count);
+        Assert.Equal(32, rules.Count);
         Assert.Equal(rules, Failing.Keys.Select(k => k[..6]).Distinct().Order(StringComparer.Ordinal));
         Assert.Equal(rules, Passing.Keys.Select(k => k[..6]).Distinct().Order(StringComparer.Ordinal));
         Assert.All(rules, id => Assert.Contains(";", RuleCatalog.Get(id).Description, StringComparison.Ordinal));

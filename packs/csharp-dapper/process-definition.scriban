@@ -147,7 +147,7 @@ public static partial class {{ name }}Definition
 {{- for g in p.gates }}
 {{- if !for.first }}
 {{ end }}
-        /// <summary>{{ cs_line g.display_name | escape_xml }}: {{ g.required }} signature(s) on transition {{ cs_line g.transition.label | escape_xml }}.</summary>
+        /// <summary>{{ cs_line g.display_name | escape_xml }}: {{ g.required }} signature(s){{ if g.transition }} on transition {{ cs_line g.transition.label | escape_xml }}{{ end }}.</summary>
         public const string {{ member_name(g.name, "Gates") }} = {{ json g.name }};
 {{- for m in g.meanings }}
 

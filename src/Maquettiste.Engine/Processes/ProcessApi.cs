@@ -305,7 +305,7 @@ public static class ProcessApi
             Replace("actor", snapshot.All<Actor>().Select(a => (a.Id, a.Name)));
         if (step["assume"] is JsonObject assume)
         {
-            var guards = process.Guards.Select(g => (g.Id, g.Name)).ToList();
+            var guards = (snapshot is null ? process : ProcessLibraries.Effective(snapshot, process)).Guards.Select(g => (g.Id, g.Name)).ToList();
             foreach (var key in assume.Select(p => p.Key).ToList())
             {
                 if (Find(guards, key) is { } id && !assume.ContainsKey(id))

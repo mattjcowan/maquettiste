@@ -58,6 +58,16 @@ internal static partial class ProcessRules
 
     private static void CheckProcess(ValidationContext context, Process process, Report report)
     {
+        if (process.Use == ProcessUse.Library)
+        {
+            CheckLibrary(context, process, report);
+            return;
+        }
+
+        if (process.States.Count == 0)
+            report.Add("MQ9020", $"Process '{process.Name}' has no states; add one, or set use to library if it only shares guards, actions and gates.", "/states");
+        if (process.Gates.Count > 0)
+            report.Add("MQ9020", $"Process '{process.Name}' lists gates of its own, which only a library does; put each gate on its transition, or set use to library.", "/gates");
         var analysis = new ProcessAnalysis(process);
         var locals = Locals.Of(process);
         CheckStates(context, analysis, locals, report);
@@ -66,18 +76,76 @@ internal static partial class ProcessRules
         CheckUnused(process, locals, report);
         CheckInvokes(context, process, analysis, report);
         CheckLifecycle(context, process, analysis, report);
-        CheckNodeNames(process, report);
+        CheckNodeNames(context, process, report);
+        CheckNodeStereotypes(context, process, report);
+    }
+
+    // MQ9020, MQ9013 and the gate rules that judge a gate by itself: a library holds nothing that runs (next-phase-2-design.md section 4.4).
+    private static void CheckLibrary(ValidationContext context, Process process, Report report)
+    {
+        void Holds(string what, string pointer, string? id = null) =>
+            report.Add("MQ9020", $"Library '{process.Name}' holds {what}, which only a process that runs has; move it there, or change use.", pointer, id);
+        if (process.States.Count > 0)
+            Holds("states", "/states");
+        if (process.Initial is not null)
+            Holds("an initial state", "/initial");
+        if (process.Transitions.Count > 0)
+            Holds("transitions", "/transitions");
+        if (process.Context.Count > 0)
+            Holds("context", "/context");
+        if (process.Events.Count > 0)
+            Holds("events", "/events");
+        if (process.Subject is not null)
+            Holds("a subject", "/subject");
+        if (process.BoundAttribute is not null)
+            Holds("a bound attribute", "/boundAttribute");
+        for (var i = 0; i < process.Actions.Count; i++)
+        {
+            if (process.Actions[i].Raises.Count > 0)
+                Holds($"action '{process.Actions[i].Name}' that raises events", "/actions/" + N(i) + "/raises", process.Actions[i].Id);
+        }
+
+        for (var i = 0; i < process.Guards.Count; i++)
+        {
+            if (process.Guards[i].Condition is not null)
+                report.Add("MQ9020", $"Guard '{process.Guards[i].Name}' of library '{process.Name}' has a condition, which names the attributes of one process's context; write it as an expression, which reads the using process's context by name, or move the guard.",
+                    "/guards/" + N(i) + "/condition", process.Guards[i].Id);
+        }
+
+        for (var i = 0; i < process.Gates.Count; i++)
+        {
+            CheckGateItself(context, $"Gate '{process.Gates[i].Name}' of library '{process.Name}'", process.Gates[i], "/gates/" + N(i), report);
+        }
+
+        bool Used(string id) => context.Model.ReferencesTo(id).Any(r => context.Model.Get<Process>(r.FromElementId) is not null
+            && !r.JsonPointer.Contains("/properties/", StringComparison.Ordinal));
+        void Unused(string what, string name, string pointer, string id)
+        {
+            if (!Used(id))
+                report.Add("MQ9013", $"{what} '{name}' of library '{process.Name}' is used by no process; use it or remove it.", pointer, id);
+        }
+
+        for (var i = 0; i < process.Guards.Count; i++)
+            Unused("Guard", process.Guards[i].Name, "/guards/" + N(i), process.Guards[i].Id);
+        for (var i = 0; i < process.Actions.Count; i++)
+            Unused("Action", process.Actions[i].Name, "/actions/" + N(i), process.Actions[i].Id);
+        for (var i = 0; i < process.Gates.Count; i++)
+            Unused("Gate", process.Gates[i].Name, "/gates/" + N(i), process.Gates[i].Id);
+        CheckNodeNames(context, process, report);
         CheckNodeStereotypes(context, process, report);
     }
 
     // MQ3001 and MQ3018 on the process's sub-elements (section 2.6): states unique among siblings; events, guards, actions,
     // invokes and gates unique within the process, one namespace per kind; gate meanings unique within their gate.
-    private static void CheckNodeNames(Process process, Report report)
+    private static void CheckNodeNames(ValidationContext context, Process process, Report report)
     {
+        var uses = ProcessLibraries.UsesOf(context.Model, process);
         CheckSiblings(process.States, "", null);
         Unique("event", process.Events.Select((e, i) => (e.Name, "/events/" + N(i), e.Id)));
         Unique("guard", process.Guards.Select((g, i) => (g.Name, "/guards/" + N(i), g.Id)));
         Unique("action", process.Actions.Select((a, i) => (a.Name, "/actions/" + N(i), a.Id)));
+        UsedNames("guard", process.Guards.Select(g => g.Name), uses.Where(u => u.Guard is not null).Select(u => (u.Guard!.Name, u.Pointer, u.Guard.Id)));
+        UsedNames("action", process.Actions.Select(a => a.Name), uses.Where(u => u.Action is not null).Select(u => (u.Action!.Name, u.Pointer, u.Action.Id)));
         Unique("invoke", Invokes(process.States, ""));
         var gates = new List<(string, string, string)>();
         for (var i = 0; i < process.Transitions.Count; i++)
@@ -89,7 +157,27 @@ internal static partial class ProcessRules
             Unique("meaning", gate.Meanings.Select((m, j) => (m.Name, at + "/meanings/" + N(j), m.Id)), "gate '" + gate.Name + "'");
         }
 
+        for (var i = 0; i < process.Gates.Count; i++)
+        {
+            var gate = process.Gates[i];
+            var at = "/gates/" + N(i);
+            gates.Add((gate.Name, at, gate.Id));
+            Unique("meaning", gate.Meanings.Select((m, j) => (m.Name, at + "/meanings/" + N(j), m.Id)), "gate '" + gate.Name + "'");
+        }
+
         Unique("gate", gates);
+        UsedNames("gate", gates.Select(g => g.Item1), uses.Where(u => u.Gate is not null).Select(u => (u.Gate!.Name, u.Pointer, u.Gate.Id)));
+
+        // A library member's name must not clash with an own node's or another member's where code meets them: a pack generates one method per name.
+        void UsedNames(string what, IEnumerable<string> own, IEnumerable<(string Name, string Pointer, string Id)> used)
+        {
+            var seen = new HashSet<string>(own, StringComparer.Ordinal);
+            foreach (var (name, pointer, id) in used)
+            {
+                if (!seen.Add(name))
+                    report.Add("MQ3001", $"The {what} name '{name}' from a library is already used in process '{process.Name}'; rename one of them.", pointer, id);
+            }
+        }
 
         void CheckSiblings(IReadOnlyList<ProcessState> states, string pointer, string? parent)
         {
@@ -146,6 +234,8 @@ internal static partial class ProcessRules
             BuiltinRules.CheckStereotypes(context, process.Guards[i].Id, process.Guards[i].Stereotypes, "/guards/" + N(i), "guard", report);
         for (var i = 0; i < process.Actions.Count; i++)
             BuiltinRules.CheckStereotypes(context, process.Actions[i].Id, process.Actions[i].Stereotypes, "/actions/" + N(i), "action", report);
+        for (var i = 0; i < process.Gates.Count; i++)
+            BuiltinRules.CheckStereotypes(context, process.Gates[i].Id, process.Gates[i].Stereotypes, "/gates/" + N(i), "gate", report);
 
         void Walk(IReadOnlyList<ProcessState> states, string pointer)
         {
@@ -330,6 +420,8 @@ internal static partial class ProcessRules
             CheckTrigger(analysis, t, source, pointer, report);
             if (t.Gate is { } gate)
                 CheckGate(context, process, locals, t, gate, pointer + "/gate", report);
+            if (t.GatePolicy is { } policy)
+                CheckGatePolicy(context, process, locals, t, policy, pointer, report);
         }
 
         CheckOverlaps(analysis, report);
@@ -443,6 +535,32 @@ internal static partial class ProcessRules
         var name = $"Gate '{gate.Name}' of process '{process.Name}'";
         if (t.Trigger != TransitionTrigger.Event)
             report.Add("MQ9103", $"{name} is on a transition whose trigger is '{TriggerName(t.Trigger)}'; signatures are given on an event. Move the gate to an event transition.", pointer, gate.Id);
+        CheckGateItself(context, name, gate, pointer, report);
+        CheckGateEvent(context, name, locals, t, gate, pointer, report);
+    }
+
+    // MQ9021, then what a gate's use on a transition can get wrong; a policy's own rules are judged on its library.
+    private static void CheckGatePolicy(ValidationContext context, Process process, Locals locals, ProcessTransition t, string policy, string pointer, Report report)
+    {
+        if (t.Gate is not null)
+            report.Add("MQ9021", $"Transition {t.Id} of process '{process.Name}' has both a gate and a gatePolicy; keep one.", pointer + "/gatePolicy", t.Id);
+        if (ProcessLibraries.Owner(context.Model, policy, "gate") is not { } library)
+        {
+            if (context.Model.TryGetEntry(policy, out _))
+                report.Add("MQ9021", $"The gatePolicy of transition {t.Id} of process '{process.Name}' names a gate that no library holds; point at a gate of a library, or put the gate on the transition.", pointer + "/gatePolicy", t.Id);
+            return;
+        }
+
+        var gate = library.Gates.First(g => string.Equals(g.Id, policy, StringComparison.Ordinal));
+        var name = $"Gate '{gate.Name}' of library '{library.Name}', used by process '{process.Name}',";
+        if (t.Trigger != TransitionTrigger.Event)
+            report.Add("MQ9103", $"{name} is on a transition whose trigger is '{TriggerName(t.Trigger)}'; signatures are given on an event. Move the gate to an event transition.", pointer + "/gatePolicy", t.Id);
+        CheckGateEvent(context, name, locals, t, gate, pointer + "/gatePolicy", report);
+    }
+
+    // MQ9104, MQ9102, MQ9101: what a gate gets wrong wherever it is used.
+    private static void CheckGateItself(ValidationContext context, string name, ProcessGate gate, string pointer, Report report)
+    {
         if (gate.Meanings.Count == 0)
             report.Add("MQ9104", $"{name} has no meanings; add at least one, saying what a signature means (\"Reviewed as finance controller\").", pointer + "/meanings", gate.Id);
 
@@ -455,7 +573,11 @@ internal static partial class ProcessRules
         var signers = gate.Signers.Distinct(StringComparer.Ordinal).Select(id => context.Model.Get<Actor>(id)).ToList();
         if (!gate.AllowRepeatSigner && signers.Count > 0 && signers.All(a => a is { Type: ActorType.Person }) && gate.Required > signers.Count)
             report.Add("MQ9101", $"{name} needs {N(gate.Required)} signatures, but its signers are {N(signers.Count)} person actor(s) and a signer may not sign twice; lower required, add signers, or allow repeat signers.", pointer + "/required", gate.Id);
+    }
 
+    // MQ9105.
+    private static void CheckGateEvent(ValidationContext context, string name, Locals locals, ProcessTransition t, ProcessGate gate, string pointer, Report report)
+    {
         if (t.Trigger == TransitionTrigger.Event && t.Event is not null && locals.Events.TryGetValue(t.Event, out var e) && e.Actors.Count > 0)
         {
             for (var i = 0; i < gate.Signers.Count; i++)
@@ -475,10 +597,10 @@ internal static partial class ProcessRules
         for (var i = 0; i < process.Transitions.Count; i++)
         {
             var t = process.Transitions[i];
-            if (t.Gate is null || t.Trigger != TransitionTrigger.Event || t.Event is null)
+            if ((t.Gate is null && t.GatePolicy is null) || t.Trigger != TransitionTrigger.Event || t.Event is null)
                 continue;
             if (seen.TryGetValue((t.Source, t.Event), out var first))
-                report.Add("MQ9103", $"Transitions {N(first)} and {N(i)} of process '{process.Name}' both carry a gate on one source and event; the signatures could not tell which gate they count for. Keep one gate.", "/transitions/" + N(i) + "/gate", t.Gate.Id);
+                report.Add("MQ9103", $"Transitions {N(first)} and {N(i)} of process '{process.Name}' both carry a gate on one source and event; the signatures could not tell which gate they count for. Keep one gate.", "/transitions/" + N(i) + (t.Gate is null ? "/gatePolicy" : "/gate"), t.Gate?.Id ?? t.GatePolicy);
             else
                 seen[(t.Source, t.Event)] = i;
         }
@@ -561,6 +683,9 @@ internal static partial class ProcessRules
                 {
                     case InvokeType.Process when invoke.Process is null:
                         report.Add("MQ9015", $"{name} is a sub-process invoke without a process; set process.", pointer, invoke.Id);
+                        break;
+                    case InvokeType.Process when context.Model.Get<Process>(invoke.Process) is { Use: ProcessUse.Library } library:
+                        report.Add("MQ9022", $"{name} names library '{library.Name}', which has no states to run; name a running process.", pointer + "/process", invoke.Id);
                         break;
                     case InvokeType.Process when context.Model.Get<Process>(invoke.Process) is { } callee && Reaches(context, callee, process.Id) is { } chain:
                         report.Add("MQ9015", $"{name} starts a cycle of sub-processes ({Names(chain.Prepend(process.Name))}): the process would invoke itself. Break the cycle.", pointer + "/process", invoke.Id);
@@ -725,7 +850,7 @@ internal static partial class ProcessRules
         if (entity.Lifecycle is null || context.Model.Get<Process>(entity.Lifecycle) is not { } process)
             return;
         if (process.Use != ProcessUse.Lifecycle)
-            report.Add("MQ9201", $"Entity '{entity.Name}' names process '{process.Name}' as its lifecycle, but that process is an orchestration; name a lifecycle process, or set its use to lifecycle.", "/lifecycle");
+            report.Add("MQ9201", $"Entity '{entity.Name}' names process '{process.Name}' as its lifecycle, but that process is {(process.Use == ProcessUse.Library ? "a library" : "an orchestration")}; name a lifecycle process, or set its use to lifecycle.", "/lifecycle");
         else if (!string.Equals(process.Subject, entity.Id, StringComparison.Ordinal))
             report.Add("MQ9201", $"Entity '{entity.Name}' names process '{process.Name}' as its lifecycle, but that process's subject is {(process.Subject is not null && context.Model.Get<Entity>(process.Subject) is { } other ? "entity '" + other.Name + "'" : "not this entity")}; set the process's subject to this entity, or name its own lifecycle.", "/lifecycle");
     }
@@ -760,7 +885,7 @@ internal static partial class ProcessRules
     {
         if (locals.ContainsKey(id) || OtherProcessOwner(context, process, id, kind) is not { } other)
             return;
-        report.Add("MQ9014", $"Process '{process.Name}' refers to {kind} '{NameOf(other, id)}' of process '{other.Name}'; a process refers only to its own states, events, guards, actions and invokes. Declare it in this process.", pointer, elementId);
+        report.Add("MQ9014", $"Process '{process.Name}' refers to {kind} '{NameOf(other, id)}' of process '{other.Name}'; a process refers only to its own states, events, guards, actions and invokes, and a library's guards and actions. Declare it in this process, or move it to a library.", pointer, elementId);
     }
 
     private static Process? OtherProcessOwner(ValidationContext context, Process process, string id, string kind)
@@ -768,7 +893,8 @@ internal static partial class ProcessRules
         if (!context.Model.TryGetEntry(id, out var entry) || !SubElementKinds.Contains(entry.Kind) || !string.Equals(entry.Kind, kind, StringComparison.Ordinal)
             || string.Equals(entry.OwnerId, process.Id, StringComparison.Ordinal))
             return null;
-        return context.Model.Get<Process>(entry.OwnerId);
+        // A library's guards and actions are there to be used; gatePolicy has its own rule (MQ9021).
+        return context.Model.Get<Process>(entry.OwnerId) is { } owner && !(owner.Use == ProcessUse.Library && kind is "guard" or "action") ? owner : null;
     }
 
     private static string NameOf(Process owner, string id)

@@ -153,4 +153,10 @@ describe("the chart", () => {
     const chart = buildChart(purchase);
     expect([...activeStates(chart, ["checking", "pending", "gone"])].sort()).toEqual(["budget", "checking", "compliance", "pending", "review"]);
   });
+
+  it("draws nothing for a document with no states, instead of failing the view", () => {
+    const chart = buildChart({ kind: "process", id: "P", name: "Shared", use: "library" } as never);
+    expect(chart.roots).toEqual([]);
+    expect(chart.edges).toEqual([]);
+  });
 });

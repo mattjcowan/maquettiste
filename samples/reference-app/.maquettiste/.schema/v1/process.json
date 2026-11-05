@@ -27,6 +27,7 @@
     "events",
     "guards",
     "actions",
+    "gates",
     "states",
     "initial",
     "transitions",
@@ -58,9 +59,11 @@
       "$ref": "common.json#/$defs/id"
     },
     "use": {
+      "description": "lifecycle: the states an entity goes through. orchestration: a flow of work. library: guards, actions and gates that other processes name by id; it holds nothing that runs (MQ9020).",
       "enum": [
         "lifecycle",
-        "orchestration"
+        "orchestration",
+        "library"
       ],
       "default": "orchestration"
     },
@@ -138,13 +141,21 @@
       },
       "default": []
     },
+    "gates": {
+      "description": "A library's gates, which a transition names with gatePolicy. A process that is not a library holds its gates on its transitions (MQ9020).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/gate"
+      },
+      "default": []
+    },
     "states": {
-      "description": "The root's children, in document order.",
+      "description": "The root's children, in document order. A process that is not a library has at least one, and a library has none (MQ9020).",
       "type": "array",
       "items": {
         "$ref": "#/$defs/state"
       },
-      "minItems": 1
+      "default": []
     },
     "initial": {
       "description": "The root's initial child; absent means the first.",
@@ -173,8 +184,7 @@
   "required": [
     "kind",
     "id",
-    "name",
-    "states"
+    "name"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -296,6 +306,7 @@
         "actions",
         "external",
         "gate",
+        "gatePolicy",
         "description",
         "stereotypes",
         "properties"
@@ -355,6 +366,10 @@
         },
         "gate": {
           "$ref": "#/$defs/gate"
+        },
+        "gatePolicy": {
+          "description": "A library's gate, used here instead of an inline gate (MQ9021). Signatures still count per transition.",
+          "$ref": "common.json#/$defs/id"
         },
         "description": {
           "$ref": "common.json#/$defs/description"

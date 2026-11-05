@@ -383,6 +383,12 @@ internal readonly record struct PropertyHost(string Pointer, string Id, string K
             if (process.Transitions[i].Gate is { } g)
                 yield return new PropertyHost(At("/transitions", i) + "/gate", g.Id, "gate", g.Stereotypes, g.Properties);
         }
+
+        for (var i = 0; i < process.Gates.Count; i++)
+        {
+            var g = process.Gates[i];
+            yield return new PropertyHost(At("/gates", i), g.Id, "gate", g.Stereotypes, g.Properties);
+        }
     }
 
     private static PropertyHost Item(ElementBase item, string pointer, string kindName) => new(pointer, item.Id, kindName, item.Stereotypes, item.Properties);

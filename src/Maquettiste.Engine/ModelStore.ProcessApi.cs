@@ -27,6 +27,8 @@ public sealed partial class ModelStore
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         if (snapshot.Get<Process>(processId) is not { } stored)
             return ProcessCall<SimulationResult>.Fail(ProcessCallStatus.NotFound, $"No process has the id {processId}.");
+        if (stored.Use == ProcessUse.Library)
+            return ProcessCall<SimulationResult>.Fail(ProcessCallStatus.BadRequest, LibraryCannotRun(stored));
         if (ProcessApi.ReadInputs(request.Steps, stored, snapshot, out var error) is not { } inputs)
             return ProcessCall<SimulationResult>.Fail(ProcessCallStatus.BadRequest, error);
         var start = ProcessApi.ReadStart(request.Start, out error);
@@ -68,6 +70,8 @@ public sealed partial class ModelStore
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
         if (snapshot.Get<Process>(processId) is not { } process)
             return ProcessCall<RecordScenarioResult>.Fail(ProcessCallStatus.NotFound, $"No process has the id {processId}.");
+        if (process.Use == ProcessUse.Library)
+            return ProcessCall<RecordScenarioResult>.Fail(ProcessCallStatus.BadRequest, LibraryCannotRun(process));
         if (string.IsNullOrWhiteSpace(request.Name))
             return ProcessCall<RecordScenarioResult>.Fail(ProcessCallStatus.BadRequest, "name is required.");
         if (request.Outcome is not (null or "final" or "active"))
@@ -152,10 +156,15 @@ public sealed partial class ModelStore
     {
         ArgumentNullException.ThrowIfNull(processId);
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
-        return snapshot.Get<Process>(processId) is { } process
-            ? ProcessCall<XStateExport>.Ok(XStateProjection.Export(process, _services.Json, XStateExportOptions.For(snapshot)))
-            : ProcessCall<XStateExport>.Fail(ProcessCallStatus.NotFound, $"No process has the id {processId}.");
+        if (snapshot.Get<Process>(processId) is not { } process)
+            return ProcessCall<XStateExport>.Fail(ProcessCallStatus.NotFound, $"No process has the id {processId}.");
+        return process.Use == ProcessUse.Library
+            ? ProcessCall<XStateExport>.Fail(ProcessCallStatus.BadRequest, LibraryCannotRun(process))
+            : ProcessCall<XStateExport>.Ok(XStateProjection.Export(ProcessLibraries.Effective(snapshot, process), _services.Json, XStateExportOptions.For(snapshot)));
     }
+
+    private static string LibraryCannotRun(Process library) =>
+        $"Process '{library.Name}' is a library: it shares guards, actions and gates and has no states to run. Name a process that uses them.";
 
     /// <summary>
     /// Imports an XState machine config as a new process, or over <c>into</c> keeping its ids: a dry run returns the document the
@@ -190,6 +199,9 @@ public sealed partial class ModelStore
             if (matches.Count != 1)
                 return ProcessCall<ProcessImportResult>.Fail(ProcessCallStatus.NotFound, matches.Count == 0 ? $"No process has the id or name {intoKey}." : $"'{intoKey}' names {matches.Count} processes; pass an id.");
             into = matches[0];
+            if (ProcessLibraries.UsesOf(snapshot, into).Count > 0)
+                return ProcessCall<ProcessImportResult>.Fail(ProcessCallStatus.BadRequest,
+                    $"Process '{into.Name}' uses guards, actions or gates of a library, and an import writes local parts only, so it would drop those links and a gate policy's signatures. Edit the process's file instead.");
             var current = snapshot.GetDocument(into.Id)!.Hash;
             if (request.ExpectedHash is { Length: > 0 } expected && !string.Equals(expected, current, StringComparison.Ordinal))
                 return ProcessCall<ProcessImportResult>.Fail(ProcessCallStatus.Conflict, $"Process '{into.Name}' changed since it was read; export it again and retry.");

@@ -5263,6 +5263,24 @@ gates, the kinds `check` (an entity's check, a table's check, a stereotype's che
 and an operation's guards are holders under `guard`. A table's check holds `properties` only. Line numbers below are from
 when this section was written.
 
+**What the build changed (2026-11-05).**
+
+- **One effective process, not a libraries argument.** `ProcessLibraries.Effective(model, process)` returns the process with the
+  library guards and actions it names added, and each `gatePolicy` in place of an inline gate. The chart, the expressions, the
+  interpreter and the exporter read that, so their signatures did not change: `StatechartModel.Get` and `ProcessExpressions.Get`
+  keep theirs, and `ProcessLibraries.Chart` keys the chart by the hashes of the process and its libraries. A process that names no
+  library member is its own effective process, the same object.
+- **`process.guards` and `process.actions` also list the library members the process names**, after its own, as decision 10 says of
+  `process.gates`. A pack that walks them meets everything its transitions name.
+- **A library's guard holds `expression`, not `condition`** (MQ9020). A condition names the attributes of one process's context by id,
+  and a library has none.
+- **`actor.processes` leaves libraries out**, since a library is not a process that runs. `actor.gates` lists a library's gate once.
+- **The editor does not open a library in the chart editor.** `hasEditor` is false for it, and the inspector's JSON view edits it.
+- **`import_process` over a process that uses a library's members is refused**, rather than writing local copies as decision 12 said. A local copy
+  would have dropped a gate policy's signatures with no finding.
+- **A schema with no `appliesTo.kinds` does not reach `guard`, `action`, `invoke`, `gate` or `check`.** It reaches them only by naming them or through a
+  stereotype they carry, so a project's `required` properties do not start to bind them. MQ2003 and MQ2004 stay off entity checks, as they were.
+
 **Why every team**
 
 Once a team models more than one process, the same checks and effects recur: an amount must be positive, a record must
