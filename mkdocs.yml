@@ -66,6 +66,7 @@ nav:
       - Schema changes: guides/schema-changes.md
       - Upgrade tests: guides/upgrade-tests.md
       - Typed properties and layers: guides/typed-properties-and-layers.md
+      - Requirements as a kind of your own: guides/requirements-as-your-own-kind.md
       - Work with an agent: guides/work-with-an-agent.md
       - A demo in an existing repository: demo.md
   - Reference:
