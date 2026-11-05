@@ -1621,8 +1621,9 @@ internal static class BuiltinHelpers
     /// <summary>
     /// <c>referenced_by &lt;element | id&gt; ["&lt;field&gt;"]</c>: what links to an element or sub-element, one row per holder and field,
     /// ordinal by holder id then field. <paramref name="fieldValue"/> keeps the links of one field, such as a custom property's name. It
-    /// leaves out what <see cref="ModelSnapshot.LinksTo"/> does (diagrams and the object's own parts). Records <c>r:&lt;id&gt;</c>, which
-    /// follows every other file that links to it, and <c>e:</c> of the file that holds it, whose own parts may link to it too.
+    /// leaves out what <see cref="ModelSnapshot.LinksTo"/> does (diagrams and the object's own parts). A keyed id (a member a table takes
+    /// from a stereotype) finds the links that name that key. Records, per id: <c>rt:</c>, which follows every link in or out (also one a
+    /// changed schema adds or removes), <c>r:</c>, which follows the holders' files, and <c>e:</c> of the file that holds the target.
     /// </summary>
     private static object? ReferencedBy(TrackingTemplateContext context, object? target, object? fieldValue)
     {
@@ -1634,25 +1635,23 @@ internal static class BuiltinHelpers
         };
         var field = AsText(TrackingTemplateContext.Unwrap(fieldValue));
         var model = context.Unit.Run.Context.Model;
-        context.Recorder.Record("r:" + id);
         var snapshot = model.Source;
-        if (snapshot is null || !snapshot.TryGetEntry(id, out var entry))
-        {
-            context.Recorder.Record("e:" + id);
+        if (snapshot is null)
             return context.Wrap(Array.Empty<ReferrerView>());
-        }
-
-        context.Recorder.Record("e:" + entry.OwnerId);
         var rows = new List<ReferrerView>();
         var seen = new HashSet<(string From, string Field)>();
-        foreach (var link in snapshot.LinksTo(id))
+        foreach (var part in RecordLinkKeys(context.Recorder, snapshot, id))
         {
-            if ((field.Length == 0 || string.Equals(link.Field, field, StringComparison.Ordinal))
-                && seen.Add((link.FromId, link.Field)) && snapshot.TryGetEntry(link.FromId, out var holder))
+            foreach (var link in snapshot.LinksTo(part.Id))
             {
-                var from = model.Find(link.FromId);
-                var status = from is RAnnotated annotated ? annotated.Status : snapshot.IsRetired(link.FromId) ? "retired" : null;
-                rows.Add(new ReferrerView(link.FromId, holder.Kind, link.Field, status, from, model.Find(link.FromElementId)));
+                if ((field.Length == 0 || string.Equals(link.Field, field, StringComparison.Ordinal))
+                    && part.Others.All(other => snapshot.ReferencesTo(other).Any(r => string.Equals(r.FromElementId, link.FromElementId, StringComparison.Ordinal)
+                        && string.Equals(r.JsonPointer, link.JsonPointer, StringComparison.Ordinal)))
+                    && seen.Add((link.FromId, link.Field)) && snapshot.TryGetEntry(link.FromId, out var holder))
+                {
+                    var owner = model.Find(link.FromElementId);
+                    rows.Add(new ReferrerView(link.FromId, holder.Kind, link.Field, StatusOf(snapshot, holder), HolderOf(model, link, owner), owner));
+                }
             }
         }
 
@@ -1662,6 +1661,39 @@ internal static class BuiltinHelpers
             return byId != 0 ? byId : string.CompareOrdinal(a.Field, b.Field);
         });
         return context.Wrap(rows);
+    }
+
+    /// <summary>
+    /// Records what <c>referenced_by</c> depends on and answers where its links are: the id itself when the index has it; for a keyed id,
+    /// its last part with the other parts its links must also name at the same place (the index lists a keyed link under each part).
+    /// </summary>
+    private static List<(string Id, IReadOnlyList<string> Others)> RecordLinkKeys(UnitRecorder recorder, ModelSnapshot snapshot, string id)
+    {
+        IReadOnlyList<string> parts = snapshot.TryGetEntry(id, out _) ? [id] : [.. id.Split(['@', '.']).Where(IdFormat.IsValid).Distinct(StringComparer.Ordinal)];
+        foreach (var part in parts.Count == 0 ? [id] : parts)
+        {
+            recorder.Record("rt:" + part);
+            recorder.Record("r:" + part);
+            recorder.Record("e:" + (snapshot.TryGetEntry(part, out var entry) ? entry.OwnerId : part));
+        }
+
+        return parts.Count == 0 ? [] : [(parts[^1], parts.Take(parts.Count - 1).ToList())];
+    }
+
+    /// <summary>The holder's own <c>status</c> as its file states it, for any kind of holder; <see langword="null"/> when none is written.</summary>
+    private static string? StatusOf(ModelSnapshot snapshot, IndexEntry holder) =>
+        snapshot.GetDocument(holder.OwnerId) is { } document && ModelStore.Pointer(document.Json, holder.JsonPointer) is { ValueKind: JsonValueKind.Object } json
+        && json.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String ? status.GetString() : null;
+
+    /// <summary>
+    /// The resolved holder of a link, or <see langword="null"/> when templates have none of its own: <see cref="ResolvedModel.Find"/> gives
+    /// the first carrier's copy of a stereotype's member, and which entity that is must not decide what a row says.
+    /// </summary>
+    private static IResolvedObject? HolderOf(ResolvedModel model, ReferenceInfo link, IResolvedObject? owner)
+    {
+        var found = model.Find(link.FromId);
+        return found is not null && !ReferenceEquals(found, owner) && (owner is RStereotypeDefinition
+            || (found is RAttribute { Owner: { } carrier } && !string.Equals(carrier.Id, link.FromElementId, StringComparison.Ordinal))) ? null : found;
     }
 
     /// <summary><c>state_path &lt;state&gt;</c>: a process state's dotted path (<c>Fulfilment.Shipping.Packed</c>); a state id works too.</summary>

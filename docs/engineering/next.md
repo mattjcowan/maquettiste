@@ -32,7 +32,7 @@ must help any team whether they use it or not, and it stays optional.
 
 | # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
-| | A template helper that lists what links to an element (`referenced_by`) | yes | Built, 0.12.2 | Each row says the holder's kind and status and the field that made the link, and reaches parts such as a gate. A unit that reads it renders again when a file starts or stops linking. |
+| | A template helper that lists what links to an element (`referenced_by`) | yes | Built, 0.12.2 | Each row says the holder's kind and status and the field that made the link, and reaches parts such as a gate. A unit that reads it renders again when a link comes or goes, or a holder changes. |
 | | Declared rules that select one custom type | yes | Build next | Today a rule on `custom` judges every custom type. |
 | | Create or update by name in a batch | yes | Build next | One step for a script that refreshes elements from another source. Whether an update replaces or merges is decided with it. |
 | | Declared rules that count linking elements with a filter | yes | Build next | For example, only those not retired. Today a retired process or scenario still counts. |

@@ -8,10 +8,10 @@ one.
 ## 0.12.2 (unreleased)
 
 - **What links to an element, in templates.** `referenced_by <element or id> ["<field>"]` lists what links to an element
-  or a part, a row per holder and field: `id`, `kind`, `field`, `status` (the holder's own), `from` (the holder when
-  templates can read it, else null) and `owner` (the element whose file holds it). So a page per custom element can list
-  what meets it, and its unit renders again when a file starts or stops linking or a holder changes. Before upgrading: a
-  pack helper registered under the name `referenced_by` is now MQ6013, so rename it.
+  or a part, a row per holder and field: `id`, `kind`, `field`, `status` (the holder's own), `from` (the holder) and
+  `owner` (the element whose file holds it); `from` and `owner` are null when templates have no object for it. So a page
+  per custom element can list what meets it, and its unit renders again when a link comes or goes or a holder changes.
+  Before upgrading: a pack helper registered under the name `referenced_by` is now MQ6013, so rename it.
 
 ## 0.12.1 (2026-11-04)
 

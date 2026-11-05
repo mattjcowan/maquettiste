@@ -45,8 +45,9 @@ internal sealed record HintsView(bool Skip, string? Rename, MapView Variables) :
 
 /// <summary>
 /// One row of <c>referenced_by</c>: the holder's id (a keyed id for a part), its kind as the index names it, the field that made the link,
-/// and the holder's own status. <paramref name="From"/> is the holder when templates can read it (a table's check, for one, has no
-/// resolved object of its own, so it is <see langword="null"/>), and <paramref name="Owner"/> the element whose file holds it.
+/// and the holder's own status. <paramref name="From"/> is the holder when templates can read it, and <paramref name="Owner"/> the element
+/// whose file holds it; either is <see langword="null"/> when templates have no object for it (a table's check, a stereotype's member, a
+/// mapping file).
 /// </summary>
 internal sealed record ReferrerView(string Id, string Kind, string Field, string? Status, IResolvedObject? From, IResolvedObject? Owner) : ITemplateView;
 

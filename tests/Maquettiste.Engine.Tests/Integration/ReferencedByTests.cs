@@ -14,19 +14,22 @@ namespace Maquettiste.Engine.Tests.Integration;
 public sealed class ReferencedByTests
 {
     private const string Policy = "01JRRB00000000000000000001";
+    private const string Notes = "01K6BND0000000000000000001";
+    private const string StampedStereotype = "01J92P0V28YYY43REGJ9RXZ662";
+    private const string StampedStereotypeKey = "soft-delete";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static async Task<E2ERepo> CopyAsync(string template)
+    private static async Task<E2ERepo> CopyAsync(string template, string extraKind = "table")
     {
         var repo = E2ERepo.Create(demo: false);
         repo.Repo.WriteFile(".maquettiste/extensions/kinds/policy.json", """{ "type": "policy", "properties": { "text": { "type": "string" } } }""");
         repo.Repo.WriteFile(".maquettiste/extensions/traces.json", """
-            { "name": "traces", "appliesTo": { "kinds": ["entity", "attribute"] },
+            { "name": "traces", "appliesTo": { "kinds": ["entity", "attribute", "KIND"] },
               "properties": {
                 "meets": { "type": "array", "items": { "type": "string", "x-ref": { "kind": "custom:policy", "optional": true } } },
                 "shaped_by": { "type": "string", "x-ref": { "kind": "custom:policy", "optional": true } } } }
-            """);
+            """.Replace("KIND", extraKind, StringComparison.Ordinal));
         var pack = Path.Combine(repo.Repo.ModelRoot, "templates", "links");
         Directory.CreateDirectory(pack);
         await File.WriteAllTextAsync(Path.Combine(pack, "pack.json"), """
@@ -109,6 +112,106 @@ public sealed class ReferencedByTests
         await repo.ApplyAsync();
         Assert.Equal("", repo.Repo.ReadFile("src/Generated/links/keeps_lines.txt"));
         Assert.Empty(await RenderedAsync(repo));
+    }
+
+    [Fact]
+    public async Task A_schema_that_stops_declaring_a_link_renders_the_page_again()
+    {
+        await using var repo = await CopyAsync("{{ for l in (referenced_by custom) }}{{ l.field }}\n{{ end }}");
+        await repo.EditAsync(E2ERepo.CustomerId, entity => entity["properties"] = new JsonObject
+        {
+            ["meets"] = new JsonArray(JsonValue.Create(Policy)),
+            ["shaped_by"] = JsonValue.Create(Policy),
+        });
+        await repo.ApplyAsync();
+        Assert.Equal("meets\nshaped_by\n", repo.Repo.ReadFile("src/Generated/links/keeps_lines.txt"));
+
+        // Customer still links through meets, so the set of files that link to the policy, and each file, stay the same.
+        repo.Repo.WriteFile(".maquettiste/extensions/traces.json", """
+            { "name": "traces", "appliesTo": { "kinds": ["entity", "attribute"] },
+              "properties": {
+                "meets": { "type": "array", "items": { "type": "string", "x-ref": { "kind": "custom:policy", "optional": true } } },
+                "shaped_by": { "type": "string" } } }
+            """);
+        await repo.RestartAsync();
+
+        Assert.Equal(["links/page:" + Policy], await RenderedAsync(repo));
+        await repo.ApplyAsync();
+        Assert.Equal("meets\n", repo.Repo.ReadFile("src/Generated/links/keeps_lines.txt"));
+    }
+
+    [Fact]
+    public async Task A_part_that_writes_a_status_reports_it_whatever_its_kind()
+    {
+        await using var repo = await CopyAsync("{{ for l in (referenced_by custom) }}{{ l.kind }}={{ l.status }}\n{{ end }}", "enum-member");
+        var snapshot = await repo.Store.GetSnapshotAsync(Ct);
+        var type = snapshot.All<Engine.Model.EnumType>().First();
+        await repo.EditAsync(type.Id, element =>
+        {
+            var member = element["members"]!.AsArray()[0]!.AsObject();
+            member["status"] = "deprecated";
+            Link(member, "shaped_by");
+        });
+
+        await repo.ApplyAsync();
+
+        Assert.Equal("enum-member=deprecated\n", repo.Repo.ReadFile("src/Generated/links/keeps_lines.txt"));
+    }
+
+    [Fact]
+    public async Task A_stereotypes_member_has_no_holder_object_so_its_carriers_do_not_change_the_row()
+    {
+        await using var repo = await CopyAsync(
+            "{{ for l in (referenced_by custom) }}{{ l.kind }} {{ l.from == null }} {{ if l.owner }}{{ l.owner.kind }}{{ end }}\n{{ end }}");
+        await repo.EditAsync(StampedStereotype, stereotype =>
+            stereotype["attributes"]!.AsArray()[0]!.AsObject()["properties"] = new JsonObject { ["shaped_by"] = Policy });
+        await repo.ApplyAsync();
+        var page = repo.Repo.ReadFile("src/Generated/links/keeps_lines.txt");
+        Assert.Equal("attribute true stereotype\n", page);
+
+        // Another entity takes the stereotype: nothing about the link changed, so nothing renders.
+        await repo.EditAsync(E2ERepo.ProductId, entity => entity["stereotypes"] = new JsonArray(JsonValue.Create(StampedStereotypeKey)));
+
+        Assert.Empty(await RenderedAsync(repo));
+        await repo.RunAsync(force: true);
+        Assert.Equal(page, repo.Repo.ReadFile("src/Generated/links/keeps_lines.txt"));
+    }
+
+    [Fact]
+    public async Task A_keyed_id_finds_the_links_that_name_that_key_and_no_others()
+    {
+        const string Stamped = "01JRRB00000000000000000002";
+        const string Stamp = "01JRRB00000000000000000003";
+        const string Other = "01JRRB00000000000000000004";
+        await using var repo = await CopyAsync(
+            "{{ for t in model.databases[0].tables }}{{ for c in t.columns }}{{ if c.id | string.contains '." + Stamp + "' }}{{ c.id }} {{ (referenced_by c).size }}\n{{ end }}{{ end }}{{ end }}");
+        repo.Repo.WriteFile(".maquettiste/extensions/about.json", """
+            { "name": "about", "appliesTo": { "kinds": ["entity"] },
+              "properties": { "about": { "type": "string", "x-ref": { "kind": "column", "optional": true } } } }
+            """);
+        await repo.RestartAsync();
+        await repo.CreateElementAsync($$"""
+            { "kind": "stereotype", "id": "{{Stamped}}", "key": "stamped", "name": "Stamped", "appliesTo": ["table"],
+              "columns": [ { "id": "{{Stamp}}", "name": "stamp", "type": "text" } ] }
+            """);
+        await repo.CreateElementAsync($$"""
+            { "kind": "table", "id": "{{Other}}", "name": "others", "database": "{{E2ERepo.MainDatabaseId}}", "stereotypes": ["stamped"],
+              "columns": [ { "id": "01JRRB00000000000000000005", "name": "id", "type": "uuid" } ] }
+            """);
+        await repo.EditAsync(Notes, table => table["stereotypes"] = new JsonArray(JsonValue.Create("stamped")));
+        await repo.ApplyAsync();
+        var notes = Notes + "." + Stamp;
+        var other = Other + "." + Stamp;
+        Assert.Equal($"{other} 0\n{notes} 0\n", Lines(repo));
+
+        await repo.EditAsync(E2ERepo.ProductId, entity => entity["properties"] = new JsonObject { ["about"] = notes });
+
+        Assert.Equal(["links/page:" + Policy], await RenderedAsync(repo));
+        await repo.ApplyAsync();
+        Assert.Equal($"{other} 0\n{notes} 1\n", Lines(repo));
+
+        static string Lines(E2ERepo repo) => string.Concat(repo.Repo.ReadFile("src/Generated/links/keeps_lines.txt").Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Order(StringComparer.Ordinal).Select(l => l + "\n"));
     }
 
     [Fact]

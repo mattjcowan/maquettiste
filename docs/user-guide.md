@@ -4199,8 +4199,9 @@ For example, a `feature-flag` kind and one flag in the Billing domain:
 A custom element's name is unique per type and package. An `x-ref` in its content is a reference like any other: the
 element it names cannot be deleted plainly, and `get_references` lists the link. A template reads the same links with
 `referenced_by <element or id> ["<field>"]`, and a page per custom element can list what links to it; its unit renders
-again when a file starts or stops linking, or a holder changes. Each row has `id`, `kind`, `field`, `status` (the
-holder's own), `from` (the holder when templates can read it, else null) and `owner` (the element whose file holds it).
+again when a link comes or goes, or a holder changes. Each row has `id`, `kind`, `field`, `status` (the holder's own),
+`from` (the holder) and `owner` (the element whose file holds it). `from` and `owner` are null when templates have no
+object for it (a table's check, a stereotype's member, a mapping file), so test them first.
 An `x-ref` anywhere in the project,
 in a custom property schema too, can name a custom kind as `{ "kind": "custom:feature-flag" }`.
 
