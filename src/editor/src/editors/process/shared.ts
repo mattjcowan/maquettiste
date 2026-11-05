@@ -25,12 +25,26 @@ export interface ProcessContext {
   actorNames: Map<string, string>;
 }
 
-export function useProblems(id: string, draft: Diagnostic[]): Diagnostic[] {
+/**
+ * The findings of one element. `entryIds` are the ids of its `subjects` entries: the engine reports a finding about one
+ * entry under the entry's id, not the process's (lifecycle-design.md decision 5).
+ */
+export function useProblems(id: string, draft: Diagnostic[], entryIds: readonly string[] = []): Diagnostic[] {
   const validation = useValidation();
+  const entries = entryIds.join("|");
   return useMemo(() => {
     if (draft.length) return draft;
-    return (validation.data?.diagnostics ?? []).filter((d) => d.elementId === id);
-  }, [validation.data, draft, id]);
+    const own = new Set([id, ...(entries ? entries.split("|") : [])]);
+    return (validation.data?.diagnostics ?? []).filter((d) => d.elementId != null && own.has(d.elementId));
+  }, [validation.data, draft, id, entries]);
+}
+
+/** The ids of a process file's `subjects` entries. */
+export function entryIdsOf(json: object): string[] {
+  const { subjects } = json as { subjects?: unknown };
+  return Array.isArray(subjects)
+    ? (subjects as { id?: unknown }[]).flatMap((e) => (e && typeof e.id === "string" ? [e.id] : []))
+    : [];
 }
 
 export function useActors(): { actors: ElementSummary[]; actorNames: Map<string, string> } {
@@ -49,7 +63,7 @@ function withStates(json: unknown): ProcessDoc {
 
 export function useProcessContext(props: FormProps): ProcessContext {
   const { id, json, edit, flush, diagnostics } = props;
-  const problems = useProblems(id, diagnostics);
+  const problems = useProblems(id, diagnostics, entryIdsOf(json));
   const { actors, actorNames } = useActors();
   return {
     id,

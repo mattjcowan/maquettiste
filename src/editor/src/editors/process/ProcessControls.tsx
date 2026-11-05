@@ -15,8 +15,8 @@ import { useServices } from "@/app/context";
 import { indexLookup } from "@/model/index";
 import { subjectsOf, syncPlanLines } from "@/model/process";
 import { MarkChips, NameAndDomain, domIdOf, type EditorContext } from "../EditorFrame";
-import { applySyncEnum, demoteLifecycle, setLifecycle, syncEnum, type SyncEnumResult } from "./api";
-import { useProblems } from "./shared";
+import { applySyncEnum, demoteLifecycle, replaceSoleSubject, setLifecycle, syncEnum, type SyncEnumResult } from "./api";
+import { entryIdsOf, useProblems } from "./shared";
 
 type Rec = Record<string, unknown>;
 
@@ -65,11 +65,10 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
   const bound = sole?.boundAttribute;
   const listForm = Array.isArray(rec.subjects);
   const { attributes, enumId } = useBinding(subject, bound);
-  const problems = useProblems(id, ctx.diagnostics);
+  const problems = useProblems(id, ctx.diagnostics, entryIdsOf(rec));
   const drift = problems.find((d) => d.rule === "MQ9203");
   const { store, drafts } = useServices();
   const qc = useQueryClient();
-  const subjectDoc = useElement(subject ?? null);
   const name = typeof rec.name === "string" ? rec.name : id;
   // A lifecycle binds both sides: Use and Subject changes that make or keep it a lifecycle, or leave one, go through
   // the set-lifecycle operation (the process, the entity and any previous partner in one batch, one undo step).
@@ -83,15 +82,10 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
       if (subject) bind(subject, id, `Make ${name} a lifecycle`);
       return;
     }
-    // Demoting keeps the subjects and clears their bindings (decision 10). In the one-subject form the entity's own
-    // lifecycle name is released with it, as before.
-    const named = (subjectDoc.data?.json as Rec | undefined)?.lifecycle === id;
-    if (subject && named && !listForm) bind(subject, undefined, `Make ${name} an orchestration`);
-    else if (listForm && named)
-      void demoteLifecycle(qc, store, drafts, { process: id, label: `Make ${name} an orchestration` }).then((refused) => {
-        if (refused) store.getState().notify(`Make ${name} an orchestration: ${refused}`, "error");
-      });
-    else set("use", undefined);
+    // Demoting keeps the subjects and clears their bindings, in either form (decision 10); an entity naming it lets go.
+    void demoteLifecycle(qc, store, drafts, { process: id, label: `Make ${name} an orchestration` }).then((refused) => {
+      if (refused) store.getState().notify(`Make ${name} an orchestration: ${refused}`, "error");
+    });
   };
   const setSubject = (next: string | undefined) => {
     if (!listForm && !(all.length === 0 && next)) {
@@ -101,6 +95,10 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
     }
     // No subject yet: it gets `subjects`, from set-lifecycle for a lifecycle (decision 7). With a list: edit its one entry.
     if (all.length === 0 && use === "lifecycle" && next) bind(next, id, `Set the subject of ${name}`);
+    else if (use === "lifecycle" && next && Array.isArray(rec.subjects) && rec.subjects.length === 1)
+      void replaceSoleSubject(qc, store, drafts, { process: id, entity: next, label: `Set the subject of ${name}` }).then((refused) => {
+        if (refused) store.getState().notify(`Set the subject of ${name}: ${refused}`, "error");
+      });
     else {
       edit((j) => {
         const r = j as Rec;

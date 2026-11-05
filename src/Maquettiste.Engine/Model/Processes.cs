@@ -61,7 +61,10 @@ public sealed record Process : Element, IPackaged
         : Subject is { } entity ? [new ProcessSubject { Id = Id, Entity = entity, BoundAttribute = BoundAttribute }]
         : [];
 
-    /// <summary>Whether the file writes its subjects in the deprecated one-subject form (<c>subject</c> or <c>boundAttribute</c>, MQ9209).</summary>
+    /// <summary>
+    /// Whether the file writes its subjects in the deprecated one-subject form (<c>subject</c> or <c>boundAttribute</c>); MQ9209 warns when
+    /// it has a <c>subject</c>.
+    /// </summary>
     [JsonIgnore]
     public bool UsesOneSubjectForm => Subject is not null || BoundAttribute is not null;
 

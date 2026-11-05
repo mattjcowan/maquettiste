@@ -751,11 +751,12 @@ internal static partial class ProcessRules
     private static void CheckLifecycle(ValidationContext context, Process process, ProcessAnalysis analysis, Report report)
     {
         var model = context.Model;
-        // The one-subject form is deprecated on lifecycles and orchestrations alike (lifecycle-design.md decision 6).
-        if (process.UsesOneSubjectForm)
+        // The one-subject form is deprecated on lifecycles and orchestrations alike (lifecycle-design.md decision 6). It warns only where
+        // there is a subject, since that is what use-subjects converts; a boundAttribute with no subject keeps its own findings (MQ9201, MQ9202).
+        if (process.Subject is not null)
         {
             report.Add("MQ9209", $"Process '{process.Name}' names its subject in the one-subject form (subject and boundAttribute), which is deprecated; list it in subjects instead.",
-                process.Subject is not null ? "/subject" : "/boundAttribute");
+                "/subject");
         }
 
         var entries = process.Subject is null ? process.SubjectList : null; // the subjects form

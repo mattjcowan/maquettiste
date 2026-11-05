@@ -762,6 +762,9 @@ export class MockModel {
       for (const gone of deleted) candidate.delete(gone);
       dropEmptySubjects(edited.values());
       for (const [refId, json] of edited) candidate.set(refId, this.entryFor(json, this.entries.get(refId)));
+      // A lifecycle left with no subject fails MQ9201, which the engine refuses (decision 5).
+      const emptied = this.check(candidate, [...edited.keys()]).introduced.filter((d) => d.rule === "MQ9201");
+      if (emptied.length) return this.invalid(id, emptied);
       const changes = this.commit(candidate);
       return { outcome: "saved", id, hash: null, current: null, diagnostics: [], referrers: [], changes };
     }
@@ -962,6 +965,24 @@ export class MockModel {
         // gets a `subjects` list of one entry holding its `subject` and `boundAttribute`; anything else is left as it is.
         const listed = (op as { elementIds?: string[] }).elementIds;
         const pool = listed ? listed.map((id) => candidate.get(id)).filter((e): e is Entry => !!e) : [...candidate.values()];
+        const missing = (listed ?? []).find((m) => candidate.get(m)?.json.kind !== "process");
+        if (missing !== undefined) {
+          fail(
+            this.invalid(missing, [
+              {
+                rule: "MQ9019",
+                severity: "error",
+                message: candidate.has(missing) ? `${missing} is not a process.` : `No process ${missing}.`,
+                elementId: missing,
+                filePath: null,
+                jsonPointer: "",
+                line: null,
+                column: null,
+              },
+            ]),
+          );
+          continue;
+        }
         for (const existing of pool) {
           const json = existing.json as Json;
           if (json.kind !== "process" || Array.isArray(json.subjects) || typeof json.subject !== "string") continue;
@@ -1095,7 +1116,10 @@ export class MockModel {
       if (introduced.length) {
         failure = "invalid";
         for (let i = 0; i < items.length; i++) {
-          const mine = introduced.filter((d) => d.elementId === items[i].id);
+          // A finding about a `subjects` entry names the entry, so it belongs to the process that holds it.
+          const mine = introduced.filter(
+            (d) => d.elementId === items[i].id || ((candidate.get(items[i].id!)?.json.subjects as Json[] | undefined) ?? []).some((e) => e.id === d.elementId),
+          );
           if (mine.length) items[i] = this.invalid(items[i].id, mine);
         }
         if (!items.some((i) => i.outcome === "invalid")) items[0] = this.invalid(items[0].id, introduced);
@@ -1600,7 +1624,10 @@ function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, t
     const next = edit(process);
     next.use = "lifecycle";
     if (Array.isArray(next.subjects)) {
-      if (!(next.subjects as Json[]).some((e) => e.entity === id)) next.subjects = [...(next.subjects as Json[]), { id: newId(), entity: id }];
+      // An entry covers its entity and the entities derived from it, so a listed base is enough (decision 5).
+      const chain = new Set<unknown>([id]);
+      for (let base = entity.base; typeof base === "string" && !chain.has(base); base = get(base)?.base) chain.add(base);
+      if (!(next.subjects as Json[]).some((e) => chain.has(e.entity))) next.subjects = [...(next.subjects as Json[]), { id: newId(), entity: id }];
     } else if (typeof next.subject === "string") {
       const partner = get(next.subject);
       if (partner && partner.id !== id && partner.lifecycle === target) delete edit(partner).lifecycle;

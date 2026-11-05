@@ -288,14 +288,20 @@ public sealed class ModelIndexerPatchTests
             case 8 when random.Next(4) == 0: // an id collision (full build; the first path wins)
                 list.Add(doc with { Path = doc.Path + ".dup" });
                 break;
-            case 9 when doc.Element is Process process: // re-point a lifecycle's subjects, switching its form (the index row's subject or subjects)
+            case 9 when doc.Element is Process process: // re-point a lifecycle's subjects, or switch its form (the index row's subject or subjects)
             {
                 var targets = list.Where(d => d.Element is Entity).ToList();
                 var target = targets[random.Next(targets.Count)].Element.Id;
                 list[index] = doc with
                 {
+                    // Only documents the schema accepts: one form or the other, or no subject, never both forms at once.
                     Element = process.SubjectList is { Count: > 0 } entries
-                        ? process with { SubjectList = random.Next(2) == 0 ? null : [entries[0] with { Entity = target }], Subject = random.Next(2) == 0 ? null : target }
+                        ? random.Next(3) switch
+                        {
+                            0 => process with { SubjectList = [entries[0] with { Entity = target }] },
+                            1 => process with { SubjectList = null, Subject = target, BoundAttribute = entries[0].BoundAttribute },
+                            _ => process with { SubjectList = null },
+                        }
                         : process with
                         {
                             Subject = null, BoundAttribute = null,

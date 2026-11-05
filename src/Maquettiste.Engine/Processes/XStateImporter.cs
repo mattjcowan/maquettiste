@@ -24,6 +24,7 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
     private static readonly HashSet<string> InvokeKeys = new(["id", "src", "onDone", "onError", "meta"], StringComparer.Ordinal);
     private static readonly HashSet<string> StateTypes = new(["atomic", "compound", "parallel", "final", "history"], StringComparer.Ordinal);
     private static readonly string[] Descriptive = ["displayName", "description", "stereotypes", "properties"];
+    private static readonly string[] StateKept = [.. Descriptive, "code"]; // a state's code is kept too (lifecycle-design.md section 8)
 
     private readonly List<Diagnostic> _diagnostics = [];
     private readonly List<string> _created = [];
@@ -227,7 +228,7 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
     {
         var config = s.Config;
         var node = new JsonObject { ["id"] = s.Id, ["name"] = Identifier(s.Key, s.Pointer, "state name") };
-        var leftovers = s.Meta is not null ? Without(s.Meta, "id", "initialImplied") : Pick(s.IntoNode, Descriptive);
+        var leftovers = s.Meta is not null ? Without(s.Meta, "id", "initialImplied") : Pick(s.IntoNode, StateKept);
         var configType = config["type"] is JsonValue tv && tv.GetValueKind() == JsonValueKind.String ? tv.GetValue<string>() : null;
         if (configType is not null && !StateTypes.Contains(configType))
             Refuse("MQ9403", "State '" + s.Key + "' has type '" + configType + "', which is not a statechart state type.", s.Pointer + "/type");
@@ -758,9 +759,10 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
     /// Writes the subjects in the form the process has (lifecycle-design.md decision 7), so no import changes a file's form unasked and
     /// none creates the deprecated form from nothing. A re-import keeps the form of the process it goes into, and a process that has no
     /// subject yet gets <c>subjects</c>; a new process keeps the form the config carries (so an exported file imports back byte for
-    /// byte), else gets <c>subjects</c>. Carried keys of the other form are dropped, except that a carried one-subject form becomes the
-    /// one entry of a process re-imported with no subject. <see cref="XStateImportOptions.Subject"/>, when given, is the subject in the
-    /// one-subject form, the one entry of a list of at most one, or an entry added to a longer list.
+    /// byte), else gets <c>subjects</c>. On a re-import, carried keys of the other form are converted into the target's: a one-subject
+    /// form becomes one entry (keeping the target's entry id when the entity matches), and a list of one plain entry becomes the
+    /// one-subject form; keys that cannot be converted give way to the target's own. <see cref="XStateImportOptions.Subject"/>, when
+    /// given, is the subject in the one-subject form, the one entry of a list of at most one, or an entry added to a longer list.
     /// </summary>
     private void Subjects(JsonObject document)
     {
@@ -770,9 +772,19 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
         document.Remove("subject");
         document.Remove("boundAttribute");
         document.Remove("subjects");
-        var oneSubjectForm = options.Into is { } into ? into.UsesOneSubjectForm : (subject is not null || bound is not null);
+        var carriesOneSubjectForm = subject is not null || bound is not null;
+        var oneSubjectForm = options.Into is { } into ? into.UsesOneSubjectForm : carriesOneSubjectForm;
         if (oneSubjectForm)
         {
+            if (options.Into is not null && !carriesOneSubjectForm && listed is not null)
+            {
+                // The config lists its subjects: one plain entry converts into the target's one-subject form, else the target keeps its own.
+                var only = listed is [JsonObject entry] && entry.All(p => p.Key is "id" or "entity" or "boundAttribute")
+                    && IsText(entry["entity"]) && (entry["boundAttribute"] is null || IsText(entry["boundAttribute"])) ? entry : null;
+                subject = (only is not null ? only["entity"] : _into.Root?["subject"])?.DeepClone();
+                bound = (only ?? _into.Root)?["boundAttribute"]?.DeepClone();
+            }
+
             if (subject is not null)
                 document["subject"] = subject;
             if (bound is not null)
@@ -785,12 +797,21 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
         var entries = new List<JsonObject>();
         if (listed is not null)
             entries.AddRange(listed.OfType<JsonObject>().Select(e => (JsonObject)e.DeepClone()));
-        else if (options.Into is { SubjectList: null or { Count: 0 } } && subject is JsonValue entity && entity.GetValueKind() == JsonValueKind.String)
+        else if (options.Into is not null && carriesOneSubjectForm)
         {
-            var entry = new JsonObject { ["entity"] = entity.GetValue<string>() };
-            if (bound is not null)
-                entry["boundAttribute"] = bound;
-            entries.Add(entry);
+            // The config carries the one-subject form: its subject converts into one entry of the target's list, else the target keeps its
+            // own entries (none for a target with no subject).
+            if (IsText(subject) && (bound is null || IsText(bound)))
+            {
+                var entry = new JsonObject { ["entity"] = subject };
+                if (bound is not null)
+                    entry["boundAttribute"] = bound;
+                entries.Add(entry);
+            }
+            else if (_into.Root?["subjects"] is JsonArray own)
+            {
+                entries.AddRange(own.OfType<JsonObject>().Select(e => (JsonObject)e.DeepClone()));
+            }
         }
 
         string? EntityOf(JsonObject entry) => entry["entity"] is JsonValue v && v.GetValueKind() == JsonValueKind.String ? v.GetValue<string>() : null;
@@ -1067,6 +1088,8 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
 
         return result;
     }
+
+    private static bool IsText(JsonNode? node) => node is JsonValue v && v.GetValueKind() == JsonValueKind.String;
 
     private static JsonObject Pick(JsonObject? node, string[] keys)
     {

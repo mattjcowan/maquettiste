@@ -23,8 +23,9 @@ export interface ValidationInput {
 
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
 
-function diag(rule: string, severity: Diagnostic["severity"], message: string, entry: ModelEntry, pointer: string): Diagnostic {
-  return { rule, severity, message, elementId: entry.id, filePath: entry.path, jsonPointer: pointer, line: null, column: null };
+/** `elementId` is the entry's own id unless a `subjects` entry's id is given: the engine reports a finding about one entry under it. */
+function diag(rule: string, severity: Diagnostic["severity"], message: string, entry: ModelEntry, pointer: string, elementId?: string): Diagnostic {
+  return { rule, severity, message, elementId: elementId || entry.id, filePath: entry.path, jsonPointer: pointer, line: null, column: null };
 }
 
 /** MQ1002: the document against schemas/v1/<kind>.json. */
@@ -66,7 +67,7 @@ export interface ValidationContext extends ModelGlobals {
 export function enumDrift(
   json: Json,
   lookup: (id: string) => ModelEntry | undefined,
-): { states: string[]; members: string[]; enumId: string; pointer: string } | null {
+): { states: string[]; members: string[]; enumId: string; pointer: string; entryId: string } | null {
   if (json.kind !== "process" || json.use !== "lifecycle") return null;
   // The first binding of the one list (both forms); the pointer names it where the file keeps it.
   const at = subjectsOf(json).findIndex((e) => e.boundAttribute !== undefined);
@@ -82,7 +83,8 @@ export function enumDrift(
     .map((st) => String(st.name));
   const members = arr(enumEntry.json.members).map((m) => String(m.name));
   const pointer = Array.isArray(json.subjects) ? `/subjects/${at}/boundAttribute` : "/boundAttribute";
-  return states.join("\u0000") === members.join("\u0000") ? null : { states, members, enumId: enumEntry.id, pointer };
+  const entryId = Array.isArray(json.subjects) ? entry.id : "";
+  return states.join("\u0000") === members.join("\u0000") ? null : { states, members, enumId: enumEntry.id, pointer, entryId };
 }
 
 /** One tag vocabulary or category tree of a scope ("" is global, else the domain's package id). */
@@ -288,6 +290,7 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
       else seen.set(name, `attribute ${i + 1}`);
     });
   }
+  if (kind === "entity" && typeof json.lifecycle === "string" && ctx.lookup) entityLifecycleDiagnostics(json, entry, ctx.lookup, out);
   if (kind === "relation") {
     const ends = arr(json.ends);
     if (json.relationKind !== "n-ary" && ends.length !== 2)
@@ -310,6 +313,7 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
           `The bound enum's members (${drift.members.join(", ")}) differ from the lifecycle's states (${drift.states.join(", ")}); sync the enum from the process.`,
           entry,
           drift.pointer,
+          drift.entryId,
         ),
       );
   }
@@ -421,6 +425,40 @@ export function diagnosticKey(d: Diagnostic): string {
   return `${d.rule}|${d.elementId}|${d.jsonPointer}|${d.message}`;
 }
 
+/** MQ9201, entity side: the named process is a lifecycle that lists the entity or a base of it (either form). */
+function entityLifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: NonNullable<ValidationContext["lookup"]>, out: Diagnostic[]): void {
+  const process = lookup(json.lifecycle as string)?.json;
+  if (!process || process.kind !== "process") return;
+  const entity = String(json.name);
+  const named = String(process.name);
+  if (process.use !== "lifecycle") {
+    out.push(
+      diag(
+        "MQ9201",
+        "error",
+        `Entity '${entity}' names process '${named}' as its lifecycle, but that process is ${process.use === "library" ? "a library" : "an orchestration"}; name a lifecycle process, or set its use to lifecycle.`,
+        entry,
+        "/lifecycle",
+      ),
+    );
+    return;
+  }
+  const chain = new Set<string>([entry.id]);
+  for (let base = json.base; typeof base === "string" && !chain.has(base); base = lookup(base)?.json.base) chain.add(base);
+  if (!subjectsOf(process).some((e) => chain.has(e.entity)))
+    out.push(
+      diag(
+        "MQ9201",
+        "error",
+        Array.isArray(process.subjects)
+          ? `Entity '${entity}' names process '${named}' as its lifecycle, but that process does not list it, or an entity it derives from, in its subjects; add the entity to the process's subjects, or name another lifecycle.`
+          : `Entity '${entity}' names process '${named}' as its lifecycle, but that process's subject is not this entity; set the process's subject to this entity, or name its own lifecycle.`,
+        entry,
+        "/lifecycle",
+      ),
+    );
+}
+
 /** MQ9001 (an initial that is not a direct child, or an initial on a state that is not compound), MQ9201 (a lifecycle
  * without a subject, or whose subject's lifecycle does not name it) and MQ9205 (the bound attribute's default is not
  * the initial root state's name), as the engine's ProcessRules.cs reports them. */
@@ -452,21 +490,25 @@ function lifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationC
     });
   walk(arr(json.states), "");
   // MQ9209: the deprecated one-subject form, on any process that uses it (a warning a project can turn off).
+  // Libraries get no lifecycle checks, and the warning is about `subject`: a `boundAttribute` alone does not give it.
+  if (json.use === "library") return out;
   const listForm = Array.isArray(json.subjects);
-  if (json.subject !== undefined || json.boundAttribute !== undefined)
+  if (json.subject !== undefined)
     out.push(
       diag(
         "MQ9209",
         "warning",
         `Process '${name}' uses the one-subject form (subject, boundAttribute), which is deprecated; use subjects.`,
         entry,
-        json.subject !== undefined ? "/subject" : "/boundAttribute",
+        "/subject",
       ),
     );
   if (json.use !== "lifecycle") return out;
   const subjects = subjectsOf(json);
   if (!subjects.length) {
-    out.push(diag("MQ9201", "error", `Process '${name}' is a lifecycle without a subject; set subject to the entity it describes.`, entry, "/use"));
+    if (listForm)
+      out.push(diag("MQ9201", "error", `Process '${name}' is a lifecycle with an empty subjects list; list the entities it governs.`, entry, "/subjects"));
+    else out.push(diag("MQ9201", "error", `Process '${name}' is a lifecycle without a subject; set subject to the entity it describes.`, entry, "/use"));
     return out;
   }
   const roots = arr(json.states);
@@ -474,8 +516,9 @@ function lifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationC
   const seen = new Set<string>();
   subjects.forEach((one, i) => {
     const at = listForm ? `/subjects/${i}` : "";
+    const owner = listForm ? one.id : undefined;
     if (seen.has(one.entity)) {
-      out.push(diag("MQ9201", "error", `Process '${name}' lists entity '${one.entity}' twice; list each subject once.`, entry, `${at}/entity`));
+      out.push(diag("MQ9201", "error", `Process '${name}' lists entity '${one.entity}' twice; list each subject once.`, entry, `${at}/entity`, owner));
       return;
     }
     seen.add(one.entity);
@@ -502,6 +545,7 @@ function lifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationC
           `The default of bound attribute '${String(attribute.name)}' ${current}, but process '${name}' starts in '${String(initial.name)}'; set the default to '${String(initial.name)}'.`,
           entry,
           `${at}/boundAttribute`,
+          owner,
         ),
       );
     }

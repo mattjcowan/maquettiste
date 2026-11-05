@@ -355,6 +355,21 @@ public sealed class LifecycleSubjectTests
     }
 
     [Fact]
+    public async Task Set_lifecycle_onto_a_lifecycle_that_lists_a_base_of_the_entity_does_not_add_it()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        var billing = h.Read(QFile);
+
+        Applied(await store.ApplyBatchAsync(Batch(new BatchOperation(BatchOp.SetLifecycle, RushOrder, null, null, Target: Q)), ChangeSource.Editor, Ct));
+
+        Assert.Equal(billing, h.Read(QFile)); // Billing lists Order, which RushOrder derives from
+        Assert.Equal(Q, store.Current!.Get<Entity>(RushOrder)!.Lifecycle);
+        Assert.DoesNotContain(await LifecycleFindings(h, store), d => d.Rule is "MQ9201" or "MQ9202");
+    }
+
+    [Fact]
     public async Task Clearing_a_lifecycle_takes_the_entity_out_of_the_subjects_of_its_lifecycles()
     {
         var (h, store) = await OpenAsync(WithShipping);
@@ -435,6 +450,20 @@ public sealed class LifecycleSubjectTests
         Assert.Equal(hashes, (await store.GetIndexAsync(Ct)).Select(r => r.Hash));
     }
 
+    [Fact]
+    public async Task A_bound_attribute_without_a_subject_is_not_the_deprecated_form()
+    {
+        // use-subjects converts only a process with a subject, so MQ9209 warns only there; the stray binding keeps its own finding.
+        var (h, store) = await OpenAsync(x => x.Write(RFile, ProcessJson(R, "Handover", "lifecycle", $",\"boundAttribute\":\"{Status}\"", "01JSTA0000000000000000040")));
+        using var _ = h;
+        await using var __ = store;
+        var before = h.Read(RFile);
+
+        Assert.Equal(["MQ9201"], (await LifecycleFindings(h, store)).Where(d => d.ElementId == R).Select(d => d.Rule));
+        Applied(await store.ApplyBatchAsync(Batch(new BatchOperation(BatchOp.UseSubjects, null, null, null, ElementIds: [R])), ChangeSource.Editor, Ct));
+        Assert.Equal(before, h.Read(RFile));
+    }
+
     // ---- import (decision 7) ----
 
     [Fact]
@@ -454,13 +483,14 @@ public sealed class LifecycleSubjectTests
         Assert.Equal(Invoice, entry.GetProperty("entity").GetString());
         Assert.Contains(entry.GetProperty("id").GetString(), fresh.Value.Created);
 
+        await store.FormatAsync([ProcessFile, QFile], ChangeSource.Editor, Ct); // canonical bytes, as every write leaves them
         foreach (var (id, path) in new[] { (P, ProcessFile), (Q, QFile) })
         {
-            var before = File(h, path);
+            var before = h.Read(path);
             var export = await store.ExportProcessAsync(id, Ct);
             var again = await store.ImportProcessAsync(new ProcessImportRequest { Config = Json(export.Value!.Json), Into = id }, dryRun: false, ChangeSource.Editor, Ct);
             Assert.True(again.Status == ProcessCallStatus.Ok, string.Join(" | ", again.Diagnostics.Select(d => d.Rule + " " + d.Message)));
-            Assert.True(JsonNode.DeepEquals(before, File(h, path)), h.Read(path));
+            Assert.Equal(before, h.Read(path)); // the bytes: a reordered or reformatted file fails
 
             // A plain config carries no meta: the form comes from the process it goes into.
             var plain = await store.ImportProcessAsync(new ProcessImportRequest { Config = Json("""{"id":"X","initial":"Open","states":{"Open":{},"Done":{"type":"final"}}}"""), Into = id },
@@ -469,6 +499,94 @@ public sealed class LifecycleSubjectTests
             Assert.Equal(id == P, kept.TryGetProperty("subject", out var _));
             Assert.Equal(id == Q, kept.TryGetProperty("subjects", out var _));
         }
+    }
+
+    [Fact]
+    public async Task A_re_import_converts_carried_subjects_into_the_form_the_target_has()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        async Task ReImport(string config, string id)
+        {
+            var result = await store.ImportProcessAsync(new ProcessImportRequest { Config = Json(config), Into = id }, dryRun: false, ChangeSource.Editor, Ct);
+            Assert.True(result.Status == ProcessCallStatus.Ok, string.Join(" | ", result.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        }
+
+        async Task Overwrite(string id, string path, Action<JsonObject> change)
+        {
+            var node = File(h, path);
+            change(node);
+            var document = (await store.GetElementAsync(id, Ct))!;
+            var saved = await store.SaveAsync(id, Encoding.UTF8.GetBytes(node.ToJsonString()), document.Hash, ChangeSource.Editor, Ct);
+            Assert.True(saved.Outcome == SaveOutcome.Saved, string.Join(" | ", saved.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        }
+
+        var oneSubject = h.Read(ProcessFile);
+        var oneSubjectExport = (await store.ExportProcessAsync(P, Ct)).Value!.Json; // carries subject and boundAttribute
+        Applied(await store.ApplyBatchAsync(Batch(new BatchOperation(BatchOp.UseSubjects, null, null, null, ElementIds: [P])), ChangeSource.Editor, Ct));
+        var listed = h.Read(ProcessFile);
+        var listedExport = (await store.ExportProcessAsync(P, Ct)).Value!.Json; // carries subjects
+
+        // The old export into the converted process: its subject and binding become the one entry, which keeps its id.
+        await ReImport(oneSubjectExport, P);
+        Assert.Equal(listed, h.Read(ProcessFile));
+
+        // Back in the one-subject form, the new export's one entry becomes the subject and binding.
+        await Overwrite(P, ProcessFile, node =>
+        {
+            node.Remove("subjects");
+            node["subject"] = Order;
+            node["boundAttribute"] = Status;
+        });
+        Assert.Equal(oneSubject, h.Read(ProcessFile));
+        await ReImport(listedExport, P);
+        Assert.Equal(oneSubject, h.Read(ProcessFile));
+
+        // A binding with no subject can't be an entry: a target that lists its subjects keeps its own.
+        var billingExport = (await store.ExportProcessAsync(Q, Ct)).Value!.Json;
+        var stray = JsonNode.Parse(billingExport)!.AsObject();
+        var meta = stray["meta"]!["maquettiste"]!.AsObject();
+        meta.Remove("subjects");
+        meta["boundAttribute"] = InvoiceNumber;
+        await store.FormatAsync([QFile], ChangeSource.Editor, Ct);
+        var listedBilling = h.Read(QFile);
+        await ReImport(stray.ToJsonString(), Q);
+        Assert.Equal(listedBilling, h.Read(QFile));
+
+        // Two entries can't be one subject: a one-subject target keeps its own.
+        Applied(await store.ApplyBatchAsync(Batch(new BatchOperation(BatchOp.SetLifecycle, Invoice, null, null, Target: Q)), ChangeSource.Editor, Ct));
+        await Overwrite(Q, QFile, node =>
+        {
+            node.Remove("subjects");
+            node["subject"] = Invoice;
+        });
+        var billing = h.Read(QFile);
+        await ReImport(billingExport, Q);
+        Assert.Equal(billing, h.Read(QFile));
+    }
+
+    [Fact]
+    public async Task A_plain_re_import_keeps_the_state_codes()
+    {
+        var (h, store) = await OpenAsync(x =>
+        {
+            var billing = File(x, QFile);
+            billing["states"]![0]!["code"] = 10;
+            billing["states"]![1]!["code"] = 20;
+            x.Write(QFile, billing.ToJsonString());
+        });
+        using var _ = h;
+        await using var __ = store;
+
+        // A config with no meta: its states keep the codes of the states they match.
+        var plain = await store.ImportProcessAsync(new ProcessImportRequest
+        {
+            Config = Json("""{"initial":"Open","states":{"Open":{"on":{"finish":"Done"}},"Done":{"type":"final"}}}"""), Into = Q,
+        }, dryRun: true, ChangeSource.Editor, Ct);
+
+        var states = plain.Value!.Document!.Value.GetProperty("states").EnumerateArray().ToList();
+        Assert.Equal([10, 20], states.Select(s => s.GetProperty("code").GetInt32()));
     }
 
     // ---- deletes (decision 5) ----

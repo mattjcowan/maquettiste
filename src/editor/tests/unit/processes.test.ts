@@ -1,4 +1,5 @@
 // The Processes explorer's rows (phase-3-design.md 6.1), the process dialogs' models and the mock's process operations.
+import { subjectsOf } from "@/model/process";
 import { describe, expect, it } from "vitest";
 import { MockBackend } from "@/mocks/backend";
 import { buildForest, childKeys, documentChildren, nodeOf, type Forest } from "@/explorer/tree";
@@ -305,7 +306,7 @@ describe("mock enum drift (the drift scenario)", () => {
         .validate()
         .diagnostics.filter((d) => d.rule === "MQ9203")
         .map((d) => d.elementId),
-    ).toEqual([PAYMENT_LIFECYCLE]);
+    ).toEqual([subjectsOf(mock.backend.model.get(PAYMENT_LIFECYCLE)!.json)[0].id]);
     const post = (body: unknown) =>
       fetch(mock.url(`/api/processes/${PAYMENT_LIFECYCLE}/sync-enum`), {
         method: "POST",

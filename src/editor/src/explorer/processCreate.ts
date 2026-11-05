@@ -133,7 +133,7 @@ export function buildProcessBatch(input: NewProcessInput, newId: () => string): 
           delete next.subjects;
           delete next.use;
         }
-      } else if (otherId === input.subjectDoc.json.lifecycle || next.subject === input.subject) {
+      } else if (otherId === input.subjectDoc.json.lifecycle) {
         delete next.use;
         delete next.boundAttribute;
       } else continue;

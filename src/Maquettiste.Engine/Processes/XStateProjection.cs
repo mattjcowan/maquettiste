@@ -37,8 +37,8 @@ public sealed record XStateImportOptions
     public ModelSnapshot? Model { get; init; }
 
     /// <summary>The process re-imported over (<c>into</c>): its id is kept, and nodes the config does not identify keep the ids and
-    /// descriptive fields of the nodes they match by path (states), by name (events, guards, actions, invokes) or by source,
-    /// trigger and position (transitions).</summary>
+    /// descriptive fields of the nodes they match by path (states, which keep their code too), by name (events, guards, actions,
+    /// invokes) or by source, trigger and position (transitions).</summary>
     public Process? Into { get; init; }
 
     /// <summary>The package (domain) of the process; overrides what the config carries.</summary>

@@ -95,7 +95,8 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
   const element = d.elementId ? doc(d.elementId) : undefined;
   const pointer = d.jsonPointer ?? "";
   if (!element || !d.elementId) return null;
-  const id = d.elementId;
+  // A finding of a `subjects` entry names the entry, not the process: the fetched document is the process.
+  const id = typeof element.id === "string" ? element.id : d.elementId;
   if (catalogFix === "sync-enum") return element.kind === "process" ? { kind: "sync-enum", process: id, label: "Sync enum" } : null;
   if (catalogFix === "refresh-scenario")
     return element.kind === "scenario" ? { kind: "operation", op: "refresh-scenario", id, label: "Update expectations from replay", ids: [id] } : null;

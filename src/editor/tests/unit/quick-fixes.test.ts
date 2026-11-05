@@ -216,12 +216,19 @@ describe("the mock's process quick-fix operations", () => {
     expect(rowOf().subject).toBeUndefined();
   });
 
-  it("deleting an entity takes its entry out of the subjects list, and an emptied list goes", () => {
+  it("deleting an entity takes its entry out of the subjects list, and refuses to empty a lifecycle's list (MQ9201)", () => {
     const model = new MockBackend().model;
     model.batch({ operations: [{ op: "set-lifecycle", id: INVOICE, target: PURCHASE_APPROVAL }] } as never);
+    const payment = "01J92P0V0HEGSC6MW92CST5KA6";
+    model.batch({ operations: [{ op: "set-lifecycle", id: payment, target: PURCHASE_APPROVAL }] } as never);
+    // With a second subject left, the entry goes and the lifecycle stays valid.
+    expect(model.delete(payment, model.get(payment)!.hash, "delete-dependents").outcome).toBe("saved");
+    expect(subjectsOf(model.get(PURCHASE_APPROVAL)!.json).map((e) => e.entity)).toEqual([INVOICE]);
+    // The last one would leave a lifecycle with no subject: the engine refuses it, and so does the mock.
     const answer = model.delete(INVOICE, model.get(INVOICE)!.hash, "delete-dependents");
-    expect(answer.outcome).toBe("saved");
-    expect(model.get(PURCHASE_APPROVAL)!.json).not.toHaveProperty("subjects");
+    expect(answer.outcome).toBe("invalid");
+    expect(answer.diagnostics.map((d) => d.rule)).toContain("MQ9201");
+    expect(model.get(INVOICE)).not.toBeNull();
   });
 });
 
