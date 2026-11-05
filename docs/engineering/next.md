@@ -39,7 +39,7 @@ must help any team whether they use it or not, and it stays optional.
 | 3.10 | Requirements as a project's own custom kind, with typed links and declared rules, and a guide that shows how | yes | Built, 0.12.2 | [Requirements as a kind of your own](../guides/requirements-as-your-own-kind.md). Replaces the built-in kind of [design 4.3](next-phase-2-design.md#43-requirements), which is in "Not doing". |
 | | Custom properties and stereotypes on guards, actions, invokes and gates, and custom properties on checks and constraints | yes | Built, 0.12.2 | [Design 4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies), decision 9, plus checks and constraints. An operation's guards hold them as well. Properties on a check never reach its SQL. |
 | 4.2 | Shared process guards, actions and gate policies | yes | Built, 0.12.2 | [Design 4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies). A library's guard holds an expression, not a condition, since a condition names one process's context. The editor edits a library through the JSON view. |
-| 4.1 | A lifecycle bound to a reference type or a status column | yes | Design next | Not designed yet. |
+| 4.1 | A lifecycle bound to a reference type or a status column | yes | Designed, not built | [The design](lifecycle-binding-design.md), a draft with five questions for the owner. It recommends codes on root states first, and holding guards that read the subject and several lifecycles on one entity. |
 
 ## Phase 1: built in 0.11.0
 
