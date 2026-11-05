@@ -43,6 +43,13 @@ internal sealed record UnitView(string Id, string Key) : ITemplateView;
 /// <param name="Variables">Hint variables.</param>
 internal sealed record HintsView(bool Skip, string? Rename, MapView Variables) : ITemplateView;
 
+/// <summary>
+/// One row of <c>referenced_by</c>: the holder's id (a keyed id for a part), its kind as the index names it, the field that made the link,
+/// and the holder's own status. <paramref name="From"/> is the holder when templates can read it (a table's check, for one, has no
+/// resolved object of its own, so it is <see langword="null"/>), and <paramref name="Owner"/> the element whose file holds it.
+/// </summary>
+internal sealed record ReferrerView(string Id, string Kind, string Field, string? Status, IResolvedObject? From, IResolvedObject? Owner) : ITemplateView;
+
 /// <summary>A template-visible CLR property: snake_case name and a compiled getter.</summary>
 /// <param name="Name">The snake_case name.</param>
 /// <param name="Getter">The getter.</param>

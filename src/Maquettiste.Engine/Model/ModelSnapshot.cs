@@ -477,6 +477,30 @@ public sealed class ModelSnapshot
     internal bool IsRetired(string id) => Index.Retired.Contains(id);
 
     /// <summary>
+    /// The links to an element or sub-element that count as using it: every reference to it, except from diagrams, which only show it,
+    /// and from the object's own parts. Declared rules and <c>referenced_by</c> read this.
+    /// </summary>
+    /// <param name="id">An element or sub-element id.</param>
+    /// <returns>The references, in index order.</returns>
+    internal IEnumerable<ReferenceInfo> LinksTo(string id)
+    {
+        if (!_entries.TryGetValue(id, out var entry))
+            yield break;
+        foreach (var reference in ReferencesTo(id))
+        {
+            if (TryGetEntry(reference.FromElementId, out var holder) && string.Equals(holder.Kind, "diagram", StringComparison.Ordinal))
+                continue;
+            if (string.Equals(reference.FromElementId, entry.OwnerId, StringComparison.Ordinal) && IsInside(reference.JsonPointer, entry.JsonPointer))
+                continue;
+            yield return reference;
+        }
+    }
+
+    /// <summary>Whether a pointer is in the entry at another (the whole file for the empty pointer).</summary>
+    internal static bool IsInside(string pointer, string entry) =>
+        entry.Length == 0 || (pointer.Length > entry.Length && pointer[entry.Length] == '/' && pointer.StartsWith(entry, StringComparison.Ordinal));
+
+    /// <summary>
     /// The forms of one kind that qualified names find (next-phase-1-design.md section 5.1), built from the typed elements on first
     /// use and cached; templates and rule engines read it in parallel. A batch layers its private overlay on it.
     /// </summary>

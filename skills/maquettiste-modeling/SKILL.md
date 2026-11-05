@@ -279,7 +279,8 @@ kind, `.maquettiste/extensions/kinds/<type>.json` (`type` kebab-case and equal t
 - An `x-translatable` top-level string of the content or of member items is translated as `content/<name>`; a member's
   text is translated on the member's id (`set_translations`).
 - Templates: a unit `"for": "each custom:<type>"` (variable `custom`: `type`, `content`, `members`), and from any unit
-  `custom_named "<type>" "<name>"` or `lookup` of an id. `get_template_context` lists the content keys under
+  `custom_named "<type>" "<name>"` or `lookup` of an id; `referenced_by <element or id> ["<field>"]` lists what links
+  to one. `get_template_context` lists the content keys under
   `custom.content`. `get_model_index` and `get_elements` filter by kind `custom` or `custom:<type>`.
 - An operation's `requires` may name a custom element; deleting it is then refused (`referenced`) until the link goes.
 

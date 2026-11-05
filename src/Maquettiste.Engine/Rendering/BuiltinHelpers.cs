@@ -119,7 +119,7 @@ internal static class BuiltinHelpers
     /// <summary>The helper names this class registers.</summary>
     public static readonly FrozenSet<string> Names = FrozenSet.Create(StringComparer.Ordinal,
         "pascal", "camel", "snake", "kebab", "upper_snake", "pluralize", "singularize", "type_of", "sql_quote", "sql_literal",
-        "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_calculated", "has_tag", "in_category", "lookup",
+        "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_calculated", "has_tag", "in_category", "lookup", "referenced_by",
         "banner", "file", "row", "row_uuid", "stable_id", "seed_named", "custom_named", "seed_row", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
         "state_path", "iso_duration_ms", "query_sql", "query_collection_sql", "query_sql_parameters",
         "binding_sql", "binding_sql_parameters", "expression_sql", "expression_runtime", "ledger_ddl", "array_index_of", "array_find", "table_named", "column_named", "toposort", "exported");
@@ -209,6 +209,7 @@ internal static class BuiltinHelpers
         Add(builtins, "has_tag", 2, 2, (c, a) => HasTag(c, a[0], AsText(a[1])));
         Add(builtins, "in_category", 2, 2, (c, a) => InCategory(c, a[0], AsText(a[1])));
         Add(builtins, "lookup", 1, 1, (c, a) => Lookup(c, AsText(a[0])));
+        Add(builtins, "referenced_by", 1, 2, (c, a) => ReferencedBy(c, a[0], a.Count > 1 ? a[1] : null));
         Add(builtins, "exported", 2, 2, (c, a) => Exported(c, a[0], AsText(a[1])));
         Add(builtins, "row", 2, 2, (c, a) => Row(c, a[0], a[1]));
         Add(builtins, "row_uuid", 1, 1, (c, a) => RowUuid(c, a[0]));
@@ -1615,6 +1616,52 @@ internal static class BuiltinHelpers
 
         context.Recorder.RecordObject(found);
         return found;
+    }
+
+    /// <summary>
+    /// <c>referenced_by &lt;element | id&gt; ["&lt;field&gt;"]</c>: what links to an element or sub-element, one row per holder and field,
+    /// ordinal by holder id then field. <paramref name="fieldValue"/> keeps the links of one field, such as a custom property's name. It
+    /// leaves out what <see cref="ModelSnapshot.LinksTo"/> does (diagrams and the object's own parts). Records <c>r:&lt;id&gt;</c>, which
+    /// follows every other file that links to it, and <c>e:</c> of the file that holds it, whose own parts may link to it too.
+    /// </summary>
+    private static object? ReferencedBy(TrackingTemplateContext context, object? target, object? fieldValue)
+    {
+        var id = TrackingTemplateContext.Unwrap(target) switch
+        {
+            IResolvedObject resolved => resolved.Id,
+            string text when text.Length > 0 => text,
+            _ => throw new RenderHelperException("MQ6006", "`referenced_by` takes an element or an element id, then an optional field name."),
+        };
+        var field = AsText(TrackingTemplateContext.Unwrap(fieldValue));
+        var model = context.Unit.Run.Context.Model;
+        context.Recorder.Record("r:" + id);
+        var snapshot = model.Source;
+        if (snapshot is null || !snapshot.TryGetEntry(id, out var entry))
+        {
+            context.Recorder.Record("e:" + id);
+            return context.Wrap(Array.Empty<ReferrerView>());
+        }
+
+        context.Recorder.Record("e:" + entry.OwnerId);
+        var rows = new List<ReferrerView>();
+        var seen = new HashSet<(string From, string Field)>();
+        foreach (var link in snapshot.LinksTo(id))
+        {
+            if ((field.Length == 0 || string.Equals(link.Field, field, StringComparison.Ordinal))
+                && seen.Add((link.FromId, link.Field)) && snapshot.TryGetEntry(link.FromId, out var holder))
+            {
+                var from = model.Find(link.FromId);
+                var status = from is RAnnotated annotated ? annotated.Status : snapshot.IsRetired(link.FromId) ? "retired" : null;
+                rows.Add(new ReferrerView(link.FromId, holder.Kind, link.Field, status, from, model.Find(link.FromElementId)));
+            }
+        }
+
+        rows.Sort(static (a, b) =>
+        {
+            var byId = string.CompareOrdinal(a.Id, b.Id);
+            return byId != 0 ? byId : string.CompareOrdinal(a.Field, b.Field);
+        });
+        return context.Wrap(rows);
     }
 
     /// <summary><c>state_path &lt;state&gt;</c>: a process state's dotted path (<c>Fulfilment.Shipping.Packed</c>); a state id works too.</summary>

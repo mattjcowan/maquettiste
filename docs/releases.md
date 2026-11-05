@@ -5,6 +5,14 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.12.2 (unreleased)
+
+- **What links to an element, in templates.** `referenced_by <element or id> ["<field>"]` lists what links to an element
+  or a part, a row per holder and field: `id`, `kind`, `field`, `status` (the holder's own), `from` (the holder when
+  templates can read it, else null) and `owner` (the element whose file holds it). So a page per custom element can list
+  what meets it, and its unit renders again when a file starts or stops linking or a holder changes. Before upgrading: a
+  pack helper registered under the name `referenced_by` is now MQ6013, so rename it.
+
 ## 0.12.1 (2026-11-04)
 
 - **Overlay checks read the entity's attributes.** A check in the expression language on the overlay of an entity's
