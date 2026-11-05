@@ -4851,6 +4851,10 @@ E30 to E39 are free.
 
 ### 4.3 Requirements
 
+**Not being built as designed (the owner's decision of 2026-11-05).** A project declares requirements as its own custom
+kind instead; `next.md` lists the small additions that make this work. This section stays as the record of the built-in
+kind, in case a later need brings it back.
+
 **Why every team**
 
 Every team that builds software works from statements of what it must do, whether they come from a contract, a
