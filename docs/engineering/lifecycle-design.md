@@ -364,7 +364,7 @@ Each stale-output test is checked to fail without its fix.
 
 ## 15. Tasks
 
-One pull request per group, each stacked on the one before. The sizes are rough, and include tests and a review. The third check judged the second draft's six days at eight to ten, so these are larger.
+The sizes are days for a person who knows the code, and include tests and a review. They show how the groups compare. Section 16 gives hours and tokens for building with agents, and how the groups become pull requests.
 
 | Half | Group | What | Size |
 | --- | --- | --- | --- |
@@ -376,7 +376,7 @@ One pull request per group, each stacked on the one before. The sizes are rough,
 | Second | Scenario objects | Objects as parts, links, `subject`, the replayer, simulate and record, the editor's simulation panel, records | A day and a half |
 | Both | Docs | User guide, processes guide (including the detail entity), releases, modeling skill, `next.md` | Half a day |
 
-That comes to about six days for the first half and three for the second, nine in all.
+That comes to about six days for the first half and three for the second, nine in all, for a person.
 
 **Checklist for every group, from what 4.2 taught and the three checks found.** Anything that reads or writes a lifecycle, a state, a subject or a scenario must be found and handled:
 - **Readers of the subject:**
@@ -391,3 +391,47 @@ That comes to about six days for the first half and three for the second, nine i
 - **Contracts:** the schema copies, `openapi.yaml` and its generated files.
 - **Test harness:** `RenderKit.WithSettings` and `ResolvedCoverageTests`.
 - **Dependency keys:** on anything read across files, and a template that reads only one list.
+
+## 16. How it gets built
+
+Agents build it, so the measure is hours and tokens, not days.
+
+**What the last build took.** Custom properties and library processes (#32 and #33) added about 2,600 lines with tests. They took about 2 hours, including a review, its fixes and CI. They used 0.4M output tokens, 1.0M new input and 65M cached re-reads. 4.1 is about 5,000 lines, twice that size, and reaches more of the product.
+
+**Estimate.**
+
+| | Wall time | Output | New input | Cached re-reads |
+| --- | --- | --- | --- | --- |
+| First half | About 4 hours | 1.0M | 3.5M | 100M |
+| Second half | About 1 hour more, since most of it runs beside the first | 0.5M | 1.5M | 50M |
+| In all | 5 to 6 hours | About 1.5M | About 5M | About 150M |
+
+Each figure could run up to half again higher if the reviews find more than usual. The owner's part is merging five pull requests in order.
+
+**Where the tokens go.** Every step an agent takes reads its whole context again. Those cached re-reads are most of the tokens, and they grow with steps times context. About three quarters of what agents read is code. So the plan keeps each agent's context small, its steps few, and its reading aimed.
+
+**How the tokens are kept down.**
+1. **Agents build, and I coordinate.** My context holds this whole conversation, so each of my steps costs more than an agent's. I launch agents, merge their work and open pull requests. I read their summaries, not their diffs.
+2. **One map of the code, written once.** The third check has already read the code. It writes down, once, the files and functions each group changes, and the traps it saw. Each builder starts from its part of the map instead of searching.
+3. **Short agents with exact briefs.** Each group gets a fresh agent. A long-lived agent's context keeps growing, and every step re-reads it, so carrying one agent through several groups costs more than starting fresh with a precise brief.
+4. **The right model for each part.**
+   - **Opus 5.5** for engine work: codes and subjects, bindings, guards, scenario objects, and every review. A mistake there costs a review round, which costs more than the difference between models.
+   - **Sonnet 5.5** for work with a fixed shape and tests that catch slips: the editor and mock readers, the pack output and the docs.
+5. **Tests where they cost least.** Builders run the tests for what they touch, and the full .NET suite once per group. The editor's browser tests run only in CI, which costs no tokens.
+6. **One review per pull request, run once.** An independent review reads the diff and the design, not the builder's summary. I make tiny fixes myself. Others go to a short fixer with the exact findings.
+7. **No polling.** I wait for agents and CI in the background, which costs nothing.
+
+**Order.** Running agents side by side saves time, not tokens. Each builder works in its own copy of the repository, and I merge by patch.
+
+| Wave | Agents running at once | Pull request |
+| --- | --- | --- |
+| 1 | Codes and subjects in the engine (Opus); the editor and mock readers for them (Sonnet) | 1, on main |
+| 2 | Bindings in the engine (Opus) and the editor (Sonnet); guards (Opus); scenario objects (Opus) | 2 on 1; 4 on 1; 5 on 4 |
+| 3 | Output (Sonnet) | 3 on 2 |
+| 4 | Docs for each half (Sonnet) | On 3 and on 5 |
+
+- **At most four agents run at once.**
+- **Files that two agents in one wave both change**, such as the schema copies, `openapi.yaml` and its generated files, are regenerated once after merging, not merged by hand.
+- **Merging:** the first half merges in order, 1 to 3. The second half then moves onto main, as in earlier stacks.
+- **A design gap found while building** stops the work, and I ask the owner. Builders don't decide scope.
+
