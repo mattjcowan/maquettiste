@@ -7,6 +7,9 @@ one.
 
 ## 0.12.2 (unreleased)
 
+- **A guide for requirements as a kind of your own.** [Requirements as a kind of your own](guides/requirements-as-your-own-kind.md)
+  keeps statements of what a system must do in the model, links them to what meets them and what proves them, reports the
+  gaps and writes the evidence with a pack, using only what every project already has.
 - **Declared rules can leave retired links out.** `references` and `referencedBy` take `excludeRetired`: a linked object
   that is retired, or sits in a retired element, does not count, so a retired process no longer hides a gap. Without it a
   rule counts them as before.
