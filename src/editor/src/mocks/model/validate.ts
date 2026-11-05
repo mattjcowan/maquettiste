@@ -495,13 +495,7 @@ function lifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationC
   const listForm = Array.isArray(json.subjects);
   if (json.subject !== undefined)
     out.push(
-      diag(
-        "MQ9209",
-        "warning",
-        `Process '${name}' uses the one-subject form (subject, boundAttribute), which is deprecated; use subjects.`,
-        entry,
-        "/subject",
-      ),
+      diag("MQ9209", "warning", `Process '${name}' uses the one-subject form (subject, boundAttribute), which is deprecated; use subjects.`, entry, "/subject"),
     );
   if (json.use !== "lifecycle") return out;
   const subjects = subjectsOf(json);

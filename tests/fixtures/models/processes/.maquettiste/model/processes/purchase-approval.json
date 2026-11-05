@@ -5,7 +5,12 @@
   "name": "PurchaseApproval",
   "displayName": "Purchase approval",
   "package": "01JQPKG0000000000000000002",
-  "subject": "01JQENT0000000000000000003",
+  "subjects": [
+    {
+      "id": "01M6Q0KV18K8TG085ACCGE5VQ2",
+      "entity": "01JQENT0000000000000000003"
+    }
+  ],
   "description": "A purchase request checked for budget and compliance in parallel, approved by two signers and ordered.",
   "context": [
     {

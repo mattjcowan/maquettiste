@@ -42,9 +42,7 @@ export function useProblems(id: string, draft: Diagnostic[], entryIds: readonly 
 /** The ids of a process file's `subjects` entries. */
 export function entryIdsOf(json: object): string[] {
   const { subjects } = json as { subjects?: unknown };
-  return Array.isArray(subjects)
-    ? (subjects as { id?: unknown }[]).flatMap((e) => (e && typeof e.id === "string" ? [e.id] : []))
-    : [];
+  return Array.isArray(subjects) ? (subjects as { id?: unknown }[]).flatMap((e) => (e && typeof e.id === "string" ? [e.id] : [])) : [];
 }
 
 export function useActors(): { actors: ElementSummary[]; actorNames: Map<string, string> } {
