@@ -67,7 +67,9 @@ export const {{ p }}Definition = {
 {{- for m in g.meanings }}
 {{- meanings[meanings.size] = m.name + ": " + (ts_string m.id) }}
 {{- end }}
-    {{ g.name }}: { id: {{ ts_string g.id }}, transition: {{ ts_string g.transition.id }}, required: {{ g.required }}, signers: {{ str_list(names(g.signers)) }}, requiredActors: {{ str_list(names(g.required_actors)) }}, allowRepeatSigner: {{ g.allow_repeat_signer }}, reasonRequired: {{ g.reason_required }}, meanings: { {{ meanings | array.join ", " }} }, auditAttributes: {{ str_list(names(g.audit_attributes)) }} },
+{{- gated = g.transition }}
+{{- if !gated }}{{ for t in process.transitions }}{{ if !gated && t.gate == g }}{{ gated = t }}{{ end }}{{ end }}{{ end }}
+    {{ g.name }}: { id: {{ ts_string g.id }}, transition: {{ ts_string gated.id }}, required: {{ g.required }}, signers: {{ str_list(names(g.signers)) }}, requiredActors: {{ str_list(names(g.required_actors)) }}, allowRepeatSigner: {{ g.allow_repeat_signer }}, reasonRequired: {{ g.reason_required }}, meanings: { {{ meanings | array.join ", " }} }, auditAttributes: {{ str_list(names(g.audit_attributes)) }} },
 {{- end }}
   },{{ end }}
   actors: {{ if process.actors.size == 0 }}{},{{ else }}{
