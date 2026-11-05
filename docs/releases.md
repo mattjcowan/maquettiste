@@ -7,6 +7,9 @@ one.
 
 ## 0.12.2 (unreleased)
 
+- **Declared rules can target one custom kind.** A rule's `select` takes `{ "kind": "custom:policy" }`, as `each
+  custom:<type>` and `get_elements` do; `custom` still judges every custom element. A type no kind file declares is
+  MQ5016. The schema copies change, so `validate` warns MQ1008 until `maquettiste init` or the editor refreshes them.
 - **What links to an element, in templates.** `referenced_by <element or id> ["<field>"]` lists what links to an element
   or a part, a row per holder and field: `id`, `kind`, `field`, `status` (the holder's own), `from` (the holder) and
   `owner` (the element whose file holds it); `from` and `owner` are null when templates have no object for it. So a page
