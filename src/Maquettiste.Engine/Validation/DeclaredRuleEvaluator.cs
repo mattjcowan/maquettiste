@@ -398,12 +398,12 @@ internal static class DeclaredRuleEvaluator
             var targets = new HashSet<string>(StringComparer.Ordinal);
             foreach (var reference in snapshot.ReferencesFrom(entry.OwnerId))
             {
-                if (!Inside(reference.JsonPointer, entry.JsonPointer) || (links.Field is { } field && !string.Equals(reference.Field, field, StringComparison.Ordinal)))
+                if (!ModelSnapshot.IsInside(reference.JsonPointer, entry.JsonPointer) || (links.Field is { } field && !string.Equals(reference.Field, field, StringComparison.Ordinal)))
                     continue;
                 if (!snapshot.TryGetEntry(reference.ToId, out var target) || !links.Kind.Contains(target.Kind, StringComparer.Ordinal))
                     continue;
                 if (string.Equals(target.OwnerId, entry.OwnerId, StringComparison.Ordinal) && (string.Equals(target.Id, entry.Id, StringComparison.Ordinal)
-                    || Inside(target.JsonPointer, entry.JsonPointer)))
+                    || ModelSnapshot.IsInside(target.JsonPointer, entry.JsonPointer)))
                     continue; // a link to the object itself or one of its own parts
                 targets.Add(reference.ToId);
             }
@@ -414,16 +414,12 @@ internal static class DeclaredRuleEvaluator
         /// <summary>The distinct objects of the kinds that link to the object, except from diagrams and from the object's own parts.</summary>
         private int ReferencedBy(RuleReferences links, object item)
         {
-            if (item is not IResolvedObject value || !snapshot.TryGetEntry(value.Id, out var entry))
+            if (item is not IResolvedObject value)
                 return 0;
             var sources = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var reference in snapshot.ReferencesTo(value.Id))
+            foreach (var reference in snapshot.LinksTo(value.Id))
             {
                 if (links.Field is { } field && !string.Equals(reference.Field, field, StringComparison.Ordinal))
-                    continue;
-                if (snapshot.TryGetEntry(reference.FromElementId, out var holder) && string.Equals(holder.Kind, "diagram", StringComparison.Ordinal))
-                    continue; // a diagram shows an element, it does not use it
-                if (string.Equals(reference.FromElementId, entry.OwnerId, StringComparison.Ordinal) && Inside(reference.JsonPointer, entry.JsonPointer))
                     continue;
                 if (!snapshot.TryGetEntry(reference.FromId, out var from) || !links.Kind.Contains(from.Kind, StringComparer.Ordinal))
                     continue;
@@ -432,10 +428,6 @@ internal static class DeclaredRuleEvaluator
 
             return sources.Count;
         }
-
-        /// <summary>Whether a pointer is in the entry at another (the whole file for the empty pointer).</summary>
-        private static bool Inside(string pointer, string entry) =>
-            entry.Length == 0 || (pointer.Length > entry.Length && pointer[entry.Length] == '/' && pointer.StartsWith(entry, StringComparison.Ordinal));
 
         /// <summary>The value at a path, or <see langword="null"/> when a step is absent or null.</summary>
         private object? Read(object item, string path)

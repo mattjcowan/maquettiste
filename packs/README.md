@@ -153,7 +153,13 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
 Helpers: `pascal camel snake kebab upper_snake`, `pluralize singularize`, `type_of <attribute|column> "<target>"` (a
 `types/<target>.json` map or a SQL dialect; for a dialect, a value of a custom type that declares a native type for it takes that one), `sql_quote`, `sql_literal`, `indent`, `escape_xml`/`escape_json`/`escape_md`, `json`,
 `has_stereotype`, `has_tag`, `in_category` (each takes an element, a database, schema, table, column, view or
-sequence), `lookup`, `banner "<comment prefix>"`, `file`, `state_path <state>` (a state's dotted path),
+sequence), `lookup`, `referenced_by <element or id> ["<field>"]` (what links to an element or a part, a row per holder and
+field, ordinal by holder id: `id`, `kind`, `field`, `status` the holder's own, `from` the holder and `owner` the element whose file holds it, whose
+`status` tells a part of a retired element. `from` and `owner` are null when templates have no object for it (a table's
+check, a stereotype's member, a mapping file), so test them first: `{{ if l.from }}`. A field keeps that field's links;
+diagrams and the object's own parts are left out; a keyed id finds the links that name that key; a table with no file of
+its own has no links of its own. Rows go to a pack script helper by their members, not whole (MQ6016). The unit renders
+again when a link comes or goes, or a holder changes), `banner "<comment prefix>"`, `file`, `state_path <state>` (a state's dotted path),
 `iso_duration_ms <text>` (an ISO 8601 duration in milliseconds, a month 30 days and a year 365 as the interpreter counts them; a
 text that is not a duration fails the unit with MQ6006), `seed_named "<name>"` (the seed with that name, `currencies`,
 or with its package path when its file states one, `Billing.currencies`; null when none has it, MQ6006 when two share

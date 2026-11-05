@@ -119,7 +119,7 @@ internal static class BuiltinHelpers
     /// <summary>The helper names this class registers.</summary>
     public static readonly FrozenSet<string> Names = FrozenSet.Create(StringComparer.Ordinal,
         "pascal", "camel", "snake", "kebab", "upper_snake", "pluralize", "singularize", "type_of", "sql_quote", "sql_literal",
-        "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_calculated", "has_tag", "in_category", "lookup",
+        "indent", "dedent", "escape_md", "escape_xml", "escape_json", "json", "has_stereotype", "has_calculated", "has_tag", "in_category", "lookup", "referenced_by",
         "banner", "file", "row", "row_uuid", "stable_id", "seed_named", "custom_named", "seed_row", "display_name", "plural_name", "description_of", "label_of", "translate", "has_translation",
         "state_path", "iso_duration_ms", "query_sql", "query_collection_sql", "query_sql_parameters",
         "binding_sql", "binding_sql_parameters", "expression_sql", "expression_runtime", "ledger_ddl", "array_index_of", "array_find", "table_named", "column_named", "toposort", "exported");
@@ -209,6 +209,7 @@ internal static class BuiltinHelpers
         Add(builtins, "has_tag", 2, 2, (c, a) => HasTag(c, a[0], AsText(a[1])));
         Add(builtins, "in_category", 2, 2, (c, a) => InCategory(c, a[0], AsText(a[1])));
         Add(builtins, "lookup", 1, 1, (c, a) => Lookup(c, AsText(a[0])));
+        Add(builtins, "referenced_by", 1, 2, (c, a) => ReferencedBy(c, a[0], a.Count > 1 ? a[1] : null));
         Add(builtins, "exported", 2, 2, (c, a) => Exported(c, a[0], AsText(a[1])));
         Add(builtins, "row", 2, 2, (c, a) => Row(c, a[0], a[1]));
         Add(builtins, "row_uuid", 1, 1, (c, a) => RowUuid(c, a[0]));
@@ -1615,6 +1616,84 @@ internal static class BuiltinHelpers
 
         context.Recorder.RecordObject(found);
         return found;
+    }
+
+    /// <summary>
+    /// <c>referenced_by &lt;element | id&gt; ["&lt;field&gt;"]</c>: what links to an element or sub-element, one row per holder and field,
+    /// ordinal by holder id then field. <paramref name="fieldValue"/> keeps the links of one field, such as a custom property's name. It
+    /// leaves out what <see cref="ModelSnapshot.LinksTo"/> does (diagrams and the object's own parts). A keyed id (a member a table takes
+    /// from a stereotype) finds the links that name that key. Records, per id: <c>rt:</c>, which follows every link in or out (also one a
+    /// changed schema adds or removes), <c>r:</c>, which follows the holders' files, and <c>e:</c> of the file that holds the target.
+    /// </summary>
+    private static object? ReferencedBy(TrackingTemplateContext context, object? target, object? fieldValue)
+    {
+        var id = TrackingTemplateContext.Unwrap(target) switch
+        {
+            IResolvedObject resolved => resolved.Id,
+            string text when text.Length > 0 => text,
+            _ => throw new RenderHelperException("MQ6006", "`referenced_by` takes an element or an element id, then an optional field name."),
+        };
+        var field = AsText(TrackingTemplateContext.Unwrap(fieldValue));
+        var model = context.Unit.Run.Context.Model;
+        var snapshot = model.Source;
+        if (snapshot is null)
+            return context.Wrap(Array.Empty<ReferrerView>());
+        var rows = new List<ReferrerView>();
+        var seen = new HashSet<(string From, string Field)>();
+        foreach (var part in RecordLinkKeys(context.Recorder, snapshot, id))
+        {
+            foreach (var link in snapshot.LinksTo(part.Id))
+            {
+                if ((field.Length == 0 || string.Equals(link.Field, field, StringComparison.Ordinal))
+                    && part.Others.All(other => snapshot.ReferencesTo(other).Any(r => string.Equals(r.FromElementId, link.FromElementId, StringComparison.Ordinal)
+                        && string.Equals(r.JsonPointer, link.JsonPointer, StringComparison.Ordinal)))
+                    && seen.Add((link.FromId, link.Field)) && snapshot.TryGetEntry(link.FromId, out var holder))
+                {
+                    var owner = model.Find(link.FromElementId);
+                    rows.Add(new ReferrerView(link.FromId, holder.Kind, link.Field, StatusOf(snapshot, holder), HolderOf(model, link, owner), owner));
+                }
+            }
+        }
+
+        rows.Sort(static (a, b) =>
+        {
+            var byId = string.CompareOrdinal(a.Id, b.Id);
+            return byId != 0 ? byId : string.CompareOrdinal(a.Field, b.Field);
+        });
+        return context.Wrap(rows);
+    }
+
+    /// <summary>
+    /// Records what <c>referenced_by</c> depends on and answers where its links are: the id itself when the index has it; for a keyed id,
+    /// its last part with the other parts its links must also name at the same place (the index lists a keyed link under each part).
+    /// </summary>
+    private static List<(string Id, IReadOnlyList<string> Others)> RecordLinkKeys(UnitRecorder recorder, ModelSnapshot snapshot, string id)
+    {
+        IReadOnlyList<string> parts = snapshot.TryGetEntry(id, out _) ? [id] : [.. id.Split(['@', '.']).Where(IdFormat.IsValid).Distinct(StringComparer.Ordinal)];
+        foreach (var part in parts.Count == 0 ? [id] : parts)
+        {
+            recorder.Record("rt:" + part);
+            recorder.Record("r:" + part);
+            recorder.Record("e:" + (snapshot.TryGetEntry(part, out var entry) ? entry.OwnerId : part));
+        }
+
+        return parts.Count == 0 ? [] : [(parts[^1], parts.Take(parts.Count - 1).ToList())];
+    }
+
+    /// <summary>The holder's own <c>status</c> as its file states it, for any kind of holder; <see langword="null"/> when none is written.</summary>
+    private static string? StatusOf(ModelSnapshot snapshot, IndexEntry holder) =>
+        snapshot.GetDocument(holder.OwnerId) is { } document && ModelStore.Pointer(document.Json, holder.JsonPointer) is { ValueKind: JsonValueKind.Object } json
+        && json.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.String ? status.GetString() : null;
+
+    /// <summary>
+    /// The resolved holder of a link, or <see langword="null"/> when templates have none of its own: <see cref="ResolvedModel.Find"/> gives
+    /// the first carrier's copy of a stereotype's member, and which entity that is must not decide what a row says.
+    /// </summary>
+    private static IResolvedObject? HolderOf(ResolvedModel model, ReferenceInfo link, IResolvedObject? owner)
+    {
+        var found = model.Find(link.FromId);
+        return found is not null && !ReferenceEquals(found, owner) && (owner is RStereotypeDefinition
+            || (found is RAttribute { Owner: { } carrier } && !string.Equals(carrier.Id, link.FromElementId, StringComparison.Ordinal))) ? null : found;
     }
 
     /// <summary><c>state_path &lt;state&gt;</c>: a process state's dotted path (<c>Fulfilment.Shipping.Packed</c>); a state id works too.</summary>

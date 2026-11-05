@@ -760,7 +760,7 @@ public sealed partial class ModelStore
             : null;
     }
 
-    private static JsonElement? Pointer(JsonElement root, string pointer)
+    internal static JsonElement? Pointer(JsonElement root, string pointer)
     {
         var current = root;
         foreach (var raw in pointer.Split('/', StringSplitOptions.RemoveEmptyEntries))
