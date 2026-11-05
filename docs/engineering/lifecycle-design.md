@@ -1,6 +1,6 @@
 # Lifecycles any implementation can follow: design
 
-**Status (2026-11-05): a draft for the owner. Nothing in this file is built.** It designs item 4.1 of `next.md`, rewritten after the owner's points of 2026-11-05. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick, and section 13 lists what the owner decides. A file path without a project prefix is under `src/Maquettiste.Engine/`. Examples use the billing fixture. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
+**Status (2026-11-05): a draft for the owner. Nothing in this file is built.** It designs item 4.1 of `next.md`, rewritten after the owner's points of 2026-11-05. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick, and [Who, what and when](lifecycle-actors-scenarios.md) sets the direction for actors, operations and scenarios that this item starts. Section 13 lists what the owner decides. A file path without a project prefix is under `src/Maquettiste.Engine/`. Examples use the billing fixture. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
 
 ## 1. In short
 
@@ -79,7 +79,7 @@ The first draft of this design assumed the opposite on the first three points. A
     - A context attribute named `subject` keeps its meaning, and the subject is then not in scope.
     - Only conditions read the subject. The expression form (JavaScript) does not: packs write it as it is, and today a guard expression that reads `subject.x` saves and fails at run time.
     - Library guards hold expressions only, so they don't read the subject for now.
-19. **Simulation is given the object.** A scenario's and a simulation's `start` gains `subject`: `{ "entity": <id>, "values": { <attribute id>: <value> } }`.
+19. **A scenario names its objects.** A scenario gains `objects`, its cast: each object has a name, an entity and values (`{ "name": "invoice", "entity": <id>, "values": { <attribute id>: <value> } }`). The process runs for the first object. This is the start of the cast that [Who, what and when](lifecycle-actors-scenarios.md) section 8 grows, where steps will name the object they act on. Starting with it avoids a one-object key now and a second form later. A simulation's `start` takes the same objects.
     - A value not given reads as the attribute's default, then null, as context does.
     - A bad value is a replay finding, so it doesn't refuse a save.
     - An invoked sub-process reads defaults only.
@@ -96,7 +96,7 @@ The first draft of this design assumed the opposite on the first three points. A
 | state `code` (after `type`) | string or integer | absent | Decision 1 |
 | `subject`, `boundAttribute` | as today | absent | Deprecated; read as one subject (MQ9209) |
 
-`entity.json`: `lifecycle` is deprecated in the same way. `scenario.json`: `start.subject`, as in decision 19. `batch.json`: `sync-codes`.
+`entity.json`: `lifecycle` is deprecated in the same way. `scenario.json`: `objects`, as in decision 19. `batch.json`: `sync-codes`.
 
 ```json
 {
@@ -159,7 +159,7 @@ The records follow, left out when empty or null: `ProcessRecord.Subjects`, `Stat
 
 - **`get_references`, `referenced_by`:** a code under a reference binding shows as a use with field `code`.
 - **`export_process`, `import_process`:** `code` goes in `meta.maquettiste`, and the importer's kept state keys gain it.
-- **`simulate_process`, `record_scenario`, `verify_scenarios`:** `start.subject`.
+- **`simulate_process`, `record_scenario`, `verify_scenarios`:** a scenario's `objects`.
 - **`get_model_index`:** a lifecycle's row lists its subjects.
 - **Tool and verb texts** describe subjects and codes.
 
@@ -209,11 +209,11 @@ Each needs its own design. These shapes are here so the format above leaves room
 
 | Item | Shape | Why it's separate |
 | --- | --- | --- |
-| **Trigger points on every operation** | A grid of operations and kinds. The operations are the lifecycle's own (promote, demote, override, sign, reject, ignore, withdraw, enable, disable) and an object's (create, copy, delete, connect, disconnect, freeze, thaw, lock, unlock, revise, and changing an attribute, owner, type or lifecycle). The kinds are check, override and action. Each point names a handler, which may be a stub, with arguments. Today's guards and actions are two cells of that grid, and decision 20's step methods are where the lifecycle's points land in generated code | Object operations go well beyond lifecycles, and the list must stay open |
+| **Trigger points on every operation** | A grid of operations and kinds, where the operations come from the project's own open vocabulary, not a fixed list ([Who, what and when](lifecycle-actors-scenarios.md) section 5). The starter set includes the lifecycle's moves and sign-off and an object's create, modify, connect, freeze, lock, revise and the rest. The kinds are check, override and action. Each point names a handler, which may be a stub, with arguments. Today's guards and actions are two cells of that grid, and decision 20's step methods are where a move's points land in generated code | Object operations go well beyond lifecycles, and the vocabulary needs its own design |
 | **Richer sign-off** | Several named signatures per state, each with lists of who may approve, reject or ignore. A condition or routine decides whether each is needed and from whom. A signature chooses the next state, and can be withdrawn. Also routing to a person or role, signing again with a password, delegation, reminders and escalation | Overlaps approval stages (4.3) |
 | **Rights per state, rules and freezing** | Rights per state for the owner, everyone and named roles. Rules that allow or forbid operations when a condition over the object and the user holds. Freezing any item, an object or a relation's instance, until it is thawed | These run in the team's system; the model states them for packs and implementers |
 | **One of several lifecycles per object, and moving between them** | A type's objects follow one of several lifecycles, chosen by a rule or a person, and can move to another lifecycle, with a right and triggers. Also new versions of a lifecycle (4.5) | Decision 5 refuses this for now, so allowing it later only loosens a rule |
-| **Relations with several types per end** | An end lists several entities, or all | Every reader of relations changes |
+| **Relations with several types per end** | An end lists several entities, all of them, or those carrying a stereotype. [Who, what and when](lifecycle-actors-scenarios.md) section 9 proposes how to draw them | Every reader of relations changes, and diagrams need a new form |
 | **Revisions** | A revision sequence, the right to revise in each state, and what a relation does when an end is revised or copied | New to the model |
 | **Lifecycles on custom kinds and tables** | `{ "custom": <type> }` and `{ "table": <id> }` as further `subjects` entries | The entry is an object for this reason |
 | **Several instances of one lifecycle per object** | For now, a detail entity, which the guide will show. A key on the subject entry could come later if a team needs more | See section 13 |
@@ -222,11 +222,11 @@ Each needs its own design. These shapes are here so the format above leaves room
 
 Each has a recommendation, and the sections above follow it.
 
-1. **The new `subjects` list in place of `subject`, `boundAttribute` and `entity.lifecycle`.** Recommended: yes, reading the old keys forever and writing the new form (decision 6). The other choice is to keep the old keys as the first subject and add a second key for the rest. That keeps two ways of saying the same thing for good.
+1. **The new `subjects` list in place of `subject`, `boundAttribute` and `entity.lifecycle`.** Recommended: yes, reading the old keys forever and writing the new form (decision 6). The old form shipped in 0.5.0 (2026-09-29), so the team on 0.10.1 has lifecycles written that way, and reading it keeps their models loading. A model written in the new form can't be read by an older engine, so this belongs in a new minor version, 0.13.0, with a release note telling teams to run `maquettiste format`. `formatVersion` stays 1, since raising it would make this engine refuse every existing model. The other choice is to keep the old keys as the first subject and add a second key for the rest. That keeps two ways of saying the same thing for good.
 2. **Several instances of one lifecycle on one object.** Recommended: a detail entity, as you suggested, shown in the guide. Nothing new in the format for now.
 3. **The step methods in `csharp-dapper` (decision 20 and section 9).** Recommended: yes, as the first form of trigger points in generated code. They are pack output, not model format, so they can change.
 4. **A check on a plain status column.** Recommended: the `sql-ddl` parameter, off by default. It adds nothing to the model's format.
-5. **The order after 4.1.** Recommended: trigger points first, since they are what you described for generated code and lifecycle systems alike. Then richer sign-off, then rights, rules and freezing. Relations with several types per end can move up if you need them sooner.
+5. **The order after 4.1.** Recommended: the order in [Who, what and when](lifecycle-actors-scenarios.md) section 10. Actors come first (membership, relative actors, roles within a context), then the operation vocabulary. Trigger points, rights and rules, and richer sign-off all build on those two. Relations with several types per end can run alongside, once their diagram is agreed.
 
 ## 14. Tests
 
@@ -247,7 +247,7 @@ Each has a recommendation, and the sections above follow it.
 - `ProcessConditionTests`:
   - A guard reads `subject.total`, including on two subjects that share the attribute.
   - A bound attribute is out of scope, and a context attribute named `subject` keeps its meaning.
-  - `start.subject` values and defaults.
+  - A scenario's `objects`: values and defaults.
 - **No change:** the old form and an enum-bound fixture give the same findings, output and files, apart from MQ9209. The pack golden tests pass untouched, and a seed save in a model with no code binding revalidates no process.
 - **Pack tests:**
   - `csharp-dapper`'s codes, moves and step methods build with warnings as errors, for string, integer and uuid codes. `ToCode` and `FromCode` round trip, and the generated scenario tests pass.
@@ -267,7 +267,7 @@ One pull request per group, each stacked on the one before. The sizes are rough,
 | Codes | State codes and their rules (decisions 1 to 3) | A few hours |
 | Subjects | `subjects`, reading and rewriting the old keys, `set-lifecycle`, the resolved model, the editor's existing screens and the mock | About a day |
 | Bindings | Enum, reference and plain bindings per subject, `sync-codes`, the index fallback, the validator's reach, reference refactors | About half a day |
-| Guards and simulation | `subject` in conditions, `start.subject`, the generated scenario tests | About half a day |
+| Guards and simulation | `subject` in conditions, a scenario's `objects`, the generated scenario tests | About half a day |
 | Output | `csharp-dapper` codes, moves and step methods; `sql-ddl` lifecycle tables and its check; `process-docs`; the TypeScript sample; the sample app's copies | About half a day |
 | Docs | User guide, processes guide (including the detail entity), releases, modeling skill, `next.md` | An hour or two |
 
