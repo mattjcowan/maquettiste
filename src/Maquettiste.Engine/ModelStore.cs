@@ -278,7 +278,7 @@ public sealed partial class ModelStore : IAsyncDisposable
     private async Task<BatchResult> ApplyBatchCoreAsync(ModelBatch batch, ChangeSource source, BatchPreviewSink? preview, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(batch);
-        Dictionary<int, QualifiedName>? upserts = null;
+        Dictionary<int, UpsertTarget>? upserts = null;
         if (batch.Operations.Any(static o => o.Op == BatchOp.Upsert))
         {
             var failures = new SaveResult?[batch.Operations.Count];
