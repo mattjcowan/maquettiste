@@ -95,6 +95,21 @@ public sealed class TagsToPropertyTests
     private static IReadOnlyList<string> Keys(EditorRepo r) => [.. r.Store.Current!.Get<TagVocabulary>(TagsVocabularyId)!.Definitions.Select(d => d.Key)];
 
     [Fact]
+    public async Task A_tag_on_an_entity_check_stays_where_it_is_unless_a_schema_reaches_the_check()
+    {
+        await using var r = Repo(["status:draft"], [], ["status:paid"], paymentEdit: n => n["checks"] = JsonNode.Parse("""
+            [ { "id": "01K9TPC0000000000000000001", "name": "always", "tags": ["status:paid"], "condition": { "op": "eq", "args": [{ "value": 1 }, { "value": 1 }] } } ]
+            """));
+
+        Saved(await ApplyAsync(r, """{"op":"tags-to-property","prefix":"status:","name":"status"}"""));
+
+        var payment = EntityOf(r, EditorRepo.PaymentId);
+        Assert.Equal("paid", payment.Properties["status"].GetString());
+        Assert.Equal(["status:paid"], payment.Checks.Single().Tags);
+        Assert.Empty(payment.Checks.Single().Properties);
+    }
+
+    [Fact]
     public async Task Prefixed_tags_move_into_a_typed_property_and_leave_the_vocabulary()
     {
         await using var r = Repo(["status:draft", "owner:Customer", "label:urgent", "label:review"], ["status:paid"], ["status:paid"], total: ["priority:3"]);

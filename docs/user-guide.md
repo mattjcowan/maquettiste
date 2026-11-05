@@ -3975,7 +3975,7 @@ An extension schema declares properties that elements may carry in their `proper
 | --- | --- |
 | `name` | Required. A name for the set, shown nowhere else but in messages. |
 | `description` | Optional. Shown as the hint of the inspector's fields. |
-| `appliesTo.kinds` | The element kinds that get the properties: `entity`, `relation`, `enum`, `attribute`, `enum-member`, `column`, `check`, `table`, `process`, `guard`, `action`, `invoke`, `gate`, `actor`, `constraint` and the other kinds of the model. Empty or absent: every kind. |
+| `appliesTo.kinds` | The element kinds that get the properties: `entity`, `relation`, `enum`, `attribute`, `enum-member`, `column`, `check`, `table`, `process`, `guard`, `action`, `invoke`, `gate`, `actor`, `constraint` and the other kinds of the model. Empty or absent: every kind except `guard`, `action`, `invoke`, `gate` and `check`, which a schema reaches only by naming them or through a stereotype they carry. |
 | `appliesTo.stereotypes` | Optional. Stereotype keys: when set, only elements that carry one of them get the properties. |
 | `properties` | Required. A JSON Schema `properties` object: one schema per property name (`type`, `enum`, `minimum`, `maximum`, `pattern`, `items` and the rest of JSON Schema). |
 | `required` | Optional. The property names an applicable element must set. |

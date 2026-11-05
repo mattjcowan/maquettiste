@@ -138,7 +138,7 @@ internal sealed class ExtensionSet
         foreach (var (document, schema) in _extensions)
         {
             var target = document.Schema.AppliesTo;
-            if (target.Kinds.Count > 0 && !target.Kinds.Contains(kind, StringComparer.Ordinal))
+            if (!PropertySchemaSource.Reaches(target.Kinds, target.Stereotypes, kind))
                 continue;
             if (target.Stereotypes.Count > 0 && !target.Stereotypes.Any(s => keys.Contains(s, StringComparer.Ordinal)))
                 continue;
