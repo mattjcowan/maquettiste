@@ -99,11 +99,11 @@ The halves can ship separately. The first is what teams asked for: codes, and li
     - Two lifecycles binding one inherited or stereotype attribute for different entities stays allowed, as today. That includes a lifecycle on a base entity and another on an entity derived from it.
 12. **Under a binding, the codes must form a map** (decision 4), so the column can hold the state as one value. Otherwise it is MQ9206.
 13. **A missing code under a binding is a warning (MQ9210).** A three-save edit (add a state, add a transition into it, type its code) is never refused.
-14. **An enum binding works as today, and its states' codes, when given, match how the enum is stored.**
+14. **An enum binding works as today, and a state's code, when given, names the same member.**
     - It matches root states by name (MQ9203), and MQ9205 still compares the default with the initial state's name.
-    - An enum is stored as an integer by default: the member's value, else its position. It can also be stored as text: the member's code, else its name.
-    - A string code must equal its member's text form, and an integer code its member's integer form. Otherwise it is MQ9207.
-    - So a code and the enum never disagree, however a database stores the enum, and a lifecycle can mix an enum binding with other bindings.
+    - An enum member may carry a name, a label, an integer value, a key (`code`) and a description, in any mix, or just a name. Maquettiste doesn't decide which of them a system uses, or how it stores them.
+    - So a state's code must equal one of its member's own identifiers: its key, its integer value or its name, compared as codes are. Otherwise it is MQ9207.
+    - That keeps the model from saying two different things about one state, without choosing a form for the team. A lifecycle can mix an enum binding with other bindings.
 15. **`sync-enum` gains an optional `entity`.** It defaults to the lifecycle's one enum binding in either form, so the MQ9203 quick fix keeps working after converting. Subjects of one lifecycle may share an enum without MQ9204 warning about each other.
 16. **The codes must fit the attribute (MQ9207).**
     - A reference type's codes must be live codes of the type, and a former code is reported with its replacement.
@@ -316,9 +316,9 @@ Relations with several types per end, revisions, lifecycles on custom kinds and 
 4. **A check on a plain status column:** the `sql-ddl` parameter, off by default.
 5. **The order after 4.1:** as in [Who, what and when](lifecycle-actors-scenarios.md) section 10. The clearer Processes explorer comes right after 4.1.
 
-**Two things for the owner to confirm, from the third check:**
-- **Mixed engine versions.** New lifecycles are written as `subjects`, so a teammate on an older engine can't read one. That follows from deprecating the old form. The other choice is to keep writing the old form for a lifecycle with one subject until the team converts. It keeps mixed teams working, but Maquettiste would go on creating what it warns about.
-- **Two halves.** The first half covers codes, subjects, bindings and output. The second covers guards that read the object, and scenario objects. They could ship as two releases, since the first half is what teams asked for.
+6. **Mixed engine versions:** new lifecycles are written as `subjects`, even though a teammate on an older engine can't read one. The release note tells teams to upgrade together.
+7. **Two halves:** the first half (codes, subjects, bindings and output) ships on its own, before the second (guards that read the object, and scenario objects).
+8. **Enums are modeling, not storage:** a member may be any mix of an integer, a key, a label and a description, or just a name. A rule about enums never assumes how a system stores them (decision 14).
 
 ## 14. Tests
 
@@ -336,7 +336,7 @@ Relations with several types per end, revisions, lifecycles on custom kinds and 
 - **`LifecycleCodeTests` (new):**
   - Codes on root and nested states with no binding, and the map rule.
   - A state without a code keeps the mapping on.
-  - Every binding type: enum (string codes against members' codes or names, integer codes against their values or positions), reference, plain string, plain integer, inherited, from a stereotype, and through a scalar type.
+  - Every binding type: enum (codes against members' keys, values and names, with members that carry only a name), reference, plain string, plain integer, inherited, from a stereotype, and through a scalar type.
   - Renaming across two reference types in one batch.
   - Reference refactors.
   - **The index, by patch and by full build alike:** an attribute retyped in another file, an attribute added then bound, and an enum binding retyped to a reference type.
@@ -440,5 +440,4 @@ The first half is three pull requests in a row, each with a build, a review, its
 
 - **At most three agents run at once.** The second half no longer builds beside the bindings: the fourth check found nineteen files that both would change. The output and the second half share none.
 - **Merging:** the first half merges in order, 1 to 3. The second half then moves onto main, as in earlier stacks.
-- **Questions first.** The owner's two answers in section 13 come before wave 1. A later "keep the old form" would rework decision 7, the dialog, the importer and `set-lifecycle`.
 - **A design gap found while building** stops the work, and I ask the owner. Builders don't decide scope.
