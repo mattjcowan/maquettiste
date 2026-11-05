@@ -13,14 +13,14 @@
         "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "to", "codes", "target", "default", "redefine", "excludeMissing", "keepNames"],
         "properties": {
           "op": {
-            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "set-lifecycle", "set-initial", "refresh-scenario", "retag", "tags-to-property", "names-to-ids", "fold-into-stereotype", "map-by-name", "resync-binding", "rename-code", "retire-code", "merge-reference-types", "rename-reference-type", "text-to-trees"]
+            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "set-lifecycle", "set-initial", "refresh-scenario", "retag", "tags-to-property", "names-to-ids", "fold-into-stereotype", "map-by-name", "resync-binding", "rename-code", "retire-code", "merge-reference-types", "rename-reference-type", "text-to-trees", "upsert"]
           },
           "id": {
-            "description": "The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder. For fold-into-stereotype, the stereotype whose members the tables adopt; for rename-code, retire-code and rename-reference-type, the reference type; for merge-reference-types, the reference type merged away.",
+            "description": "The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder; an upsert's must be a qualified name. For fold-into-stereotype, the stereotype whose members the tables adopt; for rename-code, retire-code and rename-reference-type, the reference type; for merge-reference-types, the reference type merged away.",
             "$ref": "#/$defs/idOrName"
           },
           "as": {
-            "description": "Create and update: a placeholder that names the operation's element for the whole batch.",
+            "description": "Create, update and upsert: a placeholder that names the operation's element for the whole batch.",
             "$ref": "#/$defs/placeholder"
           },
           "expectedHash": {
@@ -192,12 +192,24 @@
             "if": {
               "properties": {
                 "op": {
-                  "enum": ["create", "update"]
+                  "enum": ["create", "update", "upsert"]
                 }
               }
             },
             "then": {
               "required": ["element"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "const": "upsert"
+                }
+              }
+            },
+            "then": {
+              "required": ["id"]
             }
           },
           {

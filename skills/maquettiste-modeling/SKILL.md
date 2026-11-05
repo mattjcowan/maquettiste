@@ -69,6 +69,9 @@ clobber a concurrent edit or leave a dangling id.
      "value":"body"},{"op":"replace","path":"/columns/3/name","value":"content"}]` renames the column.
      It saves like `save_element` (conflict check, validation, `facts`); a new column added without an id gets one,
      listed in `ids`. A path that does not resolve or a failed `test` is MQ1016 and nothing is written.
+   - A script that refreshes elements re-runs one batch of `{"op":"upsert","id":"@kind:path","element":{...}}`: it creates
+     the element when the name is new and replaces it otherwise, with no `expectedHash`. `id` must be a name the element
+     will have; it never moves an element, and does not write seeds. An element that exists must send its parts' ids.
    - In `apply_batch`, write names instead of ids: every id field and reference takes a qualified name, `@kind:path`
      with the name as stored (`@database:main`, `@table:billing.notes`, `@column:billing.notes.body`,
      `@entity:Billing.Invoice`, `@attribute:Invoice.total`), and `"as": "$pm"` on a create names the new element for

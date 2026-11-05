@@ -74,6 +74,7 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     "retire-code" => BatchOp.RetireCode,
                     "merge-reference-types" => BatchOp.MergeReferenceTypes,
                     "rename-reference-type" => BatchOp.RenameReferenceType,
+                    "upsert" => BatchOp.Upsert,
                     _ => BatchOp.Delete,
                 };
                 operations.Add(new BatchOperation(

@@ -278,6 +278,15 @@ public sealed partial class ModelStore : IAsyncDisposable
     private async Task<BatchResult> ApplyBatchCoreAsync(ModelBatch batch, ChangeSource source, BatchPreviewSink? preview, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(batch);
+        Dictionary<int, UpsertTarget>? upserts = null;
+        if (batch.Operations.Any(static o => o.Op == BatchOp.Upsert))
+        {
+            var failures = new SaveResult?[batch.Operations.Count];
+            batch = ExpandUpserts(await LoadedAsync(ct).ConfigureAwait(false), batch, failures, out upserts);
+            if (failures.Any(static r => r is not null))
+                return Invalid(batch, failures);
+        }
+
         var nodes = new JsonNode?[batch.Operations.Count];
         var invalid = new SaveResult?[batch.Operations.Count];
         for (var i = 0; i < batch.Operations.Count; i++)
@@ -327,6 +336,13 @@ public sealed partial class ModelStore : IAsyncDisposable
         }
 
         batch = resolved.Batch;
+        if (upserts is not null)
+        {
+            BatchNames.CheckUpserts(loaded, resolved, nodes, upserts, invalid);
+            if (invalid.Any(r => r is not null))
+                return Invalid(batch, invalid);
+            resolved = resolved with { Ids = resolved.Ids with { Names = WithUpsertNames(resolved.Ids.Names, upserts, nodes) } };
+        }
 
         // Expressions written as text become trees, read against the model as loaded (next-phase-3-design.md section 3.1): after 5.1's
         // resolver, so that every sub-element has its id and text names the columns and attributes the batch adds.
@@ -1750,6 +1766,12 @@ public enum BatchOp
     /// as the name does. Refused (MQ7020) when the name is the current one, is not an element name or another reference type has it.
     /// </summary>
     [JsonStringEnumMemberName("rename-reference-type")] RenameReferenceType,
+
+    /// <summary>
+    /// <c>upsert</c>: writes the element <c>id</c> names, a qualified name, as a <see cref="Create"/> when the model as loaded has none of
+    /// that name and an <see cref="Update"/> of the whole document when it has one. Expanded first, so the rest of a batch never sees it.
+    /// </summary>
+    [JsonStringEnumMemberName("upsert")] Upsert,
 }
 
 /// <summary>One batch operation.</summary>
