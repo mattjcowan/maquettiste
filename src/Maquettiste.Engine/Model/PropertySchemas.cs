@@ -260,9 +260,10 @@ internal readonly record struct XRefSite(PropertyHost Host, string Pointer, stri
 
 /// <summary>
 /// One holder of custom properties in a model document (next-phase-1-design.md section 4.1): the element, its attributes, enum
-/// members and table columns, a process's states, transitions and events, a stereotype's errors, and an operation's members (input,
-/// then each outcome's returns), outcomes and errors (next-phase-2-design.md section 4.1). Every walk over <c>properties</c> (extension
-/// validation, the <c>x-ref</c> walk of the index and the validator, localization and the batches) visits this set.
+/// members and table columns, an entity's and a table's checks, a process's states, transitions, events, guards, actions, invokes and
+/// gates, a stereotype's errors and checks, and an operation's members (input, then each outcome's returns), outcomes, errors and guards
+/// (next-phase-2-design.md section 4.1). Every walk over <c>properties</c> (extension validation, the <c>x-ref</c> walk of the index and
+/// the validator, localization and the batches) visits this set.
 /// </summary>
 /// <param name="Pointer">The holder's pointer in the document (<c>""</c> for the element).</param>
 /// <param name="Id">The holder's id.</param>
@@ -277,9 +278,9 @@ internal readonly record struct XRefSite(PropertyHost Host, string Pointer, stri
 internal readonly record struct PropertyHost(string Pointer, string Id, string KindName, IReadOnlyList<string> Stereotypes,
     IReadOnlyDictionary<string, JsonElement> Properties, IReadOnlyList<string>? EffectiveKeys = null)
 {
-    /// <summary>The holders of a document, in walk order: the element, attributes, enum members, columns, states (depth first),
-    /// transitions, events; for an operation its input members, then each outcome followed by its returns' members, then its
-    /// errors.</summary>
+    /// <summary>The holders of a document, in walk order: the element, attributes, checks, enum members, columns, table checks, states
+    /// (depth first), transitions, events, guards, actions, invokes, gates; for an operation its input members, then each outcome followed
+    /// by its returns' members, then its errors and guards.</summary>
     /// <param name="element">The top-level element.</param>
     /// <param name="effectiveKeys">The element's keys with defaults (<see cref="ModelSnapshot.PropertyKeys"/>), or <see langword="null"/>
     /// when the model declares no default stereotype.</param>
@@ -302,6 +303,14 @@ internal readonly record struct PropertyHost(string Pointer, string Id, string K
         {
             for (var i = 0; i < stereotype.Errors.Count; i++)
                 yield return Item(stereotype.Errors[i], At("/errors", i), "error");
+            for (var i = 0; i < stereotype.Checks.Count; i++)
+                yield return OfCheck(stereotype.Checks[i], i);
+        }
+
+        if (element is Entity entity)
+        {
+            for (var i = 0; i < entity.Checks.Count; i++)
+                yield return Item(entity.Checks[i], At("/checks", i), "check");
         }
 
         if (element is EnumType enumType)
@@ -314,6 +323,8 @@ internal readonly record struct PropertyHost(string Pointer, string Id, string K
         {
             for (var i = 0; i < table.Columns.Count; i++)
                 yield return Item(table.Columns[i], At("/columns", i), "column");
+            for (var i = 0; i < table.Checks.Count; i++)
+                yield return OfCheck(table.Checks[i], i);
         }
 
         if (element is Operation operation)
@@ -332,6 +343,8 @@ internal readonly record struct PropertyHost(string Pointer, string Id, string K
 
             for (var i = 0; i < operation.Errors.Count; i++)
                 yield return Item(operation.Errors[i], At("/errors", i), "error");
+            for (var i = 0; i < operation.Guards.Count; i++)
+                yield return Item(operation.Guards[i], At("/guards", i), "guard");
             yield break;
         }
 
@@ -350,9 +363,32 @@ internal readonly record struct PropertyHost(string Pointer, string Id, string K
             var e = process.Events[i];
             yield return new PropertyHost(At("/events", i), e.Id, "event", e.Stereotypes, e.Properties);
         }
+
+        for (var i = 0; i < process.Guards.Count; i++)
+        {
+            var g = process.Guards[i];
+            yield return new PropertyHost(At("/guards", i), g.Id, "guard", g.Stereotypes, g.Properties);
+        }
+
+        for (var i = 0; i < process.Actions.Count; i++)
+        {
+            var a = process.Actions[i];
+            yield return new PropertyHost(At("/actions", i), a.Id, "action", a.Stereotypes, a.Properties);
+        }
+
+        foreach (var invoke in Invokes(process.States, ""))
+            yield return invoke;
+        for (var i = 0; i < process.Transitions.Count; i++)
+        {
+            if (process.Transitions[i].Gate is { } g)
+                yield return new PropertyHost(At("/transitions", i) + "/gate", g.Id, "gate", g.Stereotypes, g.Properties);
+        }
     }
 
     private static PropertyHost Item(ElementBase item, string pointer, string kindName) => new(pointer, item.Id, kindName, item.Stereotypes, item.Properties);
+
+    // A table's check, and a stereotype's that its carriers inherit, holds properties only: no stereotypes of its own.
+    private static PropertyHost OfCheck(CheckConstraint check, int index) => new(At("/checks", index), check.Id, "check", [], check.Properties);
 
     private static IEnumerable<PropertyHost> States(IReadOnlyList<ProcessState> states, string pointer)
     {
@@ -361,6 +397,22 @@ internal readonly record struct PropertyHost(string Pointer, string Id, string K
             var at = At(pointer + "/states", i);
             yield return new PropertyHost(at, states[i].Id, "state", states[i].Stereotypes, states[i].Properties);
             foreach (var nested in States(states[i].States, at))
+                yield return nested;
+        }
+    }
+
+    private static IEnumerable<PropertyHost> Invokes(IReadOnlyList<ProcessState> states, string pointer)
+    {
+        for (var i = 0; i < states.Count; i++)
+        {
+            var at = At(pointer + "/states", i);
+            for (var j = 0; j < states[i].Invoke.Count; j++)
+            {
+                var invoke = states[i].Invoke[j];
+                yield return new PropertyHost(At(at + "/invoke", j), invoke.Id, "invoke", invoke.Stereotypes, invoke.Properties);
+            }
+
+            foreach (var nested in Invokes(states[i].States, at))
                 yield return nested;
         }
     }
@@ -516,8 +568,22 @@ internal sealed class PropertySchemaSource
     /// <param name="stereotypes">The holder's stereotype keys.</param>
     /// <returns><see langword="true"/> when it applies.</returns>
     public bool AppliesTo(string kindName, IReadOnlyList<string> stereotypes) =>
-        (Kinds.Count == 0 || Kinds.Contains(kindName, StringComparer.Ordinal))
+        Reaches(Kinds, Stereotypes, kindName)
         && (Stereotypes.Count == 0 || Stereotypes.Any(s => stereotypes.Contains(s, StringComparer.Ordinal)));
+
+    /// <summary>
+    /// The holder kinds a schema reaches only by naming them or through a stereotype the holder carries. A schema with no kinds and no
+    /// stereotypes reaches every other kind, as it did before these took properties: its <c>required</c> must not start to bind them.
+    /// </summary>
+    internal static readonly FrozenSet<string> NamedOnlyKinds = FrozenSet.Create(StringComparer.Ordinal, "guard", "action", "invoke", "gate", "check");
+
+    /// <summary>Whether a schema's targets reach a holder kind, before its stereotypes are matched.</summary>
+    /// <param name="kinds">The kinds the schema names.</param>
+    /// <param name="stereotypes">The stereotypes it names.</param>
+    /// <param name="kindName">The holder's kind name.</param>
+    /// <returns><see langword="true"/> when it reaches the kind.</returns>
+    internal static bool Reaches(IReadOnlyList<string> kinds, IReadOnlyList<string> stereotypes, string kindName) =>
+        kinds.Count > 0 ? kinds.Contains(kindName, StringComparer.Ordinal) : stereotypes.Count > 0 || !NamedOnlyKinds.Contains(kindName);
 
     /// <summary>
     /// The dialect custom property schemas compile with: the default one, which refuses unknown keywords (a typo is MQ5004), plus
@@ -1269,12 +1335,13 @@ internal sealed class PropertySchemaSet
 
     /// <summary>
     /// The holder kinds whose nodes localization translates (next-phase-1-design.md section 4.4): the localizable element kinds and
-    /// the sub-elements <see cref="PropertyHost.Of"/> reaches on them (attributes, enum members, states, transitions, events, and an
-    /// operation's members, outcomes and errors), and the members of custom elements (next-phase-2-design.md section 4.2). Physical
-    /// objects and their columns, mappings, diagrams and the vocabulary containers have no translations.
+    /// the sub-elements <see cref="PropertyHost.Of"/> reaches on them (attributes, enum members, states, transitions, events, guards,
+    /// actions, invokes, gates, and an operation's members, outcomes and errors), and the members of custom elements
+    /// (next-phase-2-design.md section 4.2). Physical objects and their columns, checks, mappings, diagrams and the vocabulary containers
+    /// have no translations.
     /// </summary>
     internal static readonly FrozenSet<string> TranslatedHolderKinds = global::Maquettiste.Engine.Localization.LocaleChains.ElementKinds.Select(k => KindInfo.Get(k).Name)
-        .Concat(["attribute", "enum-member", "state", "transition", "event", "operation-member", "outcome", "error", "member"]).ToFrozenSet(StringComparer.Ordinal);
+        .Concat(["attribute", "enum-member", "state", "transition", "event", "guard", "action", "invoke", "gate", "operation-member", "outcome", "error", "member"]).ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>The subschema applicators a nested <c>x-translatable</c> can sit under: those holding one schema, a map of schemas or an
     /// array of schemas.</summary>

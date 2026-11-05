@@ -387,6 +387,8 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
                 checkNode["column"] = Col(checkColumn);
             else if (file.Column is { } fileColumn)
                 checkNode["column"] = Remap(fileColumn);
+            if (file.Properties.Count > 0)
+                checkNode["properties"] = JsonSerializer.SerializeToNode(file.Properties, EngineJson.Options);
             checks.Add(checkNode);
         }
 

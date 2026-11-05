@@ -179,8 +179,9 @@ requirement, so the page renders again when a link comes or goes, or the element
 
 ## What to expect
 
-- **Links from guards, gates, actions, checks and constraints.** These cannot hold custom properties yet, so link from the
-  transition, state or entity that holds them.
+- **Links from guards, gates, actions, invokes, checks and constraints.** Add `guard`, `gate`, `action`, `invoke`, `check` and
+  `constraint` to `appliesTo.kinds` in step 2, and they take the same `implements` link. `referenced_by` reports a check's
+  kind as `key`, the name the model's index gives a table's constraints.
 - **Links across packages.** Each link counts as a dependency. If requirements sit in a package of their own, every package
   that links to it lists it in `dependsOn`, or the link is MQ2020 when layers are checked.
 - **Bringing in a spreadsheet.** There is no CSV import for custom kinds. Turn each row into an `upsert` in a small script.

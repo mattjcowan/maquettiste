@@ -691,6 +691,9 @@ public sealed record CheckConstraint
 
     /// <summary>The condition as an expression tree (next-phase-3-design.md section 3.1), or <see langword="null"/> for a SQL text check.</summary>
     public Expr? Condition { get; init; }
+
+    /// <summary>Custom property values, validated by extension schemas. They reach templates only, never the check's DDL.</summary>
+    public IReadOnlyDictionary<string, JsonElement> Properties { get; init; } = System.Collections.Immutable.ImmutableDictionary<string, JsonElement>.Empty;
 }
 
 /// <summary>An exclusion constraint (PostgreSQL <c>EXCLUDE</c>): no two rows may match on every element.</summary>

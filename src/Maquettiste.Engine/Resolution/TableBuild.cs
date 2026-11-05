@@ -125,6 +125,9 @@ internal sealed record CheckSpec(string Expression, string? Name, int Ordinal, s
 {
     /// <summary>A check written in the expression language: its typed tree, lowered once the table's columns are final; else <see langword="null"/>.</summary>
     public TreeCheck? Tree { get; init; }
+
+    /// <summary>The custom properties of the check as written.</summary>
+    public IReadOnlyDictionary<string, System.Text.Json.JsonElement> Properties { get; init; } = System.Collections.Frozen.FrozenDictionary<string, System.Text.Json.JsonElement>.Empty;
 }
 
 /// <summary>A table's check written in the expression language (next-phase-3-design.md section 3.1), typed when its file is read.</summary>

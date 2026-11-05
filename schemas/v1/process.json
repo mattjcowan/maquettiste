@@ -440,7 +440,9 @@
         "displayName",
         "expression",
         "condition",
-        "description"
+        "description",
+        "stereotypes",
+        "properties"
       ],
       "properties": {
         "id": {
@@ -462,6 +464,14 @@
         },
         "description": {
           "$ref": "common.json#/$defs/description"
+        },
+        "stereotypes": {
+          "$ref": "common.json#/$defs/keyList",
+          "default": []
+        },
+        "properties": {
+          "$ref": "common.json#/$defs/properties",
+          "default": {}
         }
       },
       "required": [
@@ -480,7 +490,9 @@
         "displayName",
         "expression",
         "raises",
-        "description"
+        "description",
+        "stereotypes",
+        "properties"
       ],
       "properties": {
         "id": {
@@ -503,6 +515,14 @@
         },
         "description": {
           "$ref": "common.json#/$defs/description"
+        },
+        "stereotypes": {
+          "$ref": "common.json#/$defs/keyList",
+          "default": []
+        },
+        "properties": {
+          "$ref": "common.json#/$defs/properties",
+          "default": {}
         }
       },
       "required": [
@@ -522,7 +542,9 @@
         "type",
         "process",
         "actors",
-        "description"
+        "description",
+        "stereotypes",
+        "properties"
       ],
       "properties": {
         "id": {
@@ -552,6 +574,14 @@
         },
         "description": {
           "$ref": "common.json#/$defs/description"
+        },
+        "stereotypes": {
+          "$ref": "common.json#/$defs/keyList",
+          "default": []
+        },
+        "properties": {
+          "$ref": "common.json#/$defs/properties",
+          "default": {}
         }
       },
       "required": [
@@ -576,7 +606,9 @@
         "reasonRequired",
         "meanings",
         "auditAttributes",
-        "description"
+        "description",
+        "stereotypes",
+        "properties"
       ],
       "properties": {
         "id": {
@@ -633,6 +665,14 @@
         },
         "description": {
           "$ref": "common.json#/$defs/description"
+        },
+        "stereotypes": {
+          "$ref": "common.json#/$defs/keyList",
+          "default": []
+        },
+        "properties": {
+          "$ref": "common.json#/$defs/properties",
+          "default": {}
         }
       },
       "required": [

@@ -7923,6 +7923,11 @@ export interface components {
             expression?: components["schemas"]["dialectMap"];
             /** @description The condition as an expression tree over the table's columns; unknown passes, as in any CHECK. */
             condition?: components["schemas"]["expr"];
+            /**
+             * @description Custom property values, for a schema that applies to the kind check. They reach templates only, never the check's DDL.
+             * @default {}
+             */
+            properties?: components["schemas"]["properties"];
         };
         /**
          * @description Storage parameters per dialect name (postgresql, sqlserver, mysql, oracle): each a map of parameter name to value, written in the DDL of a database of that dialect only (PostgreSQL and SQL Server WITH (name = value), MySQL table options, Oracle physical attributes). A number or boolean is written as the dialect writes it; a string is written as SQL as it is.
@@ -9156,7 +9161,7 @@ export interface components {
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
             /** @default [] */
-            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event" | "operation" | "operation-member" | "outcome" | "error" | "custom")[];
+            appliesTo?: ("package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "attribute" | "enum-member" | "column" | "process" | "actor" | "scenario" | "state" | "transition" | "event" | "guard" | "action" | "invoke" | "gate" | "operation" | "operation-member" | "outcome" | "error" | "check" | "constraint" | "custom")[];
             /** @description A label, not a link: an element carries at most one stereotype of a group, its own and implied ones together (MQ2013). */
             group?: components["schemas"]["key"];
             /**
@@ -9468,6 +9473,10 @@ export interface components {
              */
             actors?: components["schemas"]["idList"];
             description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
         };
         /**
          * State
@@ -9566,6 +9575,10 @@ export interface components {
              */
             auditAttributes?: components["schemas"]["attribute"][];
             description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
         };
         /**
          * Event
@@ -9604,6 +9617,10 @@ export interface components {
             /** @description The condition as an expression tree over context and event; only true passes. A guard holds expression or condition, not both (MQ3107), or neither as a stub. */
             condition?: components["schemas"]["expr"];
             description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
         };
         /**
          * Action
@@ -9621,6 +9638,10 @@ export interface components {
              */
             raises?: components["schemas"]["idList"];
             description?: components["schemas"]["description"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
         };
         /**
          * Transition
@@ -9860,6 +9881,10 @@ export interface components {
                     /** @description The condition as an expression tree over context and event; only true passes. A guard holds expression or condition, not both (MQ3107), or neither as a stub. */
                     condition?: components["schemas"]["expr"];
                     description?: components["schemas"]["description"];
+                    /** @default [] */
+                    stereotypes?: components["schemas"]["keyList"];
+                    /** @default {} */
+                    properties?: components["schemas"]["properties"];
                 };
                 /**
                  * Action
@@ -9877,6 +9902,10 @@ export interface components {
                      */
                     raises?: components["schemas"]["idList"];
                     description?: components["schemas"]["description"];
+                    /** @default [] */
+                    stereotypes?: components["schemas"]["keyList"];
+                    /** @default {} */
+                    properties?: components["schemas"]["properties"];
                 };
                 /**
                  * Invoke
@@ -9896,6 +9925,10 @@ export interface components {
                      */
                     actors?: components["schemas"]["idList"];
                     description?: components["schemas"]["description"];
+                    /** @default [] */
+                    stereotypes?: components["schemas"]["keyList"];
+                    /** @default {} */
+                    properties?: components["schemas"]["properties"];
                 };
                 /**
                  * Gate
@@ -9935,6 +9968,10 @@ export interface components {
                      */
                     auditAttributes?: components["schemas"]["attribute"][];
                     description?: components["schemas"]["description"];
+                    /** @default [] */
+                    stereotypes?: components["schemas"]["keyList"];
+                    /** @default {} */
+                    properties?: components["schemas"]["properties"];
                 };
                 /**
                  * Meaning

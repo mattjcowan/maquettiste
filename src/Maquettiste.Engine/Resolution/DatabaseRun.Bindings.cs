@@ -196,6 +196,7 @@ internal sealed partial class DatabaseRun
                 Expression = lowered.Sql,
                 Condition = lowered.Condition,
                 Shape = lowered.Shape,
+                Properties = check.Properties,
                 MemberOrigin = RMemberOrigin.Binding,
             });
         }

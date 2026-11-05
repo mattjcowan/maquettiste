@@ -5258,6 +5258,11 @@ E46 to E49 are free.
 
 ### 4.4 Shared guards, actions and gate policies
 
+**Decision 9 was built first, and went further (the owner's decision of 2026-11-05).** Beside guards, actions, invokes and
+gates, the kinds `check` (an entity's check, a table's check, a stereotype's check) and `constraint` take custom properties,
+and an operation's guards are holders under `guard`. A table's check holds `properties` only. Line numbers below are from
+when this section was written.
+
 **Why every team**
 
 Once a team models more than one process, the same checks and effects recur: an amount must be positive, a record must

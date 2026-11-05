@@ -30160,7 +30160,8 @@
           "name",
           "column",
           "expression",
-          "condition"
+          "condition",
+          "properties"
         ],
         "properties": {
           "id": {
@@ -30182,6 +30183,11 @@
           "condition": {
             "description": "The condition as an expression tree over the table's columns; unknown passes, as in any CHECK.",
             "$ref": "#/components/schemas/expr"
+          },
+          "properties": {
+            "description": "Custom property values, for a schema that applies to the kind check. They reach templates only, never the check's DDL.",
+            "$ref": "#/components/schemas/properties",
+            "default": {}
           }
         },
         "required": [
@@ -34392,10 +34398,16 @@
                 "state",
                 "transition",
                 "event",
+                "guard",
+                "action",
+                "invoke",
+                "gate",
                 "operation",
                 "operation-member",
                 "outcome",
                 "error",
+                "check",
+                "constraint",
                 "custom"
               ]
             },
@@ -35234,7 +35246,9 @@
           "type",
           "process",
           "actors",
-          "description"
+          "description",
+          "stereotypes",
+          "properties"
         ],
         "properties": {
           "id": {
@@ -35264,6 +35278,14 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
           }
         },
         "required": [
@@ -35419,7 +35441,9 @@
           "reasonRequired",
           "meanings",
           "auditAttributes",
-          "description"
+          "description",
+          "stereotypes",
+          "properties"
         ],
         "properties": {
           "id": {
@@ -35476,6 +35500,14 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
           }
         },
         "required": [
@@ -35552,7 +35584,9 @@
           "displayName",
           "expression",
           "condition",
-          "description"
+          "description",
+          "stereotypes",
+          "properties"
         ],
         "properties": {
           "id": {
@@ -35574,6 +35608,14 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
           }
         },
         "required": [
@@ -35592,7 +35634,9 @@
           "displayName",
           "expression",
           "raises",
-          "description"
+          "description",
+          "stereotypes",
+          "properties"
         ],
         "properties": {
           "id": {
@@ -35615,6 +35659,14 @@
           },
           "description": {
             "$ref": "#/components/schemas/description"
+          },
+          "stereotypes": {
+            "$ref": "#/components/schemas/keyList",
+            "default": []
+          },
+          "properties": {
+            "$ref": "#/components/schemas/properties",
+            "default": {}
           }
         },
         "required": [
@@ -36160,7 +36212,9 @@
               "displayName",
               "expression",
               "condition",
-              "description"
+              "description",
+              "stereotypes",
+              "properties"
             ],
             "properties": {
               "id": {
@@ -36182,6 +36236,14 @@
               },
               "description": {
                 "$ref": "#/components/schemas/description"
+              },
+              "stereotypes": {
+                "$ref": "#/components/schemas/keyList",
+                "default": []
+              },
+              "properties": {
+                "$ref": "#/components/schemas/properties",
+                "default": {}
               }
             },
             "required": [
@@ -36200,7 +36262,9 @@
               "displayName",
               "expression",
               "raises",
-              "description"
+              "description",
+              "stereotypes",
+              "properties"
             ],
             "properties": {
               "id": {
@@ -36223,6 +36287,14 @@
               },
               "description": {
                 "$ref": "#/components/schemas/description"
+              },
+              "stereotypes": {
+                "$ref": "#/components/schemas/keyList",
+                "default": []
+              },
+              "properties": {
+                "$ref": "#/components/schemas/properties",
+                "default": {}
               }
             },
             "required": [
@@ -36242,7 +36314,9 @@
               "type",
               "process",
               "actors",
-              "description"
+              "description",
+              "stereotypes",
+              "properties"
             ],
             "properties": {
               "id": {
@@ -36272,6 +36346,14 @@
               },
               "description": {
                 "$ref": "#/components/schemas/description"
+              },
+              "stereotypes": {
+                "$ref": "#/components/schemas/keyList",
+                "default": []
+              },
+              "properties": {
+                "$ref": "#/components/schemas/properties",
+                "default": {}
               }
             },
             "required": [
@@ -36296,7 +36378,9 @@
               "reasonRequired",
               "meanings",
               "auditAttributes",
-              "description"
+              "description",
+              "stereotypes",
+              "properties"
             ],
             "properties": {
               "id": {
@@ -36353,6 +36437,14 @@
               },
               "description": {
                 "$ref": "#/components/schemas/description"
+              },
+              "stereotypes": {
+                "$ref": "#/components/schemas/keyList",
+                "default": []
+              },
+              "properties": {
+                "$ref": "#/components/schemas/properties",
+                "default": {}
               }
             },
             "required": [

@@ -7,6 +7,13 @@ one.
 
 ## 0.12.2 (unreleased)
 
+- **Custom properties on more parts of the model.** An extension or a stereotype can now apply to `guard`, `action`, `invoke`,
+  `gate`, `check` and `constraint`, so a team can state its own facts there, or link them to another element with `x-ref`.
+  `referenced_by`, `get_references`, deletes and templates see them. Guards, actions, invokes and gates also take
+  `stereotypes`. Properties on a check never change its SQL or a migration. A schema with no `appliesTo.kinds` still leaves
+  these five alone (`constraint` it already reached): one reaches them only by naming them or through a stereotype they carry, so
+  its `required` starts to bind nothing new. A process or table that uses none of this writes the same file and generates the same
+  output. The schema copies change, so `validate` warns MQ1008 until `maquettiste init` or the editor refreshes them.
 - **A guide for requirements as a kind of your own.** [Requirements as a kind of your own](guides/requirements-as-your-own-kind.md)
   keeps statements of what a system must do in the model, links them to what meets them and what proves them, reports the
   gaps and writes the evidence with a pack, using only what every project already has.

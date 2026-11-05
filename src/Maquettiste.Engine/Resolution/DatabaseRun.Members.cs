@@ -81,12 +81,12 @@ internal sealed partial class DatabaseRun
             {
                 var (pinId, pointer) = MemberPin(t, m.MemberId, m.From);
                 if (TypeCheck(t, m.From.Stereotype, m.MemberId, m.Member.Name, set.TableKey, pinId, pointer) is { } tree)
-                    t.Checks.Add(new CheckSpec("", m.Member.Name, ++ordinal, m.Key, m.Member.Column, OriginOf(t, m)) { Tree = tree });
+                    t.Checks.Add(new CheckSpec("", m.Member.Name, ++ordinal, m.Key, m.Member.Column, OriginOf(t, m)) { Tree = tree, Properties = m.Member.Properties });
                 continue;
             }
 
             if (ForDialect(m.Member.Expression) is { } expression)
-                t.Checks.Add(new CheckSpec(expression, m.Member.Name, ++ordinal, m.Key, m.Member.Column, OriginOf(t, m)));
+                t.Checks.Add(new CheckSpec(expression, m.Member.Name, ++ordinal, m.Key, m.Member.Column, OriginOf(t, m)) { Properties = m.Member.Properties });
         }
     }
 

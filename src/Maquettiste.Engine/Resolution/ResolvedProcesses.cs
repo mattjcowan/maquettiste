@@ -75,7 +75,7 @@ public abstract class RProcessNode : RObject
     /// <summary>The description text; <see langword="null"/> when there is none.</summary>
     public string? Description { get; internal set; }
 
-    /// <summary>Stereotypes, in application order (states, transitions and events carry them; other nodes have none).</summary>
+    /// <summary>Stereotypes, in application order (a meaning has none).</summary>
     public IReadOnlyList<RStereotype> Stereotypes { get; internal set; } = [];
 
     /// <summary>Custom properties: stereotype defaults merged under the node's own, as plain CLR values.</summary>

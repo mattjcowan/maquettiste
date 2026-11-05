@@ -291,6 +291,13 @@ public sealed record ProcessGuard : IProcessNode
 
     /// <summary>Markdown text, or a reference to a sidecar Markdown file.</summary>
     public Description? Description { get; init; }
+
+    /// <summary>Stereotype keys, in application order.</summary>
+    [StereotypeKeys]
+    public IReadOnlyList<string> Stereotypes { get; init; } = [];
+
+    /// <summary>Custom property values, validated by extension schemas.</summary>
+    public IReadOnlyDictionary<string, JsonElement> Properties { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 }
 
 /// <summary>A named effect; without an expression it is a stub. Its name is the name phase 4 gives the operation it becomes.</summary>
@@ -314,6 +321,13 @@ public sealed record ProcessAction : IProcessNode
 
     /// <summary>Markdown text, or a reference to a sidecar Markdown file.</summary>
     public Description? Description { get; init; }
+
+    /// <summary>Stereotype keys, in application order.</summary>
+    [StereotypeKeys]
+    public IReadOnlyList<string> Stereotypes { get; init; } = [];
+
+    /// <summary>Custom property values, validated by extension schemas.</summary>
+    public IReadOnlyDictionary<string, JsonElement> Properties { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 }
 
 /// <summary>Work a state starts on entry: a sub-process, a service task or a human task.</summary>
@@ -341,6 +355,13 @@ public sealed record ProcessInvoke : IProcessNode
 
     /// <summary>Markdown text, or a reference to a sidecar Markdown file.</summary>
     public Description? Description { get; init; }
+
+    /// <summary>Stereotype keys, in application order.</summary>
+    [StereotypeKeys]
+    public IReadOnlyList<string> Stereotypes { get; init; } = [];
+
+    /// <summary>Custom property values, validated by extension schemas.</summary>
+    public IReadOnlyDictionary<string, JsonElement> Properties { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 }
 
 /// <summary>What an invoke starts.</summary>
@@ -394,6 +415,13 @@ public sealed record ProcessGate : IProcessNode
 
     /// <summary>Markdown text, or a reference to a sidecar Markdown file.</summary>
     public Description? Description { get; init; }
+
+    /// <summary>Stereotype keys, in application order.</summary>
+    [StereotypeKeys]
+    public IReadOnlyList<string> Stereotypes { get; init; } = [];
+
+    /// <summary>Custom property values, validated by extension schemas.</summary>
+    public IReadOnlyDictionary<string, JsonElement> Properties { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 }
 
 /// <summary>What a signature on a gate means ("Reviewed as finance controller").</summary>

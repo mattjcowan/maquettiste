@@ -77,9 +77,15 @@ internal static partial class Contract
         var state = Loaded.Value;
         var schemaJson = Absolutize(schemaNode.DeepClone());
         schemaJson.AsObject()["$schema"] = "https://json-schema.org/draft/2020-12/schema";
-        var schema = JsonSchema.Build(JsonDocument.Parse(schemaJson.ToJsonString()).RootElement, state.BuildOptions,
-            new Uri(Base + "checks/" + Guid.NewGuid().ToString("N") + ".json"));
-        var results = schema.Evaluate(instance, new EvaluationOptions { OutputFormat = OutputFormat.List });
+        // The build options hold one schema registry, and building resolves references through dictionaries that tests running at once must not share.
+        EvaluationResults results;
+        lock (state)
+        {
+            var schema = JsonSchema.Build(JsonDocument.Parse(schemaJson.ToJsonString()).RootElement, state.BuildOptions,
+                new Uri(Base + "checks/" + Guid.NewGuid().ToString("N") + ".json"));
+            results = schema.Evaluate(instance, new EvaluationOptions { OutputFormat = OutputFormat.List });
+        }
+
         if (results.IsValid)
             return;
         var errors = (results.Details ?? [])
