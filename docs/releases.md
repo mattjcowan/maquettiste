@@ -7,6 +7,9 @@ one.
 
 ## 0.12.2 (unreleased)
 
+- **Declared rules can leave retired links out.** `references` and `referencedBy` take `excludeRetired`: a linked object
+  that is retired, or sits in a retired element, does not count, so a retired process no longer hides a gap. Without it a
+  rule counts them as before.
 - **Create or update by name in a batch.** `{ "op": "upsert", "id": "@custom:policy.keeps_lines", "element": { ... } }`
   creates the element when the name is new and replaces its document when it exists, with no hash to read first, so a script
   that refreshes elements from another source sends one batch on every run. A run that changes nothing writes nothing. The

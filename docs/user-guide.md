@@ -4557,8 +4557,9 @@ declaration when the convention fits; keep scripts for what it cannot say.
   one value or a list, a list means any of its values, and the keys combine with AND.
 - **Conditions.** Exactly one key each: `all`, `any`, `not`, `has` (a path holds a value), `equals` (`{ path, value }`),
   `count` (`{ of, where, min, max }` over a list of objects such as `columns`, `attributes` or a table's `indexes`;
-  `min` 1 when no bound is given), `references` and `referencedBy` (`{ kind, field, min, max }`: links through the
-  index; a diagram that shows an element does not count), and `expression`, a condition in the [expression
+  `min` 1 when no bound is given), `references` and `referencedBy` (`{ kind, field, min, max, excludeRetired }`: links
+  through the index; a diagram that shows an element does not count, and with `excludeRetired` neither does an object that
+  is retired or sits in a retired element, so a retired process no longer counts as meeting a rule), and `expression`, a condition in the [expression
   language](#expressions) over `member` paths, judged as a guard. A path is the names of resolved members joined by
   `.`, and may read a calculated value (`calculated.<name>`).
 - **Messages.** `{<path>}` inserts the value at a path of the object (a resolved object by its name), `{$count}` the
