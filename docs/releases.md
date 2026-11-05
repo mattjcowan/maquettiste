@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.12.1 (unreleased)
+## 0.12.1 (2026-11-04)
 
 - **Overlay checks read the entity's attributes.** A check in the expression language on the overlay of an entity's
   table names the entity's attributes and value object members by attribute name, as an entity check does
