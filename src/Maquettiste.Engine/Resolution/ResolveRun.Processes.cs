@@ -65,6 +65,9 @@ internal sealed partial class ResolveRun
         public List<REvent> Events { get; } = [];
 
         public List<RGate> Gates { get; } = [];
+
+        /// <summary>The referrers keys of the library gates the actor signs: a process that starts naming one changes the actor's lists.</summary>
+        public List<string> LibraryGateKeys { get; } = [];
     }
 
     /// <summary>Resolves actors, processes and scenarios, the actors' uses and the entities' lifecycles.</summary>
@@ -121,7 +124,7 @@ internal sealed partial class ResolveRun
         {
             var own = uses.GetValueOrDefault(actor.Id);
             // A process or scenario that starts or stops naming the actor changes its referrers.
-            IReadOnlyList<string> keys = [Keys.Referrers(actor.Id)];
+            IReadOnlyList<string> keys = [Keys.Referrers(actor.Id), .. own?.LibraryGateKeys ?? []];
             actor.Processes = new RList<RProcess>(own?.Processes ?? [], keys);
             actor.Events = new RList<REvent>(own?.Events ?? [], keys);
             actor.Gates = new RList<RGate>(own?.Gates ?? [], keys);
@@ -159,8 +162,11 @@ internal sealed partial class ResolveRun
             }
         }
 
-        // Every node of the process reads its file, and the subject and bound enum (a bound state's member).
+        // Every node of the process reads its file, the subject and bound enum (a bound state's member), and the libraries it names (a
+        // transition's label holds a library guard's name).
         var baseKeys = new DependencySet(Keys).Element(process.Id);
+        foreach (var use in libraryUses)
+            baseKeys.Element(use.Library.Id);
         if (r.Subject is { } s)
             baseKeys.Element(s.Id);
         if (r.BoundEnum is { } e)
@@ -516,6 +522,8 @@ internal sealed partial class ResolveRun
                 {
                     if (!u.Gates.Contains(gate))
                         u.Gates.Add(gate);
+                    if (process.Use == ProcessUse.Library && gate.Transition is null)
+                        u.LibraryGateKeys.Add(Keys.Referrers(gate.Id));
                 });
         }
 
@@ -585,7 +593,7 @@ internal sealed partial class ResolveRun
         foreach (var scenario in Model.All<Scenario>())
         {
             Ct.ThrowIfCancellationRequested();
-            if (!_processes.TryGetValue(scenario.Process, out var process))
+            if (!order.ContainsKey(scenario.Process) || !_processes.TryGetValue(scenario.Process, out var process))
                 continue; // a dangling process (MQ2001): the scenario has nothing to run
             var lookup = _processLookups[process.Id];
             var s = new RScenario();

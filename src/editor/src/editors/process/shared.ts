@@ -41,18 +41,25 @@ export function useActors(): { actors: ElementSummary[]; actorNames: Map<string,
   }, [index.data]);
 }
 
+function withStates(json: unknown): ProcessDoc {
+  const process = json as ProcessDoc;
+  process.states ??= [];
+  return process;
+}
+
 export function useProcessContext(props: FormProps): ProcessContext {
   const { id, json, edit, flush, diagnostics } = props;
   const problems = useProblems(id, diagnostics);
   const { actors, actorNames } = useActors();
   return {
     id,
-    process: json as unknown as ProcessDoc,
+    // A file with no states is MQ9020, and its problem shows here rather than a failed view.
+    process: (json.states ? json : { ...json, states: [] }) as unknown as ProcessDoc,
     change: (update) => {
-      edit((j) => void update(j as unknown as ProcessDoc));
+      edit((j) => void update(withStates(j)));
       flush();
     },
-    draftEdit: (update) => edit((j) => void update(j as unknown as ProcessDoc)),
+    draftEdit: (update) => edit((j) => void update(withStates(j))),
     commit: flush,
     problems,
     actors,

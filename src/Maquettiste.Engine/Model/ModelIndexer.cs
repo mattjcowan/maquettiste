@@ -245,7 +245,7 @@ internal static class ModelIndexer
             kv => kv.Value.OrderBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Id, StringComparer.Ordinal).ToImmutableArray());
         var kindSetHashes = byKind.ToFrozenDictionary(
             kv => kv.Key,
-            kv => HashBuilder.Of([.. kv.Value.Select(e => e.Id).Order(StringComparer.Ordinal)]));
+            kv => KindSetHash(kv.Value));
 
         return new Result(
             entries,
@@ -476,7 +476,7 @@ internal static class ModelIndexer
             }
 
             byKind[kind] = [.. list.OrderBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Id, StringComparer.Ordinal)];
-            kindSetHashes[kind] = HashBuilder.Of([.. list.Select(e => e.Id).Order(StringComparer.Ordinal)]);
+            kindSetHashes[kind] = KindSetHash(list);
         }
 
         // Summaries follow the documents.
@@ -515,6 +515,13 @@ internal static class ModelIndexer
             SuppressionCount = suppressionCount,
         };
     }
+
+    /// <summary>
+    /// The hash of a kind's id set. A library counts apart from itself as a process that runs, since <c>model.processes</c> and
+    /// <c>model.process_libraries</c> list them apart; a model with no library hashes as ids alone.
+    /// </summary>
+    private static string KindSetHash(IEnumerable<Element> elements) =>
+        HashBuilder.Of([.. elements.Select(static e => e is Process { Use: ProcessUse.Library } ? e.Id + "|library" : e.Id).Order(StringComparer.Ordinal)]);
 
     /// <summary>Whether a change to this element could change how other documents' seed cells and codes are indexed.</summary>
     private static bool AffectsReferenceData(Element element, ReferenceDataIndex referenceData)

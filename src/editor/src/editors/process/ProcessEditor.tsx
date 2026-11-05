@@ -5,7 +5,8 @@
 import { useEffect, useState } from "react";
 import { clearProcessFocus, useProcessFocus, type ProcessTab } from "@/app/processFocus";
 import { useServices } from "@/app/context";
-import { PROCESS_TAB_LABELS } from "@/model/labels";
+import { EmptyState } from "@/components/ui/misc";
+import { LIBRARY_LABELS, PROCESS_TAB_LABELS } from "@/model/labels";
 import { useEditor, type Draft } from "@/state/store";
 import { EditorLayout, useEditorContext, type EditorContext } from "../EditorFrame";
 import { setView } from "../tabs";
@@ -23,6 +24,8 @@ import { processSelection, selectProcessNode } from "./selection";
 export function ProcessEditor({ id }: { id: string }) {
   const { ctx, fallback, draft } = useEditorContext(id, "process");
   if (!ctx) return <>{fallback}</>;
+  // A tab left open while the process became a library, or a diagram that names one: a library has no chart to show.
+  if ((ctx.json as { use?: unknown }).use === "library") return <EmptyState title={LIBRARY_LABELS.noChartTitle}>{LIBRARY_LABELS.noChartBody}</EmptyState>;
   return <ProcessBody ctx={ctx} draft={draft} />;
 }
 

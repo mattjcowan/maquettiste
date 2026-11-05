@@ -14,6 +14,7 @@ import {
   addSiblingState,
   addState,
   deleteState,
+  actionIdsOfNames,
   idsOfNames,
   INVOKE_TYPES,
   setInitial,
@@ -123,7 +124,7 @@ export function StatesTab({ pc, members }: { pc: ProcessContext; members: string
         if (value === "deep") state.history = "deep";
         else delete state.history;
       } else if (key === "entry" || key === "exit") {
-        const ids = idsOfNames(String(value), actions);
+        const ids = actionIdsOfNames(String(value), actions, state[key]);
         if (ids.length) state[key] = ids;
         else delete state[key];
       }

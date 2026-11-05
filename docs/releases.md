@@ -13,7 +13,8 @@ one.
   signatures still count per transition. Nothing in a library runs (MQ9020 to MQ9022). `each process` still lists only processes
   that run; a pack that writes shared code reads `model.process_libraries`, and `process.guards`, `process.actions` and
   `process.gates` also list the library members that process names. `gate.transition` is null for a library's gate, and `gate.used_by`
-  lists its transitions. The editor edits a library through the JSON view. The schema copies change, so `validate` warns MQ1008 until
+  lists its transitions. `import_process` over a process that uses a library's members is refused, since it would drop those links. The
+  editor edits a library through the JSON view, and its simulation panel cannot yet sign a gate policy or assume a library's stub guard. The schema copies change, so `validate` warns MQ1008 until
   `maquettiste init` or the editor refreshes them. A process with no `states` is now MQ9020 rather than a schema error.
 - **Custom properties on more parts of the model.** An extension or a stereotype can now apply to `guard`, `action`, `invoke`,
   `gate`, `check` and `constraint`, so a team can state its own facts there, or link them to another element with `x-ref`.

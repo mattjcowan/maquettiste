@@ -58,9 +58,10 @@ public sealed class SharedGuardTests
         }
         """;
 
-    private static async Task<E2ERepo> CopyAsync(string? library = LibraryBody, string? invoice = null, string? payment = null, string? pack = null, Action<E2ERepo>? more = null)
+    private static async Task<E2ERepo> CopyAsync(string? library = LibraryBody, string? invoice = null, string? payment = null, string? pack = null, Action<E2ERepo>? more = null,
+        string units = """{"id": "flow", "template": "flow.scriban", "for": "each process", "output": "src/Generated/flows/{{ process.name }}.txt"}""", Action<JsonObject>? settings = null)
     {
-        var repo = E2ERepo.Create(demo: false);
+        var repo = E2ERepo.Create(demo: false, settings: settings);
         repo.Repo.WriteFile(".maquettiste/model/actors/controller.json", $$"""{ "kind": "actor", "id": "{{Controller}}", "name": "Controller", "type": "person" }""");
         repo.Repo.WriteFile(".maquettiste/model/actors/auditor.json", $$"""{ "kind": "actor", "id": "{{Auditor}}", "name": "Auditor", "type": "person" }""");
         if (library is not null)
@@ -71,10 +72,7 @@ public sealed class SharedGuardTests
         {
             var folder = Path.Combine(repo.Repo.ModelRoot, "templates", "flows");
             Directory.CreateDirectory(folder);
-            await File.WriteAllTextAsync(Path.Combine(folder, "pack.json"), """
-                {"name": "flows", "version": "1.0.0", "engine": ">=1.0", "units": [
-                  {"id": "flow", "template": "flow.scriban", "for": "each process", "output": "src/Generated/flows/{{ process.name }}.txt"}]}
-                """, Ct);
+            await File.WriteAllTextAsync(Path.Combine(folder, "pack.json"), """{"name": "flows", "version": "1.0.0", "engine": ">=1.0", "units": [""" + units + "]}", Ct);
             await File.WriteAllTextAsync(Path.Combine(folder, "flow.scriban"), pack, Ct);
         }
 
@@ -382,13 +380,15 @@ public sealed class SharedGuardTests
     }
 
     [Fact]
-    public async Task Export_writes_a_library_guard_by_name_like_a_local_one()
+    public async Task Export_writes_a_library_guard_and_gate_like_local_ones()
     {
-        await using var repo = await CopyAsync(invoice: Flow(InvoiceFlow, "InvoiceFlow"));
+        await using var repo = await CopyAsync();
 
-        var export = await repo.Store.ExportProcessAsync(PaymentFlow, Ct);
+        var export = await repo.Store.ExportProcessAsync(InvoiceFlow, Ct);
 
         Assert.Contains("amount_positive", export.Value!.Json, StringComparison.Ordinal);
+        Assert.Contains("two_signers", export.Value.Json, StringComparison.Ordinal);
+        Assert.DoesNotContain("gatePolicy", export.Value.Json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -437,7 +437,143 @@ public sealed class SharedGuardTests
         Assert.Equal((Gate, "/gates/0/properties/owner"), (found.ElementId, found.JsonPointer));
     }
 
+    [Fact]
+    public async Task Importing_over_a_process_that_uses_a_library_is_refused_and_writes_nothing()
+    {
+        // An import writes local parts only: it would drop the gate policy, so the transition would stop asking for signatures.
+        await using var repo = await CopyAsync();
+        var before = repo.Repo.ReadFile(InvoicePath);
+        var config = JsonDocument.Parse("""
+            { "id": "InvoiceFlow", "initial": "Open", "states": { "Open": { "on": { "go": { "target": "Done", "guard": "amount_positive" } } }, "Done": { "type": "final" } } }
+            """).RootElement.Clone();
+
+        foreach (var dryRun in new[] { true, false })
+        {
+            var imported = await repo.Store.ImportProcessAsync(new ProcessImportRequest { Config = config, Into = InvoiceFlow }, dryRun, ChangeSource.Editor, Ct);
+            Assert.Equal(ProcessCallStatus.BadRequest, imported.Status);
+            Assert.Contains("uses guards, actions or gates of a library", imported.Detail, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(before, repo.Repo.ReadFile(InvoicePath));
+    }
+
+    [Fact]
+    public async Task A_gate_policy_naming_a_gate_on_a_librarys_transition_reports_instead_of_throwing()
+    {
+        await using var repo = await CopyAsync(library: $$"""
+            { "kind": "process", "id": "{{Library}}", "name": "BillingChecks", "use": "library",
+              "guards": [ { "id": "{{Guard}}", "name": "amount_positive", "expression": "true" } ],
+              "actions": [ { "id": "{{Action}}", "name": "notify" } ],
+              "transitions": [ { "id": "{{Id(Library, 71)}}", "source": "{{Id(Library, 72)}}", "trigger": "event", "targets": [],
+                "gate": { "id": "{{Gate}}", "name": "two_signers", "signers": ["{{Controller}}"], "meanings": [ { "id": "{{Meaning}}", "name": "approved" } ] } } ]
+            }
+            """);
+
+        var found = await FindingsAsync(repo);
+
+        Assert.Contains(found, d => d.Rule == "MQ9020");
+        Assert.Contains("no library holds", Assert.Single(found, d => d.Rule == "MQ9021").Message, StringComparison.Ordinal);
+    }
+
     // ---- The resolved model
+
+    [Fact]
+    public async Task A_scenario_naming_a_library_stays_out_of_the_resolved_model_beside_another_scenario()
+    {
+        await using var repo = await CopyAsync(more: r =>
+        {
+            r.Repo.WriteFile(".maquettiste/model/scenarios/on-library.json", $$"""
+                { "kind": "scenario", "id": "{{Id(Library, 51)}}", "name": "on_library", "process": "{{Library}}", "steps": [ { "id": "{{Id(Library, 52)}}", "input": "event", "event": "{{Id(Library, 53)}}" } ] }
+                """);
+            r.Repo.WriteFile(".maquettiste/model/scenarios/on-flow.json", $$"""
+                { "kind": "scenario", "id": "{{Id(Library, 54)}}", "name": "on_flow", "process": "{{PaymentFlow}}", "start": { "context": { "{{Id(PaymentFlow, 11)}}": 10 } },
+                  "steps": [ { "id": "{{Id(Library, 55)}}", "input": "event", "event": "{{Id(PaymentFlow, 13)}}" } ] }
+                """);
+        });
+
+        var model = await ResolveAsync(repo);
+
+        Assert.Equal("on_flow", Assert.Single(model.Scenarios).Name);
+    }
+
+    [Fact]
+    public async Task An_actor_page_renders_again_when_a_process_starts_using_a_library_gate()
+    {
+        const string Page = "src/Generated/flows/Controller.txt";
+        await using var repo = await CopyAsync(
+            invoice: Flow(InvoiceFlow, "InvoiceFlow"),
+            pack: "{{ for p in actor.processes }}{{ p.name }} {{ end }}|{{ for g in actor.gates }}{{ g.name }} {{ end }}",
+            units: """{"id": "actor", "template": "flow.scriban", "for": "each actor", "output": "src/Generated/flows/{{ actor.name }}.txt"}""");
+        await repo.ApplyAsync();
+        Assert.Equal("|two_signers ", repo.Repo.ReadFile(Page));
+
+        // Neither the actor's file nor the library's changes: only PaymentFlow starts naming the gate.
+        await repo.EditAsync(PaymentFlow, flow => flow["transitions"]![0]!["gatePolicy"] = Gate);
+        await repo.ApplyAsync();
+
+        Assert.Equal("PaymentFlow |two_signers ", repo.Repo.ReadFile(Page));
+    }
+
+    [Fact]
+    public async Task A_page_over_all_processes_renders_again_when_a_library_starts_to_run()
+    {
+        const string Page = "src/Generated/flows/all.txt";
+        await using var repo = await CopyAsync(
+            invoice: Flow(InvoiceFlow, "InvoiceFlow"),
+            pack: "{{ for p in model.processes }}{{ p.name }} {{ end }}|{{ for p in model.process_libraries }}{{ p.name }} {{ end }}",
+            units: """{"id": "all", "template": "flow.scriban", "for": "model", "output": "src/Generated/flows/all.txt"}""",
+            more: r => r.Repo.WriteFile(".maquettiste/model/processes/other.json", $$"""{ "kind": "process", "id": "{{Id(Library, 81)}}", "name": "Other", "use": "library" }"""));
+        await repo.ApplyAsync();
+        Assert.Equal("InvoiceFlow PaymentFlow |BillingChecks Other ", repo.Repo.ReadFile(Page));
+
+        // The set of ids does not change: only which list one of them is in.
+        await repo.EditAsync(Id(Library, 81), other =>
+        {
+            other["use"] = "orchestration";
+            other["states"] = JsonNode.Parse($$"""[ { "id": "{{Id(Library, 82)}}", "name": "Open" } ]""");
+        });
+        await repo.ApplyAsync();
+
+        Assert.Equal("InvoiceFlow Other PaymentFlow |BillingChecks ", repo.Repo.ReadFile(Page));
+    }
+
+    [Fact]
+    public async Task A_transition_label_follows_a_rename_of_its_library_guard_from_a_page_that_reads_only_the_actor()
+    {
+        const string Page = "src/Generated/flows/Controller.txt";
+        var payment = Flow(PaymentFlow, "PaymentFlow").Replace("\"name\": \"go\"", $"\"name\": \"go\", \"actors\": [\"{Controller}\"]", StringComparison.Ordinal);
+        await using var repo = await CopyAsync(
+            invoice: Flow(InvoiceFlow, "InvoiceFlow"), payment: payment,
+            pack: "{{ for e in actor.events }}{{ for t in e.transitions }}{{ t.label }}{{ end }}{{ end }}",
+            units: """{"id": "actor", "template": "flow.scriban", "for": "each actor", "output": "src/Generated/flows/{{ actor.name }}.txt"}""");
+        await repo.ApplyAsync();
+        Assert.Contains("amount_positive", repo.Repo.ReadFile(Page), StringComparison.Ordinal);
+
+        await repo.EditAsync(Library, library => library["guards"]![0]!["name"] = "amount_above_zero");
+        await repo.ApplyAsync();
+
+        Assert.Contains("amount_above_zero", repo.Repo.ReadFile(Page), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_shipped_docs_pack_lists_only_the_uses_on_each_process_page()
+    {
+        await using var repo = await CopyAsync(
+            invoice: Flow(InvoiceFlow, "InvoiceFlow"),
+            settings: s =>
+            {
+                s["packs"]!["process-docs"] = new JsonObject { ["output"] = "docs" };
+                s["outputs"]!["allow"]!.AsArray().Add(new JsonObject { ["path"] = "docs" });
+            },
+            more: r => E2ERepo.CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", "process-docs"), Path.Combine(r.Repo.ModelRoot, "templates", "process-docs")));
+
+        await repo.ApplyAsync();
+
+        var page = repo.Repo.ReadFile("docs/processes/payment-flow.md");
+        Assert.Contains("| `amount_positive` | `context.amount > 0` | 1 |", page, StringComparison.Ordinal);
+        var action = page.Split('\n').Single(l => l.StartsWith("| `notify`", StringComparison.Ordinal));
+        Assert.Equal(2, action.Split("| state `Done` |").Length);
+    }
 
     [Fact]
     public async Task Libraries_resolve_apart_from_processes_and_each_using_process_lists_what_it_names()

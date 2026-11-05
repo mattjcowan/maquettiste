@@ -2084,16 +2084,21 @@ name a library's actions the same way, and `transition.gatePolicy` names a libra
 - **Links.** These are ordinary references: `get_references` lists each user, a delete refuses while one is used, and a process in another
   package needs that package in `dependsOn` when layers are checked.
 - **Unused members.** A library's member that no process names is the warning MQ9013 on the library.
-- **What a save revisits.** Saving a library validates the processes that use it. It does not replay their scenarios, so `verify_scenarios`
-  or the next full `validate` shows a scenario a library change broke.
+- **What a save revisits.** Saving a library validates the processes that use it. It does not replay their scenarios, and saving a process does not
+  revisit its libraries, so `verify_scenarios` or the next full `validate` shows a scenario a library change broke, and the current state of a
+  library's "unused" warnings.
+- **Importing.** `import_process` over a process that uses a library's members is refused, since an import writes local parts only and would drop those
+  links and a gate policy's signatures. Edit the file instead.
 - **Nothing runs a library.** A process invoke or a scenario cannot name one (MQ9022), and `simulate_process`, `record_scenario`,
   `export_process` and `sync_enum_from_process` refuse one. `export_process` on a using process writes the library's guards and actions
   by name, like its own.
 - **Templates.** `each process` lists only processes that run. Each one's `guards`, `actions` and `gates` also list the library members it
   names, after its own, and `process.libraries` lists the libraries. A pack that writes shared code reads `model.process_libraries`.
   `guard.used_by`, `action.used_by` and `gate.used_by` span processes on a library's member, and `gate.transition` is null on a library's gate.
-- **In the editor.** A library does not open in the chart editor; its inspector's JSON view edits it. Guards, actions and gates of other
-  processes do not yet offer a library's members in their pickers, so name them by id in the JSON view.
+- **In the editor.** A library does not open in the chart editor; its inspector's JSON view edits it. A process's grids show a library's action
+  as `?` and keep it when you edit the cell, and their pickers do not yet offer a library's members, so name them by id in the JSON view. The
+  simulation panel cannot yet give a signature for a gate policy or an assumed result for a library's stub guard: use `simulate_process` or
+  `maquettiste process simulate` for those.
 
 ### The rules for processes (MQ9xxx)
 

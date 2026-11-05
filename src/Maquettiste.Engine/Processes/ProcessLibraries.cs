@@ -107,9 +107,20 @@ public static class ProcessLibraries
     /// <param name="id">The member's id.</param>
     /// <param name="kind">Its index kind: <c>guard</c>, <c>action</c> or <c>gate</c>.</param>
     /// <returns>The library.</returns>
-    internal static Process? Owner(ModelSnapshot model, string id, string kind) =>
-        model.TryGetEntry(id, out var entry) && string.Equals(entry.Kind, kind, StringComparison.Ordinal)
-            && model.Get<Process>(entry.OwnerId) is { Use: ProcessUse.Library } library ? library : null;
+    internal static Process? Owner(ModelSnapshot model, string id, string kind)
+    {
+        if (!model.TryGetEntry(id, out var entry) || !string.Equals(entry.Kind, kind, StringComparison.Ordinal)
+            || model.Get<Process>(entry.OwnerId) is not { Use: ProcessUse.Library } library)
+            return null;
+        // A library that holds a transition's gate or an event's parts is MQ9020, and those are not members to name.
+        var held = kind switch
+        {
+            "guard" => library.Guards.Any(g => string.Equals(g.Id, id, StringComparison.Ordinal)),
+            "action" => library.Actions.Any(a => string.Equals(a.Id, id, StringComparison.Ordinal)),
+            _ => library.Gates.Any(g => string.Equals(g.Id, id, StringComparison.Ordinal)),
+        };
+        return held ? library : null;
+    }
 
     private static string N(int value) => value.ToString(CultureInfo.InvariantCulture);
 
@@ -125,7 +136,7 @@ public static class ProcessLibraries
             Actions = [.. process.Actions, .. uses.Select(u => u.Action).OfType<ProcessAction>()],
             Transitions = gates.Count == 0
                 ? process.Transitions
-                : [.. process.Transitions.Select(t => t.Gate is null && t.GatePolicy is { } policy && gates.TryGetValue(policy, out var gate) ? t with { Gate = gate } : t)],
+                : [.. process.Transitions.Select(t => t.Gate is null && t.GatePolicy is { } policy && gates.TryGetValue(policy, out var gate) ? t with { Gate = gate, GatePolicy = null } : t)],
         };
     }
 

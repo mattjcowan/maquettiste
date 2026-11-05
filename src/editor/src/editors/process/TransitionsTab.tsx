@@ -8,6 +8,7 @@ import {
   addNamed,
   addTransition,
   expressionError,
+  actionIdsOfNames,
   idsOfNames,
   namedRows,
   newGate,
@@ -133,7 +134,7 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
         if (ids.length) t.targets = ids;
         else delete t.targets;
       } else if (key === "actions") {
-        const ids = idsOfNames(v, actions);
+        const ids = actionIdsOfNames(v, actions, t.actions);
         if (ids.length) t.actions = ids;
         else delete t.actions;
       } else if (key === "external") {

@@ -214,7 +214,7 @@ export function buildChart(process: ProcessDoc, input: ChartInput = {}): Chart {
     );
   });
 
-  const roots = process.states.map((s) => s.id);
+  const roots = (process.states ?? []).map((s) => s.id);
   return { states, order, roots, rootInitial: initialOf(process) ?? null, edges, transitions };
 }
 

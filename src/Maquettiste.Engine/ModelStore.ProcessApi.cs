@@ -199,6 +199,9 @@ public sealed partial class ModelStore
             if (matches.Count != 1)
                 return ProcessCall<ProcessImportResult>.Fail(ProcessCallStatus.NotFound, matches.Count == 0 ? $"No process has the id or name {intoKey}." : $"'{intoKey}' names {matches.Count} processes; pass an id.");
             into = matches[0];
+            if (ProcessLibraries.UsesOf(snapshot, into).Count > 0)
+                return ProcessCall<ProcessImportResult>.Fail(ProcessCallStatus.BadRequest,
+                    $"Process '{into.Name}' uses guards, actions or gates of a library, and an import writes local parts only, so it would drop those links and a gate policy's signatures. Edit the process's file instead.");
             var current = snapshot.GetDocument(into.Id)!.Hash;
             if (request.ExpectedHash is { Length: > 0 } expected && !string.Equals(expected, current, StringComparison.Ordinal))
                 return ProcessCall<ProcessImportResult>.Fail(ProcessCallStatus.Conflict, $"Process '{into.Name}' changed since it was read; export it again and retry.");
