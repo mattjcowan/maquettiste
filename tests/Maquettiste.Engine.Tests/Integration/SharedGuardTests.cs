@@ -515,18 +515,27 @@ public sealed class SharedGuardTests
     }
 
     [Fact]
-    public async Task A_page_over_all_processes_renders_again_when_a_library_starts_to_run()
+    public async Task A_page_over_one_list_renders_again_when_a_process_moves_between_running_and_library()
     {
-        const string Page = "src/Generated/flows/all.txt";
+        // Each page reads one list only, so it holds no key on the process that moves. The set of ids does not change: only which list it is in.
+        const string Running = "src/Generated/flows/running.txt";
+        const string Libraries = "src/Generated/flows/libraries.txt";
         await using var repo = await CopyAsync(
             invoice: Flow(InvoiceFlow, "InvoiceFlow"),
-            pack: "{{ for p in model.processes }}{{ p.name }} {{ end }}|{{ for p in model.process_libraries }}{{ p.name }} {{ end }}",
-            units: """{"id": "all", "template": "flow.scriban", "for": "model", "output": "src/Generated/flows/all.txt"}""",
-            more: r => r.Repo.WriteFile(".maquettiste/model/processes/other.json", $$"""{ "kind": "process", "id": "{{Id(Library, 81)}}", "name": "Other", "use": "library" }"""));
+            pack: "{{ for p in model.processes }}{{ p.name }} {{ end }}",
+            units: """
+                {"id": "running", "template": "flow.scriban", "for": "model", "output": "src/Generated/flows/running.txt"},
+                {"id": "libraries", "template": "libraries.scriban", "for": "model", "output": "src/Generated/flows/libraries.txt"}
+                """,
+            more: r =>
+            {
+                r.Repo.WriteFile(".maquettiste/model/processes/other.json", $$"""{ "kind": "process", "id": "{{Id(Library, 81)}}", "name": "Other", "use": "library" }""");
+                r.Repo.WriteFile(".maquettiste/templates/flows/libraries.scriban", "{{ for p in model.process_libraries }}{{ p.name }} {{ end }}");
+            });
         await repo.ApplyAsync();
-        Assert.Equal("InvoiceFlow PaymentFlow |BillingChecks Other ", repo.Repo.ReadFile(Page));
+        Assert.Equal("InvoiceFlow PaymentFlow ", repo.Repo.ReadFile(Running));
+        Assert.Equal("BillingChecks Other ", repo.Repo.ReadFile(Libraries));
 
-        // The set of ids does not change: only which list one of them is in.
         await repo.EditAsync(Id(Library, 81), other =>
         {
             other["use"] = "orchestration";
@@ -534,7 +543,8 @@ public sealed class SharedGuardTests
         });
         await repo.ApplyAsync();
 
-        Assert.Equal("InvoiceFlow Other PaymentFlow |BillingChecks ", repo.Repo.ReadFile(Page));
+        Assert.Equal("InvoiceFlow Other PaymentFlow ", repo.Repo.ReadFile(Running));
+        Assert.Equal("BillingChecks ", repo.Repo.ReadFile(Libraries));
     }
 
     [Fact]
@@ -542,8 +552,14 @@ public sealed class SharedGuardTests
     {
         const string Page = "src/Generated/flows/Controller.txt";
         var payment = Flow(PaymentFlow, "PaymentFlow").Replace("\"name\": \"go\"", $"\"name\": \"go\", \"actors\": [\"{Controller}\"]", StringComparison.Ordinal);
+        // The library names no actor, so nothing else ties the actor's page to the library's file.
+        var library = $$"""
+            { "kind": "process", "id": "{{Library}}", "name": "BillingChecks", "use": "library",
+              "guards": [ { "id": "{{Guard}}", "name": "amount_positive", "expression": "context.amount > 0" } ],
+              "actions": [ { "id": "{{Action}}", "name": "notify", "expression": "({ notified: true })" } ] }
+            """;
         await using var repo = await CopyAsync(
-            invoice: Flow(InvoiceFlow, "InvoiceFlow"), payment: payment,
+            library: library, invoice: Flow(InvoiceFlow, "InvoiceFlow"), payment: payment,
             pack: "{{ for e in actor.events }}{{ for t in e.transitions }}{{ t.label }}{{ end }}{{ end }}",
             units: """{"id": "actor", "template": "flow.scriban", "for": "each actor", "output": "src/Generated/flows/{{ actor.name }}.txt"}""");
         await repo.ApplyAsync();
