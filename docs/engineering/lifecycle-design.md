@@ -1,6 +1,6 @@
 # Lifecycles any implementation can follow: design
 
-**Status (2026-11-05): a draft for the owner. Nothing in this file is built.** It designs item 4.1 of `next.md`. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick, and [Who, what and when](lifecycle-actors-scenarios.md) sets the direction this item starts. Section 13 lists what the owner decides. A file path without a project prefix is under `src/Maquettiste.Engine/`. Examples use the billing fixture. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
+**Status (2026-11-05): the owner has decided section 13, and a third check is running. Nothing in this file is built.** It designs item 4.1 of `next.md`. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick, and [Who, what and when](lifecycle-actors-scenarios.md) sets the direction this item starts. Section 13 lists what the owner decides. A file path without a project prefix is under `src/Maquettiste.Engine/`. Examples use the billing fixture. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
 
 **How this version came about.** The first draft assumed a single status column. The second assumed the opposite, but two independent checks of it, one against the code and one on what it is worth to the four uses, found that it would have changed things for the team already using lifecycles, and that several parts couldn't work as written. This version answers both checks, and the decisions say where.
 
@@ -12,11 +12,11 @@ Today it decides too much. A lifecycle has one entity as its subject, the entity
 
 | Layer | What changes |
 | --- | --- |
-| The model | A state may carry a `code`, its stable stored value, however the state is stored. A lifecycle may govern several entities with a new `subjects` list, while the one-subject form stays valid as it is. Each subject may bind an attribute that holds the state: an enum, a reference type, or a plain string or integer. Guard conditions read the object. A scenario names its objects |
+| The model | A state may carry a `code`, its stable stored value, however the state is stored. A lifecycle lists the entities it governs in a new `subjects` list. The one-subject form stays valid, with a deprecation warning. Each subject may bind an attribute that holds the state: an enum, a reference type, or a plain string or integer. Guard conditions read the object. A scenario names its objects |
 | Code generation | Templates read codes and subjects. `csharp-dapper` writes the codes, maps states to codes and back, and lists every move from code to code. `sql-ddl`'s lifecycle tables can hold the current code, and it can write a check on a status column |
 | The team's system, or a lifecycle system | Nothing changes until the team uses the new output or builds from the model |
 
-**A project that uses none of this sees no change at all:** the same findings, the same output, the same files. Section 11 shows how.
+**A project that uses none of this sees no change in its output or files.** Its only new findings are a deprecation warning on each lifecycle written in the one-subject form, which the owner chose, and which can be turned off. Section 11 shows the rest.
 
 ## 2. What the owner said
 
@@ -45,12 +45,19 @@ Today it decides too much. A lifecycle has one entity as its subject, the entity
 **Subjects**
 
 5. **A lifecycle may list what it governs.** `subjects` is a list of entries, each `{ "entity": <id>, "boundAttribute": <id>? }`. Listing an entity in several lifecycles means its objects follow all of them at once, like the employee in HR and in a project. A type whose objects follow *one* of several lifecycles is a later item (section 12). It will add a condition to the entry, so the meaning of an entry without one never changes.
-6. **The one-subject form stays valid, silent and unchanged.** `subject` and `boundAttribute` on a process, and `lifecycle` on an entity, keep their meaning and rules (MQ9201 included). Nothing deprecates them, nothing warns, and nothing rewrites them.
-   - `subjects` is used only for two subjects or more, or when a team chooses it. The schema refuses both forms in one file.
-   - Internally, one list serves every reader: `Process.Subjects` is `subjects` if present, else the one-subject form.
-   - **Why:** the second draft rewrote the old form. The check showed that would break `format --check` in a team's CI, stop teammates on an older engine from loading files the new engine had saved, and get old snapshots refused on import. Two forms are the price of changing nothing for teams that don't need more.
+6. **The one-subject form stays valid, and is deprecated with a warning (the owner's decision).**
+   - `subject` and `boundAttribute` on a process keep their meaning and rules (MQ9201 included), and nothing rewrites them on its own.
+   - MQ9209, a warning that can be turned off, points at `subjects`. Its quick fix and the batch operation `use-subjects` convert one lifecycle or all of them, on request.
+   - The schema refuses both forms in one file. Internally, one list serves every reader: `Process.Subjects` is `subjects` if present, else the one-subject form.
+   - **Never on its own.** The second draft rewrote the old form on every save and in `format`. The code check showed that breaks `format --check` in a team's CI, stops teammates on an older engine from loading the saved files, and gets old snapshots refused on import. Converting on request lets a team choose its moment, after everyone has upgraded.
+   - **New lifecycles use `subjects`.** The new-process dialog, `import_process` and `create_element` examples write `subjects`, so Maquettiste never creates what it warns about. A tool that edits an existing lifecycle keeps the form the file has.
+
 7. **`entity.lifecycle` keeps its meaning.** It names the entity's lifecycle in the one-subject form, and MQ9201 checks it as today. With `subjects`, an entity may still name one of the lifecycles that list it, and naming one that doesn't list it is MQ9201, as today.
-8. **`set-lifecycle` and the editor's Use and Subject controls work on the one-subject form, exactly as today.** On a lifecycle using `subjects`, `set-lifecycle` is refused (MQ9019) with a message to edit `subjects`, and the editor shows the subjects read-only, editable in the JSON view.
+8. **`set-lifecycle` and the editor's Use and Subject controls work on a lifecycle with one subject, in either form.**
+   - They behave exactly as today on the one-subject form.
+   - On a `subjects` list of one, they replace that one entry and keep the form.
+   - With two or more subjects, `set-lifecycle` is refused (MQ9019) with a message to edit `subjects`, and the editor shows the subjects read-only, editable in the JSON view.
+   - Turning a lifecycle into an orchestration clears its bindings, as today, whichever form it uses.
 
 **Holding the state in an attribute**
 
@@ -111,7 +118,7 @@ Today it decides too much. A lifecycle has one entity as its subject, the entity
 | `process.json` | `subjects` (after `use`) | list of `{ entity, boundAttribute? }` | Decisions 5 and 9. Refused together with `subject` or `boundAttribute` |
 | `process.json` | state `code` (after `type`) | string or integer | Decision 1 |
 | `scenario.json` | `objects`, `subject` (after `process`) | as in decision 21 | Decision 21 |
-| `batch.json` | `sync-codes`, with `entity`, `attribute`, `stateCodes`; `sync-enum` gains `entity` | | Decisions 10 and 18 |
+| `batch.json` | `sync-codes`, with `entity`, `attribute`, `stateCodes`; `use-subjects`, with an optional `id`; `sync-enum` gains `entity` | | Decisions 6, 10 and 18 |
 
 The copies follow: the sample app's schemas, `openapi.yaml` and its generated editor files.
 
@@ -147,9 +154,9 @@ Here an invoice keeps its state in a column, and a credit note keeps it wherever
 | MQ9207 | E | A code doesn't fit its binding (decision 13) | Use a fitting code |
 | MQ9208 | W | Values a binding can hold that no state covers (decision 14) | Add a state, or narrow `allowedValues` |
 | MQ9210 | W | Under a code binding, a state the column must hold has no code (decision 12) | `sync-codes` |
+| MQ9209 | W | A lifecycle written in the deprecated one-subject form | Convert to `subjects` (`use-subjects`) |
 | MQ9211 | W | A context attribute named `subject` hides the object from conditions | Rename it |
-
-MQ9209 is left free. MQ9019 gains the refusals of `sync-codes` and of `set-lifecycle` on the `subjects` form. MQ3102 covers a `subject.x` that is not in scope.
+ MQ9019 gains the refusals of `sync-codes` and of `set-lifecycle` on the `subjects` form. MQ3102 covers a `subject.x` that is not in scope.
 
 ## 7. The resolved model and templates
 
@@ -181,7 +188,7 @@ public sealed class REntity { public RList<RProcess> Lifecycles { get; internal 
 ## 8. Tools
 
 - **`get_references`, `referenced_by`:** a code under a reference binding shows as a use with field `code`.
-- **`export_process`, `import_process`:** `code` goes in `meta.maquettiste`, and the importer's kept state keys gain it. An import keeps writing the one-subject form, which stays valid.
+- **`export_process`, `import_process`:** `code` goes in `meta.maquettiste`, and the importer's kept state keys gain it. A new import writes `subjects`. An import over an existing lifecycle keeps the form it has.
 - **`simulate_process`, `record_scenario`, `verify_scenarios`:** a scenario's `objects` and `subject`.
 - **Tool and verb texts** describe subjects and codes.
 
@@ -204,7 +211,8 @@ Output changes only for a model that uses codes, the `subjects` form, or a bindi
 ## 10. Editor
 
 - **The one-subject form edits as today.** The `subjects` form shows its subjects read-only, editable in the JSON view.
-- **New process dialog:** still writes the one-subject form.
+- **New process dialog:** writes `subjects`.
+- **MQ9209's quick fix:** converts the lifecycle, with a note that older engines can't read the result.
 - **Bound attribute picker:** lists enum, reference and plain attributes. `enumId` and the drift column stay enum-only.
 - **States tab:** gains a **Code** column, which writes a number for an integer code.
 - **MQ9205 quick fix:** writes the code for a code binding.
@@ -212,8 +220,8 @@ Output changes only for a model that uses codes, the `subjects` form, or a bindi
 
 ## 11. A project that uses none of this
 
-- **Files:** nothing rewrites, deprecates or warns about the one-subject form, so saves, `format` and `format --check` behave as today, and snapshots import as today.
-- **Findings:** the same. The changed rules keep their old results for the one-subject form and an enum binding.
+- **Files:** nothing rewrites the one-subject form unless the team asks, so saves, `format` and `format --check` behave as today, and snapshots import as today.
+- **Findings:** the same, plus one MQ9209 warning per lifecycle in the one-subject form. The changed rules keep their old results for that form and an enum binding. A team that isn't ready to convert can turn MQ9209 off.
 - **Output:** the same bytes. Every pack change is conditional on codes, `subjects` or a binding beyond an enum, and generated scenario tests don't change (decision 20). The golden tests prove it.
 - **Tool answers:** the same, since new record members are left out when unused.
 - **Speed:** the same. The index fallback, the validator's reach and the new dependency keys apply only to models and templates that use them. `entity.lifecycle` keeps its keys.
@@ -237,15 +245,13 @@ Relations with several types per end, revisions, lifecycles on custom kinds and 
 - `when`, a condition for "this lifecycle applies when";
 - `owner`, the attribute or to-one end that holds the object's owner.
 
-## 13. For the owner to decide
+## 13. The owner's decisions (2026-11-05)
 
-Each has a recommendation, and the sections above follow it.
-
-1. **Two forms for subjects.** The one-subject form stays valid and silent, and `subjects` is for two or more (decision 6). Recommended: yes. It is the only way to change nothing for the team already using lifecycles. With nothing breaking, 0.13.0 is still right, because of the new keys.
-2. **Several instances of one lifecycle per object.** Recommended: a detail entity, as you suggested, shown in the guide. Nothing in the format for now.
-3. **Missing codes under a binding as a warning, not an error (decision 12).** Recommended: yes, so editing a lifecycle never needs one big save.
-4. **A check on a plain status column.** Recommended: the `sql-ddl` parameter, off by default. It adds nothing to the model's format.
-5. **The order after 4.1.** Recommended: as in [Who, what and when](lifecycle-actors-scenarios.md) section 10.
+1. **Two forms for subjects: decided.** Both stay. The one-subject form is deprecated with a warning, converted only on request, and new lifecycles use `subjects` (decision 6). 0.13.0, because of the new keys.
+2. **Several instances of one lifecycle per object: decided.** A detail entity, shown in the guide, with nothing in the format.
+3. **Missing codes under a binding: decided.** A warning (decision 12).
+4. **A check on a plain status column: decided.** The `sql-ddl` parameter, off by default.
+5. **The order after 4.1: decided.** As in [Who, what and when](lifecycle-actors-scenarios.md) section 10.
 
 ## 14. Tests
 
@@ -273,7 +279,8 @@ Each has a recommendation, and the sections above follow it.
   - Objects with ids and links.
   - `subject` by id, and deleting the subject's entity reported, not silently swapped.
   - Defaults, simulation and recording with objects.
-- **No change:** a model with the one-subject form, an enum binding and stub guards gives the same findings, output, files, `format --check` result and tool answers. The pack golden tests pass untouched.
+- **No change:** a model with the one-subject form, an enum binding and stub guards gives the same output, files, `format --check` result and tool answers, and the same findings plus MQ9209. The pack golden tests pass untouched.
+- **Converting:** `use-subjects` and the quick fix give the same resolved model, output and findings, minus MQ9209. New lifecycles from the dialog and the importer are written as `subjects`.
 - **Pack tests:**
   - `csharp-dapper`'s constants, mapping and moves build with warnings as errors, for string, integer and uuid codes. `ToCode` and `FromCode` round trip.
   - A lifecycle whose codes don't cover it gets constants only.
@@ -291,14 +298,14 @@ One pull request per group, each stacked on the one before. The sizes are rough,
 | Group | What | Size |
 | --- | --- | --- |
 | Codes | State codes, their rules, and whether they cover the lifecycle | Half a day |
-| Subjects | `subjects` beside the one-subject form, one list for every reader, `set-lifecycle`, `entity.lifecycles`, the editor's read-only view and the mock | About a day and a half |
+| Subjects | `subjects` beside the deprecated one-subject form, one list for every reader, MQ9209 and `use-subjects`, `set-lifecycle` on one subject in either form, `entity.lifecycles`, the dialog and importer writing `subjects`, the editor's read-only view for more subjects, and the mock | About two days |
 | Bindings | Enum, reference and plain bindings per subject, `sync-enum`'s `entity`, `sync-codes`, the index fallback, the validator's reach, reference refactors | About a day |
 | Guards | Conditions over the object, through shared ids and to-one navigations | Half a day to a day |
 | Scenario objects | `objects`, `subject` and links, the replayer, simulate and record, the records | About a day |
 | Output | `csharp-dapper`, `sql-ddl`, `process-docs`, the TypeScript sample, the sample app's copies | About a day |
 | Docs | User guide, processes guide (including the detail entity), releases, modeling skill, `next.md` | A few hours |
 
-That comes to about five to six days.
+That comes to about six days.
 
 **Checklist for every group, from what 4.2 taught and both checks found.** Anything that reads or writes a lifecycle, a state, a subject or a scenario must be found and handled:
 - **Readers of the subject:** `ModelValidator`'s peers for entity edits, `ProcessRules` for libraries, the index row, `XStateImporter`, and `csharp-dapper`'s operation code (`entity.lifecycle`).
