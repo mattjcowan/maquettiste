@@ -184,7 +184,12 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         doc = value.document as Json;
         if (doc.use !== "library" && !arr(doc.states).length) {
           const message = `Process '${String(doc.name)}' has no states; add one, or set use to library if it only shares guards, actions and gates.`;
-          return HttpResponse.json(report([{ rule: "MQ9020", severity: "error", message, elementId: entry.id, filePath: entry.path, jsonPointer: "/states" }]), { status: 422 });
+          return HttpResponse.json(
+            report([
+              { rule: "MQ9020", severity: "error", message, elementId: entry.id, filePath: entry.path, jsonPointer: "/states", line: null, column: null },
+            ]),
+            { status: 422 },
+          );
         }
         const errors = schemaDiagnostics({ id: entry.id, path: entry.path, json: doc }).filter((d) => d.severity === "error");
         if (errors.length) return HttpResponse.json(report(errors), { status: 422 });
