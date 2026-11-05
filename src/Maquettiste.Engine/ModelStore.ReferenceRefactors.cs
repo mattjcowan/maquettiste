@@ -75,6 +75,20 @@ public sealed partial class ModelStore
 
         if (refused || work.Results.Count == 0)
             return [];
+
+        // The lifecycle checks see every refactor of the batch at once, so renaming a code two bound types share in both passes.
+        foreach (var (operation, refusal) in work.LifecycleRefusals())
+        {
+            if (invalid[operation] is not null)
+                continue;
+            var o = batch.Operations[operation];
+            invalid[operation] = new SaveResult(SaveOutcome.Invalid, o.Id, null, null,
+                [RuleCatalog.Create("MQ7020", refusal, o.Id, null, "/operations/" + operation.ToString(CultureInfo.InvariantCulture))], [], null);
+            refused = true;
+        }
+
+        if (refused)
+            return [];
         work.Finish();
         foreach (var (id, expected, node, operation) in work.Updates())
         {
@@ -128,6 +142,14 @@ public sealed partial class ModelStore
         private readonly Dictionary<string, int> _refactored = new(StringComparer.Ordinal);
         private readonly List<Action> _structural = [];
 
+        // What the batch does to each type's live codes, and the lifecycle state codes it rewrites (lifecycle-design.md decisions 16 and 18),
+        // which LifecycleRefusals judges once every refactor has planned.
+        private readonly Dictionary<string, HashSet<string>> _gone = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, List<string>> _came = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _mergedInto = new(StringComparer.Ordinal);
+        private readonly Dictionary<(string Process, string Pointer), int> _codeWrites = [];
+        private readonly List<(string Process, string Pointer)> _codeWriteOrder = [];
+
         /// <summary>A document's working copy: the expected hash its write checks, its node, and the first operation that touched it.</summary>
         private sealed record Working(string Expected, JsonObject Node, int Operation, bool IsType);
 
@@ -149,6 +171,117 @@ public sealed partial class ModelStore
                 _ => RenameType(index, o, type),
             };
         }
+
+        /// <summary>
+        /// The refusals the batch's refactors earn together, once each has planned (lifecycle-design.md decisions 16 and 18), each with the
+        /// first operation that rewrote the code: a rewritten state code that another reference type its lifecycle binds held before and
+        /// does not hold after the batch (a code two bound types share is renamed in both in one batch), and two states of one lifecycle
+        /// left with one code. Empty when the batch rewrites no state code.
+        /// </summary>
+        public IEnumerable<(int Operation, string Refusal)> LifecycleRefusals()
+        {
+            foreach (var group in _codeWriteOrder.GroupBy(w => w.Process, StringComparer.Ordinal))
+            {
+                var process = snapshot.Get<Process>(group.Key)!;
+                var node = _nodes[group.Key].Node;
+                var document = snapshot.GetDocument(group.Key)!.Json;
+                var types = new List<(string Type, string Attribute)>();
+                foreach (var entry in process.Subjects)
+                {
+                    if (entry.BoundAttribute is { } bound && _data.AttributeTypes.TryGetValue(bound, out var typeId) && !types.Any(t => t.Type == typeId))
+                        types.Add((typeId, bound));
+                }
+
+                foreach (var (_, pointer) in group)
+                {
+                    var index = _codeWrites[(group.Key, pointer)];
+                    if (!JsonPointer.TryGet(document, pointer, out var before) || ReferenceDataIndex.CodeKey(before) is not { } oldKey
+                        || CodeAt(node, pointer) is not { } newKey)
+                    {
+                        continue;
+                    }
+
+                    foreach (var (typeId, _) in types)
+                    {
+                        if (!IsLive(typeId, oldKey) || LiveAfter(typeId, newKey))
+                            continue;
+                        var name = snapshot.Get<ReferenceType>(typeId)?.Name ?? typeId;
+                        yield return (index, $"Process '{process.Name}' binds reference type '{name}' too, which holds code '{oldKey}' and not '{newKey}', so the state whose code this rewrites would hold no code of '{name}'; rename the code in '{name}' in this batch as well.");
+                        break;
+                    }
+                }
+
+                // Two states of one code: compare the clashes after the batch with those before, so a model that had one is not blamed for it.
+                var clashesBefore = Clashes(JsonNode.Parse(document.GetRawText()) as JsonObject);
+                foreach (var (key, states) in Clashes(node))
+                {
+                    if (clashesBefore.ContainsKey(key))
+                        continue;
+                    var index = group.Min(w => _codeWrites[(group.Key, w.Pointer)]);
+                    yield return (index, $"States {string.Join(" and ", states.Select(s => "'" + s + "'"))} of process '{process.Name}' would share code '{key}' after this batch; give one of them another code first, or refactor the codes another way.");
+                    break;
+                }
+            }
+        }
+
+        /// <summary>The code a working copy holds at a pointer, as its key.</summary>
+        private static string? CodeAt(JsonObject node, string pointer)
+        {
+            if (!JsonPointer.TryGetParent(node, pointer, out var parent, out var last))
+                return null;
+            var value = parent is JsonObject obj ? obj[last] : parent is JsonArray array && JsonPointer.TryIndex(last, out var at) && at < array.Count ? array[at] : null;
+            return value is null ? null : ReferenceDataIndex.CodeKey(JsonSerializer.SerializeToElement(value));
+        }
+
+        /// <summary>The codes two or more states of a process document share, with the states' names, in document order; history and choice states left out.</summary>
+        private static Dictionary<string, List<string>> Clashes(JsonObject? process)
+        {
+            var byKey = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            var order = new List<string>();
+            void Walk(JsonNode? states)
+            {
+                foreach (var state in (states as JsonArray ?? []).OfType<JsonObject>())
+                {
+                    if ((string?)state["type"] is not ("history" or "choice") && state["code"] is { } code
+                        && ReferenceDataIndex.CodeKey(JsonSerializer.SerializeToElement(code)) is { } key)
+                    {
+                        if (!byKey.TryGetValue(key, out var names))
+                        {
+                            byKey[key] = names = [];
+                            order.Add(key);
+                        }
+
+                        names.Add((string?)state["name"] ?? "");
+                    }
+
+                    Walk(state["states"]);
+                }
+            }
+
+            Walk(process?["states"]);
+            var clashes = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var key in order)
+            {
+                if (byKey[key].Count > 1)
+                    clashes[key] = byKey[key];
+            }
+
+            return clashes;
+        }
+
+        /// <summary>Whether a code is a live code of the type once the batch's refactors apply; a merged-away type's codes are its target's.</summary>
+        private bool LiveAfter(string typeId, string code)
+        {
+            if (_mergedInto.TryGetValue(typeId, out var into))
+                return LiveAfter(into, code);
+            if (_came.TryGetValue(typeId, out var came) && came.Contains(code, StringComparer.Ordinal))
+                return true;
+            return !(_gone.TryGetValue(typeId, out var gone) && gone.Contains(code)) && IsLive(typeId, code);
+        }
+
+        private HashSet<string> Gone(string typeId) => _gone.TryGetValue(typeId, out var set) ? set : _gone[typeId] = new HashSet<string>(StringComparer.Ordinal);
+
+        private List<string> Came(string typeId) => _came.TryGetValue(typeId, out var list) ? list : _came[typeId] = [];
 
         /// <summary>Runs the structural edits, once every refactor has written its values.</summary>
         public void Finish()
@@ -198,6 +331,8 @@ public sealed partial class ModelStore
             }
 
             _structural.Add(() => AddFormerCodes(type.Id, [(code, rowId)]));
+            Gone(type.Id).Add(code);
+            Came(type.Id).Add(ReferenceDataIndex.CodeKey(toValue) ?? to);
             Results.Add(new ReferenceRefactor(index, type.Id, type.Id, null, Names(type), Names(type), [new MigrationValue { From = code, To = to }], false,
                 Usage(uses, 0, 0, 0)));
             return null;
@@ -245,6 +380,7 @@ public sealed partial class ModelStore
             }
 
             _structural.Add(() => AddFormerCodes(type.Id, [(code, target)]));
+            Gone(type.Id).Add(code);
             Results.Add(new ReferenceRefactor(index, type.Id, type.Id, null, Names(type), Names(type), [new MigrationValue { From = code, To = to }], false,
                 Usage(uses, 0, removed.Count, Translations(removed))));
             return null;
@@ -286,6 +422,7 @@ public sealed partial class ModelStore
             // Every written row of A: removed (its code maps, by itself or through codes) or moving into B.
             var removed = new Dictionary<string, string>(StringComparer.Ordinal);   // A row id -> the B row that takes its place
             var moving = new HashSet<string>(StringComparer.Ordinal);
+            var movingCodes = new List<string>();
             foreach (var seed in fromSeeds)
             {
                 var at = IndexOf(seed.Columns, "code");
@@ -303,6 +440,8 @@ public sealed partial class ModelStore
                     if (key is not null && ReferenceDataRules.FormerCodeValue(into, key, out var problem) is null)
                         return $"Code '{key}' of '{from.Name}' would move into '{into.Name}' and does not fit its code: {problem}; map it with codes.";
                     moving.Add(row.Id);
+                    if (key is not null)
+                        movingCodes.Add(key);
                 }
             }
 
@@ -358,6 +497,8 @@ public sealed partial class ModelStore
 
             Mark(from, index);
             Mark(into, index);
+            _mergedInto[from.Id] = into.Id;
+            Came(into.Id).AddRange(movingCodes);
             Node(into.Id, index, o);
             Node(from.Id, index, o); // deleted below; its working copy carries the hash the delete checks and its former codes
             var uses = new List<ReferenceInfo>();
@@ -560,7 +701,8 @@ public sealed partial class ModelStore
             {
                 foreach (var use in snapshot.ReferencesTo(row))
                 {
-                    if (use.Field is "default" or "allowedValues" or "values")
+                    // A state code under a lifecycle's reference binding is a use of its row too (lifecycle-design.md decision 18).
+                    if (use.Field is "default" or "allowedValues" or "values" or "code")
                         Add(use);
                 }
             }
@@ -700,6 +842,8 @@ public sealed partial class ModelStore
         /// <summary>Writes a value at a pointer of a document's working copy (the pointer as the document was before the batch).</summary>
         private void Set(string id, string pointer, JsonElement value, int index, BatchOperation o)
         {
+            if (pointer.EndsWith("/code", StringComparison.Ordinal) && snapshot.Get<Process>(id) is not null && _codeWrites.TryAdd((id, pointer), index))
+                _codeWriteOrder.Add((id, pointer));
             var node = Node(id, index, o);
             if (!JsonPointer.TryGetParent(node, pointer, out var parent, out var last))
                 return;

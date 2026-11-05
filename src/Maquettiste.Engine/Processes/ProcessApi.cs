@@ -211,6 +211,32 @@ public sealed record ProcessImportResult(JsonElement? Document, IReadOnlyList<Di
 public sealed record SyncEnumResult(string Process, string? Enum, IReadOnlyList<string> Added, IReadOnlyList<string> Removed, bool Reordered,
     IReadOnlyList<SyncEnumRefusal> Refused, bool Applied, IReadOnlyList<Diagnostic> Diagnostics);
 
+/// <summary>A state's code after <c>sync-codes</c> (lifecycle-design.md decision 19).</summary>
+/// <param name="State">The state id.</param>
+/// <param name="Path">The state's dotted name path from the root.</param>
+/// <param name="Code">The code, a string or an integer as written.</param>
+/// <param name="Source"><c>kept</c> (the state had it), <c>given</c> (from <c>stateCodes</c>), <c>name</c> (a code equal to the state's
+/// name, case, <c>_</c> and <c>-</c> ignored) or <c>label</c> (a row or member whose label equals the state's display name or name).</param>
+public sealed record SyncCodesState(string State, string Path, JsonElement Code, string Source);
+
+/// <summary>A state that needs a code and gets none from <c>sync-codes</c>.</summary>
+/// <param name="State">The state id.</param>
+/// <param name="Path">The state's dotted name path from the root.</param>
+/// <param name="Candidates">The codes it matched more than one of, or that another state keeps or takes; empty when nothing matched.</param>
+public sealed record SyncCodesUnmatched(string State, string Path, IReadOnlyList<JsonElement> Candidates);
+
+/// <summary>The response of <c>sync-codes</c>.</summary>
+/// <param name="Process">The process id.</param>
+/// <param name="Entity">The subject.</param>
+/// <param name="Attribute">The attribute that holds the state.</param>
+/// <param name="Binds">Whether the sync writes the binding.</param>
+/// <param name="Codes">Every state that needs a code and has one after the sync, with each state <c>stateCodes</c> names, in document order.</param>
+/// <param name="Unmatched">Every state that needs a code and gets none, in document order.</param>
+/// <param name="Applied">Whether the process was written.</param>
+/// <param name="Diagnostics">MQ9019 when the sync is refused, or the findings that refuse the save.</param>
+public sealed record SyncCodesResult(string Process, string Entity, string Attribute, bool Binds, IReadOnlyList<SyncCodesState> Codes,
+    IReadOnlyList<SyncCodesUnmatched> Unmatched, bool Applied, IReadOnlyList<Diagnostic> Diagnostics);
+
 /// <summary>
 /// The engine side of the process operations (phase-3-design.md section 4.4) that the API, the MCP tools and the CLI verbs share:
 /// resolving a process by id, name or path, reading inputs, simulating and verifying. Simulation state lives in the caller: every

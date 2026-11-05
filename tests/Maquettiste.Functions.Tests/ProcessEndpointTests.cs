@@ -8,6 +8,8 @@ public sealed class ProcessEndpointTests
 {
     private const string Sales = "01JQPRC0000000000000000001";
     private const string Purchase = "01JQPRC0000000000000000002";
+    private const string SalesOrder = "01JQENT0000000000000000001";
+    private const string SalesOrderStatus = "01JQATT0000000000000000002";
     private const string BudgetRejected = "01JQSCN0000000000000000010";
     private const string PurchaseFile = ".maquettiste/model/processes/purchase-approval.json";
 
@@ -203,6 +205,41 @@ public sealed class ProcessEndpointTests
         Assert.Equal(422, orchestration.Status);
         Contract.AssertResponse(orchestration, "/api/processes/{id}/sync-enum");
         Assert.Equal("MQ9019", orchestration.Json["diagnostics"]![0]!["rule"]!.GetValue<string>());
+
+        // entity picks the subject whose enum binding is synced (lifecycle-design.md decision 15).
+        var bySubject = await host.SendJsonAsync("POST", $"/api/processes/{Sales}/sync-enum", new { dryRun = true, entity = SalesOrder });
+        Assert.Equal(200, bySubject.Status);
+        Contract.AssertResponse(bySubject, "/api/processes/{id}/sync-enum");
+        var notListed = await host.SendJsonAsync("POST", $"/api/processes/{Sales}/sync-enum", new { dryRun = true, entity = "01JQENT0000000000000000099" });
+        Assert.Equal(422, notListed.Status);
+        Assert.Contains("does not list", notListed.Json["diagnostics"]![0]!["message"]!.GetValue<string>(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Sync_codes_plans_codes_from_the_bound_type_applies_them_and_refuses_an_orchestration()
+    {
+        // lifecycle-design.md decision 19: the enum's member names match the root states, so each takes its member's name as its code.
+        await using var host = EditorHost.CreateModel("processes");
+        var dry = await host.SendJsonAsync("POST", $"/api/processes/{Sales}/sync-codes", new { entity = SalesOrder, attribute = SalesOrderStatus, dryRun = true });
+        Assert.Equal(200, dry.Status);
+        Contract.AssertResponse(dry, "/api/processes/{id}/sync-codes");
+        Assert.False(dry.Json["applied"]!.GetValue<bool>());
+        Assert.False(dry.Json["binds"]!.GetValue<bool>());
+        Assert.NotEmpty(dry.Json["codes"]!.AsArray());
+        Assert.All(dry.Json["codes"]!.AsArray(), c => Assert.Equal("name", c!["source"]!.GetValue<string>()));
+
+        var applied = await host.SendJsonAsync("POST", $"/api/processes/{Sales}/sync-codes", new { entity = SalesOrder, attribute = SalesOrderStatus });
+        Assert.Equal(200, applied.Status);
+        Contract.AssertResponse(applied, "/api/processes/{id}/sync-codes");
+        Assert.True(applied.Json["applied"]!.GetValue<bool>());
+        var again = await host.SendJsonAsync("POST", $"/api/processes/{Sales}/sync-codes", new { entity = SalesOrder, attribute = SalesOrderStatus, dryRun = true });
+        Assert.All(again.Json["codes"]!.AsArray(), c => Assert.Equal("kept", c!["source"]!.GetValue<string>()));
+
+        var orchestration = await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/sync-codes", new { entity = SalesOrder, attribute = SalesOrderStatus, dryRun = true });
+        Assert.Equal(422, orchestration.Status);
+        Contract.AssertResponse(orchestration, "/api/processes/{id}/sync-codes");
+        Assert.Equal("MQ9019", orchestration.Json["diagnostics"]![0]!["rule"]!.GetValue<string>());
+        Assert.Equal(400, (await host.SendJsonAsync("POST", $"/api/processes/{Sales}/sync-codes", new { dryRun = true })).Status);
     }
 
     /// <summary>Swaps the last two members of the bound enum, so the lifecycle's states and the enum's members disagree on order.</summary>

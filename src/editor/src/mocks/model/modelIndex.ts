@@ -4,6 +4,7 @@
 // scopes and each entry's own diagnostics. The result is the same as validateModel over every entry
 // (tests/unit/mock-model-index.test.ts checks that after random edits).
 import type { Diagnostic } from "@/api/types";
+import { subjectsOf } from "@/model/process";
 import { referencesOf, subElementIds } from "./refs";
 import {
   entryDiagnostics,
@@ -18,6 +19,8 @@ import {
 
 const byPath = (a: ModelEntry, b: ModelEntry) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 
+const LIFECYCLE_READS: ReadonlySet<string> = new Set(["enum", "entity", "reference-type", "seed", "scalar-type", "process"]);
+
 export class ModelIndex {
   /** The entries this index describes, by id (the same objects the model holds). */
   private snapshot = new Map<string, ModelEntry>();
@@ -29,6 +32,8 @@ export class ModelIndex {
   private readonly targetsOf = new Map<string, string[]>();
   /** Referenced id → the entries that reference it. */
   private readonly referrers = new Map<string, Set<string>>();
+  /** The lifecycles that bind an attribute: their state codes may use a seed row, which only the model as a whole can tell. */
+  private readonly binders = new Set<string>();
   private readonly scopeOf = new Map<string, string>();
   /** MQ3001 scope → its entries in path order. */
   private readonly scopes = new Map<string, ModelEntry[]>();
@@ -85,8 +90,9 @@ export class ModelIndex {
     this.sorted = null;
     if (global || packageChanged) this.globals = globalsOf(this.snapshot.values());
     if (global) for (const id of this.snapshot.keys()) affected.add(id);
-    // MQ9203 reads a lifecycle's subject entity and bound enum, which do not reference the process: re-check processes.
-    if (all.some((e) => e.json.kind === "enum" || e.json.kind === "entity"))
+    // The lifecycle rules read a lifecycle's subject entity, its bound attribute's type (an enum, a reference type with its seeds,
+    // a scalar type) and the other lifecycles, none of which reference the process: re-check processes.
+    if (all.some((e) => LIFECYCLE_READS.has(String(e.json.kind))))
       for (const [id, entry] of this.snapshot) if (entry.json.kind === "process") affected.add(id);
     // MQ9201 on an entity reads its lifecycle process and the entity's bases, which the index holds no reference for.
     if (all.some((e) => e.json.kind === "process" || e.json.kind === "entity"))
@@ -113,7 +119,12 @@ export class ModelIndex {
   /** The entries that reference any of `ids`. */
   referrersOf(ids: Iterable<string>): Set<string> {
     const out = new Set<string>();
-    for (const id of ids) for (const r of this.referrers.get(id) ?? []) out.add(r);
+    for (const id of ids) {
+      for (const r of this.referrers.get(id) ?? []) out.add(r);
+      // A seed row may be used by a bound lifecycle's state code (decision 18): the caller keeps the ones that do.
+      const owner = this.subOwner.get(id);
+      if (owner && this.snapshot.get(owner)?.json.kind === "seed") for (const b of this.binders) out.add(b);
+    }
     return out;
   }
 
@@ -137,6 +148,7 @@ export class ModelIndex {
       extensions: this.extensions,
       hasId: (id) => (this.idCount.get(id) ?? 0) > 0,
       lookup: (id) => this.snapshot.get(id),
+      all: () => this.snapshot.values(),
       firstInScope: (scope, entry) => {
         const first = this.scopes.get(scope)?.[0];
         return first && first.id !== entry.id ? first : undefined;
@@ -151,6 +163,7 @@ export class ModelIndex {
     for (const id of ids.slice(1)) this.subOwner.set(id, entry.id);
     const targets = [...new Set(referencesOf(entry.json).map((r) => r.toId))];
     this.targetsOf.set(entry.id, targets);
+    if (entry.json.kind === "process" && subjectsOf(entry.json).some((e) => e.boundAttribute !== undefined)) this.binders.add(entry.id);
     for (const t of targets) {
       let set = this.referrers.get(t);
       if (!set) this.referrers.set(t, (set = new Set()));
@@ -182,6 +195,7 @@ export class ModelIndex {
       if (set?.size === 0) this.referrers.delete(t);
     }
     this.targetsOf.delete(id);
+    this.binders.delete(id);
     const scope = this.scopeOf.get(id);
     if (scope !== undefined) {
       const list = (this.scopes.get(scope) ?? []).filter((e) => e.id !== id);

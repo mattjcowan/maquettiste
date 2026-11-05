@@ -18,6 +18,7 @@ import {
   idsOfNames,
   INVOKE_TYPES,
   setInitial,
+  setStateCode,
   setStateType,
   stateIndex,
   stateRows,
@@ -60,6 +61,15 @@ export function StatesTab({ pc, members }: { pc: ProcessContext; members: string
       width: "w-24",
       value: (r) => r.type,
       options: () => STATE_TYPES.map((t) => ({ value: t, label: t })),
+    },
+    {
+      key: "code",
+      label: "Code",
+      kind: "text",
+      width: "w-24",
+      mono: true,
+      value: (r) => r.code,
+      locked: (r) => r.type === "history" || r.type === "choice",
     },
     {
       key: "initial",
@@ -119,6 +129,7 @@ export function StatesTab({ pc, members }: { pc: ProcessContext; members: string
       if (!state) return;
       if (key === "name") state.name = String(value).trim() || state.name;
       else if (key === "type") setStateType(state, value as StateType);
+      else if (key === "code") setStateCode(p, row.id, String(value));
       else if (key === "initial") setInitial(p, row.id);
       else if (key === "history") {
         if (value === "deep") state.history = "deep";

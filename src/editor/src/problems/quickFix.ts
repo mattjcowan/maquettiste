@@ -5,6 +5,7 @@
 // `fixDocuments` names and applies the result as one batch that undo reverts.
 import type { Diagnostic, ModelJson } from "@/api/types";
 import { atPointer, clone } from "@/lib/json";
+import { classifyAttribute } from "@/model/binding";
 import { subjectsOf, type SubjectDoc } from "@/model/process";
 
 type Json = Record<string, unknown>;
@@ -15,7 +16,9 @@ export type QuickFix =
   /** A named batch operation; `ids` are every document it may change (the undo step's before and after). */
   | { kind: "operation"; op: QuickFixOperation; id: string; target?: string; label: string; ids: string[]; choices?: { id: string; name: string }[] }
   /** Sync enum: a dry run first, then the apply (the process's own endpoint). */
-  | { kind: "sync-enum"; process: string; label: string }
+  | { kind: "sync-enum"; process: string; label: string; entity?: string }
+  /** Sync codes (MQ9206, MQ9210): the process; the binding is picked when it runs (a dry run first, then the apply). */
+  | { kind: "sync-codes"; process: string; label: string }
   /** A plain update of one document. */
   | { kind: "update"; id: string; json: ModelJson; label: string };
 
@@ -38,8 +41,11 @@ function entryOf(element: Json, pointer: string): SubjectDoc | undefined {
   return at ? all[Number(at[1])] : all[0];
 }
 
-/** The documents a fix reads: the diagnostic's element and, for MQ9201 and MQ9205, the partner on the other side. */
-export function fixDocuments(d: Diagnostic, element: ModelJson | undefined): string[] {
+/**
+ * The documents a fix reads: the diagnostic's element and, for MQ9201 and MQ9205, the partner on the other side; for
+ * MQ9205 also the bound attribute's type, once `have` can read the entity.
+ */
+export function fixDocuments(d: Diagnostic, element: ModelJson | undefined, have?: (id: string) => ModelJson | undefined): string[] {
   if (!d.elementId) return [];
   const related =
     d.rule === "MQ9205" || (d.rule === "MQ9201" && (d.jsonPointer === "/subject" || d.jsonPointer?.startsWith("/subjects")))
@@ -49,7 +55,35 @@ export function fixDocuments(d: Diagnostic, element: ModelJson | undefined): str
       : d.rule === "MQ9201" && d.jsonPointer === "/lifecycle"
         ? str(element?.lifecycle)
         : undefined;
-  return related ? [d.elementId, related] : [d.elementId];
+  if (!related) return [d.elementId];
+  const typeId = d.rule === "MQ9205" && element ? typeOfBound(element, d.jsonPointer ?? "", have) : undefined;
+  return typeId ? [d.elementId, related, typeId] : [d.elementId, related];
+}
+
+/** The id of the type of the bound attribute a finding is about, when it is an own attribute of an entity `have` reads. */
+function typeOfBound(process: ModelJson, pointer: string, have?: (id: string) => ModelJson | undefined): string | undefined {
+  const entry = entryOf(process, pointer);
+  const entity = entry?.entity ? have?.(entry.entity) : undefined;
+  const attribute = ((entity?.attributes as Json[] | undefined) ?? []).find((a) => a.id === entry?.boundAttribute);
+  const type = attribute?.type as { ref?: string } | string | undefined;
+  return typeof type === "object" && typeof type?.ref === "string" ? type.ref : undefined;
+}
+
+/**
+ * The code of the configuration a lifecycle starts in, when it has one: the initial root state, or, while that is
+ * compound with no code, its initial child. History and choice states have none.
+ */
+export function initialCode(process: Json): string | number | undefined {
+  let node = initialState(process);
+  while (node && node.type !== "history" && node.type !== "choice") {
+    const code = node.code;
+    if (typeof code === "string" || typeof code === "number") return code;
+    const children = (node.states as Json[] | undefined) ?? [];
+    if (node.type !== "compound" && !(node.type === undefined && children.length)) return undefined;
+    const from: Json = node;
+    node = children.find((s) => s.id === from.initial) ?? children[0];
+  }
+  return undefined;
 }
 
 /** Removes the array item (or the property) at `pointer`; null when nothing is there. */
@@ -97,6 +131,13 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
   if (!element || !d.elementId) return null;
   // A finding of a `subjects` entry names the entry, not the process: the fetched document is the process.
   const id = typeof element.id === "string" ? element.id : d.elementId;
+  // The process comes from the fetched document, never from a finding's element id (a state's or an entry's id).
+  if (catalogFix === "sync-codes") return element.kind === "process" ? { kind: "sync-codes", process: str(element.id) ?? id, label: "Sync codes" } : null;
+  // Sync enum for one binding: a subjects entry's finding sends its entity; the one-subject form omits it (decision 15).
+  if (catalogFix === "sync-enum" && element.kind === "process" && Array.isArray(element.subjects)) {
+    const entity = entryOf(element, pointer)?.entity;
+    return { kind: "sync-enum", process: str(element.id) ?? id, label: "Sync enum", ...(entity ? { entity } : {}) };
+  }
   if (catalogFix === "sync-enum") return element.kind === "process" ? { kind: "sync-enum", process: id, label: "Sync enum" } : null;
   if (catalogFix === "refresh-scenario")
     return element.kind === "scenario" ? { kind: "operation", op: "refresh-scenario", id, label: "Update expectations from replay", ids: [id] } : null;
@@ -152,14 +193,18 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
       const entry = entryOf(element, pointer);
       const subject = entry?.entity;
       const entity = subject ? doc(subject) : undefined;
-      const state = str(initialState(element)?.name);
       const attributes = (entity?.attributes as Json[] | undefined) ?? [];
       const index = attributes.findIndex((a) => a.id === entry?.boundAttribute);
       // An inherited or stereotype-virtual bound attribute is not in the entity's own list: no fix here.
-      if (!entity || !subject || !state || index < 0) return null;
+      if (!entity || !subject || index < 0) return null;
+      // A binding by code (a reference type or a plain status) gets the initial configuration's code, as the state has it;
+      // an enum binding, as before, the initial state's name.
+      const byCode = classifyAttribute(attributes[index], (t) => doc(t)).kind;
+      const value = byCode === "reference" || byCode === "plain" ? initialCode(element) : str(initialState(element)?.name);
+      if (value === undefined) return null;
       const json = clone(entity);
-      (json.attributes as Json[])[index].default = state;
-      return { kind: "update", id: subject, json, label: `Set default to ${state}` };
+      (json.attributes as Json[])[index].default = value;
+      return { kind: "update", id: subject, json, label: `Set default to ${value}` };
     }
     case "MQ9201": {
       // Two of its four findings are fixable (the derivation table): a subject whose lifecycle does not name this

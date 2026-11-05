@@ -418,6 +418,9 @@ internal sealed class BatchNames
             Attributes = Items(o.Attributes, "attributes"),
             ElementIds = Items(o.ElementIds, "elementIds"),
             ExpectedHashes = Hashes(i, o.ExpectedHashes, root, pointer + "/expectedHashes"),
+            Entity = Field(o.Entity, "entity"),
+            Attribute = Field(o.Attribute, "attribute"),
+            StateCodes = StateCodes(i, o.StateCodes, root, pointer + "/stateCodes"),
             As = null,
         };
 
@@ -429,6 +432,46 @@ internal sealed class BatchNames
         else if (o.Op is BatchOp.Create or BatchOp.Update && !failed && root is not null && _elements[i] is JsonObject node && TryRead(node) is { } element)
         {
             ResolveElement(i, root, node, element, pointer + "/element");
+        }
+
+        return resolved;
+    }
+
+    /// <summary>
+    /// The <c>stateCodes</c> keys of <c>sync-codes</c> as ids: a qualified name resolves to its state; a placeholder key is MQ1015 (the
+    /// state must exist before the batch, since no other operation may write the process), two keys for one state MQ1014.
+    /// </summary>
+    private Dictionary<string, System.Text.Json.JsonElement>? StateCodes(int i, IReadOnlyDictionary<string, System.Text.Json.JsonElement>? codes, string? root, string pointer)
+    {
+        if (codes is null)
+            return null;
+        var resolved = new Dictionary<string, System.Text.Json.JsonElement>(StringComparer.Ordinal);
+        var keyOf = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, code) in codes.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            var at = pointer + "/" + JsonPointer.Escape(key);
+            var id = key;
+            if (QualifiedName.IsName(key))
+            {
+                if (key[0] == '$')
+                {
+                    Report(i, "MQ1015", $"A placeholder ('{key}') cannot be a stateCodes key: the state must exist before the batch. Use its id or a qualified name.", root, at);
+                    continue;
+                }
+
+                if (Resolve(i, key, root, at) is not { } found)
+                    continue;
+                id = found;
+            }
+
+            if (keyOf.TryGetValue(id, out var first))
+            {
+                Report(i, "MQ1014", $"The stateCodes keys '{first}' and '{key}' name one state ({id}): give its code once.", root, at);
+                continue;
+            }
+
+            keyOf[id] = key;
+            resolved[id] = code;
         }
 
         return resolved;
@@ -745,7 +788,8 @@ internal sealed class BatchNames
         || QualifiedName.IsName(o.Target) || QualifiedName.IsName(o.Default) || (o.Entities?.Any(QualifiedName.IsName) ?? false)
         || (o.Tables?.Any(QualifiedName.IsName) ?? false) || (o.Attributes?.Any(QualifiedName.IsName) ?? false)
         || (o.ElementIds?.Any(QualifiedName.IsName) ?? false)
-        || (o.ExpectedHashes?.Keys.Any(QualifiedName.IsName) ?? false);
+        || (o.ExpectedHashes?.Keys.Any(QualifiedName.IsName) ?? false)
+        || QualifiedName.IsName(o.Entity) || QualifiedName.IsName(o.Attribute) || (o.StateCodes?.Keys.Any(QualifiedName.IsName) ?? false);
 
     /// <summary>Whether an element holds a string value, or a map key other than <c>$schema</c>, that starts with <c>@</c> or <c>$</c>.</summary>
     private static bool HasNames(JsonNode? node) => node switch

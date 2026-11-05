@@ -2,6 +2,7 @@
 // the holder (element or sub-element id), the JSON pointer, the field and the referenced id.
 // `required` marks references that `remove-references` cannot clear (a delete becomes invalid).
 import { BUILTIN_TYPES } from "@/model/model";
+import { subjectsOf } from "@/model/process";
 
 type Json = Record<string, unknown>;
 
@@ -30,8 +31,60 @@ function attributeRefs(owner: string, base: string, attributes: unknown, out: Re
   });
 }
 
-/** Every outgoing reference of one document. Intra-document references (a key naming its own attribute) are left out. */
-export function referencesOf(doc: Json): Ref[] {
+/** Finds the seed row a code of a bound attribute's reference type names (lifecycle-design.md decision 18). */
+export interface RowResolver {
+  rowOf(entityId: string, attributeId: string, code: unknown): string | null;
+}
+
+/**
+ * A row resolver over a model's documents, built on first use: the bound attribute (own, a base's or a stereotype's) gives
+ * the reference type, whose seeds give the row of a code (1 and "1" are one code).
+ */
+export function rowResolverOf(docs: () => Iterable<Json>): RowResolver {
+  let built: { byId: Map<string, Json>; rows: Map<string, Map<string, string>>; stereotypes: Map<string, Json> } | null = null;
+  const build = () => {
+    if (built) return built;
+    const byId = new Map<string, Json>();
+    const rows = new Map<string, Map<string, string>>();
+    const stereotypes = new Map<string, Json>();
+    for (const d of docs()) {
+      byId.set(String(d.id), d);
+      if (d.kind === "stereotype") stereotypes.set(String(d.key), d);
+      if (d.kind !== "seed" || typeof d.target !== "string" || d.rowsFrom !== undefined) continue;
+      const at = ((d.columns as string[] | undefined) ?? []).indexOf("code");
+      if (at < 0) continue;
+      const map = rows.get(d.target) ?? new Map<string, string>();
+      for (const r of arr(d.rows)) {
+        const code = ((r.values as unknown[] | undefined) ?? [])[at];
+        if ((typeof code === "string" || typeof code === "number") && !map.has(String(code))) map.set(String(code), String(r.id));
+      }
+      rows.set(d.target, map);
+    }
+    return (built = { byId, rows, stereotypes });
+  };
+  return {
+    rowOf(entityId, attributeId, code) {
+      if (typeof code !== "string" && typeof code !== "number") return null;
+      const { byId, rows, stereotypes } = build();
+      const seen = new Set<string>();
+      for (let at = byId.get(entityId); at && !seen.has(String(at.id)); at = typeof at.base === "string" ? byId.get(at.base) : undefined) {
+        seen.add(String(at.id));
+        const held = [...arr(at.attributes), ...((at.stereotypes as string[] | undefined) ?? []).flatMap((k) => arr(stereotypes.get(k)?.attributes))];
+        const attribute = held.find((a) => a.id === attributeId);
+        if (!attribute) continue;
+        const ref = (attribute.type as Json | undefined)?.ref;
+        return typeof ref === "string" && byId.get(ref)?.kind === "reference-type" ? (rows.get(ref)?.get(String(code)) ?? null) : null;
+      }
+      return null;
+    },
+  };
+}
+
+/**
+ * Every outgoing reference of one document. Intra-document references (a key naming its own attribute) are left out. With
+ * `rows`, a lifecycle's state codes under a reference binding are references to the rows, field `code`, held by the state.
+ */
+export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
   const id = str(doc.id) ?? "";
   const out: Ref[] = [];
   const own = new Set(subElementIds(doc));
@@ -136,8 +189,14 @@ export function referencesOf(doc: Json): Ref[] {
       arr(doc.events).forEach((e, i) =>
         arr(e.actors).forEach((_, j) => push(`/events/${i}/actors/${j}`, "actors", (e.actors as unknown[])[j], false, `/events/${i}/actors/${j}`)),
       );
+      const bound = rows && doc.use === "lifecycle" ? subjectsOf(doc).filter((e) => e.boundAttribute) : [];
       const states = (list: unknown, base: string) =>
         arr(list).forEach((st, i) => {
+          // A code under a reference binding is a use of the row it names (decision 18): one reference per binding it fits.
+          for (const e of bound) {
+            const row = rows!.rowOf(e.entity, e.boundAttribute!, st.code);
+            if (row && str(st.id)) out.push({ fromId: st.id as string, pointer: `${base}/${i}/code`, field: "code", toId: row, required: true });
+          }
           arr(st.invoke).forEach((inv, k) => {
             push(`${base}/${i}/invoke/${k}/process`, "process", inv.process, false);
             arr(inv.actors).forEach((a, j) => push(`${base}/${i}/invoke/${k}/actors/${j}`, "actors", a, false, `${base}/${i}/invoke/${k}/actors/${j}`));
@@ -242,5 +301,7 @@ export function subElementIds(doc: Json): string[] {
     });
   }
   if (doc.kind === "scenario") collect(doc.steps);
+  // A seed's rows hold ids: a lifecycle's state code under a reference binding is a use of its row.
+  if (doc.kind === "seed") collect(doc.rows);
   return ids;
 }

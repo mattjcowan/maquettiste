@@ -19,7 +19,8 @@ internal sealed class ReferenceDataIndex
         FrozenSet<string> endIds,
         FrozenDictionary<string, FrozenDictionary<string, string>> codes,
         FrozenSet<string> seedColumns,
-        FrozenDictionary<string, FrozenDictionary<string, string>> formerCodes)
+        FrozenDictionary<string, FrozenDictionary<string, string>> formerCodes,
+        FrozenSet<string> boundAttributes)
     {
         ReferenceTypeIds = referenceTypeIds;
         AttributeTypes = attributeTypes;
@@ -27,7 +28,15 @@ internal sealed class ReferenceDataIndex
         Codes = codes;
         SeedColumns = seedColumns;
         FormerCodes = formerCodes;
+        BoundAttributes = boundAttributes;
     }
+
+    /// <summary>
+    /// The ids of the attributes a process binds, in either subject form (lifecycle-design.md decision 18): a state code under a reference
+    /// binding becomes a reference to its row through <see cref="AttributeTypes"/>, so a patch that retypes or removes one of them needs the
+    /// full build. Empty when nothing binds.
+    /// </summary>
+    public FrozenSet<string> BoundAttributes { get; }
 
     /// <summary>The ids of the model's reference types.</summary>
     public FrozenSet<string> ReferenceTypeIds { get; }
@@ -62,6 +71,7 @@ internal sealed class ReferenceDataIndex
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var all = new List<Element>();
         var formerCodes = new Dictionary<string, FrozenDictionary<string, string>>(StringComparer.Ordinal);
+        var boundAttributes = new HashSet<string>(StringComparer.Ordinal);
         foreach (var element in elements)
         {
             if (!seen.Add(element.Id))
@@ -94,6 +104,14 @@ internal sealed class ReferenceDataIndex
                     break;
                 case Seed seed:
                     seeds.Add(seed);
+                    break;
+                case Process process:
+                    foreach (var entry in process.Subjects)
+                    {
+                        if (entry.BoundAttribute is { } bound)
+                            boundAttributes.Add(bound);
+                    }
+
                     break;
             }
         }
@@ -128,7 +146,8 @@ internal sealed class ReferenceDataIndex
             ends.ToFrozenSet(StringComparer.Ordinal),
             codes.ToFrozenDictionary(kv => kv.Key, kv => kv.Value.ToFrozenDictionary(StringComparer.Ordinal), StringComparer.Ordinal),
             columns.ToFrozenSet(StringComparer.Ordinal),
-            formerCodes.ToFrozenDictionary(StringComparer.Ordinal));
+            formerCodes.ToFrozenDictionary(StringComparer.Ordinal),
+            boundAttributes.ToFrozenSet(StringComparer.Ordinal));
     }
 
     /// <summary>The attributes an element declares (entity, value object, relation, stereotype, reference type).</summary>

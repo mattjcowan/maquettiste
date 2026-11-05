@@ -137,7 +137,28 @@ public static class ProcessEndpoints
         var (request, error) = await Api.ReadJsonAsync(context.Request, new SyncEnumRequest(null, null), ct).ConfigureAwait(false);
         if (error is not null)
             return error;
-        return Answer(await store.SyncEnumAsync(id, request!.DryRun == true, request.ExpectedHash, ChangeSource.Editor, ct).ConfigureAwait(false), "process", id);
+        return Answer(await store.SyncEnumAsync(id, request!.Entity, request.DryRun == true, request.ExpectedHash, ChangeSource.Editor, ct).ConfigureAwait(false), "process", id);
+    });
+
+    /// <summary>Proposes state codes from a bound attribute's type and binds it (lifecycle-design.md decision 19); a dry run returns the plan.</summary>
+    /// <param name="id">The process id.</param>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the plan, 409, 422 (refused), 404 or 400.</returns>
+    [HttpPost("/api/processes/{id}/sync-codes")]
+    public static Task<IResult> SyncCodes(string id, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (Api.Require(context, "editor") is { } forbidden)
+            return forbidden;
+        var (request, error) = await Api.ReadJsonAsync(context.Request, new SyncCodesRequest(null, null, null, null, null), ct).ConfigureAwait(false);
+        if (error is not null)
+            return error;
+        if (string.IsNullOrEmpty(request!.Entity) || string.IsNullOrEmpty(request.Attribute))
+            return Api.BadRequest("entity and attribute are required: the subject and its attribute that holds the state.");
+        return Answer(await store.SyncCodesAsync(id, request.Entity, request.Attribute, request.StateCodes, request.DryRun == true, request.ExpectedHash, ChangeSource.Editor, ct)
+            .ConfigureAwait(false), "process", id);
     });
 
     // Ok -> 200 with the value; Invalid -> 422 with the value, else a validation report of the diagnostics; Conflict -> 409 with the
@@ -163,4 +184,14 @@ public sealed record VerifyRequest(IReadOnlyList<string>? Scenarios);
 /// <summary>The body of <c>POST /api/processes/{id}/sync-enum</c>.</summary>
 /// <param name="DryRun">Returns the plan without writing (default false).</param>
 /// <param name="ExpectedHash">The process hash as read (409 when it changed).</param>
-public sealed record SyncEnumRequest(bool? DryRun, string? ExpectedHash);
+/// <param name="Entity">The subject whose enum binding to sync; absent means the lifecycle's one enum binding.</param>
+public sealed record SyncEnumRequest(bool? DryRun, string? ExpectedHash, string? Entity = null);
+
+/// <summary>The body of <c>POST /api/processes/{id}/sync-codes</c>.</summary>
+/// <param name="Entity">The subject.</param>
+/// <param name="Attribute">The subject's attribute that holds the state.</param>
+/// <param name="StateCodes">Codes keyed by state id, each a string or an integer.</param>
+/// <param name="DryRun">Returns the plan without writing (default false).</param>
+/// <param name="ExpectedHash">The process hash as read (409 when it changed).</param>
+public sealed record SyncCodesRequest(string? Entity, string? Attribute, IReadOnlyDictionary<string, System.Text.Json.JsonElement>? StateCodes, bool? DryRun,
+    string? ExpectedHash);

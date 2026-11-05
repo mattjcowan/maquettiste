@@ -213,7 +213,11 @@ public sealed class CliApp(CliEnvironment environment)
                                   --subject (listed in subjects), or --into <process> (keeps its ids and its subjects' form);
                                   --apply writes it, --format text|json
           process sync-enum <process>
-                                Preview syncing a lifecycle's bound enum with its states; --apply, --check, --format text|json
+                                Preview syncing a lifecycle's bound enum with its states; --entity <id|name> (the subject whose
+                                  enum, else its one enum binding), --apply, --check, --format text|json
+          process sync-codes <process> <entity> <attribute>
+                                Preview giving the states codes from the attribute's type (a reference type's codes, enum
+                                  members, allowedValues) and binding it; lists what is unmatched; --apply, --check, --format
           model export          The model as data: canonical documents, or with --resolved the resolved model's records
                                   --format json|ndjson (default json: one array), --out <file>, --fields <a,b,...>,
                                   --kind, --package <id|name>, --tag, --category, --stereotype, --query, --ids <a,b,...>;

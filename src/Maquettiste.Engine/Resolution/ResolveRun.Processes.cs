@@ -205,6 +205,9 @@ internal sealed partial class ResolveRun
                 subject.BoundEnum = subject.BoundAttribute?.Type.Enum;
                 if (subject.BoundEnum is { } enumType)
                     deps.Element(enumType.Id);
+                subject.BoundReferenceType = subject.BoundAttribute?.Type.ReferenceType;
+                if (subject.BoundReferenceType is { } referenceType)
+                    deps.Element(referenceType.Id);
             }
 
             subjects.Add(subject);
@@ -229,6 +232,8 @@ internal sealed partial class ResolveRun
             baseKeys.Element(subject.Entity.Id);
             if (subject.BoundEnum is { } e)
                 baseKeys.Element(e.Id);
+            if (subject.BoundReferenceType is { } referenceType) // a reference binding's nodes read the type's file (section 7)
+                baseKeys.Element(referenceType.Id);
         }
 
         var nodeKeys = baseKeys.ToList();

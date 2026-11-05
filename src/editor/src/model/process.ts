@@ -202,6 +202,8 @@ export interface StateRow {
   path: string;
   pointer: string;
   type: StateType;
+  /** The state's code as the grid shows it ("" when it has none). */
+  code: string;
   /** The initial child of its parent (or of the process). */
   initial: boolean;
   history: string;
@@ -237,6 +239,7 @@ export function stateRows(process: ProcessDoc, members: string[] | null = null):
       path: info.path,
       pointer: info.pointer,
       type,
+      code: s.code === undefined ? "" : String(s.code),
       initial: initialOf(info.parent ?? process) === id && type !== "history",
       history: type === "history" ? (s.history ?? "shallow") : "",
       entry: actions(s.entry),
@@ -335,6 +338,24 @@ export function deleteState(process: ProcessDoc, id: string): DeleteStateResult 
 }
 
 /** Makes a state the initial child of its parent (or the process): `initial` is omitted when it is the first child. */
+/**
+ * Writes the code a cell holds (lifecycle-design.md decision 1): an empty cell removes the key; integer text is a JSON
+ * number, unless another state's code is a string (the codes of a process are all strings or all integers, MQ9206),
+ * and anything else a string.
+ */
+export function setStateCode(process: Pick<ProcessDoc, "states">, id: string, text: string): void {
+  const state = stateIndex(process).get(id)?.state;
+  if (!state) return;
+  const value = text.trim();
+  if (!value) {
+    delete state.code;
+    return;
+  }
+  const integer = /^-?(0|[1-9]\d*)$/.test(value) && Number.isSafeInteger(Number(value));
+  const otherStrings = [...stateIndex(process).values()].some((i) => i.state.id !== id && typeof i.state.code === "string");
+  state.code = integer && !otherStrings ? Number(value) : value;
+}
+
 export function setInitial(process: ProcessDoc, id: string): void {
   const info = stateIndex(process).get(id);
   if (!info) return;

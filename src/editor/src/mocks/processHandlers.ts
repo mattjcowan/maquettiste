@@ -5,6 +5,7 @@
 // scenario but those processSeed.ts lists as failing.
 import { http as rawHttp, HttpResponse, type HttpHandler } from "msw";
 import { newId } from "@/lib/ids";
+import { bindableAttributes } from "@/model/binding";
 import { subjectsOf } from "@/model/process";
 import { sha256Hex } from "@/lib/sha256";
 import type { MockBackend } from "./backend";
@@ -14,6 +15,7 @@ const kebab = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLo
 import { MOCK_FAILURES } from "./model/processSeed";
 import { normalizeInput, readAt, replay, simulate } from "./model/stepper";
 import { enumDrift, schemaDiagnostics } from "./model/validate";
+import { syncCodesOf } from "./model/syncCodes";
 import { report } from "./model/store";
 
 type Json = Record<string, unknown>;
@@ -348,15 +350,22 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
           },
           { status: 422 },
         );
-      // The lifecycle's one enum binding, in either form (lifecycle-design.md decision 15).
-      const binding = subjectsOf(entry.json).find((e) => e.boundAttribute !== undefined);
+      // The enum binding of `entity`, else the lifecycle's one enum binding, in either form (lifecycle-design.md decision 15).
+      const wanted = typeof value.entity === "string" && value.entity ? value.entity : undefined;
+      if (wanted && !subjectsOf(entry.json).some((e) => e.entity === wanted))
+        return refusal(`Entity ${wanted} is not a subject of process '${String(entry.json.name)}'.`);
+      const stereotypes = () => undefined;
+      const enumBinding = (e: { entity: string; boundAttribute?: string }) => {
+        const attribute = bindableAttributes(lookup(e.entity)?.json, (id) => lookup(id)?.json, stereotypes).find((a) => a.id === e.boundAttribute);
+        const ref = (attribute?.type as Json | undefined)?.ref;
+        return typeof ref === "string" && lookup(ref)?.json.kind === "enum" ? { attribute: attribute!, enumId: ref } : null;
+      };
+      const binding = subjectsOf(entry.json).find((e) => e.boundAttribute !== undefined && (!wanted || e.entity === wanted) && enumBinding(e));
       if (entry.json.use !== "lifecycle" || !binding) return refusal("The process is not a lifecycle bound to an enum attribute.");
       if (typeof value.expectedHash === "string" && value.expectedHash !== entry.hash)
         return kit.problem(409, "conflict" as never, "The process changed since you loaded it.");
-      const drift = enumDrift(entry.json, (id) => lookup(id));
-      const subject = lookup(binding.entity);
-      const attribute = arr(subject?.json.attributes).find((a) => a.id === binding.boundAttribute);
-      const enumId = String(((attribute?.type as Json | undefined)?.ref as string | undefined) ?? "");
+      const drift = enumDrift(entry.json, (id) => lookup(id), binding.entity);
+      const enumId = enumBinding(binding)!.enumId;
       const enumEntry = lookup(enumId);
       if (!enumEntry) return refusal("The bound attribute's type is not an enum.");
       const members = arr(enumEntry.json.members);
@@ -370,6 +379,38 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const next = { ...enumEntry.json, members: states.map((s) => members.find((m) => m.name === s) ?? { id: newId(), name: s }) };
       const saved = model.save(enumEntry.id, next, enumEntry.hash);
       if (saved.outcome !== "saved") return refusal(saved.diagnostics[0]?.message ?? "The enum could not be saved.");
+      return HttpResponse.json({ ...result, applied: true });
+    }),
+    // Sync codes (lifecycle-design.md decision 19): the plan, written unless `dryRun`.
+    rawHttp.post(url("/api/processes/:id/sync-codes"), async ({ params, request }) => {
+      const entry = find(String(params.id));
+      if (!entry) return missing(String(params.id));
+      const value = await body(request);
+      if (!value) return bad("The body must be a JSON object.");
+      const refusal = (message: string) =>
+        HttpResponse.json(
+          {
+            process: entry.id,
+            entity: typeof value.entity === "string" ? value.entity : "",
+            attribute: typeof value.attribute === "string" ? value.attribute : "",
+            binds: false,
+            codes: [],
+            unmatched: [],
+            applied: false,
+            diagnostics: [{ rule: "MQ9019", severity: "error", message, elementId: entry.id, filePath: null, jsonPointer: "", line: null, column: null }],
+          },
+          { status: 422 },
+        );
+      if (typeof value.entity !== "string" || typeof value.attribute !== "string") return bad("entity and attribute are required.");
+      if (typeof value.expectedHash === "string" && value.expectedHash !== entry.hash)
+        return kit.problem(409, "conflict" as never, "The process changed since you loaded it.");
+      const outcome = syncCodesOf(model, entry.json, value.entity, value.attribute, value.stateCodes as Json | undefined, newId);
+      if ("problem" in outcome) return refusal(outcome.problem);
+      const result = { ...outcome.plan, diagnostics: [] as unknown[] };
+      const writes = outcome.plan.binds || outcome.plan.codes.some((c) => c.source !== "kept");
+      if (value.dryRun === true || !writes) return HttpResponse.json({ ...result, applied: false });
+      const saved = model.save(entry.id, outcome.next, entry.hash);
+      if (saved.outcome !== "saved") return refusal(saved.diagnostics[0]?.message ?? "The process could not be saved.");
       return HttpResponse.json({ ...result, applied: true });
     }),
   ];

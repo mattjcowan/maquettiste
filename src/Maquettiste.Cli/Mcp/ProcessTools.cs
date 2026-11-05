@@ -150,19 +150,29 @@ internal sealed partial class ModelTools
     /// <param name="process">The process.</param>
     /// <param name="expectedHash">The process hash as read.</param>
     /// <param name="apply">Writes the sync.</param>
+    /// <param name="entity">The subject whose enum binding to sync.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The plan.</returns>
     [McpServerTool(Name = "sync_enum_from_process", Title = "Sync enum from process", Destructive = true, Idempotent = true, OpenWorld = false)]
-    [Description("Makes a lifecycle's bound enum match its root-level states (members in state order; ids, codes and descriptions kept). A dry run (the default) returns added, removed, reordered and refused (members still used by a default, allowedValues, a seed cell or a scenario value, with the ids that use them); apply true writes it. A refused member is never removed: change its uses first.")]
+    [Description("Makes a lifecycle's bound enum match its root-level states (members in state order; ids, codes and descriptions kept). entity picks the subject whose enum binding to sync; without it the lifecycle must have one enum binding. A dry run (the default) returns added, removed, reordered and refused (members still used by a default, allowedValues, a seed cell or a scenario value, with the ids that use them); apply true writes it. A refused member is never removed: change its uses first. To give states codes from a reference type, a plain status or an enum, use apply_batch with sync-codes.")]
     public Task<CallToolResult> SyncEnumFromProcess(
         [Description("The lifecycle process id, name or model path; required.")] string? process = null,
         [Description("The process hash from get_element; a changed process is a conflict.")] string? expectedHash = null,
         [Description("true writes the sync; false or absent only plans it.")] bool apply = false,
+        [Description("The subject entity (id or name) whose enum binding to sync; absent means the lifecycle's one enum binding.")] string? entity = null,
         CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (await ProcessIdAsync(process, ct).ConfigureAwait(false) is not { } id)
             return ProcessArgument(process);
-        return FromCall(await _store.SyncEnumAsync(id, !apply, expectedHash, ChangeSource.Cli, ct).ConfigureAwait(false));
+        var entityId = entity;
+        if (!string.IsNullOrEmpty(entity))
+        {
+            var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+            if (snapshot.Get<Maquettiste.Engine.Model.Entity>(entity) is null && snapshot.All<Maquettiste.Engine.Model.Entity>().Where(e => string.Equals(e.Name, entity, StringComparison.Ordinal)).ToList() is [var named])
+                entityId = named.Id;
+        }
+
+        return FromCall(await _store.SyncEnumAsync(id, string.IsNullOrEmpty(entityId) ? null : entityId, !apply, expectedHash, ChangeSource.Cli, ct).ConfigureAwait(false));
     }, ct);
 
     private async Task<string?> ProcessIdAsync(string? key, CancellationToken ct)

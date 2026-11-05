@@ -19,7 +19,7 @@ public sealed partial class ModelStore
     /// <summary>Whether an operation is a process operation.</summary>
     /// <param name="op">The operation kind.</param>
     public static bool IsProcessOperation(BatchOp op) =>
-        op is BatchOp.SyncEnum or BatchOp.SetLifecycle or BatchOp.SetInitial or BatchOp.RefreshScenario or BatchOp.UseSubjects;
+        op is BatchOp.SyncEnum or BatchOp.SyncCodes or BatchOp.SetLifecycle or BatchOp.SetInitial or BatchOp.RefreshScenario or BatchOp.UseSubjects;
 
     /// <summary>
     /// What <c>sync-enum</c> on a lifecycle would change, without writing: the dry run the Problems quick fix and the process
@@ -28,11 +28,36 @@ public sealed partial class ModelStore
     /// <param name="processId">The lifecycle process.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The plan; <see cref="SyncEnumPlan.Problem"/> says why the process cannot be synced.</returns>
-    public async Task<SyncEnumPlan> PlanSyncEnumAsync(string processId, CancellationToken ct)
+    public Task<SyncEnumPlan> PlanSyncEnumAsync(string processId, CancellationToken ct) => PlanSyncEnumAsync(processId, null, ct);
+
+    /// <summary>What <c>sync-enum</c> on one subject's enum binding would change, without writing (lifecycle-design.md decision 15).</summary>
+    /// <param name="processId">The lifecycle process.</param>
+    /// <param name="entity">The subject whose enum binding to sync; <see langword="null"/> means the lifecycle's one enum binding.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The plan; <see cref="SyncEnumPlan.Problem"/> says why the process cannot be synced.</returns>
+    public async Task<SyncEnumPlan> PlanSyncEnumAsync(string processId, string? entity, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(processId);
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
-        return new ProcessWork(snapshot, _options.EffectiveIdGenerator, []).PlanSync(processId, out _);
+        return new ProcessWork(snapshot, _options.EffectiveIdGenerator, []).PlanSync(processId, entity, out _);
+    }
+
+    /// <summary>
+    /// What <c>sync-codes</c> would write, without writing (lifecycle-design.md decision 19): the codes each state that needs one keeps or
+    /// takes, the states left unmatched, and whether it writes the binding.
+    /// </summary>
+    /// <param name="processId">The lifecycle process.</param>
+    /// <param name="entity">The subject.</param>
+    /// <param name="attribute">The subject's attribute that holds the state.</param>
+    /// <param name="stateCodes">Codes keyed by state id, or <see langword="null"/>.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The plan; <see cref="SyncCodesPlan.Problem"/> says why the operation is refused.</returns>
+    public async Task<SyncCodesPlan> PlanSyncCodesAsync(string processId, string entity, string attribute, IReadOnlyDictionary<string, JsonElement>? stateCodes,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(processId);
+        var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
+        return new ProcessWork(snapshot, _options.EffectiveIdGenerator, []).PlanCodes(processId, entity, attribute, stateCodes, out _);
     }
 
     /// <summary>
@@ -54,6 +79,7 @@ public sealed partial class ModelStore
         public string? Apply(BatchOperation o) => o.Op switch
         {
             BatchOp.SyncEnum => Sync(o),
+            BatchOp.SyncCodes => SyncCodes(o),
             BatchOp.SetLifecycle => SetLifecycle(o),
             BatchOp.RefreshScenario => RefreshScenario(o),
             BatchOp.UseSubjects => UseSubjects(o),
@@ -64,7 +90,7 @@ public sealed partial class ModelStore
 
         private string? Sync(BatchOperation o)
         {
-            var plan = PlanSync(o.Id ?? "", out var members);
+            var plan = PlanSync(o.Id ?? "", o.Entity, out var members);
             if (plan.Problem is not null)
                 return plan.Problem;
             foreach (var written in new[] { plan.Process, plan.Enum! })
@@ -87,8 +113,11 @@ public sealed partial class ModelStore
             return null;
         }
 
-        /// <summary>Plans a sync; <paramref name="members"/> is the new members array.</summary>
-        public SyncEnumPlan PlanSync(string processId, out JsonArray members)
+        /// <summary>
+        /// Plans a sync of one subject's enum binding (lifecycle-design.md decision 15): <paramref name="entityId"/>'s, else the lifecycle's
+        /// one enum binding in either form; <paramref name="members"/> is the new members array.
+        /// </summary>
+        public SyncEnumPlan PlanSync(string processId, string? entityId, out JsonArray members)
         {
             members = [];
             SyncEnumPlan Problem(string message, string? enumId = null) => new(processId, enumId, [], [], false, [], message);
@@ -100,9 +129,29 @@ public sealed partial class ModelStore
                 return Problem(process.Use == ProcessUse.Library
                     ? $"Process '{process.Name}' is a library, which has no states to sync; pass the id of a lifecycle process."
                     : $"Process '{process.Name}' binds no attribute; set use to lifecycle and bind an enum attribute of the subject, then sync.");
-            if (bindings.Count > 1)
-                return Problem($"Process '{process.Name}' binds an attribute of each of several subjects; sync-enum syncs a lifecycle with one binding.");
-            if (AttributeNode(bindings[0]) is not { } attribute
+            string bound;
+            if (entityId is not null)
+            {
+                var entry = process.Subjects.FirstOrDefault(s => string.Equals(s.Entity, entityId, StringComparison.Ordinal));
+                var label = snapshot.Get<Entity>(entityId) is { } named ? "entity '" + named.Name + "'" : "'" + entityId + "'";
+                if (entry is null)
+                    return Problem($"Process '{process.Name}' does not list {label} as a subject; pass one of its subjects as entity.");
+                if (entry.BoundAttribute is null)
+                    return Problem($"Subject {label} of process '{process.Name}' binds no attribute; bind an enum attribute of it, then sync.");
+                bound = entry.BoundAttribute;
+            }
+            else
+            {
+                // The one enum binding: subjects that bind attributes typed by one enum count once.
+                var enums = bindings.Where(b => EnumOf(b) is not null).ToList();
+                if (enums.Select(EnumOf).Distinct(StringComparer.Ordinal).Count() > 1)
+                    return Problem($"Process '{process.Name}' binds enum attributes of several subjects; pass the subject whose enum to sync as entity.");
+                if (enums.Count == 0 && bindings.Count > 1)
+                    return Problem($"Process '{process.Name}' binds no enum attribute; sync-enum syncs an enum binding.");
+                bound = enums.Count > 0 ? enums[0] : bindings[0];
+            }
+
+            if (AttributeNode(bound) is not { } attribute
                 || attribute["type"] is not JsonObject { } type || type["ref"]?.GetValue<string>() is not { } enumId
                 || snapshot.Get<EnumType>(enumId) is not { } enumType)
             {
@@ -151,6 +200,268 @@ public sealed partial class ModelStore
 
         private static ProcessState? FindState(IEnumerable<ProcessState> states, string name) =>
             states.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.Ordinal));
+
+        // The enum an attribute's type names, as the batch leaves it, or null.
+        private string? EnumOf(string attributeId) =>
+            AttributeNode(attributeId)?["type"] is JsonObject type && type["ref"] is JsonValue r && r.TryGetValue<string>(out var id) && snapshot.Get<EnumType>(id) is not null
+                ? id : null;
+
+        // ---- sync-codes ----
+
+        // lifecycle-design.md decision 19: writes the plan's codes and binding to the process, in the form the file has.
+        private string? SyncCodes(BatchOperation o)
+        {
+            var plan = PlanCodes(o.Id ?? "", o.Entity, o.Attribute, o.StateCodes, out var writes);
+            if (plan.Problem is not null)
+                return plan.Problem;
+            if (_staged.ContainsKey(plan.Process))
+                return $"'{Name(plan.Process)}' is also written by another operation of this batch; sync its codes in a batch of its own.";
+            if (o.ExpectedHash is not null && !string.Equals(o.ExpectedHash, snapshot.GetDocument(plan.Process)!.Hash, StringComparison.Ordinal))
+                return $"Process '{Name(plan.Process)}' changed since it was read; reload it and sync again.";
+            if (writes.Count == 0 && !plan.Binds)
+                return null;
+            var node = Node(plan.Process, null);
+            foreach (var (pointer, code) in writes)
+            {
+                if (Navigate(node, pointer) is JsonObject state)
+                    state["code"] = JsonNode.Parse(code.GetRawText());
+            }
+
+            if (plan.Binds)
+                Bind(node, plan.Entity, plan.Attribute);
+            return null;
+        }
+
+        // The binding in the form the file has: the one-subject form's boundAttribute, the entity's subjects entry (added when missing), or
+        // subjects with one entry when the process has no subject (decision 7).
+        private void Bind(JsonObject node, string entity, string attribute)
+        {
+            if (OneSubjectForm(node))
+            {
+                node["boundAttribute"] = attribute;
+                return;
+            }
+
+            if (Listed(node) is { } entries)
+            {
+                if (entries.FirstOrDefault(e => e["entity"]?.GetValue<string>() == entity) is { } entry)
+                    entry["boundAttribute"] = attribute;
+                else
+                    ((JsonArray)node["subjects"]!).Add(new JsonObject { ["id"] = ids.NewId(), ["entity"] = entity, ["boundAttribute"] = attribute });
+                return;
+            }
+
+            node["subjects"] = new JsonArray(new JsonObject { ["id"] = ids.NewId(), ["entity"] = entity, ["boundAttribute"] = attribute });
+        }
+
+        /// <summary>
+        /// Plans <c>sync-codes</c> (lifecycle-design.md decision 19): the states a binding needs a code on keep theirs, take the one
+        /// <paramref name="given"/> names, else the one code of the attribute's type equal to their name (case, <c>_</c> and <c>-</c>
+        /// ignored), else the one row or member whose label equals their display name or name. An ambiguous match, or a code another state
+        /// keeps or takes, takes none. <paramref name="writes"/> are the codes to write, by the state's pointer.
+        /// </summary>
+        public SyncCodesPlan PlanCodes(string processId, string? entityId, string? attributeId, IReadOnlyDictionary<string, JsonElement>? given,
+            out List<(string Pointer, JsonElement Code)> writes)
+        {
+            writes = [];
+            SyncCodesPlan Problem(string message) => new(processId, entityId ?? "", attributeId ?? "", false, [], [], message);
+            if (snapshot.Get<Process>(processId) is not { } process)
+                return Problem($"'{processId}' is not a process; pass the id of a lifecycle process.");
+            if (process.Use != ProcessUse.Lifecycle)
+                return Problem(process.Use == ProcessUse.Library
+                    ? $"Process '{process.Name}' is a library, which has no states to code; pass the id of a lifecycle process."
+                    : $"Process '{process.Name}' is an orchestration, which binds no attribute; set use to lifecycle first, then sync its codes.");
+            if (entityId is null || snapshot.Get<Entity>(entityId) is not { } entity)
+                return Problem($"'{entityId}' is not an entity; pass the subject whose attribute holds the state as entity.");
+            if (process.UsesOneSubjectForm && !string.Equals(process.Subject, entityId, StringComparison.Ordinal))
+            {
+                var subject = process.Subject is not null && snapshot.Get<Entity>(process.Subject) is { } named ? "entity '" + named.Name + "'" : "no entity";
+                return Problem($"Process '{process.Name}' names {subject} as its one subject, so sync-codes binds that subject's attribute only; pass it as entity, or list the subjects first (use-subjects).");
+            }
+
+            if (attributeId is null || LifecycleBindings.Find(snapshot, attributeId) is not { } attribute || !Holds(entity, attributeId))
+                return Problem($"'{attributeId}' is not an attribute of entity '{entity.Name}' (own, inherited or from a stereotype); pass the one that holds the state.");
+            var type = LifecycleBindings.Classify(snapshot, attribute);
+            if (type.Kind == BindingKind.Unsupported)
+                return Problem($"Attribute '{attribute.Name}' of entity '{entity.Name}' {type.Why}; pass an attribute typed by an enum, a reference type, or a string or integer type.");
+
+            var analysis = new ProcessAnalysis(process);
+            var codes = ProcessCodes.Of(process);
+            var stateCodes = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+            foreach (var (stateId, code) in (given ?? new Dictionary<string, JsonElement>()).OrderBy(kv => kv.Key, StringComparer.Ordinal))
+            {
+                if (analysis.Find(stateId) is not { } node)
+                    return Problem($"'{stateId}' (a key of stateCodes) is not a state of process '{process.Name}'.");
+                if (node.Type is StateType.History or StateType.Choice)
+                    return Problem($"State '{node.Path}' of process '{process.Name}' is a {(node.Type == StateType.History ? "history" : "choice")} state, which nothing rests in, so it takes no code; leave it out of stateCodes.");
+                if (code.ValueKind == JsonValueKind.String ? code.GetString()!.Length == 0 : !(code.ValueKind == JsonValueKind.Number && code.TryGetInt64(out _)))
+                    return Problem($"The code stateCodes gives state '{node.Path}' is {code.GetRawText()}; a code is a non-empty string or an integer.");
+                stateCodes[stateId] = code;
+            }
+
+            var candidates = Candidates(type, attribute, codes.Kind);
+            var needing = LifecycleBindings.Uncoded(analysis, codes).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+            var taken = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var coded in codes.Coded)
+            {
+                if (coded.State.Type is not (StateType.History or StateType.Choice) && !stateCodes.ContainsKey(coded.State.Id))
+                    taken.Add(coded.Key);
+            }
+
+            foreach (var code in stateCodes.Values)
+                taken.Add(ReferenceDataIndex.CodeKey(code)!);
+
+            // Match each state that needs a code and has none given; a code two states match goes to neither.
+            var matched = new Dictionary<string, (Candidate Code, string Source)>(StringComparer.Ordinal);
+            var unmatched = new Dictionary<string, List<JsonElement>>(StringComparer.Ordinal);
+            foreach (var node in analysis.States)
+            {
+                if (!needing.Contains(node.Id) || stateCodes.ContainsKey(node.Id))
+                    continue;
+                var key = Loose(node.State.Name);
+                var byName = candidates.Where(c => c.Names.Any(n => string.Equals(Loose(n), key, StringComparison.Ordinal))).ToList();
+                var byLabel = byName.Count > 0 ? [] : candidates.Where(c => c.Label is { } label
+                    && (string.Equals(label, node.State.DisplayName, StringComparison.OrdinalIgnoreCase) || string.Equals(label, node.State.Name, StringComparison.OrdinalIgnoreCase))).ToList();
+                var found = byName.Count > 0 ? byName : byLabel;
+                if (found.Count == 1 && !taken.Contains(found[0].Key))
+                    matched[node.Id] = (found[0], byName.Count > 0 ? "name" : "label");
+                else
+                    unmatched[node.Id] = [.. found.Select(c => c.Code)];
+            }
+
+            foreach (var group in matched.GroupBy(m => m.Value.Code.Key, StringComparer.Ordinal).Where(g => g.Count() > 1).ToList())
+            {
+                foreach (var (stateId, (code, _)) in group)
+                {
+                    matched.Remove(stateId);
+                    unmatched[stateId] = [code.Code];
+                }
+            }
+
+            var result = new List<SyncCodesState>();
+            var left = new List<SyncCodesUnmatched>();
+            foreach (var node in analysis.States)
+            {
+                if (stateCodes.TryGetValue(node.Id, out var code))
+                {
+                    result.Add(new SyncCodesState(node.Id, node.Path, code, "given"));
+                    writes.Add((node.Pointer, code));
+                }
+                else if (codes.Find(node.Id) is { } kept && node.Type is not (StateType.History or StateType.Choice))
+                {
+                    result.Add(new SyncCodesState(node.Id, node.Path, kept.State.Code!.Value, "kept"));
+                }
+                else if (matched.TryGetValue(node.Id, out var match))
+                {
+                    result.Add(new SyncCodesState(node.Id, node.Path, match.Code.Code, match.Source));
+                    writes.Add((node.Pointer, match.Code.Code));
+                }
+                else if (unmatched.TryGetValue(node.Id, out var options))
+                {
+                    left.Add(new SyncCodesUnmatched(node.Id, node.Path, options));
+                }
+            }
+
+            var current = process.Subjects.FirstOrDefault(s => string.Equals(s.Entity, entity.Id, StringComparison.Ordinal))?.BoundAttribute;
+            var binds = !string.Equals(current, attribute.Id, StringComparison.Ordinal);
+            return new SyncCodesPlan(process.Id, entity.Id, attribute.Id, binds, result, left, null);
+        }
+
+        // Whether an attribute is one of an entity's: its own or a base's, or one of a stereotype the entity carries.
+        private bool Holds(Entity entity, string attributeId)
+        {
+            if (!snapshot.TryGetEntry(attributeId, out var entry))
+                return false;
+            if (Chain(entity).Contains(entry.OwnerId))
+                return true;
+            var chain = Chain(entity).Select(snapshot.Get<Entity>).OfType<Entity>();
+            return chain.Any(e => snapshot.EffectiveStereotypes(e).Any(s => string.Equals(s.Stereotype.Id, entry.OwnerId, StringComparison.Ordinal)));
+        }
+
+        /// <summary>A code the attribute's type offers: the value to write, its key, the texts a state's name matches, and its label.</summary>
+        private sealed record Candidate(JsonElement Code, string Key, IReadOnlyList<string> Names, string? Label);
+
+        // The codes the attribute's type offers, in the type's order: a reference type's stored rows (by seed name and id, then row order),
+        // an enum's members (an integer value when the lifecycle's codes are integers, else the member's key, else its name), or a plain
+        // status's allowedValues.
+        private List<Candidate> Candidates(BindingType type, ModelAttribute attribute, CodeKind kind)
+        {
+            var list = new List<Candidate>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            void Add(JsonElement code, IReadOnlyList<string> names, string? label)
+            {
+                if (ReferenceDataIndex.CodeKey(code) is { } key && seen.Add(key))
+                    list.Add(new Candidate(code, key, names, label));
+            }
+
+            switch (type.Kind)
+            {
+                case BindingKind.Reference:
+                    foreach (var seed in snapshot.All<Seed>().Where(s => s.Target == type.Reference!.Id && s.RowsFrom?.Script is null)
+                                 .OrderBy(s => s.Name, StringComparer.Ordinal).ThenBy(s => s.Id, StringComparer.Ordinal))
+                    {
+                        var at = IndexOfColumn(seed.Columns, "code");
+                        var labelAt = IndexOfColumn(seed.Columns, "label");
+                        if (at < 0)
+                            continue;
+                        foreach (var row in seed.Rows)
+                        {
+                            if (at >= row.Values.Count || ReferenceDataIndex.CodeKey(row.Values[at]) is not { } text)
+                                continue;
+                            var label = labelAt >= 0 && labelAt < row.Values.Count && row.Values[labelAt].ValueKind == JsonValueKind.String ? row.Values[labelAt].GetString() : null;
+                            Add(row.Values[at], [text], label);
+                        }
+                    }
+
+                    break;
+                case BindingKind.Enum:
+                    foreach (var member in type.Enum!.Members)
+                    {
+                        var names = new List<string> { member.Name };
+                        if (member.Code is { } memberKey)
+                            names.Add(memberKey);
+                        if (member.Value is { } value)
+                            names.Add(value.ToString(CultureInfo.InvariantCulture));
+                        if (kind == CodeKind.Integer)
+                        {
+                            if (member.Value is { } number)
+                                Add(JsonSerializer.SerializeToElement(number), names, member.DisplayName);
+                        }
+                        else
+                        {
+                            Add(JsonSerializer.SerializeToElement(member.Code ?? member.Name), names, member.DisplayName);
+                        }
+                    }
+
+                    break;
+                default:
+                    var allowed = attribute.Validation?.AllowedValues is { Count: > 0 } own ? own : type.Plain!.Scalar?.Validation?.AllowedValues ?? [];
+                    foreach (var value in allowed)
+                    {
+                        if (ReferenceDataIndex.CodeKey(value) is { } text)
+                            Add(value, [text], null);
+                    }
+
+                    break;
+            }
+
+            return list;
+        }
+
+        private static int IndexOfColumn(IReadOnlyList<string> columns, string name)
+        {
+            for (var i = 0; i < columns.Count; i++)
+            {
+                if (string.Equals(columns[i], name, StringComparison.Ordinal))
+                    return i;
+            }
+
+            return -1;
+        }
+
+        // A name or code for loose matching: case, '_' and '-' ignored.
+        private static string Loose(string text) =>
+            text.Replace("_", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal).ToUpperInvariant();
 
         /// <summary>
         /// The literals that attributes typed by an enum hold, with who holds them: defaults and allowed values (the attribute),
@@ -656,3 +967,14 @@ public sealed record SyncEnumPlan(
 /// <param name="Member">The member name.</param>
 /// <param name="ReferencedBy">The ids of the attributes, seeds and scenarios that use it, ordinal.</param>
 public sealed record SyncEnumRefusal(string Member, IReadOnlyList<string> ReferencedBy);
+
+/// <summary>What <c>sync-codes</c> writes (lifecycle-design.md decision 19), or why it is refused.</summary>
+/// <param name="Process">The lifecycle process.</param>
+/// <param name="Entity">The subject.</param>
+/// <param name="Attribute">The subject's attribute that holds the state.</param>
+/// <param name="Binds">Whether the sync writes the binding: a new entry, a new binding, or another attribute than the one bound.</param>
+/// <param name="Codes">Every state that needs a code and has one after the sync, with each state <c>stateCodes</c> names, in document order.</param>
+/// <param name="Unmatched">Every state that needs a code and gets none, in document order.</param>
+/// <param name="Problem">Why the operation is refused (MQ9019), or <see langword="null"/>.</param>
+public sealed record SyncCodesPlan(string Process, string Entity, string Attribute, bool Binds, IReadOnlyList<SyncCodesState> Codes,
+    IReadOnlyList<SyncCodesUnmatched> Unmatched, string? Problem);

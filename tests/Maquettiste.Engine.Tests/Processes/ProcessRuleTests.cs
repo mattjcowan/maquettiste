@@ -11,7 +11,7 @@ using Maquettiste.Testing;
 namespace Maquettiste.Engine.Tests.Processes;
 
 /// <summary>
-/// The process rules MQ9001 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9206 and MQ9209 (phase-3-design.md section 3, lifecycle-design.md
+/// The process rules MQ9001 to MQ9022, MQ9101 to MQ9106 and MQ9201 to MQ9210 (phase-3-design.md section 3, lifecycle-design.md
 /// section 6) over the <c>process-basics</c> fixture: the fixture raises none of them but MQ9209, since it names its subject in the
 /// one-subject form, each failing case mutates it so one rule fires, and each passing case makes a nearby change that must not raise
 /// the rule.
@@ -43,6 +43,15 @@ public sealed class ProcessRuleTests
     private const string IsLarge = "01JPRX00000000000000000011";
     private const string ManagerReview = "01JPRX00000000000000000031";
 
+    // What the binding cases add (lifecycle-design.md decisions 11 to 17).
+    private const string StateAttr = "01JATT00000000000000000050";
+    private const string OrderState = "01JRTP00000000000000000001";
+    private const string RowDraft = "01JRWS00000000000000000001";
+    private const string RowClosed = "01JRWS00000000000000000004";
+    private const string ReturnEntity = "01JENT00000000000000000005";
+    private const string ReturnStatus = "01JATT00000000000000000051";
+    private const string RushOrder = "01JENT00000000000000000003";
+
     // The second process some cases add.
     private const string Q = "01JPRC00000000000000000002";
     private const string QStart = "01JSTA00000000000000000101";
@@ -70,6 +79,96 @@ public sealed class ProcessRuleTests
         public JsonObject Enum => Files["model/enums/order-status.json"];
 
         public JsonObject Diagram => Files["model/diagrams/order-lifecycle.json"];
+
+        public JsonObject ReferenceType => Files["model/reference-types/order-state.json"];
+
+        public JsonArray Rows => Files["model/seeds/order-state/order-state.json"]["rows"]!.AsArray();
+
+        public JsonObject StateAttribute => Entity["attributes"]!.AsArray().Single(a => (string?)a!["id"] == StateAttr)!.AsObject();
+
+        /// <summary>
+        /// Binds the lifecycle to a new attribute 'state' of Order typed by the reference type OrderState, whose rows DRF, REV, FUL and CLS
+        /// are the root states' codes (lifecycle-design.md decision 11); the default is DRF. No binding rule fires.
+        /// </summary>
+        public void BindReference()
+        {
+            Files["model/reference-types/order-state.json"] = new JsonObject
+            {
+                ["kind"] = "reference-type", ["id"] = OrderState, ["name"] = "OrderState",
+                ["code"] = new JsonObject { ["id"] = "01JRTP00000000000000000002", ["length"] = 8 },
+                ["label"] = new JsonObject { ["id"] = "01JRTP00000000000000000003" },
+            };
+            Files["model/seeds/order-state/order-state.json"] = new JsonObject
+            {
+                ["kind"] = "seed", ["id"] = "01JSDE00000000000000000001", ["name"] = "OrderState", ["target"] = OrderState,
+                ["columns"] = new JsonArray("code", "label"),
+                ["rows"] = new JsonArray(
+                    new JsonObject { ["id"] = RowDraft, ["values"] = new JsonArray("DRF", "Draft") },
+                    new JsonObject { ["id"] = "01JRWS00000000000000000002", ["values"] = new JsonArray("REV", "Review") },
+                    new JsonObject { ["id"] = "01JRWS00000000000000000003", ["values"] = new JsonArray("FUL", "Fulfilment") },
+                    new JsonObject { ["id"] = RowClosed, ["values"] = new JsonArray("CLS", "Closed") }),
+            };
+            Bind(new JsonObject { ["ref"] = OrderState }, "DRF");
+        }
+
+        /// <summary>Binds the lifecycle to a new attribute 'state' of Order, a plain string of length 3 allowed DRF, REV, FUL and CLS.</summary>
+        public void BindPlain()
+        {
+            Bind("string", "DRF");
+            StateAttribute["length"] = 3;
+            StateAttribute["validation"] = new JsonObject { ["allowedValues"] = new JsonArray("DRF", "REV", "FUL", "CLS") };
+        }
+
+        /// <summary>Codes the root states DRF, REV, FUL and CLS, and binds the lifecycle to a new attribute 'state' of Order.</summary>
+        public void Bind(JsonNode type, JsonNode @default)
+        {
+            Entity["attributes"]!.AsArray().Add(new JsonObject { ["id"] = StateAttr, ["name"] = "state", ["type"] = type, ["default"] = @default });
+            Process["boundAttribute"] = StateAttr;
+            Codes("DRF", "REV", "FUL", "CLS");
+        }
+
+        /// <summary>Gives the root states Draft, Review, Fulfilment and Closed these codes.</summary>
+        public void Codes(JsonNode draft, JsonNode review, JsonNode fulfilment, JsonNode closed)
+        {
+            State(Draft)["code"] = draft;
+            State(Review)["code"] = review;
+            State(Fulfilment)["code"] = fulfilment;
+            State(Closed)["code"] = closed;
+        }
+
+        /// <summary>Adds entity Return with an attribute 'status' typed by OrderStatus (default Draft), listed in the subjects with that binding.</summary>
+        public void AddReturnSharingTheEnum()
+        {
+            UseSubjects();
+            Files["model/entities/return.json"] = new JsonObject
+            {
+                ["kind"] = "entity", ["id"] = ReturnEntity, ["name"] = "Return",
+                ["attributes"] = new JsonArray(new JsonObject
+                {
+                    ["id"] = ReturnStatus, ["name"] = "status", ["type"] = new JsonObject { ["ref"] = "01JENM00000000000000000001" }, ["default"] = "Draft",
+                }),
+            };
+            Process["subjects"]!.AsArray().Add(new JsonObject { ["id"] = NewId(), ["entity"] = ReturnEntity, ["boundAttribute"] = ReturnStatus });
+        }
+
+        /// <summary>Adds lifecycle Q, listing these subjects.</summary>
+        public void AddLifecycleQ(params (string Entity, string? Bound)[] subjects)
+        {
+            AddQ();
+            var q = Files["model/processes/q.json"];
+            q["use"] = "lifecycle";
+            q["subjects"] = new JsonArray([.. subjects.Select(s =>
+            {
+                var entry = new JsonObject { ["id"] = NewId(), ["entity"] = s.Entity };
+                if (s.Bound is not null)
+                    entry["boundAttribute"] = s.Bound;
+                return (JsonNode)entry;
+            })]);
+        }
+
+        /// <summary>Adds entity RushOrder, derived from Order.</summary>
+        public void AddRushOrder() =>
+            Files["model/entities/rush-order.json"] = new JsonObject { ["kind"] = "entity", ["id"] = RushOrder, ["name"] = "RushOrder", ["base"] = Order };
 
         /// <summary>Rewrites the process in the subjects form, as use-subjects does: one entry with the subject and its binding.</summary>
         public JsonObject UseSubjects()
@@ -307,7 +406,13 @@ public sealed class ProcessRuleTests
             m.Process.Remove("boundAttribute");
         },
         ["MQ9201 entity names another entity's lifecycle"] = m => m.Process["subject"] = "01JENT00000000000000000002",
-        ["MQ9202 not an enum attribute"] = m => m.Process["boundAttribute"] = "01JATT00000000000000000001",
+        ["MQ9202 a uuid attribute, which cannot hold a state"] = m => m.Process["boundAttribute"] = "01JATT00000000000000000001",
+        ["MQ9202 two lifecycles bind one attribute for an entity both list"] = m => m.AddLifecycleQ((Order, Status)),
+        ["MQ9202 a scalar type over a type that cannot hold a state"] = m =>
+        {
+            m.Files["model/types/order-date.json"] = new JsonObject { ["kind"] = "scalar-type", ["id"] = "01JSCT00000000000000000001", ["name"] = "OrderDate", ["base"] = "date" };
+            m.Bind(new JsonObject { ["ref"] = "01JSCT00000000000000000001" }, "2026-01-01");
+        },
         ["MQ9202 collection attribute"] = m => m.Entity["attributes"]![1]!["collection"] = true,
         ["MQ9202 bound on an orchestration"] = m =>
         {
@@ -374,6 +479,71 @@ public sealed class ProcessRuleTests
         },
         ["MQ9206 a code on a history state"] = m => m.State(Resume)["code"] = "R",
         ["MQ9206 a code on a choice state"] = m => m.State(Decide)["code"] = "C",
+        ["MQ9206 under a binding, a coded state below a coded state"] = m =>
+        {
+            m.BindReference();
+            m.State(Pending)["code"] = "FUL2";
+        },
+        ["MQ9206 under a binding, a code in a parallel region"] = m =>
+        {
+            m.BindReference();
+            m.State(Fulfilment).Remove("code");
+            m.State(Packing)["code"] = "FUL";
+        },
+        ["MQ9205 a binding by code whose default is another state's code"] = m =>
+        {
+            m.BindReference();
+            m.StateAttribute["default"] = "REV";
+        },
+        ["MQ9207 an enum binding: a code that is none of the member's identifiers"] = m => m.State(Draft)["code"] = "D",
+        ["MQ9207 an enum binding: a code on a nested state"] = m => m.State(Pending)["code"] = "Review",
+        ["MQ9207 a reference binding: a code the type does not have"] = m =>
+        {
+            m.BindReference();
+            m.State(Closed)["code"] = "XXX";
+        },
+        ["MQ9207 a reference binding: a former code"] = m =>
+        {
+            m.BindReference();
+            m.ReferenceType["formerCodes"] = new JsonArray(new JsonObject { ["code"] = "END", ["replacedBy"] = RowClosed });
+            m.State(Closed)["code"] = "END";
+        },
+        ["MQ9207 a plain binding: a code too long"] = m =>
+        {
+            m.BindPlain();
+            m.State(Closed)["code"] = "CLOSED";
+        },
+        ["MQ9207 a plain binding: a code not among allowedValues"] = m =>
+        {
+            m.BindPlain();
+            m.State(Closed)["code"] = "END";
+        },
+        ["MQ9207 a plain integer binding: a string code"] = m =>
+        {
+            m.Bind("int32", 1);
+            m.Codes(1, 2, 3, "4");
+        },
+        ["MQ9208 a row no state has"] = m =>
+        {
+            m.BindReference();
+            m.Rows.Add(new JsonObject { ["id"] = "01JRWS00000000000000000005", ["values"] = new JsonArray("ARC", "Archived") });
+        },
+        ["MQ9208 an allowed value no state has"] = m =>
+        {
+            m.BindPlain();
+            m.StateAttribute["validation"]!["allowedValues"]!.AsArray().Add("ARC");
+        },
+        ["MQ9210 a reference binding: a state with no code"] = m =>
+        {
+            m.BindReference();
+            m.State(Review).Remove("code");
+        },
+        ["MQ9210 a plain binding with no codes"] = m =>
+        {
+            m.Entity["attributes"]!.AsArray().Add(new JsonObject { ["id"] = StateAttr, ["name"] = "state", ["type"] = "string" });
+            m.Process["boundAttribute"] = StateAttr;
+        },
+        ["MQ9210 an enum binding once the lifecycle has codes"] = m => m.State(Draft)["code"] = "Draft",
         ["MQ9209 the one-subject form"] = _ => { },
         ["MQ9209 an orchestration in the one-subject form"] = m =>
         {
@@ -461,6 +631,7 @@ public sealed class ProcessRuleTests
         ["MQ9203 a subjects entry's enum in state order"] = m => m.UseSubjects(),
         ["MQ9206 unique codes of one kind, nested, with no binding"] = m =>
         {
+            m.Process.Remove("boundAttribute");
             m.State(Draft)["code"] = "D";
             m.State(Review)["code"] = "R";
             m.State(Pending)["code"] = "RP";
@@ -472,6 +643,50 @@ public sealed class ProcessRuleTests
             m.State(Draft)["code"] = 1;
             m.State(Closed)["code"] = 2;
         },
+        ["MQ9206 under a binding, codes that form a map"] = m => m.BindReference(),
+        ["MQ9202 a reference attribute"] = m => m.BindReference(),
+        ["MQ9202 a plain string attribute"] = m => m.BindPlain(),
+        ["MQ9202 an integer attribute through a scalar type"] = m =>
+        {
+            m.Files["model/types/status-code.json"] = new JsonObject { ["kind"] = "scalar-type", ["id"] = "01JSCT00000000000000000002", ["name"] = "StatusCode", ["base"] = "int16" };
+            m.Bind(new JsonObject { ["ref"] = "01JSCT00000000000000000002" }, 1);
+            m.Codes(1, 2, 3, 4);
+        },
+        ["MQ9202 two lifecycles bind one inherited attribute for a base and a derived entity"] = m =>
+        {
+            m.AddRushOrder();
+            m.AddLifecycleQ((RushOrder, Status));
+        },
+        ["MQ9204 subjects of one lifecycle share their enum"] = m => m.AddReturnSharingTheEnum(),
+        ["MQ9205 a binding by code whose default is the initial state's code"] = m => m.BindReference(),
+        ["MQ9207 an enum binding: codes name members by key, value or name"] = m =>
+        {
+            m.Enum["members"]![0]!["code"] = "D";
+            m.Enum["members"]![1]!["value"] = 2;
+            m.Codes("D", "2", "Fulfilment", "Closed");
+        },
+        ["MQ9207 an enum binding: integer codes name members by value"] = m =>
+        {
+            foreach (var (member, value) in m.Enum["members"]!.AsArray().Select((member, i) => (member!, i + 1)))
+                member["value"] = value;
+            m.Codes(1, 2, 3, 4);
+        },
+        ["MQ9207 a reference binding's codes are the type's codes"] = m => m.BindReference(),
+        ["MQ9207 a reference binding: 1 and \"1\" are one code"] = m =>
+        {
+            m.BindReference();
+            m.ReferenceType["code"]!["type"] = "int32";
+            m.ReferenceType["code"]!.AsObject().Remove("length");
+            foreach (var (row, value) in m.Rows.Select((row, i) => (row!, i + 1)))
+                row["values"]![0] = value;
+            m.StateAttribute["default"] = 1;
+            m.Codes("1", "2", "3", "4");
+        },
+        ["MQ9207 a plain binding's codes fit the attribute"] = m => m.BindPlain(),
+        ["MQ9208 every row has a state"] = m => m.BindReference(),
+        ["MQ9208 every allowed value has a state"] = m => m.BindPlain(),
+        ["MQ9210 every state a configuration rests in has a code"] = m => m.BindReference(),
+        ["MQ9210 an enum binding with no codes, as before codes"] = _ => { },
         ["MQ9209 the subjects form"] = m => m.UseSubjects(),
         ["MQ9209 an orchestration with subjects"] = m =>
         {
@@ -510,6 +725,94 @@ public sealed class ProcessRuleTests
         // The fixture names its subject in the one-subject form, which is deprecated (lifecycle-design.md decision 6); it is not converted.
         var only = Assert.Single(await ValidateAsync(Load()));
         Assert.Equal(("MQ9209", "/subject", P), (only.Rule, only.JsonPointer, only.ElementId));
+    }
+
+    [Theory]
+    [InlineData("reference")]
+    [InlineData("plain")]
+    [InlineData("scalar")]
+    [InlineData("subjects")]
+    public async Task A_binding_by_code_that_fits_raises_nothing_but_the_deprecation(string kind)
+    {
+        // The passing cases' bindings are clean through and through, so each passing case proves its own rule only (decisions 11 to 17).
+        var model = Load();
+        switch (kind)
+        {
+            case "reference":
+                model.BindReference();
+                break;
+            case "plain":
+                model.BindPlain();
+                break;
+            case "subjects":
+                model.BindReference();
+                model.UseSubjects();
+                break;
+            default:
+                Passing["MQ9202 an integer attribute through a scalar type"](model);
+                break;
+        }
+
+        var report = await ValidationFixture.Validator().ValidateAsync(model.Build(), ValidationScope.All, null, Ct);
+
+        Assert.Equal(kind == "subjects" ? [] : ["MQ9209"], report.Diagnostics.Where(d => d.Severity != DiagnosticSeverity.Info).Select(d => d.Rule));
+    }
+
+    [Fact]
+    public async Task A_one_subject_lifecycle_bound_to_a_plain_attribute_trades_its_error_for_warnings()
+    {
+        // lifecycle-design.md section 11: the one error that goes away. Each state a configuration rests in, reachable and with no code,
+        // is one MQ9210 on the state; Decide (a choice) and Review's children (Review has none coded) are not.
+        var model = Load();
+        Failing["MQ9210 a plain binding with no codes"](model);
+
+        var diagnostics = await ValidateAsync(model);
+
+        Assert.DoesNotContain(diagnostics, d => d.Rule == "MQ9202");
+        Assert.Equal([(Draft, "/states/0"), (Review, "/states/2"), (Fulfilment, "/states/3"), (Closed, "/states/4")],
+            diagnostics.Where(d => d.Rule == "MQ9210").Select(d => (d.ElementId!, d.JsonPointer!)));
+        Assert.Equal("State 'Review' of process 'OrderLifecycle' has no code, so attribute 'state' of entity 'Order', which the process binds, has no value for it; give the state a code.",
+            diagnostics.Single(d => d.Rule == "MQ9210" && d.ElementId == Review).Message);
+        Assert.All(diagnostics, d => Assert.NotEqual(DiagnosticSeverity.Error, d.Severity));
+    }
+
+    [Fact]
+    public async Task Binding_findings_sit_on_the_binding_and_code_findings_on_the_code()
+    {
+        var model = Load();
+        model.BindReference();
+        model.UseSubjects();
+        model.State(Closed)["code"] = "XXX";
+        model.StateAttribute["default"] = "REV";
+        var entry = model.Process["subjects"]![0]!["id"]!.GetValue<string>();
+
+        var diagnostics = await ValidateAsync(model);
+
+        var wrong = Assert.Single(diagnostics, d => d.Rule == "MQ9207");
+        Assert.Equal((Closed, "/states/4/code"), (wrong.ElementId, wrong.JsonPointer));
+        Assert.Equal("State 'Closed' of process 'OrderLifecycle' has code 'XXX', which is not a code of reference type 'OrderState', which attribute 'state' of entity 'Order' binds; write one of its codes, or add a row with it.", wrong.Message);
+        Assert.Equal([(entry, "/subjects/0/boundAttribute")], diagnostics.Where(d => d.Rule is "MQ9205" or "MQ9208").Select(d => (d.ElementId!, d.JsonPointer!)).Distinct());
+        Assert.Contains("'CLS'", diagnostics.Single(d => d.Rule == "MQ9208").Message, StringComparison.Ordinal);
+        Assert.Contains("whose code is 'DRF'; set the default to 'DRF'", diagnostics.Single(d => d.Rule == "MQ9205").Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Two_lifecycles_binding_one_attribute_are_judged_on_the_entities_they_list()
+    {
+        // Decision 11: an entity both list by name, never a derived one; two lifecycles in the one-subject form stay with MQ9201 alone.
+        var shared = Load();
+        Failing["MQ9202 two lifecycles bind one attribute for an entity both list"](shared);
+        var both = (await ValidateAsync(shared)).Where(d => d.Rule == "MQ9202").ToList();
+        Assert.Equal([".maquettiste/model/processes/order-lifecycle.json", ".maquettiste/model/processes/q.json"], both.Select(d => d.FilePath!).Order(StringComparer.Ordinal));
+
+        var oneSubject = Load();
+        oneSubject.AddQ();
+        oneSubject.Files["model/processes/q.json"]["use"] = "lifecycle";
+        oneSubject.Files["model/processes/q.json"]["subject"] = Order;
+        oneSubject.Files["model/processes/q.json"]["boundAttribute"] = Status;
+        var findings = await ValidateAsync(oneSubject);
+        Assert.DoesNotContain(findings, d => d.Rule == "MQ9202");
+        Assert.Contains(findings, d => d.Rule == "MQ9201");
     }
 
     [Fact]
@@ -575,7 +878,7 @@ public sealed class ProcessRuleTests
         var rules = RuleCatalog.All.Select(r => r.Id).Where(id => (id.StartsWith("MQ90", StringComparison.Ordinal)
             || id.StartsWith("MQ91", StringComparison.Ordinal) || id.StartsWith("MQ92", StringComparison.Ordinal)) && id != "MQ9019").ToList();
 
-        Assert.Equal(34, rules.Count);
+        Assert.Equal(37, rules.Count);
         Assert.Equal(rules, Failing.Keys.Select(k => k[..6]).Distinct().Order(StringComparer.Ordinal));
         Assert.Equal(rules, Passing.Keys.Select(k => k[..6]).Distinct().Order(StringComparer.Ordinal));
         Assert.All(rules, id => Assert.Contains(";", RuleCatalog.Get(id).Description, StringComparison.Ordinal));

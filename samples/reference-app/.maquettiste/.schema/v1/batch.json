@@ -10,13 +10,13 @@
       "items": {
         "title": "Batch operation",
         "type": "object",
-        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "to", "codes", "target", "default", "redefine", "excludeMissing", "keepNames"],
+        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "to", "codes", "entity", "attribute", "stateCodes", "target", "default", "redefine", "excludeMissing", "keepNames"],
         "properties": {
           "op": {
-            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "set-lifecycle", "set-initial", "refresh-scenario", "use-subjects", "retag", "tags-to-property", "names-to-ids", "fold-into-stereotype", "map-by-name", "resync-binding", "rename-code", "retire-code", "merge-reference-types", "rename-reference-type", "text-to-trees", "upsert"]
+            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "sync-codes", "set-lifecycle", "set-initial", "refresh-scenario", "use-subjects", "retag", "tags-to-property", "names-to-ids", "fold-into-stereotype", "map-by-name", "resync-binding", "rename-code", "retire-code", "merge-reference-types", "rename-reference-type", "text-to-trees", "upsert"]
           },
           "id": {
-            "description": "The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder; an upsert's must be a qualified name. For fold-into-stereotype, the stereotype whose members the tables adopt; for rename-code, retire-code and rename-reference-type, the reference type; for merge-reference-types, the reference type merged away.",
+            "description": "The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder; an upsert's must be a qualified name. For sync-enum and sync-codes, the lifecycle process; for fold-into-stereotype, the stereotype whose members the tables adopt; for rename-code, retire-code and rename-reference-type, the reference type; for merge-reference-types, the reference type merged away.",
             "$ref": "#/$defs/idOrName"
           },
           "as": {
@@ -149,6 +149,29 @@
               "minLength": 1
             }
           },
+          "entity": {
+            "description": "The subject whose binding the operation acts on: an id, a qualified name or a placeholder. sync-enum: the subject whose bound enum is synced; absent means the lifecycle's one enum binding, in either subject form. sync-codes: the subject whose attribute holds the state; on a lifecycle in the one-subject form it must be that subject, on one that lists subjects an entity not listed gets an entry, and a lifecycle with no subject gets subjects with one entry.",
+            "$ref": "#/$defs/idOrName"
+          },
+          "attribute": {
+            "description": "sync-codes: the attribute of entity (own, inherited or from a stereotype) that holds the state, single-valued and typed by an enum, a reference type or a plain status (string, text, int16, int32 or int64, directly or through a scalar type). The operation binds it in the form the file has. An id, a qualified name or a placeholder.",
+            "$ref": "#/$defs/idOrName"
+          },
+          "stateCodes": {
+            "description": "sync-codes: codes keyed by state id (or a state's qualified name), each a string or an integer; a listed state takes its code, replacing one it has. Every other state that needs a code keeps the one it has, else takes the one code of the attribute's type equal to its name (case, _ and - ignored), else the one row whose label equals its display name or name; an ambiguous match takes none. The operation creates no rows.",
+            "type": "object",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            }
+          },
           "target": {
             "description": "The schema that the tables, views, sequences, convention entries and mappings of the removed schema move to (remove-schema); the process the entity follows, or absent to clear the lifecycle (set-lifecycle); the child state that becomes the initial one (set-initial); the reference type merged into (merge-reference-types). An id, a qualified name or a placeholder.",
             "$ref": "#/$defs/idOrName"
@@ -234,6 +257,18 @@
             },
             "then": {
               "required": ["id"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "const": "sync-codes"
+                }
+              }
+            },
+            "then": {
+              "required": ["id", "entity", "attribute"]
             }
           },
           {

@@ -5,13 +5,14 @@ import { PROCESS_LABELS } from "@/model/labels";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCcw } from "lucide-react";
-import { useElement, useIndex } from "@/api/queries";
+import { useElement, useElements, useIndex } from "@/api/queries";
 import type { AttributeDoc } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
 import { useServices } from "@/app/context";
+import { bindableAttributes, classifyAttribute } from "@/model/binding";
 import { indexLookup } from "@/model/index";
 import { subjectsOf, syncPlanLines } from "@/model/process";
 import { MarkChips, NameAndDomain, domIdOf, type EditorContext } from "../EditorFrame";
@@ -20,17 +21,46 @@ import { entryIdsOf, useProblems } from "./shared";
 
 type Rec = Record<string, unknown>;
 
-/** The subject's enum-typed attributes, the bound enum's id and its member names (null until loaded). */
+/**
+ * The subject's attributes a lifecycle may bind (own, inherited or from a stereotype; single-valued, typed by a
+ * non-flags enum, a reference type, or a plain status; lifecycle-design.md decision 11), the bound enum's id and its
+ * member names (null until loaded). `enumId` and `members` stay enum-only.
+ */
 export function useBinding(subject: string | undefined, bound: string | undefined) {
   const index = useIndex();
   const lookup = indexLookup(index.data);
-  const entity = useElement(subject ?? null);
-  const attributes = ((entity.data?.json as { attributes?: AttributeDoc[] } | undefined)?.attributes ?? []).filter((a) => {
-    const ref = typeof a.type === "object" && a.type ? (a.type as { ref?: string }).ref : undefined;
-    return !!ref && lookup.byId.get(ref)?.kind === "enum";
-  });
+  const chain: string[] = [];
+  for (let id = subject; id && !chain.includes(id); id = lookup.byId.get(id)?.base) chain.push(id);
+  const hasStereotypes = chain.some((id) => (lookup.byId.get(id)?.stereotypes ?? []).length > 0);
+  const stereotypeIds = hasStereotypes ? lookup.ofKind("stereotype").map((s) => s.id) : [];
+  const held = useElements([...chain, ...stereotypeIds]).byId;
+  const json = (id: string) => held.get(id)?.json as Rec | undefined;
+  const stereotype = (key: string) => stereotypeIds.map(json).find((s) => s?.key === key);
+  const candidates = bindableAttributes(json(subject ?? ""), json, stereotype);
+  // Enums and scalar types are read for what the index does not say (flags, the base); the others by their kind.
+  const typeIds = [
+    ...new Set(
+      candidates.flatMap((a) => {
+        const ref = typeof a.type === "object" && a.type ? (a.type as { ref?: string }).ref : undefined;
+        const kind = ref ? lookup.byId.get(ref)?.kind : undefined;
+        return ref && (kind === "enum" || kind === "scalar-type") ? [ref] : [];
+      }),
+    ),
+  ];
+  const types = useElements(typeIds).byId;
+  const typeDoc = (id: string): Rec | undefined => {
+    const loaded = types.get(id)?.json as Rec | undefined;
+    if (loaded) return loaded;
+    const row = lookup.byId.get(id);
+    return row?.kind === "reference-type" ? ({ kind: row.kind, name: row.name } as Rec) : undefined;
+  };
+  const attributes = candidates.filter((a) => {
+    const type = classifyAttribute(a, typeDoc);
+    return type.kind === "enum" || type.kind === "reference" || type.kind === "plain";
+  }) as unknown as AttributeDoc[];
   const attribute = attributes.find((a) => a.id === bound);
-  const enumId = attribute ? (attribute.type as { ref: string }).ref : null;
+  const bindType = attribute ? classifyAttribute(attribute as unknown as Rec, typeDoc) : undefined;
+  const enumId = bindType?.kind === "enum" ? (bindType.typeId ?? null) : null;
   const enumDoc = useElement(enumId);
   const members = enumDoc.data ? (((enumDoc.data.json as { members?: { name: string }[] }).members ?? []).map((m) => m.name) as string[]) : null;
   return { attributes, enumId, members };
@@ -184,7 +214,7 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
                 MQ9203
               </Badge>
             ) : null}
-            <SyncEnumButton process={id} enumId={enumId} disabled={!bound || !enumId} />
+            <SyncEnumButton process={id} enumId={enumId} entity={listForm ? subject : undefined} disabled={!bound || !enumId} />
           </div>
         </Field>
       ) : null}
@@ -193,7 +223,7 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
 }
 
 /** Sync enum: the dry run's added, removed, reordered and refused members in a confirm, then the apply. */
-export function SyncEnumButton({ process, enumId, disabled }: { process: string; enumId: string | null; disabled: boolean }) {
+export function SyncEnumButton({ process, enumId, entity, disabled }: { process: string; enumId: string | null; entity?: string; disabled: boolean }) {
   const { store, drafts } = useServices();
   const qc = useQueryClient();
   const [plan, setPlan] = useState<SyncEnumResult | null>(null);
@@ -204,7 +234,7 @@ export function SyncEnumButton({ process, enumId, disabled }: { process: string;
     setError(null);
     try {
       await drafts.flush(process);
-      setPlan(await syncEnum(process, true));
+      setPlan(await syncEnum(process, true, entity));
     } catch (e) {
       store.getState().notify(`Sync enum: ${e instanceof Error ? e.message : String(e)}`, "error");
     } finally {
@@ -215,7 +245,7 @@ export function SyncEnumButton({ process, enumId, disabled }: { process: string;
     if (!enumId) return;
     setBusy(true);
     try {
-      const result = await applySyncEnum(qc, store, process, enumId);
+      const result = await applySyncEnum(qc, store, process, enumId, entity);
       if (result.applied) {
         setPlan(null);
         store.getState().notify("The enum now matches the states.");

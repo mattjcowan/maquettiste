@@ -126,6 +126,9 @@ public sealed class RSubject : RObject
 
     /// <summary>The enum typing the bound attribute.</summary>
     public REnum? BoundEnum { get; internal set; }
+
+    /// <summary>The reference type typing the bound attribute (lifecycle-design.md decision 11): its codes are the states' codes.</summary>
+    public RReferenceType? BoundReferenceType { get; internal set; }
 }
 
 /// <summary>A state of a process.</summary>
