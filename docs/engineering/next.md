@@ -13,15 +13,32 @@ How to read the tables:
 - **Status** is "built" with the version, "build next" or "later", "covered" by other items, or "not doing".
 - **Build next** and **later** are the owner's decisions of 2026-11-02, taken after an independent review of every item
   not built. *Build next*: most teams need it soon. *Later*: kept on the roadmap with no date; picked when what it
-  depends on exists, or when it becomes the most needed. Nothing on the roadmap is dropped.
+  depends on exists, or when it becomes the most needed. Nothing on the roadmap is dropped, except what "Not doing"
+  lists.
 
 Every roadmap item not built yet was requested, except projections (3.12), views (3.13) and declared environments
 (6.9). The older open work at the end came from the owner's reviews.
 
-The build-next order, one pull request each, now all built (pull requests #3 to #10): operations, first cut (3.6);
+The build-next order of 2026-11-02, one pull request each, now all built (pull requests #3 to #10): operations, first cut (3.6);
 project-defined kinds (3.7); the small fixes marked below, validation speed first; library packs with exports (5.1,
 5.3); tests for packs (8.2), whose design builds on libraries; calculated values (5.2); declarative rules and
 suppressions (8.3); the model diff with impact before apply (7.3, 7.2).
+
+## Build next
+
+The owner's decisions of 2026-11-05, taken after asking the team that requested 3.10. In this order, one pull request
+each. An item with no number is new to the roadmap. Each new name and format is held to one test: it stays for good, it
+must help any team whether they use it or not, and it stays optional.
+
+| # | Item | Requested | Status | Notes |
+| --- | --- | --- | --- | --- |
+| | A template helper that lists what links to an element (`referenced_by`) | yes | Build next | Each result says its kind, its status and the property that made the link, and reaches parts such as a gate. A pack cannot do this correctly today: its output must follow what links to the element. |
+| | Declared rules that select one custom type | yes | Build next | Today a rule on `custom` judges every custom type. |
+| | Create or update by name in a batch | yes | Build next | One step for a script that refreshes elements from another source. Whether an update replaces or merges is decided with it. |
+| | Declared rules that count linking elements with a filter | yes | Build next | For example, only those not retired. Today a retired process or scenario still counts. |
+| 3.10 | Requirements as a project's own custom kind, with typed links and declared rules, and a guide section that shows how | yes | Build next | Replaces the built-in kind of [design 4.3](next-phase-2-design.md#43-requirements), which is in "Not doing". It works today except for what the rows above and 4.2 add. |
+| 4.2 | Shared process guards, actions and gate policies, with custom properties and stereotypes on guards, actions, invokes and gates, and custom properties on checks and constraints | yes | Build next | [Design 4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies), 4 tasks. Checks and constraints are added to that design. |
+| 4.1 | A lifecycle bound to a reference type or a status column | yes | Design next | Not designed yet. |
 
 ## Phase 1: built in 0.11.0
 
@@ -83,7 +100,7 @@ it. 0.12.0 was released on 2026-11-04.
 
 | Item | Requested | Status | Notes |
 | --- | --- | --- | --- |
-| Editor screens for the items above | yes | Later | Screens for operations and project-defined kinds come first, since the JSON form handles their nested members worst. Each item ships in the engine, the CLI and MCP first; the generic JSON form edits what has no screen yet. Each design section lists its screens under "Editor follow-ups". |
+| Editor screens for the items above | yes | Later | Screens for operations and project-defined kinds come first, since the JSON form handles their nested members worst. For custom kinds, in this order: an explorer section per kind, one form built from a kind's schema with a link picker, then custom properties on process nodes. Each item ships in the engine, the CLI and MCP first; the generic JSON form edits what has no screen yet. Each design section lists its screens under "Editor follow-ups". |
 | Sealing facts into a revision, and squashing (6.2) | yes | Later | Built with the live planner (6.1): squashing must check each environment's ledger, which only 6.1 reads. Facts stay open until then. |
 | Rationale, decision and status in templates for enum members, stereotypes and categories (3.11) | yes | Built, 0.12.0 | |
 | Expression checks on a table an entity's mapping projects, naming the entity's columns (3.8) | yes | Built, 0.12.1 | An overlay's tree check names the entity's attributes and value object members by attribute name, since validation cannot know the column names the conventions give them; resolution lowers it through the projected table's columns, and an attribute the table does not store is MQ4008 at the check. |
@@ -96,8 +113,6 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 | # | Item | Requested | Status | Tasks | Design | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 5.8 | DDL as structured steps from the engine | yes | Later | 18 | [5.1](next-phase-2-design.md#51-ddl-as-structured-steps-from-the-engine) | The same output; built with the live planner (6.1), the only item it pays back, never on its own. |
-| 3.10 | Requirements: `satisfies`, `verifies` and a coverage report | yes | Later | 6 | [4.3](next-phase-2-design.md#43-requirements) | Valuable for regulated teams; not needed to generate code. The roadmap had moved it up to phase 2. |
-| 4.2 | Shared process guards, actions and gate policies | yes | Later | 4 | [4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies) | For teams that model many processes. |
 | 6.9 | Declared environments | no | Later | 4 | [6.3](next-phase-2-design.md#63-declared-environments) | Added by the roadmap's review; mostly preparation for reading live databases. |
 
 ## Phase 3: not designed yet
@@ -111,7 +126,6 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 | 6.3 | SQL objects that revert | yes | Later | Built with the live planner (6.1), which runs the revert statements. |
 | 6.3 | Typed triggers and row-level security policies | yes | Later | SQL objects cover these today. Typed grants are in "Not doing". |
 | 7.6 | Conventions tied to the rules that check them; where each resolved value came from | yes | Later | Helps agents explain answers. |
-| 4.1 | A lifecycle bound to a reference type or a status column | yes | Later | For teams that model processes. |
 | 4.3 | Approval gates with stages | yes | Later | Until then, gates, stereotypes and custom kinds (3.7) can model stages. |
 | 4.4 | Timers from elements, task contracts, editable fields per state | yes | Later | Close to a team's workflow engine; after the lifecycle (4.1) and shared guards (4.2). |
 | 7.4 | A merge driver for model files | yes | Later | An optional integration for teams that keep models in git; the product never needs it. The model diff (7.3) covers review. |
@@ -120,10 +134,8 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 
 | # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
-| 3.13 | Views of the model: saved criteria that select elements | no | Later | Added by the roadmap's review. Part of the documentation pack (5.6), as its viewpoints, not an item of its own. |
+| 3.13 | Views of the model: saved criteria that select elements | no | Later | Added by the roadmap's review. It was to be part of the documentation pack (5.6), which is not being built for now. |
 | 5.10 | The trace map from generated lines to element ids | yes | Later | The second part of 5.10. |
-| 5.6 | Model documentation as an example pack | yes | Later | The team asked for an export in the engine; it is a pack instead. The process-docs pack covers part of it. |
-| 9 | SysML v2 export as an example pack | yes | Later | A pack written from the resolved model, as any team could. Import is in "Not doing". |
 | 4.6 | Charts joined to operations; the process runtime generated from them | yes | Later | Needs operations (3.6) and the expression language (3.8). The engine runs no process; packs generate the runtime. |
 | 4.5 | A structure hash per process, and records in flight when a process changes | yes | Later | Needs the lifecycle (4.1); the state map is a step in the migration ledger (6.2). |
 | 8.1 | Scenarios run against the running system | yes | Later | Needs operations (3.6) and projections (3.12); the team writes the test template. |
@@ -131,7 +143,7 @@ Designed in sections 4 to 6 of `next-phase-2-design.md`. Every *build next* item
 
 ## Not doing
 
-Decided on 2026-10-30, each with what to use instead.
+Decided on 2026-10-30 unless a row says otherwise, each with what to use instead.
 
 | Not doing | Instead | Requested |
 | --- | --- | --- |
@@ -145,11 +157,15 @@ Decided on 2026-10-30, each with what to use instead.
 | Typed `key:value` tags | Properties through extension schemas, and the tags-to-property refactor (3.9) | yes |
 | Open issues stored on elements | A tracker link in `decision` (3.11) | yes |
 | Engine emitters for C# or other languages | The engine lowers expressions to SQL and JavaScript; packs render other languages from the typed tree (3.8) | yes |
-| Connectors to outside requirement tools | CSV or JSON import by external id (3.10) | no |
+| Connectors to outside requirement tools | A batch written by a script (3.10) | no |
+| A built-in requirement kind, with `fulfills`, `verifies` and a coverage report (3.10, design 4.3) | A project's own custom kind, typed links, declared rules and a pack. Decided 2026-11-05; it comes back only if a team needs what a custom kind cannot give | yes |
+| CSV import for custom kinds | A batch written by a script. Decided 2026-11-05 | no |
 | Business calendars and escalation chains in the engine | Custom kinds (3.7); an escalation is a chain of timers | yes |
 | A version element for processes | A structure hash per process, and a state map in the ledger (4.5) | yes |
 | The engine running processes | Packs generate the runtime from the chart (4.6) | no |
-| Documentation or SysML v2 export in the engine | Example packs (5.6, 9) | yes |
+| Documentation or SysML v2 export in the engine | A team's own pack, written from the resolved model | yes |
+| Model documentation as an example pack (5.6), for now | A team's own pack; the process-docs pack covers process pages. Decided 2026-11-04 | yes |
+| SysML v2 export as an example pack (9), for now | A team's own pack, written from the resolved model. Decided 2026-11-04 | yes |
 | SysML v2 import | None planned | yes |
 | Migration facts stored on elements | One fact file each in the ledger, projected onto resolved elements (6.2) | yes |
 | Element ids in database object comments | The ledger table (6.1, 6.2) | yes |
