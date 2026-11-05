@@ -19,6 +19,7 @@ Each row's "Seen in" uses these letters. A letter means this session's reading o
 | S | SOLIDWORKS PDM | Transition options |
 | V | Autodesk Vault | Lifecycle definitions, states and transitions |
 | P | SAP status management | General status management, not its PLM areas |
+| N | Standards | Role-based access control, attribute-based access control, the state machine part of UML, human-task and case-management models, from general knowledge |
 
 "Own" marks what the owner asked for or explained directly. Not read: Arena, Propel, Infor and others. The owner has confirmed what E's keywords mean where the syntax alone left it open: freezing, automatic promotion, signature filters, routing and rules.
 
@@ -35,6 +36,9 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | A rule assigns the lifecycle when an object is created | W O | **No** |
 | One object is in several different lifecycles at once (an employee's HR and project lifecycles) | Own | **No**: an entity names one |
 | One object is in several instances of one lifecycle (often better as a detail entity such as a project assignment) | Own | **No** |
+| An object's owner, stated explicitly | E N | **No** |
+| A move or action records data on the object (who submitted, when released) | N | **No**: actions change the context only |
+| A condition reads the object's state in another lifecycle, however it is stored | Own N | **No** |
 | Several statuses active at once on one object | P | Part: parallel states, inside one lifecycle |
 | An object moves to another lifecycle, with a right and a trigger for it | E | **No** |
 | A type opts out of lifecycles | V | Yes: no lifecycle is the default |
@@ -58,11 +62,18 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | A state marked as released | A O | Part: custom property |
 | A final state | O | Yes |
 | States outside the normal path, reachable from anywhere (hold, cancel) | O | Part: as ordinary transitions |
+| An event a state can't handle now: refused, ignored, or deferred until a state can | N | Part: refused only |
+| Entry and exit points on a reusable part of a chart | N | Part: sub-processes |
+| Stages and milestones | N | Part: compound states |
 | Who may read, change or delete per state, by role | E W A S V | **No**: custom property only |
 | A long list of rights per state: promote, demote, override, revise, connect and disconnect from either end, lock, freeze, schedule, change owner, type or policy, and more (32 in E) | E | **No** |
 | Rights set separately for the owner, for everyone and for named people or roles | E | **No** |
 | **A rule that allows or forbids operations when a condition holds,** over the object's data and the current user. For example: forbid changing, deleting or reassigning an item classified secret unless you own it | E Own | **No**: declared rules check the model, not the running system |
 | A named access rule, reused across things | E | **No** |
+| Rights on one attribute in one state (hide a salary from everyone outside HR) | N | **No** |
+| Rights passed along containment (a project's rights reach its items) | N | **No** |
+| Role membership valid for a period | N | **No** |
+| Several rights combined: any deny wins, then any allow, then a default | N | **No** |
 | An access rule for every state | E | **No** |
 | The object can't be edited in this state | A | **No**: 4.4 |
 | **Any item can be frozen, and can't be edited until it is thawed:** an object, a relation's instance (it can't be disconnected or have its attributes edited), and others such as rules and processes. Freezing and thawing are operations with their own triggers, so automation can run on them | E Own | **No** |
@@ -87,7 +98,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Kinds of move: promote, demote, revise, change | E W | Part: events are free-named, with no kinds |
 | A casual state change beside a reviewed one | W | No |
 | Someone with the right may move past unmet conditions (`override`), or set any state | E W O | **No** |
-| Who may run a transition, by role | A F S V | Yes: an event's `actors` |
+| Who may run a transition, by role, in a given state | A F S V | Part: an event's `actors` hold in every source state alike |
 | Moves on by itself once every check and signature passes, running its actions as always (`promote true`) | E O S V Own | Yes: `always`, `done`, `after`, and a gate's transition fires on the signature that completes it |
 | When several next states are possible, the person promoting picks one, or a trigger picks one from the object's data | E Own | Part: guards and choice states pick from data; a person picks by sending a different event |
 | Conditions on the object's data | O S V | Part: guards read the context and the event, **not the object**. 4.1 |
@@ -126,6 +137,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Logic in any language or plugin | E A O F V | Yes: a stub carries no language |
 | A reusable handler, named by many | E O T | Yes: libraries (#33) |
 | Arguments passed to a handler (`input`) | E T | Part: custom properties (#32) |
+| An action on one object that moves another in its lifecycle (a change order releasing the items it affects) | E O N | **No** |
 | Messages back to the user when refused | F | Part: an operation guard's `error`, not a process guard's |
 
 **How a pack can use this, with what the model holds today (Pack):**
@@ -149,7 +161,9 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Reviewers set per lifecycle role, mapped to people | W O | Part: actors, with no mapping |
 | Reviewers added or removed at run time | O | No: the system's job |
 | Signing again with a password | S O | **No** |
-| Signing authority handed to someone else | E O | **No** |
+| Signing authority handed to someone else | E O N | **No** |
+| Claiming a task from a group, and an escalation chain | N | **No** |
+| Separation of duties: one person can't hold two roles on one object, or approve what they submitted | N | Part: a gate's `allowRepeatSigner`, within one gate only |
 | Reminders and escalation | O | **No**: a timer could express it |
 | Steps in series or parallel | T W A | **Part**: invokes and orchestrations; 4.3 |
 | One sign-off policy shared by many moves | Own | Yes: gate policies (#33) |
