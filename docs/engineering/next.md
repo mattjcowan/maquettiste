@@ -73,7 +73,7 @@ rules (5.6) in #9, and the model diff and impact before apply (6.1, 6.2) in #10.
 ## Phase 3: built in 0.12.0
 
 The design, `next-phase-3-design.md`, was approved on 2026-11-03 and merged in pull request #14; tasks H1 to H14 build
-it. 0.12.0 is not released yet.
+it. 0.12.0 was released on 2026-11-04.
 
 | # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
