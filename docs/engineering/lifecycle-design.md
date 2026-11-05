@@ -1,12 +1,13 @@
 # Lifecycles any implementation can follow: design
 
-**Status (2026-11-05): the owner's decisions are in section 13. Three independent checks have read this design, and this version answers the third. Nothing in this file is built.** It designs item 4.1 of `next.md`. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick, and [Who, what and when](lifecycle-actors-scenarios.md) sets the direction this item starts. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented: the billing fixture has no processes. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
+**Status (2026-11-05): the owner's decisions are in section 13. Four independent checks have read this design, and this version answers the fourth. Nothing in this file is built.** It designs item 4.1 of `next.md`. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick, and [Who, what and when](lifecycle-actors-scenarios.md) sets the direction this item starts. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented: the billing fixture has no processes. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
 
 **How this version came about.**
 - **First draft:** assumed a single status column.
 - **Second draft:** removed that assumption. A check against the code and a check of its value to the four uses found that it would have broken things for the team already using lifecycles, and that parts of it couldn't work.
 - **Third draft:** fixed that. A third check, against the code, found two remaining changes for teams that don't use any of this, rules that contradicted each other, and decisions left open.
-- **This version:** answers all three checks, and each decision says what it settles.
+- **Fourth draft:** answered the third check. A fourth check found three more slips, the main one about how an enum is stored, and judged the build plan too small by about half.
+- **This version:** answers all four checks, and each decision says what it settles.
 
 ## 1. In short
 
@@ -20,7 +21,7 @@ Today it decides too much. A lifecycle has one entity as its subject, the entity
 | Code generation | Templates read codes and subjects. `csharp-dapper` writes the codes, maps states to codes and back, and lists every move from code to code. `sql-ddl` can add the subject and current code to its lifecycle tables, and can write a check on a status column, each behind its own parameter |
 | The team's system, or a lifecycle system | Nothing changes until the team uses the new output or builds from the model |
 
-**A project that uses none of this** keeps its output and files. It gets one deprecation warning per lifecycle written in the one-subject form, which the owner chose and which can be turned off, and the usual once-per-upgrade effects. Section 11 lists everything.
+**A project that uses none of this** keeps its output and files. It gets one deprecation warning per process written in the one-subject form, lifecycles and orchestrations alike, which the owner chose and which can be turned off, and the usual once-per-upgrade effects. Section 11 lists everything.
 
 ## 2. What the owner said
 
@@ -65,6 +66,7 @@ The halves can ship separately. The first is what teams asked for: codes, and li
    - **Several lifecycles:** listing an entity in several lifecycles means its objects follow all of them at once.
    - **One of several:** a type whose objects follow one of several lifecycles is a later item. It will add a condition to the entry, so an entry without one keeps its meaning.
    - **Orchestrations:** an orchestration may list subjects too, for what its flow is about, but binds nothing.
+   - **Deleting a listed entity:** its entry goes, under either delete choice, the way an entity's binding does. An emptied list is removed, so the lifecycle has no subject and gets MQ9201, as today when its one subject is deleted.
 6. **The one-subject form stays valid, and is deprecated with a warning (the owner's decision).**
    - **Unchanged:** `subject` and `boundAttribute` on a process keep their meaning and rules, MQ9201 included. They accept the new binding types too, since a binding is the same thing in either form.
    - **The warning:** MQ9209 warns on any process using it, lifecycle or orchestration, and can be turned off.
@@ -79,9 +81,9 @@ The halves can ship separately. The first is what teams asked for: codes, and li
    - With `subjects` the entity need not name it, since several lifecycles may govern it. So converting drops that one check, and the findings change by it.
 9. **`set-lifecycle` keeps today's behaviour for today's form, and stops forcing "only one".**
    - **Target in the one-subject form, or with no subject:** as today. The target becomes the entity's named lifecycle with that one subject, and the entity's previous lifecycle in the one-subject form becomes an orchestration. A target with no subject gets `subjects`.
-   - **Target using `subjects`:** the entity is added if missing, and becomes the entity's named lifecycle. Its other lifecycles using `subjects` are left alone, since several may govern it.
+   - **Target using `subjects`:** the entity is added if missing, and the target becomes the entity's named lifecycle. The entity's previous lifecycle in the one-subject form becomes an orchestration, as today, since it would otherwise fail MQ9201. Its other lifecycles using `subjects` are left alone, since several may govern it.
    - **No target:** the entity's named lifecycle is cleared. Lifecycles in the one-subject form for this entity become orchestrations, as today. The entity is removed from the `subjects` of the others, and one left with no subjects becomes an orchestration, which mirrors today.
-   - **The new-process dialog** keeps today's default, making the new lifecycle the entity's only one, with a choice to keep its other lifecycles.
+   - **The new-process dialog** keeps today's default, making the new lifecycle the entity's only one. As when clearing, the entity is also removed from the `subjects` of its other lifecycles, and one left with none becomes an orchestration. A choice keeps the entity's other lifecycles that use `subjects`.
 10. **The editor's Use and Subject controls work on a lifecycle with one subject, in either form,** editing the form the file has. With two or more subjects, the controls show them read-only, editable in the JSON view. Demoting a lifecycle to an orchestration clears its bindings and keeps its subjects, as today.
 
 ### Holding the state in an attribute
@@ -93,24 +95,25 @@ The halves can ship separately. The first is what teams asked for: codes, and li
 
     **Two lifecycles binding one attribute:**
     - Each subject binds its own attribute.
-    - Two lifecycles may not bind the same attribute *for the same entity* (MQ9202). That can only happen with `subjects`, since the one-subject form already lets an entity name only one lifecycle.
-    - Two lifecycles binding one inherited or stereotype attribute for *different* entities stays allowed, as today.
+    - Two lifecycles may not bind the same attribute for an entity that both of them list by name (MQ9202). Covering a derived entity doesn't count. This can only happen with `subjects`, since the one-subject form already lets an entity name only one lifecycle.
+    - Two lifecycles binding one inherited or stereotype attribute for different entities stays allowed, as today. That includes a lifecycle on a base entity and another on an entity derived from it.
 12. **Under a binding, the codes must form a map** (decision 4), so the column can hold the state as one value. Otherwise it is MQ9206.
 13. **A missing code under a binding is a warning (MQ9210).** A three-save edit (add a state, add a transition into it, type its code) is never refused.
-14. **An enum binding works as today, and its states' codes, when given, equal the members' stored values.**
-    - It matches root states by name (MQ9203).
-    - A state's code must equal its member's stored value: the member's `code`, else its name, which is what packs store today. Otherwise it is MQ9207.
-    - So two stored values never disagree, and a lifecycle can mix an enum binding with other bindings.
+14. **An enum binding works as today, and its states' codes, when given, match how the enum is stored.**
+    - It matches root states by name (MQ9203), and MQ9205 still compares the default with the initial state's name.
+    - An enum is stored as an integer by default: the member's value, else its position. It can also be stored as text: the member's code, else its name.
+    - A string code must equal its member's text form, and an integer code its member's integer form. Otherwise it is MQ9207.
+    - So a code and the enum never disagree, however a database stores the enum, and a lifecycle can mix an enum binding with other bindings.
 15. **`sync-enum` gains an optional `entity`.** It defaults to the lifecycle's one enum binding in either form, so the MQ9203 quick fix keeps working after converting. Subjects of one lifecycle may share an enum without MQ9204 warning about each other.
 16. **The codes must fit the attribute (MQ9207).**
     - A reference type's codes must be live codes of the type, and a former code is reported with its replacement.
     - A plain status's codes must fit its type, length, pattern and `allowedValues`.
-    - With two reference bindings to different types, a code is renamed in both types in one batch. A batch is judged when it ends, so that passes, and renaming it in one type alone is refused.
+    - With two reference bindings to different types, a code is renamed in both types in one batch. This check runs when the batch ends, so that passes, and renaming it in one type alone is refused. That is new: today each code rename is checked inside its own operation.
 17. **Values with no state are a warning (MQ9208),** once per binding: the attribute's `allowedValues` when it has them, else the type's rows in the model. Rows a script fills are not judged.
 18. **A renamed code follows.**
     - A code under a reference binding is listed as a use of the row, field `code`. So `get_references` and `referenced_by` see it, deleting the row is refused, and renaming, merging or retiring the code rewrites it.
     - A merge or retire that would leave two states one code is refused.
-    - **Keeping the index right:** the index reads the bound attribute's type, which can sit in another file. Its patch path falls back to a full build when a changed document holds an attribute typed by a reference type, before or after the change, that some process binds. Enum and plain bindings don't need this.
+    - **Keeping the index right:** the index reads a bound attribute's type, which can sit in another file, from a map that only a full build refreshes. So its patch path falls back to a full build when a changed process adds, removes or changes a binding, and when a changed document retypes or removes an attribute that a process binds. Both need a binding, so a project without one never pays.
     - **Checking the right lifecycles:** the validator keeps a map from bound attribute to lifecycles, so a save of a reference type, seed or scalar type revisits only the lifecycles that bind one, at no cost when none do.
 19. **`sync-codes` proposes codes and binds them.** It is a batch operation:
     ```json
@@ -120,6 +123,7 @@ The halves can ship separately. The first is what teams asked for: codes, and li
     - A state keeps a code it has. Otherwise it matches a code equal to the state's name (ignoring case, `_` and `-`), then a row whose label equals the state's display name or name.
     - An ambiguous match is unmatched, and `stateCodes` gives the rest.
     - It sets the binding in the form the file has, or `subjects` when the process has no subject.
+    - On a lifecycle in the one-subject form, `entity` must be its subject, and another entity is refused.
     - It creates no rows. A dry run lists what it would write and what is unmatched.
 
 ### Guards that read the object (second half)
@@ -152,7 +156,7 @@ The halves can ship separately. The first is what teams asked for: codes, and li
     - **Sub-processes:** an invoked sub-process sees no object.
     - **`process`:** stays required for now. It becomes optional when steps name the object they act on, and `subject` then sets the default.
     - **Simulating and recording:** `simulate_process`, `record_scenario` and the editor's simulation panel take the same `objects` and `subject`.
-    - **Replay:** a scenario's replay also depends on its objects' entities, so a changed default replays it.
+    - **Replay:** a scenario's replay also depends on its process's subjects, its objects' entities, and their base entities, so a changed default replays it.
     - **Literal uses:** `sync-enum`'s check counts object values. Renaming a code doesn't rewrite them, as for scenario values today.
 23. **The index row** of a process keeps `subject` when it has exactly one subject, in either form, and gains `subjects` when it has two or more.
 
@@ -165,7 +169,7 @@ The halves can ship separately. The first is what teams asked for: codes, and li
 | `scenario.json` | `objects`, `subject` (after `process`) | as in decision 22 | Second half |
 | `batch.json` | `sync-codes` with `entity`, `attribute`, `stateCodes`; `use-subjects` with `elementIds`; `sync-enum` gains `entity` | | Decisions 6, 15 and 19 |
 
-The copies follow: the sample app's schemas, `openapi.yaml` and its generated editor files.
+Also updated: the sample app's schema copies, `openapi.yaml` by hand, and the editor files generated from it.
 
 ```json
 {
@@ -189,10 +193,10 @@ The copies follow: the sample app's schemas, `openapi.yaml` and its generated ed
 | Id | Severity | Rule | Quick fix |
 | --- | --- | --- | --- |
 | MQ9201 | E | Unchanged for the one-subject form. With `subjects`: an empty list on a lifecycle, or an entity listed twice | Add a subject |
-| MQ9202 | E | Changed: a binding isn't a single-valued enum, reference type or plain status attribute of its subject (own, inherited or from a stereotype); a binding on an orchestration; or two lifecycles binding one attribute for the same entity | Bind another attribute |
+| MQ9202 | E | Changed: a binding isn't a single-valued enum, reference type or plain status attribute of its subject (own, inherited or from a stereotype); a binding on an orchestration; or two lifecycles binding one attribute for an entity both list | Bind another attribute |
 | MQ9203 | E | Unchanged, per enum binding | `sync-enum` |
 | MQ9204 | W | Unchanged, but quiet about subjects of the same lifecycle | |
-| MQ9205 | W | Changed: per binding, the default isn't the initial state's stored value | Set the default |
+| MQ9205 | W | Changed: per binding. For an enum binding, unchanged: the default isn't the initial state's name. For other bindings, the default isn't the initial state's code | Set the default |
 | MQ9206 | E | Two states share a code; codes mix strings and integers; a code on a history or choice state; or, under a binding, codes that don't form a map | `sync-codes` |
 | MQ9207 | E | A code doesn't fit its binding (decisions 14 and 16) | Use a fitting code |
 | MQ9208 | W | Values a binding can hold that no state covers | Add a state, or narrow `allowedValues` |
@@ -223,7 +227,7 @@ public sealed class REntity { public RList<RProcess> Lifecycles { get; internal 
 ```
 
 - **`entity.lifecycle`:** unchanged, with its keys.
-- **`entity.lifecycles`:** keyed like `entity.operations`, on `k:process` and the entity's referrers. Only a template that reads it pays for those keys.
+- **`entity.lifecycles`:** keyed on `k:process` and on the referrers of the entity and of each of its base entities, since a lifecycle may list a base. Only a template that reads it pays for those keys.
 - **`process.bound_states` and `state.bound_member`:** keep their meaning for a lifecycle with one subject.
 - **Records:** they add `subjects`, `code` and `lifecycles` only where used. A reference binding's nodes also depend on the reference type's file.
 
@@ -247,7 +251,7 @@ Output changes only for a model that uses state codes, the `subjects` form, more
   - A move into a history or choice state has no fixed "to" code; it is decided when the move runs.
   - Timers, completions and eventless moves have no event.
   - A move within one coded state has the same code at both ends.
-- **Enum bindings:** `ToStatus` when the lifecycle has one enum binding, as today. With several, `To<Entity>Status`, qualified by package where two subjects share a name.
+- **Enum bindings:** the template reads `p.subjects`. A lifecycle with one subject, in either form, keeps today's output: `ToStatus` for an enum binding, else the per-state enum and `Parse`. A lifecycle with several subjects gets the per-state enum and `Parse`, plus `To<Entity>Status` for each enum binding, qualified by package where two subjects share a name.
 - **What stays out:** nothing goes in `helpers.js`, since changing it renders every unit of the pack again. Step methods for triggers come with the trigger-points item.
 
 **`sql-ddl`**
@@ -266,20 +270,21 @@ Output changes only for a model that uses state codes, the `subjects` form, more
 - **Use and Subject:** work on a lifecycle with one subject, in either form. With two or more, the subjects are read-only, editable in the JSON view. Every new lifecycle is written as `subjects`.
 - **Bound attribute picker:** lists enum, reference and plain attributes. `enumId` and the drift column stay enum-only.
 - **States tab:** gains a **Code** column, which writes a number for an integer code.
-- **Quick fixes:** MQ9205 writes the stored value, and MQ9209 converts. Quick fixes for one binding pass its subject.
+- **Quick fixes:** MQ9205 writes the initial state's name for an enum binding, as today, and its code otherwise. MQ9209 converts. Quick fixes for one binding pass its subject.
 - **Simulation panel:** carries a scenario's objects.
 - **Readers of `subject` and `boundAttribute`, moved onto the one list:**
-  - the explorer's row label;
+  - the explorer's row label, and its tree (`explorer/tree.ts`);
+  - the process editor (`editors/process/ProcessEditor.tsx`);
   - the statechart canvas;
   - the inspector's process sections;
-  - the MQ9201 and MQ9205 quick fixes;
+  - the MQ9201 and MQ9205 quick fixes, and the quick-fix list (`problems/quickFix.ts`);
   - the undo id list in `editors/process/api.ts`;
   - the mock backend's `validate.ts`, `refs.ts`, `store.ts` and `processHandlers.ts`. The recorded rule list follows.
 
 ## 11. A project that uses none of this
 
 - **Files:** nothing rewrites a file unless the team asks, so saves, `format`, `format --check` and snapshot import behave as today.
-- **Findings:** the same, plus one MQ9209 warning per process in the one-subject form, which can be turned off. No changed rule gives a new error for today's models, and the shared-attribute case in decision 11 stays allowed.
+- **Findings:** the same, plus one MQ9209 warning per process in the one-subject form, which can be turned off. Orchestrations count too, since the new-process dialog gives them a subject today. No changed rule gives a new error for today's models, and the shared-attribute cases in decision 11 stay allowed. One error goes away: a one-subject lifecycle that binds a plain attribute has MQ9202 today, and gets MQ9210 warnings instead.
 - **Output:** the same bytes. Every pack change depends on new keys or a new parameter, and generated scenario tests don't change.
 - **Tool answers about the model:** the same, since new record members are left out when unused. The rule list, the schemas and the tool texts describe the additions.
 - **Speed:** the same. The index fallback, the validator's map and the new keys apply only where used.
@@ -317,7 +322,7 @@ Relations with several types per end, revisions, lifecycles on custom kinds and 
 
 ## 14. Tests
 
-- **`ProcessRuleTests`:** failing and passing cases for every new or changed rule. Today's models, including two lifecycles sharing an inherited or stereotype attribute for different entities, get the same findings plus MQ9209.
+- **`ProcessRuleTests`:** failing and passing cases for every new or changed rule. Today's models, including two lifecycles sharing an inherited or stereotype attribute for different entities, or on a base entity and a derived one, get the same findings plus MQ9209.
 - **`LifecycleSubjectTests` (new):**
   - Both forms resolve to one list, and a file with both is refused.
   - Entries have ids, and a suppression per subject works.
@@ -327,11 +332,11 @@ Relations with several types per end, revisions, lifecycles on custom kinds and 
   - `set-lifecycle` and the dialog in each case of decision 9.
   - `use-subjects` gives the same findings except MQ9209 and the back-reference check.
   - New processes come out as `subjects`, and an old-form file keeps its form through edits and re-import.
-  - Removing a subject's entity with `remove-references`.
+  - Deleting a listed entity under either delete choice, including the last one.
 - **`LifecycleCodeTests` (new):**
   - Codes on root and nested states with no binding, and the map rule.
   - A state without a code keeps the mapping on.
-  - Every binding type: enum (codes equal to members' stored values), reference, plain string, plain integer, inherited, from a stereotype, and through a scalar type.
+  - Every binding type: enum (string codes against members' codes or names, integer codes against their values or positions), reference, plain string, plain integer, inherited, from a stereotype, and through a scalar type.
   - Renaming across two reference types in one batch.
   - Reference refactors.
   - **The index, by patch and by full build alike:** an attribute retyped in another file, an attribute added then bound, and an enum binding retyped to a reference type.
@@ -396,42 +401,44 @@ That comes to about six days for the first half and three for the second, nine i
 
 Agents build it, so the measure is hours and tokens, not days.
 
-**What the last build took.** Custom properties and library processes (#32 and #33) added about 2,600 lines with tests. They took about 2 hours, including a review, its fixes and CI. They used 0.4M output tokens, 1.0M new input and 65M cached re-reads. 4.1 is about 5,000 lines, twice that size, and reaches more of the product.
+**What the last build took.** Custom properties and library processes (#32 and #33) added about 2,600 lines with tests, in 85 files. They took about 2 hours, including a review, its fixes and CI. They used 0.4M output tokens, 1.0M new input and 65M cached re-reads. The fourth check counts 4.1 at 130 to 150 files and 7,000 to 8,000 lines with tests, about three times that. Most of the difference is editor and mock work, five SQL dialects, and pack test cases with their expected files.
 
-**Estimate.**
+**Estimate** (raised by the fourth check).
 
 | | Wall time | Output | New input | Cached re-reads |
 | --- | --- | --- | --- | --- |
-| First half | About 4 hours | 1.0M | 3.5M | 100M |
-| Second half | About 1 hour more, since most of it runs beside the first | 0.5M | 1.5M | 50M |
-| In all | 5 to 6 hours | About 1.5M | About 5M | About 150M |
+| First half | 5 to 6 hours | 1.5M | 3.5M | 160M |
+| Second half | About 1.5 hours more, since most of it runs beside the first half's output | 0.7M | 1.5M | 75M |
+| In all | 7 to 8 hours | About 2.2M | About 5M | About 235M |
 
-Each figure could run up to half again higher if the reviews find more than usual. The owner's part is merging five pull requests in order.
+The first half is three pull requests in a row, each with a build, a review, its fixes and about 20 minutes of CI. The owner's part is merging five pull requests in order.
 
 **Where the tokens go.** Every step an agent takes reads its whole context again. Those cached re-reads are most of the tokens, and they grow with steps times context. About three quarters of what agents read is code. So the plan keeps each agent's context small, its steps few, and its reading aimed.
 
 **How the tokens are kept down.**
 1. **Agents build, and I coordinate.** My context holds this whole conversation, so each of my steps costs more than an agent's. I launch agents, merge their work and open pull requests. I read their summaries, not their diffs.
-2. **One map of the code, written once.** The third check has already read the code. It writes down, once, the files and functions each group changes, and the traps it saw. Each builder starts from its part of the map instead of searching.
-3. **Short agents with exact briefs.** Each group gets a fresh agent. A long-lived agent's context keeps growing, and every step re-reads it, so carrying one agent through several groups costs more than starting fresh with a precise brief.
-4. **The right model for each part.**
-   - **Opus 5.5** for engine work: codes and subjects, bindings, guards, scenario objects, and every review. A mistake there costs a review round, which costs more than the difference between models.
-   - **Sonnet 5.5** for work with a fixed shape and tests that catch slips: the editor and mock readers, the pack output and the docs.
-5. **Tests where they cost least.** Builders run the tests for what they touch, and the full .NET suite once per group. The editor's browser tests run only in CI, which costs no tokens.
-6. **One review per pull request, run once.** An independent review reads the diff and the design, not the builder's summary. I make tiny fixes myself. Others go to a short fixer with the exact findings.
-7. **No polling.** I wait for agents and CI in the background, which costs nothing.
+2. **One map of the code, written once.** The fourth check wrote it while it still had the code loaded: the files and functions each agent changes, the tests to run, and the traps it saw. It is kept with the build, outside the repository. Each builder starts from its part instead of searching.
+3. **Short agents with exact briefs.** Each group gets a fresh agent. A long-lived agent's context keeps growing, and every step re-reads it.
+4. **Resuming a finished agent isn't free.** The fourth check resumed the third checker, and its whole context had to be stored again: 0.5M new input. So a fixer is a fresh agent with the exact findings, unless the builder finished minutes ago.
+5. **The right model for each part.**
+   - **Opus 5.5** for the engine, the pack output and every review. The pack output must compile with warnings as errors and run twice cleanly in five SQL dialects. Its failures show only in slow tests, so a slip costs a long loop.
+   - **Sonnet 5.5** for the editor and mock readers, and the docs, which follow a fixed shape and have fast tests.
+6. **The contract first.** In each wave, the engine agent first writes the schema and `openapi.yaml` changes and commits them. The editor agent starts from that commit, so both work against the same shapes. Only that engine agent edits `openapi.yaml`, which is written by hand.
+7. **Generated files by fixed commands.** After each merge, I regenerate the editor's API types, the recorded rule list and the sample app's copies with fixed commands, not agent work. Pack expected files stay with the builder, so their changes are reviewed.
+8. **Tests where they cost least.** Builders run the tests for what they touch while working, and the full .NET suite once, quietly, before handing back. The database tests and the editor's browser tests run only in CI, which costs no tokens.
+9. **One small review per pull request, run once.** The reviewer gets the diff, the decisions it builds and the map's traps. I make tiny fixes myself.
+10. **No polling.** I wait for agents and CI in the background, which costs nothing.
 
 **Order.** Running agents side by side saves time, not tokens. Each builder works in its own copy of the repository, and I merge by patch.
 
-| Wave | Agents running at once | Pull request |
+| Wave | Agents | Pull request |
 | --- | --- | --- |
-| 1 | Codes and subjects in the engine (Opus); the editor and mock readers for them (Sonnet) | 1, on main |
-| 2 | Bindings in the engine (Opus) and the editor (Sonnet); guards (Opus); scenario objects (Opus) | 2 on 1; 4 on 1; 5 on 4 |
-| 3 | Output (Sonnet) | 3 on 2 |
+| 1 | Codes and subjects in the engine (Opus), contract first. Then the editor and mock readers (Sonnet), from the contract commit | 1, on main |
+| 2 | Bindings in the engine (Opus), contract first. Then bindings in the editor (Sonnet) | 2, on 1 |
+| 3 | Output (Opus). Beside it: scenario objects (Opus), then guards (a fresh Opus agent) | 3 on 2; 4 on 2; 5 on 4 |
 | 4 | Docs for each half (Sonnet) | On 3 and on 5 |
 
-- **At most four agents run at once.**
-- **Files that two agents in one wave both change**, such as the schema copies, `openapi.yaml` and its generated files, are regenerated once after merging, not merged by hand.
+- **At most three agents run at once.** The second half no longer builds beside the bindings: the fourth check found nineteen files that both would change. The output and the second half share none.
 - **Merging:** the first half merges in order, 1 to 3. The second half then moves onto main, as in earlier stacks.
+- **Questions first.** The owner's two answers in section 13 come before wave 1. A later "keep the old form" would rework decision 7, the dialog, the importer and `set-lifecycle`.
 - **A design gap found while building** stops the work, and I ask the owner. Builders don't decide scope.
-
