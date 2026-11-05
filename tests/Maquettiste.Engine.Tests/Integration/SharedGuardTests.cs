@@ -408,6 +408,35 @@ public sealed class SharedGuardTests
         Assert.True(Assert.Single(verified.Value!.Results).Passed);
     }
 
+    [Fact]
+    public async Task An_assume_names_a_library_guard_as_it_names_an_own_one()
+    {
+        // A stub guard asks for an assumed result; the step gives it by the guard's name.
+        await using var repo = await CopyAsync(
+            library: LibraryBody.Replace(", \"expression\": \"context.amount > 0\"", "", StringComparison.Ordinal),
+            invoice: Flow(InvoiceFlow, "InvoiceFlow"));
+
+        var call = await repo.Store.SimulateProcessAsync(PaymentFlow, new SimulateRequest
+        {
+            Steps = [JsonDocument.Parse($$"""{ "input": "event", "event": "go", "assume": { "amount_positive": true } }""").RootElement.Clone()],
+        }, Ct);
+
+        Assert.True(call.Status == ProcessCallStatus.Ok, call.Detail);
+        Assert.True(call.Value!.Trace[^1].Accepted);
+    }
+
+    [Fact]
+    public async Task A_library_gate_is_a_property_holder_at_its_own_place()
+    {
+        await using var repo = await CopyAsync(
+            library: LibraryBody.Replace("\"name\": \"two_signers\",", "\"name\": \"two_signers\", \"properties\": { \"owner\": 3 },", StringComparison.Ordinal),
+            more: r => r.Repo.WriteFile(".maquettiste/extensions/owners.json", """{ "name": "owners", "appliesTo": { "kinds": ["gate"] }, "properties": { "owner": { "type": "string" } } }"""));
+
+        var found = Assert.Single(await FindingsAsync(repo), d => d.Rule == "MQ5001");
+
+        Assert.Equal((Gate, "/gates/0/properties/owner"), (found.ElementId, found.JsonPointer));
+    }
+
     // ---- The resolved model
 
     [Fact]
@@ -477,6 +506,20 @@ public sealed class SharedGuardTests
         var written = (await repo.Store.GetElementAsync(third, Ct))!.Json.GetProperty("transitions")[0];
         Assert.Equal(Gate, written.GetProperty("gatePolicy").GetString());
         Assert.Equal(Guard, written.GetProperty("guard").GetString());
+    }
+
+    [Fact]
+    public async Task The_processes_scope_of_the_resolved_model_lists_a_library_and_its_gate_has_no_transition()
+    {
+        await using var repo = await CopyAsync();
+
+        var page = await repo.Service.GetResolvedAsync(new ResolvedQuery("processes"), Ct);
+
+        var record = page.Items.OfType<ProcessRecord>().Single(p => p.Id == Library);
+        Assert.Equal("library", record.Use);
+        var gate = Assert.Single(record.Gates);
+        Assert.Null(gate.Transition);
+        Assert.Equal([Id(InvoiceFlow, 16)], gate.UsedBy);
     }
 
     [Fact]
