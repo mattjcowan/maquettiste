@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.12.2 (unreleased)
+## 0.12.2 (2026-11-05)
 
 - **Shared guards, actions and gates.** A process with `use: library` holds guards, actions and gates once, and any process names
   them by id: `transition.guard`, `transition.actions`, `state.entry` and `state.exit` as before, and the new
