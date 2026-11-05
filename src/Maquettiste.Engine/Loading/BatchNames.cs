@@ -631,6 +631,63 @@ internal sealed class BatchNames
         }
     }
 
+    /// <summary>
+    /// What an upsert's name must be true of its document, now that names and ids are resolved, so that the next run finds what this one
+    /// wrote and an upsert never takes over another element: the element holds the name among its own forms; an update keeps its longest
+    /// form, and a seed its target, which no form holds; and an update mints no part's id, since the part's old id would be lost and a
+    /// re-run would change the model each time.
+    /// </summary>
+    /// <param name="snapshot">The model as loaded.</param>
+    /// <param name="resolved">The batch with ids only.</param>
+    /// <param name="elements">Per operation, its parsed element.</param>
+    /// <param name="upserts">The name of each operation that was an upsert, by its index.</param>
+    /// <param name="invalid">Per operation, why it is refused.</param>
+    internal static void CheckUpserts(ModelSnapshot snapshot, ResolvedBatch resolved, IReadOnlyList<JsonNode?> elements, IReadOnlyDictionary<int, QualifiedName> upserts, SaveResult?[] invalid)
+    {
+        var overlay = new Overlay(snapshot);
+        var finals = new Element?[elements.Count];
+        for (var i = 0; i < elements.Count; i++)
+        {
+            var o = resolved.Batch.Operations[i];
+            if (o.Op == BatchOp.Delete && o.Id is { } deleted)
+                overlay.Replace(deleted, null);
+            else if (o.Op is BatchOp.Create or BatchOp.Update && elements[i] is JsonObject node && TryRead(node) is { } element)
+                overlay.Replace(element.Id, finals[i] = element);
+        }
+
+        foreach (var (i, name) in upserts)
+        {
+            var pointer = OperationPointer(i) + "/id";
+            var o = resolved.Batch.Operations[i];
+            if (finals[i] is not { } final)
+                continue; // a document that does not read: the planner reports it
+            var own = NameIndex.Of(final, overlay.Lookup, name.Kind, snapshot.PropertySchemas).FirstOrDefault(e => e.Id == final.Id);
+            if (own is null || !own.Forms.Contains(name.Path, StringComparer.Ordinal))
+            {
+                invalid[i] = Refused("MQ1015", $"'{name.Text}' is not a name of this element, whose names are: {(own is null ? "(none)" : string.Join(", ", own.Forms))}. "
+                    + "An upsert finds an element by its name, so the next run would not find it.", final.Id, pointer);
+            }
+            else if (o.Op == BatchOp.Update && snapshot.Names(name.Kind).Find(name.Path) is [var found])
+            {
+                var keepsTarget = final is not Seed seed || snapshot.Get<Seed>(found.Id) is not { } before || string.Equals(seed.Target, before.Target, StringComparison.Ordinal);
+                if (!string.Equals(own.Longest, found.Longest, StringComparison.Ordinal) || !keepsTarget)
+                {
+                    invalid[i] = Refused("MQ1015", $"'{name.Text}' finds {found.Longest} ({found.Id}), and this element would be {own.Longest}"
+                        + (keepsTarget ? "" : " with another target") + ". An upsert does not move an element or take over another one: use a longer name, or an update.", final.Id, pointer);
+                }
+                else if (resolved.Minted[i] is { Count: > 0 } minted)
+                {
+                    invalid[i] = Refused("MQ1014", $"'{name.Text}' exists, and its parts at {string.Join(", ", minted)} have no id. "
+                        + "An upsert of an element that exists must send each part's id, which get_element returns, or every run would replace them.", final.Id, pointer);
+                }
+            }
+        }
+    }
+
+    /// <summary>A refused operation's answer.</summary>
+    internal static SaveResult Refused(string rule, string message, string? id, string pointer) =>
+        new(SaveOutcome.Invalid, id, null, null, [RuleCatalog.Create(rule, message, null, null, pointer)], [], null);
+
     /// <summary>Whether an operation's <c>batch.json</c> id fields hold a value that starts with <c>@</c> or <c>$</c>.</summary>
     private static bool HasNames(BatchOperation o) =>
         QualifiedName.IsName(o.Id) || QualifiedName.IsName(o.Database) || QualifiedName.IsName(o.Package) || QualifiedName.IsName(o.Schema)
