@@ -87,7 +87,7 @@ and changes no state. Leaving the source state discards the signatures.
 ### {{ md_cell g.display_name }}
 
 - Name: {{ md_code g.name }}
-- On: transition {{ numbers[g.transition.id] }}, {{ trigger_text(g.transition) }} from {{ md_code g.transition.source.path }}{{ if !g.transition.is_targetless }} to {{ code_paths(g.transition.targets) }}{{ end }}
+{{ if g.transition }}- On: transition {{ numbers[g.transition.id] }}, {{ trigger_text(g.transition) }} from {{ md_code g.transition.source.path }}{{ if !g.transition.is_targetless }} to {{ code_paths(g.transition.targets) }}{{ end }}{{ else }}- On: {{ for t in p.transitions }}{{ if t.gate == g }}transition {{ numbers[t.id] }}, {{ end }}{{ end }}a gate from a library{{ end }}
 - Signatures required: {{ g.required }}, from {{ actor_links(g.signers, "../") }}
 {{- if g.required_actors.size > 0 }}
 - Required actors: at least one signature from each of {{ actor_links(g.required_actors, "../") }}

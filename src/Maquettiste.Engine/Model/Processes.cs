@@ -52,8 +52,14 @@ public sealed record Process : Element, IPackaged
     /// <summary>The named actions, in display order.</summary>
     public IReadOnlyList<ProcessAction> Actions { get; init; } = [];
 
-    /// <summary>The root's children in document order (entry order, priority and the bound enum's member order).</summary>
-    public required IReadOnlyList<ProcessState> States { get; init; }
+    /// <summary>A library's gates, which a transition names with <see cref="ProcessTransition.GatePolicy"/>; other processes hold theirs on transitions (MQ9020).</summary>
+    public IReadOnlyList<ProcessGate> Gates { get; init; } = [];
+
+    /// <summary>
+    /// The root's children in document order (entry order, priority and the bound enum's member order). A library has none, and any other
+    /// process at least one (MQ9020).
+    /// </summary>
+    public IReadOnlyList<ProcessState> States { get; init; } = [];
 
     /// <summary>The root's initial child; <see langword="null"/> means the first child (MQ9001).</summary>
     [ElementRef(IndexKinds = ["state"])]
@@ -72,6 +78,9 @@ public enum ProcessUse
 
     /// <summary>A flow of work across elements and actors (<c>orchestration</c>).</summary>
     [JsonStringEnumMemberName("orchestration")] Orchestration,
+
+    /// <summary>Guards, actions and gates that other processes name by id; nothing in it runs (<c>library</c>, MQ9020).</summary>
+    [JsonStringEnumMemberName("library")] Library,
 }
 
 /// <summary>A state of a process; recursive through <see cref="States"/>.</summary>
@@ -203,6 +212,10 @@ public sealed record ProcessTransition : IProcessNode
 
     /// <summary>The signature gate, on an event transition.</summary>
     public ProcessGate? Gate { get; init; }
+
+    /// <summary>A library's gate used instead of <see cref="Gate"/> (MQ9021); signatures still count per transition.</summary>
+    [ElementRef(IndexKinds = ["gate"])]
+    public string? GatePolicy { get; init; }
 
     /// <summary>Markdown text, or a reference to a sidecar Markdown file.</summary>
     public Description? Description { get; init; }

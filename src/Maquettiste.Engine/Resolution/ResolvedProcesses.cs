@@ -59,6 +59,9 @@ public sealed class RProcess : RElement
     /// <summary>Every actor the process references (event actors, invoke actors, gate signers and required actors), by (name, id).</summary>
     public RList<RActor> Actors { get; internal set; } = RList<RActor>.Empty;
 
+    /// <summary>The libraries whose guards, actions and gates the process names, by (name, id).</summary>
+    public RList<RProcess> Libraries { get; internal set; } = RList<RProcess>.Empty;
+
     /// <summary>The process's scenarios, by (name, id).</summary>
     public RList<RScenario> Scenarios { get; internal set; } = RList<RScenario>.Empty;
 
@@ -252,7 +255,7 @@ public sealed class RGuard : RProcessNode
     /// </summary>
     public bool IsStub { get; internal set; }
 
-    /// <summary>The transitions it guards, in priority order.</summary>
+    /// <summary>The transitions it guards, in priority order; for a library's guard, across processes in <see cref="ResolvedModel.Processes"/> order.</summary>
     public RList<RTransition> UsedBy { get; internal set; } = RList<RTransition>.Empty;
 }
 
@@ -274,7 +277,10 @@ public sealed class RAction : RProcessNode
     /// <summary>The internal events it raises, in list order.</summary>
     public RList<REvent> Raises { get; internal set; } = RList<REvent>.Empty;
 
-    /// <summary>The transitions that run it (priority order), then the states whose entry or exit run it (document order).</summary>
+    /// <summary>
+    /// The transitions that run it (priority order), then the states whose entry or exit run it (document order); for a library's action,
+    /// that for each process in <see cref="ResolvedModel.Processes"/> order.
+    /// </summary>
     public RList<RProcessNode> UsedBy { get; internal set; } = RList<RProcessNode>.Empty;
 }
 
@@ -309,8 +315,11 @@ public sealed class RGate : RProcessNode
     /// <summary>The name, unique in the process.</summary>
     public string Name { get; internal set; } = "";
 
-    /// <summary>The gated transition.</summary>
-    public RTransition Transition { get; internal set; } = null!;
+    /// <summary>The gated transition; <see langword="null"/> for a library's gate, which <see cref="UsedBy"/> lists its transitions for.</summary>
+    public RTransition? Transition { get; internal set; }
+
+    /// <summary>The transitions that use the gate: its one transition, or, for a library's gate, each that names it, across processes.</summary>
+    public RList<RTransition> UsedBy { get; internal set; } = RList<RTransition>.Empty;
 
     /// <summary>The number of signatures needed.</summary>
     public int Required { get; internal set; } = 1;

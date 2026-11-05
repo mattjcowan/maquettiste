@@ -611,7 +611,7 @@ internal static class ModelIndexer
             RowCount: element is Seed rows ? rows.Rows.Count : null,
             FieldCount: element is ReferenceType referenceType ? referenceType.Attributes.Count : null,
             Base: element is Entity entity ? entity.Base : null,
-            Use: element is Process use ? (use.Use == ProcessUse.Lifecycle ? "lifecycle" : "orchestration") : null,
+            Use: element is Process use ? (use.Use switch { ProcessUse.Lifecycle => "lifecycle", ProcessUse.Library => "library", _ => "orchestration" }) : null,
             Subject: element switch
             {
                 Process subject => subject.Subject,

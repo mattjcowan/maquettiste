@@ -390,10 +390,8 @@ internal sealed class NameIndex
         }
 
         States(process.States, []);
-        foreach (var transition in process.Transitions)
+        foreach (var gate in process.Transitions.Select(t => t.Gate).OfType<ProcessGate>().Concat(process.Gates))
         {
-            if (transition.Gate is not { } gate)
-                continue;
             add("gate", gate.Id, forms.Then(gate.Name));
             foreach (var meaning in gate.Meanings)
                 add("meaning", meaning.Id, forms.Then(gate.Name, meaning.Name));

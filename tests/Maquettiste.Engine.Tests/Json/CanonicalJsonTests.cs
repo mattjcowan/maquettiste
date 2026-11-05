@@ -345,7 +345,7 @@ public sealed class CanonicalJsonTests
         var relation = Assert.IsType<Relation>(element);
         Assert.Equal(MaxCardinality.Many, relation.Ends[0].Max);
         Assert.Equal("date", relation.Attributes[1].Type.Builtin);
-        Assert.Throws<JsonException>(() => ElementReader.ReadElement("""{"kind":"process","id":"x"}"""u8));
+        Assert.Throws<JsonException>(() => ElementReader.ReadElement("""{"kind":"relation","id":"x"}"""u8));
     }
     [Fact]
     public void Attributes_and_categories_are_stable_sorted_by_order_with_missing_order_as_zero()

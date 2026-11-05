@@ -183,6 +183,7 @@ public sealed class ResolvedCoverageTests
     /// <summary>Properties resolved under another member name.</summary>
     internal static readonly Dictionary<(string Target, string Property), string> Renamed = new()
     {
+        [("transition", "gatePolicy")] = "Gate",
         // The overlay entry's synthesized column key is the column's key.
         [("column", "attribute")] = "Key",
         // A join's kind is the source's join kind (from for the first source).

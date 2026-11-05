@@ -612,7 +612,8 @@ public sealed record InvokeRecord(string Id, string Name, string Type, string? P
 /// <summary>An approval gate on a transition.</summary>
 /// <param name="Id">The gate id.</param>
 /// <param name="Name">The name.</param>
-/// <param name="Transition">The transition's id.</param>
+/// <param name="Transition">The transition's id; <see langword="null"/> for a library's gate.</param>
+/// <param name="UsedBy">The ids of the transitions that use the gate.</param>
 /// <param name="Required">How many signatures it needs.</param>
 /// <param name="Signers">The ids of the actors that may sign.</param>
 /// <param name="RequiredActors">The ids of the actors that must sign.</param>
@@ -624,7 +625,7 @@ public sealed record InvokeRecord(string Id, string Name, string Type, string? P
 /// <param name="Description">The description.</param>
 /// <param name="Stereotypes">The stereotype keys.</param>
 /// <param name="Properties">The custom properties.</param>
-public sealed record GateRecord(string Id, string Name, string Transition, int Required, IReadOnlyList<string> Signers, IReadOnlyList<string> RequiredActors,
+public sealed record GateRecord(string Id, string Name, string? Transition, IReadOnlyList<string> UsedBy, int Required, IReadOnlyList<string> Signers, IReadOnlyList<string> RequiredActors,
     bool AllowRepeatSigner, bool ReasonRequired, IReadOnlyList<MeaningRecord> Meanings, IReadOnlyList<AuditFieldRecord> Audit, string DisplayName,
     string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
 
@@ -1074,7 +1075,7 @@ public static class ResolvedRecords
 
         if (all || scope == "processes")
         {
-            foreach (var p in model.Processes)
+            foreach (var p in model.Processes.Concat(model.ProcessLibraries))
                 yield return new Entry("process", p.Name, p.Id, () => context.Process(p), p);
         }
 
@@ -1323,7 +1324,7 @@ public static class ResolvedRecords
             [.. p.Guards.Select(g => new GuardRecord(g.Id, g.Name, g.Expression, g.IsStub, Ids(g.UsedBy), g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties),
                 Expression(g.Condition)))],
             [.. p.Actions.Select(a => new ActionRecord(a.Id, a.Name, a.Expression, a.IsStub, Ids(a.Raises), Ids(a.UsedBy), a.DisplayName, a.Description, Keys(a.Stereotypes), Plain(a.Properties)))],
-            [.. p.Gates.Select(g => new GateRecord(g.Id, g.Name, g.Transition.Id, g.Required, Ids(g.Signers), Ids(g.RequiredActors), g.AllowRepeatSigner, g.ReasonRequired,
+            [.. p.Gates.Select(g => new GateRecord(g.Id, g.Name, g.Transition?.Id, Ids(g.UsedBy), g.Required, Ids(g.Signers), Ids(g.RequiredActors), g.AllowRepeatSigner, g.ReasonRequired,
                 [.. g.Meanings.Select(m => new MeaningRecord(m.Id, m.Name, m.DisplayName, m.Description))],
                 [.. g.Audit.Select(f => new AuditFieldRecord(f.Id, f.Name, f.Type, f.Required, f.Description, f.Values, f.Attribute?.Id))],
                 g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties)))],

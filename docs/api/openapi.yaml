@@ -7770,7 +7770,7 @@ components:
         use:
           description: The process's use, on process rows (phase-3-design.md section 2.1).
           type: string
-          enum: [lifecycle, orchestration]
+          enum: [lifecycle, orchestration, library]
         subject:
           description: The entity whose lifecycle the process is, on process rows that have one; the entity an operation acts on, on operation rows that have one.
           $ref: '#/components/schemas/Ulid'
@@ -10034,14 +10034,21 @@ components:
       allOf:
       - $ref: '#/components/schemas/ProcessNodeAnnotations'
       - type: object
-        required: [id, name, transition, required, signers, requiredActors, allowRepeatSigner, reasonRequired, meanings, audit]
+        required: [id, name, transition, usedBy, required, signers, requiredActors, allowRepeatSigner, reasonRequired, meanings, audit]
         properties:
           id:
             type: string
           name:
             type: string
           transition:
+            description: The transition's id; null for a library's gate.
             type: string
+            nullable: true
+          usedBy:
+            description: The ids of the transitions that use the gate.
+            type: array
+            items:
+              type: string
           required:
             type: integer
           signers:

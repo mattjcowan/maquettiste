@@ -369,6 +369,10 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   deletes clear or refuse them by the schema's `optional`. MQ2010 is a name where the id belongs, MQ2011 a target out
   of the `of` or `sameDatabase` scope. Beside elements, attributes and states, a schema can apply to `guard`, `action`,
   `invoke`, `gate`, `check` and `constraint`; properties on a check never change its SQL.
+- Shared process parts: a process with `use: library` holds `guards`, `actions` and `gates` once and has no states, events or
+  context (MQ9020). Any process names them by id in `transition.guard`, `transition.actions`, `state.entry` and `state.exit`, and
+  names a gate with `transition.gatePolicy` in place of an inline `gate` (MQ9021). A library's guard is an `expression` that reads
+  the using process's `context` and `event`; it has no `condition`. Nothing runs a library (MQ9022).
 - Stereotype rules: a stereotype's `group` (one per element), `requires`, `conflicts` and `implies` (one level) bind
   every element that carries it, implied stereotypes included (MQ2013 to MQ2017); its `parameters` type the
   `properties` of its carriers, with `defaultProperties` as defaults (MQ2018). Read the stereotype before adding or

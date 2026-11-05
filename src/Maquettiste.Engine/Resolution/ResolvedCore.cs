@@ -291,8 +291,11 @@ public sealed class ResolvedModel
     /// without a <c>localization</c> block.</summary>
     public RList<RLocale> Locales { get; internal init; } = RList<RLocale>.Empty;
 
-    /// <summary>Processes, by (package qualified name, name, id).</summary>
+    /// <summary>Processes that run, by (package qualified name, name, id); a library is in <see cref="ProcessLibraries"/>.</summary>
     public RList<RProcess> Processes { get; internal init; } = RList<RProcess>.Empty;
+
+    /// <summary>Library processes, which hold guards, actions and gates that others name, by (package qualified name, name, id).</summary>
+    public RList<RProcess> ProcessLibraries { get; internal init; } = RList<RProcess>.Empty;
 
     /// <summary>Actors, by (name, id).</summary>
     public RList<RActor> Actors { get; internal init; } = RList<RActor>.Empty;

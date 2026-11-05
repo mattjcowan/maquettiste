@@ -121,7 +121,7 @@ internal static class ProcessCommand
         }
         else
         {
-            var chart = StatechartModel.Get(process, result.ProcessHash);
+            var chart = ProcessLibraries.Chart(await store.GetSnapshotAsync(ct).ConfigureAwait(false), process);
             var text = new StringBuilder();
             foreach (var trace in result.Trace)
             {

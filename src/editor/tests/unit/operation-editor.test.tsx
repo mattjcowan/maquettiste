@@ -112,6 +112,8 @@ describe("operation editor", () => {
 
   it("lists operations as editable, offers each operation as a scope and counts operation parts in completeness", () => {
     expect(hasEditor("operation")).toBe(true);
+    expect(hasEditor("process", { use: "lifecycle" })).toBe(true);
+    expect(hasEditor("process", { use: "library" })).toBe(false);
     expect(SCOPE_OPTIONS).toContain("each operation");
     expect(scopeHelp("each operation")).toContain("once per operation");
     expect(unitScope("each operation")).toMatchObject({ indexKind: "operation", variable: "operation", once: false });

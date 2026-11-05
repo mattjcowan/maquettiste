@@ -373,6 +373,7 @@ The process tools mirror the process operations of the editor API (phase-3-desig
 verbs. A process argument is an id, a name or a model path. Simulation keeps no state on the server: an agent holds the input list,
 calls `simulate_process` with all of it, reads `enabled` for what can happen next, and turns a run it likes into a scenario with
 `record_scenario`. `verify_scenarios` replays scenarios the way `validate` does (MQ9301 to MQ9306 and MQ9502 to MQ9507).
+A library process (`use: library`) has no states, so these tools refuse it; create one with `create_element` or `apply_batch`.
 `import_process` and `sync_enum_from_process` are dry runs unless `apply` is true. The process kinds `process`, `actor` and
 `scenario` work with every element tool, `get_model_index` (`kind`) and `get_schema`; `list_validation_rules` lists the MQ9xxx
 rules with their `quickFix` operation where one exists.

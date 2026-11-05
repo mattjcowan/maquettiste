@@ -2564,7 +2564,7 @@
   {
     "id": "MQ9013",
     "defaultSeverity": "warning",
-    "description": "A declared event, guard, action or invoke that nothing uses (an invoke is used by an invoke-done or invoke-error transition); use it or remove it.",
+    "description": "A declared event, guard, action or invoke that nothing uses (an invoke is used by an invoke-done or invoke-error transition; a library's guard, action or gate by any process); use it or remove it.",
     "family": "MQ90xx",
     "familyLabel": "Processes",
     "canBeOff": true
@@ -2572,7 +2572,7 @@
   {
     "id": "MQ9014",
     "defaultSeverity": "error",
-    "description": "A reference to a state, event, guard, action or invoke of another process; declare it in this process instead.",
+    "description": "A reference to a state, event, guard, action or invoke of another process that is not a library's guard or action; declare it in this process, or move it to a library.",
     "family": "MQ90xx",
     "familyLabel": "Processes",
     "canBeOff": true
@@ -2618,6 +2618,30 @@
     "canBeOff": true
   },
   {
+    "id": "MQ9020",
+    "defaultSeverity": "error",
+    "description": "A library holds what only a running process has (states, an initial state, transitions, context, events, a subject, a bound attribute, an action that raises events, or a guard with a condition), or a process that is not a library has no states or lists gates of its own; move the item, or change use.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9021",
+    "defaultSeverity": "error",
+    "description": "A transition sets both gate and gatePolicy, or its gatePolicy names a gate that no library holds; keep one, or point at a library's gate.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9022",
+    "defaultSeverity": "error",
+    "description": "A process invoke or a scenario names a library, which has no states to run; name a running process.",
+    "family": "MQ90xx",
+    "familyLabel": "Processes",
+    "canBeOff": true
+  },
+  {
     "id": "MQ9101",
     "defaultSeverity": "error",
     "description": "A gate needs more signatures than its signers can give (only person actors, repeat signing off); lower required, add signers, or allow repeat signers.",
@@ -2636,7 +2660,7 @@
   {
     "id": "MQ9103",
     "defaultSeverity": "error",
-    "description": "A gate on a transition whose trigger is not event, or two gates on one source and event; move the gate to an event transition or keep one gate.",
+    "description": "A gate or gate policy on a transition whose trigger is not event, or two of them on one source and event; move the gate to an event transition or keep one gate.",
     "family": "MQ91xx",
     "familyLabel": "Actors and gates",
     "canBeOff": true

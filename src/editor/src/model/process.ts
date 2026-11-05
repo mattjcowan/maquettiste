@@ -163,7 +163,7 @@ export function stateIndex(process: Pick<ProcessDoc, "states">): Map<string, Sta
       out.set(state.id, { state, parent, depth, path: p, pointer: ptr });
       walk(state.states, state, depth + 1, p, ptr);
     });
-  walk(process.states, null, 0, "", "");
+  walk(process.states ?? [], null, 0, "", "");
   return out;
 }
 

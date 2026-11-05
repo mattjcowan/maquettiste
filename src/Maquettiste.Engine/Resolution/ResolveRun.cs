@@ -200,6 +200,7 @@ internal sealed partial class ResolveRun
             Seeds = new RList<RSeed>(_seedOrder, ["k:seed"]),
             SeedsInOrderFactory = _seedsInOrder,
             Processes = new RList<RProcess>(_processOrder, [ProcessKind]),
+            ProcessLibraries = new RList<RProcess>(_libraryOrder, [ProcessKind]),
             Actors = new RList<RActor>(_actorOrder, [ActorKind]),
             Scenarios = new RList<RScenario>(_scenarioOrder, [ScenarioKind]),
             Operations = new RList<ROperation>(_operationOrder, [OperationKind]),

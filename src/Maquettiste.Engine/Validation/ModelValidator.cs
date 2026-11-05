@@ -1043,10 +1043,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         }
 
         foreach (var t in process.Transitions)
-        {
             yield return t.Id;
-            if (t.Gate is not { } gate)
-                continue;
+        foreach (var gate in process.Transitions.Select(t => t.Gate).OfType<ProcessGate>().Concat(process.Gates))
+        {
             yield return gate.Id;
             foreach (var m in gate.Meanings) yield return m.Id;
             foreach (var a in gate.AuditAttributes) yield return a.Id;
@@ -1118,6 +1117,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     private static bool UsesType(Process process, string typeId) =>
         process.Context.Concat(process.Events.SelectMany(e => e.Payload))
             .Concat(process.Transitions.Where(t => t.Gate is not null).SelectMany(t => t.Gate!.AuditAttributes))
+            .Concat(process.Gates.SelectMany(g => g.AuditAttributes))
             .Any(a => string.Equals(a.Type.Ref, typeId, StringComparison.Ordinal));
 
     private static bool NamesRules(IEnumerable<ElementDocument> documents)
