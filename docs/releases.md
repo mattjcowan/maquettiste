@@ -7,6 +7,11 @@ one.
 
 ## 0.12.2 (unreleased)
 
+- **Create or update by name in a batch.** `{ "op": "upsert", "id": "@custom:policy.keeps_lines", "element": { ... } }`
+  creates the element when the name is new and replaces its document when it exists, with no hash to read first, so a script
+  that refreshes elements from another source sends one batch on every run. A run that changes nothing writes nothing. The
+  name must end in the name the element states; an upsert does not rename. As with any update, a sub-element keeps its id
+  only when the element sends it. The [agent guide](mcp.md#batches-by-name) has the details.
 - **Declared rules can target one custom kind.** A rule's `select` takes `{ "kind": "custom:policy" }`, as `each
   custom:<type>` and `get_elements` do; `custom` still judges every custom element. A type no kind file declares is
   MQ5016. The schema copies change, so `validate` warns MQ1008 until `maquettiste init` or the editor refreshes them.
