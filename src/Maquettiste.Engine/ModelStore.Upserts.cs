@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -17,9 +18,9 @@ public sealed partial class ModelStore
     /// <param name="loaded">The model as loaded.</param>
     /// <param name="batch">The batch.</param>
     /// <param name="failures">Per operation, why its upsert is refused.</param>
-    /// <param name="upserts">The name of each operation that was an upsert, by its index.</param>
+    /// <param name="upserts">What each operation that was an upsert names and finds, by its index.</param>
     /// <returns>The batch with no upsert left.</returns>
-    private static ModelBatch ExpandUpserts(ModelSnapshot loaded, ModelBatch batch, SaveResult?[] failures, out Dictionary<int, QualifiedName> upserts)
+    private static ModelBatch ExpandUpserts(ModelSnapshot loaded, ModelBatch batch, SaveResult?[] failures, out Dictionary<int, UpsertTarget> upserts)
     {
         upserts = [];
         var seen = new HashSet<QualifiedName>();
@@ -43,11 +44,13 @@ public sealed partial class ModelStore
                 continue;
             }
 
+            // The longest form names one element, whatever other elements share its shorter forms.
             var candidates = loaded.Names(name!.Kind).Find(name.Path);
-            if (candidates.Count > 1)
+            var exact = candidates.Where(c => string.Equals(c.Longest, name.Path, StringComparison.Ordinal)).ToList();
+            if (candidates.Count > 1 && exact.Count != 1)
             {
                 failures[i] = BatchNames.Refused("MQ1013", $"'{o.Id}' names {candidates.Count.ToString(CultureInfo.InvariantCulture)} {name.Kind} elements: "
-                    + string.Join(", ", candidates.Select(c => c.Longest + " (" + c.Id + ")")) + ". Use a longer form, or an update with the id when no form tells them apart.", o.Id, pointer);
+                    + string.Join(", ", candidates.Select(c => c.Longest + " (" + c.Id + ")")) + ". Use a longer form.", o.Id, pointer);
                 continue;
             }
 
@@ -57,10 +60,11 @@ public sealed partial class ModelStore
                 continue;
             }
 
-            upserts[i] = name;
-            operations[i] = candidates.Count == 0
+            var found = candidates.Count == 0 ? null : candidates.Count == 1 ? candidates[0] : exact[0];
+            upserts[i] = new UpsertTarget(name, found);
+            operations[i] = found is null
                 ? o with { Op = BatchOp.Create, Id = null }
-                : o with { Op = BatchOp.Update, ExpectedHash = o.ExpectedHash ?? loaded.GetDocument(candidates[0].Id)?.Hash };
+                : o with { Op = BatchOp.Update, Id = found.Id, ExpectedHash = o.ExpectedHash ?? loaded.GetDocument(found.Id)?.Hash };
         }
 
         return new ModelBatch(operations);
@@ -78,6 +82,8 @@ public sealed partial class ModelStore
             return $"'{id}' is not a qualified name: {error}.";
         if (!KindInfo.TryGet(parsed.Kind, out _))
             return $"An upsert writes a whole element, and '{id}' is of kind {parsed.Kind}. Update the element that holds it.";
+        if (parsed.Kind == "seed")
+            return $"An upsert does not write seeds: a seed belongs to its target, and its rows can live in a file a whole document would not carry. Use create, update or a seed import for '{id}'.";
         var kind = element.TryGetProperty("kind", out var kindValue) && kindValue.ValueKind == JsonValueKind.String ? kindValue.GetString() : null;
         if (!string.Equals(kind, parsed.Kind, StringComparison.Ordinal))
             return $"'{id}' is of kind {parsed.Kind}, and the element is of kind {kind ?? "(none)"}.";
@@ -86,13 +92,13 @@ public sealed partial class ModelStore
     }
 
     /// <summary>The batch's names with each upsert's own, which a script reads back to learn the id it created or updated.</summary>
-    private static Dictionary<string, string> WithUpsertNames(IReadOnlyDictionary<string, string> names, Dictionary<int, QualifiedName> upserts, JsonNode?[] nodes)
+    private static ImmutableSortedDictionary<string, string> WithUpsertNames(IReadOnlyDictionary<string, string> names, Dictionary<int, UpsertTarget> upserts, JsonNode?[] nodes)
     {
-        var all = names.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
-        foreach (var (i, name) in upserts)
+        var all = names.ToImmutableSortedDictionary(StringComparer.Ordinal);
+        foreach (var (i, upsert) in upserts)
         {
             if (nodes[i] is JsonObject node && node["id"] is JsonValue id && id.TryGetValue<string>(out var value))
-                all[name.Text] = value;
+                all = all.SetItem(upsert.Name.Text, value);
         }
 
         return all;

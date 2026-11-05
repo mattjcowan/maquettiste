@@ -8333,8 +8333,9 @@ components:
       description: >-
         `upsert` (`id` a qualified name, `element`, optional `expectedHash`) is a `create` when the model as loaded has no
         element of that name and an `update` of the whole document when it has one, with the file's hash unless `expectedHash`
-        gives one. `id` must be one of the names the element will have, an update keeps the longest of them (a seed its target
-        too), and an element that exists must send each part's id; each refusal is MQ1012 to MQ1015 at `/operations/<n>/id`.
+        gives one. It never writes a seed. `id` must be one of the names the element will have, an update keeps the longest of
+        them, and a document may not replace an existing part with one that has no id; each refusal is MQ1012 to MQ1015 at
+        `/operations/<n>/id`.
         `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one
         is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema`
         (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema`

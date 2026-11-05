@@ -164,25 +164,99 @@ public sealed class BatchUpsertTests
     }
 
     [Fact]
-    public async Task A_seed_with_another_target_does_not_take_over_the_seed_of_that_name()
+    public async Task A_seed_is_refused()
     {
         await using var repo = await CopyAsync();
-        const string Seed = "01JRVP00000000000000000006";
-        const string TypeA = "01JRVP00000000000000000007";
-        const string TypeB = "01JRVP00000000000000000008";
-        await repo.CreateElementAsync($$"""{ "kind": "reference-type", "id": "{{TypeA}}", "name": "TypeA", "code": { "id": "01JRVP00000000000000000009", "length": 8 }, "label": { "id": "01JRVP0000000000000000000A", "length": 40 } }""");
-        await repo.CreateElementAsync($$"""{ "kind": "reference-type", "id": "{{TypeB}}", "name": "TypeB", "code": { "id": "01JRVP0000000000000000000B", "length": 8 }, "label": { "id": "01JRVP0000000000000000000C", "length": 40 } }""");
-        await repo.CreateElementAsync($$"""{ "kind": "seed", "id": "{{Seed}}", "name": "Defaults", "target": "{{TypeA}}", "columns": ["code", "label"] }""");
-        var before = (await repo.Store.GetElementAsync(Seed, Ct))!.Hash;
 
-        var refused = await ApplyAsync(repo, $$"""
-            { "operations": [ { "op": "upsert", "id": "@seed:Defaults",
-                "element": { "kind": "seed", "name": "Defaults", "target": "{{TypeB}}", "columns": ["code", "label"] } } ] }
+        var refused = await ApplyAsync(repo, """
+            { "operations": [ { "op": "upsert", "id": "@seed:Defaults", "element": { "kind": "seed", "name": "Defaults", "target": "01JRVP00000000000000000007", "columns": ["code"] } } ] }
             """);
 
         Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
-        Assert.Contains("with another target", Assert.Single(refused.Items.SelectMany(i => i.Diagnostics)).Message, StringComparison.Ordinal);
-        Assert.Equal(before, (await repo.Store.GetElementAsync(Seed, Ct))!.Hash);
+        var diagnostic = Assert.Single(refused.Items.SelectMany(i => i.Diagnostics));
+        Assert.Equal("MQ1015", diagnostic.Rule);
+        Assert.Contains("does not write seeds", diagnostic.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_shorter_name_two_elements_share_still_finds_the_one_whose_longest_name_it_is()
+    {
+        await using var repo = await CopyAsync();
+        await repo.CreateElementAsync("""{ "kind": "package", "id": "01JRVP00000000000000000002", "name": "Sales" }""");
+        const string Both = """
+            { "operations": [
+              { "op": "upsert", "id": "@custom:policy.keeps_lines", "element": { "kind": "custom", "type": "policy", "name": "keeps_lines", "content": { "text": "Root." } } },
+              { "op": "upsert", "id": "@custom:policy.Sales.keeps_lines", "element": { "kind": "custom", "type": "policy", "name": "keeps_lines", "package": "01JRVP00000000000000000002", "content": { "text": "Sales." } } }
+            ] }
+            """;
+
+        var first = await ApplyAsync(repo, Both);
+        Assert.True(first.Outcome == SaveOutcome.Saved, Describe(first));
+        var second = await ApplyAsync(repo, Both);
+
+        Assert.True(second.Outcome == SaveOutcome.Saved, Describe(second));
+        Assert.Equal(first.Ids!.Names["@custom:policy.keeps_lines"], second.Ids!.Names["@custom:policy.keeps_lines"]);
+        Assert.Equal(first.Ids!.Names["@custom:policy.Sales.keeps_lines"], second.Ids!.Names["@custom:policy.Sales.keeps_lines"]);
+        Assert.Equal(["@custom:policy.Sales.keeps_lines", "@custom:policy.keeps_lines"], second.Ids!.Names.Keys.Where(k => k.StartsWith("@custom", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task Two_writes_that_would_share_one_name_are_refused_on_the_first_run()
+    {
+        await using var repo = await CopyAsync();
+
+        var refused = await ApplyAsync(repo, """
+            { "operations": [
+              { "op": "upsert", "id": "@custom:policy.keeps_lines", "element": { "kind": "custom", "type": "policy", "name": "keeps_lines", "content": { "text": "A" } } },
+              { "op": "create", "element": { "kind": "custom", "type": "policy", "name": "keeps_lines", "content": { "text": "B" } } }
+            ] }
+            """);
+
+        Assert.Equal(SaveOutcome.Invalid, refused.Outcome);
+        Assert.Contains(refused.Items.SelectMany(i => i.Diagnostics), d => d.Rule == "MQ1013");
+    }
+
+    [Fact]
+    public async Task A_rename_elsewhere_in_the_batch_is_not_a_move()
+    {
+        await using var repo = await CopyAsync();
+        await repo.CreateElementAsync("""{ "kind": "package", "id": "01JRVP00000000000000000002", "name": "Sales" }""");
+        await ApplyAsync(repo, """
+            { "operations": [ { "op": "upsert", "id": "@custom:policy.keeps_lines",
+                "element": { "kind": "custom", "type": "policy", "name": "keeps_lines", "package": "01JRVP00000000000000000002", "content": { "text": "One." } } } ] }
+            """);
+        var hash = (await repo.Store.GetElementAsync("01JRVP00000000000000000002", Ct))!.Hash;
+
+        var renamed = await ApplyAsync(repo, $$"""
+            { "operations": [
+              { "op": "update", "id": "01JRVP00000000000000000002", "expectedHash": "{{hash}}", "element": { "kind": "package", "name": "Selling" } },
+              { "op": "upsert", "id": "@custom:policy.keeps_lines",
+                "element": { "kind": "custom", "type": "policy", "name": "keeps_lines", "package": "01JRVP00000000000000000002", "content": { "text": "Two." } } }
+            ] }
+            """);
+
+        Assert.True(renamed.Outcome == SaveOutcome.Saved, Describe(renamed));
+    }
+
+    [Fact]
+    public async Task A_new_part_with_no_id_is_taken_and_the_next_run_must_send_it()
+    {
+        await using var repo = await CopyAsync();
+        var customer = (await repo.Store.GetElementAsync(E2ERepo.CustomerId, Ct))!;
+        var node = JsonNode.Parse(customer.Json.GetRawText())!.AsObject();
+        node["attributes"]!.AsArray().Add(new JsonObject { ["name"] = "nickname", ["type"] = "string", ["required"] = false, ["length"] = 40 });
+        string Batch() => new JsonObject
+        {
+            ["operations"] = new JsonArray(new JsonObject { ["op"] = "upsert", ["id"] = "@entity:Customer", ["element"] = node.DeepClone() }),
+        }.ToJsonString();
+
+        var added = await ApplyAsync(repo, Batch());
+        Assert.True(added.Outcome == SaveOutcome.Saved, Describe(added));
+        Assert.Single(added.Ids!.Minted, m => m.Pointer.StartsWith("/attributes/", StringComparison.Ordinal));
+
+        var again = await ApplyAsync(repo, Batch());
+        Assert.Equal(SaveOutcome.Invalid, again.Outcome);
+        Assert.Contains(again.Items.SelectMany(i => i.Diagnostics), d => d.Rule == "MQ1014");
     }
 
     [Fact]
