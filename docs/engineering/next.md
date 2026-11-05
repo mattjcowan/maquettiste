@@ -33,7 +33,7 @@ must help any team whether they use it or not, and it stays optional.
 | # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
 | | A template helper that lists what links to an element (`referenced_by`) | yes | Built, 0.12.2 | Each row says the holder's kind and status and the field that made the link, and reaches parts such as a gate. A unit that reads it renders again when a link comes or goes, or a holder changes. |
-| | Declared rules that select one custom type | yes | Build next | Today a rule on `custom` judges every custom type. |
+| | Declared rules that select one custom type | yes | Built, 0.12.2 | `custom:<type>` in a rule's `select`; `custom` still judges every custom type. |
 | | Create or update by name in a batch | yes | Build next | One step for a script that refreshes elements from another source. Whether an update replaces or merges is decided with it. |
 | | Declared rules that count linking elements with a filter | yes | Build next | For example, only those not retired. Today a retired process or scenario still counts. |
 | 3.10 | Requirements as a project's own custom kind, with typed links and declared rules, and a guide section that shows how | yes | Build next | Replaces the built-in kind of [design 4.3](next-phase-2-design.md#43-requirements), which is in "Not doing". It works today except for what the rows above and 4.2 add. |

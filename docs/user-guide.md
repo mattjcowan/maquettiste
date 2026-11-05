@@ -4551,7 +4551,8 @@ declaration when the convention fits; keep scripts for what it cannot say.
 - **A rule.** `id` (letters, digits, `.`, `_` and `-`; findings are `x/<id>`, unique across declarations and rule
   scripts), `severity` (`error` by default; `validation.rules` overrides it by `x/<id>`, and `off` skips the rule),
   `description`, `select`, `require` and `message`.
-- **Selectors.** `kind` is required; `stereotype` (the effective set, defaults and implied keys included), `tag`,
+- **Selectors.** `kind` is required, and `custom:<type>` picks the elements of one custom kind where `custom` picks
+  every custom element; `stereotype` (the effective set, defaults and implied keys included), `tag`,
   `property` (a custom property with a value) and `package` (the package or one nested in it) narrow it. Each key takes
   one value or a list, a list means any of its values, and the keys combine with AND.
 - **Conditions.** Exactly one key each: `all`, `any`, `not`, `has` (a path holds a value), `equals` (`{ path, value }`),

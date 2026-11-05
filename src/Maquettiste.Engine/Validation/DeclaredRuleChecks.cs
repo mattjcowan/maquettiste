@@ -246,6 +246,8 @@ internal static class DeclaredRuleChecks
             {
                 if (ResolvedKinds.TypeOf(select.Kind[j]) is { } type)
                     starts.Add(type);
+                else if (select.Kind[j].StartsWith(ModelPages.CustomKindPrefix, StringComparison.Ordinal) && model.CustomKindOf(select.Kind[j][ModelPages.CustomKindPrefix.Length..]) is not null)
+                    starts.Add(typeof(RCustom));
                 else
                     Add(At("/select/kind", select.Kind, j), $"'{select.Kind[j]}' is not a kind of the resolved model.");
             }

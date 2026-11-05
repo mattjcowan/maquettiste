@@ -125,7 +125,7 @@ clobber a concurrent edit or leave a dangling id.
    values of those objects only, `get_resolved_model` pages carry `calculated`; `validate` reports a value that throws
    (MQ5010), misses its schema (MQ5011), is not declared (MQ5012) or loops (MQ5013). Add one only when asked.
    Prefer a declaration to a script for a simple convention ("every audited table has an updated_at column"): a file
-   `extensions/rules/<name>.json` (`get_schema` `declared-rules`) whose rules each hold `id`, `severity`, `select`
+   `extensions/rules/<name>.json` (`get_schema` `declared-rules`) whose rules each hold `id`, `severity`, `select` (`custom:<type>` as a kind picks one custom kind)
    (`kind`, with `stereotype`, `tag`, `property`, `package`), one `require` condition (`all`, `any`, `not`, `has`,
    `equals`, `count`, `references`, `referencedBy`) and a `message` with `{path}` placeholders. It sees resolved objects,
    inherited members included; `write_extension_file` reports MQ5014 to MQ5016 at once, `validate` its `x/<id>` findings.

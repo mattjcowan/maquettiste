@@ -106,7 +106,7 @@
       ],
       "properties": {
         "kind": {
-          "description": "Resolved kinds, such as entity, attribute, table or column.",
+          "description": "Resolved kinds, such as entity, attribute, table or column; custom:<type> selects the custom elements of one custom kind.",
           "$ref": "#/$defs/values"
         },
         "stereotype": {

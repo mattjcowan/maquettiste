@@ -67,7 +67,8 @@ internal static class DeclaredRuleEvaluator
             return c != 0 ? c : a.Index.CompareTo(b.Index);
         });
 
-        var objects = ResolvedKinds.ObjectsOf(resolved, rules.SelectMany(r => r.Rule.Select.Kind));
+        var objects = ResolvedKinds.ObjectsOf(resolved, rules.SelectMany(r => r.Rule.Select.Kind)
+            .Select(k => k.StartsWith(ModelPages.CustomKindPrefix, StringComparison.Ordinal) ? "custom" : k));
         var options = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, parallelism), CancellationToken = ct };
         using var expressions = ExpressionConditions.Of(snapshot, rules, ct);
         foreach (var (rule, path, index) in rules)
@@ -291,7 +292,8 @@ internal static class DeclaredRuleEvaluator
     /// <summary>Whether an object is one a selector matches: every key that has values holds one of them.</summary>
     private static bool Matches(RuleSelector select, RAnnotated value)
     {
-        if (!select.Kind.Contains(value.Kind, StringComparer.Ordinal))
+        if (!select.Kind.Contains(value.Kind, StringComparer.Ordinal)
+            && !(value is RCustom custom && select.Kind.Contains(ModelPages.CustomKindPrefix + custom.Type, StringComparer.Ordinal)))
             return false;
         if (select.Stereotype.Count > 0 && !select.Stereotype.Any(value.HasStereotype))
             return false;
