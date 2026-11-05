@@ -4,7 +4,10 @@ import type { StereotypeDoc } from "@/api/types";
 export type StereotypeKind = NonNullable<StereotypeDoc["appliesTo"]>[number];
 
 export const STEREOTYPE_KIND_GROUPS = [
-  { label: "Domain model", kinds: ["package", "entity", "value-object", "scalar-type", "enum", "relation", "reference-type", "seed", "constraint", "diagram", "custom"] },
+  {
+    label: "Domain model",
+    kinds: ["package", "entity", "value-object", "scalar-type", "enum", "relation", "reference-type", "seed", "constraint", "diagram", "custom"],
+  },
   { label: "Parts", kinds: ["attribute", "enum-member", "check"] },
   { label: "Databases", kinds: ["database", "table", "column", "view", "sequence", "routine", "database-type", "sql-object", "query", "mapping"] },
   { label: "Processes", kinds: ["process", "actor", "scenario", "state", "transition", "event", "guard", "action", "invoke", "gate"] },
