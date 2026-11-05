@@ -15,7 +15,12 @@ export async function freshQuickFix(drafts: DraftManager, d: Diagnostic, catalog
   const element = (await endpoints.getElement(d.elementId)).json as ModelJson;
   const docs = new Map<string, ModelJson>([[d.elementId, element]]);
   // The documents it names may name more once read (MQ9205's attribute type), so read until nothing new is named.
-  for (let more = fixDocuments(d, element, (id) => docs.get(id)).slice(1).filter((id) => !docs.has(id)); more.length; ) {
+  for (
+    let more = fixDocuments(d, element, (id) => docs.get(id))
+      .slice(1)
+      .filter((id) => !docs.has(id));
+    more.length;
+  ) {
     for (const id of more) {
       await drafts.flush(id);
       docs.set(id, (await endpoints.getElement(id)).json as ModelJson);

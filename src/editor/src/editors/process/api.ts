@@ -75,8 +75,12 @@ export async function pickCodesBinding(qc: QueryClient, process: Record<string, 
   for (const row of await qc.ensureQueryData(indexQuery)) if (row.kind === "stereotype") stereotypes.set(String((await read(row.id)).key), await read(row.id));
   for (const entry of bound) {
     // The entity and its bases, then the attribute among them (own, inherited or from a stereotype).
-    for (let at = await read(entry.entity); typeof at.base === "string" && !docs.has(at.base); ) at = await read(at.base);
-    const attribute = bindableAttributes(docs.get(entry.entity), (id) => docs.get(id), (key) => stereotypes.get(key)).find((a) => a.id === entry.boundAttribute);
+    for (let at = await read(entry.entity); typeof at.base === "string" && !docs.has(at.base);) at = await read(at.base);
+    const attribute = bindableAttributes(
+      docs.get(entry.entity),
+      (id) => docs.get(id),
+      (key) => stereotypes.get(key),
+    ).find((a) => a.id === entry.boundAttribute);
     const type = attribute?.type;
     const ref = typeof type === "object" && type ? (type as { ref?: string }).ref : undefined;
     if (!ref || (await read(ref)).kind !== "enum") return { entity: entry.entity, attribute: entry.boundAttribute! };
@@ -188,7 +192,8 @@ export async function demoteLifecycle(
     process.subjects = (process.subjects as Record<string, unknown>[]).map(({ boundAttribute: _unbound, ...entry }) => entry);
   const docs = [{ id: change.process, before: before.json as ModelJson, hash: before.hash, json: process as ModelJson }];
   for (const entity of subjectsOf(before.json as Record<string, unknown>).map((e) => e.entity)) {
-    await drafts.flush(entity);    const doc = await endpoints.getElement(entity);
+    await drafts.flush(entity);
+    const doc = await endpoints.getElement(entity);
     if ((doc.json as Record<string, unknown>).lifecycle !== change.process) continue;
     const json = structuredClone(doc.json) as Record<string, unknown>;
     delete json.lifecycle;

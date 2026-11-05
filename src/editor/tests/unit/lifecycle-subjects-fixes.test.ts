@@ -71,7 +71,12 @@ describe("findings about a subjects entry", () => {
     });
     // A fetch by the entry's id answers the process, as the engine does.
     const docs = (id: string) => (id === "X1" || id === "P" ? process : id === "E" ? subject : undefined);
-    expect(deriveQuickFix(finding("MQ9203", "/subjects/0/boundAttribute"), "sync-enum", docs)).toEqual({ kind: "sync-enum", process: "P", label: "Sync enum", entity: "E" });
+    expect(deriveQuickFix(finding("MQ9203", "/subjects/0/boundAttribute"), "sync-enum", docs)).toEqual({
+      kind: "sync-enum",
+      process: "P",
+      label: "Sync enum",
+      entity: "E",
+    });
     expect(deriveQuickFix(finding("MQ9201", "/subjects/0/entity"), null, docs)).toMatchObject({ op: "set-lifecycle", id: "E", target: "P" });
   });
 });

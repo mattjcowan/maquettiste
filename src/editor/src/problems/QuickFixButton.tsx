@@ -28,7 +28,9 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
   const element = useElement(diagnostic.elementId);
   const related = fixDocuments(diagnostic, element.data?.json as ModelJson | undefined)[1];
   const partner = useElement(related);
-  const typeId = fixDocuments(diagnostic, element.data?.json as ModelJson | undefined, (id) => (id === related ? (partner.data?.json as ModelJson | undefined) : undefined))[2];
+  const typeId = fixDocuments(diagnostic, element.data?.json as ModelJson | undefined, (id) =>
+    id === related ? (partner.data?.json as ModelJson | undefined) : undefined,
+  )[2];
   const typeDoc = useElement(typeId);
   const [pending, setPending] = useState<Pending>(null);
   const [busy, setBusy] = useState(false);

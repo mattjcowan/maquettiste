@@ -92,8 +92,7 @@ export class ModelIndex {
     if (global) for (const id of this.snapshot.keys()) affected.add(id);
     // The lifecycle rules read a lifecycle's subject entity, its bound attribute's type (an enum, a reference type with its seeds,
     // a scalar type) and the other lifecycles, none of which reference the process: re-check processes.
-    if (all.some((e) => LIFECYCLE_READS.has(String(e.json.kind))))
-      for (const [id, entry] of this.snapshot) if (entry.json.kind === "process") affected.add(id);
+    if (all.some((e) => LIFECYCLE_READS.has(String(e.json.kind)))) for (const [id, entry] of this.snapshot) if (entry.json.kind === "process") affected.add(id);
     // MQ9201 on an entity reads its lifecycle process and the entity's bases, which the index holds no reference for.
     if (all.some((e) => e.json.kind === "process" || e.json.kind === "entity"))
       for (const [id, entry] of this.snapshot) if (entry.json.kind === "entity" && typeof entry.json.lifecycle === "string") affected.add(id);

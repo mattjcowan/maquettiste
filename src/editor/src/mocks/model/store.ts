@@ -1007,7 +1007,16 @@ export class MockModel {
         if ("problem" in outcome) {
           fail(
             this.invalid(op.id ?? null, [
-              { rule: "MQ9019", severity: "error", message: outcome.problem, elementId: op.id ?? null, filePath: null, jsonPointer: "", line: null, column: null },
+              {
+                rule: "MQ9019",
+                severity: "error",
+                message: outcome.problem,
+                elementId: op.id ?? null,
+                filePath: null,
+                jsonPointer: "",
+                line: null,
+                column: null,
+              },
             ]),
           );
           continue;

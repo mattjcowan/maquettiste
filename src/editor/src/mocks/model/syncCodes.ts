@@ -46,7 +46,15 @@ interface Candidate {
   label?: string;
 }
 
-function candidatesOf(kind: string, typeId: string | undefined, attribute: Json, scalar: Json | undefined, all: Iterable<Json>, lookup: (id: string) => Json | undefined, integerCodes: boolean): Candidate[] {
+function candidatesOf(
+  kind: string,
+  typeId: string | undefined,
+  attribute: Json,
+  scalar: Json | undefined,
+  all: Iterable<Json>,
+  lookup: (id: string) => Json | undefined,
+  integerCodes: boolean,
+): Candidate[] {
   const list: Candidate[] = [];
   const seen = new Set<string>();
   const add = (code: unknown, names: string[], label?: string) => {
@@ -57,7 +65,9 @@ function candidatesOf(kind: string, typeId: string | undefined, attribute: Json,
     }
   };
   if (kind === "reference" && typeId) {
-    const seeds = [...all].filter((d) => d.kind === "seed" && d.target === typeId && d.rowsFrom === undefined).sort((a, b) => String(a.name).localeCompare(String(b.name)) || String(a.id).localeCompare(String(b.id)));
+    const seeds = [...all]
+      .filter((d) => d.kind === "seed" && d.target === typeId && d.rowsFrom === undefined)
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)) || String(a.id).localeCompare(String(b.id)));
     for (const seed of seeds) {
       const columns = (seed.columns as string[] | undefined) ?? [];
       const at = columns.indexOf("code");
@@ -72,7 +82,11 @@ function candidatesOf(kind: string, typeId: string | undefined, attribute: Json,
     }
   } else if (kind === "enum" && typeId) {
     for (const member of arr(lookup(typeId)?.members)) {
-      const names = [String(member.name), ...(member.code !== undefined ? [String(member.code)] : []), ...(member.value !== undefined ? [String(member.value)] : [])];
+      const names = [
+        String(member.name),
+        ...(member.code !== undefined ? [String(member.code)] : []),
+        ...(member.value !== undefined ? [String(member.value)] : []),
+      ];
       const label = typeof member.displayName === "string" ? member.displayName : undefined;
       if (integerCodes) {
         if (member.value !== undefined) add(member.value, names, label);
@@ -119,7 +133,8 @@ export function planSyncCodes(
   if (process.use !== "lifecycle")
     return { problem: `Process '${name}' is an orchestration, which binds no attribute; set use to lifecycle first, then sync its codes.` };
   const entity = entityId ? lookup(entityId) : undefined;
-  if (!entity || entity.kind !== "entity") return { problem: `'${String(entityId)}' is not an entity; pass the subject whose attribute holds the state as entity.` };
+  if (!entity || entity.kind !== "entity")
+    return { problem: `'${String(entityId)}' is not an entity; pass the subject whose attribute holds the state as entity.` };
   const oneSubject = typeof process.subject === "string" && !Array.isArray(process.subjects);
   if (oneSubject && process.subject !== entityId)
     return {
@@ -127,10 +142,14 @@ export function planSyncCodes(
     };
   const attribute = bindableAttributes(entity, lookup, stereotype).find((a) => a.id === attributeId);
   if (!attributeId || !attribute)
-    return { problem: `'${String(attributeId)}' is not an attribute of entity '${String(entity.name)}' (own, inherited or from a stereotype); pass the one that holds the state.` };
+    return {
+      problem: `'${String(attributeId)}' is not an attribute of entity '${String(entity.name)}' (own, inherited or from a stereotype); pass the one that holds the state.`,
+    };
   const type = classifyAttribute(attribute, lookup);
   if (type.kind === "unsupported")
-    return { problem: `Attribute '${String(attribute.name)}' of entity '${String(entity.name)}' ${type.why}; pass an attribute typed by an enum, a reference type, or a string or integer type.` };
+    return {
+      problem: `Attribute '${String(attribute.name)}' of entity '${String(entity.name)}' ${type.why}; pass an attribute typed by an enum, a reference type, or a string or integer type.`,
+    };
   if (type.kind === "unknown") return { problem: `The type of attribute '${String(attribute.name)}' is not in the model.` };
 
   const nodes = nodesOf(process.states, null, "", []);
@@ -140,7 +159,9 @@ export function planSyncCodes(
     const node = byId.get(stateId);
     if (!node) return { problem: `'${stateId}' (a key of stateCodes) is not a state of process '${name}'.` };
     if (restless(node.state))
-      return { problem: `State '${node.path}' of process '${name}' is a ${String(node.state.type)} state, which nothing rests in, so it takes no code; leave it out of stateCodes.` };
+      return {
+        problem: `State '${node.path}' of process '${name}' is a ${String(node.state.type)} state, which nothing rests in, so it takes no code; leave it out of stateCodes.`,
+      };
     if (!(typeof code === "string" ? code.length > 0 : typeof code === "number" && Number.isInteger(code)))
       return { problem: `The code stateCodes gives state '${node.path}' is ${JSON.stringify(code)}; a code is a non-empty string or an integer.` };
     stateCodes.set(stateId, code as Code);
@@ -180,7 +201,11 @@ export function planSyncCodes(
       : candidates.filter((c) => c.label !== undefined && (c.label.toLowerCase() === display || c.label.toLowerCase() === String(n.state.name).toLowerCase()));
     const found = byName.length ? byName : byLabel;
     if (found.length === 1 && !taken.has(found[0].key)) matched.set(n, { candidate: found[0], source: byName.length ? "name" : "label" });
-    else unmatched.set(n, found.map((c) => c.code));
+    else
+      unmatched.set(
+        n,
+        found.map((c) => c.code),
+      );
   }
   // A code two states match goes to neither.
   const groups = new Map<string, Node[]>();

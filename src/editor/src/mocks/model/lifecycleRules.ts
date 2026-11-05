@@ -43,7 +43,15 @@ function walk(states: unknown, base: string, parent: Node | null, path: string, 
       underParallel,
     };
     out.push(node);
-    walk(state.states, node.pointer, node, node.path, codeKey(state.code) !== null && !restless(state) ? node : nearest, underParallel || state.type === "parallel", out);
+    walk(
+      state.states,
+      node.pointer,
+      node,
+      node.path,
+      codeKey(state.code) !== null && !restless(state) ? node : nearest,
+      underParallel || state.type === "parallel",
+      out,
+    );
   });
 }
 
@@ -58,8 +66,7 @@ function reachable(process: Json, nodes: Node[]): Set<string> {
     for (let up = node.parent; up; up = up.parent) seen.add(up.id);
     const children = arr(node.state.states);
     if (node.state.type === "parallel") for (const c of children) enter(String(c.id));
-    else if (children.length && node.state.type !== "history")
-      enter(typeof node.state.initial === "string" ? node.state.initial : String(children[0].id));
+    else if (children.length && node.state.type !== "history") enter(typeof node.state.initial === "string" ? node.state.initial : String(children[0].id));
   };
   const roots = arr(process.states);
   enter(typeof process.initial === "string" ? process.initial : roots[0] ? String(roots[0].id) : undefined);
@@ -67,7 +74,7 @@ function reachable(process: Json, nodes: Node[]): Set<string> {
     const node = byId.get(id);
     return !!node && (seen.has(id) || nodes.some((n) => seen.has(n.id) && n.parent?.id === id));
   };
-  for (let changed = true; changed; ) {
+  for (let changed = true; changed;) {
     changed = false;
     for (const t of arr(process.transitions)) {
       const source = typeof t.source === "string" ? t.source : "";
@@ -137,7 +144,13 @@ function codeDiagnostics(process: Json, nodes: Node[], emit: Emit): void {
   if (!coded.length) return;
   const name = String(process.name);
   for (const n of coded.filter((c) => restless(c.state)))
-    emit("MQ9206", "error", `State '${String(n.state.name)}' of process '${name}' is a ${String(n.state.type)} state, which nothing rests in, so it has no code; remove its code.`, `${n.pointer}/code`, n.id);
+    emit(
+      "MQ9206",
+      "error",
+      `State '${String(n.state.name)}' of process '${name}' is a ${String(n.state.type)} state, which nothing rests in, so it has no code; remove its code.`,
+      `${n.pointer}/code`,
+      n.id,
+    );
   const settled = coded.filter((c) => !restless(c.state));
   const byKey = new Map<string, Node>();
   for (const n of settled) {
@@ -344,7 +357,11 @@ function enumBinding(
     }
     const member = members.find((m) => m.name === node.state.name);
     if (!member || memberIdentifiers(member).includes(String(c))) continue; // MQ9203
-    const ids = [...(member.code !== undefined ? [`'${String(member.code)}'`] : []), ...(member.value !== undefined ? [String(member.value)] : []), `'${String(member.name)}'`];
+    const ids = [
+      ...(member.code !== undefined ? [`'${String(member.code)}'`] : []),
+      ...(member.value !== undefined ? [String(member.value)] : []),
+      `'${String(member.name)}'`,
+    ];
     emit(
       "MQ9207",
       "error",
@@ -453,7 +470,9 @@ function uncovered(
   const missing = values.filter((v) => !covered.has(v));
   if (!missing.length) return;
   const shown = names(missing.slice(0, 10).map((v) => `'${v}'`)) + (missing.length > 10 ? ` and ${missing.length - 10} more` : "");
-  const from = allowed.length ? `allowedValues of attribute '${n.aname}'` : `the rows of reference type '${String(lookup("typeId" in type ? String(type.typeId) : "")?.name)}'`;
+  const from = allowed.length
+    ? `allowedValues of attribute '${n.aname}'`
+    : `the rows of reference type '${String(lookup("typeId" in type ? String(type.typeId) : "")?.name)}'`;
   emit(
     "MQ9208",
     "warning",

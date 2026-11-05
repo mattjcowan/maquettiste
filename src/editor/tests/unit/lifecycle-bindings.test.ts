@@ -128,13 +128,27 @@ describe("what a lifecycle may bind (model/binding.ts)", () => {
     const entity = { kind: "entity", id: "E", name: "E", base: "B", attributes: [{ id: "A2", name: "b" }] };
     const all = new Map<string, Json>([["B", base]]);
     const stereotypes = new Map<string, Json>([["audit", { attributes: [{ id: "A3", name: "c" }] }]]);
-    expect(bindableAttributes(entity, (id) => all.get(id), (key) => stereotypes.get(key)).map((a) => a.id)).toEqual(["A2", "A1", "A3"]);
+    expect(
+      bindableAttributes(
+        entity,
+        (id) => all.get(id),
+        (key) => stereotypes.get(key),
+      ).map((a) => a.id),
+    ).toEqual(["A2", "A1", "A3"]);
   });
 });
 
 describe("the States tab's Code cell", () => {
   const process = (): ProcessDoc =>
-    ({ kind: "process", id: "P", name: "P", states: [{ id: "S1", name: "A", code: 1 }, { id: "S2", name: "B" }] }) as unknown as ProcessDoc;
+    ({
+      kind: "process",
+      id: "P",
+      name: "P",
+      states: [
+        { id: "S1", name: "A", code: 1 },
+        { id: "S2", name: "B" },
+      ],
+    }) as unknown as ProcessDoc;
 
   it("writes a number for integer text, a string otherwise, and removes the key when cleared", () => {
     const p = process();
@@ -160,10 +174,28 @@ describe("the States tab's Code cell", () => {
 describe("mock lifecycle rules", () => {
   it("MQ9210 once per uncoded state, at the state, under a plain binding; none under an enum binding without codes", () => {
     const backend = new MockBackend();
-    seedModel(backend, lifecycle([{ id: S.draft, name: "Draft", code: "DRF" }, { id: S.issued, name: "Issued" }], A.plain));
+    seedModel(
+      backend,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft", code: "DRF" },
+          { id: S.issued, name: "Issued" },
+        ],
+        A.plain,
+      ),
+    );
     expect(findings(backend)).toEqual([`MQ9205 /subjects/0/boundAttribute ${SUBJ}`, `MQ9210 /states/1 ${S.issued}`]);
     const enumBackend = new MockBackend();
-    seedModel(enumBackend, lifecycle([{ id: S.draft, name: "Draft" }, { id: S.issued, name: "Issued" }], A.enumA));
+    seedModel(
+      enumBackend,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft" },
+          { id: S.issued, name: "Issued" },
+        ],
+        A.enumA,
+      ),
+    );
     expect(findings(enumBackend)).toEqual([`MQ9205 /subjects/0/boundAttribute ${SUBJ}`]);
   });
 
@@ -174,7 +206,16 @@ describe("mock lifecycle rules", () => {
       lifecycle(
         [
           { id: S.draft, name: "Draft", code: "D" },
-          { id: S.issued, name: "Issued", type: "compound", initial: S.paid, states: [{ id: S.paid, name: "A" }, { id: S.nested, name: "B" }] },
+          {
+            id: S.issued,
+            name: "Issued",
+            type: "compound",
+            initial: S.paid,
+            states: [
+              { id: S.paid, name: "A" },
+              { id: S.nested, name: "B" },
+            ],
+          },
         ],
         A.enumA,
         { transitions: [{ id: U(60), source: S.draft, trigger: "always", targets: [S.issued] }] },
@@ -207,28 +248,80 @@ describe("mock lifecycle rules", () => {
 
   it("MQ9207 at the code: a plain status's type and length, a reference type's live codes, an enum member's identifiers", () => {
     const plain = new MockBackend();
-    seedModel(plain, lifecycle([{ id: S.draft, name: "Draft", code: "TOOLONG" }, { id: S.issued, name: "Issued", code: "OK" }], A.plain));
+    seedModel(
+      plain,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft", code: "TOOLONG" },
+          { id: S.issued, name: "Issued", code: "OK" },
+        ],
+        A.plain,
+      ),
+    );
     expect(findings(plain).filter((r) => r.startsWith("MQ9207"))).toEqual([`MQ9207 /states/0/code ${S.draft}`]);
     const integer = new MockBackend();
-    seedModel(integer, lifecycle([{ id: S.draft, name: "Draft", code: 7 }, { id: S.issued, name: "Issued", code: "x" }], A.int));
+    seedModel(
+      integer,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft", code: 7 },
+          { id: S.issued, name: "Issued", code: "x" },
+        ],
+        A.int,
+      ),
+    );
     expect(findings(integer).filter((r) => r.startsWith("MQ9207"))).toEqual([`MQ9207 /states/1/code ${S.issued}`].sort());
     const reference = new MockBackend();
     seedModel(
       reference,
-      lifecycle([{ id: S.draft, name: "Draft", code: "DRF" }, { id: S.issued, name: "Issued", code: "NOPE" }, { id: S.paid, name: "Paid", code: "PD" }], A.ref),
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft", code: "DRF" },
+          { id: S.issued, name: "Issued", code: "NOPE" },
+          { id: S.paid, name: "Paid", code: "PD" },
+        ],
+        A.ref,
+      ),
     );
     expect(findings(reference).filter((r) => r.startsWith("MQ9207"))).toEqual([`MQ9207 /states/1/code ${S.issued}`]);
     const member = new MockBackend();
-    seedModel(member, lifecycle([{ id: S.draft, name: "Draft", code: "D" }, { id: S.issued, name: "Issued", code: "zzz" }], A.enumA));
+    seedModel(
+      member,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft", code: "D" },
+          { id: S.issued, name: "Issued", code: "zzz" },
+        ],
+        A.enumA,
+      ),
+    );
     expect(findings(member).filter((r) => r.startsWith("MQ9207"))).toEqual([`MQ9207 /states/1/code ${S.issued}`]);
     const named = new MockBackend();
-    seedModel(named, lifecycle([{ id: S.draft, name: "Draft", code: 1 }, { id: S.issued, name: "Issued", code: "Issued" }], A.enumA));
+    seedModel(
+      named,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft", code: 1 },
+          { id: S.issued, name: "Issued", code: "Issued" },
+        ],
+        A.enumA,
+      ),
+    );
     expect(findings(named).filter((r) => r.startsWith("MQ9207"))).toEqual([]);
   });
 
   it("MQ9208 once per binding for the rows no state covers; MQ9205 by code for a binding that stores codes", () => {
     const backend = new MockBackend();
-    seedModel(backend, lifecycle([{ id: S.draft, name: "Draft", code: "DRF" }, { id: S.issued, name: "Issued", code: "ISS" }], A.ref));
+    seedModel(
+      backend,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft", code: "DRF" },
+          { id: S.issued, name: "Issued", code: "ISS" },
+        ],
+        A.ref,
+      ),
+    );
     expect(findings(backend)).toEqual([`MQ9205 /subjects/0/boundAttribute ${SUBJ}`, `MQ9208 /subjects/0/boundAttribute ${SUBJ}`]);
   });
 
@@ -253,7 +346,9 @@ describe("mock lifecycle rules", () => {
       },
       "second",
     );
-    expect(findings(two).filter((r) => r.startsWith("MQ9202"))).toEqual([`MQ9202 /subjects/0/boundAttribute ${SUBJ}`, `MQ9202 /subjects/0/boundAttribute ${U(71)}`].sort());
+    expect(findings(two).filter((r) => r.startsWith("MQ9202"))).toEqual(
+      [`MQ9202 /subjects/0/boundAttribute ${SUBJ}`, `MQ9202 /subjects/0/boundAttribute ${U(71)}`].sort(),
+    );
   });
 
   it("in the one-subject form the binding findings are at /boundAttribute under the process id", () => {
@@ -274,7 +369,16 @@ describe("mock lifecycle rules", () => {
 describe("a code under a reference binding uses the row", () => {
   it("is a reference from the state, field code, so the row's references list it", () => {
     const backend = new MockBackend();
-    seedModel(backend, lifecycle([{ id: S.draft, name: "Draft", code: "DRF" }, { id: S.issued, name: "Issued", code: 5 }], A.ref));
+    seedModel(
+      backend,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft", code: "DRF" },
+          { id: S.issued, name: "Issued", code: 5 },
+        ],
+        A.ref,
+      ),
+    );
     const uses = backend.model.references(ROW.draft)!.filter((r) => r.field === "code");
     expect(uses).toEqual([{ fromElementId: PROCESS, fromId: S.draft, jsonPointer: "/states/0/code", field: "code", toId: ROW.draft }]);
     expect(backend.model.references(ROW.issued)!.filter((r) => r.field === "code")).toEqual([]);
@@ -295,7 +399,17 @@ describe("sync-codes and sync-enum with an entity (the mock endpoints)", () => {
   };
 
   it("proposes codes by name and by label, and writes them with the binding on apply", async () => {
-    seedModel(mock.backend, lifecycle([{ id: S.draft, name: "Draft" }, { id: S.issued, name: "Issued" }, { id: S.paid, name: "Settled", displayName: "Paid" }], undefined));
+    seedModel(
+      mock.backend,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft" },
+          { id: S.issued, name: "Issued" },
+          { id: S.paid, name: "Settled", displayName: "Paid" },
+        ],
+        undefined,
+      ),
+    );
     const dry = await post(`/api/processes/${PROCESS}/sync-codes`, { entity: ENTITY, attribute: A.ref, dryRun: true });
     expect(dry.status).toBe(200);
     expect(dry.body).toMatchObject({ process: PROCESS, entity: ENTITY, attribute: A.ref, binds: true, applied: false, unmatched: [] });
@@ -314,7 +428,16 @@ describe("sync-codes and sync-enum with an entity (the mock endpoints)", () => {
   });
 
   it("leaves a state with no match unmatched, takes a given code, and removes nothing it keeps", async () => {
-    seedModel(mock.backend, lifecycle([{ id: S.draft, name: "Draft", code: "DRF" }, { id: S.issued, name: "Shipped" }], A.ref));
+    seedModel(
+      mock.backend,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft", code: "DRF" },
+          { id: S.issued, name: "Shipped" },
+        ],
+        A.ref,
+      ),
+    );
     const dry = await post(`/api/processes/${PROCESS}/sync-codes`, { entity: ENTITY, attribute: A.ref, dryRun: true });
     expect(dry.body).toMatchObject({ binds: false, unmatched: [{ state: S.issued, path: "Shipped", candidates: [] }] });
     expect((dry.body.codes as Json[])[0]).toMatchObject({ state: S.draft, source: "kept" });
@@ -330,7 +453,10 @@ describe("sync-codes and sync-enum with an entity (the mock endpoints)", () => {
       name: "InvoiceFlow",
       use: "lifecycle",
       subject: ENTITY,
-      states: [{ id: S.draft, name: "Draft" }, { id: S.issued, name: "Issued" }],
+      states: [
+        { id: S.draft, name: "Draft" },
+        { id: S.issued, name: "Issued" },
+      ],
     });
     const applied = await post(`/api/processes/${PROCESS}/sync-codes`, { entity: ENTITY, attribute: A.enumA });
     expect(applied.body).toMatchObject({ applied: true, binds: true });
@@ -349,7 +475,9 @@ describe("sync-codes and sync-enum with an entity (the mock endpoints)", () => {
     seedModel(mock.backend, lifecycle([{ id: S.draft, name: "Draft" }], undefined));
     const refused = mock.backend.model.batch({ operations: [{ op: "sync-codes", id: PROCESS, entity: ENTITY, attribute: A.many }] });
     expect((refused.body as { outcome: string }).outcome).not.toBe("saved");
-    const saved = mock.backend.model.batch({ operations: [{ op: "sync-codes", id: PROCESS, entity: ENTITY, attribute: A.ref, stateCodes: { [S.draft]: "DRF" } }] });
+    const saved = mock.backend.model.batch({
+      operations: [{ op: "sync-codes", id: PROCESS, entity: ENTITY, attribute: A.ref, stateCodes: { [S.draft]: "DRF" } }],
+    });
     expect((saved.body as { outcome: string }).outcome).toBe("saved");
     const json = mock.backend.model.get(PROCESS)!.json as Json;
     expect(((json.states as Json[])[0] as Json).code).toBe("DRF");
@@ -357,7 +485,17 @@ describe("sync-codes and sync-enum with an entity (the mock endpoints)", () => {
   });
 
   it("sync-enum picks the entity's enum binding, and refuses an entity the lifecycle does not list", async () => {
-    seedModel(mock.backend, lifecycle([{ id: S.draft, name: "Draft" }, { id: S.issued, name: "Issued" }, { id: S.paid, name: "Paid" }], A.enumA));
+    seedModel(
+      mock.backend,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft" },
+          { id: S.issued, name: "Issued" },
+          { id: S.paid, name: "Paid" },
+        ],
+        A.enumA,
+      ),
+    );
     const dry = await post(`/api/processes/${PROCESS}/sync-enum`, { dryRun: true, entity: ENTITY });
     expect(dry.body).toMatchObject({ enum: ENUM, added: ["Paid"], applied: false });
     expect((await post(`/api/processes/${PROCESS}/sync-enum`, { dryRun: true, entity: OTHER })).status).toBe(422);
@@ -376,7 +514,10 @@ describe("quick fixes for bindings and codes", () => {
     line: null,
     column: null,
   });
-  const docs = (...list: Json[]) => (id: string) => list.find((d) => d.id === id) as unknown as ModelJson | undefined;
+  const docs =
+    (...list: Json[]) =>
+    (id: string) =>
+      list.find((d) => d.id === id) as unknown as ModelJson | undefined;
   const entity = (type: unknown): Json => ({ kind: "entity", id: "E", name: "E", attributes: [{ id: "A", name: "status", type }] });
   const process = (states: Json[], extra: Json = {}): Json => ({
     kind: "process",
@@ -389,7 +530,8 @@ describe("quick fixes for bindings and codes", () => {
   });
 
   it("MQ9205 writes the initial configuration's code for a binding that stores codes, as the state has it", () => {
-    const direct = (p: Json, type: unknown, extra: Json[] = []) => deriveQuickFix(diag("MQ9205", "P", "/subjects/0/boundAttribute"), null, docs(p, entity(type), ...extra));
+    const direct = (p: Json, type: unknown, extra: Json[] = []) =>
+      deriveQuickFix(diag("MQ9205", "P", "/subjects/0/boundAttribute"), null, docs(p, entity(type), ...extra));
     const numbered = direct(process([{ id: "S1", name: "Draft", code: 7 }]), "int16");
     expect(numbered).toMatchObject({ kind: "update", id: "E", label: "Set default to 7" });
     expect(numbered?.kind === "update" && (numbered.json.attributes as Json[])[0].default).toBe(7);
@@ -415,7 +557,12 @@ describe("quick fixes for bindings and codes", () => {
   });
 
   it("sync-enum sends the entry's entity from a subjects process and none from the one-subject form", () => {
-    const listed = process([{ id: "S1", name: "Draft" }], { subjects: [{ id: "X0", entity: "F" }, { id: "X1", entity: "E", boundAttribute: "A" }] });
+    const listed = process([{ id: "S1", name: "Draft" }], {
+      subjects: [
+        { id: "X0", entity: "F" },
+        { id: "X1", entity: "E", boundAttribute: "A" },
+      ],
+    });
     expect(deriveQuickFix(diag("MQ9203", "P", "/subjects/1/boundAttribute"), "sync-enum", docs(listed))).toEqual({
       kind: "sync-enum",
       process: "P",
@@ -455,7 +602,16 @@ describe("the sync-codes quick fix against the mock", () => {
   });
 
   it("does a dry run, then applies as one undo step", async () => {
-    seedModel(mock.backend, lifecycle([{ id: S.draft, name: "Draft" }, { id: S.issued, name: "Issued" }], undefined));
+    seedModel(
+      mock.backend,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft" },
+          { id: S.issued, name: "Issued" },
+        ],
+        undefined,
+      ),
+    );
     const { queryClient, store } = mock.services;
     const dry = await syncCodes(PROCESS, { entity: ENTITY, attribute: A.ref, dryRun: true });
     expect(dry.codes.map((c) => c.code)).toEqual(["DRF", "ISS"]);
