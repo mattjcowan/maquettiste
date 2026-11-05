@@ -625,7 +625,7 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
         var intoNode = _into.Invokes.GetValueOrDefault(s.Path + "/" + name);
         var id = Assign(Carried(meta), "invoke", pointer + "/meta/maquettiste/id", intoNode, "invoke:" + s.Path + "/" + name);
         var node = new JsonObject { ["id"] = id, ["name"] = name };
-        var leftovers = meta is not null ? Without(meta, "id") : Pick(intoNode, ["displayName", "type", "process", "actors", "description"]);
+        var leftovers = meta is not null ? Without(meta, "id") : Pick(intoNode, ["displayName", "type", "process", "actors", "description", "stereotypes", "properties"]);
         if (leftovers["type"] is null)
         {
             var process = src is null || inline ? null : options.Model?.All<Process>().FirstOrDefault(p => p.Name == src);

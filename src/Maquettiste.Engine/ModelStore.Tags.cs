@@ -265,6 +265,9 @@ public sealed partial class ModelStore
                 JsonNode? value = null;
                 if (source is null)
                 {
+                    // A tag on such a part stays where it is unless a schema reaches the part on purpose.
+                    if (PropertySchemaSource.NamedOnlyKinds.Contains(host.KindName))
+                        continue;
                     why = $"no property schema that applies to this {host.KindName} declares '{name}': declare it in an extension file, or in the parameters of a stereotype the holder carries";
                 }
                 else

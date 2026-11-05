@@ -574,8 +574,22 @@ internal sealed class PropertySchemaSource
     /// <param name="stereotypes">The holder's stereotype keys.</param>
     /// <returns><see langword="true"/> when it applies.</returns>
     public bool AppliesTo(string kindName, IReadOnlyList<string> stereotypes) =>
-        (Kinds.Count == 0 || Kinds.Contains(kindName, StringComparer.Ordinal))
+        Reaches(Kinds, Stereotypes, kindName)
         && (Stereotypes.Count == 0 || Stereotypes.Any(s => stereotypes.Contains(s, StringComparer.Ordinal)));
+
+    /// <summary>
+    /// The holder kinds a schema reaches only by naming them or through a stereotype the holder carries. A schema with no kinds and no
+    /// stereotypes reaches every other kind, as it did before these took properties: its <c>required</c> must not start to bind them.
+    /// </summary>
+    internal static readonly FrozenSet<string> NamedOnlyKinds = FrozenSet.Create(StringComparer.Ordinal, "guard", "action", "invoke", "gate", "check");
+
+    /// <summary>Whether a schema's targets reach a holder kind, before its stereotypes are matched.</summary>
+    /// <param name="kinds">The kinds the schema names.</param>
+    /// <param name="stereotypes">The stereotypes it names.</param>
+    /// <param name="kindName">The holder's kind name.</param>
+    /// <returns><see langword="true"/> when it reaches the kind.</returns>
+    internal static bool Reaches(IReadOnlyList<string> kinds, IReadOnlyList<string> stereotypes, string kindName) =>
+        kinds.Count > 0 ? kinds.Contains(kindName, StringComparer.Ordinal) : stereotypes.Count > 0 || !NamedOnlyKinds.Contains(kindName);
 
     /// <summary>
     /// The dialect custom property schemas compile with: the default one, which refuses unknown keywords (a typo is MQ5004), plus

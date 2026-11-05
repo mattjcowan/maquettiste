@@ -1,6 +1,8 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Loading;
+using Maquettiste.Engine.Processes;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Integration;
@@ -217,16 +219,85 @@ public sealed class NodePropertyTests
     }
 
     [Fact]
-    public async Task A_stereotype_on_an_entity_check_is_judged_and_may_apply_to_checks()
+    public async Task A_stereotype_that_applies_to_checks_types_an_entity_check_and_one_for_other_kinds_stays_unjudged_as_before()
     {
-        await using var repo = await CopyAsync(Process(), entityCheckMarks: """, "stereotypes": ["for-checks"]""",
-            stereotype: $$"""{ "kind": "stereotype", "id": "{{Marked}}", "key": "for-checks", "name": "For checks", "appliesTo": ["check"] }""");
-        Assert.DoesNotContain(await FindingsAsync(repo), d => d.Rule is "MQ2003" or "MQ2004");
+        await using var repo = await CopyAsync(Process(), entityCheckMarks: """, "stereotypes": ["for-checks"]""", checkValues: """{ "level": 3 }""",
+            stereotype: $$"""
+                { "kind": "stereotype", "id": "{{Marked}}", "key": "for-checks", "name": "For checks", "appliesTo": ["check"],
+                  "parameters": { "properties": { "level": { "type": "string" } } } }
+                """);
+        Assert.Equal("/checks/0/properties/level", Assert.Single(await FindingsAsync(repo), d => d.Rule == "MQ2018").JsonPointer);
 
         EditOnDisk(repo, ".maquettiste/model/vocabularies/stereotypes/marked.json", stereotype => stereotype["appliesTo"] = new JsonArray("entity"));
         await repo.RestartAsync();
 
-        Assert.Equal("/checks/0/stereotypes/0", Assert.Single(await FindingsAsync(repo), d => d.Rule == "MQ2004").JsonPointer);
+        Assert.DoesNotContain(await FindingsAsync(repo), d => d.Rule is "MQ2003" or "MQ2004" or "MQ2018");
+    }
+
+    [Fact]
+    public async Task An_extension_with_no_kinds_and_a_required_property_does_not_start_to_bind_the_new_holders()
+    {
+        // Such a file reaches every kind, and it did not reach these before they took properties; a project that uses none of this sees no new finding.
+        var repo = E2ERepo.Create(demo: false);
+        await using var _ = repo;
+        repo.Repo.WriteFile(".maquettiste/extensions/traces.json", """{ "name": "traces", "appliesTo": { "kinds": ["table"] }, "properties": { "owner": { "type": "string" } }, "required": ["owner"] }""");
+        repo.Repo.WriteFile(".maquettiste/model/actors/controller.json", $$"""{ "kind": "actor", "id": "{{Actor}}", "name": "Controller", "type": "person" }""");
+        repo.Repo.WriteFile(".maquettiste/model/processes/approval.json", Process());
+        EditOnDisk(repo, InvoicePath, invoice => invoice["checks"] = new JsonArray(JsonNode.Parse($$"""
+            { "id": "{{EntityCheck}}", "name": "hasNumber", "condition": { "op": "ne", "args": [{ "path": ["{{InvoiceNumber}}"] }, { "value": "" }] } }
+            """)));
+        await repo.RestartAsync();
+        var named = (await FindingsAsync(repo)).Where(d => d.Rule == "MQ5001").Select(d => d.ElementId).ToHashSet();
+
+        repo.Repo.WriteFile(".maquettiste/extensions/traces.json", """{ "name": "traces", "appliesTo": {}, "properties": { "owner": { "type": "string" } }, "required": ["owner"] }""");
+        await repo.RestartAsync();
+        var every = (await FindingsAsync(repo)).Where(d => d.Rule == "MQ5001").Select(d => d.ElementId).ToHashSet();
+
+        Assert.Contains(InvoiceTable, named);
+        Assert.Contains(ProcessId, every);
+        Assert.Contains(Open, every);
+        Assert.DoesNotContain(Guard, every);
+        Assert.DoesNotContain(Action, every);
+        Assert.DoesNotContain(Invoke, every);
+        Assert.DoesNotContain(Gate, every);
+        Assert.DoesNotContain(EntityCheck, every);
+        Assert.DoesNotContain(TableCheck, every);
+    }
+
+    [Fact]
+    public async Task An_extension_with_no_kinds_reaches_a_guard_that_carries_its_stereotype()
+    {
+        await using var repo = await CopyAsync(Process(""", "stereotypes": ["sensitive"]"""), stereotype: $$"""
+            { "kind": "stereotype", "id": "{{Marked}}", "key": "sensitive", "name": "Sensitive", "appliesTo": ["guard"] }
+            """);
+        repo.Repo.WriteFile(".maquettiste/extensions/traces.json", """{ "name": "traces", "appliesTo": { "stereotypes": ["sensitive"] }, "properties": { "owner": { "type": "string" } }, "required": ["owner"] }""");
+        await repo.RestartAsync();
+
+        Assert.Equal(Guard, Assert.Single(await FindingsAsync(repo), d => d.Rule == "MQ5001").ElementId);
+    }
+
+    [Fact]
+    public async Task Importing_over_a_process_keeps_the_properties_and_stereotypes_of_its_nodes()
+    {
+        var marks = """, "stereotypes": ["sensitive"], "properties": { "owner": "finance" }""";
+        await using var repo = await CopyAsync(Process(marks, marks, marks, marks), stereotype: $$"""
+            { "kind": "stereotype", "id": "{{Marked}}", "key": "sensitive", "name": "Sensitive", "appliesTo": ["guard", "action", "invoke", "gate"] }
+            """);
+        var config = JsonDocument.Parse("""
+            { "id": "Approval", "initial": "Open", "states": {
+                "Open": { "invoke": { "id": "review", "src": "review" }, "on": { "approve": { "target": "Done", "guard": "is_ready", "actions": "notify" } } },
+                "Done": { "type": "final" } } }
+            """).RootElement.Clone();
+
+        var imported = await repo.Store.ImportProcessAsync(new ProcessImportRequest { Config = config, Into = ProcessId }, dryRun: false, ChangeSource.Editor, Ct);
+
+        Assert.True(imported.Status == ProcessCallStatus.Ok, imported.Detail);
+        var saved = (await repo.Store.GetElementAsync(ProcessId, Ct))!.Json;
+        foreach (var node in new[] { saved.GetProperty("guards")[0], saved.GetProperty("actions")[0], saved.GetProperty("states")[0].GetProperty("invoke")[0], saved.GetProperty("transitions")[0].GetProperty("gate") })
+        {
+            Assert.Equal("finance", node.GetProperty("properties").GetProperty("owner").GetString());
+            Assert.Equal("sensitive", node.GetProperty("stereotypes")[0].GetString());
+        }
     }
 
     [Fact]

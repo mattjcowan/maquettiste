@@ -864,8 +864,6 @@ internal static partial class BuiltinRules
             CheckFlatDuplicates(context, entity, flat, report);
 
         CheckAttributes(context, entity.Attributes, report);
-        for (var i = 0; i < entity.Checks.Count; i++)
-            CheckStereotypes(context, entity.Checks[i].Id, entity.Checks[i].Stereotypes, Ptr.At("/checks", i), "check", report);
     }
 
     private static void CheckKeyAttributes(IReadOnlyList<string> ids, string pointer, string what, Entity entity, HashSet<string> attributeIds, Report report)
