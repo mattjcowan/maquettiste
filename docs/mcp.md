@@ -523,12 +523,21 @@ written, not the conflict rule.
 
 **Create or update by name.** `{ "op": "upsert", "id": "@custom:policy.Billing.keeps_lines", "element": { ... } }` creates
 the element when the model has none of that name, and replaces its whole document when it has one. A script that refreshes
-elements from another source sends the same batch on every run, and a run that changes nothing writes nothing. `id` must be
-a qualified name of an element, of the element's kind, ending in the name the element states (MQ1015), since an upsert does
-not rename, and it must find one element (MQ1013). Use the longest form when names can repeat across packages, and put the
-same package in the element, or the next run will not find it. No `expectedHash` is needed: an update takes the file's
-hash as it was loaded, or the one you give. An update keeps a sub-element's id only when the element sends it, so an element
-with attributes, columns or members needs their ids (MQ1014 otherwise), which `get_element` returns.
+elements from another source sends the same batch on every run, and a run that changes nothing writes nothing. `ids.names`
+lists the name with its id. An upsert never takes over another element or moves one, so it refuses:
+
+- An `id` that is not one of the names the element will have (MQ1015). The element's kind, package and name must all agree
+  with it: `@custom:policy.Billing.keeps_lines` needs type `policy`, the package Billing and the name `keeps_lines`.
+- A found element whose longest name would change, or a seed whose target would (MQ1015). A move is an `update`.
+- A name that finds several elements (MQ1013). Use a longer form; two seeds of one name on different targets have none, so
+  update them by id.
+- An element that exists, sent with a part that has no id (MQ1014), because every run would replace the part. `get_element`
+  and the first run's `ids.minted` give the ids; a script can also give its parts fixed ids of its own. A new element's
+  parts get ids as in any create.
+- A name given twice in one batch (MQ1014), and an `expectedHash` for a name that finds nothing (MQ1012).
+
+No `expectedHash` is needed: an update takes the file's hash as it was loaded, or the one you give. An assistant proposal
+takes `create` and `update`, not `upsert`, since it says exactly what it changes.
 
 **Where a name may stand.** In the id fields of an operation (`id`, `database`, `package`, `schema`, `target`,
 `default`, the items of `entities`, `tables`, `attributes` and `elementIds`, the keys of `expectedHashes`) and wherever
