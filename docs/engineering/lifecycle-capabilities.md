@@ -1,6 +1,6 @@
 # What lifecycle systems can do: the union, and where Maquettiste stands
 
-**Status (2026-11-05): a first capture, for the owner to correct.** It lists what product lifecycle systems offer for lifecycles and triggers, as one list with duplicates removed, and marks what Maquettiste can state today. It decides nothing. The design of roadmap item 4.1 will be reworked from it.
+**Status (2026-11-05): a first capture, for the owner to correct.** It lists what product lifecycle systems offer for lifecycles and triggers, as one list with duplicates removed, and marks what Maquettiste can state today. It decides nothing. [The design of 4.1](lifecycle-design.md) was rewritten from it.
 
 **Why this list exists.** Maquettiste is a modeling tool first. Some teams will only model, and a product team may then implement the model in a lifecycle system. Others will generate code with packs. A model must leave room for all of these, so this list is the yardstick for what a lifecycle model should be able to say. A row here is not a promise to build it: some belong in the model, and others can be custom properties, stereotypes or pack output.
 
