@@ -20,7 +20,7 @@ Each row's "Seen in" uses these letters. A letter means this session's reading o
 | V | Autodesk Vault | Lifecycle definitions, states and transitions |
 | P | SAP status management | General status management, not its PLM areas |
 
-"Own" marks what the owner asked for directly. Not read: Arena, Propel, Infor and others. The syntax shows what can be stated, not always what it does, so a row from E's syntax can read more into a keyword than the system means; the owner can correct those.
+"Own" marks what the owner asked for or explained directly. Not read: Arena, Propel, Infor and others. The owner has confirmed what E's keywords mean where the syntax alone left it open: freezing, automatic promotion, signature filters, routing and rules.
 
 In the "Today" column, **Yes** means the model can say it, **Part** means some of it, **No** means it can't, and **Pack** means a pack can write it from what the model holds. A team can record almost anything in a custom property today; that alone doesn't count as Yes, because nothing gives it meaning.
 
@@ -61,9 +61,11 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Who may read, change or delete per state, by role | E W A S V | **No**: custom property only |
 | A long list of rights per state: promote, demote, override, revise, connect and disconnect from either end, lock, freeze, schedule, change owner, type or policy, and more (32 in E) | E | **No** |
 | Rights set separately for the owner, for everyone and for named people or roles | E | **No** |
+| **A rule that allows or forbids operations when a condition holds,** over the object's data and the current user. For example: forbid changing, deleting or reassigning an item classified secret unless you own it | E Own | **No**: declared rules check the model, not the running system |
 | A named access rule, reused across things | E | **No** |
 | An access rule for every state | E | **No** |
 | The object can't be edited in this state | A | **No**: 4.4 |
+| **Any item can be frozen, and can't be edited until it is thawed:** an object, a relation's instance (it can't be disconnected or have its attributes edited), and others such as rules and processes. Freezing and thawing are operations with their own triggers, so automation can run on them | E Own | **No** |
 | Fields required to enter or to leave a state | O | **No**: 4.4 |
 | What may be done with the object in this state (allowed and forbidden operations) | P | Part: an operation can `require` a state |
 | How relationships behave in this state (fixed or floating) | A | No |
@@ -71,7 +73,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | May be revised, or versioned, in this state | E | **No** |
 | A planned date for each state, on each object | E | No |
 | Moves out of a state switched off for one object | E | No |
-| Handed to a named person on entering, with a message (`route`) | E | No |
+| An approval routed to a named person or role (`route`) | E Own | Part: a gate's `signers` are actors, which can be roles |
 | Notify people, or whoever signed, on entering, with a message | E A O | No |
 | Entering starts a workflow | A W | Yes: `invoke` |
 | A state's history format | A | No |
@@ -86,7 +88,8 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | A casual state change beside a reviewed one | W | No |
 | Someone with the right may move past unmet conditions (`override`), or set any state | E W O | **No** |
 | Who may run a transition, by role | A F S V | Yes: an event's `actors` |
-| Runs by itself when conditions are met | E O S V | Yes: `always`, `done`, `after` |
+| Moves on by itself once every check and signature passes, running its actions as always (`promote true`) | E O S V Own | Yes: `always`, `done`, `after`, and a gate's transition fires on the signature that completes it |
+| When several next states are possible, the person promoting picks one, or a trigger picks one from the object's data | E Own | Part: guards and choice states pick from data; a person picks by sending a different event |
 | Conditions on the object's data | O S V | Part: guards read the context and the event, **not the object**. 4.1 |
 | Conditions on related objects (all affected items, a BOM audit) | O | **No** |
 | A condition that hides a transition, apart from one that refuses it | F | No: one guard does both |
@@ -139,7 +142,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Everyone in a group, or anyone | O | Part: by count |
 | Weighted votes | A | No |
 | Approve, reject, ignore, with a separate list of who may do each | E O | Part: `meanings` and one list of signers; no reject path |
-| A signature needed only when an expression holds (`filter`) | E | **No** |
+| Whether a signature is needed, and from whom, decided by a condition or a routine over the object's data (`filter`) | E Own | **No** |
 | Several named signatures on one state | E | **No**: one gate per transition |
 | A signature withdrawn (`unsign`) | E | **No** |
 | Approvers, observers, acknowledgers | O | **No**: signers only |
