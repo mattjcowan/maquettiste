@@ -1,5 +1,7 @@
 # A lifecycle bound to a reference type or a status column: design
 
+**Being reworked (2026-11-05): do not build from this draft.** The owner has said that a lifecycle will often have its own tables rather than a status column, that one lifecycle can govern many types, and that one object can be in many lifecycles. This draft assumes otherwise in several places, including section 11's recommendations on guards and several lifecycles. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick for the rework. What this draft found about the code still holds.
+
 **Status (2026-11-05): a draft for the owner. Nothing in this file is built.** It designs item 4.1 of `next.md`. Section 11 lists what the owner decides. A file path without a project
 prefix is under `src/Maquettiste.Engine/`. Examples use the billing fixture. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they
 use it or not, and it stays optional. An independent check of the first draft against the code changed much of this version; section 12 keeps what it found about the parts left for later.
