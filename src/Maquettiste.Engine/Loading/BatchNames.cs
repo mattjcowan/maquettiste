@@ -9,6 +9,11 @@ using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Loading;
 
+/// <summary>What an upsert names, and the element the name finds on the model as loaded, if any.</summary>
+/// <param name="Name">The qualified name.</param>
+/// <param name="Found">The element it finds; <see langword="null"/> when it creates one.</param>
+internal sealed record UpsertTarget(QualifiedName Name, NameEntry? Found);
+
 /// <summary>A batch after the resolver: every id field an id, with what the resolver minted and found.</summary>
 /// <param name="Batch">The operations with their <c>batch.json</c> id fields as ids and no <c>as</c>; elements are the nodes the
 /// resolver was given, changed in place.</param>
@@ -633,16 +638,17 @@ internal sealed class BatchNames
 
     /// <summary>
     /// What an upsert's name must be true of its document, now that names and ids are resolved, so that the next run finds what this one
-    /// wrote and an upsert never takes over another element: the element holds the name among its own forms; an update keeps its longest
-    /// form, and a seed its target, which no form holds; and an update mints no part's id, since the part's old id would be lost and a
-    /// re-run would change the model each time.
+    /// wrote and an upsert never takes over another element: the name is among the element's own forms, and after the batch it finds this
+    /// element alone; an update keeps its longest form, read through the batch's other changes; and an update that mints a part's id does
+    /// not also drop one, since that replaces the part and a re-run would change the model each time. Schema operations expand later, so
+    /// a schema the same batch adds is not seen here.
     /// </summary>
     /// <param name="snapshot">The model as loaded.</param>
     /// <param name="resolved">The batch with ids only.</param>
     /// <param name="elements">Per operation, its parsed element.</param>
-    /// <param name="upserts">The name of each operation that was an upsert, by its index.</param>
+    /// <param name="upserts">What each operation that was an upsert names and finds, by its index.</param>
     /// <param name="invalid">Per operation, why it is refused.</param>
-    internal static void CheckUpserts(ModelSnapshot snapshot, ResolvedBatch resolved, IReadOnlyList<JsonNode?> elements, IReadOnlyDictionary<int, QualifiedName> upserts, SaveResult?[] invalid)
+    internal static void CheckUpserts(ModelSnapshot snapshot, ResolvedBatch resolved, IReadOnlyList<JsonNode?> elements, IReadOnlyDictionary<int, UpsertTarget> upserts, SaveResult?[] invalid)
     {
         var overlay = new Overlay(snapshot);
         var finals = new Element?[elements.Count];
@@ -655,31 +661,76 @@ internal sealed class BatchNames
                 overlay.Replace(element.Id, finals[i] = element);
         }
 
-        foreach (var (i, name) in upserts)
+        foreach (var (i, upsert) in upserts)
         {
-            var pointer = OperationPointer(i) + "/id";
-            var o = resolved.Batch.Operations[i];
             if (finals[i] is not { } final)
                 continue; // a document that does not read: the planner reports it
-            var own = NameIndex.Of(final, overlay.Lookup, name.Kind, snapshot.PropertySchemas).FirstOrDefault(e => e.Id == final.Id);
+            var name = upsert.Name;
+            var pointer = OperationPointer(i) + "/id";
+            var own = EntryOf(final, name.Kind);
             if (own is null || !own.Forms.Contains(name.Path, StringComparer.Ordinal))
             {
                 invalid[i] = Refused("MQ1015", $"'{name.Text}' is not a name of this element, whose names are: {(own is null ? "(none)" : string.Join(", ", own.Forms))}. "
                     + "An upsert finds an element by its name, so the next run would not find it.", final.Id, pointer);
+                continue;
             }
-            else if (o.Op == BatchOp.Update && snapshot.Names(name.Kind).Find(name.Path) is [var found])
+
+            var finds = overlay.Find(name.Kind, name.Path);
+            var exact = finds.Where(e => string.Equals(e.Longest, name.Path, StringComparison.Ordinal)).ToList();
+            if (!(finds is [var alone] && alone.Id == final.Id) && !(exact is [var longest] && longest.Id == final.Id))
             {
-                var keepsTarget = final is not Seed seed || snapshot.Get<Seed>(found.Id) is not { } before || string.Equals(seed.Target, before.Target, StringComparison.Ordinal);
-                if (!string.Equals(own.Longest, found.Longest, StringComparison.Ordinal) || !keepsTarget)
-                {
-                    invalid[i] = Refused("MQ1015", $"'{name.Text}' finds {found.Longest} ({found.Id}), and this element would be {own.Longest}"
-                        + (keepsTarget ? "" : " with another target") + ". An upsert does not move an element or take over another one: use a longer name, or an update.", final.Id, pointer);
-                }
-                else if (resolved.Minted[i] is { Count: > 0 } minted)
-                {
-                    invalid[i] = Refused("MQ1014", $"'{name.Text}' exists, and its parts at {string.Join(", ", minted)} have no id. "
-                        + "An upsert of an element that exists must send each part's id, which get_element returns, or every run would replace them.", final.Id, pointer);
-                }
+                invalid[i] = Refused("MQ1013", $"After this batch '{name.Text}' would name several {name.Kind} elements: "
+                    + string.Join(", ", finds.Select(e => e.Longest + " (" + e.Id + ")")) + ". Use a longer form, and write each element once.", final.Id, pointer);
+                continue;
+            }
+
+            if (upsert.Found is not { } found)
+                continue;
+            var before = snapshot.Get<Element>(found.Id) is { } old ? EntryOf(old, name.Kind) : null;
+            if (!string.Equals(own.Longest, before?.Longest, StringComparison.Ordinal))
+            {
+                invalid[i] = Refused("MQ1015", $"'{name.Text}' finds {before?.Longest} ({found.Id}), and this element would be {own.Longest}. "
+                    + "An upsert does not move an element or take over another one: use a longer name, or an update.", final.Id, pointer);
+            }
+            else if (resolved.Minted[i] is { Count: > 0 } minted && DropsPart(snapshot, found.Id, final.Id, elements[i]!))
+            {
+                invalid[i] = Refused("MQ1014", $"'{name.Text}' exists, and this document replaces its parts: those at {string.Join(", ", minted)} have no id. "
+                    + "Send each existing part's id, which get_element returns, or every run would replace them.", final.Id, pointer);
+            }
+        }
+
+        NameEntry? EntryOf(Element element, string kind) =>
+            NameIndex.Of(element, overlay.Lookup, kind, snapshot.PropertySchemas).FirstOrDefault(e => e.Id == element.Id);
+    }
+
+    /// <summary>Whether a document leaves out the id of a part the element has now.</summary>
+    private static bool DropsPart(ModelSnapshot snapshot, string found, string root, JsonNode document)
+    {
+        if (snapshot.GetDocument(found) is not { } current)
+            return false;
+        var now = new HashSet<string>(StringComparer.Ordinal);
+        var then = new HashSet<string>(StringComparer.Ordinal);
+        PartIds(JsonElement.Parse(document.ToJsonString()), now);
+        PartIds(current.Json, then);
+        then.Remove(root);
+        return !then.IsSubsetOf(now);
+    }
+
+    private static void PartIds(JsonElement value, HashSet<string> ids)
+    {
+        if (value.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in value.EnumerateArray())
+                PartIds(item, ids);
+        }
+        else if (value.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in value.EnumerateObject())
+            {
+                if (property.Name == "id" && property.Value.ValueKind == JsonValueKind.String)
+                    ids.Add(property.Value.GetString()!);
+                else
+                    PartIds(property.Value, ids);
             }
         }
     }

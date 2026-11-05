@@ -527,13 +527,15 @@ elements from another source sends the same batch on every run, and a run that c
 lists the name with its id. An upsert never takes over another element or moves one, so it refuses:
 
 - An `id` that is not one of the names the element will have (MQ1015). The element's kind, package and name must all agree
-  with it: `@custom:policy.Billing.keeps_lines` needs type `policy`, the package Billing and the name `keeps_lines`.
-- A found element whose longest name would change, or a seed whose target would (MQ1015). A move is an `update`.
-- A name that finds several elements (MQ1013). Use a longer form; two seeds of one name on different targets have none, so
-  update them by id.
-- An element that exists, sent with a part that has no id (MQ1014), because every run would replace the part. `get_element`
-  and the first run's `ids.minted` give the ids; a script can also give its parts fixed ids of its own. A new element's
-  parts get ids as in any create.
+  with it: `@custom:policy.Billing.keeps_lines` needs type `policy`, the package Billing and the name `keeps_lines`. A schema
+  the same batch adds is not seen yet, so add it in an earlier batch.
+- A found element whose longest name would change (MQ1015). A move is an `update`.
+- A seed (MQ1015): a seed belongs to its target, and its rows can live in a file a whole document would not carry. Use
+  `create`, `update` or a seed import.
+- A name that finds several elements, on the model or after the batch (MQ1013). Its longest form names one, so use that.
+- A document that replaces a part of an element that exists: it leaves out a part's id and has a part with none (MQ1014),
+  because every run would replace the part. `get_element` and the first run's `ids.minted` give the ids, and a script can
+  give its parts fixed ids of its own. A part added with no id gets one, and the next run must send it.
 - A name given twice in one batch (MQ1014), and an `expectedHash` for a name that finds nothing (MQ1012).
 
 No `expectedHash` is needed: an update takes the file's hash as it was loaded, or the one you give. An assistant proposal
