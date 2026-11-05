@@ -115,8 +115,8 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | The same three kinds at every point: check, override, action | E | Part: check and action, no override |
 | Points on each sign-off event: approve, reject, ignore, withdraw | E Own | **No** |
 | Points on other state events: promote, demote, override, enable, disable, schedule | E | Part: promote only, as a guard or action |
-| Points on an object's own events: create, copy, delete, connect, disconnect, change an attribute, name, owner, type or policy, revise, lock, check in or out, grant, revoke | E O | **No** |
-| Points on a relationship's events: create, delete, change an attribute | E | **No** |
+| **Points on every operation on an object, not a fixed few:** create, copy, delete, connect, disconnect, freeze, thaw, lock, unlock, revise, check in or out, remove a file, grant, revoke, and changing an attribute, description, name, owner, type, policy or vault | E O Own | **No** |
+| Points on a relationship's operations: create, delete, change an attribute, freeze, thaw | E Own | **No** |
 | Points on an attribute's change | E | **No** |
 | Points on a workflow and its activities: start, stop, finish, suspend, resume, reassign, activate, complete, override | E | Part: `invoke-done` and `invoke-error` |
 | A program attached to a type, run on an object (`method`) | E | Yes: operations |
@@ -207,7 +207,7 @@ These are directions to confirm, not decisions.
 1. **Storage must stay open.** A status column is one option among several, and likely not the main one. So `state.code` can't depend on a bound attribute: a state has a code whether the state lives in a column, its own tables or another system. The draft's "code that does nothing" warning and its root-states-only limit both came from assuming a column, and only the column binding should keep them.
 2. **One lifecycle, many types, and one type, many lifecycles.** `subject` as a single entity and `entity.lifecycle` as a single process are the largest limits this list shows. Lifecycles may also need to govern more than entities, such as custom kinds.
 3. **Guards read the object.** The draft held this back because generated code couldn't run it. That reasoning doesn't hold: a guard is a useful statement in a model with no pack at all, and a hand-written partial method is an acceptable result.
-4. **Trigger points deserve a name.** E's syntax gives a clean shape: a grid of events (promote, demote, approve, reject and so on) by kinds (check, override, action), each naming a program with optional arguments. Today's guards and actions are two cells of that grid. A model could name the rest, and a template could read each point, with from-to pairs and their codes, whichever way a team implements it: partial methods, one pipeline, or a lifecycle system's own programs. Points on an object's own events (create, delete, connect) go wider than lifecycles.
+4. **Trigger points deserve a name.** E's syntax gives a clean shape: a grid of events (promote, demote, approve, reject and so on) by kinds (check, override, action), each naming a program with optional arguments. Today's guards and actions are two cells of that grid. A model could name the rest, and a template could read each point, with from-to pairs and their codes, whichever way a team implements it: partial methods, one pipeline, or a lifecycle system's own programs. The owner's point is that every operation has its points, so the list of events should be open rather than a fixed few. Points on an object's own operations (create, freeze, lock, connect) go wider than lifecycles.
 5. **Rows that may be next after that:** per-state access, entry and exit required fields (partly 4.4), a reject path, observers and acknowledgers, and revision schemes.
 
 ## Sources
