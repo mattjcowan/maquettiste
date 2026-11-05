@@ -129,7 +129,7 @@ clobber a concurrent edit or leave a dangling id.
    Prefer a declaration to a script for a simple convention ("every audited table has an updated_at column"): a file
    `extensions/rules/<name>.json` (`get_schema` `declared-rules`) whose rules each hold `id`, `severity`, `select` (`custom:<type>` as a kind picks one custom kind)
    (`kind`, with `stereotype`, `tag`, `property`, `package`), one `require` condition (`all`, `any`, `not`, `has`,
-   `equals`, `count`, `references`, `referencedBy`) and a `message` with `{path}` placeholders. It sees resolved objects,
+   `equals`, `count`, `references`, `referencedBy`, the last two with `excludeRetired` to skip retired links) and a `message` with `{path}` placeholders. It sees resolved objects,
    inherited members included; `write_extension_file` reports MQ5014 to MQ5016 at once, `validate` its `x/<id>` findings.
    When one element is a real exception to a rule, add a `suppressions` entry to that element (`rule`, optional `member`,
    and a `reason`, which is required: say why this element is the exception) instead of turning the rule off; never

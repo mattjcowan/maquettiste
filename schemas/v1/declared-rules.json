@@ -253,7 +253,8 @@
         "kind",
         "field",
         "min",
-        "max"
+        "max",
+        "excludeRetired"
       ],
       "properties": {
         "kind": {
@@ -270,6 +271,11 @@
         },
         "max": {
           "$ref": "#/$defs/bound"
+        },
+        "excludeRetired": {
+          "description": "Whether a linked object that is retired, or sits in a retired element, does not count.",
+          "type": "boolean",
+          "default": false
         }
       },
       "required": [

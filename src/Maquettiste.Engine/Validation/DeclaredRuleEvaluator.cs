@@ -407,6 +407,8 @@ internal static class DeclaredRuleEvaluator
                 if (string.Equals(target.OwnerId, entry.OwnerId, StringComparison.Ordinal) && (string.Equals(target.Id, entry.Id, StringComparison.Ordinal)
                     || ModelSnapshot.IsInside(target.JsonPointer, entry.JsonPointer)))
                     continue; // a link to the object itself or one of its own parts
+                if (links.ExcludeRetired && (snapshot.IsRetired(target.Id) || snapshot.IsRetired(target.OwnerId)))
+                    continue;
                 targets.Add(reference.ToId);
             }
 
@@ -424,6 +426,8 @@ internal static class DeclaredRuleEvaluator
                 if (links.Field is { } field && !string.Equals(reference.Field, field, StringComparison.Ordinal))
                     continue;
                 if (!snapshot.TryGetEntry(reference.FromId, out var from) || !links.Kind.Contains(from.Kind, StringComparer.Ordinal))
+                    continue;
+                if (links.ExcludeRetired && (snapshot.IsRetired(reference.FromId) || snapshot.IsRetired(reference.FromElementId)))
                     continue;
                 sources.Add(reference.FromId);
             }

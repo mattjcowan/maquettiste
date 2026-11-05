@@ -109,7 +109,8 @@ public sealed record RuleCount(string Of, RuleCondition? Where, int? Min, int? M
 /// <param name="Field">The reference's field, or <see langword="null"/> for any.</param>
 /// <param name="Min">The least count; 1 when absent.</param>
 /// <param name="Max">The greatest count.</param>
-public sealed record RuleReferences([property: JsonConverter(typeof(RuleValuesConverter))] IReadOnlyList<string> Kind, string? Field, int? Min, int? Max);
+/// <param name="ExcludeRetired">Whether a linked object that is retired, or sits in a retired element, does not count.</param>
+public sealed record RuleReferences([property: JsonConverter(typeof(RuleValuesConverter))] IReadOnlyList<string> Kind, string? Field, int? Min, int? Max, bool ExcludeRetired = false);
 
 /// <summary>A loaded rule declaration file.</summary>
 /// <param name="Rules">Its rules.</param>
