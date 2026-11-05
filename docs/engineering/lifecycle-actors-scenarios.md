@@ -49,7 +49,7 @@ Each feature then says the same thing in the same terms:
 3. **Roles within a context.** A role that holds only within a context object, such as "reviewer on this project", reached along a to-one path from the object. This is how a lifecycle system's team roles and security contexts are stated.
 4. **The system.** Automatic moves, timers and deferred triggers act as the system, so rights and history can say so.
 5. **Separation of duties.** "No one holds both of these roles on one object", and "the approver is not the submitter". The second needs the object to record who submitted, which comes in section 6.
-6. **A set of types named by a stereotype.** "Every entity carrying this stereotype" as one way to name several types at once. Lifecycle subjects need it, reusable rights over shared attributes need it, and so do relations with several types per end. Decide it once, in this item.
+6. **A set of types named by a stereotype.** "Every entity carrying this stereotype" as one way to name several types at once. Lifecycle subjects need it, guards and reusable rights over a stereotype's attributes need it (4.1 reads only a shared base entity's), and so do relations with several types per end. Decide it once, in this item.
 
 ## 5. What: verbs
 
@@ -119,7 +119,7 @@ Each feature then says the same thing in the same terms:
 
 ## 10. Order
 
-1. **4.1, lifecycles any implementation can follow** (designed): codes, subjects, guard conditions that read the object, and a scenario's objects.
+1. **4.1, lifecycles any implementation can follow** (designed, checked three times): codes, subjects and bindings first, then guard conditions that read the object and a scenario's objects.
 2. **Actors:** membership, relative actors starting with the owner, roles within a context, the system, and a stereotype as a set of types.
 3. **Verbs:** the built-in set and the project's own, with events and operations naming theirs.
 4. **Setting the object's data, and reading another lifecycle's state** (section 6). These are prerequisites for rights.
