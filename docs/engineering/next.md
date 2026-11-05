@@ -39,7 +39,7 @@ must help any team whether they use it or not, and it stays optional.
 | 3.10 | Requirements as a project's own custom kind, with typed links and declared rules, and a guide that shows how | yes | Built, 0.12.2 | [Requirements as a kind of your own](../guides/requirements-as-your-own-kind.md). Replaces the built-in kind of [design 4.3](next-phase-2-design.md#43-requirements), which is in "Not doing". |
 | | Custom properties and stereotypes on guards, actions, invokes and gates, and custom properties on checks and constraints | yes | Built, 0.12.2 | [Design 4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies), decision 9, plus checks and constraints. An operation's guards hold them as well. Properties on a check never reach its SQL. |
 | 4.2 | Shared process guards, actions and gate policies | yes | Built, 0.12.2 | [Design 4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies). A library's guard holds an expression, not a condition, since a condition names one process's context. The editor edits a library through the JSON view. |
-| 4.1 | A lifecycle bound to a reference type or a status column | yes | Design next | Not designed yet. |
+| 4.1 | Lifecycles any implementation can follow: a stable code per state, `subjects` for one lifecycle on many types (the one-subject form deprecated with a warning), the state held in an attribute as one option, guard conditions that read the object, and a scenario's objects | yes | Designed, not built | [The design](lifecycle-design.md), with the owner's decisions of 2026-11-05, checked four times. About nine days of a person's work, or seven to eight hours built by agents, in two halves that can ship apart. [What lifecycle systems can do](lifecycle-capabilities.md) is its yardstick, and [Who, what and when](lifecycle-actors-scenarios.md) sets the order of the items that follow. |
 
 ## Phase 1: built in 0.11.0
 
@@ -271,3 +271,15 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 
 - A reorganization for non-experts: onboarding, naming, empty states, a clearer first screen. Collect confusion points
   in a live walkthrough first.
+- **The Processes explorer is too flat (the owner, 2026-11-05).** Today each domain lists every process in one list
+  (lifecycles, orchestrations and libraries mixed), and Actors is one flat list after the domains. Proposed:
+  - In each domain, processes grouped by use: **Lifecycles**, **Orchestrations** and **Libraries**. A lifecycle shows
+    the entities it governs beside its name.
+  - Under a process: **States**, **Events**, **Guards and actions** and **Gates**, then **Scenarios**, failed ones
+    first, each with its status.
+  - **Actors** grouped by type: **People**, **Roles** and **Systems**. "Systems" is the folder's label only: the
+    actor type stays `external-system` in files, and its label elsewhere stays "external system". The system itself,
+    which a later item makes the actor of automatic moves, is labeled **Automatic**, so the two aren't confused. Once
+    actors have membership, a role lists its members, and scenario personas sit with their scenarios.
+  - In the Domain model explorer, an entity lists the lifecycles that govern it. An actor's row says where it acts.
+  - **Built right after 4.1 (the owner, 2026-11-05).**
