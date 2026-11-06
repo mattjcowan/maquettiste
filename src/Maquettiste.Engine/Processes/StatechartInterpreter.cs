@@ -29,6 +29,14 @@ public sealed record InterpreterOptions
 
     /// <summary>Cancellation of the expressions' sandbox calls.</summary>
     public CancellationToken CancellationToken { get; init; }
+
+    /// <summary>
+    /// The object the run's process runs for (lifecycle-design.md decision 22): a JSON object of its entity's attributes and its bases' by
+    /// name, each the value given, else the declaring attribute's default, else null, with each linked object nested by its navigation
+    /// name (an object for a to-one end, a list for a to-many one). An empty object when absent or not an object; an invoked
+    /// sub-process sees an empty object.
+    /// </summary>
+    public JsonElement? Subject { get; init; }
 }
 
 /// <summary>
@@ -41,9 +49,11 @@ public sealed record InterpreterOptions
 public sealed class StatechartInterpreter
 {
     private static readonly JsonElement Null = JsonDocument.Parse("null").RootElement.Clone();
+    private static readonly JsonElement NoObject = JsonDocument.Parse("{}").RootElement.Clone();
 
     private readonly InterpreterOptions _options;
     private readonly Instance _root;
+    private readonly JsonElement _subject;
     private readonly Dictionary<StatechartModel, ProcessExpressionSession?> _sessions = new(ReferenceEqualityComparer.Instance);
     private long _auditSequence;
     private long _timerSequence;
@@ -60,6 +70,7 @@ public sealed class StatechartInterpreter
         ArgumentNullException.ThrowIfNull(chart);
         _options = options ?? new InterpreterOptions();
         _root = new Instance(chart, null, null, 0);
+        _subject = _options.Subject is { ValueKind: JsonValueKind.Object } subject ? subject : NoObject;
     }
 
     /// <summary>The chart.</summary>
@@ -992,6 +1003,12 @@ public sealed class StatechartInterpreter
         IReadOnlyDictionary<string, object?> => "an object",
         _ => "a list",
     };
+
+    /// <summary>The object each running instance sees, root first: the run's subject for the root, an empty object for a sub-process.</summary>
+    internal IReadOnlyList<(string Process, JsonElement Subject)> SubjectsSeen => [.. AllInstances().Select(i => (i.Chart.Process.Id, SubjectOf(i)))];
+
+    // The object an instance's guards read (lifecycle-design.md decision 22): the run's subject for the root; an invoked sub-process sees none.
+    private JsonElement SubjectOf(Instance inst) => inst.Parent is null ? _subject : NoObject;
 
     private JsonElement ContextObject(Instance inst)
     {

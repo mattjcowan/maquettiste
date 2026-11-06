@@ -4,6 +4,7 @@ using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Processes;
 using Maquettiste.Engine.Tests.Loading;
 using Maquettiste.Engine.Tests.Resolution;
 using Maquettiste.Testing;
@@ -249,5 +250,179 @@ public sealed class ScenarioObjectTests
             Assert.Equal([Sc], Assert.Single(plan.Refused, r => r.Member == "Archived").ReferencedBy);
         else
             Assert.Empty(plan.Refused);
+    }
+
+    // ---- the object the interpreter sees ----
+
+    private const string Party = "01JENT00000000000000000007"; // Customer's base in the tests below
+    private const string PartyKind = "01JATT00000000000000000071";
+
+    // OrderCustomer navigable both ways: Order.customer (to-one) and Customer.orders (to-many).
+    private static void Navigable(LoaderHarness x) => x.Write("model/relations/order-customer.json", $$"""
+        {"$schema":"../../.schema/v1/relation.json","kind":"relation","id":"{{Relation}}","name":"OrderCustomer",
+         "ends":[{"id":"{{OrdersEnd}}","entity":"{{Order}}","role":"orders","navigation":"orders"},
+                 {"id":"{{CustomerEnd}}","entity":"{{Customer}}","role":"customer","navigation":"customer","max":1}]}
+        """);
+
+    // Party, which declares kind (a string of at most 4, "anon" by default), and Customer derived from it.
+    private static void Based(LoaderHarness x, string partyKind = "\"anon\"")
+    {
+        x.Write("model/entities/party.json", $$"""
+            {"$schema":"../../.schema/v1/entity.json","kind":"entity","id":"{{Party}}","name":"Party","package":"{{Package}}","abstract":true,
+             "attributes":[{"id":"{{PartyKind}}","name":"kind","type":"string","length":4,"default":{{partyKind}}}]}
+            """);
+        var customer = File(x, "model/entities/customer.json");
+        customer["base"] = Party;
+        x.Write("model/entities/customer.json", customer.ToJsonString());
+    }
+
+    private static void Objects(LoaderHarness x, string objects)
+    {
+        var file = File(x, ScenarioFile);
+        file["objects"] = JsonNode.Parse(objects);
+        x.Write(ScenarioFile, file.ToJsonString());
+    }
+
+    [Fact]
+    public async Task The_subject_row_reads_values_over_the_declaring_bases_defaults_and_nests_links_by_navigation()
+    {
+        var (h, store) = await OpenAsync(prepare: x =>
+        {
+            Navigable(x);
+            Based(x);
+            // The order gives no status (Order, its base, declares Draft); the customer links back to the order, which is on the path.
+            Objects(x, $$"""
+                [{"id":"{{OrderObject}}","name":"order","entity":"{{RushOrder}}","links":[{"end":"{{CustomerEnd}}","object":"{{CustomerObject}}"}]},
+                 {"id":"{{CustomerObject}}","name":"customer","entity":"{{Customer}}","values":{"{{CustomerName}}":"Ada"},
+                  "links":[{"end":"{{OrdersEnd}}","object":"{{OrderObject}}"}]}]
+                """);
+        });
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+        var scenario = model.Get<Scenario>(Sc)!;
+
+        var row = ScenarioObjects.Row(model, scenario.Objects, scenario.Subject);
+        Assert.Equal("""{"customer":{"id":null,"kind":"anon","name":"Ada"},"id":null,"status":"Draft"}""", row.GetRawText());
+        // The customer as the subject: its orders are a list.
+        Assert.Equal("""{"id":null,"kind":"anon","name":"Ada","orders":[{"id":null,"status":"Draft"}]}""",
+            ScenarioObjects.Row(model, scenario.Objects, CustomerObject).GetRawText());
+        Assert.Equal("{}", ScenarioObjects.Row(model, [], null).GetRawText());
+
+        // The replay's interpreter sees the row; a scenario without objects gives an empty one.
+        using var runtime = new ProcessRuntime(model, 1, Ct);
+        var chart = runtime.Chart(P)!;
+        var seen = Assert.Single(ScenarioReplayer.Interpreter(scenario, chart, runtime).SubjectsSeen);
+        Assert.Equal((P, row.GetRawText()), (seen.Process, seen.Subject.GetRawText()));
+        Assert.Equal("{}", Assert.Single(ScenarioReplayer.Interpreter(model.Get<Scenario>(HappyPath)!, chart, runtime).SubjectsSeen).Subject.GetRawText());
+        Assert.True(ScenarioReplayer.Replay(scenario, runtime)!.Complete);
+    }
+
+    [Fact]
+    public void An_invoked_sub_process_sees_no_object()
+    {
+        var child = new Process
+        {
+            Id = "Child", Name = "Child", States = [new ProcessState { Id = "Work", Name = "Work" }], Transitions = [],
+        };
+        var parent = new Process
+        {
+            Id = "Parent", Name = "Parent",
+            States = [new ProcessState { Id = "Wait", Name = "Wait", Invoke = [new ProcessInvoke { Id = "sub", Name = "sub", Type = InvokeType.Process, Process = "Child" }] }],
+            Transitions = [],
+        };
+        var charts = new Dictionary<string, StatechartModel> { ["Child"] = StatechartModel.Get(child, null) };
+        var subject = JsonSerializer.SerializeToElement(new { status = "Draft" });
+        var run = new StatechartInterpreter(StatechartModel.Get(parent, null),
+            new InterpreterOptions { SubProcess = charts.GetValueOrDefault, Subject = subject });
+        run.Start();
+
+        Assert.Equal([("Parent", """{"status":"Draft"}"""), ("Child", "{}")], run.SubjectsSeen.Select(s => (s.Process, s.Subject.GetRawText())));
+        Assert.Equal("{}", Assert.Single(new StatechartInterpreter(StatechartModel.Get(child, null)).SubjectsSeen).Subject.GetRawText());
+    }
+
+    // ---- replay and its reach ----
+
+    [Theory]
+    [InlineData("Archived", "/objects/0/values", "not a member")] // not a member of OrderStatus
+    [InlineData("Draft", "/objects/1/values", "not an attribute")] // the customer gives a value for the order's status
+    public async Task A_bad_object_value_is_MQ9305_and_stops_the_replay_without_refusing_a_save(string status, string pointer, string why)
+    {
+        var (h, store) = await OpenAsync(status, x =>
+        {
+            if (status == "Draft")
+            {
+                var file = File(x, ScenarioFile);
+                file["objects"]![1]!["values"]![Status] = "Draft";
+                x.Write(ScenarioFile, file.ToJsonString());
+            }
+        });
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+
+        using (var runtime = new ProcessRuntime(model, 1, Ct))
+        {
+            var replay = ScenarioReplayer.Replay(model.Get<Scenario>(Sc)!, runtime)!;
+            var finding = Assert.Single(replay.Diagnostics);
+            Assert.Equal(("MQ9305", pointer, Sc), (finding.Rule, finding.JsonPointer, finding.ElementId));
+            Assert.Contains(why == "not an attribute" ? "not an attribute of entity 'Customer'" : "does not fit", finding.Message, StringComparison.Ordinal);
+            Assert.False(replay.Complete);
+            Assert.Empty(replay.Steps);
+        }
+
+        var findings = (await EngineServices.Create(h.Options).Validator.ValidateAsync(model, ValidationScope.All, null, Ct)).Diagnostics;
+        Assert.Contains(findings, d => d.Rule == "MQ9305" && d.ElementId == Sc && d.JsonPointer == pointer);
+
+        // A replay finding: saving the scenario is not refused.
+        var current = (await store.GetElementAsync(Sc, Ct))!;
+        var node = File(h, ScenarioFile);
+        node["displayName"] = "With objects";
+        var saved = await store.SaveAsync(Sc, System.Text.Encoding.UTF8.GetBytes(node.ToJsonString()), current.Hash, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, saved.Outcome);
+    }
+
+    [Fact]
+    public async Task A_change_to_an_objects_entity_or_the_base_that_declares_its_defaults_replays_the_scenario()
+    {
+        // The customer's kind is too long for Party's declaration; Customer is no subject of the process, so only the objects reach it.
+        var (h, store) = await OpenAsync(prepare: x =>
+        {
+            Navigable(x);
+            Based(x);
+            var file = File(x, ScenarioFile);
+            file["objects"]![1]!["values"]![PartyKind] = "person";
+            x.Write(ScenarioFile, file.ToJsonString());
+        });
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+        var validator = EngineServices.Create(h.Options).Validator;
+
+        foreach (var changed in new[] { Party, Customer, Relation })
+        {
+            var scoped = (await validator.ValidateAsync(model, new ValidationScope([changed]), null, Ct)).Diagnostics;
+            Assert.Contains(scoped, d => d.Rule == "MQ9305" && d.ElementId == Sc && d.JsonPointer == "/objects/1/values");
+            Assert.DoesNotContain(scoped, d => d.ElementId == HappyPath); // a scenario without objects is not reached through them
+        }
+
+        // A changed default (and length) on the declaring base, saved: the base's validation replays the scenario, which now passes.
+        var party = (await store.GetElementAsync(Party, Ct))!;
+        var node = File(h, "model/entities/party.json");
+        node["attributes"]![0]!["default"] = "anyone";
+        node["attributes"]![0]!["length"] = 6;
+        var saved = await store.SaveAsync(Party, System.Text.Encoding.UTF8.GetBytes(node.ToJsonString()), party.Hash, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, saved.Outcome);
+        var after = (await validator.ValidateAsync(store.Current!, new ValidationScope([Party]), null, Ct)).Diagnostics;
+        Assert.DoesNotContain(after, d => d.Rule == "MQ9305" && d.ElementId == Sc);
+
+        // The steps' trace reads the subjects' entities, the objects' entities with their bases, and the links' relations.
+        var resolved = ResolutionKit.Resolve(store.Current!);
+        var step = resolved.Scenarios.Single(x => x.Id == Sc).Steps[0];
+        foreach (var id in new[] { Order, RushOrder, Customer, Party, Relation })
+            Assert.Contains(step.Dependencies, k => k.Contains(id, StringComparison.Ordinal));
+        var plain = resolved.Scenarios.Single(x => x.Id == HappyPath).Steps[0];
+        Assert.Contains(plain.Dependencies, k => k.Contains(Order, StringComparison.Ordinal)); // the process's subject
+        Assert.DoesNotContain(plain.Dependencies, k => k.Contains(Customer, StringComparison.Ordinal));
     }
 }

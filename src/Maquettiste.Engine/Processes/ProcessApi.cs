@@ -56,6 +56,14 @@ public sealed record SimulateRequest
     /// <summary>The start: <c>{ context?, at? }</c> (context values by attribute id, the clock's start).</summary>
     public JsonElement? Start { get; init; }
 
+    /// <summary>The run's objects, as a scenario's <c>objects</c> (lifecycle-design.md decision 22); with <see cref="Scenario"/>, that
+    /// scenario's objects when absent. Requires <see cref="Subject"/>.</summary>
+    public IReadOnlyList<JsonElement>? Objects { get; init; }
+
+    /// <summary>The id of the object in <see cref="Objects"/> the process runs for; with <see cref="Scenario"/> and no objects, the
+    /// scenario's subject when absent.</summary>
+    public string? Subject { get; init; }
+
     /// <summary>A scenario id: its start and steps run first (the request's <see cref="Start"/> is then ignored).</summary>
     public string? Scenario { get; init; }
 
@@ -74,6 +82,12 @@ public sealed record RecordScenarioRequest
 
     /// <summary>The start: <c>{ context?, at? }</c>.</summary>
     public JsonElement? Start { get; init; }
+
+    /// <summary>The scenario's objects (lifecycle-design.md decision 22), written to its <c>objects</c>. Requires <see cref="Subject"/>.</summary>
+    public IReadOnlyList<JsonElement>? Objects { get; init; }
+
+    /// <summary>The id of the object in <see cref="Objects"/> the process runs for.</summary>
+    public string? Subject { get; init; }
 
     /// <summary>The inputs (scenario steps; an <c>expect</c> given is replaced by the replay's).</summary>
     public IReadOnlyList<JsonElement>? Steps { get; init; }
@@ -398,6 +412,62 @@ public static class ProcessApi
         }
     }
 
+    /// <summary>
+    /// Reads the objects and the subject of a simulation or a recording (lifecycle-design.md decision 22): each object as a scenario's,
+    /// ids unique, each link's object one of them, and the subject one of them, required with objects and refused without.
+    /// </summary>
+    /// <param name="objects">The objects.</param>
+    /// <param name="subject">The subject's id.</param>
+    /// <param name="error">Why they cannot be read.</param>
+    /// <returns>The objects (empty when none are given), or null.</returns>
+    public static IReadOnlyList<ScenarioObject>? ReadObjects(IReadOnlyList<JsonElement>? objects, string? subject, out string? error)
+    {
+        error = null;
+        var result = new List<ScenarioObject>();
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < (objects?.Count ?? 0); i++)
+        {
+            var element = objects![i];
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                error = $"objects[{i}] must be an object: {{ id, name, entity, values?, links? }}.";
+                return null;
+            }
+
+            try
+            {
+                var obj = element.Deserialize<ScenarioObject>(EngineJson.Options)!;
+                if (!ids.Add(obj.Id))
+                {
+                    error = $"objects[{i}] has the id {obj.Id}, which another object has; give each object its own id.";
+                    return null;
+                }
+
+                result.Add(obj);
+            }
+            catch (JsonException e)
+            {
+                error = $"objects[{i}] is not a scenario object: {e.Message}";
+                return null;
+            }
+        }
+
+        foreach (var link in result.SelectMany(o => o.Links))
+        {
+            if (!ids.Contains(link.Object))
+            {
+                error = $"A link names the object {link.Object}, which is not one of the objects; link to one of them.";
+                return null;
+            }
+        }
+
+        if (result.Count > 0 && subject is null)
+            error = "subject is required with objects: give the id of the object the process runs for.";
+        else if (subject is not null && !ids.Contains(subject))
+            error = result.Count == 0 ? "subject names an object, but there are no objects; give objects, or leave subject out." : $"subject {subject} is not one of the objects; give the id of one of them.";
+        return error is null ? result : null;
+    }
+
     /// <summary>Runs a start and inputs through the interpreter and describes where the process stands.</summary>
     /// <param name="chart">The chart.</param>
     /// <param name="processHash">The process document's hash.</param>
@@ -405,13 +475,19 @@ public static class ProcessApi
     /// <param name="start">The start.</param>
     /// <param name="inputs">The inputs.</param>
     /// <param name="from">The first trace index returned.</param>
+    /// <param name="objects">The run's objects (lifecycle-design.md decision 22); none when absent.</param>
+    /// <param name="subject">The id of the object among them the process runs for.</param>
     /// <returns>The result.</returns>
-    public static SimulationResult Simulate(StatechartModel chart, string processHash, ProcessRuntime runtime, ScenarioStart? start, IReadOnlyList<ScenarioStep> inputs, int from = -1)
+    public static SimulationResult Simulate(StatechartModel chart, string processHash, ProcessRuntime runtime, ScenarioStart? start, IReadOnlyList<ScenarioStep> inputs, int from = -1,
+        IReadOnlyList<ScenarioObject>? objects = null, string? subject = null)
     {
         ArgumentNullException.ThrowIfNull(chart);
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentNullException.ThrowIfNull(inputs);
-        var interpreter = new StatechartInterpreter(chart, runtime.Options("simulation"));
+        var interpreter = new StatechartInterpreter(chart, runtime.Options("simulation") with
+        {
+            Subject = ScenarioObjects.Row(runtime.Model, objects ?? [], subject),
+        });
         DateTimeOffset? at = null;
         if (start?.At is { } text && TryParseAt(text, out var parsed))
             at = parsed;

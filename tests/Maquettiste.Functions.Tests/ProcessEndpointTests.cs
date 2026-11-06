@@ -119,6 +119,59 @@ public sealed class ProcessEndpointTests
     }
 
     [Fact]
+    public async Task Simulate_and_record_carry_a_scenarios_objects_and_subject()
+    {
+        await using var host = EditorHost.CreateModel("processes");
+        const string Request = "01JQXBJ0000000000000000001";
+        const string Other = "01JQXBJ0000000000000000002";
+        JsonArray Objects(object amount) => new(
+            new JsonObject
+            {
+                ["id"] = Request, ["name"] = "request", ["entity"] = "01JQENT0000000000000000003",
+                ["values"] = new JsonObject { ["01JQATT0000000000000000012"] = JsonValue.Create(amount) },
+            },
+            new JsonObject { ["id"] = Other, ["name"] = "other", ["entity"] = "01JQENT0000000000000000003" });
+        JsonObject Recording(string name, object amount, string? subject = Request) => new()
+        {
+            ["name"] = name,
+            ["objects"] = Objects(amount),
+            ["subject"] = subject,
+            ["start"] = new JsonObject { ["context"] = new JsonObject { ["01JQATT0000000000000000201"] = 2500 } },
+            ["steps"] = new JsonArray(new JsonObject { ["event"] = "01JQPRX0000000000000000014", ["actor"] = "01JQACT0000000000000000008" }),
+        };
+
+        // record writes the cast into the new scenario, which verifies.
+        var created = await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/scenarios", Recording("WithRequest", 2500));
+        Assert.Equal(201, created.Status);
+        Contract.AssertResponse(created, "/api/processes/{id}/scenarios");
+        var file = JsonNode.Parse(File.ReadAllText(host.PathOf(".maquettiste/model/scenarios/purchase-approval/with-request.json")))!.AsObject();
+        Assert.Equal(Objects(2500).ToJsonString(), file["objects"]!.ToJsonString());
+        Assert.Equal(Request, file["subject"]!.GetValue<string>());
+        Assert.Equal(["kind", "id", "name", "process", "objects", "subject", "start", "steps"], file.Where(p => !p.Key.StartsWith('$')).Select(p => p.Key));
+        var scenario = created.Json["id"]!.GetValue<string>();
+        var verify = await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/verify", new { scenarios = new[] { scenario } });
+        Assert.True(verify.Json["passed"]!.GetValue<bool>(), verify.Text);
+
+        // A bad value cannot be replayed (MQ9305); objects without a subject, or a subject that is not one of them, are bad requests.
+        var bad = await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/scenarios", Recording("BadRequest", "lots"));
+        Assert.Equal(422, bad.Status);
+        Assert.Contains(bad.Json["diagnostics"]!.AsArray(), d => d!["rule"]!.GetValue<string>() == "MQ9305");
+        Assert.Equal(400, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/scenarios", Recording("NoSubject", 2500, null))).Status);
+        Assert.Equal(400, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/scenarios", Recording("Stranger", 2500, "01JQXBJ0000000000000000009"))).Status);
+
+        // simulate takes objects and a subject; with a scenario and no objects, the scenario's, and a subject picks one of them.
+        var simulated = await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new JsonObject { ["objects"] = Objects(2500), ["subject"] = Other });
+        Assert.Equal(200, simulated.Status);
+        Contract.AssertResponse(simulated, "/api/processes/{id}/simulate");
+        Assert.Equal(400, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new JsonObject { ["objects"] = Objects(2500) })).Status);
+        var replayed = await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new { scenario });
+        Assert.Equal(200, replayed.Status);
+        Assert.Equal(200, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new { scenario, subject = Other })).Status);
+        Assert.Equal(400, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new { scenario, subject = "01JQXBJ0000000000000000009" })).Status);
+        Assert.Equal(400, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new { subject = Other })).Status);
+    }
+
+    [Fact]
     public async Task Export_then_import_into_the_process_round_trips_bytes_and_a_stale_hash_is_409()
     {
         await using var host = EditorHost.CreateModel("processes");

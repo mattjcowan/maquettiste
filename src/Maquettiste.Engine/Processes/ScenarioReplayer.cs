@@ -118,8 +118,9 @@ public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOn
 
 /// <summary>
 /// Replays a scenario through the engine interpreter and compares each step's acceptance, active states and changed context, and the
-/// outcome (MQ9301 to MQ9306; phase-3-design.md section 3). A step's field problems (MQ9305) and a guard without expression or assume
-/// value (MQ9306) stop the replay at that step. After a failed expectation the remaining steps still run (their traces feed
+/// outcome (MQ9301 to MQ9306; phase-3-design.md section 3). The interpreter sees the scenario's subject as its object (lifecycle-design.md
+/// decision 22). A step's field problems (MQ9305) and a guard without expression or assume value (MQ9306) stop the replay at that step;
+/// a bad start instant or a bad object value (MQ9305) stops it before the first step. After a failed expectation the remaining steps still run (their traces feed
 /// <c>refresh-scenario</c>) but are not compared: only the first failing step is reported, since later ones would only repeat it.
 /// </summary>
 public static class ScenarioReplayer
@@ -147,7 +148,7 @@ public static class ScenarioReplayer
         ArgumentNullException.ThrowIfNull(runtime);
         var diagnostics = new List<Diagnostic>();
         var seen = new HashSet<(string, string)>();
-        var interpreter = new StatechartInterpreter(chart, runtime.Options(scenario.Id));
+        var interpreter = Interpreter(scenario, chart, runtime);
         DateTimeOffset? at = null;
         var badAt = false;
         if (scenario.Start?.At is { } startAt)
@@ -162,9 +163,14 @@ public static class ScenarioReplayer
         Report(start, "/start");
         if (badAt)
             Add(RuleCatalog.Create("MQ9305", $"Scenario '{scenario.Name}' starts at '{scenario.Start!.At}', which is not an ISO 8601 date-time; give one such as 2026-01-01T09:00:00Z, or remove start.at.", scenario.Id, null, "/start/at"));
+        // A value an object gives that the run cannot use stops the replay before the first step, as a bad start does.
+        var objectProblem = ScenarioObjects.Check(runtime.Model, scenario.Objects, runtime.Fits);
+        var badObject = objectProblem is not null;
+        if (objectProblem is { } bad)
+            Add(RuleCatalog.Create("MQ9305", $"Scenario '{scenario.Name}': {bad.Message}", scenario.Id, null, bad.Pointer));
         var steps = new List<StepTrace>();
         ScenarioFailure? failure = null;
-        var complete = !start.Incomplete && !badAt;
+        var complete = !start.Incomplete && !badAt && !badObject;
         for (var i = 0; complete && i < scenario.Steps.Count; i++)
         {
             var step = scenario.Steps[i];
@@ -248,6 +254,10 @@ public static class ScenarioReplayer
             }
         }
     }
+
+    /// <summary>The interpreter a replay runs: the scenario's subject is the object it sees (lifecycle-design.md decision 22).</summary>
+    internal static StatechartInterpreter Interpreter(Scenario scenario, StatechartModel chart, ProcessRuntime runtime) =>
+        new(chart, runtime.Options(scenario.Id) with { Subject = ScenarioObjects.Row(runtime.Model, scenario.Objects, scenario.Subject) });
 
     // MQ9305: fields the interpreter cannot judge without the model (payload keys and values, meanings); the interpreter itself reports
     // unknown events, bad durations and invokes that are not pending.

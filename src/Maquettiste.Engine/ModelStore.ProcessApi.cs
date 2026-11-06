@@ -34,12 +34,32 @@ public sealed partial class ModelStore
         var start = ProcessApi.ReadStart(request.Start, out error);
         if (error is not null)
             return ProcessCall<SimulationResult>.Fail(ProcessCallStatus.BadRequest, error);
+        var given = request.Objects is { Count: > 0 };
+        IReadOnlyList<ScenarioObject> objects = [];
+        var subject = request.Subject;
         if (request.Scenario is { Length: > 0 } scenarioId)
         {
             if (snapshot.Get<Scenario>(scenarioId) is not { } scenario || scenario.Process != processId)
                 return ProcessCall<SimulationResult>.Fail(ProcessCallStatus.NotFound, $"No scenario of this process has the id {scenarioId}.");
             start = scenario.Start;
             inputs = [.. scenario.Steps.Select(s => s with { Expect = null }), .. inputs];
+            if (!given)
+            {
+                // The scenario's cast, and its subject unless the request picks another of its objects.
+                objects = scenario.Objects;
+                subject ??= scenario.Subject;
+            }
+        }
+
+        if (given || objects.Count == 0)
+        {
+            if (ProcessApi.ReadObjects(given ? request.Objects : null, subject, out error) is not { } read)
+                return ProcessCall<SimulationResult>.Fail(ProcessCallStatus.BadRequest, error);
+            objects = read;
+        }
+        else if (subject is null || !objects.Any(o => string.Equals(o.Id, subject, StringComparison.Ordinal)))
+        {
+            return ProcessCall<SimulationResult>.Fail(ProcessCallStatus.BadRequest, $"subject {subject} is not one of the scenario's objects; give the id of one of them.");
         }
 
         var model = snapshot;
@@ -53,7 +73,7 @@ public sealed partial class ModelStore
 
         using var runtime = new ProcessRuntime(model, 1, ct);
         var chart = runtime.Chart(processId)!;
-        return ProcessCall<SimulationResult>.Ok(ProcessApi.Simulate(chart, model.GetDocument(processId)!.Hash, runtime, start, inputs, request.From ?? -1));
+        return ProcessCall<SimulationResult>.Ok(ProcessApi.Simulate(chart, model.GetDocument(processId)!.Hash, runtime, start, inputs, request.From ?? -1, objects, subject));
     }
 
     /// <summary>Records a scenario: the inputs replayed by the engine, each step's <c>expect</c> and the outcome filled from the replay.</summary>
@@ -77,7 +97,7 @@ public sealed partial class ModelStore
         if (request.Outcome is not (null or "final" or "active"))
             return ProcessCall<RecordScenarioResult>.Fail(ProcessCallStatus.BadRequest, "outcome must be 'final' or 'active'.");
         _ = ProcessApi.ReadStart(request.Start, out var error);
-        if (error is not null || ProcessApi.ReadInputs(request.Steps, out error) is null)
+        if (error is not null || ProcessApi.ReadInputs(request.Steps, out error) is null || ProcessApi.ReadObjects(request.Objects, request.Subject, out error) is null)
             return ProcessCall<RecordScenarioResult>.Fail(ProcessCallStatus.BadRequest, error);
 
         var ids = _options.EffectiveIdGenerator;
@@ -92,6 +112,13 @@ public sealed partial class ModelStore
         }
 
         var document = new JsonObject { ["kind"] = "scenario", ["id"] = ids.NewId(), ["name"] = request.Name, ["process"] = processId };
+        if (request.Objects is { Count: > 0 } objects)
+        {
+            // The cast as given (lifecycle-design.md decision 22): its ids are the subject's and the links' references.
+            document["objects"] = new JsonArray(objects.Select(o => JsonNode.Parse(o.GetRawText())).ToArray());
+            document["subject"] = request.Subject;
+        }
+
         if (request.Start is { ValueKind: JsonValueKind.Object } start)
             document["start"] = JsonNode.Parse(start.GetRawText());
         document["steps"] = steps;

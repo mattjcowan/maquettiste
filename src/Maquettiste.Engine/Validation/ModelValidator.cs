@@ -1117,13 +1117,45 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 replayed.Add(candidate.Id);
         }
 
-        if (replayed.Count == 0)
+        // A scenario's objects (lifecycle-design.md decision 22) read their entities and the bases that declare their attributes and
+        // defaults, the types their values must fit, and the relations whose ends name their links' navigations.
+        var objectsReached = element is Entity or Relation or EnumType or ValueObject or ScalarType;
+        if (replayed.Count == 0 && !objectsReached)
             yield break;
         foreach (var scenario in model.All<Scenario>())
         {
-            if (replayed.Contains(scenario.Process) && model.GetDocument(scenario.Id) is { } peer)
+            if ((replayed.Contains(scenario.Process) || (objectsReached && ObjectsReach(model, scenario, element))) && model.GetDocument(scenario.Id) is { } peer)
                 yield return peer;
         }
+    }
+
+    // Whether a scenario's objects read the element: an entity they are or derive from, a type an attribute of those entities has, or a
+    // relation one of their links goes through.
+    private static bool ObjectsReach(ModelSnapshot model, Scenario scenario, Element element)
+    {
+        foreach (var obj in scenario.Objects)
+        {
+            if (element is Relation relation)
+            {
+                if (obj.Links.Any(l => relation.Ends.Any(e => string.Equals(e.Id, l.End, StringComparison.Ordinal))))
+                    return true;
+                continue;
+            }
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var current = model.Get<Entity>(obj.Entity); current is not null && seen.Add(current.Id); current = current.Base is { } b ? model.Get<Entity>(b) : null)
+            {
+                if (element is Entity ? string.Equals(current.Id, element.Id, StringComparison.Ordinal)
+                    : current.Attributes.Any(a => string.Equals(a.Type.Ref, element.Id, StringComparison.Ordinal)))
+                    return true;
+            }
+
+            // A dangling entity id still names the entity it waits for.
+            if (element is Entity && string.Equals(obj.Entity, element.Id, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     // Whether a process lists the entity as a subject, in either form, or lists an entity derived from it (whose inherited attributes

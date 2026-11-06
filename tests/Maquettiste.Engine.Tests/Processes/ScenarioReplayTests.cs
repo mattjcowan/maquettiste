@@ -153,6 +153,38 @@ public sealed class ScenarioReplayTests
         Assert.False(replay.Complete);
     }
 
+    [Theory]
+    [InlineData(2500, null)]
+    [InlineData("lots", "/objects/0/values")]
+    public async Task MQ9305_reports_a_bad_object_value_and_stops_the_replay(object amount, string? pointer)
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+        var rejection = model.Get<Scenario>(Rejection)!;
+        // A purchase request (no subject of the process) as the run's object; its amount is a decimal.
+        var request = new ScenarioObject
+        {
+            Id = "01JQXBJ0000000000000000001", Name = "request", Entity = "01JQENT0000000000000000003",
+            Values = ImmutableDictionary<string, JsonElement>.Empty.Add("01JQATT0000000000000000012", J(amount)),
+        };
+
+        var replay = Replay(model, rejection with { Objects = [request], Subject = request.Id });
+
+        if (pointer is null)
+        {
+            Assert.True(replay.Passed, string.Join(" | ", replay.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+            return;
+        }
+
+        var finding = Assert.Single(replay.Diagnostics);
+        Assert.Equal(("MQ9305", pointer), (finding.Rule, finding.JsonPointer));
+        Assert.Contains("'amount' does not fit", finding.Message, StringComparison.Ordinal);
+        Assert.False(replay.Complete);
+        Assert.Empty(replay.Steps);
+    }
+
     [Fact]
     public async Task Validation_replays_scenarios_in_whole_model_and_scoped_runs_and_parses_expressions()
     {
