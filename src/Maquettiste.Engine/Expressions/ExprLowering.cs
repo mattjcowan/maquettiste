@@ -128,6 +128,19 @@ public static class ExprLowering
         ArgumentNullException.ThrowIfNull(e);
         return ExprJs.Lower(e, site, columns ?? ExprColumns.None);
     }
+
+    /// <summary>
+    /// Whether a typed expression reads <c>actor()</c> or <c>in_state</c> (object-effects-design.md section 7): its JavaScript then calls
+    /// <c>mq.actor</c> and <c>mq.inState</c>, which only the engine's <c>mqAt(now, actor)</c> (<see cref="ExprRuntime.Clock"/>) has, so
+    /// it runs only with that runtime and no pack sees it.
+    /// </summary>
+    /// <param name="e">The typed expression.</param>
+    /// <returns>Whether it reads either.</returns>
+    public static bool IsEngineOnly(TypedExpr e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        return e.Node.Actor is not null || e.Node.InState is not null || (e.Body is { } body && IsEngineOnly(body)) || e.Args.Any(IsEngineOnly);
+    }
 }
 
 /// <summary>The JavaScript runtime lowered expressions call (<c>Expressions/expr-runtime.js</c>); packs that write JavaScript copy it.</summary>
@@ -148,10 +161,20 @@ public static class ExprRuntime
     internal const string PreparedPath = "expressions:runtime.js";
 
     /// <summary>
-    /// What <see cref="Prepared"/> holds after <see cref="Source"/>: <c>mqAt(now)</c>, the runtime whose <c>now()</c> is the instant
-    /// given, which a process guard that reads <c>now</c> receives with the simulation's clock, so replays stay deterministic.
+    /// What <see cref="Prepared"/> holds after <see cref="Source"/>, engine-only, so no pack's copy of the runtime changes:
+    /// <c>mqAt(now, actor)</c>, the runtime whose <c>now()</c> is the instant given, which a process guard that reads <c>now</c> receives
+    /// with the simulation's clock, so replays stay deterministic; whose <c>actor()</c> is the identity given, as text, or null
+    /// (object-effects-design.md decision 5), which the lowering reads through the type <c>actor()</c> met; and whose
+    /// <c>inState(object, lifecycle, states)</c> is true when one of the states is among the ids the object holds for the lifecycle under
+    /// <c>$states</c> (a member no attribute can be named), false when none is, and null when the object or that list is missing
+    /// (decisions 7 and 10).
     /// </summary>
-    internal const string Clock = "\nconst mqAt = (now) => Object.freeze({ ...mq, now: () => mq.tsz(now) });\n";
+    internal const string Clock = "\nconst mqInState = (o, lifecycle, states) => {\n"
+        + "  const all = o !== null && typeof o === \"object\" ? o[\"$states\"] : undefined;\n"
+        + "  const active = all !== null && typeof all === \"object\" ? all[lifecycle] : undefined;\n"
+        + "  return Array.isArray(active) ? active.some((s) => states.includes(s)) : null;\n"
+        + "};\n"
+        + "const mqAt = (now, actor) => Object.freeze({ ...mq, now: () => mq.tsz(now), actor: () => (actor === undefined ? null : actor), inState: mqInState });\n";
 
     private static readonly Lazy<PreparedScript> Shared = new(() =>
         PreparedScript.PrepareAll([new ScriptSource(PreparedPath, Source + Clock, "")], ExprEvaluator.Limits)[0]);

@@ -3654,14 +3654,16 @@ export interface components {
         };
         /** @description What `previewExpression` previews: a stored expression (`at`), or `text` at a `site`. */
         ExpressionPreviewRequest: {
-            /** @description The id of the element, or of the check, guard or derived attribute, that holds the expression or takes the text. */
+            /** @description The id of the element, or of the check, guard, derived attribute, action or set, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`. */
             element: string;
             /** @description The pointer of a stored expression in the element's file, or of what holds it; omit when the element holds one, and with text. */
             at?: string | null;
             /** @description Text to preview instead of a stored expression; needs `site`. */
             text?: string | null;
-            /** @description With `text`, `check`, `value` or `guard`, or the pointer of one of the element's sites. */
+            /** @description With `text`, `check`, `value`, `guard` or `set` (a value an action of a process sets, with `attribute`), or the pointer of one of the element's sites. `actor()` and `in_state` preview at guard and set sites, with no SQL form and no answer. */
             site?: string | null;
+            /** @description With `site` `set`, the id of the attribute the value is for, whose type the value must fit (MQ3103). */
+            attribute?: string | null;
             /** @description A database id or name, choosing the binding an entity's expression lowers to SQL through. */
             database?: string | null;
             /** @description The row the expression reads, members by name (a process guard's payload under `event`, an operation's subject under `subject`). */
@@ -4095,9 +4097,19 @@ export interface components {
             id: string;
             name: string;
             expression: string | null;
+            /** @description True only when the action has neither an expression nor sets. */
             isStub: boolean;
             raises: string[];
             usedBy: string[];
+            /** @description The values the action sets on the object, in file order (object-effects-design.md decision 1); left out when it sets none. */
+            sets?: components["schemas"]["SetRecord"][];
+        };
+        /** @description One attribute of the object an action sets, and its value (object-effects-design.md decisions 1 to 3). */
+        SetRecord: {
+            id: string;
+            /** @description The id of the attribute set (an attribute every subject of the process holds). */
+            attribute: string;
+            value: components["schemas"]["ExpressionRecord"];
         };
         /** @description An invocation of a service or another process. */
         InvokeRecord: components["schemas"]["ProcessNodeAnnotations"] & {
@@ -4208,6 +4220,8 @@ export interface components {
             links: components["schemas"]["ScenarioLinkRecord"][];
             /** @description The id of the participant that owns the object (actors-design.md decision 16); absent when the file names none. */
             owner?: string;
+            /** @description The ids of the object's states in other lifecycles, as given (object-effects-design.md decision 10); absent when the file gives none. */
+            states?: string[];
         };
         /** @description A participant of a scenario (actors-design.md decision 14). */
         ParticipantRecord: {
@@ -4285,6 +4299,10 @@ export interface components {
             states: string[];
             statePaths: string[];
             context: {
+                [key: string]: unknown;
+            };
+            /** @description The object's values the step expects it set, by attribute name (object-effects-design.md decision 4); absent when the file gives none. */
+            values?: {
                 [key: string]: unknown;
             };
         };
@@ -6222,6 +6240,13 @@ export interface components {
             values?: {
                 [key: string]: unknown;
             };
+            /**
+             * @description The object's states in lifecycles other than the one the run is for, by state id (object-effects-design.md decision 10): at
+             *     most one active configuration per lifecycle, of lifecycles that can govern the object (MQ9305). A compound state enters its
+             *     default states. A lifecycle not given takes the state the object's bound value maps to, else its initial state, and the
+             *     trace notes it. `in_state` reads them.
+             */
+            states?: components["schemas"]["Ulid"][];
             links?: components["schemas"]["ScenarioLink"][];
             /** @description The id of the participant that owns the object, for a subject whose process entry names no owner field (actors-design.md decision 16). */
             owner?: string;
@@ -6292,6 +6317,19 @@ export interface components {
              *     participant satisfies none of the actors it could act as. The mock backend fills it and echoes the input the same way.
              */
             actsAs?: components["schemas"]["Ulid"];
+            /**
+             * @description The object's attributes the input's actions set to a new value, by attribute id (object-effects-design.md decision 4), as
+             *     `changed` is for the context; a step's `expect.values` is compared with it (MQ9307). Left out when the input set nothing.
+             */
+            valuesChanged?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description What the run assumed or could not do (object-effects-design.md section 7), in the order it happened: a state assumed for an
+             *     object's lifecycle because the scenario gave none (decision 10), an identity that did not convert to the type `actor()` met
+             *     (decision 5), sets an invoked sub-process ran, which change nothing (decision 4). Left out when empty.
+             */
+            notes?: string[];
         };
         MicrostepTrace: {
             transitions: components["schemas"]["Ulid"][];
@@ -6301,9 +6339,19 @@ export interface components {
         };
         ActionRun: {
             action: components["schemas"]["Ulid"];
-            /** @enum {string} */
-            source: "expression" | "stub";
+            /**
+             * @description `expression` when its JavaScript ran (its sets too, when it has any), `sets` when it has only sets and they ran, `stub` when it has neither.
+             * @enum {string}
+             */
+            source: "expression" | "sets" | "stub";
             changed: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description The values the action's sets gave the object, by attribute id (object-effects-design.md decision 4): every value worked out from
+             *     the object and context as they were when the action started, then applied together. Left out when the action has no sets.
+             */
+            sets?: {
                 [key: string]: unknown;
             };
         };
@@ -7535,7 +7583,7 @@ export interface components {
         };
         /**
          * Expression
-         * @description A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).
+         * @description A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard and set sites only), actor (guard and set sites only), inState (with of; guard and set sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).
          */
         expr: {
             /** @description A literal: a string, an integer or a boolean; with type, the value's text, so that digits are kept. */
@@ -7557,10 +7605,19 @@ export interface components {
             /** @description A member of the selected object in the path syntax of declared rules (properties.retentionDays); rule conditions only. */
             member?: string;
             /**
-             * @description The clock, a datetimeoffset; guard sites only.
+             * @description The clock, a datetimeoffset; guard and set sites only.
              * @constant
              */
             now?: true;
+            /**
+             * @description The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard and set sites only.
+             * @constant
+             */
+            actor?: true;
+            /** @description True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard and set sites only. */
+            inState?: string[];
+            /** @description The to-one relation end ids from the subject to the object whose state inState reads; absent, the subject itself. Only with inState. */
+            of?: string[];
             /** @enum {unknown} */
             op?: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "between" | "in" | "notIn" | "isNull" | "isNotNull" | "distinct" | "notDistinct" | "and" | "or" | "not" | "implies" | "add" | "sub" | "mul" | "div" | "neg" | "concat" | "coalesce";
             /** @description A function of the closed table (trim, length, matches, nonnull_count, add_days, add_months, date_part, date_of, round, json_type, json_length); another name is MQ3101. */
@@ -7574,7 +7631,7 @@ export interface components {
             with?: components["schemas"]["exprArgument"][];
             /** @description The expression as text, parsed in the site's scope. */
             text?: string;
-        } & (unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown);
+        } & (unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown | unknown);
         /** Expression case branch */
         exprWhen: {
             when: components["schemas"]["expr"];
@@ -9983,6 +10040,17 @@ export interface components {
             properties?: components["schemas"]["properties"];
         };
         /**
+         * Set
+         * @description One attribute of the object set to a value when the action runs.
+         */
+        set: {
+            id: components["schemas"]["id"];
+            /** @description The attribute set: an attribute every subject of the process holds under one id (an id, or the keyed id of an inherited or contributed attribute). Not derived, and not one that holds a lifecycle's state (MQ9801, MQ9802); once per action (MQ9803). */
+            attribute: string;
+            /** @description The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute. */
+            value: components["schemas"]["expr"];
+        };
+        /**
          * Subject
          * @description An entity the process governs, with the entities derived from it; or a stereotype, standing for every entity that carries it and the entities derived from them. Names exactly one of entity and stereotype.
          */
@@ -10043,7 +10111,7 @@ export interface components {
         };
         /**
          * Action
-         * @description A named effect; without an expression it is a stub.
+         * @description A named effect: context changes (expression), values set on the object (sets), both, or neither as a stub.
          */
         action: {
             id: components["schemas"]["id"];
@@ -10051,6 +10119,11 @@ export interface components {
             displayName?: string;
             /** @description A JavaScript expression returning an object of context updates. */
             expression?: string;
+            /**
+             * @description Values the action sets on the object, each an attribute every subject of the process holds and a value in the expression language. All values are worked out from the object and context as they were when the action started, then applied together. Not in a library (MQ9020).
+             * @default []
+             */
+            sets?: components["schemas"]["set"][];
             /**
              * @description Internal events queued after the action.
              * @default []
@@ -10345,7 +10418,7 @@ export interface components {
                 };
                 /**
                  * Action
-                 * @description A named effect; without an expression it is a stub.
+                 * @description A named effect: context changes (expression), values set on the object (sets), both, or neither as a stub.
                  */
                 action: {
                     id: components["schemas"]["id"];
@@ -10353,6 +10426,11 @@ export interface components {
                     displayName?: string;
                     /** @description A JavaScript expression returning an object of context updates. */
                     expression?: string;
+                    /**
+                     * @description Values the action sets on the object, each an attribute every subject of the process holds and a value in the expression language. All values are worked out from the object and context as they were when the action started, then applied together. Not in a library (MQ9020).
+                     * @default []
+                     */
+                    sets?: components["schemas"]["set"][];
                     /**
                      * @description Internal events queued after the action.
                      * @default []
@@ -10363,6 +10441,17 @@ export interface components {
                     stereotypes?: components["schemas"]["keyList"];
                     /** @default {} */
                     properties?: components["schemas"]["properties"];
+                };
+                /**
+                 * Set
+                 * @description One attribute of the object set to a value when the action runs.
+                 */
+                set: {
+                    id: components["schemas"]["id"];
+                    /** @description The attribute set: an attribute every subject of the process holds under one id (an id, or the keyed id of an inherited or contributed attribute). Not derived, and not one that holds a lifecycle's state (MQ9801, MQ9802); once per action (MQ9803). */
+                    attribute: string;
+                    /** @description The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute. */
+                    value: components["schemas"]["expr"];
                 };
                 /**
                  * Invoke
@@ -10569,6 +10658,11 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
+             * @description The object's states in lifecycles other than the one the scenario runs, by state id: at most one active configuration per lifecycle, of lifecycles that can govern the object (MQ9305). A compound state enters its default states. A lifecycle not given takes the state the object's bound value maps to, else its initial state.
+             * @default []
+             */
+            states?: components["schemas"]["idList"];
+            /**
              * @description The objects this object links to, each through a relation end.
              * @default []
              */
@@ -10649,6 +10743,13 @@ export interface components {
                  * @default {}
                  */
                 context?: {
+                    [key: string]: unknown;
+                };
+                /**
+                 * @description The object's attributes the step set, by attribute id: exactly the attributes the step changed (MQ9307).
+                 * @default {}
+                 */
+                values?: {
                     [key: string]: unknown;
                 };
             };
@@ -10742,6 +10843,11 @@ export interface components {
                     values?: {
                         [key: string]: unknown;
                     };
+                    /**
+                     * @description The object's states in lifecycles other than the one the scenario runs, by state id: at most one active configuration per lifecycle, of lifecycles that can govern the object (MQ9305). A compound state enters its default states. A lifecycle not given takes the state the object's bound value maps to, else its initial state.
+                     * @default []
+                     */
+                    states?: components["schemas"]["idList"];
                     /**
                      * @description The objects this object links to, each through a relation end.
                      * @default []
@@ -10844,6 +10950,13 @@ export interface components {
                          * @default {}
                          */
                         context?: {
+                            [key: string]: unknown;
+                        };
+                        /**
+                         * @description The object's attributes the step set, by attribute id: exactly the attributes the step changed (MQ9307).
+                         * @default {}
+                         */
+                        values?: {
                             [key: string]: unknown;
                         };
                     };

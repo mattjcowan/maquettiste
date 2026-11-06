@@ -379,6 +379,7 @@ public sealed partial class AgentTools
             At = args.String("at") is { Length: > 0 } at ? at : null,
             Text = args.String("text"),
             Site = args.String("site") is { Length: > 0 } site ? site : null,
+            Attribute = args.String("attribute") is { Length: > 0 } attribute ? attribute : null,
             Database = args.String("database") is { Length: > 0 } database ? database : null,
             Values = args.Json("values"),
         };

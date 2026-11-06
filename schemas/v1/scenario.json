@@ -192,6 +192,7 @@
         "name",
         "entity",
         "values",
+        "states",
         "links",
         "owner"
       ],
@@ -216,6 +217,11 @@
             "description": "A value of the attribute's type."
           },
           "default": {}
+        },
+        "states": {
+          "description": "The object's states in lifecycles other than the one the scenario runs, by state id: at most one active configuration per lifecycle, of lifecycles that can govern the object (MQ9305). A compound state enters its default states. A lifecycle not given takes the state the object's bound value maps to, else its initial state.",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
         },
         "links": {
           "description": "The objects this object links to, each through a relation end.",
@@ -430,7 +436,8 @@
           "x-order": [
             "accepted",
             "states",
-            "context"
+            "context",
+            "values"
           ],
           "properties": {
             "accepted": {
@@ -445,6 +452,17 @@
             },
             "context": {
               "description": "The attributes the step changed, by attribute id.",
+              "type": "object",
+              "propertyNames": {
+                "$ref": "common.json#/$defs/id"
+              },
+              "additionalProperties": {
+                "description": "A value of the attribute's type."
+              },
+              "default": {}
+            },
+            "values": {
+              "description": "The object's attributes the step set, by attribute id: exactly the attributes the step changed (MQ9307).",
               "type": "object",
               "propertyNames": {
                 "$ref": "common.json#/$defs/id"

@@ -19,12 +19,15 @@ internal static class ExprJs
         return site switch
         {
             ExprSiteKind.Check => "(row) => mq.passes(" + body + ")",
-            ExprSiteKind.Value => "(row) => mq.out(" + body + ", " + Str(e.Type.Kind) + ")",
+            ExprSiteKind.Value or ExprSiteKind.Set => "(row) => mq.out(" + body + ", " + Str(e.Type.Kind) + ")",
             _ => "(row) => mq.holds(" + body + ")",
         };
     }
 
     internal static string Str(string text) => JsonSerializer.Serialize(text, Strings);
+
+    /// <summary>The member a guard's row holds its object under.</summary>
+    private const string SubjectKey = "subject";
 
     /// <summary>A constraint parameter's binding: the argument, the bindings it is lowered with, and the parameter's type.</summary>
     private sealed record Bound(TypedExpr Arg, IReadOnlyDictionary<string, Bound>? Env, ExprType Type);
@@ -46,6 +49,10 @@ internal static class ExprJs
                 return Read(t, "mq.at(row" + string.Concat(member.Split('.').Select(k => ", " + Str(k))) + ")", ColumnOf(t));
             if (e.Now is not null)
                 return "mq.now()";
+            if (e.Actor is not null)
+                return Read(t, "mq.actor()", new ExprColumn("actor") { Form = form ?? ExprStoredForm.Text });
+            if (e.InState is not null)
+                return InState(t);
             if (e.Op is { } op)
                 return Operator(t, op, env, form);
             if (e.Call is { } call)
@@ -209,6 +216,18 @@ internal static class ExprJs
 
             parts.Add(t.Args.Count > branches * 2 ? Convert(Value(t.Args[^1], env, shared), t.Args[^1].Type, t.Type) : "null");
             return "mq.case(" + string.Join(", ", parts) + ")";
+        }
+
+        /// <summary>
+        /// <c>mq.inState(object, lifecycle, states)</c>, an engine-only helper (<see cref="ExprRuntime.Clock"/>): the object is the row itself
+        /// for the running chart, else the subject or the object its path reaches; the states are those named and every state inside them.
+        /// </summary>
+        private static string InState(TypedExpr t)
+        {
+            var target = t.Running
+                ? "row"
+                : "mq.at(row, " + Str(SubjectKey) + string.Concat(t.Through.Select(n => ", " + Str(n.Name))) + ")";
+            return "mq.inState(" + target + ", " + Str(t.Lifecycle!) + ", [" + string.Join(", ", t.Inside.Select(Str)) + "])";
         }
 
         private string Satisfies(TypedExpr t, IReadOnlyDictionary<string, Bound>? env)

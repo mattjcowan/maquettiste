@@ -67,9 +67,12 @@ public sealed class RExpression
 
     /// <summary>
     /// On the root of a condition: the JavaScript function over a row that calls the expression runtime as <c>mq</c>, lowered on first
-    /// read (<see cref="ExprLowering.ToJavaScript"/>); <see langword="null"/> on an operand.
+    /// read (<see cref="ExprLowering.ToJavaScript"/>); <see langword="null"/> on an operand, and for a tree that reads <c>actor()</c> or
+    /// <c>in_state</c>, whose JavaScript calls helpers only the engine has (<see cref="ExprLowering.IsEngineOnly"/>).
     /// </summary>
-    public string? JavaScript => Root is { } root ? _javaScript ??= ExprLowering.ToJavaScript(root.Typed, root.Site, root.Columns) : null;
+    public string? JavaScript => Root is { } root && !ExprLowering.IsEngineOnly(root.Typed)
+        ? _javaScript ??= ExprLowering.ToJavaScript(root.Typed, root.Site, root.Columns)
+        : null;
 
     /// <summary>The node the text prints (for an inlined constraint's root, the <c>satisfies</c> that cites it).</summary>
     internal Expr PrintNode { get; set; } = null!;

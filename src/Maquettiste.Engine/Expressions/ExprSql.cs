@@ -38,6 +38,11 @@ internal static class ExprSql
             case ExprSiteKind.Value:
                 text = QuerySql.RowText(writer.Value(e, null, null), columns.Quoting);
                 break;
+            case ExprSiteKind.Set:
+                // A value an action sets runs in the engine and the team's code; no database reads it (object-effects-design.md decision 11).
+                problems.Add(new Diagnostic("MQ3104", DiagnosticSeverity.Error, "A value an action sets has no SQL form; it runs where the action runs.",
+                    columns.ElementId, columns.FilePath, e.Pointer, null, null));
+                return null;
             default:
             {
                 var guard = Node("call", call: "coalesce", args: [PredValue(writer.Pred(e, null)), Literal(false, "bool")]);
@@ -151,6 +156,11 @@ internal static class ExprSql
             }
             else if (e.Now is not null)
                 node = Node("call", call: "now");
+            else if (e.Actor is not null || e.InState is not null)
+            {
+                Report("MQ3104", t.Pointer, (e.Actor is not null ? "actor()" : "in_state") + " has no SQL form: a database sees neither who acts nor a lifecycle's state.");
+                node = new RQueryExpression { Node = "null" };
+            }
             else if (e.Satisfies is not null || e.Call == "matches" || IsCondition(e.Op))
                 return PredValue(Pred(t, env));
             else if (e.Op is { } op)

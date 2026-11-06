@@ -30,6 +30,9 @@ public static class ExprText
         "end", "satisfies",
     };
 
+    /// <summary>The word an <c>in_state</c> writes for the object itself, under which a guard reads it.</summary>
+    private const string SubjectWord = "subject";
+
     private static readonly HashSet<string> TypedLiterals = new(StringComparer.OrdinalIgnoreCase)
     {
         "decimal", "double", "date", "time", "datetime", "datetimeoffset", "uuid",
@@ -432,6 +435,15 @@ public static class ExprText
                 return new Expr { Now = true };
             }
 
+            if (name == "actor")
+            {
+                ExpectSymbol(")");
+                return new Expr { Actor = true };
+            }
+
+            if (name == "in_state")
+                return InState(token);
+
             var isFunction = ExprFunctions.Functions.ContainsKey(name);
             if (!isFunction && name != "coalesce")
                 throw new ParseException("MQ3101", "'" + token.Text + "' is not a function of the expression language", token.Position);
@@ -448,6 +460,53 @@ public static class ExprText
 
             ExpectSymbol(")");
             return isFunction ? new Expr { Call = name, Args = args } : new Expr { Op = "coalesce", Args = args };
+        }
+
+        /// <summary>
+        /// <c>in_state(object, Lifecycle.State, …)</c> (object-effects-design.md decision 7): the object is <c>subject</c>, or a path of
+        /// to-one navigations from it; each state is its lifecycle's name, then its path of state names.
+        /// </summary>
+        private Expr InState(Token token)
+        {
+            if (_scope.Lifecycles is not { } lifecycles)
+                throw new ParseException("MQ3104", "in_state reads a lifecycle's state; only a guard or a value an action sets may read it", token.Position);
+            var start = Current.Position;
+            var segments = Segments();
+            List<string>? of = null;
+            if (segments is not [SubjectWord])
+            {
+                of = Navigations(_scope.Root, segments, 0, [])
+                    ?? throw new ParseException("MQ3116", "in_state reads the subject or an object a to-one path from it reaches; '" + string.Join('.', segments)
+                        + "' is neither", start);
+            }
+
+            var states = new List<string>();
+            do
+            {
+                ExpectSymbol(",");
+                var at = Current.Position;
+                var name = Segments();
+                states.Add(lifecycles.Find(name)
+                    ?? throw new ParseException("MQ3116", "No lifecycle has a state named '" + string.Join('.', name) + "'; write the lifecycle's name, then the state's path", at));
+            }
+            while (Current.IsSymbol(","));
+            ExpectSymbol(")");
+            return new Expr { InState = states, Of = of };
+        }
+
+        /// <summary>The relation end ids a run of names follows from a container, each a navigation; <see langword="null"/> when they do not.</summary>
+        private static List<string>? Navigations(ExprContainer container, List<string> segments, int from, List<string> ids)
+        {
+            if (from == segments.Count)
+                return ids.Count > 0 ? ids : null;
+            for (var to = segments.Count; to > from; to--)
+            {
+                if (container.Find(segments.Skip(from).Take(to - from)) is ExprNavigation navigation
+                    && Navigations(navigation.Target, segments, to, [.. ids, navigation.Id]) is { } path)
+                    return path;
+            }
+
+            return null;
         }
 
         private Expr Case()
@@ -736,6 +795,26 @@ public static class ExprText
                 return;
             }
 
+            if (e.Actor is not null)
+            {
+                sb.Append("actor()");
+                return;
+            }
+
+            if (e.InState is { } states)
+            {
+                sb.Append("in_state(");
+                Object(e.Of ?? []);
+                foreach (var stateId in states)
+                {
+                    sb.Append(", ");
+                    sb.Append(scope.Lifecycles?.State(stateId) is { } state ? string.Join('.', state.Path.Prepend(state.LifecycleName).Select(Quote)) : Quote(stateId));
+                }
+
+                sb.Append(')');
+                return;
+            }
+
             if (e.Op is { } op)
             {
                 Operator(op, e.Args ?? []);
@@ -901,6 +980,30 @@ public static class ExprText
                     sb.Append(value.GetRawText());
                     return;
             }
+        }
+
+        /// <summary>The object an <c>in_state</c> reads: <c>subject</c>, then the names of the navigations of its path.</summary>
+        private void Object(IReadOnlyList<string> of)
+        {
+            var parts = new List<string> { SubjectWord };
+            var container = scope.Root;
+            foreach (var end in of)
+            {
+                if (container?.Navigation(end) is { } navigation)
+                {
+                    if (parts.Count > 1 && navigation.Prefix is { } prefix)
+                        parts.Add(QuoteDotted(prefix));
+                    parts.Add(Quote(navigation.Name));
+                    container = navigation.Target;
+                }
+                else
+                {
+                    parts.Add(Quote(end));
+                    container = null;
+                }
+            }
+
+            sb.AppendJoin('.', parts);
         }
 
         private void String(string text) => sb.Append('\'').Append(text.Replace("'", "''", StringComparison.Ordinal)).Append('\'');

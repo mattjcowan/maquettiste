@@ -109,6 +109,12 @@ internal static partial class ProcessRules
         {
             if (process.Actions[i].Raises.Count > 0)
                 Holds($"action '{process.Actions[i].Name}' that raises events", "/actions/" + N(i) + "/raises", process.Actions[i].Id);
+            // A set names an attribute of one process's subjects by id, as a condition does (object-effects-design.md section 5).
+            if (process.Actions[i].Sets.Count > 0)
+            {
+                report.Add("MQ9020", $"Action '{process.Actions[i].Name}' of library '{process.Name}' sets the object's data, which names the attributes of one process's subjects; "
+                    + "move the action to the process that runs it.", "/actions/" + N(i) + "/sets", process.Actions[i].Id);
+            }
         }
 
         for (var i = 0; i < process.Guards.Count; i++)

@@ -9392,7 +9392,9 @@ components:
       properties:
         element:
           type: string
-          description: The id of the element, or of the check, guard or derived attribute, that holds the expression or takes the text.
+          description: >-
+            The id of the element, or of the check, guard, derived attribute, action or set, that holds the expression or takes the text.
+            Text for a set not yet saved names the action here, with `site` `set` and `attribute`.
         at:
           type: [string, 'null']
           description: The pointer of a stored expression in the element's file, or of what holds it; omit when the element holds one, and with text.
@@ -9401,7 +9403,12 @@ components:
           description: Text to preview instead of a stored expression; needs `site`.
         site:
           type: [string, 'null']
-          description: With `text`, `check`, `value` or `guard`, or the pointer of one of the element's sites.
+          description: >-
+            With `text`, `check`, `value`, `guard` or `set` (a value an action of a process sets, with `attribute`), or the pointer of one
+            of the element's sites. `actor()` and `in_state` preview at guard and set sites, with no SQL form and no answer.
+        attribute:
+          type: [string, 'null']
+          description: With `site` `set`, the id of the attribute the value is for, whose type the value must fit (MQ3103).
         database:
           type: [string, 'null']
           description: A database id or name, choosing the binding an entity's expression lowers to SQL through.
@@ -10289,6 +10296,7 @@ components:
           expression:
             type: [string, 'null']
           isStub:
+            description: True only when the action has neither an expression nor sets.
             type: boolean
           raises:
             type: array
@@ -10298,6 +10306,24 @@ components:
             type: array
             items:
               type: string
+          sets:
+            description: The values the action sets on the object, in file order (object-effects-design.md decision 1); left out when it sets none.
+            type: array
+            items:
+              $ref: '#/components/schemas/SetRecord'
+    SetRecord:
+      x-engine-record: Maquettiste.Engine.SetRecord
+      description: One attribute of the object an action sets, and its value (object-effects-design.md decisions 1 to 3).
+      type: object
+      required: [id, attribute, value]
+      properties:
+        id:
+          type: string
+        attribute:
+          type: string
+          description: The id of the attribute set (an attribute every subject of the process holds).
+        value:
+          $ref: '#/components/schemas/ExpressionRecord'
     InvokeRecord:
       x-engine-record: Maquettiste.Engine.InvokeRecord
       description: An invocation of a service or another process.
@@ -10528,6 +10554,11 @@ components:
         owner:
           type: string
           description: The id of the participant that owns the object (actors-design.md decision 16); absent when the file names none.
+        states:
+          type: array
+          description: The ids of the object's states in other lifecycles, as given (object-effects-design.md decision 10); absent when the file gives none.
+          items:
+            type: string
     ParticipantRecord:
       x-engine-record: Maquettiste.Engine.ParticipantRecord
       description: A participant of a scenario (actors-design.md decision 14).
@@ -10663,6 +10694,10 @@ components:
             type: string
         context:
           type: object
+          additionalProperties: true
+        values:
+          type: object
+          description: The object's values the step expects it set, by attribute name (object-effects-design.md decision 4); absent when the file gives none.
           additionalProperties: true
     OperationRecord:
       x-engine-record: Maquettiste.Engine.OperationRecord
@@ -14395,6 +14430,15 @@ components:
           description: Values by attribute id; a value not given reads as the attribute's default, then null.
           type: object
           additionalProperties: true
+        states:
+          description: |
+            The object's states in lifecycles other than the one the run is for, by state id (object-effects-design.md decision 10): at
+            most one active configuration per lifecycle, of lifecycles that can govern the object (MQ9305). A compound state enters its
+            default states. A lifecycle not given takes the state the object's bound value maps to, else its initial state, and the
+            trace notes it. `in_state` reads them.
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
         links:
           type: array
           items:
@@ -14522,6 +14566,20 @@ components:
             signer the participant's identity when the step gave none. Left out for a step that names no participant, and when the
             participant satisfies none of the actors it could act as. The mock backend fills it and echoes the input the same way.
           $ref: '#/components/schemas/Ulid'
+        valuesChanged:
+          description: |
+            The object's attributes the input's actions set to a new value, by attribute id (object-effects-design.md decision 4), as
+            `changed` is for the context; a step's `expect.values` is compared with it (MQ9307). Left out when the input set nothing.
+          type: object
+          additionalProperties: true
+        notes:
+          description: |
+            What the run assumed or could not do (object-effects-design.md section 7), in the order it happened: a state assumed for an
+            object's lifecycle because the scenario gave none (decision 10), an identity that did not convert to the type `actor()` met
+            (decision 5), sets an invoked sub-process ran, which change nothing (decision 4). Left out when empty.
+          type: array
+          items:
+            type: string
     MicrostepTrace:
       x-engine-record: Maquettiste.Engine.Processes.MicrostepTrace
       type: object
@@ -14551,9 +14609,18 @@ components:
         action:
           $ref: '#/components/schemas/Ulid'
         source:
+          description: >-
+            `expression` when its JavaScript ran (its sets too, when it has any), `sets` when it has only sets and they ran, `stub` when it
+            has neither.
           type: string
-          enum: [expression, stub]
+          enum: [expression, sets, stub]
         changed:
+          type: object
+          additionalProperties: true
+        sets:
+          description: |
+            The values the action's sets gave the object, by attribute id (object-effects-design.md decision 4): every value worked out from
+            the object and context as they were when the action started, then applied together. Left out when the action has no sets.
           type: object
           additionalProperties: true
     GuardEvaluation:

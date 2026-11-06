@@ -121,6 +121,9 @@ internal static class ScenarioObjects
                         pointer + "/links/" + k.ToString(CultureInfo.InvariantCulture) + "/end");
                 }
             }
+
+            if (obj.States.Count > 0 && StatesProblem(model, process, obj, entity, subject, pointer) is { } statesProblem)
+                return statesProblem;
         }
 
         if (subject is not null && byId.GetValueOrDefault(subject) is { } root && model.Get<Entity>(root.Entity) is { } rootEntity
@@ -132,6 +135,65 @@ internal static class ScenarioObjects
                 ? $"The subject '{root.Name}' is an object of entity '{rootEntity.Name}', but process '{process.Name}' has no subject; leave subject and objects out, or give the process a subject."
                 : $"The subject '{root.Name}' is an object of entity '{rootEntity.Name}', which is not a subject of process '{process.Name}' ({string.Join(", ", names)}) or derived from one; make an object of a subject's entity the subject.",
                 "/subject");
+        }
+
+        return null;
+    }
+
+    // An object's states (object-effects-design.md decision 10, MQ9305): each a state an object can be in, of a lifecycle that governs the
+    // object's entity, never the state of the process the run is of on its subject, and states of one lifecycle that can be active together
+    // (one inside the other, or in different regions of a parallel state). An id that is no state is left to MQ2001.
+    private static (string Message, string Pointer)? StatesProblem(ModelSnapshot model, Process process, ScenarioObject obj, Entity entity, string? subject,
+        string pointer)
+    {
+        var given = new Dictionary<string, List<IReadOnlyList<ProcessState>>>(StringComparer.Ordinal);
+        for (var k = 0; k < obj.States.Count; k++)
+        {
+            var at = pointer + "/states/" + k.ToString(CultureInfo.InvariantCulture);
+            if (!model.TryGetEntry(obj.States[k], out var entry) || entry.Kind != "state" || model.Get<Process>(entry.OwnerId) is not { } lifecycle
+                || PathTo(lifecycle.States, obj.States[k]) is not { } path)
+                continue;
+            var state = path[^1];
+            if (string.Equals(obj.Id, subject, StringComparison.Ordinal) && string.Equals(lifecycle.Id, process.Id, StringComparison.Ordinal))
+                return ($"Object '{obj.Name}' is the subject, whose state in process '{process.Name}' the run works out; remove '{state.Name}' from its states.", at);
+            if (state.Type is StateType.History or StateType.Choice)
+                return ($"Object '{obj.Name}' gives state '{state.Name}' of '{lifecycle.Name}', a history or choice state, which no object is in; give a state.", at);
+            if (!SubjectCoverage.Governs(model, lifecycle, entity))
+                return ($"Object '{obj.Name}' gives state '{state.Name}' of '{lifecycle.Name}', which does not govern entity '{entity.Name}'; give a state of a lifecycle of the entity.", at);
+            if (!given.TryGetValue(lifecycle.Id, out var others))
+                given[lifecycle.Id] = others = [];
+            foreach (var other in others)
+            {
+                if (!Together(path, other))
+                    return ($"Object '{obj.Name}' gives states '{other[^1].Name}' and '{state.Name}' of '{lifecycle.Name}', which cannot be active together; give one state per lifecycle, or one per region of a parallel state.", at);
+            }
+
+            others.Add(path);
+        }
+
+        return null;
+
+        static bool Together(IReadOnlyList<ProcessState> a, IReadOnlyList<ProcessState> b)
+        {
+            var i = 0;
+            while (i < a.Count && i < b.Count && ReferenceEquals(a[i], b[i]))
+                i++;
+            return i == a.Count || i == b.Count || (i > 0 && a[i - 1].Type == StateType.Parallel);
+        }
+    }
+
+    // The states from the root's child down to the state with an id, or null.
+    private static List<ProcessState>? PathTo(IReadOnlyList<ProcessState> level, string id)
+    {
+        foreach (var state in level)
+        {
+            if (string.Equals(state.Id, id, StringComparison.Ordinal))
+                return [state];
+            if (PathTo(state.States, id) is { } below)
+            {
+                below.Insert(0, state);
+                return below;
+            }
         }
 
         return null;
