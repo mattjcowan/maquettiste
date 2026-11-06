@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.13.2 (unreleased)
+## 0.13.2 (2026-11-06)
 
 - **`sql-ddl` no longer writes `bigint` on Oracle.** Oracle has no such type. The lifecycle history table's `sequence` column,
   the optional `state_code` column and a reference type's 64-bit integer codes now use `NUMBER(19)` there. Other databases
