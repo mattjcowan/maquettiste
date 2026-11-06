@@ -31,12 +31,15 @@ export interface ProcessContext {
  */
 export function useProblems(id: string, draft: Diagnostic[], entryIds: readonly string[] = []): Diagnostic[] {
   const validation = useValidation();
+  const index = useIndex();
   const entries = entryIds.join("|");
+  // A finding of a part (an event, a transition) carries the part's id; its file path names the element that owns it.
+  const path = index.data?.find((r) => r.id === id)?.path;
   return useMemo(() => {
     if (draft.length) return draft;
     const own = new Set([id, ...(entries ? entries.split("|") : [])]);
-    return (validation.data?.diagnostics ?? []).filter((d) => d.elementId != null && own.has(d.elementId));
-  }, [validation.data, draft, id, entries]);
+    return (validation.data?.diagnostics ?? []).filter((d) => (d.elementId != null && own.has(d.elementId)) || (!!path && d.filePath === path));
+  }, [validation.data, draft, id, entries, path]);
 }
 
 /** The ids of a process file's `subjects` entries. */

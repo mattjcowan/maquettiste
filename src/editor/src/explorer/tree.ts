@@ -312,11 +312,32 @@ function byLabel(a: TreeNode, b: TreeNode): number {
   return a.sort < b.sort ? -1 : a.sort > b.sort ? 1 : a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
 }
 
-/** Error counts by element id, from a validation report's diagnostics. */
-export function errorCounts(diagnostics: readonly Diagnostic[] | undefined): Map<string, number> {
+/**
+ * Error counts by element id, from a validation report's diagnostics. A finding of a part (an event, a transition, a state)
+ * carries the part's id: with `rows` it counts for the element whose file it is in, as the Problems panel groups it.
+ */
+export function errorCounts(diagnostics: readonly Diagnostic[] | undefined, rows?: readonly Pick<ElementSummary, "id" | "path">[]): Map<string, number> {
   const out = new Map<string, number>();
-  for (const d of diagnostics ?? []) if (d.severity === "error" && d.elementId) out.set(d.elementId, (out.get(d.elementId) ?? 0) + 1);
+  const owner = ownerOf(rows);
+  for (const d of diagnostics ?? []) {
+    const id = d.severity === "error" ? owner(d) : undefined;
+    if (id) out.set(id, (out.get(id) ?? 0) + 1);
+  }
   return out;
+}
+
+/** The element a finding is about: the one whose id it names, else (a finding of a part) the one whose file it is in. */
+export function ownerOf(rows?: readonly Pick<ElementSummary, "id" | "path">[]): (d: Diagnostic) => string | undefined {
+  const ids = new Set<string>();
+  const paths = new Map<string, string>();
+  for (const r of rows ?? []) {
+    ids.add(r.id);
+    if (r.path) paths.set(r.path, r.id);
+  }
+  return (d) => {
+    if (d.elementId && (!rows || ids.has(d.elementId))) return d.elementId;
+    return (d.filePath ? paths.get(d.filePath) : undefined) ?? d.elementId ?? undefined;
+  };
 }
 
 /** An element row's label: its display name or name, an overlay's entity name, or "<kind> <id tail>". */

@@ -100,6 +100,8 @@ public sealed class ResolvedCoverageTests
         new("category", "category-tree.json", "categories/[]", typeof(RCategory)),
         new("category tree", "category-tree.json", "", typeof(RCategoryTree)),
         new("tag vocabulary", "tag-vocabulary.json", "", typeof(RTagVocabulary)),
+        new("verb vocabulary", "verb-vocabulary.json", "", null),
+        new("own verb", "verb-vocabulary.json", "verbs/[]", typeof(RVerb)),
         new("mapping", "mapping.json", "", null),
         new("diagram", "diagram.json", "", null),
 
@@ -231,9 +233,10 @@ public sealed class ResolvedCoverageTests
     /// resolves into <c>entity.mappings</c> and <c>relation.mappings</c> (<see cref="REntityMapping"/>, <see cref="RRelationMapping"/>)
     /// rather than an object of its own, so its annotations and its own fields are not reachable; a diagram is not resolved. The tag
     /// vocabularies and category trees resolve into <c>model.tag_vocabularies</c> and <c>model.category_trees</c>
-    /// (next-phase-1-design.md section 5.5).
+    /// (next-phase-1-design.md section 5.5). The verb vocabulary resolves into <c>model.verbs</c> (verbs-design.md section 6): each own verb an
+    /// <see cref="RVerb"/>, and its hidden built-in verbs left out unless named, so the file itself is no object.
     /// </summary>
-    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram" };
+    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram", "verb vocabulary" };
 
     [Fact]
     public void Every_property_of_every_model_file_is_a_member_of_its_resolved_object()

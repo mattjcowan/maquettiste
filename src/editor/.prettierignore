@@ -4,6 +4,7 @@ dist-mock
 src/api/schema.d.ts
 src/mocks/openapi.json
 src/code/extensionSchema.json
+src/model/verbs.ts
 src/mocks/fixture
 src/mocks/recorded
 package-lock.json

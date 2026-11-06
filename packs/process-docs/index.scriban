@@ -27,6 +27,12 @@ if model.processes.size > 0 || model.actors.size > 0
 | {{ actor_link(a, "") }} | {{ actor_type(a) }} | {{ for p in a.processes }}{{ for.first ? "" : ", " }}{{ process_link(p, "") }}{{ end }} |
 {{- end }}
 {{- end }}
+{{- if model.verbs.size > 0 }}
+
+## Verbs
+
+What events, automatic moves and operations do: see [the verbs](verbs.md).
+{{- end }}
 {{ end -}}
 {{-
   file "index.md" content

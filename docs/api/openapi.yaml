@@ -7771,7 +7771,7 @@ components:
                   - type: 'null'
     ElementKind:
       type: string
-      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario, migration, operation, custom]
+      enum: [package, entity, value-object, scalar-type, enum, relation, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, tag-vocabulary, category-tree, stereotype, reference-type, seed, process, actor, scenario, migration, operation, custom, verb-vocabulary]
     ChangeSource:
       type: string
       enum: [editor, disk, cli, engine]
@@ -7912,6 +7912,20 @@ components:
           description: The operation's effect, on operation rows (next-phase-2-design.md section 4.1).
           type: string
           enum: [read, change]
+        verb:
+          description: |
+            The verb an operation names, as its key (verbs-design.md decision 13), on operation rows that name one. Left out when the
+            operation names none, so rows of projects without verbs do not change.
+          type: string
+        verbs:
+          description: |
+            The distinct verb keys a process's events and transitions name, sorted ordinally (verbs-design.md section 7), on process
+            rows that name at least one. Left out when the process names none. The editor's Verbs tab counts uses from these rows.
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
         type:
           description: The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2).
           type: string
@@ -7993,6 +8007,7 @@ components:
         - $ref: '../../schemas/v1/migration.json'
         - $ref: '../../schemas/v1/operation.json'
         - $ref: '../../schemas/v1/custom.json'
+        - $ref: '../../schemas/v1/verb-vocabulary.json'
     NewModelDocument:
       description: 'A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other.'
       type: object
@@ -8559,7 +8574,14 @@ components:
         When the batch's refactors are planned, a state code they rewrite must be a live code of every other reference type its
         lifecycle binds that held the old code, so a code two bound types share is renamed in both in one batch; and no
         lifecycle may be left with two states of one code. Either is MQ7020 at the operation that rewrote the code.
-      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, materialize-attributes, materialize-columns, sync-enum, sync-codes, set-lifecycle, set-initial, refresh-scenario, use-subjects, retag, tags-to-property, names-to-ids, fold-into-stereotype, map-by-name, resync-binding, rename-code, retire-code, merge-reference-types, rename-reference-type, upsert]
+        The verb operations (verbs-design.md decision 9) act on the project's own verb whose key is `verb`: `rename-verb` (`verb`,
+        `to`) gives it the key `to` and rewrites every event, transition and operation that names it, all or nothing; when `to` is
+        another own verb's key or a built-in verb's, the two merge: the uses move to it and the definition goes with its
+        translations, and `to` equal to `verb` when a built-in verb has that key adopts the built-in. `remove-verb` (`verb`) removes
+        the own verb with its translations and clears `verb` from every use. Both take `expectedHashes` and `dryRun`, expand into
+        updates, and a refusal (a key no own verb has, a malformed `to`, `to` equal to `verb` with no built-in of that key) is
+        MQ1002 at `/operations/<n>`.
+      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, materialize-attributes, materialize-columns, sync-enum, sync-codes, set-lifecycle, set-initial, refresh-scenario, use-subjects, retag, tags-to-property, names-to-ids, fold-into-stereotype, map-by-name, resync-binding, rename-code, retire-code, merge-reference-types, rename-reference-type, rename-verb, remove-verb, upsert]
     BatchOperation:
       x-engine-record: Maquettiste.Engine.BatchOperation
       description: |
@@ -8611,8 +8633,11 @@ components:
         code:
           description: The code a refactor renames (`rename-code`) or retires (`retire-code`), as the code's canonical text (an integer in decimal digits, a uuid in lowercase).
           type: [string, 'null']
+        verb:
+          description: The key of the project's own verb a verb operation acts on (`rename-verb`, `remove-verb`).
+          type: [string, 'null']
         to:
-          description: The new code (`rename-code`); the live code whose row takes over the retired code's uses (`retire-code`).
+          description: The new code (`rename-code`); the live code whose row takes over the retired code's uses (`retire-code`); the verb's new key (`rename-verb`), another own verb's or a built-in verb's to merge into it.
           type: [string, 'null']
         codes:
           description: '`merge-reference-types`: codes of the merged-away type mapped to live codes of the target, for codes the target does not hold itself; every other code moves into the target as a row.'
@@ -8707,7 +8732,7 @@ components:
           type: [boolean, 'null']
         expectedHashes:
           description: |
-            Materialize, `map-by-name`, `resync-binding`, `fold-into-stereotype`, `retag`, `tags-to-property`, `names-to-ids` and the reference-type refactors: the hash the caller read of each element it expects the operation to change or delete (the preview's
+            Materialize, `map-by-name`, `resync-binding`, `fold-into-stereotype`, `retag`, `tags-to-property`, `names-to-ids`, the reference-type refactors, `rename-verb` and `remove-verb`: the hash the caller read of each element it expects the operation to change or delete (the preview's
             updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is
             a conflict and nothing is written. A key may be an id or a qualified name; a placeholder key is MQ1015, two keys for
             one element are MQ1014.
@@ -9041,6 +9066,7 @@ components:
             - $ref: '#/components/schemas/SqlObjectRecord'
             - $ref: '#/components/schemas/QueryRecord'
             - $ref: '#/components/schemas/MigrationRecord'
+            - $ref: '#/components/schemas/VerbRecord'
         next:
           type: [string, 'null']
           description: The cursor of the next page; null on the last one.
@@ -10191,6 +10217,11 @@ components:
             type: string
           isTargetless:
             type: boolean
+          verb:
+            description: |
+              The key of the verb of the move (verbs-design.md section 6): the transition's own, else its event's. Left out when
+              neither names one.
+            type: string
     EventRecord:
       x-engine-record: Maquettiste.Engine.EventRecord
       description: An event.
@@ -10215,6 +10246,9 @@ components:
             type: array
             items:
               type: string
+          verb:
+            description: The key of the verb the event names (verbs-design.md decision 11). Left out when it names none.
+            type: string
     GuardRecord:
       x-engine-record: Maquettiste.Engine.GuardRecord
       description: A guard.
@@ -10686,6 +10720,63 @@ components:
             description: The guards, in the order they are checked; absent for an operation without any.
             items:
               $ref: '#/components/schemas/OperationGuardRecord'
+          verb:
+            description: The key of the verb the operation names (verbs-design.md decision 13). Left out when it names none.
+            type: string
+    VerbRecord:
+      x-engine-record: Maquettiste.Engine.VerbRecord
+      description: |
+        A verb of `model.verbs` (verbs-design.md section 6). Verb records appear only when the project uses verbs: it has a verb
+        vocabulary or names a verb anywhere. Then the built-in verbs that are not hidden come in the table's order, then the project's
+        own in file order, then any hidden built-in verb that is still named.
+      type: object
+      required: [id, kind, name, key, displayName, description, builtIn, group, hidden, used, events, transitions, operations]
+      properties:
+        id:
+          type: [string, 'null']
+          description: The own verb's id; null for a built-in verb.
+        kind:
+          type: string
+          const: verb
+        name:
+          type: string
+          description: The key, so pages order verbs by it.
+        key:
+          type: string
+          description: The key every use names, which is what to store.
+        displayName:
+          type: string
+          description: The fixed label of a built-in verb, or an own verb's displayName, else its key with the first letter upper case and hyphens as spaces.
+        description:
+          type: string
+          description: The fixed meaning of a built-in verb, or an own verb's description ("" when none).
+        builtIn:
+          type: boolean
+        group:
+          type: string
+          enum: [move, signature, task, object, link, project]
+          description: What a built-in verb acts on; `project` for an own verb.
+        hidden:
+          type: boolean
+          description: A hidden built-in verb that is still named.
+        used:
+          type: boolean
+          description: Whether an event, a transition or an operation names it.
+        events:
+          type: array
+          description: The ids of the events that name it, in model order.
+          items:
+            type: string
+        transitions:
+          type: array
+          description: The ids of the transitions whose move has it, their own verb or their event's, in model order.
+          items:
+            type: string
+        operations:
+          type: array
+          description: The ids of the operations that name it, in model order.
+          items:
+            type: string
     CustomRecord:
       x-engine-record: Maquettiste.Engine.CustomRecord
       description: 'A resolved custom element (next-phase-2-design.md section 4.2): its custom kind''s type, its content as written and every member.'

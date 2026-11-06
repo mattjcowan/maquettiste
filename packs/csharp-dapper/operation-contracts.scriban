@@ -116,6 +116,9 @@ public static class {{ name }}Errors
 /// <summary>{{ if op.subject }}{{ op.name }} on {{ op.subject.name }}{{ else }}Operation {{ op.name }}{{ end }}{{ if op.fires.size > 0 }}; fires {{ for e in op.fires }}{{ if !for.first }}, {{ end }}{{ event_name(op, e) }}{{ end }}{{ end }}.</summary>
 public interface I{{ name }}Handler
 {
+{{- if op.verb }}
+{{ doc("The verb of operation " + op.name + ": " + op.verb.display_name + ".", "    ") }}    public const global::{{ base_ns }}.Verb Verb = global::{{ base_ns }}.Verb.{{ pascal op.verb.key }};
+{{ end }}
     /// <summary>Runs operation {{ op.name }}.</summary>
 {{- for k in keys }}
     /// <param name="{{ cs_ident (camel k.name) }}">The {{ op.subject.name }} record's {{ k.name }}.</param>

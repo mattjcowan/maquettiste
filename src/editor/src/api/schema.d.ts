@@ -2900,7 +2900,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration" | "operation" | "custom";
+        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration" | "operation" | "custom" | "verb-vocabulary";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
         /**
@@ -2986,6 +2986,16 @@ export interface components {
              * @enum {string}
              */
             effect?: "read" | "change";
+            /**
+             * @description The verb an operation names, as its key (verbs-design.md decision 13), on operation rows that name one. Left out when the
+             *     operation names none, so rows of projects without verbs do not change.
+             */
+            verb?: string;
+            /**
+             * @description The distinct verb keys a process's events and transitions name, sorted ordinally (verbs-design.md section 7), on process
+             *     rows that name at least one. Left out when the process names none. The editor's Verbs tab counts uses from these rows.
+             */
+            verbs?: string[];
             /** @description The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2). */
             type?: string;
             /**
@@ -3010,7 +3020,7 @@ export interface components {
             missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
-        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"] | components["schemas"]["operation"] | components["schemas"]["custom"];
+        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"] | components["schemas"]["operation"] | components["schemas"]["custom"] | components["schemas"]["verb-vocabulary"];
         /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other. */
         NewModelDocument: {
             kind: components["schemas"]["ElementKind"];
@@ -3254,10 +3264,10 @@ export interface components {
             path: string;
         };
         /**
-         * @description `upsert` (`id` a qualified name, `element`, optional `expectedHash`) is a `create` when the model as loaded has no element of that name and an `update` of the whole document when it has one, with the file's hash unless `expectedHash` gives one. It never writes a seed. `id` must be one of the names the element will have, an update keeps the longest of them, and a document may not replace an existing part with one that has no id; each refusal is MQ1012 to MQ1015 at `/operations/<n>/id`. `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process, optional `entity` the subject whose enum binding it syncs, or `stereotype` the key of a stereotype entry, else the lifecycle's one enum binding; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `sync-codes` (lifecycle-design.md decision 19: `id` a lifecycle process, `entity` a subject or `stereotype` the key of a stereotype the lifecycle lists, `attribute` the subject's attribute that holds the state (on a stereotype, one of its own), optional `stateCodes` keyed by state id; it gives each state a binding maps a code, keeping the codes states have, matching the attribute type's codes by name and rows by label, and binds the attribute in the form the file has; see `POST /api/processes/{id}/sync-codes` for the matching and the plan. Refused with MQ9019 when `id` is not a lifecycle, `entity` is not its one-subject form's subject or follows it only through a stereotype entry, `stereotype` is not listed, `attribute` is not an attribute that can hold a state, a `stateCodes` key is not a state that rests, or another operation of the batch writes the process), `set-lifecycle` (`id` an entity, `target` a process: it becomes the entity's named lifecycle (lifecycle-design.md decision 9). A target in the one-subject form, or with no subject, takes the entity as its one subject (a target with no subject gets `subjects` with one entry) and the entity's previous lifecycle in the one-subject form becomes an orchestration, as before; a target that uses `subjects` gains an entry for the entity when it has none, the entity's previous lifecycle in the one-subject form still becomes an orchestration, and its other lifecycles that use `subjects` are left alone. Without `target` it clears the entity's lifecycle: its lifecycles in the one-subject form become orchestrations, the entity leaves the `subjects` of the others, and one left with no subject becomes an orchestration; an orchestration keeps its subjects and loses its bindings), `set-initial` (`id` a process or a compound state, `target` one of its direct children), `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process) and `use-subjects` (lifecycle-design.md decision 6: each process `elementIds` lists, or without it every process, that is in the one-subject form is rewritten with a `subjects` list of one entry, with a new id, holding its `subject` and `boundAttribute`; a listed process already using `subjects`, or with no subject, is left as it is, and nothing to convert writes nothing). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`. `tags-to-property` (next-phase-1-design.md section 4.4) moves the tags that start with `prefix` into the custom property `name` of each element and sub-element with properties that holds them, in the scope `retag` would change, limited to `elementIds`: the schema that declares the property converts the suffixes (a string takes one, a string array all of them in list order, an integer, number or boolean one parsed with the invariant culture, an `enum` one member, an `x-ref` the one id the suffix finds as `names-to-ids` resolves it); the tags leave their holders and, without `elementIds`, their declarations leave the vocabulary, except a tag that something without properties (a relation end, for example) still uses, whose declaration stays. It expands the same way and takes `expectedHashes`; no matching tag is MQ1002 at `/operations/<n>`, and each holder whose property no schema declares, whose suffix does not fit or that already holds another value is one MQ5001 at its file and `/properties/<name>`. `names-to-ids` (section 4.1) turns every custom property value an `x-ref` types that is a name, not an id, into the one id it finds among the in-scope candidates of the keyword's kinds (elements by their qualified-name forms, stereotypes by key; within `of` sub-elements by name, columns by physical name, rows by code), in the elements `elementIds` lists or in every document with `x-ref` sites, stereotype defaults included. It expands the same way and takes `expectedHashes`; each value that finds nothing or several is one MQ2010 at its file and pointer, and nothing to convert writes nothing. `fold-into-stereotype` (next-phase-2-design.md section 3.1) makes the stereotype `id`'s members replace the matching own members of `tables`, or of every designed and imported table of `schema`; `redefine` and `excludeMissing` keep the database unchanged where a member differs or is missing, and a refusal is MQ4077. The binding operations (next-phase-2-design.md section 3.3) act on `database` and `entities`, read files only and never resolve the model: `map-by-name` maps every attribute a binding leaves unmapped to a free column of its source with the same loose name (case and every character that is not an ASCII letter or digit ignored; a member as `attributeMember`, a to-one navigation key with or without `Id`), fields naming a table file's columns by id and a view's by name; `resync-binding` brings a binding whose source is a table file into step with the table: it renames an own attribute that followed its column's name (unless `keepNames`), retypes an own attribute whose column was retyped, maps by name, adds an attribute per added column still free and removes the fields of removed columns, keeping every attribute; for one entity, `columns` (keys or physical names) limits it to those columns. Both record the binding's `provenance` (each column's name and type hashes) for a table file, expand the same way, take `expectedHashes`, and a refusal (an entity with no binding to the database, a source they cannot read, `columns` misused, nothing to map, or every binding named in step) is MQ4089 at `/operations/<n>`. The reference-type refactors (next-phase-2-design.md section 3.5) read the model as it was before the batch and find every use through the index: `rename-code` (`id` a reference type, `code`, `to`) gives the row the new code and rewrites every default, `allowedValues` entry, seed cell, typed column default, table seed cell, binding constant and state code under a lifecycle's binding (lifecycle-design.md decision 18) that named the old one; `retire-code` (`id`, `code`, `to` another live code) removes the code's row with its translations, rewrites its uses to `to` and the ids that named the row (`x-ref` values, former codes) to the row of `to`; `merge-reference-types` (`id` the type merged away, `target` the type merged into, optional `codes`) maps each code the target holds to it, `codes` maps others to live target codes, moves every other row into the target with its id, values and translations, retargets the seeds (one with the name of a target seed joins it), points every reference to the type at the target and deletes it; `rename-reference-type` (`id`, `name`) renames the type, its file and its seed folder following. Each keeps the old code as a former code of the type and answers `usage` on the item of the type it names (the merged-away type's delete for a merge). They expand the same way, take `expectedHashes`, refactor a type once per batch, and a refusal (an unknown or scripted code, a code taken or former, a code that does not fit, mismatched code types, a binding or scripted rows on the merged type, a field the target lacks, seeds of one name that differ in environments or apply, a second refactor of a type) is MQ7020 at `/operations/<n>`. When the batch's refactors are planned, a state code they rewrite must be a live code of every other reference type its lifecycle binds that held the old code, so a code two bound types share is renamed in both in one batch; and no lifecycle may be left with two states of one code. Either is MQ7020 at the operation that rewrote the code.
+         * @description `upsert` (`id` a qualified name, `element`, optional `expectedHash`) is a `create` when the model as loaded has no element of that name and an `update` of the whole document when it has one, with the file's hash unless `expectedHash` gives one. It never writes a seed. `id` must be one of the names the element will have, an update keeps the longest of them, and a document may not replace an existing part with one that has no id; each refusal is MQ1012 to MQ1015 at `/operations/<n>/id`. `translate` (reference-types-seeds-localization.md section 3.9) is declared; until its handler lands a batch that holds one is refused with MQ1002 at `/operations/<n>/op`. The schema operations (erratum E26) act on database `id`: `add-schema` (`name`, optional `schema` id), `rename-schema` (`schema`, `name`; the default follows the rename), `remove-schema` (`schema`; refused with MQ4015 listing what lives there unless `target` names the schema it moves to, and refused for the default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and 4.4): `sync-enum` (`id` a lifecycle process, optional `entity` the subject whose enum binding it syncs, or `stereotype` the key of a stereotype entry, else the lifecycle's one enum binding; its bound enum's members become the bound states in document order, keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or the enum), `sync-codes` (lifecycle-design.md decision 19: `id` a lifecycle process, `entity` a subject or `stereotype` the key of a stereotype the lifecycle lists, `attribute` the subject's attribute that holds the state (on a stereotype, one of its own), optional `stateCodes` keyed by state id; it gives each state a binding maps a code, keeping the codes states have, matching the attribute type's codes by name and rows by label, and binds the attribute in the form the file has; see `POST /api/processes/{id}/sync-codes` for the matching and the plan. Refused with MQ9019 when `id` is not a lifecycle, `entity` is not its one-subject form's subject or follows it only through a stereotype entry, `stereotype` is not listed, `attribute` is not an attribute that can hold a state, a `stateCodes` key is not a state that rests, or another operation of the batch writes the process), `set-lifecycle` (`id` an entity, `target` a process: it becomes the entity's named lifecycle (lifecycle-design.md decision 9). A target in the one-subject form, or with no subject, takes the entity as its one subject (a target with no subject gets `subjects` with one entry) and the entity's previous lifecycle in the one-subject form becomes an orchestration, as before; a target that uses `subjects` gains an entry for the entity when it has none, the entity's previous lifecycle in the one-subject form still becomes an orchestration, and its other lifecycles that use `subjects` are left alone. Without `target` it clears the entity's lifecycle: its lifecycles in the one-subject form become orchestrations, the entity leaves the `subjects` of the others, and one left with no subject becomes an orchestration; an orchestration keeps its subjects and loses its bindings), `set-initial` (`id` a process or a compound state, `target` one of its direct children), `refresh-scenario` (`id` a scenario: every step's `expect` and the `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step, or when another operation of the batch writes the scenario or its process) and `use-subjects` (lifecycle-design.md decision 6: each process `elementIds` lists, or without it every process, that is in the one-subject form is rewritten with a `subjects` list of one entry, with a new id, holding its `subject` and `boundAttribute`; a listed process already using `subjects`, or with no subject, is left as it is, and nothing to convert writes nothing). They expand into updates the same way, and a refusal is MQ9019 at `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the committed schema snapshot records the stored tables' keys as aliases, which the schema diff reads it through, so neither the materialize nor its undo is a drop and a create; optional `expectedHashes`: the hash the caller read of each element the preview lists as changed or deleted, any other or changed one a conflict) and `materialize-entities` (`tables`, `package`: an entity per designed or imported table or view, bound to it, and a many-to-one relation per foreign key between them) and `materialize-attributes` (`entities`, each bound to the database, and for one entity optional `columns`, keys or physical names of its source's columns: an attribute per column, named camel-case and typed from the column, mapped to it in the binding; without `columns`, every column nothing in the binding names: unaccounted, identity or with a default; an ignored listing of a column it maps goes) and `materialize-columns` (`entities`, each bound to the database and reading a designed or imported table it writes, and for one entity optional `attributes`, binding field references: a column of that table per attribute the binding leaves unmapped, with the shape the entity's projection gives it, mapped to it; a column whose name the table has is left out with a note, no foreign key is written); they expand the same way, and a refusal (an entity or table already bound, or for attributes an entity with no binding to the database, a query source, a column already mapped or nothing left to add, or for columns a source that is not a table file, an attribute already mapped or that no column holds) is MQ4055 at `/operations/<n>`. `retag` (2026-10-07) removes `tags`, or renames the one tag to `name`, in the tag vocabulary of `package` (the global one without it) and in every element and sub-element whose use of it that vocabulary governs (see `GET /api/model/tags/usage`); it expands into updates the same way, takes the materialize operations' optional `expectedHashes`, and a refusal (nothing uses or declares the tags, a rename of several tags or to a key that is not a tag) is MQ1002 at `/operations/<n>`. `tags-to-property` (next-phase-1-design.md section 4.4) moves the tags that start with `prefix` into the custom property `name` of each element and sub-element with properties that holds them, in the scope `retag` would change, limited to `elementIds`: the schema that declares the property converts the suffixes (a string takes one, a string array all of them in list order, an integer, number or boolean one parsed with the invariant culture, an `enum` one member, an `x-ref` the one id the suffix finds as `names-to-ids` resolves it); the tags leave their holders and, without `elementIds`, their declarations leave the vocabulary, except a tag that something without properties (a relation end, for example) still uses, whose declaration stays. It expands the same way and takes `expectedHashes`; no matching tag is MQ1002 at `/operations/<n>`, and each holder whose property no schema declares, whose suffix does not fit or that already holds another value is one MQ5001 at its file and `/properties/<name>`. `names-to-ids` (section 4.1) turns every custom property value an `x-ref` types that is a name, not an id, into the one id it finds among the in-scope candidates of the keyword's kinds (elements by their qualified-name forms, stereotypes by key; within `of` sub-elements by name, columns by physical name, rows by code), in the elements `elementIds` lists or in every document with `x-ref` sites, stereotype defaults included. It expands the same way and takes `expectedHashes`; each value that finds nothing or several is one MQ2010 at its file and pointer, and nothing to convert writes nothing. `fold-into-stereotype` (next-phase-2-design.md section 3.1) makes the stereotype `id`'s members replace the matching own members of `tables`, or of every designed and imported table of `schema`; `redefine` and `excludeMissing` keep the database unchanged where a member differs or is missing, and a refusal is MQ4077. The binding operations (next-phase-2-design.md section 3.3) act on `database` and `entities`, read files only and never resolve the model: `map-by-name` maps every attribute a binding leaves unmapped to a free column of its source with the same loose name (case and every character that is not an ASCII letter or digit ignored; a member as `attributeMember`, a to-one navigation key with or without `Id`), fields naming a table file's columns by id and a view's by name; `resync-binding` brings a binding whose source is a table file into step with the table: it renames an own attribute that followed its column's name (unless `keepNames`), retypes an own attribute whose column was retyped, maps by name, adds an attribute per added column still free and removes the fields of removed columns, keeping every attribute; for one entity, `columns` (keys or physical names) limits it to those columns. Both record the binding's `provenance` (each column's name and type hashes) for a table file, expand the same way, take `expectedHashes`, and a refusal (an entity with no binding to the database, a source they cannot read, `columns` misused, nothing to map, or every binding named in step) is MQ4089 at `/operations/<n>`. The reference-type refactors (next-phase-2-design.md section 3.5) read the model as it was before the batch and find every use through the index: `rename-code` (`id` a reference type, `code`, `to`) gives the row the new code and rewrites every default, `allowedValues` entry, seed cell, typed column default, table seed cell, binding constant and state code under a lifecycle's binding (lifecycle-design.md decision 18) that named the old one; `retire-code` (`id`, `code`, `to` another live code) removes the code's row with its translations, rewrites its uses to `to` and the ids that named the row (`x-ref` values, former codes) to the row of `to`; `merge-reference-types` (`id` the type merged away, `target` the type merged into, optional `codes`) maps each code the target holds to it, `codes` maps others to live target codes, moves every other row into the target with its id, values and translations, retargets the seeds (one with the name of a target seed joins it), points every reference to the type at the target and deletes it; `rename-reference-type` (`id`, `name`) renames the type, its file and its seed folder following. Each keeps the old code as a former code of the type and answers `usage` on the item of the type it names (the merged-away type's delete for a merge). They expand the same way, take `expectedHashes`, refactor a type once per batch, and a refusal (an unknown or scripted code, a code taken or former, a code that does not fit, mismatched code types, a binding or scripted rows on the merged type, a field the target lacks, seeds of one name that differ in environments or apply, a second refactor of a type) is MQ7020 at `/operations/<n>`. When the batch's refactors are planned, a state code they rewrite must be a live code of every other reference type its lifecycle binds that held the old code, so a code two bound types share is renamed in both in one batch; and no lifecycle may be left with two states of one code. Either is MQ7020 at the operation that rewrote the code. The verb operations (verbs-design.md decision 9) act on the project's own verb whose key is `verb`: `rename-verb` (`verb`, `to`) gives it the key `to` and rewrites every event, transition and operation that names it, all or nothing; when `to` is another own verb's key or a built-in verb's, the two merge: the uses move to it and the definition goes with its translations, and `to` equal to `verb` when a built-in verb has that key adopts the built-in. `remove-verb` (`verb`) removes the own verb with its translations and clears `verb` from every use. Both take `expectedHashes` and `dryRun`, expand into updates, and a refusal (a key no own verb has, a malformed `to`, `to` equal to `verb` with no built-in of that key) is MQ1002 at `/operations/<n>`.
          * @enum {string}
          */
-        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "sync-codes" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "use-subjects" | "retag" | "tags-to-property" | "names-to-ids" | "fold-into-stereotype" | "map-by-name" | "resync-binding" | "rename-code" | "retire-code" | "merge-reference-types" | "rename-reference-type" | "upsert";
+        BatchOp: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "sync-codes" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "use-subjects" | "retag" | "tags-to-property" | "names-to-ids" | "fold-into-stereotype" | "map-by-name" | "resync-binding" | "rename-code" | "retire-code" | "merge-reference-types" | "rename-reference-type" | "rename-verb" | "remove-verb" | "upsert";
         /**
          * @description One batch operation. Every id field (`id`, `database`, `package`, `schema`, `target`, `default`, the items of
          *     `entities`, `tables` and `elementIds`, an `attributes` item that starts with `@` or `$`, the keys of
@@ -3288,7 +3298,9 @@ export interface components {
             name?: string | null;
             /** @description The code a refactor renames (`rename-code`) or retires (`retire-code`), as the code's canonical text (an integer in decimal digits, a uuid in lowercase). */
             code?: string | null;
-            /** @description The new code (`rename-code`); the live code whose row takes over the retired code's uses (`retire-code`). */
+            /** @description The key of the project's own verb a verb operation acts on (`rename-verb`, `remove-verb`). */
+            verb?: string | null;
+            /** @description The new code (`rename-code`); the live code whose row takes over the retired code's uses (`retire-code`); the verb's new key (`rename-verb`), another own verb's or a built-in verb's to merge into it. */
             to?: string | null;
             /** @description `merge-reference-types`: codes of the merged-away type mapped to live codes of the target, for codes the target does not hold itself; every other code moves into the target as a row. */
             codes?: {
@@ -3333,7 +3345,7 @@ export interface components {
             /** @description `resync-binding`: keep every attribute's name, even one that followed its column's name; the provenance entry still takes the column's new name. */
             keepNames?: boolean | null;
             /**
-             * @description Materialize, `map-by-name`, `resync-binding`, `fold-into-stereotype`, `retag`, `tags-to-property`, `names-to-ids` and the reference-type refactors: the hash the caller read of each element it expects the operation to change or delete (the preview's
+             * @description Materialize, `map-by-name`, `resync-binding`, `fold-into-stereotype`, `retag`, `tags-to-property`, `names-to-ids`, the reference-type refactors, `rename-verb` and `remove-verb`: the hash the caller read of each element it expects the operation to change or delete (the preview's
              *     updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is
              *     a conflict and nothing is written. A key may be an id or a qualified name; a placeholder key is MQ1015, two keys for
              *     one element are MQ1014.
@@ -3485,7 +3497,7 @@ export interface components {
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
             /** @description The records, by kind, name and id (ordinal). */
-            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["CustomRecord"] | components["schemas"]["ConstraintRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"])[];
+            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["CustomRecord"] | components["schemas"]["ConstraintRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"] | components["schemas"]["VerbRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
             next: string | null;
             /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise the failures of the calculated values the page reads (MQ5010, MQ5011, MQ5013). */
@@ -4050,6 +4062,11 @@ export interface components {
             gate: string | null;
             label: string;
             isTargetless: boolean;
+            /**
+             * @description The key of the verb of the move (verbs-design.md section 6): the transition's own, else its event's. Left out when
+             *     neither names one.
+             */
+            verb?: string;
         };
         /** @description An event. */
         EventRecord: components["schemas"]["ProcessNodeAnnotations"] & {
@@ -4058,6 +4075,8 @@ export interface components {
             payload: components["schemas"]["AttributeRecord"][];
             actors: string[];
             transitions: string[];
+            /** @description The key of the verb the event names (verbs-design.md decision 11). Left out when it names none. */
+            verb?: string;
         };
         /** @description A guard. */
         GuardRecord: components["schemas"]["ProcessNodeAnnotations"] & {
@@ -4295,6 +4314,43 @@ export interface components {
             requires: string[];
             /** @description The guards, in the order they are checked; absent for an operation without any. */
             guards?: components["schemas"]["OperationGuardRecord"][];
+            /** @description The key of the verb the operation names (verbs-design.md decision 13). Left out when it names none. */
+            verb?: string;
+        };
+        /**
+         * @description A verb of `model.verbs` (verbs-design.md section 6). Verb records appear only when the project uses verbs: it has a verb
+         *     vocabulary or names a verb anywhere. Then the built-in verbs that are not hidden come in the table's order, then the project's
+         *     own in file order, then any hidden built-in verb that is still named.
+         */
+        VerbRecord: {
+            /** @description The own verb's id; null for a built-in verb. */
+            id: string | null;
+            /** @constant */
+            kind: "verb";
+            /** @description The key, so pages order verbs by it. */
+            name: string;
+            /** @description The key every use names, which is what to store. */
+            key: string;
+            /** @description The fixed label of a built-in verb, or an own verb's displayName, else its key with the first letter upper case and hyphens as spaces. */
+            displayName: string;
+            /** @description The fixed meaning of a built-in verb, or an own verb's description ("" when none). */
+            description: string;
+            builtIn: boolean;
+            /**
+             * @description What a built-in verb acts on; `project` for an own verb.
+             * @enum {string}
+             */
+            group: "move" | "signature" | "task" | "object" | "link" | "project";
+            /** @description A hidden built-in verb that is still named. */
+            hidden: boolean;
+            /** @description Whether an event, a transition or an operation names it. */
+            used: boolean;
+            /** @description The ids of the events that name it, in model order. */
+            events: string[];
+            /** @description The ids of the transitions whose move has it, their own verb or their event's, in model order. */
+            transitions: string[];
+            /** @description The ids of the operations that name it, in model order. */
+            operations: string[];
         };
         /** @description A resolved custom element (next-phase-2-design.md section 4.2): its custom kind's type, its content as written and every member. */
         CustomRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -9869,6 +9925,10 @@ export interface components {
             /** @default {} */
             properties?: components["schemas"]["properties"];
         };
+        /** @description A built-in verb (verbs-design.md decision 1): a fixed key whose meaning never changes. Made from the engine's table (Model/BuiltInVerbs.cs); a test checks they agree. */
+        builtInVerb: "promote" | "demote" | "override" | "set-state" | "sign" | "reject" | "ignore" | "withdraw" | "delegate" | "route" | "claim" | "complete" | "create" | "read" | "modify" | "delete" | "copy" | "revise" | "lock" | "unlock" | "change-owner" | "change-type" | "change-lifecycle" | "freeze" | "thaw" | "connect" | "disconnect";
+        /** @description A verb, by key: a built-in verb, or one of the project's own verbs (model/vocabularies/verbs.json). A key neither declares is MQ9701. */
+        verbRef: components["schemas"]["builtInVerb"] | components["schemas"]["key"];
         /**
          * Meaning
          * @description What a signature means.
@@ -9945,6 +10005,8 @@ export interface components {
             id: components["schemas"]["id"];
             name: components["schemas"]["identifier"];
             displayName?: string;
+            /** @description What the actor does by sending the event (verbs-design.md decision 11): a built-in verb's key or one of the project's own (MQ9701). Optional; transitions the event triggers take it. */
+            verb?: components["schemas"]["verbRef"];
             /**
              * @description The typed payload.
              * @default []
@@ -10014,6 +10076,8 @@ export interface components {
              * @enum {unknown}
              */
             trigger?: "event" | "after" | "done" | "always" | "invoke-done" | "invoke-error";
+            /** @description The verb of the automatic move (verbs-design.md decision 12): only on a transition without an event, which takes its event's verb otherwise (MQ9705). A built-in verb's key or one of the project's own (MQ9701). */
+            verb?: components["schemas"]["verbRef"];
             /** @description Required when trigger is event. */
             event?: components["schemas"]["id"];
             /** @description An ISO 8601 duration; required when trigger is after. */
@@ -10201,6 +10265,8 @@ export interface components {
                      * @enum {unknown}
                      */
                     trigger?: "event" | "after" | "done" | "always" | "invoke-done" | "invoke-error";
+                    /** @description The verb of the automatic move (verbs-design.md decision 12): only on a transition without an event, which takes its event's verb otherwise (MQ9705). A built-in verb's key or one of the project's own (MQ9701). */
+                    verb?: components["schemas"]["verbRef"];
                     /** @description Required when trigger is event. */
                     event?: components["schemas"]["id"];
                     /** @description An ISO 8601 duration; required when trigger is after. */
@@ -10241,6 +10307,8 @@ export interface components {
                     id: components["schemas"]["id"];
                     name: components["schemas"]["identifier"];
                     displayName?: string;
+                    /** @description What the actor does by sending the event (verbs-design.md decision 11): a built-in verb's key or one of the project's own (MQ9701). Optional; transitions the event triggers take it. */
+                    verb?: components["schemas"]["verbRef"];
                     /**
                      * @description The typed payload.
                      * @default []
@@ -11262,6 +11330,8 @@ export interface components {
              * @enum {unknown}
              */
             effect: "read" | "change";
+            /** @description What the operation does (verbs-design.md decision 13): a built-in verb's key or one of the project's own (MQ9701). Independent of effect, and of the verbs of the events it fires. */
+            verb?: components["schemas"]["verbRef"];
             /**
              * @description The input members, in file order.
              * @default []
@@ -11529,6 +11599,58 @@ export interface components {
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
         };
+        /**
+         * Verb vocabulary
+         * @description The project's own verbs and the built-in verbs it hides (verbs-design.md decisions 6 to 8): one file per project, model/vocabularies/verbs.json.
+         */
+        "verb-vocabulary": {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "verb-vocabulary";
+            id: components["schemas"]["id"];
+            /** @default  */
+            name: components["schemas"]["label"];
+            displayName?: string;
+            pluralName?: string;
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /**
+             * @description Built-in verbs the project does not use: the editor does not offer them and model.verbs leaves them out unless named (MQ9704). Each must be a built-in verb's key (MQ9703).
+             * @default []
+             */
+            hidden?: components["schemas"]["key"][];
+            /**
+             * @description The project's own verbs, in file order. Every use names one by its key; renaming one in use goes through the batch operation rename-verb (MQ9707).
+             * @default []
+             */
+            verbs?: {
+                id: components["schemas"]["id"];
+                /** @description The kebab-case key every use names; neither a built-in verb's nor another own verb's (MQ9702). */
+                key: components["schemas"]["key"];
+                /** @description The label (localizable); absent, the key with its first letter upper case and hyphens as spaces. */
+                displayName?: string;
+                /** @description The meaning a pack or an implementer fills in (localizable). */
+                description?: string;
+            }[];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
         /** @description A name a batch declares with as and uses anywhere in the batch. */
         placeholder: string;
         /** @description An element or sub-element by kind and stored name: @kind:path, its segments separated by dots, a segment with a dot, quote or white space written in double quotes. */
@@ -11537,12 +11659,12 @@ export interface components {
         idOrName: components["schemas"]["id"] | components["schemas"]["placeholder"] | components["schemas"]["qualifiedName"];
         /**
          * Model batch
-         * @description An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, binding operations, process operations, tag operations, the names-to-ids refactor, the text-to-trees conversion, the fold into a stereotype and the reference-type refactors, from the editor, a refactoring or an AI proposal.
+         * @description An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, binding operations, process operations, tag operations, the names-to-ids refactor, the text-to-trees conversion, the fold into a stereotype, the reference-type refactors and the verb operations, from the editor, a refactoring or an AI proposal.
          */
         batch: {
             operations: ({
                 /** @enum {unknown} */
-                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "sync-codes" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "use-subjects" | "retag" | "tags-to-property" | "names-to-ids" | "fold-into-stereotype" | "map-by-name" | "resync-binding" | "rename-code" | "retire-code" | "merge-reference-types" | "rename-reference-type" | "text-to-trees" | "upsert";
+                op: "create" | "update" | "delete" | "translate" | "add-schema" | "rename-schema" | "remove-schema" | "set-default-schema" | "materialize-tables" | "materialize-entities" | "materialize-attributes" | "materialize-columns" | "sync-enum" | "sync-codes" | "set-lifecycle" | "set-initial" | "refresh-scenario" | "use-subjects" | "retag" | "tags-to-property" | "names-to-ids" | "fold-into-stereotype" | "map-by-name" | "resync-binding" | "rename-code" | "retire-code" | "merge-reference-types" | "rename-reference-type" | "text-to-trees" | "rename-verb" | "remove-verb" | "upsert";
                 /** @description The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder; an upsert's must be a qualified name. For sync-enum and sync-codes, the lifecycle process; for fold-into-stereotype, the stereotype whose members the tables adopt; for rename-code, retire-code and rename-reference-type, the reference type; for merge-reference-types, the reference type merged away. */
                 id?: components["schemas"]["idOrName"];
                 /** @description Create, update and upsert: a placeholder that names the operation's element for the whole batch. */
@@ -11578,7 +11700,7 @@ export interface components {
                 tags?: components["schemas"]["tagList"];
                 /** @description The prefix of the tags that move into the property name (tags-to-property): each tag that starts with it and leaves a non-empty suffix. */
                 prefix?: string;
-                /** @description Materialize, map-by-name, resync-binding, retag, tags-to-property, names-to-ids, fold-into-stereotype and the reference-type refactors: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. A key may be a qualified name, never a placeholder. */
+                /** @description Materialize, map-by-name, resync-binding, retag, tags-to-property, names-to-ids, fold-into-stereotype, the reference-type refactors, rename-verb and remove-verb: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. A key may be a qualified name, never a placeholder. */
                 expectedHashes?: {
                     [key: string]: string;
                 };
@@ -11588,7 +11710,9 @@ export interface components {
                 name?: string;
                 /** @description The code a refactor acts on, as the code's canonical text (an integer in decimal digits, a uuid in lowercase): the code to rename (rename-code) or to retire (retire-code). */
                 code?: string;
-                /** @description The code's new text (rename-code), or the live code whose row takes over the retired code's uses (retire-code). */
+                /** @description The key of the project's own verb a verb operation acts on (rename-verb, remove-verb). A built-in verb's key, or a key no own verb has, refuses the operation (MQ1002). */
+                verb?: components["schemas"]["key"];
+                /** @description The code's new text (rename-code), or the live code whose row takes over the retired code's uses (retire-code); the verb's new key (rename-verb): another own verb's or a built-in verb's key merges the two, the uses moving to it and the definition going with its translations. */
                 to?: string;
                 /** @description merge-reference-types: codes of the merged-away type mapped to live codes of the target, for codes the target does not hold itself; every other code moves into the target as a row. */
                 codes?: {
@@ -11623,7 +11747,7 @@ export interface components {
                  * @default false
                  */
                 keepNames?: boolean;
-            } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
+            } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
             $defs: {
                 /** @description A name a batch declares with as and uses anywhere in the batch. */
                 placeholder: string;

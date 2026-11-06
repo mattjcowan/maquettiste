@@ -197,6 +197,11 @@ internal sealed class NameIndex
             case CategoryTree tree when Wants("category"):
                 AddCategories(tree, lookup, Add);
                 break;
+            case VerbVocabulary verbs when Wants("verb"):
+                // An own verb by its key (verbs-design.md decision 7): @verb:escalate.
+                foreach (var verb in verbs.Verbs)
+                    Add("verb", verb.Id, Forms.Of([verb.Key]));
+                break;
             case Operation operation when forms is not null:
                 AddOperation(operation, forms, Add);
                 break;
@@ -227,6 +232,7 @@ internal sealed class NameIndex
         "row" => [ElementKind.Seed],
         "binding" => [ElementKind.Entity, ElementKind.ReferenceType],
         "category" => [ElementKind.CategoryTree],
+        "verb" => [ElementKind.VerbVocabulary],
         "operation-member" or "outcome" => [ElementKind.Operation],
         "parameter" => [ElementKind.Constraint],
         "error" => [ElementKind.Operation, ElementKind.Stereotype],
@@ -240,7 +246,7 @@ internal sealed class NameIndex
     {
         switch (element)
         {
-            case TagVocabulary or CategoryTree or Migration:
+            case TagVocabulary or CategoryTree or Migration or VerbVocabulary:
                 return null;
             case Package package:
             {

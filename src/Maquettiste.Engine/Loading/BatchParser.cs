@@ -76,6 +76,8 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     "retire-code" => BatchOp.RetireCode,
                     "merge-reference-types" => BatchOp.MergeReferenceTypes,
                     "rename-reference-type" => BatchOp.RenameReferenceType,
+                    "rename-verb" => BatchOp.RenameVerb,
+                    "remove-verb" => BatchOp.RemoveVerb,
                     "upsert" => BatchOp.Upsert,
                     _ => BatchOp.Delete,
                 };
@@ -115,7 +117,8 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     Entity: Text(item, "entity"),
                     Attribute: Text(item, "attribute"),
                     StateCodes: Values(item, "stateCodes"),
-                    Stereotype: Text(item, "stereotype")));
+                    Stereotype: Text(item, "stereotype"),
+                    Verb: Text(item, "verb")));
             }
 
             return new BatchParseResult(new ModelBatch(operations), []);

@@ -356,7 +356,7 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
                 (scope === "all" || r.kind === scopes[scope]) &&
                 (r.kind === "database" ? !database || r.id === database : r.kind === "entity" || r.kind === "relation" ? mappedTo(r) : true),
             );
-      const result = page(selected, (r) => [r.kind, r.name, r.id], q.get("cursor"), limit);
+      const result = page(selected, (r) => [r.kind, r.name, r.id ?? ""], q.get("cursor"), limit);
       if (!result) return problem(400, "bad-request", "The request is not valid.", BAD_CURSOR);
       return HttpResponse.json({ items: result.items, next: result.next, diagnostics: [], calculated: {} });
     }),

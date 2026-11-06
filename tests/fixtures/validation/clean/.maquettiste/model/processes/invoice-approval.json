@@ -8,6 +8,7 @@
     {
       "id": "01JPRX00000000000000009001",
       "name": "approve",
+      "verb": "promote",
       "actors": [
         "01JACT00000000000000009001"
       ]

@@ -5,6 +5,7 @@ import { useIndex } from "@/api/queries";
 import type { ModelJson } from "@/api/types";
 import { Field, Input } from "@/components/ui/input";
 import { CommonFields } from "@/inspector/fields";
+import { VerbPicker } from "@/verbs/VerbsSettings";
 import { JsonTab, References } from "@/inspector/Inspector";
 import { indexLookup } from "@/model/index";
 import { displayName } from "@/model/model";
@@ -65,6 +66,19 @@ function OperationBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<t
               ) : null}
               <Field label="Effect" htmlFor={`${form.id}-effect`}>
                 <Input id={`${form.id}-effect`} value={facts.effect} readOnly />
+              </Field>
+              <Field label="Verb" htmlFor={`${form.id}-verb`} hint="What the operation does.">
+                <VerbPicker
+                  place="operation"
+                  id={`${form.id}-verb`}
+                  value={typeof (ctx.json as Rec).verb === "string" ? ((ctx.json as Rec).verb as string) : undefined}
+                  onChange={(key) =>
+                    ctx.edit((j) => {
+                      if (key) (j as Rec).verb = key;
+                      else delete (j as Rec).verb;
+                    })
+                  }
+                />
               </Field>
             </div>
           ),

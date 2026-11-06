@@ -89,4 +89,7 @@ public enum ElementKind
 
     /// <summary>An element of a custom kind the project declares in <c>extensions/kinds/</c> (<c>custom</c>).</summary>
     [JsonStringEnumMemberName("custom")] Custom,
+
+    /// <summary>The project's own verbs and the built-in verbs it hides (<c>verb-vocabulary</c>, verbs-design.md decision 6).</summary>
+    [JsonStringEnumMemberName("verb-vocabulary")] VerbVocabulary,
 }

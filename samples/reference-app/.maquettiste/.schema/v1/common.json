@@ -46,6 +46,157 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
     },
+    "builtInVerb": {
+      "description": "A built-in verb (verbs-design.md decision 1): a fixed key whose meaning never changes. Made from the engine's table (Model/BuiltInVerbs.cs); a test checks they agree.",
+      "oneOf": [
+        {
+          "const": "promote",
+          "title": "Promote",
+          "description": "Move the object forward to a next state of its lifecycle."
+        },
+        {
+          "const": "demote",
+          "title": "Demote",
+          "description": "Move the object back to an earlier state of its lifecycle."
+        },
+        {
+          "const": "override",
+          "title": "Override",
+          "description": "Make a move although its conditions or signatures are not met."
+        },
+        {
+          "const": "set-state",
+          "title": "Set state",
+          "description": "Put the object in a chosen state directly, without a declared move."
+        },
+        {
+          "const": "sign",
+          "title": "Sign",
+          "description": "Give a signature that a move needs."
+        },
+        {
+          "const": "reject",
+          "title": "Reject",
+          "description": "Refuse a signature, so the move does not happen."
+        },
+        {
+          "const": "ignore",
+          "title": "Ignore",
+          "description": "Waive a signature, so the move no longer waits for it."
+        },
+        {
+          "const": "withdraw",
+          "title": "Withdraw",
+          "description": "Take back a signature already given."
+        },
+        {
+          "const": "delegate",
+          "title": "Delegate",
+          "description": "Hand a signature or a task to another actor."
+        },
+        {
+          "const": "route",
+          "title": "Route",
+          "description": "Send the object to actors for review, signature or a task."
+        },
+        {
+          "const": "claim",
+          "title": "Claim",
+          "description": "Take a task offered to several actors, so only you hold it."
+        },
+        {
+          "const": "complete",
+          "title": "Complete",
+          "description": "Finish a task."
+        },
+        {
+          "const": "create",
+          "title": "Create",
+          "description": "Make a new object."
+        },
+        {
+          "const": "read",
+          "title": "Read",
+          "description": "See an object or a link, and its data."
+        },
+        {
+          "const": "modify",
+          "title": "Modify",
+          "description": "Change the values of an object or a link."
+        },
+        {
+          "const": "delete",
+          "title": "Delete",
+          "description": "Remove an object."
+        },
+        {
+          "const": "copy",
+          "title": "Copy",
+          "description": "Make a new object from an existing one."
+        },
+        {
+          "const": "revise",
+          "title": "Revise",
+          "description": "Make the next revision of an object."
+        },
+        {
+          "const": "lock",
+          "title": "Lock",
+          "description": "Reserve an object, so only the actor holding the lock may change it."
+        },
+        {
+          "const": "unlock",
+          "title": "Unlock",
+          "description": "Release a lock."
+        },
+        {
+          "const": "change-owner",
+          "title": "Change owner",
+          "description": "Give an object another owner."
+        },
+        {
+          "const": "change-type",
+          "title": "Change type",
+          "description": "Make an object an instance of another type."
+        },
+        {
+          "const": "change-lifecycle",
+          "title": "Change lifecycle",
+          "description": "Put an object under another lifecycle."
+        },
+        {
+          "const": "freeze",
+          "title": "Freeze",
+          "description": "Make an object or a link read-only until it is thawed. While frozen it can't be modified, connected, disconnected or deleted."
+        },
+        {
+          "const": "thaw",
+          "title": "Thaw",
+          "description": "Undo a freeze."
+        },
+        {
+          "const": "connect",
+          "title": "Connect",
+          "description": "Link two objects through a relation."
+        },
+        {
+          "const": "disconnect",
+          "title": "Disconnect",
+          "description": "Remove a link between two objects."
+        }
+      ]
+    },
+    "verbRef": {
+      "description": "A verb, by key: a built-in verb, or one of the project's own verbs (model/vocabularies/verbs.json). A key neither declares is MQ9701.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/builtInVerb"
+        },
+        {
+          "$ref": "#/$defs/key"
+        }
+      ]
+    },
     "keyList": {
       "type": "array",
       "items": {

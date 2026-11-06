@@ -37,6 +37,15 @@ internal static class ModelIndexer
         /// <summary>The category tree of each scope (package id, <c>""</c> for global) that validation uses.</summary>
         internal FrozenDictionary<string, CategoryTree> CategoryTrees { get; init; } = FrozenDictionary<string, CategoryTree>.Empty;
 
+        /// <summary>The verb vocabulary in use (verbs-design.md decision 6): the ordinally first file; a second one is MQ1009.</summary>
+        internal VerbVocabulary? Verbs { get; init; }
+
+        /// <summary>
+        /// The project's own verbs by key that uses resolve to (verbs-design.md decision 7): the first own verb of each key in file order, a
+        /// built-in verb's key left out, since a use of it is the built-in (MQ9702 reports the own verb).
+        /// </summary>
+        internal FrozenDictionary<string, OwnVerb> OwnVerbs { get; init; } = FrozenDictionary<string, OwnVerb>.Empty;
+
         /// <summary>The documents indexed, in path order (aligned with <see cref="Walks"/>).</summary>
         internal ImmutableArray<ElementDocument> Documents { get; init; }
 
@@ -78,7 +87,7 @@ internal static class ModelIndexer
         internal int SuppressionCount { get; init; }
     }
 
-    internal enum PropertyRole { Reference, KeyedReference, StereotypeKeys, TypeRef, Record, RecordList }
+    internal enum PropertyRole { Reference, KeyedReference, StereotypeKeys, VerbKey, TypeRef, Record, RecordList }
 
     internal sealed record PropertyMeta(string Name, Func<object, object?> Get, PropertyRole Role, bool Owning = false);
 
@@ -92,6 +101,7 @@ internal static class ModelIndexer
         _ when type == typeof(RelationEnd) => "end",
         _ when type == typeof(Column) => "column",
         _ when type == typeof(Category) => "category",
+        _ when type == typeof(OwnVerb) => "verb",
         _ when type == typeof(DbSchema) => "schema",
         _ when type == typeof(ReferenceCode) || type == typeof(ReferenceLabel) => "reference-field",
         _ when type == typeof(SeedRow) => "row",
@@ -124,7 +134,7 @@ internal static class ModelIndexer
     {
         "attribute", "enum-member", "end", "column", "category", "schema", "reference-field", "row", "state", "transition", "event",
         "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key", "operation-member", "outcome", "error", "member",
-        "parameter", "subject", "object", "participant", "holding",
+        "parameter", "subject", "object", "participant", "holding", "verb",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
@@ -173,6 +183,10 @@ internal static class ModelIndexer
                 stereotypes.TryAdd(s.Key, s); // a duplicate key keeps the ordinally first path; validation reports it
         }
 
+        // The verb vocabulary in use, the ordinally first (MQ1009 reports another), so every use of an own verb's key is a reference to it.
+        var verbVocabulary = FirstVerbVocabulary(documents);
+        var ownVerbs = OwnVerbsOf(verbVocabulary);
+
         // Each document is walked on its own (in parallel: the walk reads only the element and the stereotype keys); the results are
         // then merged in document order, so the first registration of an id wins exactly as in one sequential walk.
         var metadata = new MetadataCache();
@@ -180,7 +194,7 @@ internal static class ModelIndexer
         var walks = new DocumentWalk[documents.Length];
         Parallel.For(0, documents.Length, new ParallelOptions { MaxDegreeOfParallelism = parallelism, CancellationToken = ct }, i =>
         {
-            var walk = new DocumentWalk(stereotypes, metadata, referenceData, schemas, defaults);
+            var walk = new DocumentWalk(stereotypes, metadata, referenceData, schemas, defaults, ownVerbs);
             walk.WalkElement(documents[i].Element);
             walks[i] = walk;
         });
@@ -194,6 +208,7 @@ internal static class ModelIndexer
         // One vocabulary of each kind per scope (explorer-redesign.md section 1.11): the scope is the package id, "" for global.
         var tagScopes = new Dictionary<string, (TagVocabulary Vocabulary, string Path)>(StringComparer.Ordinal);
         var categoryScopes = new Dictionary<string, (CategoryTree Tree, string Path)>(StringComparer.Ordinal);
+        string? verbPath = null;
         var retired = new HashSet<string>(StringComparer.Ordinal);
         var clean = true;
         var suppressionCount = 0;
@@ -229,6 +244,19 @@ internal static class ModelIndexer
                     diagnostics.Add(RuleCatalog.Create(
                         "MQ1009",
                         $"The {(scope is null ? "model" : $"domain {scope}")} already has a {element.KindName} in {firstPath}; this second one is ignored.",
+                        element.Id,
+                        doc.Path,
+                        ""));
+                    break;
+                case VerbVocabulary when verbPath is null:
+                    verbPath = doc.Path;
+                    break;
+                case VerbVocabulary:
+                    // One per project (verbs-design.md decision 6): the ordinally first file wins, the others are reported and ignored.
+                    clean = false;
+                    diagnostics.Add(RuleCatalog.Create(
+                        "MQ1009",
+                        $"The model already has a verb-vocabulary in {verbPath}; this second one is ignored.",
                         element.Id,
                         doc.Path,
                         ""));
@@ -275,6 +303,8 @@ internal static class ModelIndexer
         {
             TagVocabularies = tagScopes.ToFrozenDictionary(kv => kv.Key, kv => kv.Value.Vocabulary, StringComparer.Ordinal),
             CategoryTrees = categoryScopes.ToFrozenDictionary(kv => kv.Key, kv => kv.Value.Tree, StringComparer.Ordinal),
+            Verbs = verbVocabulary,
+            OwnVerbs = ownVerbs,
             Documents = documents,
             Walks = walks,
             Clean = clean,
@@ -325,13 +355,13 @@ internal static class ModelIndexer
             return previous with { Documents = documents, Walks = walks, Patched = true, HasDefaults = defaults.HasDefaults };
         foreach (var r in removed)
         {
-            if (old[r].Element is Stereotype or TagVocabulary or CategoryTree)
+            if (old[r].Element is Stereotype or TagVocabulary or CategoryTree or VerbVocabulary)
                 return null;
         }
 
         foreach (var a in added)
         {
-            if (documents[a].Element is Stereotype or TagVocabulary or CategoryTree)
+            if (documents[a].Element is Stereotype or TagVocabulary or CategoryTree or VerbVocabulary)
                 return null;
         }
 
@@ -358,7 +388,7 @@ internal static class ModelIndexer
         var metadata = new MetadataCache();
         foreach (var a in added)
         {
-            var walk = new DocumentWalk(previous.Stereotypes, metadata, referenceData, schemas, defaults);
+            var walk = new DocumentWalk(previous.Stereotypes, metadata, referenceData, schemas, defaults, previous.OwnVerbs);
             walk.WalkElement(documents[a].Element);
             walks[a] = walk;
         }
@@ -551,6 +581,53 @@ internal static class ModelIndexer
             Retired = retired,
             SuppressionCount = suppressionCount,
         };
+    }
+
+    /// <summary>The first verb vocabulary in path order whose id is registered first (a duplicate id is MQ1004), or <see langword="null"/>.</summary>
+    private static VerbVocabulary? FirstVerbVocabulary(ImmutableArray<ElementDocument> documents)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var doc in documents)
+        {
+            if (ids.Add(doc.Element.Id) && doc.Element is VerbVocabulary verbs)
+                return verbs;
+        }
+
+        return null;
+    }
+
+    /// <summary>The own verbs uses resolve to: the first of each key in file order, built-in keys left out.</summary>
+    private static FrozenDictionary<string, OwnVerb> OwnVerbsOf(VerbVocabulary? vocabulary)
+    {
+        if (vocabulary is null || vocabulary.Verbs.Count == 0)
+            return FrozenDictionary<string, OwnVerb>.Empty;
+        var map = new Dictionary<string, OwnVerb>(StringComparer.Ordinal);
+        foreach (var verb in vocabulary.Verbs)
+        {
+            if (!BuiltInVerbs.IsBuiltIn(verb.Key))
+                map.TryAdd(verb.Key, verb);
+        }
+
+        return map.ToFrozenDictionary(StringComparer.Ordinal);
+    }
+
+    /// <summary>The distinct verb keys a process's events and transitions name, sorted ordinally; <see langword="null"/> when none.</summary>
+    internal static IReadOnlyList<string>? VerbsOf(Process process)
+    {
+        SortedSet<string>? keys = null;
+        foreach (var e in process.Events)
+        {
+            if (e.Verb is { } verb)
+                (keys ??= new(StringComparer.Ordinal)).Add(verb);
+        }
+
+        foreach (var t in process.Transitions)
+        {
+            if (t.Verb is { } verb)
+                (keys ??= new(StringComparer.Ordinal)).Add(verb);
+        }
+
+        return keys is null ? null : [.. keys];
     }
 
     /// <summary>
@@ -763,7 +840,9 @@ internal static class ModelIndexer
             Actors: actors,
             MemberOf: element is Actor { MemberOf.Count: > 0 } member ? [.. member.MemberOf] : null,
             Relative: element is Actor { Relative: { } relative } ? relative.Form : null,
-            Participants: element is Scenario { Participants.Count: > 0 } cast ? cast.Participants.Count : null);
+            Participants: element is Scenario { Participants.Count: > 0 } cast ? cast.Participants.Count : null,
+            Verb: element is Operation { Verb: { } operationVerb } ? operationVerb : null,
+            Verbs: element is Process verbProcess ? VerbsOf(verbProcess) : null);
 
     /// <summary>The entities a process's entity entries name, in entry order (a stereotype entry is not counted).</summary>
     private static List<string> EntityEntries(Process process) => [.. process.Subjects.Select(s => s.Entity).OfType<string>()];
@@ -924,7 +1003,7 @@ internal static class ModelIndexer
 
     /// <summary>The walk of one document: its sub-element entries (in walk order) and its references.</summary>
     internal sealed class DocumentWalk(IReadOnlyDictionary<string, Stereotype> stereotypes, MetadataCache metadata, ReferenceDataIndex referenceData,
-        PropertySchemaSet schemas, StereotypeDefaults defaults)
+        PropertySchemaSet schemas, StereotypeDefaults defaults, IReadOnlyDictionary<string, OwnVerb> ownVerbs)
     {
         public List<(string Id, IndexEntry Entry)> Entries { get; } = [];
 
@@ -1211,6 +1290,11 @@ internal static class ModelIndexer
                         }
 
                         break;
+                    case PropertyRole.VerbKey when child is string verbKey:
+                        // An own verb's key is a reference to its id (verbs-design.md decision 7); a built-in or unknown key is none (MQ9701).
+                        if (ownVerbs.TryGetValue(verbKey, out var ownVerb))
+                            References.Add(new ReferenceInfo(ownerId, fromId, childPointer, property.Name, ownVerb.Id));
+                        break;
                     case PropertyRole.TypeRef when child is TypeRef { Ref: { } typeId }:
                         References.Add(new ReferenceInfo(ownerId, fromId, childPointer + "/ref", property.Name, typeId));
                         break;
@@ -1259,6 +1343,7 @@ internal static class ModelIndexer
             IProcessNode n => n.Id,
             EntityBinding b => b.Id,
             ReferenceTypeBinding b => b.Id,
+            OwnVerb v => v.Id,
             _ => null,
         };
 
@@ -1270,6 +1355,8 @@ internal static class ModelIndexer
                     return reference.Keyed ? PropertyRole.KeyedReference : PropertyRole.Reference;
                 if (pi.GetCustomAttribute<StereotypeKeysAttribute>(inherit: true) is not null)
                     return PropertyRole.StereotypeKeys;
+                if (pi.GetCustomAttribute<VerbKeyAttribute>(inherit: true) is not null)
+                    return PropertyRole.VerbKey;
             }
 
             var type = property.PropertyType;

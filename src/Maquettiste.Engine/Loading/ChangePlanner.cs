@@ -300,6 +300,20 @@ internal sealed partial class ChangePlanner
             return;
         }
 
+        // An own verb's key that a save changes while something names it (MQ9707, verbs-design.md decision 9): rename-verb rewrites the uses
+        // in the same batch, so the elements the batch writes do not count.
+        if (current.Element is VerbVocabulary verbsBefore && element is VerbVocabulary verbsAfter
+            && Validation.SaveRules.RenamedVerbInUse(_snapshot, verbsBefore, verbsAfter, _batchIds.Contains) is { } renamed)
+        {
+            outcome.Fail(SaveOutcome.Invalid, RuleCatalog.Create(
+                "MQ9707",
+                $"{renamed.Pointer} The key of own verb '{renamed.Before}' cannot change to '{renamed.After}' while {renamed.Uses.ToString(System.Globalization.CultureInfo.InvariantCulture)} use(s) name it: rename it with the batch operation rename-verb, which rewrites every use.",
+                id,
+                _paths.ToRepoPath(current.ModelPath),
+                renamed.Pointer));
+            return;
+        }
+
         var modelPath = element is Database database
             ? MoveDatabase(current, database)
             : Relocate(current, element);
@@ -1031,11 +1045,12 @@ internal sealed partial class ChangePlanner
 
     private void CheckCandidate(ModelSnapshot candidate, List<ChangeOutcome> outcomes)
     {
-        // Deletes: nothing that survives may still reference the element or its sub-elements. Stereotypes are referenced by key, and
-        // the index resolves a key only while the stereotype exists, so deleted stereotypes stay in the model this check looks at.
+        // Deletes: nothing that survives may still reference the element or its sub-elements. Stereotypes and own verbs are referenced
+        // by key, and the index resolves a key only while its stereotype or verb vocabulary exists, so deleted ones stay in the model
+        // this check looks at (verbs-design.md section 7).
         var deletedStereotypes = _deleteChecks
             .Select(d => _snapshot.GetDocument(d.Id))
-            .Where(d => d?.Element is Stereotype)
+            .Where(d => d?.Element is Stereotype or VerbVocabulary)
             .Select(d => d!)
             .ToList();
         var referenceModel = deletedStereotypes.Count == 0

@@ -31,6 +31,13 @@ public sealed record Operation : Element, IPackaged
     /// <summary>Whether the operation only reads data or changes it.</summary>
     public required OperationEffect Effect { get; init; }
 
+    /// <summary>
+    /// What the operation does, by verb key (verbs-design.md decision 13); independent of <see cref="Effect"/> and of the verbs of the
+    /// events it fires. <see langword="null"/> when it names none.
+    /// </summary>
+    [VerbKey]
+    public string? Verb { get; init; }
+
     /// <summary>The input members, in file order. A record-level operation takes the subject record's key implicitly.</summary>
     public IReadOnlyList<OperationMember> Input { get; init; } = [];
 

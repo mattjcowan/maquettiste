@@ -259,3 +259,40 @@ public sealed record AppliedStereotype(Stereotype Stereotype, int Entry, string?
     /// <summary>The id of the database schema entry or package whose default list gives the stereotype; <see langword="null"/> otherwise.</summary>
     public string? DefaultHolder { get; init; }
 }
+
+/// <summary>
+/// The verb vocabulary (verbs-design.md decisions 6 to 8; <c>model/vocabularies/verbs.json</c>): the project's own verbs and the built-in
+/// verbs it hides. One per project (MQ1009); global only.
+/// </summary>
+public sealed record VerbVocabulary : Element
+{
+    /// <inheritdoc/>
+    [JsonIgnore]
+    public override ElementKind Kind => ElementKind.VerbVocabulary;
+
+    /// <summary>Built-in verb keys the project does not use (MQ9703 for a key that is no built-in verb); a hidden verb named anyway is MQ9704.</summary>
+    public IReadOnlyList<string> Hidden { get; init; } = [];
+
+    /// <summary>The project's own verbs, in file order.</summary>
+    public IReadOnlyList<OwnVerb> Verbs { get; init; } = [];
+}
+
+/// <summary>
+/// One of the project's own verbs: a sub-element (index kind <c>verb</c>) that every use names by its <see cref="Key"/>. The index records
+/// each use of the key as a reference to <see cref="Id"/>, as it does for stereotype keys.
+/// </summary>
+public sealed record OwnVerb
+{
+    /// <summary>The verb's id.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The kebab-case key every use names; neither a built-in verb's nor another own verb's (MQ9702). A save may change it only
+    /// while nothing names it (MQ9707); <c>rename-verb</c> rewrites the uses.</summary>
+    public required string Key { get; init; }
+
+    /// <summary>The label (localizable); <see langword="null"/> means <see cref="BuiltInVerbs.DisplayNameOf"/> of the key.</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>The meaning a pack or an implementer fills in (localizable).</summary>
+    public string? Description { get; init; }
+}

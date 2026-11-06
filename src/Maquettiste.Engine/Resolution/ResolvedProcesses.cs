@@ -307,6 +307,10 @@ public sealed class RTransition : RProcessNode
 
     /// <summary>Whether the transition has no target (it exits and enters nothing).</summary>
     public bool IsTargetless { get; internal set; }
+
+    /// <summary>The verb of the move (verbs-design.md decision 12): the transition's own, else its event's; <see langword="null"/> when
+    /// neither names one or the key names no verb.</summary>
+    public RVerb? Verb { get; internal set; }
 }
 
 /// <summary>A process-local event.</summary>
@@ -330,6 +334,10 @@ public sealed class REvent : RProcessNode
     /// <summary>The operations whose <c>fires</c> names the event, in <see cref="ResolvedModel.Operations"/> order (next-phase-2-design.md
     /// section 4.1).</summary>
     public RList<ROperation> FiredBy { get; internal set; } = RList<ROperation>.Empty;
+
+    /// <summary>The verb the event names (verbs-design.md decision 11), or <see langword="null"/> when it names none or the key names no
+    /// verb.</summary>
+    public RVerb? Verb { get; internal set; }
 }
 
 /// <summary>A named guard.</summary>

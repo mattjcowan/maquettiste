@@ -7,6 +7,8 @@ import type { Diagnostic, ModelJson } from "@/api/types";
 import { atPointer, clone } from "@/lib/json";
 import { classifyAttribute } from "@/model/binding";
 import { subjectsOf, type SubjectDoc } from "@/model/process";
+import { builtInVerbs } from "@/model/verbs";
+import type { VerbFix } from "@/verbs/verbFixes";
 
 type Json = Record<string, unknown>;
 
@@ -19,16 +21,43 @@ export type QuickFix =
   | { kind: "sync-enum"; process: string; label: string; entity?: string; stereotype?: string }
   /** Sync codes (MQ9210): the process and the binding the finding sits on (a dry run first, then the apply). */
   | { kind: "sync-codes"; process: string; entity?: string; stereotype?: string; attribute: string; label: string }
+  /** A fix that reaches the project's verb vocabulary (verbFixes.ts). */
+  | VerbFix
   /** A plain update of one document. */
   | { kind: "update"; id: string; json: ModelJson; label: string };
 
 /** The rules whose fix is built in the editor as a plain update (the derivation table's last row) or needs two findings of MQ9201. */
-const EDITOR_FIXES = new Set(["MQ9013", "MQ9016", "MQ9102", "MQ9105", "MQ9205", "MQ9201", "MQ9209", "MQ9601", "MQ9605", "MQ9606"]);
+const EDITOR_FIXES = new Set([
+  "MQ9013",
+  "MQ9016",
+  "MQ9102",
+  "MQ9105",
+  "MQ9205",
+  "MQ9201",
+  "MQ9209",
+  "MQ9601",
+  "MQ9605",
+  "MQ9606",
+  "MQ9701",
+  "MQ9702",
+  "MQ9703",
+  "MQ9704",
+  "MQ9705",
+  "MQ9706",
+]);
 
 /** True when the diagnostic's rule has a quick fix: a catalog `quickFix` or one the editor builds. */
 export function hasQuickFix(rule: string, catalogFix: string | null | undefined): boolean {
   if (rule === "MQ9206") return false; // a code map the codes themselves break; no sync-codes fix (decision 19)
   return !!catalogFix || EDITOR_FIXES.has(rule);
+}
+
+/**
+ * True when the fix of a finding in an unsaved draft can still be offered: it edits the project's verbs, not the draft
+ * (MQ9701, "add it to the project's verbs"). Every other fix reads the saved document and waits for the draft to save.
+ */
+export function hasDraftQuickFix(rule: string): boolean {
+  return rule === "MQ9701";
 }
 
 const str = (value: unknown): string | undefined => (typeof value === "string" && value ? value : undefined);
@@ -122,6 +151,44 @@ function initialState(process: Json): Json | undefined {
   return states.find((s) => s.id === process.initial) ?? states[0];
 }
 
+/** The built-in verb a key is, or reads like once its hyphens are dropped (MQ9706). */
+const builtInFor = (key: string): string | undefined =>
+  builtInVerbs.find((v) => v.key === key)?.key ?? builtInVerbs.find((v) => v.key.replace(/-/g, "") === key.replace(/-/g, ""))?.key;
+
+/** The fixes of MQ9701 to MQ9706 (verbs-design.md section 9). */
+function verbFix(rule: string, element: ModelJson, pointer: string, id: string): QuickFix | null {
+  const value = str(atPointer(element, pointer));
+  switch (rule) {
+    case "MQ9701":
+      return value ? { kind: "verb", action: "add", key: value, label: "Add it to the project's verbs" } : null;
+    case "MQ9702":
+    case "MQ9706": {
+      const key = value && element.kind === "verb-vocabulary" ? value : undefined;
+      const to = key ? builtInFor(key) : undefined;
+      return key && to ? { kind: "verb", action: "use-built-in", key, to, label: `Use the built-in ${to}` } : null;
+    }
+    case "MQ9703": {
+      const json = /^\/hidden\/\d+$/.test(pointer) ? removeAt(element, pointer) : null;
+      return json ? { kind: "update", id, json, label: "Remove the entry" } : null;
+    }
+    case "MQ9704":
+      return value ? { kind: "verb", action: "show", key: value, label: "Show the verb again" } : null;
+    case "MQ9705": {
+      // The verb moves to the event when it names none; otherwise it is cleared.
+      const t = atPointer(element, parent(pointer)) as Json | undefined;
+      const events = (element.events as Json[] | undefined) ?? [];
+      const at = events.findIndex((e) => e.id === t?.event);
+      if (!t || !value) return null;
+      const json = removeAt(element, pointer);
+      if (!json) return null;
+      if (at < 0 || events[at].verb !== undefined) return { kind: "update", id, json, label: "Clear the verb" };
+      (json.events as Json[])[at].verb = value;
+      return { kind: "update", id, json, label: "Move the verb to the event" };
+    }
+  }
+  return null;
+}
+
 /**
  * The quick fix of a diagnostic, or null when it has none or its arguments cannot be read from the documents.
  * `catalogFix` is the rule's `quickFix` from GET /api/validation/rules; `doc` answers the documents `fixDocuments` named.
@@ -134,6 +201,7 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
   const id = typeof element.id === "string" ? element.id : d.elementId;
   // The process comes from the fetched document, never from a finding's element id (a state's or an entry's id).
   if (d.rule === "MQ9206") return null;
+  if (d.rule.startsWith("MQ97")) return verbFix(d.rule, element, pointer, id);
   if (catalogFix === "sync-codes") {
     // The finding sits on the binding (`/subjects/<i>/boundAttribute`, or `/boundAttribute`): its entry names the entity and the attribute.
     if (element.kind !== "process") return null;

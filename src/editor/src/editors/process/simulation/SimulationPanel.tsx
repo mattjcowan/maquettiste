@@ -11,7 +11,9 @@ import * as endpoints from "@/api/endpoints";
 import { elementQuery, keys, upsertIndexRow, useIndex } from "@/api/queries";
 import type { AttributeDoc, ModelJson } from "@/api/types";
 import { useServices } from "@/app/context";
-import { Button } from "@/components/ui/button";
+import { Button, iconTitle } from "@/components/ui/button";
+import { describeVerb } from "@/model/verbList";
+import { useVerbs } from "@/verbs/useVerbs";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Badge, Spinner } from "@/components/ui/misc";
@@ -743,6 +745,7 @@ function EnabledRowView({
     e.stopPropagation();
     onRaise(true);
   };
+  const { own } = useVerbs();
   // An event takes an actor; an invoke result only when its task names the actors who may complete it.
   const needsActor = row.trigger === "event" || ((row.trigger === "invoke-done" || row.trigger === "invoke-error") && !row.anyActor);
   return (
@@ -822,6 +825,9 @@ function EnabledRowView({
           tabIndex={-1}
           label={L.raiseRow(row.label, n)}
           shortcut={n ? String(n) : undefined}
+          title={
+            row.verb ? `${iconTitle(L.raiseRow(row.label, n), n ? String(n) : undefined)}. Verb: ${describeVerb(row.verb, own)?.label ?? row.verb}` : undefined
+          }
           onClick={() => onRaise(false)}
           data-testid="enabled-raise"
         >

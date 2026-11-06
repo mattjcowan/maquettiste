@@ -17,6 +17,13 @@ one.
   you like. A step names its participant, and the engine works out the actor it acts as. The simulation panel has a
   participant picker, and `simulate_process` and `record_scenario` take `participants`. "Participants" is a working name, and
   the owner will confirm it before release.
+- **A stereotype as a set of types.** A lifecycle's subject may name a stereotype, such as every `approvable` type. It covers
+  each entity that carries it. An entry that names the entity wins. Guards, owner fields, actors taken from the object and
+  scenario values may read a stereotype's attributes. New rule MQ9211. `sync-enum` and `sync-codes` take `stereotype`.
+- **Verbs.** Events, moves with no event and operations may name a verb. There are 27 built-in verbs in five groups, each with one
+  fixed meaning. A project may hide built-ins and add its own in Settings › Verbs. `rename-verb` and `remove-verb` follow every
+  use. New rules MQ9701 to MQ9707. `csharp-dapper` writes a `Verb` enum, and `process-docs` a Verb column and a page of verbs. The
+  built-in verb names are a working set. The owner will confirm them before release.
 - **New rules MQ9601 to MQ9606**, and MQ9102, MQ9105, MQ9106, MQ9301 and MQ9305 now follow membership and participants.
 - **Generated output.** `csharp-dapper` adds the new actor types only when a model uses them, and checks membership when the
   model has memberships. Actors taken from the object go through a resolver the host supplies. `process-docs` lists members,

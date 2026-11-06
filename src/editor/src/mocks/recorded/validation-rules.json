@@ -66,7 +66,7 @@
   {
     "id": "MQ1009",
     "defaultSeverity": "error",
-    "description": "A second tag vocabulary or category tree in the same scope (global or one domain); the ordinally first file is used.",
+    "description": "A second tag vocabulary or category tree in the same scope (global or one domain), or a second verb vocabulary in the project; the ordinally first file is used.",
     "family": "MQ10xx",
     "familyLabel": "Model files",
     "canBeOff": false
@@ -2981,6 +2981,62 @@
     "description": "A subject entry's owner that is not a single-valued attribute or a to-one relation end of its entity (own or inherited, or an attribute of a stereotype the entity or a base carries), or on a stereotype entry a single-valued attribute of the stereotype's own; clear the owner, or name a field that holds one actor.",
     "family": "MQ96xx",
     "familyLabel": "Actors",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9701",
+    "defaultSeverity": "error",
+    "description": "A verb that is neither a built-in verb nor one of the project's own (model/vocabularies/verbs.json). Reported at the event, transition or operation; add it to the project's verbs, or clear it.",
+    "family": "MQ97xx",
+    "familyLabel": "Verbs",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9702",
+    "defaultSeverity": "error",
+    "description": "An own verb whose key is a built-in verb's, or two own verbs with one key, also once hyphens are dropped (x-1 and x1); use the built-in verb (rename-verb to it), merge the two, or give the verb another key.",
+    "family": "MQ97xx",
+    "familyLabel": "Verbs",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9703",
+    "defaultSeverity": "error",
+    "description": "The verb vocabulary's hidden list names a key that is not a built-in verb; remove the entry.",
+    "family": "MQ97xx",
+    "familyLabel": "Verbs",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9704",
+    "defaultSeverity": "warning",
+    "description": "A hidden built-in verb is named. Reported at the use; show the verb again, or name another verb.",
+    "family": "MQ97xx",
+    "familyLabel": "Verbs",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9705",
+    "defaultSeverity": "error",
+    "description": "A transition triggered by an event names a verb of its own: it takes its event's verb. Move the verb to the event when the event names none, or clear it.",
+    "family": "MQ97xx",
+    "familyLabel": "Verbs",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9706",
+    "defaultSeverity": "warning",
+    "description": "An own verb's key equals a built-in verb's key once hyphens are dropped, such as setstate beside set-state; use the built-in verb.",
+    "family": "MQ97xx",
+    "familyLabel": "Verbs",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9707",
+    "defaultSeverity": "error",
+    "description": "A save changes the key of an own verb that is in use; rename it with the batch operation rename-verb, which rewrites every use.",
+    "family": "MQ97xx",
+    "familyLabel": "Verbs",
     "canBeOff": true
   }
 ]

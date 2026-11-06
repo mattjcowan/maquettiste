@@ -644,6 +644,29 @@ internal sealed class PackRepo : IDisposable
     }
 
     /// <summary>
+    /// The csharp-dapper pack's <c>verbs</c> case (verbs-design.md section 8): a document lifecycle whose events, automatic move and
+    /// operation name built-in and own verbs, with two built-in verbs hidden. csharp-dapper writes to <c>out</c>.
+    /// </summary>
+    /// <returns>The repo.</returns>
+    public static PackRepo Verbs()
+    {
+        var repo = new PackRepo();
+        var source = Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "verbs");
+        CopyTree(Path.Combine(source, "model"), Path.Combine(repo.Repo.ModelRoot, "model"));
+        CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper"), Path.Combine(repo.Repo.ModelRoot, "templates", "csharp-dapper"));
+        repo.Write(".maquettiste/maquettiste.json", """
+            {
+              "formatVersion": 1,
+              "name": "verbs",
+              "outputs": { "allow": [ { "path": "out" } ] },
+              "packs": { "csharp-dapper": { "output": "out" } }
+            }
+
+            """);
+        return repo;
+    }
+
+    /// <summary>
     /// The gate 3 fixture (<c>tests/fixtures/models/processes</c>, phase-3-design.md section 8.1) with every example pack its settings
     /// name that exists under <c>packs/</c>. With <paramref name="sources"/> the fixture's C# solution comes along (its isolation files,
     /// projects, the committed companions under <c>src/Processes.Data/Custom</c> and the test host), so the generated code can be built

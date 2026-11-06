@@ -1,0 +1,15 @@
+{
+  "kind": "operation",
+  "id": "01JVB000000000000000000N01",
+  "name": "AssignReviewer",
+  "package": "01JVB000000000000000000P01",
+  "subject": "01JVB000000000000000000E01",
+  "effect": "change",
+  "verb": "connect",
+  "outcomes": [
+    {
+      "id": "01JVB000000000000000000N02",
+      "name": "assigned"
+    }
+  ]
+}

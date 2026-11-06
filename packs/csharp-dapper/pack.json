@@ -91,6 +91,11 @@
       "for": "model"
     },
     {
+      "id": "verbs",
+      "template": "verbs.scriban",
+      "for": "model"
+    },
+    {
       "id": "process-states",
       "template": "process-states.scriban",
       "for": "each process",

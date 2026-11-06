@@ -48,7 +48,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
 
-const TABS = ["general", "tags", "categories", "stereotypes", "conventions", "locales", "validation", "project", "explorer", "assistant"] as const;
+const TABS = ["general", "tags", "categories", "stereotypes", "verbs", "conventions", "locales", "validation", "project", "explorer", "assistant"] as const;
+
+import { VerbsSettings } from "@/verbs/VerbsSettings";
 
 export function SettingsWorkspace() {
   const location = useLocation();
@@ -61,6 +63,7 @@ export function SettingsWorkspace() {
         <TabsTrigger value="tags">Tags</TabsTrigger>
         <TabsTrigger value="categories">Categories</TabsTrigger>
         <TabsTrigger value="stereotypes">Stereotypes</TabsTrigger>
+        <TabsTrigger value="verbs">Verbs</TabsTrigger>
         <TabsTrigger value="conventions">Conventions</TabsTrigger>
         <TabsTrigger value="locales">Locales</TabsTrigger>
         <TabsTrigger value="validation">Validation</TabsTrigger>
@@ -69,7 +72,11 @@ export function SettingsWorkspace() {
         <TabsTrigger value="assistant">Assistant</TabsTrigger>
       </TabsList>
       {TABS.map((t) => (
-        <TabsContent key={t} value={t} className={t === "stereotypes" ? "overflow-hidden p-2" : "overflow-auto p-2"}>
+        <TabsContent
+          key={t}
+          value={t}
+          className={t === "stereotypes" ? "overflow-hidden p-2" : t === "verbs" ? "overflow-auto p-2 [scrollbar-gutter:stable]" : "overflow-auto p-2"}
+        >
           {t === "general" ? (
             <GeneralSettings />
           ) : t === "tags" ? (
@@ -78,6 +85,8 @@ export function SettingsWorkspace() {
             <CategoryTreeEditor scope={null} />
           ) : t === "stereotypes" ? (
             <StereotypesSettings />
+          ) : t === "verbs" ? (
+            <VerbsSettings />
           ) : t === "conventions" ? (
             <>
               <StrategiesHint />

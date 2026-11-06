@@ -114,7 +114,9 @@ export function EditorLayout({
           </h2>
           <span className="text-12 text-secondary">{KIND_LABELS[kind]}</span>
           <span className="flex-1" />
-          <span data-testid="editor-save-status">{statusBadge(draft?.status, false)}</span>
+          <span data-testid="editor-save-status">
+            {statusBadge(draft?.status, false, draft?.status === "invalid" ? 0 : diagnostics.filter((d) => d.severity === "error").length)}
+          </span>
           <Button
             variant="ghost"
             size="icon-row"

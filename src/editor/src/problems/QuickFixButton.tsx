@@ -15,6 +15,7 @@ import { subjectsOf, syncPlanLines, type ProcessDoc } from "@/model/process";
 import { applySyncCodes, applySyncEnum, syncCodes, syncEnum, syncStereotypeEntry, type SyncCodesResult, type SyncEnumResult } from "@/editors/process/api";
 import { deriveQuickFix, fixDocuments, type QuickFix } from "./quickFix";
 import { applyQuickFix, freshQuickFix } from "./applyQuickFix";
+import { applyVerbFix } from "@/verbs/verbFixes";
 import { applyBlockedReason, codesDescription, codesView, codeText, hasNoValueList, NO_VALUE_LIST_NOTE } from "./syncCodesView";
 
 type Pending =
@@ -23,8 +24,18 @@ type Pending =
   | { kind: "codes"; process: string; entity: string; attribute: string; plan: SyncCodesResult }
   | null;
 
-export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnostic; catalogFix: string | null | undefined }) {
-  const { store, drafts } = useServices();
+export function QuickFixButton({
+  diagnostic,
+  catalogFix,
+  draft,
+}: {
+  diagnostic: Diagnostic;
+  catalogFix: string | null | undefined;
+  /** The unsaved draft the finding is in: the fix is read from it (it edits the project's verbs, not the draft). */
+  draft?: ModelJson;
+}) {
+  const services = useServices();
+  const { store, drafts } = services;
   const qc = useQueryClient();
   const element = useElement(diagnostic.elementId);
   const related = fixDocuments(diagnostic, element.data?.json as ModelJson | undefined)[1];
@@ -37,7 +48,7 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const docs = new Map<string, ModelJson>();
-  if (element.data && diagnostic.elementId) docs.set(diagnostic.elementId, element.data.json as ModelJson);
+  if (diagnostic.elementId && (draft ?? element.data)) docs.set(diagnostic.elementId, draft ?? (element.data!.json as ModelJson));
   if (partner.data && related) docs.set(related, partner.data.json as ModelJson);
   if (typeDoc.data && typeId) docs.set(typeId, typeDoc.data.json as ModelJson);
   const shown = deriveQuickFix(diagnostic, catalogFix, (id) => docs.get(id));
@@ -60,7 +71,7 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
   const start = () =>
     run(async () => {
       setError(null);
-      const fix = await freshQuickFix(drafts, diagnostic, catalogFix);
+      const fix = draft ? deriveQuickFix(diagnostic, catalogFix, () => draft) : await freshQuickFix(drafts, diagnostic, catalogFix);
       if (!fix) return report("The problem is no longer there.", "");
       // A stereotype entry has no endpoint (they are entity-only): it syncs through the batch, applied at once.
       if ((fix.kind === "sync-enum" || fix.kind === "sync-codes") && fix.stereotype) {
@@ -77,6 +88,7 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
           `${fix.label}: done.`,
         );
       }
+      if (fix.kind === "verb") return report(await applyVerbFix(services, fix), `${fix.label}: done.`);
       if (fix.kind === "sync-enum")
         return setPending({ kind: "sync", process: fix.process, entity: fix.entity, plan: await syncEnum(fix.process, true, fix.entity) });
       if (fix.kind === "sync-codes") {

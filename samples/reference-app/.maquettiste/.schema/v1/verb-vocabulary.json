@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Verb vocabulary",
+  "description": "The project's own verbs and the built-in verbs it hides (verbs-design.md decisions 6 to 8): one file per project, model/vocabularies/verbs.json.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "description",
+    "rationale",
+    "decision",
+    "status",
+    "suppressions",
+    "stereotypes",
+    "excludeStereotypes",
+    "tags",
+    "category",
+    "hidden",
+    "verbs",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "verb-vocabulary"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "$ref": "common.json#/$defs/label",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "description": {
+      "$ref": "common.json#/$defs/description"
+    },
+    "rationale": {
+      "description": "Markdown text: why the element is shaped this way.",
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "status": {
+      "$ref": "common.json#/$defs/status"
+    },
+    "suppressions": {
+      "$ref": "common.json#/$defs/suppressions",
+      "default": []
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "hidden": {
+      "description": "Built-in verbs the project does not use: the editor does not offer them and model.verbs leaves them out unless named (MQ9704). Each must be a built-in verb's key (MQ9703).",
+      "type": "array",
+      "items": {
+        "$ref": "common.json#/$defs/key"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "verbs": {
+      "description": "The project's own verbs, in file order. Every use names one by its key; renaming one in use goes through the batch operation rename-verb (MQ9707).",
+      "type": "array",
+      "items": {
+        "title": "Own verb",
+        "type": "object",
+        "x-order": ["id", "key", "displayName", "description"],
+        "properties": {
+          "id": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "key": {
+            "description": "The kebab-case key every use names; neither a built-in verb's nor another own verb's (MQ9702).",
+            "$ref": "common.json#/$defs/key"
+          },
+          "displayName": {
+            "description": "The label (localizable); absent, the key with its first letter upper case and hyphens as spaces.",
+            "type": "string"
+          },
+          "description": {
+            "description": "The meaning a pack or an implementer fills in (localizable).",
+            "type": "string"
+          }
+        },
+        "required": ["id", "key"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": ["kind", "id", "name"],
+  "additionalProperties": false
+}

@@ -3,6 +3,7 @@
 // `required` marks references that `remove-references` cannot clear (a delete becomes invalid).
 import { BUILTIN_TYPES } from "@/model/model";
 import { subjectsOf } from "@/model/process";
+import { verbUses } from "./verbs";
 
 type Json = Record<string, unknown>;
 
@@ -38,6 +39,8 @@ export interface RowResolver {
   rowOf(entityId: string, attributeId: string, code: unknown): string | null;
   /** The id of the stereotype with a key (a subject entry names one by key; stereotype-sets-design.md decision 2). */
   stereotypeIdOf?(key: string): string | null;
+  /** The id of the project's own verb with a key (a use names it by key; verbs-design.md decision 7). Built-in keys give null. */
+  verbIdOf?(key: string): string | null;
 }
 
 /**
@@ -45,15 +48,17 @@ export interface RowResolver {
  * the reference type, whose seeds give the row of a code (1 and "1" are one code).
  */
 export function rowResolverOf(docs: () => Iterable<Json>): RowResolver {
-  let built: { byId: Map<string, Json>; rows: Map<string, Map<string, string>>; stereotypes: Map<string, Json> } | null = null;
+  let built: { byId: Map<string, Json>; rows: Map<string, Map<string, string>>; stereotypes: Map<string, Json>; verbs: Map<string, string> } | null = null;
   const build = () => {
     if (built) return built;
     const byId = new Map<string, Json>();
     const rows = new Map<string, Map<string, string>>();
     const stereotypes = new Map<string, Json>();
+    const verbs = new Map<string, string>();
     for (const d of docs()) {
       byId.set(String(d.id), d);
       if (d.kind === "stereotype") stereotypes.set(String(d.key), d);
+      if (d.kind === "verb-vocabulary" && verbs.size === 0) for (const v of arr(d.verbs)) verbs.set(String(v.key), String(v.id));
       if (d.kind !== "seed" || typeof d.target !== "string" || d.rowsFrom !== undefined) continue;
       const at = ((d.columns as string[] | undefined) ?? []).indexOf("code");
       if (at < 0) continue;
@@ -64,9 +69,10 @@ export function rowResolverOf(docs: () => Iterable<Json>): RowResolver {
       }
       rows.set(d.target, map);
     }
-    return (built = { byId, rows, stereotypes });
+    return (built = { byId, rows, stereotypes, verbs });
   };
   return {
+    verbIdOf: (key) => build().verbs.get(key) ?? null,
     stereotypeIdOf(key) {
       const found = build().stereotypes.get(key);
       return found ? String(found.id) : null;
@@ -102,6 +108,12 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
   };
   push("/package", "package", doc.package, false);
   push("/category", "category", doc.category, false);
+  // A use of an own verb is a reference to its id; a built-in use is none, and a delete of the vocabulary clears the field.
+  if (rows?.verbIdOf)
+    for (const use of verbUses(doc)) {
+      const verb = rows.verbIdOf(use.key);
+      if (verb) out.push({ fromId: use.holder ?? id, pointer: use.pointer, field: "verb", toId: verb, required: false });
+    }
   switch (doc.kind) {
     case "package":
       push("/parent", "parent", doc.parent, false);
@@ -340,6 +352,7 @@ export function subElementIds(doc: Json): string[] {
   collect(doc.checks);
   if (doc.kind === "entity" || doc.kind === "reference-type") collect(doc.bindings);
   if (doc.kind === "enum") collect(doc.members);
+  if (doc.kind === "verb-vocabulary") collect(doc.verbs);
   if (doc.kind === "process") {
     collect(doc.subjects);
     collect(doc.context);

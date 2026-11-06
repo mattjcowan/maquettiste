@@ -6,12 +6,19 @@ import { addNamed, idsOfNames, namedRows, removeNamed, type NamedRow } from "@/m
 import { Grid, type GridColumn } from "./Grid";
 import { ProcessAttributeGrid } from "./AttributeLists";
 import { rowProblems, useGridTargets, type ProcessContext } from "./shared";
+import { describeVerb, verbGroups } from "@/model/verbList";
+import { AddVerbDialog } from "@/verbs/VerbsSettings";
+import { useVerbs } from "@/verbs/useVerbs";
+
+export const ADD_VERB = "__add-verb__";
 
 export function EventsTab({ pc, focus }: { pc: ProcessContext; focus: string | null }) {
   const { process, change, actorNames } = pc;
   const rows = namedRows(process, "events", actorNames);
   const go = useGridTargets(pc.id);
   const [picked, setPicked] = useState<string | null>(null);
+  const verbs = useVerbs();
+  const [addingFor, setAddingFor] = useState<string | null>(null);
   // A navigation to another event wins over the row picked here.
   const [seen, setSeen] = useState(focus);
   if (focus !== seen) {
@@ -33,6 +40,27 @@ export function EventsTab({ pc, focus }: { pc: ProcessContext; focus: string | n
       definition: (r) => go.element((process.events ?? []).find((e) => e.id === r.id)?.actors?.[0]),
       options: () => actorOptions.map((a) => ({ value: a.id, label: a.name })),
     },
+    {
+      key: "verb",
+      label: "Verb",
+      tooltip: "What the actor does by sending the event",
+      kind: "select",
+      width: "min-w-28",
+      value: (r) => {
+        const key = (process.events ?? []).find((e) => e.id === r.id)?.verb;
+        return key ? (describeVerb(key, verbs.own)?.label ?? key) : "";
+      },
+      editValue: (r) => (process.events ?? []).find((e) => e.id === r.id)?.verb ?? "",
+      options: (r) => {
+        const current = (process.events ?? []).find((e) => e.id === r.id)?.verb;
+        const place = process.use === "lifecycle" ? "lifecycle-event" : "orchestration-event";
+        return [
+          { value: "", label: "None" },
+          ...verbGroups(place, verbs.own, verbs.hidden, current).flatMap((g) => g.options.map((o) => ({ value: o.key, label: o.label, group: g.label }))),
+          { value: ADD_VERB, label: "Add a verb…" },
+        ];
+      },
+    },
     { key: "usedBy", label: "Used by", kind: "readonly", width: "min-w-40", value: (r) => r.usedBy },
   ];
   return (
@@ -52,7 +80,11 @@ export function EventsTab({ pc, focus }: { pc: ProcessContext; focus: string | n
             const e = (p.events ?? []).find((x) => x.id === row.id);
             if (!e) return;
             if (key === "name") e.name = String(value).trim() || e.name;
-            else if (key === "actors") {
+            else if (key === "verb") {
+              if (value === ADD_VERB) setAddingFor(e.id);
+              else if (value) e.verb = String(value);
+              else delete e.verb;
+            } else if (key === "actors") {
               const ids = idsOfNames(String(value), actorOptions);
               if (ids.length) e.actors = ids;
               else delete e.actors;
@@ -66,6 +98,17 @@ export function EventsTab({ pc, focus }: { pc: ProcessContext; focus: string | n
         }}
         onRemove={(row) => change((p) => removeNamed(p, "events", row.id))}
       />
+      {addingFor ? (
+        <AddVerbDialog
+          onClose={() => setAddingFor(null)}
+          onAdded={(key) =>
+            change((p) => {
+              const e = (p.events ?? []).find((x) => x.id === addingFor);
+              if (e) e.verb = key;
+            })
+          }
+        />
+      ) : null}
       {event ? (
         <section className="flex flex-col gap-1" aria-label={`Payload of ${event.name}`} data-testid="event-payload">
           <SectionTitle>Payload of {event.name}</SectionTitle>

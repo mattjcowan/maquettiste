@@ -247,7 +247,7 @@ test("picking a stereotype as the subject updates the lifecycle's explorer row",
   await row.dblclick();
   const editor = page.getByTestId("process-editor");
   await editor.getByTestId("editor-details-toggle").click();
-  await editor.getByLabel("Subject", { exact: true }).selectOption({ label: "Audited" });
+  await editor.getByLabel("Subject", { exact: true }).selectOption({ label: "«audited»" });
   await expect(side.getByTestId("explorer-row-InvoiceLifecycle")).toContainText("every Audited");
   await expect(side.getByTestId("explorer-row-InvoiceLifecycle")).not.toContainText("Invoice ·");
 });

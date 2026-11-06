@@ -384,6 +384,12 @@ export function applyBatchResult(qc: QueryClient, result: BatchResult): void {
   if (result.changes) removeIndexRows(qc, result.changes.deleted);
 }
 
+/** What a change to verbs moves: the "Used by" counts (the index rows list the verbs) and the references of the own verbs. */
+export function invalidateVerbs(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: keys.index });
+  void qc.invalidateQueries({ queryKey: ["verb-references"] });
+}
+
 /** Every query whose data depends on resolved tables. */
 export function invalidateResolved(qc: QueryClient): void {
   void qc.invalidateQueries({ queryKey: keys.databaseViews });

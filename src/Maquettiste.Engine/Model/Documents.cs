@@ -84,6 +84,9 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Covers">The ids of the carriers a process's stereotype entries govern (decision 4), each entry's by qualified name, in entry
 /// order, on process rows that have such an entry and a carrier. Worked out per snapshot, since package defaults, implied stereotypes and
 /// bases decide them.</param>
+/// <param name="Verb">The verb an operation names, as its key, on operation rows that name one (verbs-design.md section 7).</param>
+/// <param name="Verbs">The distinct verb keys a process's events and transitions name, sorted ordinally, on process rows that name at least
+/// one (verbs-design.md section 7).</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
 /// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
@@ -113,7 +116,9 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Relative = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Participants = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? SubjectStereotypes = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Covers = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Covers = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Verbs = null)
 {
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>
@@ -151,7 +156,9 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && Participants == other.Participants
         && (ReferenceEquals(SubjectStereotypes, other.SubjectStereotypes)
             || (SubjectStereotypes is not null && other.SubjectStereotypes is not null && SubjectStereotypes.SequenceEqual(other.SubjectStereotypes, StringComparer.Ordinal)))
-        && (ReferenceEquals(Covers, other.Covers) || (Covers is not null && other.Covers is not null && Covers.SequenceEqual(other.Covers, StringComparer.Ordinal)));
+        && (ReferenceEquals(Covers, other.Covers) || (Covers is not null && other.Covers is not null && Covers.SequenceEqual(other.Covers, StringComparer.Ordinal)))
+        && string.Equals(Verb, other.Verb, StringComparison.Ordinal)
+        && (ReferenceEquals(Verbs, other.Verbs) || (Verbs is not null && other.Verbs is not null && Verbs.SequenceEqual(other.Verbs, StringComparer.Ordinal)));
 
     /// <inheritdoc/>
     public override int GetHashCode() => HashCode.Combine(

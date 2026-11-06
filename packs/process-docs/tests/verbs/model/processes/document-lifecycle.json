@@ -1,0 +1,91 @@
+{
+  "kind": "process",
+  "id": "01JVB000000000000000000R01",
+  "name": "DocumentLifecycle",
+  "package": "01JVB000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JVB000000000000000000J01",
+      "entity": "01JVB000000000000000000E01"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JVB000000000000000000X01",
+      "name": "Submit",
+      "verb": "promote"
+    },
+    {
+      "id": "01JVB000000000000000000X02",
+      "name": "SendBack",
+      "verb": "demote"
+    },
+    {
+      "id": "01JVB000000000000000000X03",
+      "name": "Escalate",
+      "verb": "escalate"
+    },
+    {
+      "id": "01JVB000000000000000000X04",
+      "name": "Comment"
+    }
+  ],
+  "initial": "01JVB000000000000000000S01",
+  "states": [
+    {
+      "id": "01JVB000000000000000000S01",
+      "name": "Draft"
+    },
+    {
+      "id": "01JVB000000000000000000S02",
+      "name": "Approved"
+    },
+    {
+      "id": "01JVB000000000000000000S03",
+      "name": "Published",
+      "type": "final"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "01JVB000000000000000000T01",
+      "source": "01JVB000000000000000000S01",
+      "event": "01JVB000000000000000000X01",
+      "targets": [
+        "01JVB000000000000000000S02"
+      ]
+    },
+    {
+      "id": "01JVB000000000000000000T02",
+      "source": "01JVB000000000000000000S02",
+      "event": "01JVB000000000000000000X02",
+      "targets": [
+        "01JVB000000000000000000S01"
+      ]
+    },
+    {
+      "id": "01JVB000000000000000000T03",
+      "source": "01JVB000000000000000000S02",
+      "trigger": "always",
+      "verb": "promote",
+      "targets": [
+        "01JVB000000000000000000S03"
+      ]
+    },
+    {
+      "id": "01JVB000000000000000000T04",
+      "source": "01JVB000000000000000000S01",
+      "event": "01JVB000000000000000000X03",
+      "targets": [
+        "01JVB000000000000000000S01"
+      ]
+    },
+    {
+      "id": "01JVB000000000000000000T05",
+      "source": "01JVB000000000000000000S01",
+      "event": "01JVB000000000000000000X04",
+      "targets": []
+    }
+  ]
+}

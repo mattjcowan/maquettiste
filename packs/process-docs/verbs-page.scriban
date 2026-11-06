@@ -1,0 +1,27 @@
+{{-
+# The verbs page (verbs-design.md section 8), written only when the model uses verbs, so a project without them gets no file: each
+# verb with its meaning, and the events, automatic moves and operations that name it.
+include "_docs.scriban"
+if model.verbs.size > 0
+  capture content
+-}}
+{{ banner "<!--" }} -->
+
+# Verbs
+
+What events, automatic moves and operations do. A verb is stored by its key.
+
+| Verb | Key | Group | Meaning | Named by |
+| --- | --- | --- | --- | --- |
+{{- for v in model.verbs }}
+{{- uses = [] }}
+{{- for e in v.events }}{{ uses[uses.size] = "event " + (md_code e.name) }}{{ end }}
+{{- for t in v.transitions }}{{ if t.trigger != "event" }}{{ uses[uses.size] = "move from " + (md_code t.source.path) }}{{ end }}{{ end }}
+{{- for o in v.operations }}{{ uses[uses.size] = "operation " + (md_code o.name) }}{{ end }}
+| {{ md_cell v.display_name }}{{ v.hidden ? " (hidden)" : "" }} | {{ md_code v.key }} | {{ v.group }} | {{ md_cell v.description }} | {{ uses | array.join ", " }} |
+{{- end }}
+{{ end -}}
+{{-
+  file "verbs.md" content
+end
+-}}

@@ -96,6 +96,8 @@ internal static partial class BuiltinRules
                 CheckDuplicates(scenario.Objects, o => o.Name, "/objects", "/name", "Object name", o => o.Id, report);
                 break;
         }
+
+        VerbRules.Check(context, element, report);
     }
 
     // ---- MQ3022: a package diagram without a package ----

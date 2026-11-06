@@ -57,6 +57,11 @@ public sealed class ResolvedNullContractTests
         ["RScenario.Start"] = "the file's start, else a start with its fields' defaults (no context values, the default instant)",
         ["RSubject.Entity"] = "the entry's entity, else the carrier a stereotype entry gives the subject for (stereotype-sets-design.md decision 12)",
         ["ROperationError.Code"] = "the file's code, else the error's name (next-phase-2-design.md section 4.1)",
+
+        // Verbs (verbs-design.md section 6).
+        ["RVerb.DisplayName"] = "a built-in verb's fixed label, else the own verb's displayName, else its key with the first letter upper case and hyphens as spaces",
+        ["RVerb.Description"] = "a built-in verb's fixed meaning, else the own verb's description, else empty",
+        ["RTransition.Verb"] = "the transition's own verb, else its event's (verbs-design.md decision 12)",
     };
 
     private const string Slot =
@@ -104,6 +109,9 @@ public sealed class ResolvedNullContractTests
         ["RConstraintParameter"] = "named constraints: ExpressionResolutionTests",
         ["ROperationGuard"] = "operation guards: OperationGuardTests",
         ["ExprType"] = "the type of an expression node: ExpressionResolutionTests",
+        // Verbs (verbs-design.md section 6): no fixture model names one, so that their golden output stays as it was; ResolvedVerbTests
+        // resolves them.
+        ["RVerb"] = "verbs: ResolvedVerbTests",
     };
 
     [Fact]

@@ -444,7 +444,7 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// </summary>
     private static bool IsExpandedOperation(BatchOp op) =>
         IsSchemaOperation(op) || IsProcessOperation(op) || IsMaterializeOperation(op) || IsBindingOperation(op) || IsTagOperation(op)
-        || IsReferenceRefactor(op) || op is BatchOp.NamesToIds or BatchOp.TextToTrees or BatchOp.FoldIntoStereotype;
+        || IsReferenceRefactor(op) || IsVerbOperation(op) || op is BatchOp.NamesToIds or BatchOp.TextToTrees or BatchOp.FoldIntoStereotype;
 
     /// <summary>Re-reads changed paths and updates the index (host-contracts requirement 17).</summary>
     /// <param name="paths">Repo-relative or absolute paths reported by a watcher.</param>
@@ -1809,6 +1809,21 @@ public enum BatchOp
     [JsonStringEnumMemberName("rename-reference-type")] RenameReferenceType,
 
     /// <summary>
+    /// <c>rename-verb</c> (verbs-design.md decision 9): gives the project's own verb whose key is <c>verb</c> the key <c>to</c> and rewrites
+    /// every event, transition and operation that names it, all or nothing. When <c>to</c> is another own verb's key or a built-in verb's,
+    /// the two merge: the uses move to it and the definition goes with its translations; <c>to</c> equal to <c>verb</c> adopts the built-in
+    /// verb of that key. Refused (MQ1002) when no own verb has the key <c>verb</c>, <c>to</c> is not a key, or equals <c>verb</c> with no
+    /// built-in verb of that key.
+    /// </summary>
+    [JsonStringEnumMemberName("rename-verb")] RenameVerb,
+
+    /// <summary>
+    /// <c>remove-verb</c>: removes the project's own verb whose key is <c>verb</c> with its translations, and clears <c>verb</c> from every
+    /// event, transition and operation that names it. Refused (MQ1002) when no own verb has the key.
+    /// </summary>
+    [JsonStringEnumMemberName("remove-verb")] RemoveVerb,
+
+    /// <summary>
     /// <c>upsert</c>: writes the element <c>id</c> names, a qualified name, as a <see cref="Create"/> when the model as loaded has none of
     /// that name and an <see cref="Update"/> of the whole document when it has one. Expanded first, so the rest of a batch never sees it.
     /// </summary>
@@ -1857,7 +1872,8 @@ public enum BatchOp
 /// false.</param>
 /// <param name="KeepNames">resync-binding: keep every attribute's name, even one that followed its column's name; absent means false.</param>
 /// <param name="Code">The code a refactor renames or retires, as the code's canonical text (rename-code, retire-code).</param>
-/// <param name="To">The new code (rename-code); the live code that replaces the retired one (retire-code).</param>
+/// <param name="To">The new code (rename-code); the live code that replaces the retired one (retire-code); the verb's new key, or the key
+/// of the verb it merges into (rename-verb).</param>
 /// <param name="Codes">merge-reference-types: codes of the merged-away type mapped to live codes of the target, for codes the target does
 /// not hold itself; absent maps none.</param>
 /// <param name="Entity">The subject whose binding the operation acts on (sync-enum, optional; sync-codes).</param>
@@ -1865,6 +1881,7 @@ public enum BatchOp
 /// <param name="StateCodes">sync-codes: codes keyed by state id, each a string or an integer; absent gives none.</param>
 /// <param name="Stereotype">sync-enum and sync-codes, in place of <paramref name="Entity"/>: the key of the stereotype whose subjects entry
 /// the operation acts on (stereotype-sets-design.md decision 10).</param>
+/// <param name="Verb">The key of the project's own verb a verb operation acts on (rename-verb, remove-verb).</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
     string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null,
@@ -1872,7 +1889,8 @@ public sealed record BatchOperation(
     IReadOnlyDictionary<string, string>? ExpectedHashes = null, IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null,
     IReadOnlyList<string>? Tags = null, string? As = null, IReadOnlyList<string>? ElementIds = null, string? Prefix = null, bool? Redefine = null,
     bool? ExcludeMissing = null, bool? KeepNames = null, string? Code = null, string? To = null, IReadOnlyDictionary<string, string>? Codes = null,
-    string? Entity = null, string? Attribute = null, IReadOnlyDictionary<string, JsonElement>? StateCodes = null, string? Stereotype = null);
+    string? Entity = null, string? Attribute = null, IReadOnlyDictionary<string, JsonElement>? StateCodes = null, string? Stereotype = null,
+    string? Verb = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

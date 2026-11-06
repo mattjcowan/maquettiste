@@ -109,16 +109,16 @@ The attribute {{ md_code (p.subject.name + "." + p.bound_attribute.name) }} hold
 {{- if s.description }}{{ details[details.size] = md_inline(s.description) }}{{ end }}
 | {{ md_code s.path }} | {{ s.type }} | {{ details | array.join "; " }} |
 {{- end }}
-{{- if p.transitions.size > 0 }}
+{{- if p.transitions.size > 0 }}{{ move_verbs = false }}{{ for t in p.transitions }}{{ if t.verb }}{{ move_verbs = true }}{{ end }}{{ end }}
 
 ## Transitions
 
 In priority order: among the transitions of one source and one trigger, the first whose guard holds is taken.
 
-| # | Source | Trigger | Guard | Targets | Actions | Gate |
-| --- | --- | --- | --- | --- | --- | --- |
+| # | Source | Trigger | Guard | Targets | Actions | Gate |{{ if move_verbs }} Verb |{{ end }}
+| --- | --- | --- | --- | --- | --- | --- |{{ if move_verbs }} --- |{{ end }}
 {{- for t in p.transitions }}
-| {{ for.index + 1 }} | {{ md_code t.source.path }} | {{ trigger_text(t) }} | {{ t.guard ? (md_code t.guard.name) : "" }} | {{ t.is_targetless ? "none (stays in the source)" : code_paths(t.targets) }}{{ t.external ? " (external)" : "" }} | {{ code_names(t.actions) }} | {{ t.gate ? (md_code t.gate.name) + " (" + t.gate.required + " of " + t.gate.signers.size + ")" : "" }} |
+| {{ for.index + 1 }} | {{ md_code t.source.path }} | {{ trigger_text(t) }} | {{ t.guard ? (md_code t.guard.name) : "" }} | {{ t.is_targetless ? "none (stays in the source)" : code_paths(t.targets) }}{{ t.external ? " (external)" : "" }} | {{ code_names(t.actions) }} | {{ t.gate ? (md_code t.gate.name) + " (" + t.gate.required + " of " + t.gate.signers.size + ")" : "" }} |{{ if move_verbs }} {{ t.verb ? (md_code t.verb.key) : "" }} |{{ end }}
 {{- end }}
 {{- end }}
 {{- if p.gates.size > 0 }}
@@ -154,14 +154,14 @@ The audit record, one per signature attempt and per outcome of the gate:
 {{- end }}
 {{- end }}
 {{- end }}
-{{- if p.events.size > 0 }}
+{{- if p.events.size > 0 }}{{ event_verbs = false }}{{ for e in p.events }}{{ if e.verb }}{{ event_verbs = true }}{{ end }}{{ end }}
 
 ## Events
 
-| Event | Raised by | Payload | Transitions | Description |
-| --- | --- | --- | --- | --- |
+| Event |{{ if event_verbs }} Verb |{{ end }} Raised by | Payload | Transitions | Description |
+| --- |{{ if event_verbs }} --- |{{ end }} --- | --- | --- | --- |
 {{- for e in p.events }}
-| {{ md_code e.name }} | {{ e.actors.size > 0 ? actor_links(e.actors, "../") : "any actor" }} | {{ attr_list(e.payload) }} | {{ for t in e.transitions }}{{ for.first ? "" : ", " }}{{ numbers[t.id] }}{{ end }} | {{ md_inline(e.description) }} |
+| {{ md_code e.name }} |{{ if event_verbs }} {{ e.verb ? (md_code e.verb.key) : "" }} |{{ end }} {{ e.actors.size > 0 ? actor_links(e.actors, "../") : "any actor" }} | {{ attr_list(e.payload) }} | {{ for t in e.transitions }}{{ for.first ? "" : ", " }}{{ numbers[t.id] }}{{ end }} | {{ md_inline(e.description) }} |
 {{- end }}
 {{- end }}
 {{- if p.context.size > 0 }}

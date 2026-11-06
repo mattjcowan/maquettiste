@@ -45,6 +45,7 @@ import { applyCase, foreignKeyMismatches, resolveDatabase } from "./physical";
 import { resolveQueries } from "./queries";
 import { bindingFindings, materializeStatus, planMaterialize, type MaterializeRequest } from "./bindings";
 import { retag, tagUsage, type RetagOp } from "./tags";
+import { processVerbs, verbKeyChanges, verbOperation, verbUses, type VerbOp } from "./verbs";
 
 type Json = Record<string, unknown>;
 
@@ -529,7 +530,11 @@ export class MockModel {
       folder = `model/databases/${dbFolder}/tables`;
       file = `${String(json.id).toLowerCase()}.json`;
     } else if (DATABASE_OBJECT_FOLDERS[kind]) folder = `model/databases/${dbFolder}/${DATABASE_OBJECT_FOLDERS[kind]}`;
-    else if (kind === "tag-vocabulary" || kind === "category-tree") {
+    else if (kind === "verb-vocabulary") {
+      // The project has one verb vocabulary at a fixed path (verbs-design.md decision 6).
+      folder = "model/vocabularies";
+      file = "verbs.json";
+    } else if (kind === "tag-vocabulary" || kind === "category-tree") {
       // The global vocabularies are tags.json and categories.json; a domain's is <domain>-tags.json (section 1.11).
       folder = "model/vocabularies";
       const scope = typeof json.package === "string" ? this.entries.get(json.package) : undefined;
@@ -759,6 +764,8 @@ export class MockModel {
     const entry = this.entryFor(json, existing);
     const schema = this.schemaCheck(id, entry.json, entry.path);
     if (schema.length) return this.invalid(id, schema);
+    const keyChanges = this.verbKeyRefusals(existing, entry, this.entries.values());
+    if (keyChanges.length) return this.invalid(id, keyChanges);
     const candidate = new Map(this.entries);
     candidate.set(id, entry);
     const { introduced, all } = this.check(candidate, [id]);
@@ -767,6 +774,22 @@ export class MockModel {
       return { outcome: "saved", id, hash: entry.hash, current: this.document(existing), diagnostics: all, referrers: [], changes: emptyChangeSet() };
     const changes = this.commit(candidate);
     return { outcome: "saved", id, hash: entry.hash, current: this.document(entry), diagnostics: all, referrers: [], changes };
+  }
+
+  /** MQ9707: a save changes the key of an own verb that a use names (rename-verb does that, everywhere at once). */
+  private verbKeyRefusals(existing: Entry, entry: Entry, models: Iterable<Entry>, written: ReadonlySet<string> = new Set()): Diagnostic[] {
+    // A batch ignores the elements it writes itself: it is about to change their uses too.
+    const docs = [...models].filter((e) => !written.has(e.id));
+    return verbKeyChanges(existing.json, entry.json, (key) => docs.some((e) => verbUses(e.json).some((u) => u.key === key))).map((message) => ({
+      rule: "MQ9707",
+      severity: "error" as const,
+      message,
+      elementId: entry.id,
+      filePath: entry.path,
+      jsonPointer: "/verbs",
+      line: null,
+      column: null,
+    }));
   }
 
   /** Referrers of an element or its sub-elements, from elements other than `excluding`. */
@@ -889,6 +912,7 @@ export class MockModel {
       };
     }
     const operations = (body as { operations: { op: string; id?: string; expectedHash?: string; element?: Json; resolution?: DeleteResolution }[] }).operations;
+    const batchWrites = new Set(operations.flatMap((o) => [o.id, o.element?.id].filter((v): v is string => typeof v === "string")));
     const candidate = new Map(this.entries);
     const items: SaveResult[] = [];
     const deleting = new Set(operations.filter((o) => o.op === "delete" && o.id).map((o) => o.id!));
@@ -974,6 +998,40 @@ export class MockModel {
       if (op.op === "retag") {
         // Tags across the model (ModelStore.Tags.cs): rewrites the vocabulary and every use it governs, all or nothing.
         const outcome = retag([...candidate.values()], op as unknown as RetagOp);
+        if ("error" in outcome) {
+          fail(
+            this.invalid(null, [
+              {
+                rule: "MQ1002",
+                severity: "error",
+                message: outcome.error,
+                elementId: null,
+                filePath: null,
+                jsonPointer: `/operations/${operations.indexOf(op)}`,
+                line: null,
+                column: null,
+              },
+            ]),
+          );
+          continue;
+        }
+        const expected = (op as { expectedHashes?: Record<string, string> }).expectedHashes;
+        const stale = expected ? [...outcome.changed.keys()].find((id) => !expected[id] || normalizeHash(expected[id]) !== candidate.get(id)?.hash) : undefined;
+        if (stale !== undefined) {
+          const existing = candidate.get(stale)!;
+          fail({ outcome: "conflict", id: stale, hash: existing.hash, current: this.document(existing), diagnostics: [], referrers: [], changes: null });
+          continue;
+        }
+        for (const [id, json] of outcome.changed) {
+          const entry = this.entryFor(json, candidate.get(id));
+          candidate.set(id, entry);
+          items.push({ outcome: "saved", id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
+        }
+        continue;
+      }
+      if (op.op === "rename-verb" || op.op === "remove-verb") {
+        // The verb operations (verbs-design.md decision 9): rewrite every use and the vocabulary, all or nothing.
+        const outcome = verbOperation(new Map([...candidate].map(([k, e]) => [k, e.json])), op as unknown as VerbOp);
         if ("error" in outcome) {
           fail(
             this.invalid(null, [
@@ -1163,6 +1221,11 @@ export class MockModel {
         const schema = this.schemaCheck(id, entry.json, entry.path);
         if (schema.length || json.id !== id) {
           fail(this.invalid(id, schema.length ? schema : []));
+          continue;
+        }
+        const keyChanges = this.verbKeyRefusals(existing, entry, candidate.values(), batchWrites);
+        if (keyChanges.length) {
+          fail(this.invalid(id, keyChanges));
           continue;
         }
         candidate.set(id, entry);
@@ -1468,6 +1531,9 @@ function e5(json: Json): Partial<ElementSummary> {
     else if (entities.length > 1) out.subjects = entities;
     const count = (states: unknown): number => (Array.isArray(states) ? (states as Json[]).reduce((n, s) => n + 1 + count(s.states), 0) : 0);
     out.stateCount = count(json.states);
+    // The distinct verbs its events and transitions name, only when there are some (maquettiste-index/e12).
+    const verbs = processVerbs(json);
+    if (verbs.length) out.verbs = verbs;
   }
   if (kind === "actor" && typeof json.type === "string" && (ACTOR_TYPES as readonly string[]).includes(json.type)) {
     out.actorType = json.type as (typeof ACTOR_TYPES)[number];
@@ -1487,6 +1553,7 @@ function e5(json: Json): Partial<ElementSummary> {
   if (kind === "operation") {
     if (typeof json.subject === "string") out.subject = json.subject;
     out.effect = json.effect === "change" ? "change" : "read";
+    if (typeof json.verb === "string") out.verb = json.verb;
   }
   // Section 4.2 (maquettiste-index/e11): a custom element's type. The mock reads no custom kind files, so it counts no members.
   if (kind === "custom" && typeof json.type === "string") out.type = json.type;
