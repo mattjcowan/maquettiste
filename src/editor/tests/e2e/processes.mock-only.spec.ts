@@ -44,9 +44,9 @@ test("the Processes explorer walks domains, processes, states and actors by keyb
   await expect(billing).toContainText("2 processes");
   await expand(page, billing);
   // A domain's processes sit in a folder per use; only the uses it has show.
-  await expect(side.getByTestId("explorer-folder-Lifecycles")).toBeVisible();
-  await expect(side.getByTestId("explorer-folder-Libraries")).toHaveCount(0);
-  await expand(page, side.getByTestId("explorer-folder-Orchestrations"));
+  await expect(side.locator('[data-key$="/use:lifecycle"]')).toBeVisible();
+  await expect(side.locator('[data-key$="/use:library"]')).toHaveCount(0);
+  await expand(page, side.locator('[data-key$="/use:orchestration"]'));
   const purchase = side.getByTestId("explorer-row-Purchase approval");
   await expect(purchase).toContainText("orchestration · 13 states");
   await expand(page, purchase);
@@ -73,7 +73,7 @@ test("the Processes explorer walks domains, processes, states and actors by keyb
   await expect(editor.locator('[data-testid="scenarios-grid-row"][data-id="01JQSCN0000000000000000010"] [aria-selected="true"]')).toHaveCount(1);
 
   // A lifecycle names its bound attribute, collapsed and expanded.
-  await expand(page, side.getByTestId("explorer-folder-Lifecycles"));
+  await expand(page, side.locator('[data-key$="/use:lifecycle"]'));
   const lifecycle = side.getByTestId("explorer-row-InvoiceLifecycle");
   await expect(lifecycle).toContainText("lifecycle · Invoice.status · 4 states");
   await expand(page, lifecycle);
@@ -114,7 +114,7 @@ test("New process, New actor and New scenario each save as one change", async ({
   await expect(page.getByTestId("element-editor")).toHaveAttribute("data-kind", "process");
   const billing = side.getByTestId("explorer-folder-Billing");
   await expand(page, billing);
-  await ensureOpen(page, side.getByTestId("explorer-folder-Lifecycles"));
+  await ensureOpen(page, side.locator('[data-key$="/use:lifecycle"]'));
   await expect(side.getByTestId("explorer-row-CustomerLifecycle")).toContainText("lifecycle · Customer.status · 1 state");
 
   // An existing enum: one state per member.
@@ -129,7 +129,7 @@ test("New process, New actor and New scenario each save as one change", async ({
   await expect(dialog.getByTestId("new-process-use-meaning")).toContainText("An orchestration coordinates work");
   await dialog.getByLabel("Subject entity (optional)").selectOption({ label: "None" });
   await dialog.getByTestId("new-process-create").click();
-  await ensureOpen(page, side.getByTestId("explorer-folder-Orchestrations"));
+  await ensureOpen(page, side.locator('[data-key$="/use:orchestration"]'));
   await expect(side.getByTestId("explorer-row-InvoiceFlow")).toContainText("orchestration · 1 state");
 
   // New actor: a persona stereotype shows the goals field.
@@ -147,7 +147,7 @@ test("New process, New actor and New scenario each save as one change", async ({
   await expect(side.getByTestId("explorer-row-Clerk")).toContainText("person · persona");
 
   // New scenario from a process's Scenarios folder (Record from simulation: simulation.mock-only.spec.ts).
-  await ensureOpen(page, side.getByTestId("explorer-folder-Orchestrations"));
+  await ensureOpen(page, side.locator('[data-key$="/use:orchestration"]'));
   await expand(page, side.getByTestId("explorer-row-Purchase approval"));
   await side.getByTestId("explorer-folder-Scenarios").first().click({ button: "right" });
   await menuItem(page, "New scenario…").click();
@@ -170,7 +170,7 @@ test("Verify scenarios, Export XState, Import XState and Delete from the row men
   const side = await openProcesses(page);
   const billing = side.getByTestId("explorer-folder-Billing");
   await expand(page, billing);
-  await ensureOpen(page, side.getByTestId("explorer-folder-Orchestrations"));
+  await ensureOpen(page, side.locator('[data-key$="/use:orchestration"]'));
   const purchase = side.getByTestId("explorer-row-Purchase approval");
 
   await purchase.click({ button: "right" });
@@ -200,11 +200,40 @@ test("Verify scenarios, Export XState, Import XState and Delete from the row men
   await expect(side.getByTestId("explorer-row-Door")).toContainText("orchestration · 2 states");
 
   // Deleting a process deletes its scenarios, as the dialog says.
-  await ensureOpen(page, side.getByTestId("explorer-folder-Lifecycles"));
+  await ensureOpen(page, side.locator('[data-key$="/use:lifecycle"]'));
   await side.getByTestId("explorer-row-InvoiceLifecycle").click({ button: "right" });
   await menuItem(page, "Delete").click();
   await expect(page.getByRole("dialog")).toContainText("Its scenario is deleted with it.");
   await page.getByTestId("confirm-delete").click();
   await expect(side.getByTestId("explorer-row-InvoiceLifecycle")).toHaveCount(0);
   await expect(side.getByTestId("explorer-totals")).toHaveText("2 processes · 3 actors · 2 scenarios");
+});
+
+test("searching the Processes explorer finds a process and an actor, and the explorer stays on Processes", async ({ page }) => {
+  const side = await openProcesses(page);
+  const search = side.getByLabel("Search the model");
+  await search.fill("Purchase");
+  await expect(side.getByTestId("explorer-row-Purchase approval")).toBeVisible();
+  // Its ancestors are open, in the Processes explorer's own grouping.
+  await expect(side.locator('[data-key$="/use:orchestration"]')).toHaveAttribute("aria-expanded", "true");
+  await search.fill("Approver");
+  await expect(side.getByTestId("explorer-row-Approver")).toBeVisible();
+  await expect(side.getByTestId("explorer-folder-Roles")).toHaveAttribute("aria-expanded", "true");
+  await expect(side.getByTestId("explorer-row-Approver")).toContainText("acts in");
+  await search.fill("");
+  // Selecting an actor leaves the Processes explorer shown.
+  await expect(side.getByTestId("explorer-totals")).toHaveText("2 processes · 3 actors · 3 scenarios");
+});
+
+test("a process is revealed in its new use folder after its use changes", async ({ page }) => {
+  const side = await openProcesses(page);
+  await expand(page, side.getByTestId("explorer-folder-Billing"));
+  await ensureOpen(page, side.locator('[data-key$="/use:lifecycle"]'));
+  await side.getByTestId("explorer-row-InvoiceLifecycle").dblclick();
+  const editor = page.getByTestId("process-editor");
+  await editor.getByTestId("editor-details-toggle").click();
+  // The orchestrations folder is not open: changing the use moves the row there, and the selection opens the folder.
+  await editor.getByLabel("Use").selectOption("orchestration");
+  await expect(side.locator('[data-key$="/use:orchestration"]')).toHaveAttribute("aria-expanded", "true");
+  await expect(side.getByTestId("explorer-row-InvoiceLifecycle")).toContainText("orchestration");
 });

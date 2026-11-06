@@ -16,8 +16,8 @@ async function openProcess(page: Page, row: string, path = "/") {
   await page.keyboard.press("ArrowRight");
   await expect(billing).toHaveAttribute("aria-expanded", "true");
   // A domain's processes sit in a folder per use: open the ones this model has.
-  for (const use of ["Lifecycles", "Orchestrations"]) {
-    const folder = side.getByTestId(`explorer-folder-${use}`);
+  for (const use of ["lifecycle", "orchestration"]) {
+    const folder = side.locator(`[data-key$="/use:${use}"]`);
     if ((await folder.count()) && (await folder.getAttribute("aria-expanded")) !== "true") {
       await folder.click();
       await page.keyboard.press("ArrowRight");
@@ -96,7 +96,7 @@ test("Use turns a lifecycle into an orchestration with its entity, as one undo s
   await editor.getByTestId("editor-details-toggle").click();
   await editor.getByLabel("Use").selectOption("orchestration");
   // The row moves to the Orchestrations folder.
-  const orchestrations = explorer(page).getByTestId("explorer-folder-Orchestrations");
+  const orchestrations = explorer(page).locator('[data-key$="/use:orchestration"]');
   if ((await orchestrations.getAttribute("aria-expanded")) !== "true") {
     await orchestrations.click();
     await page.keyboard.press("ArrowRight");
@@ -105,7 +105,7 @@ test("Use turns a lifecycle into an orchestration with its entity, as one undo s
   await expect(page.getByRole("tab", { name: /Problems/ })).toContainText("0");
   await editor.getByTestId("states-grid").click();
   await page.keyboard.press("ControlOrMeta+z");
-  const lifecycles = explorer(page).getByTestId("explorer-folder-Lifecycles");
+  const lifecycles = explorer(page).locator('[data-key$="/use:lifecycle"]');
   if ((await lifecycles.getAttribute("aria-expanded")) !== "true") {
     await lifecycles.click();
     await page.keyboard.press("ArrowRight");

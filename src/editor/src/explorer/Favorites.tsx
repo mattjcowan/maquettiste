@@ -10,7 +10,7 @@ import { useServices } from "@/app/context";
 import { local } from "@/lib/storage";
 import { displayName } from "@/model/model";
 import { useEditor } from "@/state/store";
-import type { ExplorerId, Forest } from "./tree";
+import { placeIn, type ExplorerId, type Forest } from "./tree";
 
 const RECENT_SHOWN = 20;
 
@@ -19,8 +19,7 @@ export function inExplorer(forest: Forest, id: ExplorerId, ids: readonly string[
   const out: string[] = [];
   for (const x of ids) {
     if (out.length >= limit) break;
-    const key = forest.place.get(x);
-    if (key && forest.nodes.get(key)?.explorer === id && forest.byId.has(x)) out.push(x);
+    if (placeIn(forest, id, x) && forest.byId.has(x)) out.push(x);
   }
   return out;
 }
@@ -45,7 +44,7 @@ export function FavoritesStrip({ forest, id, onOpen }: { forest: Forest; id: Exp
         <button
           type="button"
           className="min-w-0 flex-1 truncate rounded-control px-2 py-0.5 text-left text-12 hover:bg-app"
-          onClick={() => onOpen(forest.place.get(x) as string)}
+          onClick={() => onOpen(placeIn(forest, id, x) as string)}
           data-testid={`explorer-${group}-${row.name}`}
         >
           {name}

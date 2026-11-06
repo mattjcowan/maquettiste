@@ -2,7 +2,19 @@
 // Lifecycles folder and actor text; the node keys that favorites and deep links rely on stay as they were.
 import { describe, expect, it } from "vitest";
 import type { ElementSummary } from "@/api/types";
-import { actorSecondary, buildForest, childKeys, documentChildren, nodeOf, patchForest, usedByOf, type Forest } from "@/explorer/tree";
+import {
+  actorSecondary,
+  buildForest,
+  childKeys,
+  documentChildren,
+  filteredRows,
+  nodeOf,
+  pathOf,
+  patchForest,
+  placeIn,
+  usedByOf,
+  type Forest,
+} from "@/explorer/tree";
 
 const row = (r: Record<string, unknown>) =>
   ({ package: null, tags: [], category: null, stereotypes: [], hash: `h-${r.id}`, path: `${r.id}.json`, ...r }) as unknown as ElementSummary;
@@ -103,8 +115,118 @@ describe("Processes explorer groups", () => {
         gates: [{ id: "gt1", name: "Dual" }],
       },
     } as never);
-    expect(labels(f, key)).toEqual(["States", "Events", "Guards and actions", "Gates", "Scenarios"]);
+    // A library holds no states, events or scenarios.
+    expect(labels(f, key)).toEqual(["Guards and actions", "Gates"]);
     expect(labels(f, child(f, key, "Gates"))).toEqual(["Dual"]);
+    expect(nodeOf(f, child(f, child(f, key, "Gates"), "Dual"))!.pointer).toBe("/gates/0");
+    expect(nodeOf(f, child(f, child(f, key, "Guards and actions"), "isOk"))!.pointer).toBe("/guards/0");
+    expect(nodeOf(f, child(f, key, "Gates"))!.tooltip).toBe("Signatures a transition waits for");
+  });
+
+  it("hides empty parts folders and lists the library parts a process uses, from the library", () => {
+    const g = buildForest({ rows: ROWS });
+    const key = "@processes/p:O2";
+    documentChildren(
+      g,
+      key,
+      {
+        hash: "h",
+        path: "o.json",
+        json: {
+          kind: "process",
+          id: "O2",
+          name: "Loose",
+          states: [{ id: "s1", name: "Open" }],
+          transitions: [
+            { id: "t1", guard: "lg1", actions: ["la1"] },
+            { id: "t2", gatePolicy: "lgate" },
+          ],
+        },
+      } as never,
+      undefined,
+      [
+        {
+          id: "B1",
+          name: "SharedChecks",
+          json: {
+            guards: [
+              { id: "x", name: "other" },
+              { id: "lg1", name: "isOk" },
+            ],
+            actions: [{ id: "la1", name: "ping" }],
+            gates: [{ id: "lgate", name: "Dual" }],
+          },
+        },
+      ],
+    );
+    expect(labels(g, key)).toEqual(["States", "Events", "Guards and actions", "Gates", "Scenarios"]);
+    const guards = child(g, key, "Guards and actions");
+    expect(labels(g, guards)).toEqual(["isOk", "ping"]);
+    expect(childKeys(g, guards).map((k) => nodeOf(g, k)!.secondary)).toEqual(["from SharedChecks", "from SharedChecks"]);
+    expect(nodeOf(g, childKeys(g, guards)[0])!.transition).toBe("t1");
+    const gates = child(g, key, "Gates");
+    expect(nodeOf(g, childKeys(g, gates)[0])).toMatchObject({ label: "Dual", secondary: "from SharedChecks", transition: "t2", pointer: "/gates/0" });
+    // Nothing to list: the folders are left out.
+    const h = buildForest({ rows: ROWS });
+    documentChildren(h, key, { hash: "h", path: "o.json", json: { kind: "process", id: "O2", name: "Loose", states: [], transitions: [] } } as never);
+    expect(labels(h, key)).toEqual(["States", "Events", "Scenarios"]);
+  });
+
+  it("finds a process or an actor's row in the Processes explorer, and filters to it", () => {
+    expect(placeIn(f, "processes", "O1")).toBe("@processes/p:O1");
+    expect(placeIn(f, "processes", "A2")).toBe("@processes/a:A2");
+    // Their home rows are in the Domain model; the asked-for explorer decides.
+    const home = f.place.get("O1");
+    expect(home).toBeDefined();
+    expect(nodeOf(f, home!)!.explorer).toBe("domain-model");
+    expect(placeIn(f, "domain-model", "O1")).toBe(home);
+    expect(placeIn(f, "processes", "E1")).toBeUndefined();
+    const shown = filteredRows(f, "processes", ["O1", "A2"]);
+    const keys = shown.rows.map((r) => r.key);
+    expect(keys).toContain("@processes/p:O1");
+    expect(keys).toContain("@processes/a:A2");
+    expect(shown.open.has(child(f, billing, "Orchestrations"))).toBe(true);
+    expect(shown.open.has(child(f, f.roots.processes, "Actors"))).toBe(true);
+    // A path to expand: the use folder moves with the use.
+    expect(pathOf(f, placeIn(f, "processes", "O1")!).slice(0, -1)).toEqual([f.roots.processes, billing, child(f, billing, "Orchestrations")]);
+  });
+
+  it("counts the Actors folder's direct children, with the total of actors in its text", () => {
+    const actors = nodeOf(f, child(f, f.roots.processes, "Actors"))!;
+    expect(actors.count).toBe(3);
+    expect(actors.secondary).toBe("3");
+    expect(nodeOf(f, child(f, f.roots.processes, "Actors"))!.children).toHaveLength(3);
+    const noRoles = buildForest({ rows: ROWS.filter((r) => r.id !== "A2") });
+    expect(nodeOf(noRoles, child(noRoles, noRoles.roots.processes, "Actors"))).toMatchObject({ count: 2, secondary: "2" });
+    expect(nodeOf(f, child(f, f.roots.processes, "Actors"))!.sort).toBe("\uffff");
+  });
+
+  it("tells the folders what they hold", () => {
+    expect(nodeOf(f, child(f, billing, "Lifecycles"))!.tooltip).toBe("Lifecycles: the states an entity goes through");
+    expect(nodeOf(f, child(f, billing, "Orchestrations"))!.tooltip).toBe("Orchestrations: flows of work across people, roles and systems");
+    expect(nodeOf(f, child(f, billing, "Libraries"))!.tooltip).toBe("Libraries: guards, actions and gates other processes share");
+    const actors = child(f, f.roots.processes, "Actors");
+    expect(nodeOf(f, child(f, actors, "People"))!.tooltip).toBe("People: actors who are individual persons");
+    expect(nodeOf(f, child(f, actors, "Roles"))!.tooltip).toBe("Roles: jobs or groups anyone in them can fill");
+    expect(nodeOf(f, child(f, actors, "Systems"))!.tooltip).toBe("Systems: outside systems that act in processes");
+    expect(nodeOf(f, child(f, "E1", "Lifecycles"))!.tooltip).toBe("Lifecycles that govern this entity, including its base entity's");
+  });
+
+  it("says where an actor acts in the Domain model too", () => {
+    const home = f.place.get("A2");
+    expect(nodeOf(f, home!)!.secondary).toBe("role · persona · acts in 2 processes");
+  });
+
+  it("rebuilds when an entity named by an orchestration is renamed", () => {
+    // Only the orchestration names Memo: no lifecycle forces the rebuild.
+    const rows = [
+      ...ROWS.map((r) => (r.id === "O2" ? ({ ...r, subject: "E4" } as ElementSummary) : r)),
+      row({ id: "E4", kind: "entity", name: "Memo", package: "P1" }),
+    ];
+    const g = buildForest({ rows });
+    expect(nodeOf(g, "@processes/p:O2")!.secondary).toBe("orchestration · Memo · 1 state");
+    const renamed = { ...rows.find((r) => r.id === "E4")!, name: "Note", hash: "new" } as ElementSummary;
+    expect(patchForest(g, { upserts: [renamed], deleted: [] } as never)).toBeNull();
   });
 
   it("groups actors as People, Roles and Systems, only the folders that have actors, and says where each acts", () => {

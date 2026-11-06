@@ -52,7 +52,11 @@ describe("Processes explorer", () => {
     expect(labels(f, child(f, actors, "Roles"))).toEqual(["Approver"]);
     expect(labels(f, child(f, actors, "Systems"))).toEqual(["ProcurementSystem"]);
     const rows = ["People", "Roles", "Systems"].flatMap((t) => childKeys(f, child(f, actors, t)));
-    expect(rows.map((k) => nodeOf(f, k)!.secondary)).toEqual(["person · persona", "role", "external system"]);
+    expect(rows.map((k) => nodeOf(f, k)!.secondary)).toEqual([
+      "person · persona · acts in 1 process",
+      "role · acts in 1 process",
+      "external system · acts in 1 process",
+    ]);
   });
 
   it("lists a process's scenarios with steps and status, and its States and Events once the document loads", () => {
@@ -63,7 +67,7 @@ describe("Processes explorer", () => {
     const { backend, forest: f } = forest(status);
     const key = `@processes/p:${PURCHASE_APPROVAL}`;
     const scenarios = child(f, key, "Scenarios");
-    expect(nodeOf(f, scenarios)!.secondary).toBe("✓ 1 passed");
+    expect(nodeOf(f, scenarios)!.secondary).toBe("✗ 1 failed · ✓ 1 passed");
     // Failed scenarios come first.
     expect(childKeys(f, scenarios).map((k) => `${nodeOf(f, k)!.label}: ${nodeOf(f, k)!.secondary}`)).toEqual([
       "Quick approval: 2 steps · failed at step 2",

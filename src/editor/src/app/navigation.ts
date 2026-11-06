@@ -231,8 +231,10 @@ export function useEditorNavigation() {
 
   /** Shows the explorer that lists a kind, unless it already shows (active or pinned beside). */
   const showPlace = useCallback(
-    (place: ReturnType<typeof placeOf>) => {
+    (place: ReturnType<typeof placeOf>, kind?: string) => {
       const e = store.getState().explorer;
+      // A process or an actor is also listed in the Processes explorer: when that one shows, it stays.
+      if ((kind === "process" || kind === "actor") && (e.active === "processes" || e.pinned === "processes")) return;
       if (place !== "settings" && e.active !== place && e.pinned !== place) store.getState().setSidebar(place);
     },
     [store],
@@ -250,7 +252,7 @@ export function useEditorNavigation() {
         store.getState().notify("That element is not in the model.", "error");
         return false;
       }
-      showPlace(placeOf(summary.kind));
+      showPlace(placeOf(summary.kind), summary.kind);
       reveal(summary, pointer);
       store.getState().requestCenter(id);
       return true;
@@ -265,7 +267,7 @@ export function useEditorNavigation() {
       const ids = s.travel(direction);
       if (!ids) return false;
       const summary = summaryOf(ids[0]);
-      if (summary) showPlace(placeOf(summary.kind));
+      if (summary) showPlace(placeOf(summary.kind), summary.kind);
       navigate(buildUrl(s.workspace, segmentFor(s.workspace), ids, keep()), { replace: true });
       s.requestCenter(ids[0]);
       return true;
