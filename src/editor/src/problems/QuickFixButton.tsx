@@ -13,7 +13,8 @@ import { Field, Select } from "@/components/ui/input";
 import { useServices } from "@/app/context";
 import { subjectsOf, syncPlanLines, type ProcessDoc } from "@/model/process";
 import { applySyncCodes, applySyncEnum, syncCodes, syncEnum, syncStereotypeEntry, type SyncCodesResult, type SyncEnumResult } from "@/editors/process/api";
-import { deriveQuickFix, fixDocuments, type QuickFix } from "./quickFix";
+import { focusProcess } from "@/app/processFocus";
+import { deriveQuickFix, extraQuickFixes, fixDocuments, type QuickFix } from "./quickFix";
 import { applyQuickFix, freshQuickFix } from "./applyQuickFix";
 import { applyVerbFix } from "@/verbs/verbFixes";
 import { applyBlockedReason, codesDescription, codesView, codeText, hasNoValueList, NO_VALUE_LIST_NOTE } from "./syncCodesView";
@@ -53,6 +54,7 @@ export function QuickFixButton({
   if (typeDoc.data && typeId) docs.set(typeId, typeDoc.data.json as ModelJson);
   const shown = deriveQuickFix(diagnostic, catalogFix, (id) => docs.get(id));
   if (!shown) return null;
+  const extras = extraQuickFixes(diagnostic, (id) => docs.get(id));
 
   const report = (message: string | null, done: string) => {
     if (message) store.getState().notify(`${shown.label}: ${message}`, "error");
@@ -89,6 +91,7 @@ export function QuickFixButton({
         );
       }
       if (fix.kind === "verb") return report(await applyVerbFix(services, fix), `${fix.label}: done.`);
+      if (fix.kind === "open") return void focusProcess(fix.process, fix.tab, fix.node);
       if (fix.kind === "sync-enum")
         return setPending({ kind: "sync", process: fix.process, entity: fix.entity, plan: await syncEnum(fix.process, true, fix.entity) });
       if (fix.kind === "sync-codes") {
@@ -131,6 +134,25 @@ export function QuickFixButton({
       >
         <Wrench /> {shown.label}
       </Button>
+      {extras.map((extra) => (
+        <Button
+          key={extra.label}
+          size="sm"
+          variant="ghost"
+          className="mr-2 shrink-0"
+          disabled={busy}
+          data-testid={`problem-fix-${diagnostic.rule}-more`}
+          title={`Quick fix: ${extra.label}`}
+          onClick={() =>
+            void run(async () => {
+              if (extra.kind === "open") return void focusProcess(extra.process, extra.tab, extra.node);
+              if (extra.kind === "update") report(await applyQuickFix(qc, store, extra), `${extra.label}: done.`);
+            })
+          }
+        >
+          <Wrench /> {extra.label}
+        </Button>
+      ))}
       <Dialog open={pending !== null} onOpenChange={(o) => !o && setPending(null)}>
         {pending?.kind === "initial" ? (
           <DialogContent title="Set initial" description="The state this one starts in when it is entered.">

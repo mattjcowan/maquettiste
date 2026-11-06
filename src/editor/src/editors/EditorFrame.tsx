@@ -15,7 +15,7 @@ import { KindIcon } from "@/app/icons";
 import { useServices } from "@/app/context";
 import { useEditor, type Draft } from "@/state/store";
 import { displayName, KIND_LABELS } from "@/model/model";
-import { EDITOR_LABELS, EDITOR_TAB_LABELS, GROUP_LABELS } from "@/model/labels";
+import { EDITOR_LABELS, EDITOR_TAB_LABELS, GROUP_LABELS, RIGHT_LABELS } from "@/model/labels";
 import { local } from "@/lib/storage";
 import { FindingsSummary } from "@/problems/findings";
 import { entryIdsOf, useProblems } from "./process/shared";
@@ -133,7 +133,8 @@ export function EditorLayout({
             {draft.error}
           </p>
         ) : null}
-        <FindingsSummary diagnostics={diagnostics} element={id} />
+        {/* A finding on a rights row shows at the row and in Problems; the line here would count it a third time. */}
+        <FindingsSummary diagnostics={diagnostics.filter((d) => !/^\/rights\/\d+(\/|$)/.test(d.jsonPointer ?? ""))} element={id} />
         {details ? <HeaderFields {...ctx} translations={translations} /> : null}
       </header>
       {details ? (
@@ -178,6 +179,9 @@ function HeaderFields({ id, kind, json, doc, edit, flush, translations }: Editor
         rec={rec}
         edit={(change) => edit((j) => change(j as Rec))}
         flush={flush}
+        // A right has no plural name, and its description is the Why every refusal shows.
+        noPlural={kind === "right"}
+        descriptionLabel={kind === "right" ? RIGHT_LABELS.columns.why : undefined}
         sidecar={
           typeof description === "object" && description !== null ? { file: (description as { file: string }).file, text: doc?.sidecarText ?? "" } : null
         }

@@ -29,7 +29,7 @@ import { AttributeGrid } from "./AttributeGrid";
 import { DatabaseSchemasSection } from "./DatabaseSchemas";
 import { schemasOf } from "@/model/databaseSchemas";
 import type { Diagnostic } from "@/api/types";
-import { GROUP_LABELS, KIND_LABELS } from "@/model/labels";
+import { GROUP_LABELS, KIND_LABELS, RIGHT_LABELS } from "@/model/labels";
 
 export interface FormProps {
   id: string;
@@ -341,6 +341,8 @@ export function CommonFields({
           edit={(change) => edit((j) => change(j as Rec))}
           flush={flush}
           rows={3}
+          noPlural={kind === "right"}
+          descriptionLabel={kind === "right" ? RIGHT_LABELS.columns.why : undefined}
           sidecar={
             typeof description === "object" && description !== null ? { file: (description as { file: string }).file, text: doc?.sidecarText ?? "" } : null
           }

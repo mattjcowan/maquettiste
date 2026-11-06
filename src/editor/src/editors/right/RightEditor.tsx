@@ -147,15 +147,22 @@ function RightBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
                       })
                     }
                   />
-                  {uses.length > 1 ? (
-                    <Select aria-label="Preview in lifecycle" className="h-6 w-40" value={at?.id} onChange={(e) => setLifecycle(e.target.value)}>
-                      {uses.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}
-                        </option>
-                      ))}
-                    </Select>
-                  ) : null}
+                  <Select
+                    aria-label={L.previewIn}
+                    title={L.previewIn}
+                    className="h-6 w-44 shrink-0"
+                    data-testid="right-preview-lifecycle"
+                    value={at?.id ?? ""}
+                    disabled={!uses.length}
+                    onChange={(e) => setLifecycle(e.target.value)}
+                  >
+                    {uses.length ? null : <option value="">{L.previewNone}</option>}
+                    {uses.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
                 {!uses.length && text ? (
                   <p className="text-11 text-secondary" data-testid="right-needs-use">
@@ -163,18 +170,6 @@ function RightBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
                   </p>
                 ) : null}
               </section>
-              <TextField
-                id={`${dom}-why`}
-                label={L.columns.why}
-                value={typeof rec.description === "string" ? rec.description : ""}
-                onChange={(v) =>
-                  ctx.edit((j) => {
-                    if (v) (j as Rec).description = v;
-                    else delete (j as Rec).description;
-                  })
-                }
-                onBlur={ctx.flush}
-              />
               <section className="flex flex-col gap-1" aria-label={L.usedBy} data-testid="right-uses">
                 <SectionTitle>{L.usedBy}</SectionTitle>
                 {uses.length ? (

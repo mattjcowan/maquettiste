@@ -3,7 +3,8 @@
 // arrow keys move, Enter or F2 edits (Enter again commits), Escape cancels, Tab moves right, Ctrl+Enter adds a row,
 // Ctrl+Delete removes one, and a toggle flips on Enter or Space. Each commit is one draft change, so one undo step.
 // Rows are ROW_H high (--mq-row-h); a row's problems show as a badge on its first cell, a cell's marker on the cell.
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -47,6 +48,8 @@ export interface GridColumn<R> {
   /** Fixed, or per row (a transition's detail is a select for an event, text for a duration). */
   kind: CellKind | ((row: R) => CellKind);
   width?: string;
+  /** The widest the cell grows before its text is cut off (a max-w class); the full text is the cell's tooltip. */
+  clip?: string;
   /**
    * Stays at the left edge while the grid scrolls sideways (the row's name). Several sticky columns in a row each give their
    * `left` edge and a fixed `width` (CSS lengths), so each rests against the one before it.
@@ -101,6 +104,8 @@ export interface GridProps<R extends { id: string }> {
   empty?: string;
   /** Extra buttons beside Add. */
   toolbar?: ReactNode;
+  /** The Add button's text when it asks something first ("Add right…"); defaults to "Add <noun>". */
+  addLabel?: string;
 }
 
 const kindOf = <R,>(column: GridColumn<R>, row: R): CellKind => (typeof column.kind === "function" ? column.kind(row) : column.kind);
@@ -124,6 +129,7 @@ export function Grid<R extends { id: string }>({
   hint = "Enter edits · Tab moves · Ctrl+Enter adds · Ctrl+Delete removes",
   empty,
   toolbar,
+  addLabel,
 }: GridProps<R>) {
   const [active, setActive] = useState({ row: 0, col: 0 });
   const [editing, setEditing] = useState<{ value: string; select?: boolean } | null>(null);
@@ -151,7 +157,11 @@ export function Grid<R extends { id: string }>({
   useEffect(() => {
     if (!pendingFocus.current) return;
     const cell = gridRef.current?.querySelector<HTMLElement>(`[data-cell="${active.row}:${active.col}"]`);
-    const target = editing ? cell?.querySelector<HTMLInputElement | HTMLSelectElement>("input, select") : cell;
+    // A pick cell's checklist sits in a portal, outside the cell.
+    const picker = editing ? document.querySelector<HTMLElement>('[data-testid="pick-editor"]') : null;
+    const target = editing
+      ? (picker?.querySelector<HTMLInputElement>("input") ?? cell?.querySelector<HTMLInputElement | HTMLSelectElement>("input, select"))
+      : cell;
     if (!target) return;
     pendingFocus.current = false;
     target.focus();
@@ -326,9 +336,11 @@ export function Grid<R extends { id: string }>({
                         style={stickyStyle(column.sticky)}
                         className={cn(
                           "h-[var(--mq-row-h)] max-w-64 px-1.5 py-0 align-middle outline-none",
-                          isEditing && kind === "pick" && "relative",
+                          column.clip,
                           column.sticky && "sticky left-0 z-10 bg-surface shadow-[1px_0_0_var(--mq-border-default)]",
-                          isActive && "bg-accent-subtle ring-1 ring-inset ring-accent",
+                          // A sticky cell stays opaque when active, or the cells that slide under it show through.
+                          isActive && (column.sticky ? "bg-[image:linear-gradient(var(--mq-accent-subtle),var(--mq-accent-subtle))]" : "bg-accent-subtle"),
+                          isActive && "ring-1 ring-inset ring-accent",
                           marker && "ring-1 ring-inset ring-danger",
                           column.mono && "font-mono",
                           locked && "text-secondary",
@@ -338,6 +350,7 @@ export function Grid<R extends { id: string }>({
                           kind === "pick" ? (
                             <PickEditor
                               label={`${column.label} of ${rowName(row)}`}
+                              anchor={() => gridRef.current?.querySelector<HTMLElement>(`[data-cell="${r}:${c}"]`) ?? null}
                               options={column.options?.(row) ?? []}
                               value={editing.value}
                               onChange={(value) => setEditing({ value })}
@@ -399,7 +412,9 @@ export function Grid<R extends { id: string }>({
                             ) : column.render ? (
                               column.render(row)
                             ) : (
-                              <span className="truncate">{column.value(row)}</span>
+                              <span className="truncate" title={column.clip ? column.value(row) : undefined}>
+                                {column.value(row)}
+                              </span>
                             )}
                             {marker ? (
                               <span
@@ -444,7 +459,7 @@ export function Grid<R extends { id: string }>({
         <span className="flex items-center gap-1">
           {onAdd ? (
             <Button size="sm" variant="ghost" onClick={add} data-testid={`${testid}-add`}>
-              <Plus /> Add {noun}
+              <Plus /> {addLabel ?? `Add ${noun}`}
             </Button>
           ) : null}
           {toolbar}
@@ -458,6 +473,7 @@ export function Grid<R extends { id: string }>({
 /** A pick cell's editor: a checklist, grouped, under the cell. Enter or leaving it commits; Escape cancels. */
 function PickEditor({
   label,
+  anchor,
   options,
   value,
   onChange,
@@ -465,6 +481,8 @@ function PickEditor({
   onCancel,
 }: {
   label: string;
+  /** The cell the checklist opens under. */
+  anchor: () => HTMLElement | null;
   options: GridOption[];
   value: string;
   onChange: (value: string) => void;
@@ -482,12 +500,28 @@ function PickEditor({
         .join(","),
     );
   };
-  return (
+  // The checklist sits in a portal at the cell's corner, so the grid's scrolling box never clips it.
+  const box = useRef<HTMLDivElement>(null);
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    const rect = anchor()?.getBoundingClientRect();
+    if (!rect) return;
+    const height = Math.min(box.current?.offsetHeight ?? 240, 240);
+    setAt({
+      top: Math.max(4, Math.min(rect.top, window.innerHeight - height - 4)),
+      left: Math.max(4, Math.min(rect.left, window.innerWidth - 232)),
+    });
+  }, [anchor, options.length]);
+  return createPortal(
     <div
+      ref={box}
       role="group"
       aria-label={label}
       data-testid="pick-editor"
-      className="absolute left-0 top-0 z-30 flex max-h-60 min-w-56 flex-col overflow-y-auto rounded-control border border-input bg-surface p-1 shadow-md"
+      style={{ top: at?.top ?? 0, left: at?.left ?? 0, visibility: at ? "visible" : "hidden" }}
+      className="fixed z-50 flex max-h-60 min-w-56 flex-col overflow-y-auto rounded-control border border-input bg-surface p-1 text-12 shadow-md"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === "Escape") {
@@ -514,7 +548,8 @@ function PickEditor({
           ))}
         </div>
       ))}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

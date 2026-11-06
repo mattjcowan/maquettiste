@@ -8,7 +8,9 @@ import { local } from "@/lib/storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, CirclePlay, Play, RotateCcw, Trash2, X } from "lucide-react";
 import * as endpoints from "@/api/endpoints";
-import { elementQuery, keys, upsertIndexRow, useIndex } from "@/api/queries";
+import { elementQuery, keys, upsertIndexRow, useElements, useIndex } from "@/api/queries";
+import { focusProcess } from "@/app/processFocus";
+import { useEditorNavigation } from "@/app/navigation";
 import type { AttributeDoc, ModelJson } from "@/api/types";
 import { useServices } from "@/app/context";
 import { Button, iconTitle } from "@/components/ui/button";
@@ -111,7 +113,30 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
     () => new Map((index.data ?? []).filter((r) => r.kind === "process" || r.kind === "right").map((r) => [r.id, r.displayName || r.name] as [string, string])),
     [index.data],
   );
-  const names = useMemo(() => namesOf(process, actorNames, participants, elementNames), [process, actorNames, participants, elementNames]);
+  // The Why of the named rights the lifecycle uses: a refusal shows it beside the refuser.
+  const usedRights = (process.rights ?? []).flatMap((r) => (r.right ? [r.right] : []));
+  const namedRights = useElements(usedRights).byId;
+  const whys = useMemo(
+    () => new Map([...namedRights].flatMap(([rid, d]) => (typeof d.json.description === "string" ? [[rid, d.json.description] as [string, string]] : []))),
+    [namedRights],
+  );
+  const names = useMemo(() => namesOf(process, actorNames, participants, elementNames, whys), [process, actorNames, participants, elementNames, whys]);
+  const nav = useEditorNavigation();
+  // A refusal names what refused it: that part of this lifecycle on its tab, or the element in its own editor tab.
+  const openRefuser = (target: string) => {
+    const tab = (process.rights ?? []).some((r) => r.id === target)
+      ? "rights"
+      : (process.events ?? []).some((e) => e.id === target)
+        ? "events"
+        : (process.transitions ?? []).some((t) => t.gate?.id === target)
+          ? "gates"
+          : (process.guards ?? []).some((g) => g.id === target) || (process.actions ?? []).some((a) => a.id === target)
+            ? "transitions"
+            : null;
+    if (tab) return void focusProcess(id, tab, tab === "events" ? target : null);
+    const summary = indexLookup(index.data).byId.get(target);
+    if (summary) nav.openEditor(summary, true);
+  };
   const entityNames = useMemo(() => new Map((index.data ?? []).filter((r) => r.kind === "entity").map((r) => [r.id, r.name])), [index.data]);
   const allActors = useMemo(() => actors.map((a) => ({ id: a.id, name: a.name })), [actors]);
   const scenarios = useMemo(
@@ -433,7 +458,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
               L.configuration,
               <ConfigurationSection configuration={entry?.configuration ?? []} final={!!entry?.final} names={names} />,
             )}
-            {section("lastStep", L.lastStep, <LastStepSection entry={entry} names={names} subjectAttribute={subjectAttribute} />)}
+            {section("lastStep", L.lastStep, <LastStepSection entry={entry} names={names} subjectAttribute={subjectAttribute} onOpen={openRefuser} />)}
           </div>
           <div className="min-h-0 overflow-auto">
             {replay
@@ -912,10 +937,12 @@ function EnabledRowView({
           variant="ghost"
           size="icon-row"
           tabIndex={-1}
-          label={L.raiseRow(row.label, n)}
+          label={L.raiseRow(row.label, null)}
           shortcut={n ? String(n) : undefined}
           title={
-            row.verb ? `${iconTitle(L.raiseRow(row.label, n), n ? String(n) : undefined)}. Verb: ${describeVerb(row.verb, own)?.label ?? row.verb}` : undefined
+            row.verb
+              ? `${iconTitle(L.raiseRow(row.label, null), n ? String(n) : undefined)}. Verb: ${describeVerb(row.verb, own)?.label ?? row.verb}`
+              : undefined
           }
           onClick={() => onRaise(false)}
           data-testid="enabled-raise"
@@ -1118,7 +1145,17 @@ function ConfigurationSection({ configuration, final, names }: { configuration: 
   );
 }
 
-function LastStepSection({ entry, names, subjectAttribute }: { entry: ReturnType<typeof shownEntry>; names: Names; subjectAttribute: (id: string) => string }) {
+function LastStepSection({
+  entry,
+  names,
+  subjectAttribute,
+  onOpen,
+}: {
+  entry: ReturnType<typeof shownEntry>;
+  names: Names;
+  subjectAttribute: (id: string) => string;
+  onOpen: (id: string) => void;
+}) {
   if (!entry || (entry.index < 0 && !entry.microsteps.some((m) => m.actions.length) && !entry.diagnostics.length)) return <Note>{L.noLastStep}</Note>;
   const lines = lastStepLines(entry, names, subjectAttribute);
   return (
@@ -1133,7 +1170,7 @@ function LastStepSection({ entry, names, subjectAttribute }: { entry: ReturnType
           key={i}
           className={cn(
             ROW,
-            (line.kind === "sets" || line.kind === "values") && "h-auto min-h-[var(--mq-row-h)] items-start py-0.5",
+            (line.kind === "sets" || line.kind === "values" || line.kind === "refusal") && "h-auto min-h-[var(--mq-row-h)] items-start py-0.5",
             line.tone === "danger" && "text-danger",
             line.tone === "warning" && "text-warning",
             line.tone === "success" && "text-success",
@@ -1145,6 +1182,29 @@ function LastStepSection({ entry, names, subjectAttribute }: { entry: ReturnType
           {line.kind === "sets" || line.kind === "values" ? (
             <span className="min-w-0 whitespace-normal break-words" data-testid="last-step-wrapped">
               {line.text}
+            </span>
+          ) : line.kind === "refusal" ? (
+            <span className="min-w-0 whitespace-normal break-words" data-testid="last-step-wrapped">
+              {line.text}
+              {line.element ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="text-accent underline hover:no-underline"
+                    onClick={() => onOpen(line.element!.id)}
+                    title={`Open ${line.element.name}`}
+                    data-testid="refused-by-link"
+                  >
+                    {line.element.name}
+                  </button>
+                </>
+              ) : null}
+              {line.why ? (
+                <span className="block text-secondary" data-testid="refusal-why">
+                  {RL.whyLine(line.why)}
+                </span>
+              ) : null}
             </span>
           ) : (
             <span className="truncate">{line.text}</span>

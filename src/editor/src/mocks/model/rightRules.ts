@@ -170,7 +170,7 @@ export function rightDiagnostics(json: Json, all: () => Iterable<ModelEntry>, em
         "MQ9905",
         "warning",
         verb === null
-          ? `The event '${String(e.name)}' has no verb, no actors and no gate signers, so under deny by default no one can send it. Add actors.`
+          ? `The event '${String(e.name)}' has no verb, no actors and no signers, so under deny by default no one can send it. Add actors.`
           : `The event '${String(e.name)}' has no actors, and no right allows '${verb}', so under deny by default no one can send it. Add actors, or add an allow right.`,
         `/events/${i}`,
         str(e.id) ?? undefined,

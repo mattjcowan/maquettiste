@@ -1,6 +1,6 @@
 // The "Who can do what" view's model functions (src/model/whoCanDo.ts) over get_rights rows.
 import { describe, expect, it } from "vitest";
-import { cellOf, deciders, rowsFor, whoEntities, whoStates, whoView, type RightsRow, type WhoNames } from "@/model/whoCanDo";
+import { cellOf, deciders, exceptions, rowsFor, whoEntities, whoStates, whoView, type RightsRow, type WhoNames } from "@/model/whoCanDo";
 import type { ProcessDoc } from "@/model/process";
 
 const row = (extra: Partial<RightsRow>): RightsRow => ({
@@ -19,6 +19,30 @@ const names: WhoNames = {
   lifecycle: (id) => (id === "HR" ? "HR" : id),
   entity: (id) => id,
 };
+
+describe("an actor a right excepts", () => {
+  const p = {
+    id: "P",
+    name: "Lifecycle",
+    rights: [
+      { id: "R1", name: "NoDelete", access: "deny", verbs: ["delete"], actors: ["A"], except: ["B"], states: ["S1"] },
+      { id: "R2", right: "N1" },
+    ],
+  } as unknown as ProcessDoc;
+  const named = new Map([["N1", { name: "Frozen", verbs: ["modify"], except: ["B"] }]]);
+
+  it("names the right that excepts the actor for the verb in the state, inline or named", () => {
+    expect(exceptions("B", "delete", "S1", p, named)).toEqual(["NoDelete"]);
+    expect(exceptions("B", "modify", "S1", p, named)).toEqual(["Frozen"]);
+  });
+
+  it("names none for another actor, verb or state, or for everyone else", () => {
+    expect(exceptions("A", "delete", "S1", p, named)).toEqual([]);
+    expect(exceptions("B", "delete", "S2", p, named)).toEqual([]);
+    expect(exceptions("B", "read", "S1", p, named)).toEqual([]);
+    expect(exceptions(null, "delete", "S1", p, named)).toEqual([]);
+  });
+});
 
 describe("a cell", () => {
   it("says Allowed, Denied or Depends, and names the other lifecycles a cell depends on", () => {

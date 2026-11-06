@@ -12,7 +12,7 @@ import { RIGHT_LABELS as L } from "@/model/labels";
 import { indexLookup } from "@/model/index";
 import type { Json } from "@/model/process";
 import { rightStateOptions } from "@/model/rights";
-import { deciders, whoEntities, whoStates, whoView, type Decider, type WhoCell } from "@/model/whoCanDo";
+import { deciders, exceptions, whoEntities, whoStates, whoView, type Decider, type WhoCell } from "@/model/whoCanDo";
 import { describeVerb } from "@/model/verbList";
 import { useVerbs } from "@/verbs/useVerbs";
 import { getRights } from "./api";
@@ -62,12 +62,14 @@ export function WhoCanDo({ pc, named }: { pc: ProcessContext; named: ReadonlyMap
   const chosen = cellKey ? cellKey.split("|") : null;
   const cell = chosen ? view.cell(chosen[0] === "" ? null : chosen[0], chosen[1]) : null;
   const why = cell ? deciders(cell, process, named, (id) => lookup.byId.get(id)?.name ?? null) : [];
+  const excepting = chosen ? exceptions(chosen[0] === "" ? null : chosen[0], chosen[1], state, process, named) : [];
   const open = (d: Decider) => {
     if (d.kind === "event") return go.node("events", d.id)?.go();
     if (d.kind === "gate") return go.node("gates", d.id)?.go();
     if (d.kind === "task") return go.node("states", d.id)?.go();
     if (d.kind === "right" && !named.has(d.id) && d.id !== process.id) return go.node("rights", d.id)?.go();
-    return go.element(d.id)?.go();
+    // A named right or another lifecycle opens in its own editor tab.
+    return go.open(d.id)?.go();
   };
   return (
     <div className="flex flex-col gap-2" data-testid="who-can-do-what">
@@ -132,7 +134,7 @@ export function WhoCanDo({ pc, named }: { pc: ProcessContext; named: ReadonlyMap
                           className={cn(
                             "h-5 w-full whitespace-nowrap px-2 text-left hover:bg-accent-subtle",
                             TONE[c.answer],
-                            c.grey && "opacity-50",
+                            c.grey && "italic !text-secondary",
                             cellKey === key && "bg-accent-subtle",
                           )}
                           aria-pressed={cellKey === key}
@@ -155,6 +157,19 @@ export function WhoCanDo({ pc, named }: { pc: ProcessContext; named: ReadonlyMap
       </div>
       {cell ? (
         <div className="flex flex-col gap-0.5 text-12" data-testid="who-deciders">
+          <p className="font-semibold" data-testid="who-restated">
+            {L.whoRestated(
+              view.actors.find((a) => (a.id ?? "") === chosen![0])?.label ?? "",
+              view.verbs.find((v) => v.key === chosen![1])?.label ?? "",
+              stateName.get(state) ?? "",
+              cell.text,
+            )}
+          </p>
+          {excepting.map((n) => (
+            <p key={n} className="text-secondary" data-testid="who-excepted">
+              {L.whoExcepted(n, view.actors.find((a) => (a.id ?? "") === chosen![0])?.label ?? "")}
+            </p>
+          ))}
           {cell.grey ? <p className="text-secondary">{L.whoByDefault}</p> : null}
           {!why.length ? <p className="text-secondary">{L.whoNothing}</p> : null}
           {why.length ? (

@@ -8,7 +8,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useElements } from "@/api/queries";
 import { previewExpression } from "@/api/expressionPreview";
 import { Button } from "@/components/ui/button";
-import { Field, Select } from "@/components/ui/input";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Field, Input, Select } from "@/components/ui/input";
+import { ChipsEditor } from "@/inspector/fields";
 import { EFFECT_LABELS } from "@/model/effectLabels";
 import { RIGHT_LABELS as L } from "@/model/labels";
 import { treeText } from "@/model/effects";
@@ -16,12 +18,18 @@ import { subjectsOf, type Json } from "@/model/process";
 import {
   addRight,
   addRightUse,
+  defaultAccess,
   editRight,
+  freeRightName,
   hasEnds,
   removeRight,
   rightRows,
   rightStateOptions,
   setRightsDefault,
+  unknownActors,
+  ALL_STATES,
+  EVERYONE,
+  type NewRight,
   type RightAccess,
   type RightRow,
 } from "@/model/rights";
@@ -56,19 +64,23 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
   });
   const [picked, setPicked] = useState<string | null>(null);
   const [view, setView] = useState<"rights" | "who">("rights");
+  // An edit the grid refused (an actor no one has), said at the grid; the cell keeps what it had.
+  const [refused, setRefused] = useState<string | null>(null);
+  // Add right… asks first (the dialog), after the row the grid was on.
+  const [adding, setAdding] = useState<{ after?: string } | null>(null);
   const current = rows.find((r) => r.id === picked) ?? rows[0] ?? null;
   const actorOptions = pc.actors.map((a) => ({ id: a.id, name: a.name }));
   const verbOptions = verbGroups("right", verbs.own, verbs.hidden).flatMap((g) => g.options.map((o) => ({ value: o.key, label: o.label, group: g.label })));
   const endOptions = objectFields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: f.name }));
   const names = (ids: string[]) => ids.map((a) => actorNames.get(a) ?? "").join(", ");
   const columns: GridColumn<RightRow>[] = [
-    { key: "name", label: L.columns.name, kind: "text", width: "min-w-32", sticky: true, value: (r) => r.name, locked: (r) => r.use },
+    { key: "name", label: L.columns.name, kind: "text", width: "w-28", clip: "max-w-28", sticky: true, value: (r) => r.name, locked: (r) => r.use },
     {
       key: "access",
       label: L.columns.access,
       tooltip: L.tips.access,
       kind: "select",
-      width: "min-w-28",
+      width: "w-20",
       value: (r) => (r.access === "allow" ? L.allow : L.deny),
       editValue: (r) => r.access,
       options: () => [
@@ -82,7 +94,8 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.who,
       tooltip: L.tips.who,
       kind: "multi",
-      width: "min-w-36",
+      width: "w-28",
+      clip: "max-w-28",
       value: (r) => r.who,
       editValue: (r) => names(r.actorIds),
       definition: (r) => go.element(r.actorIds[0]),
@@ -94,7 +107,8 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.except,
       tooltip: L.tips.except,
       kind: "multi",
-      width: "min-w-32",
+      width: "w-24",
+      clip: "max-w-24",
       value: (r) => r.except,
       editValue: (r) => names(r.exceptIds),
       definition: (r) => go.element(r.exceptIds[0]),
@@ -106,7 +120,8 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.does,
       tooltip: L.tips.does,
       kind: "pick",
-      width: "min-w-40",
+      width: "w-32",
+      clip: "max-w-32",
       value: (r) => r.verbs,
       editValue: (r) => r.verbKeys.join(","),
       options: () => verbOptions,
@@ -117,7 +132,8 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.states,
       tooltip: L.tips.states,
       kind: "pick",
-      width: "min-w-40",
+      width: "w-32",
+      clip: "max-w-32",
       value: (r) => r.states,
       editValue: (r) => r.stateIds.join(","),
       definition: (r) => go.node("states", r.stateIds[0]),
@@ -130,7 +146,8 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
             label: L.columns.links,
             tooltip: L.tips.links,
             kind: "pick",
-            width: "min-w-32",
+            width: "w-24",
+            clip: "max-w-24",
             value: (r: RightRow) => r.ends,
             editValue: (r: RightRow) => r.endIds.join(","),
             options: () => endOptions,
@@ -138,8 +155,18 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
           } satisfies GridColumn<RightRow>,
         ]
       : []),
-    { key: "when", label: L.columns.when, tooltip: L.tips.when, kind: "text", width: "min-w-48", mono: true, value: (r) => r.when, locked: (r) => r.use },
-    { key: "why", label: L.columns.why, tooltip: L.tips.why, kind: "text", width: "min-w-48", value: (r) => r.why, locked: (r) => r.use },
+    {
+      key: "when",
+      label: L.columns.when,
+      tooltip: L.tips.when,
+      kind: "text",
+      width: "w-36",
+      clip: "max-w-36",
+      mono: true,
+      value: (r) => r.when,
+      locked: (r) => r.use,
+    },
+    { key: "why", label: L.columns.why, tooltip: L.tips.why, kind: "text", width: "min-w-40", clip: "max-w-56", value: (r) => r.why, locked: (r) => r.use },
   ];
   const free = named.filter((n) => !used.includes(n.id));
   return (
@@ -172,6 +199,11 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
           ))}
         </div>
       </div>
+      {refused ? (
+        <p role="alert" className="text-12 text-danger" data-testid="rights-refused">
+          {refused}
+        </p>
+      ) : null}
       {view === "who" ? <WhoCanDo pc={pc} named={namedDocs} /> : null}
       {view === "rights" ? (
         <Grid
@@ -185,16 +217,18 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
           onSelect={(r) => setPicked(r.id)}
           problems={(r) => rowProblems(pc.problems, r.pointer)}
           empty={L.empty}
-          onCommit={(r, key, value) => change((p) => void editRight(p, r.id, key, value, { actors: actorOptions }))}
-          onAdd={(after) => {
-            const created: string[] = [];
-            change((p) => void created.push(addRight(p, after?.id)));
-            if (created[0]) setPicked(created[0]);
+          onCommit={(r, key, value) => {
+            // A name no actor has is refused, never read as everyone: the cell keeps what it had.
+            const unknown = key === "who" || key === "except" ? unknownActors(String(value), actorOptions) : [];
+            setRefused(unknown.length ? L.unknownActors(unknown) : null);
+            if (!unknown.length) change((p) => void editRight(p, r.id, key, value, { actors: actorOptions }));
           }}
+          addLabel={L.addDialog}
+          onAdd={(after) => setAdding({ after: after?.id })}
           onRemove={(r) => change((p) => removeRight(p, r.id))}
           actions={(r) =>
             r.named ? (
-              <Button variant="ghost" size="icon-row" label={L.open} onClick={go.element(r.named)?.go} data-testid="open-named-right">
+              <Button variant="ghost" size="icon-row" label={L.open} onClick={go.open(r.named)?.go} data-testid="open-named-right">
                 <ExternalLink />
               </Button>
             ) : null
@@ -226,6 +260,22 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
         />
       ) : null}
       {current && view === "rights" ? <ConditionLine row={current} lifecycle={pc.id} /> : null}
+      {adding ? (
+        <AddRightDialog
+          initialName={freeRightName(process)}
+          initialAccess={defaultAccess(process)}
+          actors={actorOptions.map((a) => ({ value: a.id, label: a.name }))}
+          verbs={verbOptions}
+          states={states}
+          onClose={() => setAdding(null)}
+          onAdd={(init) => {
+            const created: string[] = [];
+            change((p) => void created.push(addRight(p, init, adding.after) ?? ""));
+            if (created[0]) setPicked(created[0]);
+            setAdding(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -245,5 +295,68 @@ function ConditionLine({ row, lifecycle }: { row: RightRow; lifecycle: string })
     <p className="truncate text-11 text-secondary" title={detail.text} data-testid="right-condition-preview">
       {L.conditionOf(row.name)}: {detail.text} · {EFFECT_LABELS.previewType(detail.type, detail.nullable)}
     </p>
+  );
+}
+
+/** Add right…: the few things a right needs. Nothing is added until it names a verb. */
+function AddRightDialog({
+  initialName,
+  initialAccess,
+  actors,
+  verbs,
+  states,
+  onAdd,
+  onClose,
+}: {
+  initialName: string;
+  initialAccess: RightAccess;
+  actors: { value: string; label: string }[];
+  verbs: { value: string; label: string }[];
+  states: { value: string; label: string }[];
+  onAdd: (init: NewRight) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const [access, setAccess] = useState<RightAccess>(initialAccess);
+  const [who, setWho] = useState<string[]>([]);
+  const [does, setDoes] = useState<string[]>([]);
+  const [where, setWhere] = useState<string[]>([]);
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title={L.add} description={L.addDescription}>
+        <form
+          className="flex flex-col gap-2"
+          data-testid="add-right-dialog"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (does.length && name.trim()) onAdd({ name, access, verbs: does, actors: who, states: where });
+          }}
+        >
+          <div className="grid grid-cols-[1fr_auto] items-end gap-2">
+            <Field label={L.columns.name} htmlFor="add-right-name">
+              <Input id="add-right-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+            <Field label={L.columns.access} htmlFor="add-right-access">
+              <Select id="add-right-access" value={access} onChange={(e) => setAccess(e.target.value as RightAccess)}>
+                <option value="allow">{L.allow}</option>
+                <option value="deny">{L.deny}</option>
+              </Select>
+            </Field>
+          </div>
+          <ChipsEditor label={L.columns.does} values={does} options={verbs} allowFree={false} onChange={setDoes} />
+          <ChipsEditor label={`${L.columns.who} (${EVERYONE})`} values={who} options={actors} allowFree={false} onChange={setWho} />
+          <ChipsEditor label={`${L.columns.states} (${ALL_STATES})`} values={where} options={states} allowFree={false} onChange={setWhere} />
+          {!does.length ? <p className="text-12 text-secondary">{L.addNeedsVerb}</p> : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={!does.length || !name.trim()} data-testid="add-right-apply">
+              Add
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

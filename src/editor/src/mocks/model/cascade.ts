@@ -318,7 +318,10 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
           what: `${noun} ${str(sub?.name) ?? str(sub?.role) ?? shortName(op.ref.toId)}`,
           ...(subId ? { subId } : {}),
           subKind: noun,
-          because: `needs ${describe(op.ref.toId)}`,
+          because:
+            noun === "right"
+              ? `${describe(op.ref.toId)} was the only ${op.ref.field.replace(/s$/, "")} it names; with none it would apply to everything, so it goes too`
+              : `needs ${describe(op.ref.toId)}`,
         });
       } else if (doc.json.kind === "diagram" && op.ref.field === "element") {
         plan.removes.push({
@@ -329,7 +332,16 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
           because: `shows ${describe(op.ref.toId)}`,
         });
       } else {
-        plan.clears.push({ ...base, pointer: op.ref.pointer, field: op.ref.field, target: op.ref.toId, because: `pointed to ${describe(op.ref.toId)}` });
+        // A list of a right names the right, so the plan says which right changes.
+        const inRight = /^\/rights\/(\d+)\/(actors|except|ends|states)\/\d+$/.exec(op.ref.pointer);
+        const rightName = inRight ? str((arr(doc.json.rights)[Number(inRight[1])] as Json | undefined)?.name) : undefined;
+        plan.clears.push({
+          ...base,
+          pointer: op.ref.pointer,
+          field: rightName ? `right ${rightName}, ${inRight![2]}` : op.ref.field,
+          target: op.ref.toId,
+          because: `pointed to ${describe(op.ref.toId)}`,
+        });
       }
     }
   }

@@ -25,7 +25,9 @@ export type QuickFix =
   /** A fix that reaches the project's verb vocabulary (verbFixes.ts). */
   | VerbFix
   /** A plain update of one document. */
-  | { kind: "update"; id: string; json: ModelJson; label: string };
+  | { kind: "update"; id: string; json: ModelJson; label: string }
+  /** Opens a part of a lifecycle on its tab (no change to the model). */
+  | { kind: "open"; process: string; tab: "events"; node: string; label: string };
 
 /** The rules whose fix is built in the editor as a plain update (the derivation table's last row) or needs two findings of MQ9201. */
 const EDITOR_FIXES = new Set([
@@ -292,6 +294,26 @@ function verbFix(rule: string, element: ModelJson, pointer: string, id: string):
     }
   }
   return null;
+}
+
+/**
+ * The other fixes a finding offers beside its first (rights-design.md section 10): MQ9904 may set the default to deny instead of
+ * removing the right, and MQ9905 may open the event instead of adding an allow right.
+ */
+export function extraQuickFixes(d: Diagnostic, doc: (id: string) => ModelJson | undefined): QuickFix[] {
+  const element = d.elementId ? doc(d.elementId) : undefined;
+  if (!element || !d.elementId || element.kind !== "process") return [];
+  const id = typeof element.id === "string" ? element.id : d.elementId;
+  if (d.rule === "MQ9904") {
+    const json = clone(element);
+    json.rightsDefault = "deny";
+    return [{ kind: "update", id, json, label: "Set the default to deny" }];
+  }
+  if (d.rule === "MQ9905" && /^\/events\/\d+$/.test(d.jsonPointer ?? "")) {
+    const event = str((atPointer(element, d.jsonPointer ?? "") as Json | undefined)?.id);
+    return event ? [{ kind: "open", process: id, tab: "events", node: event, label: "Open the event" }] : [];
+  }
+  return [];
 }
 
 /**

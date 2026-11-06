@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { deleteState, type ProcessDoc } from "@/model/process";
 import {
   addRight,
+  defaultAccess,
+  freeRightName,
+  rightsLostWithStates,
+  unknownActors,
   addRightUse,
   editRight,
   endsBesideNonLinkVerb,
@@ -50,15 +54,17 @@ const options = {
   ],
 };
 
+const quick = (p: ProcessDoc, after?: string) => addRight(p, { name: freeRightName(p), access: defaultAccess(p), verbs: ["modify"] }, after)!;
+
 describe("the Rights tab's model", () => {
   it("adds a right that denies, or allows under a denying default, with one verb and a unique name", () => {
     const p = process();
-    const first = addRight(p);
-    const second = addRight(p, first);
+    const first = quick(p);
+    const second = quick(p, first);
     expect(p.rights!.map((r) => r.name)).toEqual(["right", "right2"]);
     expect(p.rights![0]).toMatchObject({ id: first, access: "deny", verbs: ["modify"] });
     setRightsDefault(p, "deny");
-    const third = addRight(p);
+    const third = quick(p);
     expect(p.rights!.find((r) => r.id === third)!.access).toBe("allow");
     expect(second).not.toBe(first);
     expect(usesRights(p)).toBe(true);
@@ -75,7 +81,7 @@ describe("the Rights tab's model", () => {
 
   it("shows everyone and all states for empty lists, and a use's fields from the named right", () => {
     const p = process();
-    const id = addRight(p);
+    const id = quick(p);
     const use = addRightUse(p, NAMED);
     p.rights!.find((r) => r.id === use)!.states = [S2];
     const rows = rightRows(p, new Map([[NAMED, { name: "Frozen", access: "allow", actors: [A], verbs: ["read"], ends: ["e"] }]]), names);
@@ -87,7 +93,7 @@ describe("the Rights tab's model", () => {
 
   it("edits the cells: who and except by names, verbs, states and ends by lists, empty lists leave the key out", () => {
     const p = process();
-    const id = addRight(p);
+    const id = quick(p);
     expect(editRight(p, id, "who", "author, Admin", options)).toBe(true);
     expect(p.rights![0].actors).toEqual([A, B]);
     editRight(p, id, "except", "Admin", options);
@@ -121,7 +127,7 @@ describe("the Rights tab's model", () => {
 
   it("removes a right and the key with the last one", () => {
     const p = process();
-    const id = addRight(p);
+    const id = quick(p);
     removeRight(p, id);
     expect(p.rights).toBeUndefined();
   });
@@ -132,8 +138,8 @@ describe("the Rights tab's model", () => {
 
   it("deleting a state takes it from the rights that name it, and a right with no state left goes", () => {
     const p = process();
-    const both = addRight(p);
-    const only = addRight(p);
+    const both = quick(p);
+    const only = quick(p);
     editRight(p, both, "states", `${S1},${S2}`, options);
     editRight(p, only, "states", S2, options);
     expect(deleteState(p, S2)).toEqual({ ok: true });
@@ -144,5 +150,42 @@ describe("the Rights tab's model", () => {
     expect(endsBesideNonLinkVerb(["connect", "read"], ["e"])).toBe(false);
     expect(endsBesideNonLinkVerb(["connect", "delete"], ["e"])).toBe(true);
     expect(endsBesideNonLinkVerb(["delete"], [])).toBe(false);
+  });
+
+  it("refuses an actor name no actor has, never reading it as everyone", () => {
+    const p = process();
+    const id = quick(p);
+    editRight(p, id, "who", "Author", options);
+    expect(unknownActors("Nobody", options.actors)).toEqual(["Nobody"]);
+    expect(unknownActors("admin, Nobody, ", options.actors)).toEqual(["Nobody"]);
+    expect(unknownActors("Everyone", options.actors)).toEqual([]);
+    expect(unknownActors("", options.actors)).toEqual([]);
+    expect(editRight(p, id, "who", "Nobody", options)).toBe(false);
+    expect(editRight(p, id, "except", "Admin, Nobody", options)).toBe(false);
+    expect(p.rights![0].actors).toEqual([A]);
+    expect(p.rights![0].except).toBeUndefined();
+  });
+
+  it("adds a right as the dialog asked, and nothing without a verb", () => {
+    const p = process();
+    expect(addRight(p, { name: "Locked", access: "deny", verbs: [] })).toBeNull();
+    expect(p.rights).toBeUndefined();
+    const id = addRight(p, { name: " Locked ", access: "deny", verbs: ["modify", "delete"], actors: [A], states: [S1] })!;
+    expect(p.rights![0]).toEqual({ id, name: "Locked", access: "deny", verbs: ["modify", "delete"], actors: [A], states: [S1] });
+    const plain = addRight(p, { name: "", access: "allow", verbs: ["read"] })!;
+    expect(p.rights!.find((r) => r.id === plain)).toEqual({ id: plain, name: "right", access: "allow", verbs: ["read"] });
+  });
+
+  it("names the rights a state delete takes along: those that name only the deleted states", () => {
+    const p = process();
+    const only = quick(p);
+    const both = quick(p, only);
+    const use = addRightUse(p, NAMED);
+    editRight(p, only, "states", S1, options);
+    editRight(p, both, "states", `${S1},${S2}`, options);
+    editRight(p, use, "states", S1, options);
+    expect(rightsLostWithStates(p, new Set([S1]), () => "Frozen")).toEqual(["right", "Frozen"]);
+    expect(rightsLostWithStates(p, new Set([S1, S2]))).toEqual(["right", "right2", "a named right"]);
+    expect(rightsLostWithStates(p, new Set(["other"]))).toEqual([]);
   });
 });

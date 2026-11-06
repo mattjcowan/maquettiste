@@ -34,7 +34,7 @@ export async function freshQuickFix(drafts: DraftManager, d: Diagnostic, catalog
 export async function applyQuickFix(
   qc: QueryClient,
   store: EditorStore,
-  fix: Exclude<QuickFix, { kind: "sync-enum" | "sync-codes" | "verb" }>,
+  fix: Exclude<QuickFix, { kind: "sync-enum" | "sync-codes" | "verb" | "open" }>,
   target?: string,
 ): Promise<string | null> {
   const ids = fix.kind === "update" ? [fix.id] : fix.ids;

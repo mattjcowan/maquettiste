@@ -108,6 +108,22 @@ export function deciders(
   return [...new Set([...cell.by, ...cell.dependsOn])].map(find);
 }
 
+/**
+ * The rights that except an actor for a verb in a state: they cover the verb and the state and list the actor under Except,
+ * so they never apply to it (the cell's answer comes from the rest).
+ */
+export function exceptions(actor: string | null, verb: string, state: string, process: ProcessDoc, named: ReadonlyMap<string, Json>): string[] {
+  if (!actor) return [];
+  const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  return (process.rights ?? []).flatMap((entry) => {
+    const source = (entry.right ? (named.get(entry.right) ?? {}) : entry) as Json;
+    const states = list(entry.states);
+    if (!list(source.except).includes(actor) || !list(source.verbs).includes(verb) || (states.length && !states.includes(state))) return [];
+    const name = typeof source.name === "string" ? source.name : "";
+    return name ? [name] : [];
+  });
+}
+
 function walk(list: ProcessDoc["states"] | undefined): { id: string; name: string }[] {
   return (list ?? []).flatMap((s) => [...(s.invoke ?? []), ...walk(s.states)]);
 }

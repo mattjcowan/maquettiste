@@ -93,11 +93,23 @@ export function rowProblems(problems: Diagnostic[], pointer: string): { rule: st
 /** F12 targets for the process grids: another element (an actor, a process, a scenario), or a node of this process
  * (a state, an event, a guard or an action) shown on its tab. Shift+F12 lists where the id is used. */
 export function useGridTargets(process: string) {
-  const { goTo } = useEditorNavigation();
+  const { goTo, openEditor } = useEditorNavigation();
+  const index = useIndex();
   const { store } = useServices();
   const whereUsed = (id: string) => () => store.getState().showReferences(id);
   return {
     element: (id: string | null | undefined): GridTarget | null => (id ? { go: () => goTo(id), whereUsed: whereUsed(id) } : null),
+    /** The element's own editor tab, as a double-click in the explorer opens it (a named right has no place in the lifecycle's tree). */
+    open: (id: string | null | undefined): GridTarget | null =>
+      id
+        ? {
+            go: () => {
+              const summary = indexLookup(index.data).byId.get(id);
+              if (summary) openEditor(summary, true);
+            },
+            whereUsed: whereUsed(id),
+          }
+        : null,
     node: (tab: ProcessTab, id: string | null | undefined): GridTarget | null =>
       id ? { go: () => void focusProcess(process, tab, tab === "states" || tab === "events" ? id : null), whereUsed: whereUsed(id) } : null,
   };

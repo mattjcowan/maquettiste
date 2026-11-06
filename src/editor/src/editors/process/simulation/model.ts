@@ -26,6 +26,8 @@ export interface Names {
   gate(id: string): string;
   /** What a refusal points at: a right, a guard, a gate, an event, an invoke or a lifecycle. */
   element(id: string): string;
+  /** The Why text of a right, by the id a refusal names; "" when it has none. */
+  why(id: string): string;
 }
 
 /** Display names for the ids an answer carries: state paths, event, invoke, actor, guard, action and gate names. */
@@ -34,6 +36,8 @@ export function namesOf(
   actorNames: ReadonlyMap<string, string>,
   participants: readonly { id: string; name: string }[] = [],
   elements: ReadonlyMap<string, string> = new Map(),
+  /** The Why text of named rights, by id (the process's own rights say theirs). */
+  whys: ReadonlyMap<string, string> = new Map(),
 ): Names {
   const states = new Map([...stateIndex(process)].map(([id, info]) => [id, info.path]));
   const map = (list: { id: string; name: string }[] | undefined) => new Map((list ?? []).map((x) => [x.id, x.name]));
@@ -69,6 +73,11 @@ export function namesOf(
     attribute: (id) => attributes.get(id) ?? id,
     meaning: of(meanings),
     gate: (id) => gates.get(id) ?? id,
+    why: (id) => {
+      const own = (process.rights ?? []).find((r) => r.id === id || r.right === id);
+      const text = typeof own?.description === "string" ? own.description : "";
+      return text || (whys.get(own?.right ?? id) ?? "");
+    },
     element: (id) =>
       elements.get(id) ??
       (id === process.id ? process.name : (guards.get(id) ?? gates.get(id) ?? events.get(id) ?? invokes.get(id) ?? rightNames.get(id) ?? id)),
@@ -318,9 +327,26 @@ export function pendingRows(result: SimulationResult, process: ProcessDoc, names
 // ------------------------------------------------------------------ the last step
 
 export interface LastStepLine {
-  kind: "actor" | "refusal" | "right" | "transitions" | "guard" | "action" | "sets" | "values" | "note" | "context" | "audit" | "diagnostic" | "incomplete";
+  kind:
+    | "actor"
+    | "refusal"
+    | "verb"
+    | "right"
+    | "transitions"
+    | "guard"
+    | "action"
+    | "sets"
+    | "values"
+    | "note"
+    | "context"
+    | "audit"
+    | "diagnostic"
+    | "incomplete";
   text: string;
   tone: "neutral" | "danger" | "warning" | "success";
+  /** A refusal: the element that refused it, named once (the panel shows it as a link that opens it), and its Why. */
+  element?: { id: string; name: string };
+  why?: string;
 }
 
 /** What one trace entry did, line by line, in the order the engine reports it. */
@@ -342,14 +368,27 @@ export function lastStepLines(entry: StepTrace, names: Names, subjectAttribute: 
     });
   if (entry.refusal) {
     const reason = L.refusals[entry.refusal] ?? entry.refusal;
+    // The refusing element is named once: in the refusal line, as a link the panel adds (`element`), with the right's Why.
+    const by = entry.refusedBy ? { id: entry.refusedBy, name: names.element(entry.refusedBy) } : undefined;
     lines.push({
       kind: "refusal",
-      text: entry.refusedBy ? L.refused(RL.refusedByLine(reason, names.element(entry.refusedBy))) : L.refused(reason),
+      text: L.refused(by ? `${reason}, ${RL.refusedByWord}` : reason),
       tone: "danger",
+      ...(by ? { element: by, why: names.why(by.id) || undefined } : {}),
     });
   }
+  // A verb that was done: said as an event step is (the trace row's words).
+  if (entry.accepted && entry.input?.input === "verb")
+    lines.push({
+      kind: "verb",
+      text: L.didVerb(
+        (builtInVerb(entry.input.verb ?? "")?.displayName ?? labelOfKey(entry.input.verb ?? "")).toLowerCase(),
+        names.actor(entry.actsAs ?? entry.input.actor ?? entry.actor),
+      ),
+      tone: "success",
+    });
   // The rights that answered, in check order, each once (the refusing one is in the line above).
-  for (const r of entry.rights ?? [])
+  for (const r of (entry.rights ?? []).filter((x) => !entry.refusal || x.right !== entry.refusedBy))
     lines.push({ kind: "right", text: L.rightLine(names.element(r.right), r.access, names.element(r.lifecycle)), tone: "neutral" });
   const taken = entry.microsteps.flatMap((m) => m.transitions);
   if (taken.length) lines.push({ kind: "transitions", text: L.transitionLine(taken.map(names.transition).join(", ")), tone: "success" });

@@ -98,19 +98,35 @@ export function rightStateOptions(process: ProcessDoc): { value: string; label: 
     .map(([id, info]) => ({ value: id, label: info.path }));
 }
 
-/** A new inline right: it denies, or allows when the lifecycle denies by default (an allow beside an allowing default is MQ9904). */
-export function addRight(process: ProcessDoc, after?: string): string {
+/** What the Add right dialog asks: a right has at least one verb, so nothing is added without them. */
+export interface NewRight {
+  name: string;
+  access: RightAccess;
+  verbs: string[];
+  /** Empty: everyone. */
+  actors?: string[];
+  /** Empty: every state. */
+  states?: string[];
+}
+
+/** The access a new right starts with: it denies, or allows when the lifecycle denies by default (an allow beside an allowing default is MQ9904). */
+export const defaultAccess = (process: Pick<ProcessDoc, "rightsDefault">): RightAccess => (process.rightsDefault === "deny" ? "allow" : "deny");
+
+/** A name for a new right that no right of the lifecycle has. */
+export const freeRightName = (process: ProcessDoc, base = "right"): string =>
+  uniqueName(
+    rightsOf(process).flatMap((r) => (r.name ? [r.name] : [])),
+    base,
+  );
+
+/** Adds an inline right as the dialog described it; returns its id, or null when it names no verb (nothing is added). */
+export function addRight(process: ProcessDoc, init: NewRight, after?: string): string | null {
+  if (!init.verbs.length) return null;
   const list = (process.rights ??= []);
   const id = newId();
-  const right: RightDoc = {
-    id,
-    name: uniqueName(
-      list.flatMap((r) => (r.name ? [r.name] : [])),
-      "right",
-    ),
-    access: process.rightsDefault === "deny" ? "allow" : "deny",
-    verbs: ["modify"],
-  };
+  const right: RightDoc = { id, name: init.name.trim() || freeRightName(process), access: init.access, verbs: init.verbs };
+  if (init.actors?.length) right.actors = init.actors;
+  if (init.states?.length) right.states = init.states;
   const at = after ? list.findIndex((r) => r.id === after) : -1;
   list.splice(at < 0 ? list.length : at + 1, 0, right);
   return id;
@@ -139,6 +155,15 @@ const setList = (target: Json, key: string, ids: string[]) => {
   else delete target[key];
 };
 
+/** The names in a typed list of actors that no actor has: the cell refuses them, it never reads them as everyone. "Everyone" is no name. */
+export function unknownActors(raw: string, actors: { id: string; name: string }[]): string[] {
+  const known = new Set(actors.map((a) => a.name.toLowerCase()));
+  return raw
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p && p.toLowerCase() !== EVERYONE.toLowerCase() && !known.has(p.toLowerCase()));
+}
+
 export interface RightEditOptions {
   actors: { id: string; name: string }[];
 }
@@ -160,6 +185,7 @@ export function editRight(process: ProcessDoc, id: string, key: string, value: s
   }
   if (typeof entry.right === "string") return false;
   const doc = entry as unknown as Json;
+  if ((key === "who" || key === "except") && unknownActors(raw, options.actors).length) return false;
   switch (key) {
     case "name":
       entry.name = raw.trim() || entry.name;
@@ -201,6 +227,20 @@ export function editRight(process: ProcessDoc, id: string, key: string, value: s
 export function rightSummary(row: Pick<RightRow, "access" | "verbs" | "states">): string {
   const where = row.states === ALL_STATES ? "" : ` in ${row.states}`;
   return `${row.access === "allow" ? "Allow" : "Deny"} ${row.verbs.toLowerCase()}${where}`;
+}
+
+/**
+ * The rights that go when these states are deleted: those whose every state is among them (an empty list would widen a right to
+ * every state, so the right goes with its last one). A use of a named right is called by the name `named` gives it.
+ */
+export function rightsLostWithStates(
+  process: Pick<ProcessDoc, "rights">,
+  gone: ReadonlySet<string>,
+  named: (id: string) => string = () => "a named right",
+): string[] {
+  return rightsOf(process)
+    .filter((r) => r.states?.length && r.states.every((s) => gone.has(s)))
+    .map((r) => (r.right ? named(r.right) : r.name || "an unnamed right"));
 }
 
 /** The Links column shows only when some right says `ends`. */
