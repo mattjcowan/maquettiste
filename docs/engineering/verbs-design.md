@@ -1,6 +1,6 @@
 # Verbs: design
 
-**Status (2026-11-06): built (in #51).** It designs the third item in the owner's order after 4.1: a built-in set of verbs with fixed meanings, the project's own verbs, and events, automatic moves and operations naming theirs. [Who, what and when](lifecycle-actors-scenarios.md) section 5 sets its direction. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick. [The actors design](actors-design.md) gives its shape. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
+**Status (2026-11-06): built for 0.14.0 (#51).** It designs the third item in the owner's order after 4.1: a built-in set of verbs with fixed meanings, the project's own verbs, and events, automatic moves and operations naming theirs. [Who, what and when](lifecycle-actors-scenarios.md) section 5 sets its direction. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick. [The actors design](actors-design.md) gives its shape. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
 
 ## 1. In short
 
@@ -316,7 +316,7 @@ Output changes only for a model that uses verbs.
 
 ## 12. Decisions the owner must make
 
-1. **Confirm the built-in set and its names before release.** Built-in verbs are permanent, and each one added later may clash with a project's own key (decision 5). The 27 in decision 1 are each in several systems or standards in the yardstick. Four are less certain: `set-state` (an administrator's correction), and `route`, `claim` and `complete` (named by the direction for tasks). `check-out` and `check-in` are left to projects, since their meaning varies most between systems. The ones left to projects are listed in decision 1. Recommended: the 27 as listed. Confidence: high. The build proceeds with the 27. The release waits for the owner to confirm the names.
+1. **Confirm the built-in set and its names before release.** Built-in verbs are permanent, and each one added later may clash with a project's own key (decision 5). The 27 in decision 1 are each in several systems or standards in the yardstick. Four are less certain: `set-state` (an administrator's correction), and `route`, `claim` and `complete` (named by the direction for tasks). `check-out` and `check-in` are left to projects, since their meaning varies most between systems. The ones left to projects are listed in decision 1. Recommended: the 27 as listed. Confidence: high. **Decided (2026-11-06): the owner kept all 27.**
 
 ## 13. Tests
 

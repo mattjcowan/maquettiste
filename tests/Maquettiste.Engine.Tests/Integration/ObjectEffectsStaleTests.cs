@@ -9,7 +9,7 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// <summary>
 /// Stale replays with object effects (object-effects-design.md section 7, "Replay keys"), through the planner: generate, edit, plan, and the
 /// scenario whose replay reads what changed renders again. Over the <c>process-basics</c> fixture with an invented model: Order gains
-/// approvedBy; Sign's guard reads <c>actor()</c>; Audit's guard reads OrderLifecycle's state on the object, which OrderLifecycle binds to the
+/// approvedBy; Sign's guard reads <c>current_actor()</c>; Audit's guard reads OrderLifecycle's state on the object, which OrderLifecycle binds to the
 /// enum OrderStatus; Stamp sets approvedBy on a move its scenario never takes; SignText and AuditText hold the same guards as text, which
 /// the keys read through their typed form. A pack writes each scenario's replay.
 /// </summary>
@@ -71,7 +71,7 @@ public sealed class ObjectEffectsStaleTests
     {
         await using var repo = await EffectsRepo.CreateAsync();
 
-        // Finance acts in no step of Sign's scenario; actor() may still read it (the system actor, a participant's actor).
+        // Finance acts in no step of Sign's scenario; current_actor() may still read it (the system actor, a participant's actor).
         await repo.EditAsync(Finance, n => n["description"] = "Pays the bills.");
         var rendered = await repo.RenderedAsync();
         Assert.Contains(Unit(SignPlain), rendered);
@@ -161,13 +161,13 @@ public sealed class ObjectEffectsStaleTests
             order["attributes"]!.AsArray().Add(JsonNode.Parse($$"""{"id":"{{ApprovedBy}}","name":"approvedBy","type":"string","length":40,"default":"nobody"}"""));
             File.WriteAllText(orderPath, order.ToJsonString());
             Repo.WriteFile(".maquettiste/model/processes/sign.json",
-                Process(Sign, "Sign", guard: $$"""{"op":"ne","args":[{"path":["{{ApprovedBy}}"]},{"actor":true}]}"""));
+                Process(Sign, "Sign", guard: $$"""{"op":"ne","args":[{"path":["{{ApprovedBy}}"]},{"currentActor":true}]}"""));
             Repo.WriteFile(".maquettiste/model/processes/audit.json", Process(Audit, "Audit", guard: $$"""{"inState":["{{Review}}"]}"""));
             Repo.WriteFile(".maquettiste/model/processes/stamp.json", Process(Stamp, "Stamp", action: """{"value":"x"}"""));
             Repo.WriteFile(".maquettiste/model/scenarios/sign/sign-plain.json", Scenario(SignPlain, "SignPlain", Sign));
             Repo.WriteFile(".maquettiste/model/scenarios/audit/audit-plain.json", Scenario(AuditPlain, "AuditPlain", Audit));
             Repo.WriteFile(".maquettiste/model/scenarios/stamp/stamp-plain.json", Scenario(StampPlain, "StampPlain", Stamp));
-            Repo.WriteFile(".maquettiste/model/processes/sign-text.json", Process(SignText, "SignText", guard: """{"text":"subject.approvedBy <> actor()"}"""));
+            Repo.WriteFile(".maquettiste/model/processes/sign-text.json", Process(SignText, "SignText", guard: """{"text":"subject.approvedBy <> current_actor()"}"""));
             Repo.WriteFile(".maquettiste/model/processes/audit-text.json", Process(AuditText, "AuditText", guard: """{"text":"in_state(subject, OrderLifecycle.Review)"}"""));
             Repo.WriteFile(".maquettiste/model/scenarios/sign-text/sign-text-plain.json", Scenario(SignTextPlain, "SignTextPlain", SignText));
             Repo.WriteFile(".maquettiste/model/scenarios/audit-text/audit-text-plain.json", Scenario(AuditTextPlain, "AuditTextPlain", AuditText));

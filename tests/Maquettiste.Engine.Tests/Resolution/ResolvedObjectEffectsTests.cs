@@ -31,8 +31,8 @@ public sealed class ResolvedObjectEffectsTests
     private const string Sick = "01JSTA00000000000000000054";
     private const string Review = "01JSTA00000000000000000003";
     private const string Pending = "01JSTA00000000000000000004";
-    private const string Stamp = "01JPRX00000000000000000071"; // sets approvedBy = actor(), approvedOn = now()
-    private const string NotTheApprover = "01JPRX00000000000000000072"; // subject.approvedBy <> actor()
+    private const string Stamp = "01JPRX00000000000000000071"; // sets approvedBy = current_actor(), approvedOn = now()
+    private const string NotTheApprover = "01JPRX00000000000000000072"; // subject.approvedBy <> current_actor()
     private const string CustomerAway = "01JPRX00000000000000000073"; // in_state(subject.customer, CustomerLifecycle.Paused)
     private const string InReview = "01JPRX00000000000000000074"; // in_state(subject, OrderLifecycle.Review)
     private const string InPending = "01JPRX00000000000000000075"; // in_state(subject, OrderLifecycle.Review.Pending)
@@ -79,12 +79,12 @@ public sealed class ResolvedObjectEffectsTests
             """);
         var process = JsonNode.Parse(harness.Read(ProcessFile))!.AsObject();
         process["actions"]!.AsArray().Add(JsonNode.Parse($$"""
-            {"id":"{{Stamp}}","name":"stamp","sets":[{"id":"01JSET00000000000000000001","attribute":"{{ApprovedBy}}","value":{"actor":true} },
+            {"id":"{{Stamp}}","name":"stamp","sets":[{"id":"01JSET00000000000000000001","attribute":"{{ApprovedBy}}","value":{"currentActor":true} },
               {"id":"01JSET00000000000000000002","attribute":"{{ApprovedOn}}","value":{"now":true} }]}
             """));
         foreach (var guard in new[]
         {
-            $$"""{"id":"{{NotTheApprover}}","name":"notTheApprover","condition":{"op":"ne","args":[{"path":["{{ApprovedBy}}"]},{"actor":true}]} }""",
+            $$"""{"id":"{{NotTheApprover}}","name":"notTheApprover","condition":{"op":"ne","args":[{"path":["{{ApprovedBy}}"]},{"currentActor":true}]} }""",
             $$"""{"id":"{{CustomerAway}}","name":"customerAway","condition":{"inState":["{{Paused}}"],"of":["{{CustomerEnd}}"]} }""",
             $$"""{"id":"{{InReview}}","name":"inReview","condition":{"inState":["{{Review}}"]} }""",
             $$"""{"id":"{{InPending}}","name":"inPending","condition":{"inState":["{{Pending}}"]} }""",
@@ -129,8 +129,8 @@ public sealed class ResolvedObjectEffectsTests
         Assert.Same(model.Entity("Order").OwnAttributes.Single(a => a.Id == ApprovedBy), stamp.Sets[0].Attribute);
 
         var actor = stamp.Sets[0].Value;
-        Assert.Equal("actor", actor.Node);
-        Assert.Equal("actor()", actor.Text);
+        Assert.Equal("current-actor", actor.Node);
+        Assert.Equal("current_actor()", actor.Text);
         Assert.Equal("string", actor.Type.Kind); // the attribute's type, which a set's value meets
         Assert.Null(actor.JavaScript); // engine-only
         var now = stamp.Sets[1].Value;
@@ -145,7 +145,7 @@ public sealed class ResolvedObjectEffectsTests
         // An action without sets has none, and is a stub only without an expression.
         Assert.Empty(process.Actions.Single(a => a.Name == "recordSubmission").Sets);
         Assert.True(process.Actions.Single(a => a.Name == "notifyClerk").IsStub);
-        Assert.Equal("actor", Guard(model, NotTheApprover).Condition!.Args[1].Node);
+        Assert.Equal("current-actor", Guard(model, NotTheApprover).Condition!.Args[1].Node);
         Assert.Equal("string", Guard(model, NotTheApprover).Condition!.Args[1].Type.Kind);
     }
 
@@ -217,7 +217,7 @@ public sealed class ResolvedObjectEffectsTests
         Assert.False(stamp["isStub"]!.GetValue<bool>());
         var sets = stamp["sets"]!.AsArray();
         Assert.Equal(ApprovedBy, sets[0]!["attribute"]!.GetValue<string>());
-        Assert.Equal("actor()", sets[0]!["value"]!["text"]!.GetValue<string>());
+        Assert.Equal("current_actor()", sets[0]!["value"]!["text"]!.GetValue<string>());
         Assert.Equal("now()", sets[1]!["value"]!["text"]!.GetValue<string>());
         Assert.All(actions.Where(a => a!["id"]!.GetValue<string>() != Stamp), a => Assert.False(a!.AsObject().ContainsKey("sets")));
 

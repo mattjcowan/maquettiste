@@ -22,7 +22,7 @@ public sealed class RExpression
 
     /// <summary>
     /// The node's shape: <c>value</c> (a literal), <c>null</c>, <c>path</c>, <c>ref</c> (an enum member or a reference-type code),
-    /// <c>member</c> (a declared rule's member), <c>now</c>, <c>actor</c> (who acts, <c>actor()</c>), <c>in-state</c> (whether an object is
+    /// <c>member</c> (a declared rule's member), <c>now</c>, <c>current-actor</c> (who acts, <c>current_actor()</c>), <c>in-state</c> (whether an object is
     /// in a state of a lifecycle, <c>in_state</c>), <c>op</c>, <c>call</c> or <c>case</c> (object-effects-design.md section 6).
     /// </summary>
     public string Node { get; internal set; } = "";
@@ -106,7 +106,7 @@ public sealed class RExpression
 
     /// <summary>
     /// On the root of a condition: the JavaScript function over a row that calls the expression runtime as <c>mq</c>, lowered on first
-    /// read (<see cref="ExprLowering.ToJavaScript"/>); <see langword="null"/> on an operand, and for a tree that reads <c>actor()</c> or
+    /// read (<see cref="ExprLowering.ToJavaScript"/>); <see langword="null"/> on an operand, and for a tree that reads <c>current_actor()</c> or
     /// <c>in_state</c>, whose JavaScript calls helpers only the engine has (<see cref="ExprLowering.IsEngineOnly"/>).
     /// </summary>
     public string? JavaScript => Root is { } root && !(_engineOnly ??= ExprLowering.IsEngineOnly(root.Typed))
@@ -480,9 +480,9 @@ internal static class ExprResolution
             {
                 r.Node = "now";
             }
-            else if (e.Actor is not null)
+            else if (e.CurrentActor is not null)
             {
-                r.Node = "actor";
+                r.Node = "current-actor";
             }
             else if (e.InState is not null)
             {

@@ -289,7 +289,7 @@ public sealed class CompileTests
         // object-effects-design.md section 9: an action that sets data calls Record<Action>, which the companion implements. One with a
         // translated expression becomes an instance method that records, then returns the context; one with only sets, or with an expression
         // outside the translated subset, stays the companion's stub, and the dispatch runs Run<Action>, which records, then runs it. Guards
-        // that read actor() or in_state are left to a person. The output matches its expected files and builds with warnings as errors.
+        // that read current_actor() or in_state are left to a person. The output matches its expected files and builds with warnings as errors.
         // process-docs shows the sets and the guards' conditions.
         using var repo = PackRepo.ObjectEffects();
         await repo.GenerateCleanlyAsync();
@@ -306,9 +306,9 @@ public sealed class CompileTests
 
         var page = File.ReadAllText(Path.Combine(repo.PathOf("docs"), "processes", "request-lifecycle.md"));
         Assert.Contains("| Action | Expression | Sets | Raises | Used by | Description |", page, StringComparison.Ordinal);
-        Assert.Contains("`submittedBy ← actor()`, `submittedOn ← now()`", page, StringComparison.Ordinal);
+        Assert.Contains("`submittedBy ← current_actor()`, `submittedOn ← now()`", page, StringComparison.Ordinal);
         Assert.Contains("`in_state(subject.employee, Employment.Active)`", page, StringComparison.Ordinal);
-        Assert.Contains("`subject.submittedBy <> actor()`", page, StringComparison.Ordinal);
+        Assert.Contains("`subject.submittedBy <> current_actor()`", page, StringComparison.Ordinal);
         var employment = File.ReadAllText(Path.Combine(repo.PathOf("docs"), "processes", "employment.md"));
         Assert.DoesNotContain("Sets", employment, StringComparison.Ordinal);
 

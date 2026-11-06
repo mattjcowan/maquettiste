@@ -9405,7 +9405,7 @@ components:
           type: [string, 'null']
           description: >-
             With `text`, `check`, `value`, `guard` or `set` (a value an action of a process sets, with `attribute`), or the pointer of one
-            of the element's sites. `actor()` and `in_state` preview at guard and set sites, with no SQL form and no answer.
+            of the element's sites. `current_actor()` and `in_state` preview at guard and set sites, with no SQL form and no answer.
         attribute:
           type: [string, 'null']
           description: With `site` `set`, the id of the attribute the value is for, whose type the value must fit (MQ3103).
@@ -14575,7 +14575,7 @@ components:
         notes:
           description: |
             What the run assumed or could not do (object-effects-design.md section 7), in the order it happened: a state assumed for an
-            object's lifecycle because the scenario gave none (decision 10), an identity that did not convert to the type `actor()` met
+            object's lifecycle because the scenario gave none (decision 10), an identity that did not convert to the type `current_actor()` met
             (decision 5), sets an invoked sub-process ran, which change nothing (decision 4). Left out when empty.
           type: array
           items:

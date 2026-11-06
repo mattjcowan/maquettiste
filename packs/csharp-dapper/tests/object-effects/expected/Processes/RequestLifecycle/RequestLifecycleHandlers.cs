@@ -20,7 +20,7 @@ public sealed partial class RequestLifecycleHandlers
     private partial RequestLifecycleContext ActionRecordSubmission(StatechartCall<RequestLifecycleContext> call) =>
         throw new NotImplementedException("Action recordSubmission of process RequestLifecycle is not implemented yet.");
 
-    // Record on the object what action recordSubmission sets: submittedBy = actor(), submittedOn = now(). Each value reads the object and call.Context as they were
+    // Record on the object what action recordSubmission sets: submittedBy = current_actor(), submittedOn = now(). Each value reads the object and call.Context as they were
     // before the action; the generated half runs this, then the action.
     private partial void RecordRecordSubmission(StatechartCall<RequestLifecycleContext> call) =>
         throw new NotImplementedException("Action recordSubmission of process RequestLifecycle does not record its sets yet.");

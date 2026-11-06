@@ -195,11 +195,11 @@ must equal its bound enum's members, in order (MQ9203).
   a missing value reads as default, then null, and only true passes. A scenario's `objects` (`id`, `name`, `entity`, `values`
   by attribute id, `links` of `{ end, object }`) and `subject` (required with objects) give it something to read; `simulate_process`
   and `record_scenario` take both. `csharp-dapper` leaves such a guard as a partial method.
-- Object effects (names are a working set, owner confirms): an action's `sets` is `[{ id, attribute, value }]`, `attribute` an id every subject holds
-  (own, inherited, base or stereotype), `value` an expression tree (`{ "actor": true }`, `{ "now": true }`); not derived or state-bound attributes
+- Object effects: an action's `sets` is `[{ id, attribute, value }]`, `attribute` an id every subject holds
+  (own, inherited, base or stereotype), `value` an expression tree (`{ "currentActor": true }`, `{ "now": true }`); not derived or state-bound attributes
   (MQ9802), not twice per action (MQ9803), none without subjects or on a member, collection or end (MQ9801), none on a library action (MQ9020). Sets run
   on exit, move, entry actions in that order; values read the object as it was when the action started; guards that pick the move see the old values.
-  `actor()` (signer, else participant identity, else name; takes the other side's type, else string) and `in_state(subject.end, Lifecycle.State, ...)`
+  `current_actor()` (signer, else participant identity, else name; takes the other side's type, else string) and `in_state(subject.end, Lifecycle.State, ...)`
   (one lifecycle per call, MQ3116; to-one path; no SQL) work at process and operation guards and sets only (MQ3104). A scenario object's `states` (state
   ids; else the bound value; else the initial state, noted in the trace) feed `in_state` (MQ9305 on a clash); a step's `expect.values` is
   attribute name to value, exactly what changed (MQ9307). Traces add `sets` per action, `valuesChanged` and `notes`. `csharp-dapper` keeps a sets-only
@@ -218,7 +218,7 @@ must equal its bound enum's members, in order (MQ9203).
   no context does not count within one. A subject entry's optional `owner` names the single-valued attribute or to-one end
   that holds the owner. A scenario's `participants` (`name`, `identity`, `actor`, `holds: [{ id, actor, within }]`, `object`)
   and a step's `participant` let the engine work out the actor the step acts as (`step.acts_as`). MQ9601 to MQ9606, MQ9301
-  and MQ9305 check them. "Participants" is a working name.
+  and MQ9305 check them.
 - Scenarios are the process's tests: `validate` replays every scenario (MQ93xx), and the packs turn each scenario into a
   generated test. When a chart change breaks a scenario on purpose, refresh its expectations (`refresh-scenario`) rather
   than editing `expect` by hand; when it breaks by accident, fix the chart.

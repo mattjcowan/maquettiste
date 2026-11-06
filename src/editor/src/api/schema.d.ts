@@ -3660,7 +3660,7 @@ export interface components {
             at?: string | null;
             /** @description Text to preview instead of a stored expression; needs `site`. */
             text?: string | null;
-            /** @description With `text`, `check`, `value`, `guard` or `set` (a value an action of a process sets, with `attribute`), or the pointer of one of the element's sites. `actor()` and `in_state` preview at guard and set sites, with no SQL form and no answer. */
+            /** @description With `text`, `check`, `value`, `guard` or `set` (a value an action of a process sets, with `attribute`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard and set sites, with no SQL form and no answer. */
             site?: string | null;
             /** @description With `site` `set`, the id of the attribute the value is for, whose type the value must fit (MQ3103). */
             attribute?: string | null;
@@ -6326,7 +6326,7 @@ export interface components {
             };
             /**
              * @description What the run assumed or could not do (object-effects-design.md section 7), in the order it happened: a state assumed for an
-             *     object's lifecycle because the scenario gave none (decision 10), an identity that did not convert to the type `actor()` met
+             *     object's lifecycle because the scenario gave none (decision 10), an identity that did not convert to the type `current_actor()` met
              *     (decision 5), sets an invoked sub-process ran, which change nothing (decision 4). Left out when empty.
              */
             notes?: string[];
@@ -7613,7 +7613,7 @@ export interface components {
              * @description The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard and set sites only.
              * @constant
              */
-            actor?: true;
+            currentActor?: true;
             /** @description True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard and set sites only. */
             inState?: string[];
             /** @description The to-one relation end ids from the subject to the object whose state inState reads; absent, the subject itself. Only with inState. */
@@ -10047,7 +10047,7 @@ export interface components {
             id: components["schemas"]["id"];
             /** @description The attribute set: an attribute every subject of the process holds under one id (an id, or the keyed id of an inherited or contributed attribute). Not derived, and not one that holds a lifecycle's state (MQ9801, MQ9802); once per action (MQ9803). */
             attribute: string;
-            /** @description The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute. */
+            /** @description The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), current_actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute. */
             value: components["schemas"]["expr"];
         };
         /**
@@ -10450,7 +10450,7 @@ export interface components {
                     id: components["schemas"]["id"];
                     /** @description The attribute set: an attribute every subject of the process holds under one id (an id, or the keyed id of an inherited or contributed attribute). Not derived, and not one that holds a lifecycle's state (MQ9801, MQ9802); once per action (MQ9803). */
                     attribute: string;
-                    /** @description The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute. */
+                    /** @description The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), current_actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute. */
                     value: components["schemas"]["expr"];
                 };
                 /**

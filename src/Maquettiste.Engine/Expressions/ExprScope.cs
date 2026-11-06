@@ -271,7 +271,7 @@ public sealed class ExprScope
     public bool AllowsNavigation { get; init; }
 
     /// <summary>
-    /// Whether <c>actor()</c> and <c>in_state</c> may be read; by default at guard and set sites only, never in a constraint's own condition
+    /// Whether <c>current_actor()</c> and <c>in_state</c> may be read; by default at guard and set sites only, never in a constraint's own condition
     /// (MQ3104, object-effects-design.md decisions 5 and 9).
     /// </summary>
     public bool AllowsActor { get; init; }

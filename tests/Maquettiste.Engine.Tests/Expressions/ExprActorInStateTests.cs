@@ -9,8 +9,8 @@ using Maquettiste.Engine.Validation;
 namespace Maquettiste.Engine.Tests.Expressions;
 
 /// <summary>
-/// <c>actor()</c>, <c>in_state</c> and an action's sets in the language (object-effects-design.md decisions 1 to 11, section 14): text to tree
-/// and back, renames reprinted, typing (actor() takes the type it meets; in_state over the subject, a to-one path and the running chart),
+/// <c>current_actor()</c>, <c>in_state</c> and an action's sets in the language (object-effects-design.md decisions 1 to 11, section 14): text to tree
+/// and back, renames reprinted, typing (current_actor() takes the type it meets; in_state over the subject, a to-one path and the running chart),
 /// refusals at checks and values, the engine-only JavaScript and no SQL; the set rules MQ9801 to MQ9803, MQ3116 and the new cases of
 /// MQ3103, MQ3104, MQ9020 and MQ9305; and no change for a project that uses none of this.
 /// </summary>
@@ -122,8 +122,8 @@ public sealed class ExprActorInStateTests
         using var _ = h;
         await using var __ = store;
 
-        var guard = await TypedAsync(store, "subject.submittedBy <> actor() and in_state(subject.customer, Credit.Blocked.Hold, Credit.Good)");
-        Assert.Equal("subject.submittedBy <> actor() and in_state(subject.customer, Credit.Blocked.Hold, Credit.Good)", guard.Text);
+        var guard = await TypedAsync(store, "subject.submittedBy <> current_actor() and in_state(subject.customer, Credit.Blocked.Hold, Credit.Good)");
+        Assert.Equal("subject.submittedBy <> current_actor() and in_state(subject.customer, Credit.Blocked.Hold, Credit.Good)", guard.Text);
         Assert.Equal("bool", guard.Type);
         Assert.Null(guard.Sql);
         Assert.Null(guard.Answer);
@@ -143,7 +143,7 @@ public sealed class ExprActorInStateTests
         var model = await store.GetSnapshotAsync(Ct);
         var renamed = ExprSites.Scope(model, model.Get<Process>(P)!, null, ExprSites.Free(model, model.Get<Process>(P)!, ExprSiteKind.Guard)!, text: false);
         Assert.Equal("in_state(subject.buyer, Standing.Blocked.OnHold)", ExprText.Print(tree, renamed));
-        Assert.Equal("actor()", ExprText.Print(new Expr { Actor = true }, renamed));
+        Assert.Equal("current_actor()", ExprText.Print(new Expr { CurrentActor = true }, renamed));
     }
 
     // ---- typing ----
@@ -155,17 +155,17 @@ public sealed class ExprActorInStateTests
         using var _ = h;
         await using var __ = store;
 
-        Assert.Contains("mq.str(mq.actor())", (await TypedAsync(store, "subject.submittedBy = actor()")).JavaScript, StringComparison.Ordinal);
-        Assert.Contains("mq.dec(mq.actor())", (await TypedAsync(store, "actor() = subject.ownerNo")).JavaScript, StringComparison.Ordinal);
-        Assert.Contains("mq.uuid(mq.actor())", (await TypedAsync(store, "coalesce(subject.token, actor()) is not null")).JavaScript, StringComparison.Ordinal);
-        Assert.Contains("mq.dec(mq.actor())", (await TypedAsync(store, "case when true then actor() else subject.ownerNo end = 1")).JavaScript, StringComparison.Ordinal);
+        Assert.Contains("mq.str(mq.currentActor())", (await TypedAsync(store, "subject.submittedBy = current_actor()")).JavaScript, StringComparison.Ordinal);
+        Assert.Contains("mq.dec(mq.currentActor())", (await TypedAsync(store, "current_actor() = subject.ownerNo")).JavaScript, StringComparison.Ordinal);
+        Assert.Contains("mq.uuid(mq.currentActor())", (await TypedAsync(store, "coalesce(subject.token, current_actor()) is not null")).JavaScript, StringComparison.Ordinal);
+        Assert.Contains("mq.dec(mq.currentActor())", (await TypedAsync(store, "case when true then current_actor() else subject.ownerNo end = 1")).JavaScript, StringComparison.Ordinal);
         // Alone, a string: so it does not compare with a number through another string.
-        var misfit = await PreviewAsync(store, "length(actor()) > 0 and subject.ownerNo = actor() || 'x'");
+        var misfit = await PreviewAsync(store, "length(current_actor()) > 0 and subject.ownerNo = current_actor() || 'x'");
         Assert.Contains(misfit.Diagnostics, d => d.Rule == "MQ3103");
         // A set's attribute gives its type.
-        var set = await TypedAsync(store, "actor()", "set", Record, OwnerNo);
+        var set = await TypedAsync(store, "current_actor()", "set", Record, OwnerNo);
         Assert.Equal("int64", set.Type);
-        Assert.StartsWith("(row) => mq.out(mq.dec(mq.actor()), \"int\")", set.JavaScript, StringComparison.Ordinal);
+        Assert.StartsWith("(row) => mq.out(mq.dec(mq.currentActor()), \"int\")", set.JavaScript, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -190,8 +190,8 @@ public sealed class ExprActorInStateTests
     {
         using var evaluator = ExprEvaluator.Create([
             KeyValuePair.Create("a", "(row) => ((mq) => mq.inState(mq.at(row, \"subject\"), \"L\", [\"s1\", \"s2\"]))(mqAt(\"2026-01-01T00:00:00Z\", \"bob\"))"),
-            KeyValuePair.Create("b", "(row) => ((mq) => mq.str(mq.actor()))(mqAt(\"2026-01-01T00:00:00Z\", \"bob\"))"),
-            KeyValuePair.Create("c", "(row) => ((mq) => mq.dec(mq.actor()))(mqAt(\"2026-01-01T00:00:00Z\", \"bob\"))")], null, Ct);
+            KeyValuePair.Create("b", "(row) => ((mq) => mq.str(mq.currentActor()))(mqAt(\"2026-01-01T00:00:00Z\", \"bob\"))"),
+            KeyValuePair.Create("c", "(row) => ((mq) => mq.dec(mq.currentActor()))(mqAt(\"2026-01-01T00:00:00Z\", \"bob\"))")], null, Ct);
         using var some = JsonDocument.Parse("""{"subject":{"$states":{"L":["s2"]}}}""");
         using var none = JsonDocument.Parse("""{"subject":{"$states":{"L":["s3"]}}}""");
         using var missing = JsonDocument.Parse("""{"subject":{}}""");
@@ -209,14 +209,14 @@ public sealed class ExprActorInStateTests
         using var _ = h;
         await using var __ = store;
 
-        Assert.Contains((await PreviewAsync(store, "actor() = 'x'", "check", Order)).Diagnostics, d => d.Rule == "MQ3104");
-        Assert.Contains((await PreviewAsync(store, "actor()", "value", Order)).Diagnostics, d => d.Rule == "MQ3104");
+        Assert.Contains((await PreviewAsync(store, "current_actor() = 'x'", "check", Order)).Diagnostics, d => d.Rule == "MQ3104");
+        Assert.Contains((await PreviewAsync(store, "current_actor()", "value", Order)).Diagnostics, d => d.Rule == "MQ3104");
         Assert.Contains((await PreviewAsync(store, "in_state(subject, Credit.Good)", "check", Order)).Diagnostics, d => d.Rule == "MQ3104");
 
         var model = store.Current!;
         var site = ExprSites.Free(model, model.Get<Process>(P)!, ExprSiteKind.Guard)!;
         var scope = ExprSites.Scope(model, model.Get<Process>(P)!, null, site, text: true);
-        var typed = ExprTyper.Type(ExprText.Parse("subject.submittedBy = actor()", scope).Tree!, scope, new List<Diagnostic>())!;
+        var typed = ExprTyper.Type(ExprText.Parse("subject.submittedBy = current_actor()", scope).Tree!, scope, new List<Diagnostic>())!;
         Assert.True(ExprLowering.IsEngineOnly(typed));
         var problems = new List<Diagnostic>();
         Assert.Null(ExprLowering.ToPostgreSql(typed, ExprColumns.None, ExprSiteKind.Guard, problems));
@@ -246,7 +246,7 @@ public sealed class ExprActorInStateTests
     {
         var (h, store) = await OpenAsync(h => EditProcess(h, "\"name\": \"recordSubmission\",",
             "\"name\": \"recordSubmission\"," + Sets(
-                Set("01JPRX00000000000000000301", SubmittedBy, """{"actor":true}"""),
+                Set("01JPRX00000000000000000301", SubmittedBy, """{"currentActor":true}"""),
                 Set("01JPRX00000000000000000302", OwnerNo, """{"value":"x"}"""),
                 Set("01JPRX00000000000000000303", Token, """{"path":["01JATT00000000000000000021"]}"""))));
         using var _ = h;
@@ -262,18 +262,18 @@ public sealed class ExprActorInStateTests
 
         // An entry action reads no payload (MQ3102); a stored set previews by its id.
         Assert.Contains((await PreviewAsync(store, "event.note", "set", Notify, SubmittedBy)).Diagnostics, d => d.Rule == "MQ3102");
-        Assert.Equal("actor()", (await store.PreviewExpressionAsync(new ExpressionPreviewRequest { Element = "01JPRX00000000000000000301" }, Ct)).Preview!.Text);
+        Assert.Equal("current_actor()", (await store.PreviewExpressionAsync(new ExpressionPreviewRequest { Element = "01JPRX00000000000000000301" }, Ct)).Preview!.Text);
         // now() reads at a set (no MQ3104), and must fit the attribute.
         var clock = await PreviewAsync(store, "now()", "set", Record, SubmittedBy);
         Assert.Contains(clock.Diagnostics, d => d.Rule == "MQ3103");
         Assert.DoesNotContain(clock.Diagnostics, d => d.Rule == "MQ3104");
 
-        // actor() is an identity: a string, an integer or a uuid. Set to a decimal it is MQ3103, which the preview shows; beside a decimal in a
+        // current_actor() is an identity: a string, an integer or a uuid. Set to a decimal it is MQ3103, which the preview shows; beside a decimal in a
         // comparison it stays a string, which doesn't fit.
-        var money = await PreviewAsync(store, "actor()", "set", Record, Amount);
+        var money = await PreviewAsync(store, "current_actor()", "set", Record, Amount);
         Assert.Contains(money.Diagnostics, d => d.Rule == "MQ3103" && d.Message.Contains("identity", StringComparison.Ordinal));
-        Assert.DoesNotContain((await PreviewAsync(store, "actor()", "set", Record, OwnerNo)).Diagnostics, d => d.Rule == "MQ3103");
-        Assert.Contains((await PreviewAsync(store, "actor() = subject.amount")).Diagnostics, d => d.Rule == "MQ3103");
+        Assert.DoesNotContain((await PreviewAsync(store, "current_actor()", "set", Record, OwnerNo)).Diagnostics, d => d.Rule == "MQ3103");
+        Assert.Contains((await PreviewAsync(store, "current_actor() = subject.amount")).Diagnostics, d => d.Rule == "MQ3103");
     }
 
     [Fact]
@@ -281,7 +281,7 @@ public sealed class ExprActorInStateTests
     {
         var (h, store) = await OpenAsync(h => EditProcess(h, "\"name\": \"recordSubmission\",",
             "\"name\": \"recordSubmission\"," + Sets(
-                Set("01JPRX00000000000000000311", SubmittedBy, """{"actor":true}"""),
+                Set("01JPRX00000000000000000311", SubmittedBy, """{"currentActor":true}"""),
                 Set("01JPRX00000000000000000312", SubmittedBy, """{"value":"b"}"""),
                 Set("01JPRX00000000000000000313", "01JATT00000000000000000051", """{"null":true}"""),
                 Set("01JPRX00000000000000000314", CustomerEnd, """{"null":true}"""),
@@ -306,12 +306,12 @@ public sealed class ExprActorInStateTests
     {
         var (h, store) = await OpenAsync(h =>
         {
-            EditProcess(h, "\"name\": \"recordSubmission\",", "\"name\": \"recordSubmission\"," + Sets(Set("01JPRX00000000000000000321", SubmittedBy, """{"actor":true}""")));
+            EditProcess(h, "\"name\": \"recordSubmission\",", "\"name\": \"recordSubmission\"," + Sets(Set("01JPRX00000000000000000321", SubmittedBy, """{"currentActor":true}""")));
             EditProcess(h, "\"subject\": \"01JENT00000000000000000001\",", "");
             EditProcess(h, "\"boundAttribute\": \"01JATT00000000000000000002\",", "");
             h.Write("model/processes/shared.json", $$"""
                 {"$schema":"../../.schema/v1/process.json","kind":"process","id":"01JPRC00000000000000000003","name":"Shared","package":"{{Package}}","use":"library",
-                 "actions":[{"id":"01JPRX00000000000000000331","name":"stamp","sets":[{"id":"01JPRX00000000000000000332","attribute":"{{SubmittedBy}}","value":{"actor":true} }]}]}
+                 "actions":[{"id":"01JPRX00000000000000000331","name":"stamp","sets":[{"id":"01JPRX00000000000000000332","attribute":"{{SubmittedBy}}","value":{"currentActor":true} }]}]}
                 """);
         });
         using var _ = h;

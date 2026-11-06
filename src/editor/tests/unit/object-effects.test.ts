@@ -1,6 +1,6 @@
 // Object effects in the editor (object-effects-design.md section 10): the Sets editor's pure side (the attributes a set
 // may name, its edits, a value tree as text), the states a scenario object may be in, the expected values of a step, the
-// mock's reading of sets, in_state, actor() and the trace members, its rules MQ9801 to MQ9803, MQ9307 in verify, the
+// mock's reading of sets, in_state, current_actor() and the trace members, its rules MQ9801 to MQ9803, MQ9307 in verify, the
 // quick fixes and the simulation panel's lines.
 import { describe, expect, it } from "vitest";
 import {
@@ -61,8 +61,8 @@ describe("the edits of an action's sets", () => {
     expect(addSet(p, "act", choices)).toBeNull();
     setSetAttribute(p, "act", first, "on");
     expect(p.actions![0].sets![0].attribute).toBe("on");
-    setSetValue(p, "act", first, "  actor() ");
-    expect(p.actions![0].sets![0].value).toEqual({ text: "actor()" });
+    setSetValue(p, "act", first, "  current_actor() ");
+    expect(p.actions![0].sets![0].value).toEqual({ text: "current_actor()" });
     setSetValue(p, "act", first, "");
     expect(p.actions![0].sets![0].value).toEqual({ null: true });
     for (const s of [...p.actions![0].sets!]) removeSet(p, "act", s.id);
@@ -72,20 +72,20 @@ describe("the edits of an action's sets", () => {
 
 describe("a value tree as text", () => {
   it("prints the new nodes and the summary of an action's sets", () => {
-    expect(treeText({ actor: true }, names)).toBe("actor()");
-    expect(treeText({ op: "ne", args: [{ path: ["by"] }, { actor: true }] }, names)).toBe("subject.submittedBy <> actor()");
+    expect(treeText({ currentActor: true }, names)).toBe("current_actor()");
+    expect(treeText({ op: "ne", args: [{ path: ["by"] }, { currentActor: true }] }, names)).toBe("subject.submittedBy <> current_actor()");
     expect(treeText({ inState: ["active", "leave"] }, names)).toBe("in_state(subject, Employment.Active, Employment.OnLeave)");
     expect(treeText({ text: "now()" }, names)).toBe("now()");
     expect(
       setsText(
         [
-          { id: "1", attribute: "by", value: { actor: true } },
+          { id: "1", attribute: "by", value: { currentActor: true } },
           { id: "2", attribute: "on", value: { now: true } },
         ],
         (id) => names.name(id) ?? "?",
         names,
       ),
-    ).toBe("submittedBy ← actor(), submittedOn ← now()");
+    ).toBe("submittedBy ← current_actor(), submittedOn ← now()");
   });
 });
 
@@ -152,7 +152,7 @@ const run = (extra: Json = {}): Json => ({
       sets: [
         { id: "s1", attribute: "n", value: { path: ["m"] } },
         { id: "s2", attribute: "m", value: { path: ["n"] } },
-        { id: "s3", attribute: "by", value: { actor: true } },
+        { id: "s3", attribute: "by", value: { currentActor: true } },
       ],
     },
     { id: "next", name: "next", sets: [{ id: "s4", attribute: "n", value: { op: "add", args: [{ path: ["n"] }, { value: 10 }] } }] },
@@ -183,7 +183,7 @@ const options = (objects: Json[] = [], lifecycles: Json[] = [lifecycle(), run()]
 });
 
 describe("the mock's sets, in_state and trace members", () => {
-  it("applies the sets of an action together, from the values at its start, and reads the signer as actor()", () => {
+  it("applies the sets of an action together, from the values at its start, and reads the signer as current_actor()", () => {
     const result = simulate(run(), null, [{ event: "go", signer: "bob" }], options());
     const step = result.trace[1];
     expect(step.microsteps[0].actions[0]).toMatchObject({ action: "swap", source: "sets", sets: { n: 2, m: 1, by: "bob" } });
@@ -193,7 +193,7 @@ describe("the mock's sets, in_state and trace members", () => {
     expect(result.trace[0].valuesChanged).toBeUndefined();
   });
 
-  it("falls back to the acting actor's name for actor(), and null when nobody acts", () => {
+  it("falls back to the acting actor's name for current_actor(), and null when nobody acts", () => {
     const named = simulate(run(), null, [{ event: "go", actor: "actor-1" }], options());
     expect(named.trace[1].valuesChanged?.by).toBe("Clerk");
     const nobody = simulate(run(), null, [{ event: "go" }], options());
@@ -228,16 +228,16 @@ describe("the mock's sets, in_state and trace members", () => {
     const env = { path: () => 5, now: () => "t", actor: () => null, inState: () => null };
     expect(evalTree({ op: "and", args: [{ value: true }, { null: true }] }, env)).toBeNull();
     expect(evalTree({ op: "or", args: [{ value: true }, { null: true }] }, env)).toBe(true);
-    expect(evalTree({ op: "coalesce", args: [{ actor: true }, { value: "x" }] }, env)).toBe("x");
+    expect(evalTree({ op: "coalesce", args: [{ currentActor: true }, { value: "x" }] }, env)).toBe("x");
     expect(evalTree({ call: "round", args: [{ value: 1 }] }, env)).toBe(UNKNOWN);
     expect(treeOfText("'it''s'")).toEqual({ value: "it's" });
     expect(treeOfText("a + b")).toBe(UNKNOWN);
   });
 
-  it("previews text and stored sets, with no SQL for actor() and in_state", () => {
+  it("previews text and stored sets, with no SQL for current_actor() and in_state", () => {
     const entries = [{ id: "P", json: run() }];
-    const text = previewExpression(entries, { element: "swap", site: "set", attribute: "n", text: "actor()" });
-    expect(text.preview).toMatchObject({ text: "actor()", type: "string", sql: null, answer: null });
+    const text = previewExpression(entries, { element: "swap", site: "set", attribute: "n", text: "current_actor()" });
+    expect(text.preview).toMatchObject({ text: "current_actor()", type: "string", sql: null, answer: null });
     expect(previewExpression(entries, { element: "s4" }).preview?.text).toBe("n + 10");
     expect(previewExpression(entries, { element: "swap", site: "set", text: "(1" }).diagnostics[0].rule).toBe("MQ3101");
   });

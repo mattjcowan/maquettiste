@@ -1,6 +1,6 @@
 # A stereotype as a set of types: design
 
-**Status (2026-11-06): a design for the owner, not built.** It designs the item after actors in the owner's order. [Actors](actors-design.md) decision 19 set its meaning and its first uses, and section 11 put it right after actors. [Who, what and when](lifecycle-actors-scenarios.md) section 4 gives the direction. [The design of 4.1](lifecycle-design.md) decision 20 kept a stereotype's attributes out of guards until this item. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
+**Status (2026-11-06): built for 0.14.0 (#50).** It designs the item after actors in the owner's order. [Actors](actors-design.md) decision 19 set its meaning and its first uses, and section 11 put it right after actors. [Who, what and when](lifecycle-actors-scenarios.md) section 4 gives the direction. [The design of 4.1](lifecycle-design.md) decision 20 kept a stereotype's attributes out of guards until this item. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
 
 ## 1. In short
 

@@ -1,6 +1,6 @@
 # Actors: design
 
-**Status (2026-11-05): a design for the owner, not built.** It designs the item after 4.1 in the owner's order: actors with membership, actors worked out from the object, roles held within a context, and the system as an actor. [Who, what and when](lifecycle-actors-scenarios.md) section 4 sets its direction, and [what lifecycle systems can do](lifecycle-capabilities.md) is the yardstick. [The design of 4.1](lifecycle-design.md) gives its shape. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
+**Status (2026-11-06): built for 0.14.0 (#47, #49).** It designs the item after 4.1 in the owner's order: actors with membership, actors worked out from the object, roles held within a context, and the system as an actor. [Who, what and when](lifecycle-actors-scenarios.md) section 4 sets its direction, and [what lifecycle systems can do](lifecycle-capabilities.md) is the yardstick. [The design of 4.1](lifecycle-design.md) gives its shape. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
 
 ## 1. In short
 
@@ -349,7 +349,7 @@ What each later item takes from this one:
 ## 12. Decisions the owner must make
 
 1. **Build "a stereotype as a set of types" as its own item, right after actors, starting with a one-page design?** It keeps the owner's order and only separates the build (decision 19). Recommended: yes. Confidence: medium-high. It doesn't block this item.
-2. **Confirm the word "participants" before 0.14.0 is released; built with it meanwhile.** The owner already defined "persona" as an actor with a stereotype, so it can't also name the people in a scenario. "People" would be wrong for a participant standing for an external system, and "cast" already describes the scenario's objects. Recommended: "participants". Confidence: medium-high. The name is permanent once released.
+2. **Confirm the word "participants" before 0.14.0 is released; built with it meanwhile.** The owner already defined "persona" as an actor with a stereotype, so it can't also name the people in a scenario. "People" would be wrong for a participant standing for an external system, and "cast" already describes the scenario's objects. Recommended: "participants". Confidence: medium-high. The name is permanent once released. **Decided (2026-11-06): the owner kept "participants".**
 
 ## 13. Tests
 

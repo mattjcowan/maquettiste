@@ -196,7 +196,7 @@ public sealed class ExprTyperTests
     [InlineData("""{ "value": "2026-02-30", "type": "date" }""", "not a date literal")]
     [InlineData("""{ "value": 7, "type": "decimal" }""", "written as text")]
     [InlineData("""{ "value": 1, "null": true }""", "The node holds more than one of value, null, path, ref, member, now, op, call, case, satisfies and text.")]
-    [InlineData("""{ "now": true, "actor": true }""", "The node holds more than one of value, null, path, ref, member, now, actor, inState, op, call, case, satisfies and text.")]
+    [InlineData("""{ "now": true, "currentActor": true }""", "The node holds more than one of value, null, path, ref, member, now, currentActor, inState, op, call, case, satisfies and text.")]
     [InlineData("""{ }""", "empty")]
     [InlineData("""{ "path": [] }""", "at least one id")]
     [InlineData("""{ "case": [] }""", "at least one branch")]

@@ -37,7 +37,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | One object is in several different lifecycles at once (an employee's HR and project lifecycles) | Own | **No**: an entity names one |
 | One object is in several instances of one lifecycle (often better as a detail entity such as a project assignment) | Own | **No** |
 | An object's owner, stated explicitly | E N | **No** |
-| A move or action records data on the object (who submitted, when released) | N | Yes: an action's `sets`, with `actor()` and `now()` (built for 0.14.0, #52). Simulation runs them; generated code leaves the write to the team through a `Record<Action>` hook |
+| A move or action records data on the object (who submitted, when released) | N | Yes: an action's `sets`, with `current_actor()` and `now()` (built for 0.14.0, #52). Simulation runs them; generated code leaves the write to the team through a `Record<Action>` hook |
 | A condition reads the object's state in another lifecycle, however it is stored | Own N | Yes: `in_state(object, state, …)` for the object or a to-one link, with scenario objects giving the states (built for 0.14.0, #52) |
 | Several statuses active at once on one object | P | Part: parallel states, inside one lifecycle |
 | An object moves to another lifecycle, with a right and a trigger for it | E | **No** |

@@ -32,7 +32,7 @@ public sealed class ObjectEffectsReferenceTests
     private const string Active = "01JSTA00000000000000000051";
     private const string Left = "01JSTA00000000000000000052";
     private const string Sign = "01JPRX00000000000000000062";
-    private const string SetA = "01JSET00000000000000000001"; // signedBy = actor()
+    private const string SetA = "01JSET00000000000000000001"; // signedBy = current_actor()
     private const string SetB = "01JSET00000000000000000002"; // note = name, or a literal
     private const string Guard = "01JPRX00000000000000000063"; // in_state(subject.customer, CustomerLifecycle.Active)
     private const string Sc = "01JSCN00000000000000000009";
@@ -71,7 +71,7 @@ public sealed class ObjectEffectsReferenceTests
              "subjects":[{"id":"01JSBJ00000000000000000005","entity":"{{Customer}}"},{"id":"01JSBJ00000000000000000006","entity":"{{Supplier}}"}],
              "events":[{"id":"01JPRX00000000000000000061","name":"leave"}],
              "actions":[{"id":"{{Sign}}","name":"sign","sets":[
-               {"id":"{{SetA}}","attribute":"{{SignedBy}}","value":{"actor":true} },
+               {"id":"{{SetA}}","attribute":"{{SignedBy}}","value":{"currentActor":true} },
                {"id":"{{SetB}}","attribute":"{{Note}}","value":{{value}} }]}],
              "states":[{"id":"{{Active}}","name":"Active"},{"id":"{{Left}}","name":"Left","type":"final"}],
              "initial":"{{Active}}",

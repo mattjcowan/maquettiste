@@ -666,7 +666,7 @@
   {
     "id": "MQ3104",
     "defaultSeverity": "error",
-    "description": "now(), actor() or in_state at a check site, a value site or a rule condition, directly or through a constraint (a constraint never reads actor() or in_state); only guards and an action's sets read the clock, the identity of whoever acts and a lifecycle's state.",
+    "description": "now(), current_actor() or in_state at a check site, a value site or a rule condition, directly or through a constraint (a constraint never reads current_actor() or in_state); only guards and an action's sets read the clock, the identity of whoever acts and a lifecycle's state.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true

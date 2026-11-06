@@ -22,7 +22,7 @@ public enum ExprSiteKind
 
     /// <summary>
     /// A value an action sets on the object (object-effects-design.md decision 3): typed as a value site is, against the attribute's type,
-    /// and reads what a guard reads (the context, the object under <c>subject</c>, the payload, <c>now()</c>, <c>actor()</c>, <c>in_state</c>).
+    /// and reads what a guard reads (the context, the object under <c>subject</c>, the payload, <c>now()</c>, <c>current_actor()</c>, <c>in_state</c>).
     /// </summary>
     Set,
 }
