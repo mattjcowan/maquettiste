@@ -553,6 +553,53 @@ internal sealed class PackRepo : IDisposable
     }
 
     /// <summary>
+    /// The csharp-dapper pack's own <c>lifecycle-codes</c> case (<c>packs/csharp-dapper/tests/lifecycle-codes</c>, lifecycle-design.md
+    /// section 9): OrderFlow with string codes, a coded compound state holding a history state, a state without a code and three subjects
+    /// with enum bindings (two entities named Item, in packages Orders and Sales); TicketFlow with integer codes on nested states, a
+    /// choice, a timer, eventless moves and a targetless one. csharp-dapper writes to <c>out</c>; with <paramref name="typeScript"/> the
+    /// TypeScript sample pack writes to <c>web</c> instead, set up as in <see cref="TypeScript"/>.
+    /// </summary>
+    /// <param name="typeScript">Whether to run the TypeScript sample pack instead of csharp-dapper.</param>
+    /// <returns>The repo.</returns>
+    public static PackRepo LifecycleCodes(bool typeScript = false)
+    {
+        var repo = new PackRepo();
+        var source = Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "lifecycle-codes");
+        CopyTree(Path.Combine(source, "model"), Path.Combine(repo.Repo.ModelRoot, "model"));
+        if (typeScript)
+        {
+            // The sample writes one file per entity name, so Sales.Item and its subject entry stay out.
+            File.Delete(repo.PathOf(".maquettiste/model/entities/item-ent003.json"));
+            repo.EditJson(".maquettiste/model/processes/order-flow.json", p => p["subjects"]!.AsArray().RemoveAt(2));
+            CopyTree(Path.Combine(Fixtures.RepoRoot, "samples", "typescript-pack"), Path.Combine(repo.Repo.ModelRoot, "templates", "typescript"));
+            repo.Write(".maquettiste/maquettiste.json", """
+                {
+                  "formatVersion": 1,
+                  "name": "lifecycle-codes",
+                  "outputs": { "allow": [ { "path": "web" } ] },
+                  "packs": { "typescript": { "output": "web", "parameters": { "importExtension": ".ts", "zod": false } } }
+                }
+
+                """);
+        }
+        else
+        {
+            CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper"), Path.Combine(repo.Repo.ModelRoot, "templates", "csharp-dapper"));
+            repo.Write(".maquettiste/maquettiste.json", """
+                {
+                  "formatVersion": 1,
+                  "name": "lifecycle-codes",
+                  "outputs": { "allow": [ { "path": "out" } ] },
+                  "packs": { "csharp-dapper": { "output": "out" } }
+                }
+
+                """);
+        }
+
+        return repo;
+    }
+
+    /// <summary>
     /// The gate 3 fixture (<c>tests/fixtures/models/processes</c>, phase-3-design.md section 8.1) with every example pack its settings
     /// name that exists under <c>packs/</c>. With <paramref name="sources"/> the fixture's C# solution comes along (its isolation files,
     /// projects, the committed companions under <c>src/Processes.Data/Custom</c> and the test host), so the generated code can be built

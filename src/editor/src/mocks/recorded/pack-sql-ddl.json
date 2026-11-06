@@ -2,7 +2,7 @@
   "name": "sql-ddl",
   "enabled": true,
   "output": "db",
-  "hash": "8f8bd443bcf883194372841f46e753f91232b670ebd3eb850503648ebfeb9d36",
+  "hash": "2e30a39288c18f7f088dd8e92fb404abc7b2b0b27f430482d4b885e34df677b2",
   "document": {
     "name": "sql-ddl",
     "version": "1.0.0",
@@ -12,6 +12,8 @@
       "comments": true,
       "environments": [],
       "idempotent": false,
+      "lifecycleChecks": false,
+      "lifecycleColumns": false,
       "objectScripts": false,
       "processTables": false,
       "quoting": "",
@@ -116,6 +118,20 @@
       "required": false
     },
     {
+      "name": "lifecycleChecks",
+      "default": false,
+      "value": null,
+      "schema": null,
+      "required": false
+    },
+    {
+      "name": "lifecycleColumns",
+      "default": false,
+      "value": null,
+      "schema": null,
+      "required": false
+    },
+    {
       "name": "objectScripts",
       "default": false,
       "value": null,
@@ -172,8 +188,8 @@
   "files": [
     {
       "path": "README.md",
-      "size": 65146,
-      "hash": "d16dd1b1192662edc52954cd6aa88983f52bf86aca5d5438c8051fd8d3ab4ea7",
+      "size": 67353,
+      "hash": "d77cb139d0e80d3c05594549f0f420d69cb79d140a8cf9f2ba8cc1e95127ddb5",
       "role": "other",
       "usedBy": []
     },
@@ -198,6 +214,15 @@
         "include:object-environments.scriban",
         "include:schema.scriban",
         "include:sql-object.scriban"
+      ]
+    },
+    {
+      "path": "_lifecycle.scriban",
+      "size": 5711,
+      "hash": "af7b55a33b5833cb6023b65dd0d4db10aaa4c4954e84e9da1f376d8668d7f76d",
+      "role": "partial",
+      "usedBy": [
+        "include:seed.scriban"
       ]
     },
     {
@@ -307,15 +332,15 @@
     },
     {
       "path": "pack.json",
-      "size": 2686,
-      "hash": "8f8bd443bcf883194372841f46e753f91232b670ebd3eb850503648ebfeb9d36",
+      "size": 2747,
+      "hash": "2e30a39288c18f7f088dd8e92fb404abc7b2b0b27f430482d4b885e34df677b2",
       "role": "manifest",
       "usedBy": []
     },
     {
       "path": "process-tables.scriban",
-      "size": 3392,
-      "hash": "cc81f95f2fdec065a9aab34295d3daf500b301c0a8e1907249b5cc44bd3e4ac4",
+      "size": 4570,
+      "hash": "6bde87ed8ebc1b71f694d792655f097fd60ae9b010cb69803587164811b087c2",
       "role": "template",
       "usedBy": [
         "unit:process-tables"
@@ -350,8 +375,8 @@
     },
     {
       "path": "seed.scriban",
-      "size": 2158,
-      "hash": "f6e2c94e75eeb8236e2cb25bdc30071f980305c9449198220755e17ae1fcd5f4",
+      "size": 2596,
+      "hash": "84d84ebcc41415721059fc0af8ed6f6e1cb366c7b9b2a61ccaab67c1eab4316c",
       "role": "template",
       "usedBy": [
         "unit:seed"
@@ -477,19 +502,25 @@
       "kind": "helper",
       "name": "ddl_cycle_breaks",
       "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js",
-      "wholeModel": false
+      "wholeModel": false,
+      "resolved": false,
+      "calculatedValue": null
     },
     {
       "kind": "helper",
       "name": "ddl_order",
       "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js",
-      "wholeModel": false
+      "wholeModel": false,
+      "resolved": false,
+      "calculatedValue": null
     },
     {
       "kind": "helper",
       "name": "reference_realization",
       "declaredIn": ".maquettiste/templates/sql-ddl/helpers.js",
-      "wholeModel": false
+      "wholeModel": false,
+      "resolved": false,
+      "calculatedValue": null
     }
   ],
   "usedBy": []

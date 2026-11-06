@@ -7,6 +7,8 @@
     "comments": true,
     "environments": [],
     "idempotent": false,
+    "lifecycleChecks": false,
+    "lifecycleColumns": false,
     "objectScripts": false,
     "processTables": false,
     "quoting": "",

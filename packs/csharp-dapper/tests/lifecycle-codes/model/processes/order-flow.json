@@ -1,0 +1,137 @@
+{
+  "kind": "process",
+  "id": "01JMC000000000000000PRC001",
+  "name": "OrderFlow",
+  "package": "01JMC000000000000000PKG001",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JMC000000000000000SBJ001",
+      "entity": "01JMC000000000000000ENT001",
+      "boundAttribute": "01JMC000000000000000ATT012"
+    },
+    {
+      "id": "01JMC000000000000000SBJ002",
+      "entity": "01JMC000000000000000ENT002",
+      "boundAttribute": "01JMC000000000000000ATT022"
+    },
+    {
+      "id": "01JMC000000000000000SBJ003",
+      "entity": "01JMC000000000000000ENT003",
+      "boundAttribute": "01JMC000000000000000ATT032"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JMC000000000000000EVT001",
+      "name": "submit"
+    },
+    {
+      "id": "01JMC000000000000000EVT002",
+      "name": "check"
+    },
+    {
+      "id": "01JMC000000000000000EVT003",
+      "name": "approve"
+    },
+    {
+      "id": "01JMC000000000000000EVT004",
+      "name": "hold"
+    },
+    {
+      "id": "01JMC000000000000000EVT005",
+      "name": "resume"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JMC000000000000000STA001",
+      "name": "Draft",
+      "code": "DRF"
+    },
+    {
+      "id": "01JMC000000000000000STA002",
+      "name": "Review",
+      "type": "compound",
+      "code": "REV",
+      "initial": "01JMC000000000000000STA003",
+      "states": [
+        {
+          "id": "01JMC000000000000000STA003",
+          "name": "Checking"
+        },
+        {
+          "id": "01JMC000000000000000STA004",
+          "name": "Approving"
+        },
+        {
+          "id": "01JMC000000000000000STA005",
+          "name": "Resume",
+          "type": "history"
+        }
+      ]
+    },
+    {
+      "id": "01JMC000000000000000STA006",
+      "name": "OnHold"
+    },
+    {
+      "id": "01JMC000000000000000STA007",
+      "name": "Done",
+      "type": "final",
+      "code": "DON"
+    }
+  ],
+  "initial": "01JMC000000000000000STA001",
+  "transitions": [
+    {
+      "id": "01JMC000000000000000TRN001",
+      "source": "01JMC000000000000000STA001",
+      "event": "01JMC000000000000000EVT001",
+      "targets": [
+        "01JMC000000000000000STA002"
+      ]
+    },
+    {
+      "id": "01JMC000000000000000TRN002",
+      "source": "01JMC000000000000000STA003",
+      "event": "01JMC000000000000000EVT002",
+      "targets": [
+        "01JMC000000000000000STA004"
+      ]
+    },
+    {
+      "id": "01JMC000000000000000TRN003",
+      "source": "01JMC000000000000000STA004",
+      "event": "01JMC000000000000000EVT003",
+      "targets": [
+        "01JMC000000000000000STA007"
+      ]
+    },
+    {
+      "id": "01JMC000000000000000TRN004",
+      "source": "01JMC000000000000000STA002",
+      "event": "01JMC000000000000000EVT004",
+      "targets": [
+        "01JMC000000000000000STA006"
+      ]
+    },
+    {
+      "id": "01JMC000000000000000TRN005",
+      "source": "01JMC000000000000000STA006",
+      "event": "01JMC000000000000000EVT005",
+      "targets": [
+        "01JMC000000000000000STA005"
+      ]
+    },
+    {
+      "id": "01JMC000000000000000TRN006",
+      "source": "01JMC000000000000000STA006",
+      "trigger": "after",
+      "after": "P30D",
+      "targets": [
+        "01JMC000000000000000STA007"
+      ]
+    }
+  ]
+}

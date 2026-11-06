@@ -1,0 +1,19 @@
+{
+  "kind": "entity",
+  "id": "01JMC000000000000000ENT004",
+  "name": "Ticket",
+  "package": "01JMC000000000000000PKG001",
+  "key": {
+    "attributes": [
+      "01JMC000000000000000AT0041"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JMC000000000000000AT0041",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    }
+  ]
+}

@@ -55,6 +55,28 @@ MQ9203 (enum drift), and the **Bound attribute** control shows a drift badge.
 
 If MQ9205 follows (the attribute's default is not the initial state), its fix button **Set default to** sets it.
 
+## 4a. Give the states codes
+
+A state may carry a stable stored value, its **code**. Codes are optional.
+
+1. On the **States** tab, type `R` in the **Code** column of `Reserved`, `A` for `Active` and `X` for `Returned`.
+   Codes are strings or whole numbers, unique in the lifecycle.
+2. The codes form a map here, since no coded state sits inside another coded state. That means any moment has at most one code.
+3. If the codes must fit an enum, reference type or plain status attribute, bind it in **Bound attribute**. A code that does
+   not fit is MQ9207. A state without a code under a binding is MQ9210, and **Sync codes** proposes codes from the attribute's type.
+
+The new lifecycle is written as `subjects`, a list with one entry per entity it governs. One lifecycle may list several entities,
+and an entity may follow several lifecycles. An old file may still use `subject` and `boundAttribute` on the process. That form
+works but warns (MQ9209), and **Use subjects** converts it. A new lifecycle can't be read by an engine older than 0.13.0.
+
+### One lifecycle for each object of a detail
+
+When a parent has many things that each have their own states, make the thing a detail entity and make it the subject. In
+Spoke & Chain, a `Rental` could have many `Accessory` lines, such as a helmet or a lock. Each line goes from `Reserved` to
+`Handed out` to `Returned` on its own. Create `AccessoryLifecycle` with the subject `RentalAccessory`, a detail of `Rental`.
+A rental with three accessory lines then has three instances of that lifecycle, and one of the rental's own. The model needs
+nothing else.
+
 ## 5. Create the Repair orchestration
 
 1. In the Domain model explorer, create a domain `Workshop` (**+**, then **New domain**).
@@ -140,6 +162,7 @@ has the rest, with actions and gate policies.
 - [Processes, actors and scenarios](../user-guide.md#processes-actors-and-scenarios), including
   [The process editor](../user-guide.md#the-process-editor), [The chart](../user-guide.md#the-chart) and
   [The simulation panel](../user-guide.md#the-simulation-panel).
+- [Lifecycle subjects and state codes](../user-guide.md#lifecycle-subjects-and-state-codes).
 - [Sync enum and the quick fixes](../user-guide.md#sync-enum-and-the-quick-fixes) and
   [The rules for processes (MQ9xxx)](../user-guide.md#the-rules-for-processes-mq9xxx).
 - [Verify scenarios, Export XState and Import XState](../user-guide.md#verify-scenarios-export-xstate-and-import-xstate).
