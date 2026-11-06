@@ -1102,7 +1102,7 @@ function TraceSection({
             data-accepted={r.ran ? String(r.accepted) : undefined}
           >
             <span className="w-4 shrink-0 text-right text-11 text-secondary">{r.index >= 0 ? r.index + 1 : ""}</span>
-            <span className="min-w-[7rem] flex-1 truncate" title={r.label}>
+            <span className="min-w-[7rem] flex-[3] basis-auto truncate" title={r.label}>
               {r.label}
             </span>
             {!r.ran ? (
@@ -1183,7 +1183,7 @@ function ReplaySection({ replay, names, onSelect }: { replay: ReplayState; names
             <Badge tone={r.verdict === "passed" ? "success" : r.verdict === "failed" ? "danger" : "neutral"} data-testid="replay-verdict">
               {r.verdict === "passed" ? L.replayPassed : r.verdict === "failed" ? L.replayFailed : L.replayNotRun}
             </Badge>
-            <span className="max-w-[40%] truncate text-11 text-secondary" title={r.states}>
+            <span className="min-w-0 flex-[2] basis-auto truncate text-right text-11 text-secondary" title={r.states}>
               {r.states}
             </span>
           </li>

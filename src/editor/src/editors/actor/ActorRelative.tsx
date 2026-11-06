@@ -2,13 +2,13 @@
 // of the object, or the members of a role within a context), a path picked step by step from the lifecycle subjects' to-one ends
 // and attributes, and what it means in plain words. Exactly one form; choosing one clears the actor's memberOf.
 import { useEffect, useMemo, useState } from "react";
-import { useIndex } from "@/api/queries";
+import { useElements, useIndex } from "@/api/queries";
 import { Field, Select } from "@/components/ui/input";
 import { SectionTitle } from "@/components/ui/misc";
 import { memberOfChoices, type ActorRow } from "@/model/actors";
 import { indexLookup } from "@/model/index";
 import { ACTOR_RELATIVE_LABELS as L } from "@/model/labels";
-import { canNamePerson, relativeForms, relativeMeaning, spaced, type RelativeDoc, type RelativeForm } from "@/model/objectFields";
+import { canNamePerson, objectFields, relativeForms, relativeMeaning, spaced, type RelativeDoc, type RelativeForm } from "@/model/objectFields";
 import type { EditorContext } from "../EditorFrame";
 import { useObjectFields } from "./useObjectFields";
 
@@ -91,21 +91,46 @@ function PathNames({ entities, path, onNames }: { entities: string[]; path: stri
   return step?.kind === "end" && step.target && path.length > 1 ? <PathNames entities={[step.target]} path={path.slice(1)} onNames={onNames} /> : null;
 }
 
+/**
+ * The entity a stored path starts on when no process says (an actor no process uses yet): the first entity that has the field.
+ * Loads the documents only when asked to, so a model that no inspector summary needs it for is not read.
+ */
+function useGuessedSubject(first: string | undefined, enabled: boolean): string | undefined {
+  const index = useIndex();
+  const lookup = indexLookup(index.data);
+  const on = enabled && !!first;
+  const entityIds = on ? lookup.ofKind("entity").map((e) => e.id) : [];
+  const relationIds = on ? lookup.ofKind("relation").map((r) => r.id) : [];
+  const stereotypeIds = on ? lookup.ofKind("stereotype").map((s) => s.id) : [];
+  const held = useElements([...entityIds, ...relationIds, ...stereotypeIds]);
+  if (!on || held.pending) return undefined;
+  const doc = (id: string) => held.byId.get(id)?.json as Rec | undefined;
+  const sources = {
+    doc,
+    relations: relationIds.map(doc).filter((d): d is Rec => !!d),
+    stereotype: (key: string) => stereotypeIds.map(doc).find((s) => s?.key === key),
+    kindOf: (id: string) => lookup.byId.get(id)?.kind,
+  };
+  return entityIds.find((e) => objectFields(e, sources).some((f) => f.id === first));
+}
+
 /** "Taken from the object" read-only, for the inspector: what the actor means, in plain words; nothing for a plain actor. */
 export function RelativeSummary({ ctx }: { ctx: Pick<EditorContext, "id" | "json"> }) {
   const rec = ctx.json as Rec;
   const relative = rec.relative && typeof rec.relative === "object" ? (rec.relative as RelativeDoc) : undefined;
   const index = useIndex();
   const lookup = indexLookup(index.data);
-  const used = useUsedSubjects(ctx.id);
+  const usedSubjects = useUsedSubjects(ctx.id);
   const [names, setNames] = useState<Record<string, string>>({});
   const onNames = useMemo(
     () => (next: Record<string, string>) => setNames((prev) => (Object.entries(next).every(([k, v]) => prev[k] === v) ? prev : { ...prev, ...next })),
     [],
   );
-  if (!relative) return null;
   const forms = relativeForms(relative);
-  const walk = forms[0] === "path" ? (relative.path ?? []) : forms[0] === "members-of" ? (relative.within ?? []) : [];
+  const walk = forms[0] === "path" ? (relative?.path ?? []) : forms[0] === "members-of" ? (relative?.within ?? []) : [];
+  const guessed = useGuessedSubject(walk[0], usedSubjects.length === 0);
+  const used = useMemo(() => (usedSubjects.length ? usedSubjects : guessed ? [guessed] : []), [usedSubjects, guessed]);
+  if (!relative) return null;
   const meaning = relativeMeaning(relative, {
     subject: used.length === 1 ? lookup.byId.get(used[0])?.name : undefined,
     field: (id) => names[id] ?? id,

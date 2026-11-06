@@ -44,15 +44,15 @@ export function ParticipantsGrid({ ctx, scenario }: { ctx: EditorContext; scenar
   const holder = scenario.participants?.find((p) => p.id === holdsFor);
 
   const columns: GridColumn<ParticipantRow>[] = [
-    { key: "name", label: L.name, kind: "text", width: "min-w-28", sticky: true, value: (r) => r.name },
-    { key: "displayName", label: L.displayName, kind: "text", width: "min-w-28", value: (r) => r.displayName },
-    { key: "identity", label: L.identity, tooltip: L.identityHint, kind: "text", width: "min-w-24", value: (r) => r.identity },
+    { key: "name", label: L.name, kind: "text", width: "min-w-24", sticky: true, value: (r) => r.name },
+    { key: "displayName", label: L.displayName, kind: "text", width: "min-w-24", value: (r) => r.displayName },
+    { key: "identity", label: L.identity, tooltip: L.identityHint, kind: "text", width: "min-w-20", value: (r) => r.identity },
     {
       key: "actor",
       label: L.actor,
       tooltip: L.actorHint,
       kind: "select",
-      width: "min-w-28",
+      width: "min-w-24",
       value: (r) => r.actor,
       editValue: (r) => scenario.participants?.[r.index]?.actor ?? "",
       options: () => [none, ...standsFor(choices).map((a) => ({ value: a.id, label: a.type === "system" ? L.automatic : a.name }))],
@@ -62,7 +62,7 @@ export function ParticipantsGrid({ ctx, scenario }: { ctx: EditorContext; scenar
       label: L.holds,
       tooltip: L.holdsHint,
       kind: "readonly",
-      width: "min-w-44",
+      width: "min-w-36",
       value: (r) => r.holds,
       render: (r) => (
         <span className="flex min-w-0 items-center gap-1">
@@ -79,7 +79,7 @@ export function ParticipantsGrid({ ctx, scenario }: { ctx: EditorContext; scenar
       key: "object",
       label: L.object,
       kind: "select",
-      width: "min-w-28",
+      width: "min-w-24",
       value: (r) => r.object,
       editValue: (r) => scenario.participants?.[r.index]?.object ?? "",
       options: () => [none, ...objects.map((o) => ({ value: o.id, label: o.name }))],
@@ -289,7 +289,7 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
       label: L.owner,
       tooltip: L.ownerLocked,
       kind: "select",
-      width: "min-w-28",
+      width: "min-w-24",
       value: (r) => r.owner,
       editValue: (r) => scenario.objects?.[r.index]?.owner ?? "",
       options: () => [{ value: "", label: L.none }, ...participants.map((p) => ({ value: p.id, label: p.name }))],

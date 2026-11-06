@@ -322,6 +322,8 @@ export interface StepperOptions {
   participants?: Json[];
   /** Actors from the object that carry `owner`: satisfied by the participant the subject object names as its owner. */
   ownerActors?: ReadonlySet<string>;
+  /** The name of the actor that stands for the members of a role within a context, by the role's id (for MQ9305's advice). */
+  membersActors?: ReadonlyMap<string, string>;
 }
 
 /** The texts of the participant cases of MQ9301 and MQ9305, as RuleCatalog words them (the engine's rule list). */
@@ -329,6 +331,11 @@ export const PARTICIPANT_TEXTS = {
   unknown: (id: string) => `A step's participant '${id}' is not a participant of the scenario; fix the step, the object or the participant.`,
   actorNotSatisfied: (participant: string, actor: string) =>
     `A step's actor '${actor}' is one the participant '${participant}' does not satisfy; fix the step, the object or the participant.`,
+  /** MQ9305: the participant holds the actor's role only within a context, and the step needs it held without one. */
+  heldOnlyWithin: (participant: string, role: string, context: string, actor: string, named: string | undefined) =>
+    `participant '${participant}' holds ${role} only within ${context}; this step needs ${actor} held without a context. Hold it without a context too, or ${
+      named ? `name the actor for ${named} within ${context}` : `name an actor taken from the object for the members of ${role} within ${context}`
+    }.`,
   /** MQ9301: a refusal by actor names the participant and the list it did not satisfy. */
   refusedByActor: (step: number, participant: string, list: string[]) =>
     `Step ${step} is refused while expect.accepted is true: the participant '${participant}' satisfies none of ${list.length ? list.join(", ") : "the actors the step needs"}; fix the step's input or set accepted to what the process does.`,
@@ -435,6 +442,7 @@ class Interpreter {
   /** The run's participants and the actors from the object that stand for the subject's owner. */
   participants: Json[] = [];
   ownerActors: ReadonlySet<string> = new Set();
+  membersActors: ReadonlyMap<string, string> = new Map();
   /** The cast of the run (decision 22); the mock does not evaluate guard conditions, so nothing reads it yet. */
   cast: { objects: Json[]; subject: string | null } = { objects: [], subject: null };
   private auditSeq = 0;
@@ -552,8 +560,20 @@ class Interpreter {
     let actsAs: string | null;
     if (input.actor) {
       actsAs = input.actor;
-      if (!this.satisfies(p, input.actor))
-        this.problem("MQ9305", PARTICIPANT_TEXTS.actorNotSatisfied(String(p.name), this.actorName(input.actor) ?? input.actor));
+      if (!this.satisfies(p, input.actor)) {
+        const listed = input.actor;
+        const actor = this.actorName(listed) ?? listed;
+        const within = arr(p.holds).find((h) => !!str(h.within) && !this.ownerActors.has(listed) && this.membership.accepts(listed, str(h.actor) ?? ""));
+        const heldRole = within ? str(within.actor) : undefined;
+        const role = heldRole ? (this.actorName(heldRole) ?? heldRole) : "";
+        const context = within ? String(this.cast.objects.find((o) => o.id === within.within)?.name ?? within.within) : "";
+        this.problem(
+          "MQ9305",
+          within && heldRole
+            ? PARTICIPANT_TEXTS.heldOnlyWithin(String(p.name), role, context, actor, this.membersActors.get(heldRole))
+            : PARTICIPANT_TEXTS.actorNotSatisfied(String(p.name), actor),
+        );
+      }
     } else actsAs = this.actingActor(input, p);
     this.scope.actsAs = actsAs;
     this.scope.list = first;
@@ -1164,6 +1184,7 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
   run.cast = { objects: options.objects ?? [], subject: options.subject ?? null };
   run.participants = options.participants ?? [];
   run.ownerActors = options.ownerActors ?? new Set();
+  run.membersActors = options.membersActors ?? new Map();
   const at = readAt(start?.at);
   const traces = [run.start(start?.context, typeof at === "number" ? at : null)];
   let complete = !traces[0].incomplete;

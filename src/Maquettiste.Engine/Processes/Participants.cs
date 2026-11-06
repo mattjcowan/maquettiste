@@ -273,8 +273,31 @@ internal static class Participants
         if (cast.Participant(id) is not { } participant)
             return ($"the participant '{id}' is not one of the scenario's participants; name one of them.", "/participant");
         if (step.Actor is { } actorId && model.Get<Actor>(actorId) is { } actor && !Satisfies(model, process, cast, participant, actorId))
+        {
+            if (WithinOnly(model, cast, participant, actorId, actor) is { } within)
+                return (within, "/actor");
             return ($"participant '{participant.Name}' does not satisfy actor '{actor.Name}'; leave actor out to let the engine work it out, or name an actor the participant stands for or holds.", "/actor");
+        }
+
         return null;
+    }
+
+    /// <summary>
+    /// The plain message for a participant that holds the actor's role only within a context while the step needs it held without one,
+    /// or <see langword="null"/> when that is not the case.
+    /// </summary>
+    private static string? WithinOnly(ModelSnapshot model, ScenarioCast cast, ScenarioParticipant participant, string actorId, Actor actor)
+    {
+        if (actor.Relative is not null)
+            return null;
+        var membership = ActorMembership.Of(model);
+        if (participant.Holds.FirstOrDefault(h => h.Within is not null && membership.Accepts(actorId, h.Actor)) is not { } held)
+            return null;
+        var context = cast.Objects.FirstOrDefault(o => string.Equals(o.Id, held.Within, StringComparison.Ordinal))?.Name ?? held.Within;
+        var role = model.Get<Actor>(held.Actor)?.Name ?? actor.Name;
+        var named = model.All<Actor>().FirstOrDefault(a => a.Relative is { Form: "members-of" } r && string.Equals(r.MembersOf, held.Actor, StringComparison.Ordinal));
+        var instead = named is null ? $"name an actor taken from the object for the members of {role} within {context}" : $"name the actor for {named.Name} within {context}";
+        return $"participant '{participant.Name}' holds {role} only within {context}; this step needs {actor.Name} held without a context. Hold it without a context too, or {instead}.";
     }
 
     /// <summary>The names of a list's actors, for a refusal's message (MQ9301).</summary>
