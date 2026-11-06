@@ -25,6 +25,8 @@ export interface GridTarget {
 export interface GridColumn<R> {
   key: string;
   label: string;
+  /** A tooltip on the column header. */
+  tooltip?: string;
   /** Fixed, or per row (a transition's detail is a select for an event, text for a duration). */
   kind: CellKind | ((row: R) => CellKind);
   width?: string;
@@ -242,11 +244,16 @@ export function Grid<R extends { id: string }>({
   return (
     <div className="flex flex-col gap-1" data-testid={testid}>
       <div className="overflow-x-auto rounded-control border border-default">
-        <table ref={gridRef} role="grid" aria-label={label} className="w-full border-collapse text-12">
+        <table ref={gridRef} role="grid" aria-label={label} className="w-full min-w-max border-collapse text-12">
           <thead>
             <tr className="bg-app">
               {columns.map((c) => (
-                <th key={c.key} scope="col" className={cn("h-[var(--mq-row-h)] px-1.5 text-left text-11 font-semibold text-secondary", c.width)}>
+                <th
+                  key={c.key}
+                  scope="col"
+                  title={c.tooltip}
+                  className={cn("h-[var(--mq-row-h)] px-1.5 text-left text-11 font-semibold text-secondary", c.width)}
+                >
                   {c.label}
                 </th>
               ))}

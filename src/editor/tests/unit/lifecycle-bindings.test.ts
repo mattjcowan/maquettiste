@@ -10,7 +10,7 @@ import { bindableAttributes, classifyAttribute, codeKindOf } from "@/model/bindi
 import { setStateCode, stateRows, type ProcessDoc } from "@/model/process";
 import type { Diagnostic, ModelJson } from "@/api/types";
 import { useBinding } from "@/editors/process/ProcessControls";
-import { applySyncCodes, pickCodesBinding, syncCodes } from "@/editors/process/api";
+import { applySyncCodes, syncCodes } from "@/editors/process/api";
 import { deriveQuickFix, fixDocuments, hasQuickFix, initialCode } from "@/problems/quickFix";
 import { useMockApi } from "./harness";
 
@@ -231,7 +231,7 @@ describe("the States tab's Code cell", () => {
 });
 
 describe("mock lifecycle rules", () => {
-  it("MQ9210 once per uncoded state, at the state, under a plain binding; none under an enum binding without codes", () => {
+  it("MQ9210 once per binding, at the binding, under a plain binding; none under an enum binding", () => {
     const backend = new MockBackend();
     seedModel(
       backend,
@@ -243,7 +243,7 @@ describe("mock lifecycle rules", () => {
         A.plain,
       ),
     );
-    expect(findings(backend)).toEqual([`MQ9205 /subjects/0/boundAttribute ${SUBJ}`, `MQ9210 /states/1 ${S.issued}`]);
+    expect(findings(backend)).toEqual([`MQ9205 /subjects/0/boundAttribute ${SUBJ}`, `MQ9210 /subjects/0/boundAttribute ${SUBJ}`]);
     const enumBackend = new MockBackend();
     seedModel(
       enumBackend,
@@ -258,22 +258,46 @@ describe("mock lifecycle rules", () => {
     expect(findings(enumBackend)).toEqual([`MQ9205 /subjects/0/boundAttribute ${SUBJ}`]);
   });
 
-  it("MQ9210 under an enum binding says the member's code, or removing the others", () => {
+  it("MQ9210 is a warning that names the binding and the uncoded states, five at most", () => {
     const backend = new MockBackend();
     seedModel(
       backend,
+      lifecycle([{ id: S.draft, name: "Draft", code: "DRF" }, ...["A", "B", "C", "D", "E", "F", "G"].map((n, i) => ({ id: U(100 + i), name: n }))], A.plain),
+    );
+    const found = backend.model.validate().diagnostics.filter((x) => x.rule === "MQ9210");
+    expect(found).toHaveLength(1);
+    expect(found[0].severity).toBe("warning");
+    expect(found[0].message).toBe(
+      "7 states of process 'InvoiceFlow' have no code, which binding 'Invoice.state' needs: A, B, C, D, E, and 2 more; give each a code, or run Sync codes.",
+    );
+    const one = new MockBackend();
+    seedModel(
+      one,
       lifecycle(
         [
-          { id: S.draft, name: "Draft", code: "D" },
+          { id: S.draft, name: "Draft", code: "DRF" },
           { id: S.issued, name: "Issued" },
         ],
-        A.enumA,
+        A.ref,
       ),
     );
-    const d = backend.model.validate().diagnostics.find((x) => x.rule === "MQ9210")!;
-    expect(d.message).toBe(
-      "State 'Issued' has no code, though other states of process 'InvoiceFlow' have one; give it the code its member stands for, or remove the others.",
+    expect(one.model.validate().diagnostics.find((x) => x.rule === "MQ9210")!.message).toBe(
+      "1 state of process 'InvoiceFlow' has no code, which binding 'Invoice.status' needs: Issued; give each a code, or run Sync codes.",
     );
+  });
+
+  it("MQ9210 sits at /boundAttribute under the process id in the one-subject form", () => {
+    const backend = new MockBackend();
+    const doc = lifecycle(
+      [
+        { id: S.draft, name: "Draft" },
+        { id: S.issued, name: "Issued" },
+      ],
+      undefined,
+    );
+    delete doc.subjects;
+    seedModel(backend, { ...doc, subject: ENTITY, boundAttribute: A.plain });
+    expect(findings(backend)).toContain(`MQ9210 /boundAttribute ${PROCESS}`);
   });
 
   it("MQ9202 when the bound attribute's type is not in the model", () => {
@@ -285,7 +309,7 @@ describe("mock lifecycle rules", () => {
     expect(findings(backend).some((f) => f.startsWith("MQ9202"))).toBe(true);
   });
 
-  it("MQ9210 under an enum binding once some state has a code, and an uncoded compound is reported once on itself", () => {
+  it("MQ9210 lists an uncoded compound once, not its children", () => {
     const backend = new MockBackend();
     seedModel(
       backend,
@@ -303,13 +327,14 @@ describe("mock lifecycle rules", () => {
             ],
           },
         ],
-        A.enumA,
+        A.plain,
         { transitions: [{ id: U(60), source: S.draft, trigger: "always", targets: [S.issued] }] },
       ),
     );
     const rules = findings(backend);
-    expect(rules).toContain(`MQ9210 /states/1 ${S.issued}`);
-    expect(rules.filter((r) => r.startsWith("MQ9210"))).toHaveLength(1);
+    expect(rules.filter((r) => r.startsWith("MQ9210"))).toEqual([`MQ9210 /subjects/0/boundAttribute ${SUBJ}`]);
+    const message = backend.model.validate().diagnostics.find((x) => x.rule === "MQ9210")!.message;
+    expect(message).toContain("needs: Issued;");
   });
 
   it("MQ9206 clauses sit at the state's code: a shared code, mixed kinds, a coded history, an ancestor and a coded child", () => {
@@ -706,10 +731,18 @@ describe("quick fixes for bindings and codes", () => {
     expect(deriveQuickFix(diag("MQ9203", "P", "/boundAttribute"), "sync-enum", docs(one))).toEqual({ kind: "sync-enum", process: "P", label: "Sync enum" });
   });
 
-  it("MQ9210 syncs the codes of the process the fetched document is, not the state the finding names", () => {
+  it("MQ9210 syncs the codes of the binding the finding sits on, of the process the fetched document is", () => {
     const p = process([{ id: "S1", name: "Draft" }]);
-    const get = (id: string) => (id === "S1" ? (p as unknown as ModelJson) : undefined);
-    expect(deriveQuickFix(diag("MQ9210", "S1", "/states/0"), "sync-codes", get)).toEqual({ kind: "sync-codes", process: "P", label: "Sync codes" });
+    const get = (id: string) => (id === "X1" ? (p as unknown as ModelJson) : undefined);
+    expect(deriveQuickFix(diag("MQ9210", "X1", "/subjects/0/boundAttribute"), "sync-codes", get)).toEqual({
+      kind: "sync-codes",
+      process: "P",
+      entity: "E",
+      attribute: "A",
+      label: "Sync codes",
+    });
+    const unbound = process([{ id: "S1", name: "Draft" }], { subjects: [{ id: "X1", entity: "E" }] });
+    expect(deriveQuickFix(diag("MQ9210", "X1", "/subjects/0/boundAttribute"), "sync-codes", () => unbound as unknown as ModelJson)).toBeNull();
     expect(deriveQuickFix(diag("MQ9206", "S1", "/states/0/code"), "sync-codes", get)).toBeNull();
     expect(hasQuickFix("MQ9206", "sync-codes")).toBe(false);
   });
@@ -717,23 +750,6 @@ describe("quick fixes for bindings and codes", () => {
 
 describe("the sync-codes quick fix against the mock", () => {
   const mock = useMockApi();
-
-  it("picks the first subject whose attribute is not an enum, else the first bound one", async () => {
-    seedModel(mock.backend, lifecycle([{ id: S.draft, name: "Draft" }], undefined));
-    const json = (subjects: Json[]) => ({ id: PROCESS, subjects }) as Json;
-    const { queryClient } = mock.services;
-    const both = json([
-      { id: U(90), entity: ENTITY, boundAttribute: A.enumA },
-      { id: U(91), entity: OTHER },
-    ]);
-    expect(await pickCodesBinding(queryClient, both)).toEqual({ entity: ENTITY, attribute: A.enumA });
-    const mixed = json([
-      { id: U(90), entity: ENTITY, boundAttribute: A.enumA },
-      { id: U(91), entity: ENTITY, boundAttribute: A.plain },
-    ]);
-    expect(await pickCodesBinding(queryClient, mixed)).toEqual({ entity: ENTITY, attribute: A.plain });
-    expect(await pickCodesBinding(queryClient, json([{ id: U(91), entity: OTHER }]))).toBeNull();
-  });
 
   it("does a dry run, then applies as one undo step", async () => {
     seedModel(

@@ -17,8 +17,8 @@ export type QuickFix =
   | { kind: "operation"; op: QuickFixOperation; id: string; target?: string; label: string; ids: string[]; choices?: { id: string; name: string }[] }
   /** Sync enum: a dry run first, then the apply (the process's own endpoint). */
   | { kind: "sync-enum"; process: string; label: string; entity?: string }
-  /** Sync codes (MQ9210): the process; the binding is picked when it runs (a dry run first, then the apply). */
-  | { kind: "sync-codes"; process: string; label: string }
+  /** Sync codes (MQ9210): the process and the binding the finding sits on (a dry run first, then the apply). */
+  | { kind: "sync-codes"; process: string; entity: string; attribute: string; label: string }
   /** A plain update of one document. */
   | { kind: "update"; id: string; json: ModelJson; label: string };
 
@@ -134,7 +134,14 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
   const id = typeof element.id === "string" ? element.id : d.elementId;
   // The process comes from the fetched document, never from a finding's element id (a state's or an entry's id).
   if (d.rule === "MQ9206") return null;
-  if (catalogFix === "sync-codes") return element.kind === "process" ? { kind: "sync-codes", process: str(element.id) ?? id, label: "Sync codes" } : null;
+  if (catalogFix === "sync-codes") {
+    // The finding sits on the binding (`/subjects/<i>/boundAttribute`, or `/boundAttribute`): its entry names the entity and the attribute.
+    if (element.kind !== "process") return null;
+    const entry = entryOf(element, pointer);
+    return entry?.entity && entry.boundAttribute
+      ? { kind: "sync-codes", process: str(element.id) ?? id, entity: entry.entity, attribute: entry.boundAttribute, label: "Sync codes" }
+      : null;
+  }
   // Sync enum for one binding: a subjects entry's finding sends its entity; the one-subject form omits it (decision 15).
   if (catalogFix === "sync-enum" && element.kind === "process" && Array.isArray(element.subjects)) {
     const entity = entryOf(element, pointer)?.entity;

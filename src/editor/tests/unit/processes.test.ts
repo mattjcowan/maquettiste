@@ -7,6 +7,7 @@ import { menuFor } from "@/explorer/menus";
 import {
   NEW_STATUS,
   buildActor,
+  boundByOthers,
   buildProcessBatch,
   buildScenario,
   deleteProcessOps,
@@ -125,6 +126,21 @@ describe("Processes explorer", () => {
 });
 
 describe("process dialog models", () => {
+  it("lists the attributes that kept lifecycles already bind for the entity", () => {
+    const peer = {
+      json: {
+        id: "L1",
+        name: "Other",
+        subjects: [
+          { entity: "E1", boundAttribute: "A1" },
+          { entity: "E2", boundAttribute: "A2" },
+        ],
+      },
+      hash: "h",
+    };
+    expect([...boundByOthers([peer], "E1")]).toEqual([["A1", "Other"]]);
+    expect(boundByOthers([peer], null).size).toBe(0);
+  });
   let n = 0;
   const id = () => `ID${++n}`;
   const invoice = {

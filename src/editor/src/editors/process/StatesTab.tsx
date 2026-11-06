@@ -17,6 +17,7 @@ import {
   actionIdsOfNames,
   idsOfNames,
   INVOKE_TYPES,
+  boundStates,
   setInitial,
   setStateCode,
   setStateType,
@@ -34,11 +35,25 @@ import {
 import { useServices } from "@/app/context";
 import { changeWithDiagram } from "@/canvas/statechart/actions";
 import { processDiagramId } from "@/canvas/statechart/diagram";
+import type { SubjectMembers } from "./ProcessControls";
 import { Grid, type GridColumn } from "./Grid";
 import { rowProblems, useGridTargets, type ProcessContext } from "./shared";
 import { selectProcessNode, useProcessSelection } from "./selection";
 
-export function StatesTab({ pc, members, codeKind }: { pc: ProcessContext; members: string[] | null; codeKind?: CodeKind }) {
+const CODE_TOOLTIP =
+  "The state's stable stored value. It follows the bound attribute: text for text types and enum names, a whole number for integer types and enum values.";
+
+export function StatesTab({
+  pc,
+  members,
+  codeKind,
+  subjectMembers = [],
+}: {
+  pc: ProcessContext;
+  members: string[] | null;
+  codeKind?: CodeKind;
+  subjectMembers?: SubjectMembers[];
+}) {
   const { process, change, id } = pc;
   const services = useServices();
   const index = useIndex();
@@ -66,6 +81,7 @@ export function StatesTab({ pc, members, codeKind }: { pc: ProcessContext; membe
     {
       key: "code",
       label: "Code",
+      tooltip: CODE_TOOLTIP,
       kind: "text",
       width: "w-24",
       mono: true,
@@ -113,7 +129,19 @@ export function StatesTab({ pc, members, codeKind }: { pc: ProcessContext; membe
     },
     { key: "invokes", label: "Invokes", kind: "readonly", width: "min-w-24", value: (r) => r.invokes },
   ];
-  if (lifecycle)
+  const rootOrder = boundStates(process).map((s) => s.id);
+  if (lifecycle && subjectMembers.length)
+    // Several subjects: one read-only column per enum-bound subject, the n-th root state standing for the n-th member.
+    for (const sm of subjectMembers)
+      columns.push({
+        key: `bound-${sm.entity}`,
+        label: sm.name,
+        tooltip: `The ${sm.name} enum member each root state stands for`,
+        kind: "readonly",
+        width: "min-w-24",
+        value: (r) => (r.depth === 0 && rootOrder.includes(r.id) ? (sm.members[rootOrder.indexOf(r.id)] ?? "") : ""),
+      });
+  else if (lifecycle)
     columns.push({
       key: "bound",
       label: "Bound member",

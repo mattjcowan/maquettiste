@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, Info, RefreshCw, TriangleAlert } from "lucide-react";
+import { CircleAlert, Info, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { keys, useIndex, useValidation, useValidationRules } from "@/api/queries";
 import { EmptyState, Spinner } from "@/components/ui/misc";
 import { useEditor } from "@/state/store";
@@ -8,7 +8,7 @@ import { indexLookup } from "@/model/index";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { countBySeverity, groupProblems } from "./group";
-import { applyProblemFilter, setProblemFilter, useProblemFilter, type ProblemFilter } from "./filter";
+import { applyProblemFilter, onlyElement, setProblemElement, setProblemFilter, useProblemElement, useProblemFilter, type ProblemFilter } from "./filter";
 import { hasQuickFix } from "./quickFix";
 import { QuickFixButton } from "./QuickFixButton";
 import { CanonicalFixButton } from "./CanonicalFixButton";
@@ -43,8 +43,11 @@ export function useProblemGroups() {
 }
 
 /** The groups the panel shows after the severity filter, with the counts of every severity and of the hidden ones. */
-export function useVisibleProblemGroups() {
-  const { groups, validation } = useProblemGroups();
+export function useVisibleProblemGroups(narrow = false) {
+  const { groups: every, validation } = useProblemGroups();
+  const only = useProblemElement();
+  // The panel itself narrows to one element (the line under an editor's title opens it so); the tab's count never does.
+  const groups = useMemo(() => (narrow ? onlyElement(every, only) : every), [every, only, narrow]);
   const filter = useProblemFilter();
   const counts = useMemo(() => countBySeverity(groups), [groups]);
   const visible = useMemo(() => applyProblemFilter(groups, filter), [groups, filter]);
@@ -58,8 +61,20 @@ const CHIPS: { key: keyof ProblemFilter; label: string; count: keyof ReturnType<
 ];
 
 /** The filter chips and Validate again, above the list. */
-function ProblemsHeader({ counts, filter, hidden }: { counts: ReturnType<typeof countBySeverity>; filter: ProblemFilter; hidden: number }) {
+function ProblemsHeader({
+  counts,
+  filter,
+  hidden,
+  only,
+}: {
+  counts: ReturnType<typeof countBySeverity>;
+  filter: ProblemFilter;
+  hidden: number;
+  only: string | null;
+}) {
   const qc = useQueryClient();
+  const index = useIndex();
+  const onlyName = only ? displayName(indexLookup(index.data).byId.get(only) ?? { id: only, kind: "entity", name: only }) : "";
   return (
     <div className="flex h-7 shrink-0 items-center gap-1 border-b border-default px-2" data-testid="problems-header">
       {CHIPS.map((c) => (
@@ -76,6 +91,17 @@ function ProblemsHeader({ counts, filter, hidden }: { counts: ReturnType<typeof 
           <span className="text-secondary">{counts[c.count]}</span>
         </Button>
       ))}
+      {only ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          label="Show the problems of every element again"
+          data-testid="problems-only"
+          onClick={() => setProblemElement(null)}
+        >
+          Only {onlyName} <X />
+        </Button>
+      ) : null}
       {hidden ? (
         <span className="text-11 text-secondary" data-testid="problems-hidden">
           {hidden} hidden
@@ -96,7 +122,8 @@ function ProblemsHeader({ counts, filter, hidden }: { counts: ReturnType<typeof 
 }
 
 export function ProblemsPanel() {
-  const { groups, hidden, counts, filter, validation } = useVisibleProblemGroups();
+  const { groups, hidden, counts, filter, validation } = useVisibleProblemGroups(true);
+  const only = useProblemElement();
   const index = useIndex();
   const lookup = indexLookup(index.data);
   const { reveal, select, openEditor, openSettings, openWorkspace } = useEditorNavigation();
@@ -125,7 +152,7 @@ export function ProblemsPanel() {
   const total = counts.errors + counts.warnings + counts.infos;
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <ProblemsHeader counts={counts} filter={filter} hidden={hidden} />
+      <ProblemsHeader counts={counts} filter={filter} hidden={hidden} only={only} />
       {!total ? (
         <EmptyState title="No problems">The model validates cleanly.</EmptyState>
       ) : !groups.length ? (

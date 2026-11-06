@@ -63,7 +63,7 @@ A state may carry a stable stored value, its **code**. Codes are optional.
    Codes are strings or whole numbers, unique in the lifecycle.
 2. The codes form a map here, since no coded state sits inside another coded state. That means any moment has at most one code.
 3. If the codes must fit an enum, reference type or plain status attribute, bind it in **Bound attribute**. A code that does
-   not fit is MQ9207. A state without a code under a binding is MQ9210, and **Sync codes** proposes codes from the attribute's type.
+   not fit is MQ9207. States without a code under a reference-type or plain binding give one MQ9210 warning per binding, naming them, and **Sync codes** proposes their codes. Under an enum binding a code is optional, since the member already is the stored value.
 
 The new lifecycle is written as `subjects`, a list with one entry per entity it governs. One lifecycle may list several entities,
 and an entity may follow several lifecycles. An old file may still use `subject` and `boundAttribute` on the process. That form

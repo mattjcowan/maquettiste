@@ -273,6 +273,13 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 
 - A reorganization for non-experts: onboarding, naming, empty states, a clearer first screen. Collect confusion points
   in a live walkthrough first.
+- **Found by a browser walkthrough (2026-11-06), older than 4.1:**
+  - Large charts open at about 5% zoom on first view.
+  - Pickers, favorites and some messages show internal names or raw ids where display names belong; a reference error names
+    an id rather than the element.
+  - A Problems row reveals its element only with Enter, not with a click or double-click.
+  - Clicking a scenario row in the process editor doesn't select it in the inspector.
+  - The dark theme was not checked properly; check it in the walkthrough.
 - **The Processes explorer is too flat (the owner, 2026-11-05). Built for 0.13.1 in #41.** Today each domain lists every process in one list
   (lifecycles, orchestrations and libraries mixed), and Actors is one flat list after the domains. Proposed:
   - In each domain, processes grouped by use: **Lifecycles**, **Orchestrations** and **Libraries**. A lifecycle shows

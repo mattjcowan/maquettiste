@@ -55,7 +55,7 @@ const ROW = "flex h-[var(--mq-row-h)] min-w-0 items-center gap-1.5 border-b bord
 const FIELD = "h-5 min-w-0 rounded-[4px] border border-input bg-surface px-1 text-12 text-primary";
 const SMALL = "h-5 px-1.5 text-12";
 
-type SectionId = "start" | "enabled" | "time" | "pending" | "configuration" | "lastStep" | "trace" | "replay";
+type SectionId = "start" | "cast" | "enabled" | "time" | "pending" | "configuration" | "lastStep" | "trace" | "replay";
 
 interface ReplayState {
   scenario: ScenarioDoc;
@@ -112,6 +112,10 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
   const replayEntry = replay?.simulation?.trace.find((t) => t.index === replay.selected) ?? null;
   const entry = replay ? replayEntry : shownEntry(session);
   const live = atEnd(session);
+  // The run's objects: the replayed scenario's while a replay is shown, else the session's start.
+  const cast = replay
+    ? { objects: replay.scenario.objects ?? [], subject: replay.scenario.subject }
+    : { objects: session.start.objects ?? [], subject: session.start.subject };
   const rows = useMemo(
     () => (result && live && !result.final ? enabledRows(result, process, names, allActors) : []),
     [result, live, process, names, allActors],
@@ -262,7 +266,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
       aria-label={L.panelOf(process.name)}
       data-testid="simulation-panel"
       data-busy={busy ? "true" : "false"}
-      className={cn("flex shrink-0 flex-col border-t border-default bg-surface text-12 outline-none", collapsed ? "h-auto" : "h-[55%] min-h-40")}
+      className={cn("flex shrink-0 flex-col border-t border-default bg-surface text-12 outline-none", collapsed ? "h-auto" : "h-[45%] min-h-40")}
       onKeyDown={onPanelKey}
     >
       <div className="flex h-[var(--mq-row-h)] shrink-0 items-center gap-2 border-b border-default px-1.5" data-testid="simulation-toolbar">
@@ -324,7 +328,6 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
               <StartSection
                 pc={pc}
                 session={session}
-                entityNames={entityNames}
                 onStart={(attr, v) => update((s) => setStartValue(s, attr, v))}
                 onAt={(at) => update((s) => restart(s, { ...s.start, at }))}
               />,
@@ -375,6 +378,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
           </div>
           <div className="min-h-0 overflow-auto">
             <Messages session={session} />
+            {cast.objects.length ? section("cast", L.cast, <CastSection objects={cast.objects} subject={cast.subject} entityNames={entityNames} />) : null}
             {section(
               "configuration",
               L.configuration,
@@ -498,36 +502,46 @@ function Messages({ session }: { session: { invalid: { rule: string; message: st
   );
 }
 
+/** One compact value: "total 120"; text stays plain, structures are written out. */
+function compactValue(v: unknown): string {
+  return typeof v === "string" ? v : typeof v === "object" && v !== null ? JSON.stringify(v) : String(v);
+}
+
+/** The run's objects, read-only (edited in the scenario's JSON view): name, entity and values; the subject is marked. */
+function CastSection({ objects, subject, entityNames }: { objects: readonly ScenarioObjectDoc[]; subject?: string; entityNames: ReadonlyMap<string, string> }) {
+  return (
+    <ul title={L.objectsHint} data-testid="start-objects">
+      {objects.map((o) => {
+        const values = Object.entries(o.values ?? {})
+          .map(([k, v]) => `${k} ${compactValue(v)}`)
+          .join(", ");
+        return (
+          <li key={o.id} className={ROW} data-testid="start-object" data-subject={o.id === subject} title={values}>
+            <span className="max-w-[30%] shrink-0 truncate font-medium">{o.name}</span>
+            <span className="max-w-[30%] shrink-0 truncate text-secondary">{entityNames.get(o.entity) ?? o.entity}</span>
+            {o.id === subject ? <span className="shrink-0 text-secondary">({L.objectSubject})</span> : null}
+            <span className="min-w-0 flex-1 truncate font-mono text-11 text-secondary">{values}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function StartSection({
   pc,
   session,
-  entityNames,
   onStart,
   onAt,
 }: {
   pc: ProcessContext;
   session: { start: { context: Record<string, unknown>; at?: string; objects?: ScenarioObjectDoc[]; subject?: string } };
-  entityNames: ReadonlyMap<string, string>;
   onStart: (attribute: string, value: unknown) => void;
   onAt: (at: string | undefined) => void;
 }) {
   const context = pc.process.context ?? [];
   return (
     <div>
-      {session.start.objects?.length ? (
-        <div className={ROW} data-testid="start-objects" title={L.objectsHint}>
-          <span className="w-28 shrink-0 truncate text-secondary">{L.objects}</span>
-          <ul className="flex min-w-0 flex-1 flex-col">
-            {session.start.objects.map((o) => (
-              <li key={o.id} className="flex min-w-0 items-baseline gap-1" data-testid="start-object" data-subject={o.id === session.start.subject}>
-                <span className="truncate font-medium">{o.name}</span>
-                <span className="truncate text-secondary">{entityNames.get(o.entity) ?? o.entity}</span>
-                {o.id === session.start.subject ? <span className="shrink-0 text-secondary">({L.objectSubject})</span> : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
       {context.length ? null : <Note>{L.noContext}</Note>}
       {context.map((a) => (
         <div key={a.id} className={ROW} data-testid="start-row" data-attribute={a.name}>

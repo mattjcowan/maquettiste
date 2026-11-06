@@ -488,6 +488,7 @@ export const SIMULATION_LABELS = {
   loadedScenario: (name: string) => `Loaded the start and steps of ${name}.`,
   noContext: "The process has no context attributes.",
   objects: "Objects",
+  cast: "Cast",
   objectSubject: "subject",
   objectsHint: "The scenario's objects; edit them in the JSON view of the scenario.",
   // Enabled

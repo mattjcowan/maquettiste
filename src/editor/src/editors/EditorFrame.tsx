@@ -4,7 +4,7 @@
 import { TranslationsSection } from "@/l10n/TranslationsSection";
 import { HeaderTextFields } from "@/l10n/HeaderTextFields";
 import { useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp, CircleAlert, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { useIndex, useProject } from "@/api/queries";
 import type { ElementSummary, StereotypeDoc } from "@/api/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,6 +17,7 @@ import { useEditor, type Draft } from "@/state/store";
 import { displayName, KIND_LABELS } from "@/model/model";
 import { EDITOR_LABELS, EDITOR_TAB_LABELS, GROUP_LABELS } from "@/model/labels";
 import { local } from "@/lib/storage";
+import { FindingsSummary } from "@/problems/findings";
 import { Button } from "@/components/ui/button";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { indexLookup } from "@/model/index";
@@ -128,18 +129,7 @@ export function EditorLayout({
             {draft.error}
           </p>
         ) : null}
-        {diagnostics.length ? (
-          <ul role="alert" className="flex flex-col gap-0.5 text-12 text-danger">
-            {diagnostics.map((d, i) => (
-              <li key={i} className="flex gap-1">
-                <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                <span>
-                  <span className="font-mono">{d.rule}</span> {d.message}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        <FindingsSummary diagnostics={diagnostics} element={id} />
         {details ? <HeaderFields {...ctx} translations={translations} /> : null}
       </header>
       {details ? (

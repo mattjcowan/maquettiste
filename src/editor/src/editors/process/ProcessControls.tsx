@@ -9,7 +9,7 @@ import { useElement, useElements, useIndex } from "@/api/queries";
 import type { AttributeDoc } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Field, Input, Select } from "@/components/ui/input";
+import { Field, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
 import { useServices } from "@/app/context";
 import { bindableAttributes, classifyAttribute, codeKindOf } from "@/model/binding";
@@ -65,6 +65,33 @@ export function useBinding(subject: string | undefined, bound: string | undefine
   const members = enumDoc.data ? (((enumDoc.data.json as { members?: { name: string }[] }).members ?? []).map((m) => m.name) as string[]) : null;
   const codeKind = bindType && attribute ? codeKindOf(bindType, attribute as unknown as Rec, typeDoc) : undefined;
   return { attributes, enumId, members, codeKind };
+}
+
+export interface SubjectMembers {
+  entity: string;
+  name: string;
+  members: string[];
+}
+
+/** For a process with several subjects: each enum-bound subject's entity name and bound enum member names. */
+export function useSubjectMembers(process: unknown): SubjectMembers[] {
+  const index = useIndex();
+  const lookup = indexLookup(index.data);
+  const all = subjectsOf(process as Rec);
+  const many = all.length > 1;
+  const entities = useElements(many ? all.map((s) => s.entity) : []).byId;
+  const enumOf = (s: { entity: string; boundAttribute?: string }): string | undefined => {
+    const attributes = ((entities.get(s.entity)?.json as Rec | undefined)?.attributes ?? []) as Rec[];
+    const ref = (attributes.find((a) => a.id === s.boundAttribute)?.type as { ref?: string } | undefined)?.ref;
+    return ref && lookup.byId.get(ref)?.kind === "enum" ? ref : undefined;
+  };
+  const enums = useElements(many ? all.flatMap((s) => enumOf(s) ?? []) : []).byId;
+  if (!many) return [];
+  return all.flatMap((s) => {
+    const enumId = enumOf(s);
+    const doc = enumId ? (enums.get(enumId)?.json as { members?: { name: string }[] } | undefined) : undefined;
+    return doc ? [{ entity: s.entity, name: lookup.byId.get(s.entity)?.name ?? s.entity, members: (doc.members ?? []).map((m) => m.name) }] : [];
+  });
 }
 
 export function ProcessControls({ ctx }: { ctx: EditorContext }) {
@@ -166,28 +193,24 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
   return (
     <>
       <Field label="Use" htmlFor={`${dom}-use`}>
-        <Select
-          id={`${dom}-use`}
-          value={use}
-          title={PROCESS_LABELS.useMeaning[use as "lifecycle" | "orchestration"] ?? PROCESS_LABELS.useMeaning.orchestration}
-          disabled={many}
-          onChange={(e) => setUse(e.target.value)}
-        >
-          <option value="orchestration">Orchestration</option>
-          <option value="lifecycle" disabled={all.length === 0}>
-            {all.length ? "Lifecycle" : "Lifecycle (choose a subject first)"}
-          </option>
-        </Select>
+        <span title={many ? "Several subjects: change them in the JSON view" : undefined} className="block">
+          <Select
+            id={`${dom}-use`}
+            value={use}
+            title={PROCESS_LABELS.useMeaning[use as "lifecycle" | "orchestration"] ?? PROCESS_LABELS.useMeaning.orchestration}
+            disabled={many}
+            onChange={(e) => setUse(e.target.value)}
+          >
+            <option value="orchestration">Orchestration</option>
+            <option value="lifecycle" disabled={all.length === 0}>
+              {all.length ? "Lifecycle" : "Lifecycle (choose a subject first)"}
+            </option>
+          </Select>
+        </span>
       </Field>
       <Field label="Subject" htmlFor={`${dom}-subject`}>
         {many ? (
-          <Input
-            id={`${dom}-subject`}
-            readOnly
-            value={all.map((e) => lookup.byId.get(e.entity)?.name ?? e.entity).join(", ")}
-            title="Several subjects are edited in the JSON view."
-            data-testid="process-subjects"
-          />
+          <SubjectList subjects={all} />
         ) : (
           <Select id={`${dom}-subject`} value={subject ?? ""} onChange={(e) => setSubject(e.target.value || undefined)}>
             {use === "lifecycle" && subject ? null : <option value="">{use === "lifecycle" ? "(choose an entity)" : "(none)"}</option>}
@@ -220,6 +243,27 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
         </Field>
       ) : null}
     </>
+  );
+}
+
+/** The subjects of a process with several, read-only: the entity and its bound attribute (or "no attribute"). */
+function SubjectList({ subjects }: { subjects: ReturnType<typeof subjectsOf> }) {
+  const index = useIndex();
+  const lookup = indexLookup(index.data);
+  const docs = useElements(subjects.map((s) => s.entity)).byId;
+  return (
+    <ul className="flex flex-col gap-0.5 text-12" data-testid="process-subjects" title="Several subjects: change them in the JSON view">
+      {subjects.map((s, n) => {
+        const attributes = ((docs.get(s.entity)?.json as Rec | undefined)?.attributes ?? []) as Rec[];
+        const attribute = s.boundAttribute ? String(attributes.find((a) => a.id === s.boundAttribute)?.name ?? s.boundAttribute) : null;
+        return (
+          <li key={s.id || n} className="flex items-baseline justify-between gap-2 rounded-control border border-default px-1.5 py-0.5">
+            <span className="truncate">{lookup.byId.get(s.entity)?.name ?? s.entity}</span>
+            <span className={attribute ? "truncate font-mono text-11" : "text-11 text-secondary"}>{attribute ?? "no attribute"}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

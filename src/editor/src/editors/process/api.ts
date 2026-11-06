@@ -7,7 +7,6 @@ import type { components } from "@/api/schema";
 import * as endpoints from "@/api/endpoints";
 import { applyBatchResult, applySaveResult, indexQuery, keys } from "@/api/queries";
 import type { ModelJson } from "@/api/types";
-import { bindableAttributes } from "@/model/binding";
 import { subjectsOf } from "@/model/process";
 import { recordVerify, type VerifyResult } from "@/explorer/processApi";
 import { applyQuickFix } from "@/problems/applyQuickFix";
@@ -57,35 +56,6 @@ export async function applySyncCodes(qc: QueryClient, store: EditorStore, proces
   void qc.invalidateQueries({ queryKey: keys.index });
   void qc.invalidateQueries({ queryKey: keys.validation });
   return result;
-}
-
-/**
- * The binding the sync-codes quick fix acts on, since a state finding names no binding: the first subject, in order,
- * whose bound attribute is not enum-typed, else the first bound subject. Null when no subject is bound.
- */
-export async function pickCodesBinding(qc: QueryClient, process: Record<string, unknown>): Promise<{ entity: string; attribute: string } | null> {
-  const bound = subjectsOf(process).filter((e) => e.boundAttribute);
-  if (!bound.length) return null;
-  const docs = new Map<string, Record<string, unknown>>();
-  const read = async (id: string) => {
-    if (!docs.has(id)) docs.set(id, (await endpoints.getElement(id)).json as Record<string, unknown>);
-    return docs.get(id)!;
-  };
-  const stereotypes = new Map<string, Record<string, unknown>>();
-  for (const row of await qc.ensureQueryData(indexQuery)) if (row.kind === "stereotype") stereotypes.set(String((await read(row.id)).key), await read(row.id));
-  for (const entry of bound) {
-    // The entity and its bases, then the attribute among them (own, inherited or from a stereotype).
-    for (let at = await read(entry.entity); typeof at.base === "string" && !docs.has(at.base);) at = await read(at.base);
-    const attribute = bindableAttributes(
-      docs.get(entry.entity),
-      (id) => docs.get(id),
-      (key) => stereotypes.get(key),
-    ).find((a) => a.id === entry.boundAttribute);
-    const type = attribute?.type;
-    const ref = typeof type === "object" && type ? (type as { ref?: string }).ref : undefined;
-    if (!ref || (await read(ref)).kind !== "enum") return { entity: entry.entity, attribute: entry.boundAttribute! };
-  }
-  return { entity: bound[0].entity, attribute: bound[0].boundAttribute! };
 }
 
 /** Verifies one scenario (Replay); the explorer's statuses follow. */

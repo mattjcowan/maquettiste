@@ -7,6 +7,11 @@ one.
 
 ## 0.13.1 (unreleased)
 
+- **Fewer warnings for states without a code (MQ9210).** An enum binding no longer asks for codes, since the member is the
+  stored value. Under a reference-type or plain binding there is one warning per binding that names the states without a
+  code, such as "3 states of process 'Fulfil' have no code, which binding 'Order.status' needs: CreditReview, Fulfilment,
+  OnHold; give each a code, or run Sync codes." It sits at the binding, still has the **Sync codes** fix, and can still be
+  turned off.
 - **The Processes explorer groups by use.** In each domain, processes sit in **Lifecycles**, **Orchestrations** and
   **Libraries** folders, and a lifecycle's row names the entities it governs. Under a process come States, Events, Guards
   and actions, Gates and Scenarios, failed ones first. Actors sit in **People**, **Roles** and **Systems** folders, and a

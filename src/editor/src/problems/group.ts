@@ -54,9 +54,13 @@ export function groupProblems(report: Diagnostic[], drafts: Draft[], byId: Map<s
       diagnostics,
     });
   }
+  // A finding of a part (a state, a subjects entry) carries the part's id: its file path names the owning element.
+  const byPath = new Map<string, ElementSummary>();
+  for (const summary of byId.values()) if (summary.path) byPath.set(summary.path, summary);
   const byElement = new Map<string, Diagnostic[]>();
   for (const d of report) {
-    const key = d.elementId ?? `file:${d.filePath ?? "model"}`;
+    const owner = (d.elementId ? byId.get(d.elementId) : undefined) ?? (d.filePath ? byPath.get(d.filePath) : undefined);
+    const key = owner?.id ?? d.elementId ?? `file:${d.filePath ?? "model"}`;
     byElement.set(key, [...(byElement.get(key) ?? []), d]);
   }
   const saved = [...byElement.entries()].map(([key, diagnostics]) => {

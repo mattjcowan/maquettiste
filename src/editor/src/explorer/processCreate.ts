@@ -56,6 +56,19 @@ export function enumAttributes(entity: Json | null | undefined, isEnum: (id: str
   });
 }
 
+/**
+ * The attributes of the subject that kept lifecycles already bind for it, with the lifecycle's name. A new lifecycle
+ * that keeps them cannot bind the same attribute (two lifecycles would write one column).
+ */
+export function boundByOthers(peerDocs: readonly EntityDocument[], subject: string | null): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const d of peerDocs) {
+    if (!Array.isArray(d.json.subjects)) continue;
+    for (const s of d.json.subjects as Json[]) if (s.entity === subject && typeof s.boundAttribute === "string") out.set(s.boundAttribute, String(d.json.name));
+  }
+  return out;
+}
+
 export function processNameProblem(name: string): string | null {
   const trimmed = name.trim();
   if (!trimmed) return "Enter a name.";

@@ -23,6 +23,7 @@ import {
   NEW_STATUS,
   buildActor,
   buildProcessBatch,
+  boundByOthers,
   buildScenario,
   enumAttributes,
   goalsStereotypes,
@@ -106,6 +107,13 @@ function useFinish(forest: Forest) {
   };
 }
 
+/** What Create does to the entity's existing lifecycles, said before it is pressed. */
+function explainLifecycleChoice(entity: string, created: string, previous: string | null, kept: readonly string[], keep: boolean): string {
+  if (keep && kept.length) return `${created} and ${kept.join(", ")} will both govern ${entity}. Each binds its own attribute.`;
+  if (previous) return `${created} becomes ${entity}'s only lifecycle. Its current lifecycle ${previous} becomes an orchestration.`;
+  return `${created} becomes ${entity}'s only lifecycle.`;
+}
+
 function NewProcessDialog({ domain, forest, onClose }: { domain: string | null; forest: Forest; onClose: () => void }) {
   const commit = useCommit();
   const finish = useFinish(forest);
@@ -120,9 +128,7 @@ function NewProcessDialog({ domain, forest, onClose }: { domain: string | null; 
   const subjectDoc = useQuery({ ...elementQuery(subject), enabled: !!subject });
   const isEnum = (id: string) => forest.byId.get(id)?.kind === "enum";
   const attributes = enumAttributes(subjectDoc.data?.json as Json | undefined, isEnum);
-  const chosen = attribute || attributes[0]?.id || (subjectDoc.data ? NEW_STATUS : "");
-  const enumId = attributes.find((a) => a.id === chosen)?.enumId ?? "";
-  const enumDoc = useQuery({ ...elementQuery(enumId), enabled: !!enumId });
+  const [keepOthers, setKeepOthers] = useState(false);
   const previousId = use === "lifecycle" ? (subjectDoc.data?.json as Json | undefined)?.lifecycle : undefined;
   const previousDoc = useQuery({ ...elementQuery(typeof previousId === "string" ? previousId : ""), enabled: typeof previousId === "string" });
   const previousName = typeof previousId === "string" ? (forest.byId.get(previousId)?.name ?? previousId) : null;
@@ -139,7 +145,13 @@ function NewProcessDialog({ domain, forest, onClose }: { domain: string | null; 
   const peers = useQueries({ queries: peerIds.map((id) => elementQuery(id)) });
   const peerDocs = peers.flatMap((q) => (q.data ? [{ json: q.data.json as Json, hash: q.data.hash }] : []));
   const keepable = peerDocs.filter((d) => Array.isArray(d.json.subjects));
-  const [keepOthers, setKeepOthers] = useState(false);
+  // Attributes that kept lifecycles bind for this entity cannot be bound again.
+  const taken = keepOthers ? boundByOthers(peerDocs, subject || null) : new Map<string, string>();
+  const wanted = attribute || attributes[0]?.id || (subjectDoc.data ? NEW_STATUS : "");
+  const chosen = taken.has(wanted) ? (attributes.find((a) => !taken.has(a.id))?.id ?? NEW_STATUS) : wanted;
+  const cleared = taken.has(wanted) ? { from: attributes.find((a) => a.id === wanted)?.name ?? "", by: taken.get(wanted) ?? "" } : null;
+  const enumId = attributes.find((a) => a.id === chosen)?.enumId ?? "";
+  const enumDoc = useQuery({ ...elementQuery(enumId), enabled: !!enumId });
   const members = ((enumDoc.data?.json as Json | undefined)?.members as Json[] | undefined)?.map((m) => String(m.name)) ?? [];
   const takenTypeNames = new Set(
     [...forest.byId.values()].filter((r) => ["entity", "enum", "value-object", "scalar-type"].includes(r.kind)).map((r) => r.name.toLowerCase()),
@@ -249,16 +261,27 @@ function NewProcessDialog({ domain, forest, onClose }: { domain: string | null; 
               <Field label="Bound attribute" htmlFor="new-process-attribute" hint="An enum-typed attribute: its members are the lifecycle's states.">
                 <Select id="new-process-attribute" value={chosen} onChange={(e) => setAttribute(e.target.value)}>
                   {attributes.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
+                    <option key={a.id} value={a.id} disabled={taken.has(a.id)}>
+                      {taken.has(a.id) ? `${a.name} (bound by ${taken.get(a.id)})` : a.name}
                     </option>
                   ))}
                   <option value={NEW_STATUS}>{PROCESS_LABELS.newStatus}</option>
                 </Select>
               </Field>
-              {previousName ? (
+              {cleared ? (
+                <p className="text-11 text-secondary" data-testid="new-process-cleared">
+                  {`${cleared.from} is already bound by ${cleared.by}, so it is not picked.`}
+                </p>
+              ) : null}
+              {previousName || (keepOthers && keepable.length) ? (
                 <p className="text-12 text-secondary" data-testid="new-process-previous">
-                  {`${forest.byId.get(subject)?.name ?? "The entity"}'s lifecycle is ${previousName}; it becomes an orchestration.`}
+                  {explainLifecycleChoice(
+                    forest.byId.get(subject)?.name ?? "The entity",
+                    name.trim() || "The new lifecycle",
+                    previousName,
+                    keepable.map((d) => String(d.json.name)),
+                    keepOthers,
+                  )}
                 </p>
               ) : null}
               {keepable.length ? (

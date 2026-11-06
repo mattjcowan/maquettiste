@@ -543,7 +543,6 @@ public sealed class ProcessRuleTests
             m.Entity["attributes"]!.AsArray().Add(new JsonObject { ["id"] = StateAttr, ["name"] = "state", ["type"] = "string" });
             m.Process["boundAttribute"] = StateAttr;
         },
-        ["MQ9210 an enum binding once the lifecycle has codes"] = m => m.State(Draft)["code"] = "Draft",
         ["MQ9209 the one-subject form"] = _ => { },
         ["MQ9209 an orchestration in the one-subject form"] = m =>
         {
@@ -687,6 +686,7 @@ public sealed class ProcessRuleTests
         ["MQ9208 every allowed value has a state"] = m => m.BindPlain(),
         ["MQ9210 every state a configuration rests in has a code"] = m => m.BindReference(),
         ["MQ9210 an enum binding with no codes, as before codes"] = _ => { },
+        ["MQ9210 an enum binding with one coded state needs no more"] = m => m.State(Draft)["code"] = "Draft",
         ["MQ9209 the subjects form"] = m => m.UseSubjects(),
         ["MQ9209 an orchestration with subjects"] = m =>
         {
@@ -759,35 +759,91 @@ public sealed class ProcessRuleTests
     }
 
     [Fact]
-    public async Task A_one_subject_lifecycle_bound_to_a_plain_attribute_trades_its_error_for_warnings()
+    public async Task A_one_subject_lifecycle_bound_to_a_plain_attribute_trades_its_error_for_one_warning()
     {
-        // lifecycle-design.md section 11: the one error that goes away. Each state a configuration rests in, reachable and with no code,
-        // is one MQ9210 on the state; Decide (a choice) and Review's children (Review has none coded) are not.
+        // lifecycle-design.md section 11: the one error that goes away. One MQ9210 at the binding names each state a configuration rests in,
+        // reachable and with no code; Decide (a choice) and Review's children (Review has none coded) are not named.
         var model = Load();
         Failing["MQ9210 a plain binding with no codes"](model);
 
         var diagnostics = await ValidateAsync(model);
 
         Assert.DoesNotContain(diagnostics, d => d.Rule == "MQ9202");
-        Assert.Equal([(Draft, "/states/0"), (Review, "/states/2"), (Fulfilment, "/states/3"), (Closed, "/states/4")],
-            diagnostics.Where(d => d.Rule == "MQ9210").Select(d => (d.ElementId!, d.JsonPointer!)));
-        Assert.Equal("State 'Review' of process 'OrderLifecycle' has no code, so attribute 'state' of entity 'Order', which the process binds, has no value for it; give the state a code.",
-            diagnostics.Single(d => d.Rule == "MQ9210" && d.ElementId == Review).Message);
+        var finding = Assert.Single(diagnostics, d => d.Rule == "MQ9210");
+        Assert.Equal((P, "/boundAttribute"), (finding.ElementId, finding.JsonPointer));
+        Assert.Equal("4 states of process 'OrderLifecycle' have no code, which binding 'Order.state' needs: Draft, Review, Fulfilment, Closed; give each a code, or run Sync codes.",
+            finding.Message);
+        Assert.Equal(DiagnosticSeverity.Warning, finding.Severity);
         Assert.All(diagnostics, d => Assert.NotEqual(DiagnosticSeverity.Error, d.Severity));
     }
 
     [Fact]
-    public async Task Under_an_enum_binding_MQ9210_asks_for_the_code_the_other_states_have()
+    public async Task Under_an_enum_binding_a_code_is_optional_and_one_coded_state_gives_no_MQ9210()
     {
-        // lifecycle-design.md decision 13: under an enum binding the member holds the value, so a state with no code still has one; what
-        // it lacks is the code the other states have.
+        // The member is the stored value; MQ9207 still checks a code that is given.
         var model = Load();
-        Failing["MQ9210 an enum binding once the lifecycle has codes"](model);
+        model.State(Draft)["code"] = "Draft";
 
-        var diagnostics = await ValidateAsync(model);
+        Assert.DoesNotContain(await ValidateAsync(model), d => d.Rule == "MQ9210");
+    }
 
-        Assert.Equal("State 'Review' has no code, though other states of process 'OrderLifecycle' have one; give it the code its member stands for, or remove the others.",
-            diagnostics.Single(d => d.Rule == "MQ9210" && d.ElementId == Review).Message);
+    [Fact]
+    public async Task A_reference_binding_with_three_uncoded_states_gets_one_MQ9210_naming_all_three()
+    {
+        var model = Load();
+        model.BindReference();
+        model.State(Review).Remove("code");
+        model.State(Fulfilment).Remove("code");
+        model.State(Closed).Remove("code");
+
+        var finding = Assert.Single(await ValidateAsync(model), d => d.Rule == "MQ9210");
+
+        Assert.Equal("3 states of process 'OrderLifecycle' have no code, which binding 'Order.state' needs: Review, Fulfilment, Closed; give each a code, or run Sync codes.", finding.Message);
+        Assert.Equal((P, "/boundAttribute"), (finding.ElementId, finding.JsonPointer));
+    }
+
+    [Fact]
+    public async Task One_uncoded_state_reads_in_the_singular()
+    {
+        var model = Load();
+        model.BindReference();
+        model.State(Closed).Remove("code");
+
+        var finding = Assert.Single(await ValidateAsync(model), d => d.Rule == "MQ9210");
+
+        Assert.Equal("1 state of process 'OrderLifecycle' has no code, which binding 'Order.state' needs: Closed; give each a code, or run Sync codes.", finding.Message);
+    }
+
+    [Fact]
+    public async Task More_than_five_uncoded_states_end_with_and_N_more()
+    {
+        var model = Load();
+        model.BindReference();
+        foreach (var state in new[] { Draft, Review, Fulfilment, Closed })
+            model.State(state).Remove("code");
+        for (var i = 1; i <= 3; i++)
+        {
+            var id = "01JSTA000000000000000000" + (80 + i).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            model.Process["states"]!.AsArray().Add(new JsonObject { ["id"] = id, ["name"] = "Extra" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            model.AddTransition(Draft, null, Submit, id);
+        }
+
+        var finding = Assert.Single(await ValidateAsync(model), d => d.Rule == "MQ9210");
+
+        Assert.Equal("7 states of process 'OrderLifecycle' have no code, which binding 'Order.state' needs: Draft, Review, Fulfilment, Closed, Extra1 and 2 more; give each a code, or run Sync codes.", finding.Message);
+    }
+
+    [Fact]
+    public async Task MQ9210_sits_on_the_subjects_entry_in_the_subjects_form()
+    {
+        var model = Load();
+        model.BindReference();
+        var entry = model.UseSubjects()["id"]!.GetValue<string>();
+        model.State(Closed).Remove("code");
+
+        var finding = Assert.Single(await ValidateAsync(model), d => d.Rule == "MQ9210");
+
+        Assert.Equal((entry, "/subjects/0/boundAttribute"), (finding.ElementId, finding.JsonPointer));
     }
 
     [Theory]
@@ -796,7 +852,7 @@ public sealed class ProcessRuleTests
     public async Task A_lifecycle_with_no_codes_gets_MQ9210_and_not_MQ9208(string binding)
     {
         // lifecycle-design.md section 11: a lifecycle bound to a plain attribute with allowedValues, or to a reference-typed one, that has
-        // no codes yet gets one MQ9210 per state, and not MQ9208 listing every value, which MQ9210 already covers.
+        // no codes yet gets one MQ9210 per binding, and not MQ9208 listing every value, which MQ9210 already covers.
         var model = Load();
         if (binding == "plain")
             model.BindPlain();
