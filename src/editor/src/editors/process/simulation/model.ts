@@ -87,6 +87,8 @@ export interface EnabledRow {
   trigger: EnabledTrigger["trigger"];
   label: string;
   event: string | null;
+  /** The verb of the event, when it names one (the raise button's tooltip). */
+  verb?: string;
   invoke: string | null;
   transitions: string[];
   /** The actors the input may come from; empty when any actor may (`anyActor`). */
@@ -139,6 +141,7 @@ export function enabledRows(result: SimulationResult, process: ProcessDoc, names
       trigger: e.trigger,
       label,
       event: e.event,
+      ...(event?.verb ? { verb: event.verb } : {}),
       invoke: e.invoke,
       transitions: e.transitions,
       actors: actors.length ? actors : allActors.map((a) => ({ ...a })),

@@ -2473,7 +2473,7 @@ descriptions can be translated. The built-in names are not.
   stop, cancel, archive, publish and notify. Their meaning differs between systems, so they are not built in. A suggestion only
   fills in the key, name and description. You can change all three.
 - **An undeclared verb is an error** (MQ9701), not a note, because rights and triggers will rely on the name. The quick fix adds it.
-- **A built-in key may not be reused** (MQ9702). MQ9706 warns about `setstate` beside `set-state`. If a later release adds a built-in
+- **A built-in key may not be reused, and own keys must differ** (MQ9702), including once hyphens are dropped: `x-1` and `x1` would give generated code the same name. MQ9706 warns about `setstate` beside `set-state`. If a later release adds a built-in
   verb with a key you already use, MQ9702 asks you to choose. `rename-verb` to the same key adopts the built-in in one step.
 - **Rename and remove.** In the Verbs tab, **Rename…** and **Remove…** show what will change, then run one change, so Undo
   reverts it in one step. The batch operations are `rename-verb` (`verb`, `to`) and `remove-verb` (`verb`), both with `dryRun`.

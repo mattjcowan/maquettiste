@@ -24,7 +24,16 @@ type Pending =
   | { kind: "codes"; process: string; entity: string; attribute: string; plan: SyncCodesResult }
   | null;
 
-export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnostic; catalogFix: string | null | undefined }) {
+export function QuickFixButton({
+  diagnostic,
+  catalogFix,
+  draft,
+}: {
+  diagnostic: Diagnostic;
+  catalogFix: string | null | undefined;
+  /** The unsaved draft the finding is in: the fix is read from it (it edits the project's verbs, not the draft). */
+  draft?: ModelJson;
+}) {
   const services = useServices();
   const { store, drafts } = services;
   const qc = useQueryClient();
@@ -39,7 +48,7 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const docs = new Map<string, ModelJson>();
-  if (element.data && diagnostic.elementId) docs.set(diagnostic.elementId, element.data.json as ModelJson);
+  if (diagnostic.elementId && (draft ?? element.data)) docs.set(diagnostic.elementId, draft ?? (element.data!.json as ModelJson));
   if (partner.data && related) docs.set(related, partner.data.json as ModelJson);
   if (typeDoc.data && typeId) docs.set(typeId, typeDoc.data.json as ModelJson);
   const shown = deriveQuickFix(diagnostic, catalogFix, (id) => docs.get(id));
@@ -62,7 +71,7 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
   const start = () =>
     run(async () => {
       setError(null);
-      const fix = await freshQuickFix(drafts, diagnostic, catalogFix);
+      const fix = draft ? deriveQuickFix(diagnostic, catalogFix, () => draft) : await freshQuickFix(drafts, diagnostic, catalogFix);
       if (!fix) return report("The problem is no longer there.", "");
       // A stereotype entry has no endpoint (they are entity-only): it syncs through the batch, applied at once.
       if ((fix.kind === "sync-enum" || fix.kind === "sync-codes") && fix.stereotype) {

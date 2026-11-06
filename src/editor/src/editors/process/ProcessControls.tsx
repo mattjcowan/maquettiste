@@ -230,13 +230,25 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
     const picked = choice?.startsWith("stereotype:") ? stereotypes.find((s) => s.key === choice.slice("stereotype:".length)) : undefined;
     const next = picked ? undefined : choice;
     if (picked) {
+      const ownAttributes = ((picked.json.attributes as Rec[] | undefined) ?? []).flatMap((a) => (typeof a.id === "string" ? [a.id] : []));
+      // The binding and the owner stay only when they are the stereotype's own attributes: say what was cleared.
+      const cleared: string[] = [];
+      if (bound && !ownAttributes.includes(bound))
+        cleared.push(
+          `${(attributes.find((a) => a.id === bound) as { name?: string } | undefined)?.name ?? "the bound attribute"} isn't an attribute of «${picked.key}», so the bound attribute was cleared`,
+        );
+      if (sole?.owner && !ownAttributes.includes(sole.owner))
+        cleared.push(
+          `${(ownerFields.find((f) => (f as { id?: string }).id === sole.owner) as { name?: string } | undefined)?.name ?? "the owner"} isn't an attribute of «${picked.key}», so the owner was cleared`,
+        );
       void replaceSoleSubject(qc, store, drafts, {
         process: id,
         stereotype: picked.key,
-        ownAttributes: ((picked.json.attributes as Rec[] | undefined) ?? []).flatMap((a) => (typeof a.id === "string" ? [a.id] : [])),
+        ownAttributes,
         label: `Set the subject of ${name}`,
       }).then((refused) => {
         if (refused) store.getState().notify(`Set the subject of ${name}: ${refused}`, "error");
+        else if (cleared.length) store.getState().notify(`${cleared.join("; ")}.`);
       });
       return;
     }
@@ -316,6 +328,7 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
           <Select
             id={`${dom}-subject`}
             value={stereotypeKey ? `stereotype:${stereotypeKey}` : (subject ?? "")}
+            title={stereotypeKey ? `every entity that carries «${stereotypeKey}»` : undefined}
             onChange={(e) => setSubject(e.target.value || undefined)}
           >
             {use === "lifecycle" && (subject || stereotypeKey) ? null : <option value="">{use === "lifecycle" ? "(choose an entity)" : "(none)"}</option>}
@@ -329,8 +342,8 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
                 {stereotypes
                   .filter((s) => s.forEntities || s.key === stereotypeKey)
                   .map((s) => (
-                    <option key={s.id} value={`stereotype:${s.key}`}>
-                      {s.name}
+                    <option key={s.id} value={`stereotype:${s.key}`} title={`every entity that carries «${s.key}»`}>
+                      {`«${s.key}»`}
                     </option>
                   ))}
               </optgroup>

@@ -218,6 +218,41 @@ public sealed class VerbTests
         Assert.Empty(await VerbFindingsAsync(r));
     }
 
+    [Theory]
+    [InlineData("""{"op":"rename-verb","verb":"route","to":"route"}""", null)]
+    [InlineData("""{"op":"rename-verb","verb":"route","to":"dispatch"}""", "dispatch")]
+    [InlineData("""{"op":"rename-verb","verb":"route","to":"quarantine"}""", null)]
+    [InlineData("""{"op":"remove-verb","verb":"route"}""", null)]
+    public async Task A_verb_operation_on_an_own_verb_with_a_built_in_key_writes_only_the_vocabulary(string operation, string? renamed)
+    {
+        // The uses of 'route' name the built-in verb (MQ9702 reports the own verb), so none of them is rewritten or even written.
+        await using var r = await RepoAsync();
+        await WriteAsync(r, Assign, OperationJson("route"));
+        await WriteAsync(r, Flow, ProcessJson(raiseVerb: "route"));
+        await WriteAsync(r, Vocabulary, VocabularyJson(escalateKey: "route"));
+
+        var result = await ApplyAsync(r, operation);
+
+        Assert.Equal(SaveOutcome.Saved, result.Outcome);
+        Assert.Equal([Vocabulary], result.Items.Select(i => i.Id));
+        var model = r.Store.Current!;
+        Assert.Equal("route", model.Get<Operation>(Assign)!.Verb);
+        Assert.Equal("route", model.Get<Process>(Flow)!.Events[1].Verb);
+        Assert.Equal(renamed, model.Get<VerbVocabulary>(Vocabulary)!.Verbs.SingleOrDefault(v => v.Id == Escalate)?.Key);
+    }
+
+    [Fact]
+    public async Task Two_own_verbs_that_are_one_key_without_hyphens_are_MQ9702_naming_both()
+    {
+        await using var r = await RepoAsync();
+        await WriteAsync(r, Vocabulary, VocabularyJson(extra: """,{"id":"01K9VRB0000000000000000004","key":"x-1"},{"id":"01K9VRB0000000000000000005","key":"x1"}"""));
+
+        Assert.Equal([("MQ9702", "/verbs/3/key")], await VerbFindingsAsync(r));
+        var finding = (await r.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics.Single(d => d.Rule == "MQ9702");
+        Assert.Contains("'x-1' and 'x1'", finding.Message, StringComparison.Ordinal);
+        Assert.Equal(DiagnosticSeverity.Error, finding.Severity);
+    }
+
     [Fact]
     public async Task Remove_verb_clears_every_use_and_the_definition()
     {

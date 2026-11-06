@@ -9,7 +9,7 @@ import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { countBySeverity, groupProblems } from "./group";
 import { applyProblemFilter, onlyElement, setProblemElement, setProblemFilter, useProblemElement, useProblemFilter, type ProblemFilter } from "./filter";
-import { hasQuickFix } from "./quickFix";
+import { hasDraftQuickFix, hasQuickFix } from "./quickFix";
 import { QuickFixButton } from "./QuickFixButton";
 import { CanonicalFixButton } from "./CanonicalFixButton";
 import { hasCanonicalFix } from "./canonical";
@@ -130,6 +130,7 @@ export function ProblemsPanel() {
   const { store } = useServices();
   const rules = useValidationRules();
   const fixes = useMemo(() => new Map((rules.data ?? []).map((r) => [r.id, r.quickFix ?? null])), [rules.data]);
+  const drafts = useEditor(store, (s) => s.drafts);
   /** MQ2008 and MQ3021 (explorer-redesign.md 1.11): the element's marks in its editor, or the vocabulary's own tab. */
   const goToVocabulary = (target: NonNullable<ReturnType<typeof vocabularyProblemTarget>>) => {
     if (target.type === "settings") return openSettings(target.tab);
@@ -187,7 +188,13 @@ export function ProblemsPanel() {
                         <span className="flex-1">{d.message}</span>
                         {d.jsonPointer ? <span className="font-mono text-11 text-secondary">{d.jsonPointer}</span> : null}
                       </button>
-                      {!group.unsaved && hasQuickFix(d.rule, fixes.get(d.rule)) ? <QuickFixButton diagnostic={d} catalogFix={fixes.get(d.rule)} /> : null}
+                      {(!group.unsaved || hasDraftQuickFix(d.rule)) && hasQuickFix(d.rule, fixes.get(d.rule)) ? (
+                        <QuickFixButton
+                          diagnostic={d}
+                          catalogFix={fixes.get(d.rule)}
+                          draft={group.unsaved && group.elementId ? drafts[group.elementId]?.json : undefined}
+                        />
+                      ) : null}
                       {!group.unsaved && hasCanonicalFix(d) ? <CanonicalFixButton diagnostic={d} /> : null}
                       {target ? (
                         <Button

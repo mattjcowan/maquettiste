@@ -300,6 +300,41 @@ public sealed class ModelSnapshot
     /// <returns>The own verb, or <see langword="null"/>.</returns>
     public OwnVerb? OwnVerb(string? key) => key is null ? null : _ownVerbs.GetValueOrDefault(key);
 
+    /// <summary>The dependency key of which verbs the model names (verbs-design.md section 6): <c>model.verbs</c> and each verb key on it.</summary>
+    internal const string VerbNamingKey = "vn:verbs";
+
+    private string? _verbNamingHash;
+
+    /// <summary>
+    /// The current hash of <see cref="VerbNamingKey"/>: the verb vocabulary in use (its id and dependency hash), then the distinct verb keys
+    /// the events, transitions and operations name, ordinal, read from the index rows. It changes when a key starts or stops being named
+    /// anywhere, or when the vocabulary changes; not when a process or an operation changes otherwise. A model with no vocabulary and no
+    /// verb key keeps one value. Worked out once per snapshot.
+    /// </summary>
+    /// <returns>The hash.</returns>
+    internal string VerbNamingHash()
+    {
+        if (_verbNamingHash is { } known)
+            return known;
+        var named = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var row in _summaries)
+        {
+            if (row.Verb is { Length: > 0 } verb)
+                named.Add(verb);
+            foreach (var key in row.Verbs ?? [])
+            {
+                if (key.Length > 0)
+                    named.Add(key);
+            }
+        }
+
+        using var hash = new Hashing.HashBuilder();
+        hash.Add("vn").Add(Verbs?.Id ?? "").Add(Verbs is { } vocabulary ? GetDocument(vocabulary.Id)?.DependencyHash ?? "" : "");
+        foreach (var key in named)
+            hash.Add(key);
+        return _verbNamingHash = hash.Finish(); // a race computes equal values
+    }
+
     /// <summary>The global category tree (one with no <c>package</c>), when the model has one.</summary>
     public CategoryTree? Categories { get; }
 

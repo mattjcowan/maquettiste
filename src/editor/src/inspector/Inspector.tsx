@@ -38,6 +38,7 @@ import { OpenTableButton, TableInspector } from "./TableInspector";
 import { sideReferences } from "@/references/data";
 import { DatabaseTypeFields, QueryFields, RoutineFields, SchemaField, SequenceFields, SqlObjectFields, ViewFields } from "@/editors/database/fields";
 import { EntityAttributeList } from "./AttributeList";
+import { entryIdsOf, useProblems } from "@/editors/process/shared";
 import { FindingsList, findingsFor } from "@/problems/findings";
 import { useProcessSelection, type ProcessSelection } from "@/editors/process/selection";
 import { stateIndex, type ProcessDoc } from "@/model/process";
@@ -161,7 +162,8 @@ export function selectedPointer(json: unknown, selection: ProcessSelection | nul
   return at >= 0 ? `/transitions/${at}` : null;
 }
 
-export function statusBadge(status: string | undefined, saving: boolean) {
+/** The save state as a badge; a saved file the last validation found errors in says so (`errors`), so it is not read as clean. */
+export function statusBadge(status: string | undefined, saving: boolean, errors = 0) {
   if (saving || status === "saving")
     return (
       <Badge>
@@ -171,6 +173,7 @@ export function statusBadge(status: string | undefined, saving: boolean) {
   if (status === "dirty") return <Badge tone="accent">Unsaved</Badge>;
   if (status === "invalid") return <Badge tone="danger">Not saved: invalid</Badge>;
   if (status === "conflict") return <Badge tone="warning">Conflict</Badge>;
+  if (errors) return <Badge tone="danger">{`Saved, ${errors} ${errors === 1 ? "error" : "errors"}`}</Badge>;
   return <Badge tone="success">Saved</Badge>;
 }
 
@@ -188,6 +191,8 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
   // A state or transition selected in the process editor: the inspector shows it in place of the process's fields.
   const processNode = useProcessNodeShown(id, kind);
   const selection = useProcessSelection(id);
+  // The saved findings of the element and of its parts (a finding of an event carries the event's id): from the last validation.
+  const savedFindings = useProblems(id, [], entryIdsOf(json ?? {}));
 
   useEffect(() => {
     if (!focus?.pointer || focus.id !== id) return;
@@ -222,6 +227,8 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
   }
 
   const diagnostics = draft?.diagnostics ?? [];
+  const shown = draft?.status === "invalid" ? diagnostics : savedFindings;
+  const savedErrors = draft?.status === "invalid" ? 0 : savedFindings.filter((d) => d.severity === "error").length;
   // The findings shown are those of what is selected: the state or transition picked in a process, else the element's own.
   const partPointer = kind === "process" ? selectedPointer(json, selection) : null;
   const props: FormProps = { id, json, doc: element.data, edit, flush: () => void flush(), diagnostics };
@@ -245,7 +252,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
           <h2 className="min-w-0 flex-1 truncate text-14 font-semibold" data-testid="inspector-title">
             {String((json as { name?: string }).name ?? "") || displayName(summary)}
           </h2>
-          <span data-testid="save-status">{statusBadge(draft?.status, false)}</span>
+          <span data-testid="save-status">{statusBadge(draft?.status, false, savedErrors)}</span>
           {kind === "table" ? <OpenTableButton json={json} /> : null}
           <DeleteButton id={id} name={String((json as { name?: string }).name ?? id)} />
         </div>
@@ -255,7 +262,9 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
             {draft.error}
           </p>
         ) : null}
-        {draft?.status === "invalid" ? <FindingsList diagnostics={findingsFor(diagnostics, partPointer, json)} /> : null}
+        {shown.length ? (
+          <FindingsList diagnostics={findingsFor(shown, partPointer, json)} testId={draft?.status === "invalid" ? undefined : "saved-findings"} />
+        ) : null}
       </header>
       <Tabs value={tab} onValueChange={(next) => onTab(kind, next)} className="flex min-h-0 flex-1 flex-col">
         <TabsList aria-label="Inspector views">

@@ -9,20 +9,18 @@ internal sealed partial class ResolveRun
 
     /// <summary>
     /// Resolves <c>model.verbs</c> and sets <see cref="REvent.Verb"/>, <see cref="RTransition.Verb"/> (its own, else its event's) and
-    /// <see cref="ROperation.Verb"/>, after the processes and operations. The list is empty unless the project uses verbs (decision 19), but
-    /// its keys are always the vocabulary's and every process and operation file's, since a use anywhere decides whether it is empty. A
-    /// use that names a verb also depends on the vocabulary, which decides what its key names.
+    /// <see cref="ROperation.Verb"/>, after the processes and operations. The list is empty unless the project uses verbs (decision 19). Its
+    /// keys, and each verb's, are the vocabulary's and <see cref="ModelSnapshot.VerbNamingKey"/> (which verb keys are named anywhere): what
+    /// it holds, and whether a verb is used, depend on nothing else, so editing a process or an operation in other ways leaves them. A
+    /// verb's events, transitions and operations key on every process and operation file; only a template that reads them pays. A use that
+    /// names a verb also depends on the vocabulary, which decides what its key names.
     /// </summary>
     private RList<RVerb> ResolveVerbs()
     {
         var vocabulary = Model.Verbs;
-        var listKeys = new DependencySet(Keys).Add(VerbVocabularyKind).Add(ProcessKind).Add(OperationKind);
+        var listKeys = new DependencySet(Keys).Add(VerbVocabularyKind).Add(ModelSnapshot.VerbNamingKey);
         if (vocabulary is not null)
             listKeys.Element(vocabulary.Id);
-        foreach (var process in _processOrder.Concat(_libraryOrder))
-            listKeys.Element(process.Id);
-        foreach (var operation in _operationOrder)
-            listKeys.Element(operation.Id);
         var keys = listKeys.ToList();
 
         var events = new List<(REvent Node, string Key)>();
@@ -102,6 +100,16 @@ internal sealed partial class ResolveRun
 
         order.AddRange(hiddenNamed);
 
+        // Which uses a verb has: every process and operation file, besides the vocabulary.
+        var useKeys = new DependencySet(Keys).Add(VerbVocabularyKind).Add(ProcessKind).Add(OperationKind);
+        if (vocabulary is not null)
+            useKeys.Element(vocabulary.Id);
+        foreach (var process in _processOrder.Concat(_libraryOrder))
+            useKeys.Element(process.Id);
+        foreach (var operation in _operationOrder)
+            useKeys.Element(operation.Id);
+        var usesKeys = useKeys.ToList();
+
         var vocabularyKeys = vocabulary is null ? [VerbVocabularyKind] : new[] { VerbVocabularyKind, Keys.Element(vocabulary.Id) };
         foreach (var (node, key) in events)
         {
@@ -124,9 +132,9 @@ internal sealed partial class ResolveRun
         foreach (var verb in order)
         {
             verb.Dependencies = keys;
-            verb.Events = new RList<REvent>(events.Where(e => ReferenceEquals(e.Node.Verb, verb)).Select(e => e.Node), keys);
-            verb.Transitions = new RList<RTransition>(transitions.Where(t => ReferenceEquals(t.Node.Verb, verb)).Select(t => t.Node), keys);
-            verb.Operations = new RList<ROperation>(operations.Where(o => ReferenceEquals(o.Node.Verb, verb)).Select(o => o.Node), keys);
+            verb.Events = new RList<REvent>(events.Where(e => ReferenceEquals(e.Node.Verb, verb)).Select(e => e.Node), usesKeys);
+            verb.Transitions = new RList<RTransition>(transitions.Where(t => ReferenceEquals(t.Node.Verb, verb)).Select(t => t.Node), usesKeys);
+            verb.Operations = new RList<ROperation>(operations.Where(o => ReferenceEquals(o.Node.Verb, verb)).Select(o => o.Node), usesKeys);
             verb.Used = verb.Events.Count > 0 || verb.Transitions.Count > 0 || verb.Operations.Count > 0;
             if (verb.Id is not null)
                 Register(verb);

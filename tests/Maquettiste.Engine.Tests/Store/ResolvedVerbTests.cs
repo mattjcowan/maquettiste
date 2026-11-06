@@ -83,15 +83,13 @@ public sealed class ResolvedVerbTests
     }
 
     [Fact]
-    public async Task Model_verbs_is_empty_without_verbs_but_keys_on_every_use_site()
+    public async Task Model_verbs_is_empty_without_verbs_and_keys_on_the_vocabulary_and_the_verbs_named()
     {
         await using var r = await RepoAsync(vocabulary: false, verbs: false);
         var model = await ResolveAsync(r);
 
         Assert.Empty(model.Verbs);
-        Assert.Contains("k:verb-vocabulary", model.Verbs.MembershipKeys);
-        Assert.Contains("e:" + Document, model.Verbs.MembershipKeys);
-        Assert.Contains("e:" + AssignReviewer, model.Verbs.MembershipKeys);
+        Assert.Equal(["k:verb-vocabulary", "vn:verbs"], model.Verbs.MembershipKeys.Order(StringComparer.Ordinal));
         var process = model.Processes.Single(p => p.Id == Document);
         Assert.All(process.Events, e => Assert.Null(e.Verb));
         Assert.All(process.Transitions, t => Assert.Null(t.Verb));
@@ -153,7 +151,7 @@ public sealed class ResolvedVerbTests
     }
 
     [Fact]
-    public async Task Uses_that_name_a_verb_key_on_the_vocabulary_and_verbs_key_on_every_use_site()
+    public async Task Uses_that_name_a_verb_key_on_the_vocabulary_and_a_verbs_uses_key_on_every_use_site()
     {
         await using var r = await RepoAsync();
         var model = await ResolveAsync(r);
@@ -164,11 +162,13 @@ public sealed class ResolvedVerbTests
         Assert.Contains("e:" + Vocabulary, operation.Dependencies);
         Assert.Contains("e:" + Vocabulary, process.Transitions.Single(t => t.Id == Always).Dependencies);
         Assert.DoesNotContain("e:" + Vocabulary, process.Dependencies);
+        Assert.Equal(["e:" + Vocabulary, "k:verb-vocabulary", "vn:verbs"], model.Verbs.MembershipKeys.Order(StringComparer.Ordinal));
         foreach (var verb in model.Verbs)
         {
-            Assert.Contains("e:" + Vocabulary, verb.Dependencies);
-            Assert.Contains("e:" + Document, verb.Dependencies);
+            Assert.Equal(model.Verbs.MembershipKeys, verb.Dependencies);
+            Assert.Contains("e:" + Document, verb.Events.MembershipKeys);
             Assert.Contains("e:" + AssignReviewer, verb.Events.MembershipKeys);
+            Assert.Contains("e:" + AssignReviewer, verb.Operations.MembershipKeys);
         }
     }
 
@@ -262,6 +262,74 @@ public sealed class ResolvedVerbTests
         Assert.DoesNotContain(model.Verbs, v => v.Key is "lock" or "unlock");
         Assert.Equal("Raise", model.Verbs.Single(v => v.Key == "raise").DisplayName);
         Assert.Equal(Escalate, model.Verbs.Single(v => v.Key == "raise").Id);
+    }
+
+    private static readonly GenerationRequest CsharpDapper = new() { Packs = ["csharp-dapper"] };
+
+    /// <summary>The billing fixture with the example packs, a process and an operation that name no verb, generated once.</summary>
+    private static async Task<EditorRepo> GeneratedWithoutVerbsAsync()
+    {
+        var r = EditorRepo.Create();
+        await CreateAsync(r, DocumentJson(verbs: false));
+        await CreateAsync(r, AssignReviewerJson(verbs: false));
+        var plan = (await r.Service.PlanAsync(CsharpDapper, null, Ct)).Plan!;
+        Assert.Contains(plan.Units, u => u.Unit == "interpreter");
+        await r.Service.ApplyAsync(plan.Id, null, Ct);
+        return r;
+    }
+
+    private static async Task<GenerationPlan> PlanAsync(EditorRepo r) => (await r.Service.PlanAsync(CsharpDapper, null, Ct)).Plan!;
+
+    private static List<string> RenderedVerbUnits(GenerationPlan plan) =>
+        [.. plan.Units.Where(u => u.Unit is "interpreter" or "verbs" && !u.Skipped).Select(u => u.Unit!).Order(StringComparer.Ordinal)];
+
+    [Fact]
+    public async Task Editing_a_process_or_an_operation_that_names_no_verb_renders_neither_the_interpreter_nor_the_verbs_again()
+    {
+        await using var r = await GeneratedWithoutVerbsAsync();
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync(r, Document, n => n["description"] = "How a document gets published.")).Outcome);
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync(r, AssignReviewer, n => n["description"] = "Gives the document a reviewer.")).Outcome);
+
+        var plan = await PlanAsync(r);
+
+        Assert.Contains(plan.Units, u => !u.Skipped); // the edits reach the units that read the process and the operation
+        Assert.Empty(RenderedVerbUnits(plan));
+    }
+
+    [Fact]
+    public async Task Naming_a_first_verb_renders_the_interpreter_and_the_verbs_again_through_the_verbs_named()
+    {
+        await using var r = await GeneratedWithoutVerbsAsync();
+        Assert.Equal(SaveOutcome.Saved, (await SaveAsync(r, Document, n => n["events"]![0]!["verb"] = "promote")).Outcome);
+
+        var plan = await PlanAsync(r);
+
+        Assert.Equal(["interpreter", "verbs"], RenderedVerbUnits(plan));
+        var causes = plan.Units.Single(u => u.Unit == "verbs").Causes;
+        Assert.Contains(causes, c => (c.Kind, c.Key, c.Detail) == ("inputs", "vn:verbs", "The verbs the model names changed"));
+    }
+
+    [Fact]
+    public async Task A_dry_run_touches_the_verbs_named_only_when_a_key_starts_or_stops_being_named()
+    {
+        await using var r = await RepoAsync(vocabulary: false, verbs: false);
+        async Task<bool> TouchesAsync(string id, Action<JsonObject> change)
+        {
+            var document = r.Store.Current!.GetDocument(id)!;
+            var node = JsonNode.Parse(document.Json.GetRawText())!.AsObject();
+            change(node);
+            var parsed = r.Store.ParseBatch(Encoding.UTF8.GetBytes(
+                $$"""{"operations":[{"op":"update","id":"{{id}}","expectedHash":"{{document.Hash}}","element":{{node.ToJsonString()}}}]}"""));
+            var run = await r.Store.PreviewBatchCoreAsync(parsed.Batch!, Ct);
+            Assert.Equal(SaveOutcome.Saved, run.Preview.Outcome);
+            return new Maquettiste.Engine.Planning.ImpactKeys(run.Before!, run.Candidate!, run.Changed, run.Preview.Files, [], run.Preview.Facts)
+                .IsTouched("vn:verbs");
+        }
+
+        Assert.False(await TouchesAsync(Document, n => n["description"] = "How a document gets published."));
+        Assert.False(await TouchesAsync(AssignReviewer, n => n["description"] = "Gives the document a reviewer."));
+        Assert.True(await TouchesAsync(Document, n => n["events"]![0]!["verb"] = "promote"));
+        Assert.True(await TouchesAsync(AssignReviewer, n => n["verb"] = "connect"));
     }
 
     private static async Task<SaveResult> SaveAsync(EditorRepo r, string id, Action<JsonObject> change)

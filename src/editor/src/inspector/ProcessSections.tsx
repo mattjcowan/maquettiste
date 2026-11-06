@@ -10,6 +10,8 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Badge, SectionTitle } from "@/components/ui/misc";
 import { indexLookup } from "@/model/index";
 import { KIND_LABELS } from "@/model/model";
+import { describeVerb } from "@/model/verbList";
+import { useVerbs } from "@/verbs/useVerbs";
 import {
   initialOf,
   setInitial,
@@ -238,6 +240,7 @@ function TransitionSection({ pc, transition: t }: { pc: ProcessContext; transiti
   const actions = (process.actions ?? []).map((a) => ({ value: a.id, label: a.name }));
   const trigger = t.trigger ?? "event";
   const event = process.events?.find((e) => e.id === t.event);
+  const { own: ownVerbs } = useVerbs();
   const edit = (update: (x: TransitionDoc, p: ProcessDoc) => void) =>
     change((p) => {
       const x = p.transitions?.find((y) => y.id === t.id);
@@ -279,6 +282,18 @@ function TransitionSection({ pc, transition: t }: { pc: ProcessContext; transiti
           ))}
         </Select>
       </Field>
+      {trigger === "event" && event?.verb ? (
+        <Field label="Verb" htmlFor={`${dom}-verb`}>
+          <Input
+            id={`${dom}-verb`}
+            readOnly
+            value={describeVerb(event.verb, ownVerbs)?.label ?? event.verb}
+            title={`Set on event '${event.name}'`}
+            data-testid="transition-verb"
+          />
+          <span className="text-11 text-secondary">Set on event '{event.name}': change it on the Events tab.</span>
+        </Field>
+      ) : null}
       <ChipsEditor
         label="Targets"
         values={t.targets ?? []}

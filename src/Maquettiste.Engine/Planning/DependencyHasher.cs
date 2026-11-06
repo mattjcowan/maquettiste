@@ -224,6 +224,8 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             // Which entities carry a stereotype, and which stereotypes the processes' subjects name (stereotype-sets-design.md section 6).
             "cs" => Processes.SubjectCoverage.CarrierSetHash(model, rest),
             "sn" => string.Equals(key, Processes.SubjectCoverage.NamingKey, StringComparison.Ordinal) ? Processes.SubjectCoverage.NamingHash(model) : Absent,
+            // Which verb keys the model names, with the vocabulary (verbs-design.md section 6): what model.verbs holds.
+            "vn" => string.Equals(key, ModelSnapshot.VerbNamingKey, StringComparison.Ordinal) ? model.VerbNamingHash() : Absent,
             _ => Absent,
         };
     }

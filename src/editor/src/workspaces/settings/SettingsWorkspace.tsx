@@ -72,7 +72,11 @@ export function SettingsWorkspace() {
         <TabsTrigger value="assistant">Assistant</TabsTrigger>
       </TabsList>
       {TABS.map((t) => (
-        <TabsContent key={t} value={t} className={t === "stereotypes" ? "overflow-hidden p-2" : "overflow-auto p-2"}>
+        <TabsContent
+          key={t}
+          value={t}
+          className={t === "stereotypes" ? "overflow-hidden p-2" : t === "verbs" ? "overflow-auto p-2 [scrollbar-gutter:stable]" : "overflow-auto p-2"}
+        >
           {t === "general" ? (
             <GeneralSettings />
           ) : t === "tags" ? (

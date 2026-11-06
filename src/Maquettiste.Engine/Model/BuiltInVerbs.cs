@@ -120,7 +120,8 @@ public static partial class BuiltInVerbs
         return builder.ToString();
     }
 
-    private static string Compact(string key) => key.Replace("-", "", StringComparison.Ordinal);
+    /// <summary>A key without its hyphens: two keys alike this way may get one name in generated code (<c>x-1</c> and <c>x1</c>).</summary>
+    internal static string Compact(string key) => key.Replace("-", "", StringComparison.Ordinal);
 
     [GeneratedRegex("^[a-z][a-z0-9]*(-[a-z0-9]+)*$", RegexOptions.CultureInvariant)]
     private static partial Regex KeyPattern();

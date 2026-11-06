@@ -187,6 +187,11 @@ function indexMembers(json: Record<string, unknown>, actorIds?: ReadonlySet<stri
     // The actors the process names anywhere, as the engine's index lists them: sorted ordinally, left out when there are none.
     const actors = actorIdsIn(json, actorIds);
     if (actors.length) out.actors = actors;
+    // The distinct verbs its events and transitions name, sorted ordinally, left out when there are none.
+    const named = new Set<string>();
+    for (const part of [json.events, json.transitions])
+      for (const one of Array.isArray(part) ? (part as Record<string, unknown>[]) : []) if (typeof one.verb === "string") named.add(one.verb);
+    if (named.size) out.verbs = [...named].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   }
   if (kind === "actor" && typeof json.type === "string" && (ACTOR_TYPES as readonly string[]).includes(json.type)) {
     out.actorType = json.type as ActorType;
@@ -204,6 +209,7 @@ function indexMembers(json: Record<string, unknown>, actorIds?: ReadonlySet<stri
   if (kind === "operation") {
     if (typeof json.subject === "string") out.subject = json.subject;
     out.effect = json.effect === "change" ? "change" : "read";
+    if (typeof json.verb === "string") out.verb = json.verb;
   }
   if (kind === "reference-type") out.fieldCount = Array.isArray(json.attributes) ? json.attributes.length : 0;
   if (kind === "diagram") out.memberCount = Array.isArray(json.members) ? json.members.length : 0;

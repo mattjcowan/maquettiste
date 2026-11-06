@@ -7,7 +7,7 @@ import type { ElementSummary, ModelJson } from "@/api/types";
 import type { AppServices } from "@/app/context";
 import { clone } from "@/lib/json";
 import { newId } from "@/lib/ids";
-import { labelOfKey } from "@/model/verbList";
+import { labelOfKey, verbOperationFiles } from "@/model/verbList";
 import { applyQuickFix } from "@/problems/applyQuickFix";
 import { commitOperation } from "@/vocabularies/retag";
 
@@ -24,12 +24,11 @@ export async function applyVerbFix({ queryClient: qc, store, drafts }: AppServic
   if (id) await drafts.flush(id);
   if (fix.action === "use-built-in") {
     if (!id) return "The project has no verbs file.";
-    const doc = (await endpoints.getElement(id)).json as { verbs?: { id: string; key: string }[] };
-    const own = doc.verbs?.find((v) => v.key === fix.key);
-    const referrers = own ? await endpoints.getReferences(own.id) : [];
+    // The files the operation writes (its dry run), not the own verb's references: the uses of a built-in key are not references.
+    const files = verbOperationFiles(qc.getQueryData<ElementSummary[]>(keys.index) ?? [], fix.key);
     return commitOperation({ queryClient: qc, store, drafts } as AppServices, fix.label, { op: "rename-verb", verb: fix.key, to: fix.to }, [
       id,
-      ...referrers.map((r) => r.fromElementId),
+      ...files.users.map((u) => u.id),
     ]);
   }
   if (!id) {

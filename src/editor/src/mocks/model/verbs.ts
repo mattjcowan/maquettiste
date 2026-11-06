@@ -75,18 +75,25 @@ export function verbDiagnostics(json: Json, globals: VerbGlobals, emit: VerbEmit
       if (typeof k === "string" && !BUILT_IN_VERB_KEYS.has(k))
         emit("MQ9703", "error", `'${k}' is not a built-in verb, so it cannot be hidden.`, `/hidden/${i}`);
     });
-    const seen = new Set<string>();
+    const seen = new Map<string, string>();
     arr(json.verbs).forEach((v, i) => {
       const key = str(v.key);
       if (key === null) return;
       const at = `/verbs/${i}/key`;
+      const flatOwn = key.replace(/-/g, "");
       if (BUILT_IN_VERB_KEYS.has(key)) emit("MQ9702", "error", `The own verb '${key}' has a built-in verb's key; use the built-in verb.`, at);
-      else if (seen.has(key)) emit("MQ9702", "error", `Two own verbs have the key '${key}'.`, at);
+      else if (seen.has(flatOwn))
+        emit(
+          "MQ9702",
+          "error",
+          seen.get(flatOwn) === key ? `Two own verbs have the key '${key}'.` : `The own verbs '${seen.get(flatOwn)}' and '${key}' differ only by hyphens.`,
+          at,
+        );
       else {
         const flat = FLAT.get(key.replace(/-/g, ""));
         if (flat !== undefined) emit("MQ9706", "warning", `The own verb '${key}' reads like the built-in verb '${flat}'; use the built-in verb.`, at);
       }
-      seen.add(key);
+      if (!seen.has(flatOwn)) seen.set(flatOwn, key);
     });
   }
   for (const use of verbUses(json)) {
@@ -160,7 +167,8 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
     if (!changed.has(id)) changed.set(id, JSON.parse(JSON.stringify(json)) as Json);
     return changed.get(id)!;
   };
-  for (const [id, doc] of docs) {
+  // The uses of a built-in key are not uses of the own verb: the rename and the remove leave them as they are.
+  for (const [id, doc] of BUILT_IN_VERB_KEYS.has(op.verb) ? [] : docs) {
     for (const use of verbUses(doc)) {
       if (use.key !== op.verb) continue;
       const json = working(id, doc);
@@ -175,8 +183,10 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
   // A rename to the key of another own verb merges; to a built-in key (or the same one adopted) the definition goes.
   const keeps = rename && to !== op.verb && !BUILT_IN_VERB_KEYS.has(to) && !target;
   json.verbs = verbs.flatMap((v) => (v.key !== op.verb ? [v] : keeps ? [{ ...v, key: to }] : []));
-  // A hidden built-in the rename adopts stays hidden: the project still hides it.
-  if (!arr(json.verbs).length) delete json.verbs;
+  // A hidden built-in the rename adopts stays hidden: the project still hides it. An empty list is written as [].
+  json.verbs = arr(json.verbs);
+  // Writes that change nothing are skipped.
+  for (const [id, doc] of [...changed]) if (JSON.stringify(doc) === JSON.stringify(docs.get(id))) changed.delete(id);
   return { changed };
 }
 

@@ -61,6 +61,10 @@ export interface GridColumn<R> {
   marker?: (row: R) => { rule: string; message: string } | null;
   /** The element or process node the cell references: F12 goes to it, Shift+F12 lists where it is used. */
   definition?: (row: R) => GridTarget | null;
+  /** A tooltip on the cell (a marker's message wins). */
+  cellTitle?: (row: R) => string | undefined;
+  /** What a click on the cell also does (a locked cell that stands for something else, such as a transition's verb that is its event's). */
+  onCellClick?: (row: R) => void;
   /** Custom content in place of the text (badges). */
   render?: (row: R) => ReactNode;
 }
@@ -301,11 +305,14 @@ export function Grid<R extends { id: string }>({
                         aria-selected={isActive}
                         aria-readonly={locked || undefined}
                         aria-invalid={marker ? true : undefined}
-                        title={marker ? `${marker.rule} ${marker.message}` : column.definition?.(row) ? DEFINITION_HINT : undefined}
+                        title={
+                          marker ? `${marker.rule} ${marker.message}` : (column.cellTitle?.(row) ?? (column.definition?.(row) ? DEFINITION_HINT : undefined))
+                        }
                         onClick={() => {
                           if (active.row !== r || active.col !== c) setActive({ row: r, col: c });
                           // The first row is active before anything is selected: a click still selects it.
                           if (active.row !== r || (selected !== undefined && selected !== row.id)) onSelect?.(row);
+                          column.onCellClick?.(row);
                         }}
                         onDoubleClick={() => startEdit(r, c)}
                         onKeyDown={(e) => onCellKeyDown(e, r, c)}

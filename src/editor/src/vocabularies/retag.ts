@@ -3,7 +3,7 @@
 // usage's elements and the vocabulary) are read first, drafts saved, and the batch expects them as read.
 import type { BatchRequest, ModelJson } from "@/api/types";
 import * as endpoints from "@/api/endpoints";
-import { applyBatchResult } from "@/api/queries";
+import { applyBatchResult, invalidateVerbs } from "@/api/queries";
 import type { AppServices } from "@/app/context";
 import { clone } from "@/lib/json";
 
@@ -60,5 +60,6 @@ export async function commitOperation(
     afterHashes: changed.map((id) => after.get(id)?.hash ?? null),
   });
   void services.queryClient.invalidateQueries({ queryKey: ["tag-usage"] });
+  if (operation.op === "rename-verb" || operation.op === "remove-verb") invalidateVerbs(services.queryClient);
   return null;
 }
