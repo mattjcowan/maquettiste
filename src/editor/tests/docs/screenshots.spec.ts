@@ -86,6 +86,10 @@ const shots: Shot[] = [
       await folder.click();
       await page.keyboard.press("ArrowRight");
       await expect(folder).toHaveAttribute("aria-expanded", "true");
+      const orchestrations = side.locator('[data-key$="/use:orchestration"]');
+      await orchestrations.click();
+      await page.keyboard.press("ArrowRight");
+      await expect(orchestrations).toHaveAttribute("aria-expanded", "true");
       await side.getByTestId("explorer-row-Repair orchestration").dblclick();
       const editor = page.getByTestId("process-editor");
       await expect(editor.getByRole("tab", { name: "Chart", exact: true })).toHaveAttribute("aria-selected", "true", slow);

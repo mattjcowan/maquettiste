@@ -1807,10 +1807,22 @@ and tried out in the **simulation panel** under it; its grids edit the same docu
 ### The Processes explorer
 
 The rail's **Processes** icon (after Domain model) opens it. Processes are grouped by domain (domains without processes
-are hidden); under a process its **States** (the state tree, nested), **Events** and **Scenarios**, each scenario with
-its last replay status (not run, passed, or failed at step N). The **Actors** folder follows the domains. Opening a
-state, event or scenario row opens the process editor on that tab with the row selected. Domain model's **Processes**
-kind folder lists the same process rows.
+are hidden). In each domain they sit in **Lifecycles**, **Orchestrations** and **Libraries** folders; empty folders are
+hidden. A lifecycle's row names the entities it governs. A library shows only its parts. Library parts that a process uses
+are listed under that process, with their library.
+
+Under a process come its **States** (the state tree, nested), **Events**, **Guards and actions**, **Gates** and
+**Scenarios**, failed ones first, each with its last replay status (not run, passed, or failed at step N). Opening a
+state, event or scenario row opens the process editor on that tab with the row selected. A guard or a gate opens the first
+transition that uses it. A library's parts open in the inspector.
+
+The **Actors** folder follows the domains, with **People**, **Roles** and **Systems** folders (the actor type stays
+external system; "Systems" is only the folder's label). An actor's row says where it acts, as "acts in N processes".
+
+Search, the selection that follows you, related highlighting, favorites and Problems all reveal a process or an actor in
+this explorer. They no longer switch to the Domain model. In the Domain model explorer, an entity has a **Lifecycles**
+folder listing the lifecycles that govern it, through a base entity too. Its **Processes** kind folder lists the same
+process rows.
 
 Right-click a process for **Open**, **Open in new tab**, **Simulate** (opens its chart with the simulation panel),
 **Verify scenarios**, **Export XState**, **Used**, **Move to domain…**, **Rename**, **Add to favorites** and

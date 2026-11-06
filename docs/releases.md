@@ -5,6 +5,20 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.13.1 (unreleased)
+
+- **The Processes explorer groups by use.** In each domain, processes sit in **Lifecycles**, **Orchestrations** and
+  **Libraries** folders, and a lifecycle's row names the entities it governs. Under a process come States, Events, Guards
+  and actions, Gates and Scenarios, failed ones first. Actors sit in **People**, **Roles** and **Systems** folders, and a
+  row says "acts in N processes". In the Domain model, an entity has a **Lifecycles** folder. Search, the selection that
+  follows you, favorites and Problems reveal a process or an actor in the Processes explorer. The editor no longer turns a
+  library into an orchestration. See [The Processes explorer](user-guide.md#the-processes-explorer).
+- **The model index lists a process's actors.** A process's index row gains an optional `actors` field: the ids of the actors
+  it names, sorted, and left out when there are none. A project whose processes name no actors gets the same rows.
+- **The index is read in full once after upgrading.** Its format changes, so each project rebuilds its index on first open.
+  That is a one-time cost.
+- **No change to model files.** Nothing is rewritten, and generated output is the same.
+
 ## 0.13.0 (2026-11-06)
 
 - **State codes, and lifecycles over several entities.** A state may carry a `code`, a string or a whole number that is its
