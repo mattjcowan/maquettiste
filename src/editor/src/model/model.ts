@@ -116,7 +116,7 @@ export function relationKind(relation: RelationDoc): NonNullable<RelationDoc["re
 export const DATABASE_MEMBER_KINDS: ReadonlySet<string> = new Set(["table", "view", "sequence", "routine", "database-type", "sql-object", "query", "mapping"]);
 
 /** An index row built from a document the SPA just saved (phase2-design.md 4.3). */
-export function summaryFromDocument(doc: ElementDocument): ElementSummary {
+export function summaryFromDocument(doc: ElementDocument, actorIds?: ReadonlySet<string>): ElementSummary {
   const json = doc.json as ModelJson & {
     package?: string;
     parent?: string;
@@ -136,8 +136,22 @@ export function summaryFromDocument(doc: ElementDocument): ElementSummary {
     stereotypes: json.stereotypes ?? [],
     hash: doc.hash,
     path: doc.path,
-    ...indexMembers(json),
+    ...indexMembers(json, actorIds),
   };
+}
+
+/** The ids in `known` that a document holds as a string anywhere (the engine counts every reference to an actor), sorted ordinally. */
+export function actorIdsIn(value: unknown, known: ReadonlySet<string> | undefined): string[] {
+  if (!known || known.size === 0) return [];
+  const found = new Set<string>();
+  const walk = (v: unknown): void => {
+    if (typeof v === "string") {
+      if (known.has(v)) found.add(v);
+    } else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object") Object.values(v).forEach(walk);
+  };
+  walk(value);
+  return [...found].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 /**
@@ -145,7 +159,7 @@ export function summaryFromDocument(doc: ElementDocument): ElementSummary {
  * its display name, its base entity, a relation's ends, a mapping's or table's entity and database, and the seed and
  * reference type counts (RT 2.1) until the next index read.
  */
-function indexMembers(json: Record<string, unknown>): Partial<ElementSummary> {
+function indexMembers(json: Record<string, unknown>, actorIds?: ReadonlySet<string>): Partial<ElementSummary> {
   const out: Partial<ElementSummary> = {};
   const kind = json.kind;
   if (typeof json.displayName === "string") out.displayName = json.displayName;
@@ -166,6 +180,9 @@ function indexMembers(json: Record<string, unknown>): Partial<ElementSummary> {
     const count = (states: unknown): number =>
       Array.isArray(states) ? (states as Record<string, unknown>[]).reduce((n, st) => n + 1 + count(st.states), 0) : 0;
     out.stateCount = count(json.states);
+    // The actors the process names anywhere, as the engine's index lists them: sorted ordinally, left out when there are none.
+    const actors = actorIdsIn(json, actorIds);
+    if (actors.length) out.actors = actors;
   }
   if (kind === "actor" && (json.type === "person" || json.type === "role" || json.type === "external-system")) out.actorType = json.type;
   if (kind === "scenario") {

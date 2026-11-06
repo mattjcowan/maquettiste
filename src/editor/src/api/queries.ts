@@ -365,7 +365,15 @@ export function applySaveResult(qc: QueryClient, result: SaveResult): void {
   if (result.current) {
     const id = (result.current.json as { id: string }).id;
     qc.setQueryData(keys.element(id), result.current);
-    upsertIndexRow(qc, summaryFromDocument(result.current));
+    // The save answer's own index row (the engine's, with the process's actors) when it carries one; else one built from the
+    // document, with the actors the cached index knows.
+    const given = result.changes?.changed.find((c) => c.id === id)?.summary;
+    if (given) upsertIndexRow(qc, given);
+    else {
+      const rows = qc.getQueryData<readonly ElementSummary[]>(keys.index);
+      const actorIds = new Set((rows ?? []).filter((r) => r.kind === "actor").map((r) => r.id));
+      upsertIndexRow(qc, summaryFromDocument(result.current, actorIds));
+    }
   }
   if (result.changes) removeIndexRows(qc, result.changes.deleted);
 }

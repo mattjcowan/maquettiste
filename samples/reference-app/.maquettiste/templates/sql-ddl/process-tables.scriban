@@ -12,7 +12,7 @@ func col_type(kind, db)
   if kind == "text"
     ret $d == "postgresql" ? "text" : ($d == "sqlserver" ? "nvarchar(max)" : ($d == "sqlite" ? "TEXT" : "varchar(4000)"))
   else if kind == "int64"
-    ret $d == "sqlite" ? "INTEGER" : "bigint"
+    ret $d == "sqlite" ? "INTEGER" : ($d == "oracle" ? "NUMBER(19)" : "bigint")
   else if kind == "datetimeoffset"
     ret $d == "postgresql" ? "timestamptz" : ($d == "sqlserver" ? "datetimeoffset" : ($d == "sqlite" ? "TEXT" : "timestamp"))
   else if kind == "bool"
