@@ -130,7 +130,7 @@ public sealed class SyncCodesTests
         Assert.Equal(["\"draft\"", "\"IN_REVIEW\"", "\"SHP\"", null, null], Enumerable.Range(0, 5).Select(i => CodeOf(workflow, i)));
         Assert.Equal(6, store.Current!.Get<Seed>(StageSeed)!.Rows.Count);
         var findings = (await EngineServices.Create(h.Options).Validator.ValidateAsync(store.Current!, ValidationScope.All, null, Ct)).Diagnostics;
-        Assert.Equal([Done, Cancelled], findings.Where(d => d.Rule == "MQ9210").Select(d => d.ElementId));
+        Assert.Contains("Done, Cancelled", Assert.Single(findings, d => d.Rule == "MQ9210").Message, StringComparison.Ordinal);
     }
 
     [Fact]

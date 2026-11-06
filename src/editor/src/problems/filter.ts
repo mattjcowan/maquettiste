@@ -33,6 +33,30 @@ export function useProblemFilter(): ProblemFilter {
 
 const SHOWN: Record<"error" | "warning" | "info", keyof ProblemFilter> = { error: "errors", warning: "warnings", info: "infos" };
 
+// The one element the panel is narrowed to (set from the line under an editor's title; not kept between visits).
+let element: string | null = null;
+const elementListeners = new Set<() => void>();
+
+export function setProblemElement(id: string | null): void {
+  element = id;
+  for (const l of elementListeners) l();
+}
+
+export function useProblemElement(): string | null {
+  return useSyncExternalStore(
+    (l) => {
+      elementListeners.add(l);
+      return () => elementListeners.delete(l);
+    },
+    () => element,
+  );
+}
+
+/** The groups of one element; every group when `id` is null. */
+export function onlyElement(groups: ProblemGroup[], id: string | null): ProblemGroup[] {
+  return id === null ? groups : groups.filter((g) => g.elementId === id);
+}
+
 /** The groups with only the shown severities, and the number of diagnostics the filter hides. */
 export function applyProblemFilter(groups: ProblemGroup[], filter: ProblemFilter): { groups: ProblemGroup[]; hidden: number } {
   let hidden = 0;

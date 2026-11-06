@@ -4,17 +4,17 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Wrench } from "lucide-react";
-import * as endpoints from "@/api/endpoints";
 import { useElement } from "@/api/queries";
 import type { Diagnostic, ModelJson } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Select } from "@/components/ui/input";
 import { useServices } from "@/app/context";
-import { syncPlanLines } from "@/model/process";
-import { applySyncCodes, applySyncEnum, pickCodesBinding, syncCodes, syncEnum, type SyncCodesResult, type SyncEnumResult } from "@/editors/process/api";
+import { syncPlanLines, type ProcessDoc } from "@/model/process";
+import { applySyncCodes, applySyncEnum, syncCodes, syncEnum, type SyncCodesResult, type SyncEnumResult } from "@/editors/process/api";
 import { deriveQuickFix, fixDocuments, type QuickFix } from "./quickFix";
 import { applyQuickFix, freshQuickFix } from "./applyQuickFix";
+import { applyBlockedReason, codesDescription, codesView, codeText, hasNoValueList, NO_VALUE_LIST_NOTE } from "./syncCodesView";
 
 type Pending =
   | { kind: "initial"; fix: Extract<QuickFix, { kind: "operation" }>; target: string }
@@ -64,9 +64,8 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
       if (fix.kind === "sync-enum")
         return setPending({ kind: "sync", process: fix.process, entity: fix.entity, plan: await syncEnum(fix.process, true, fix.entity) });
       if (fix.kind === "sync-codes") {
-        // The finding names a state, so the binding is picked here: a dry run first, then the apply.
-        const binding = await pickCodesBinding(qc, (await endpoints.getElement(fix.process)).json as Record<string, unknown>);
-        if (!binding) return report("The lifecycle binds no attribute.", "");
+        // The finding sits on the binding, so the fix already names the entity and the attribute: a dry run first, then the apply.
+        const binding = { entity: fix.entity, attribute: fix.attribute };
         return setPending({ kind: "codes", process: fix.process, ...binding, plan: await syncCodes(fix.process, { ...binding, dryRun: true }) });
       }
       if (fix.kind === "operation" && fix.choices && fix.choices.length > 1)
@@ -124,26 +123,7 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
             <Footer error={error} busy={busy} disabled={false} onCancel={() => setPending(null)} onApply={() => void confirm()} />
           </DialogContent>
         ) : pending?.kind === "codes" ? (
-          <DialogContent title="Sync codes" description="Each state without a code takes the code shown, and the lifecycle binds the attribute.">
-            <ul className="flex flex-col gap-0.5 text-12" data-testid="quick-fix-codes">
-              {pending.plan.codes
-                .filter((c) => c.source !== "kept")
-                .map((c) => (
-                  <li key={c.state}>{`${c.path}: ${JSON.stringify(c.code)} (${c.source})`}</li>
-                ))}
-              {pending.plan.unmatched.map((u) => (
-                <li key={u.state}>{`${u.path}: no code${u.candidates.length ? ` (matches ${u.candidates.map((c) => JSON.stringify(c)).join(", ")})` : ""}`}</li>
-              ))}
-              {pending.plan.binds ? <li>Binds the attribute to the lifecycle.</li> : null}
-            </ul>
-            <Footer
-              error={error ?? pending.plan.diagnostics[0]?.message ?? null}
-              busy={busy}
-              disabled={!!pending.plan.diagnostics.length || (!pending.plan.binds && pending.plan.codes.every((c) => c.source === "kept"))}
-              onCancel={() => setPending(null)}
-              onApply={() => void confirm()}
-            />
-          </DialogContent>
+          <SyncCodesDialog pending={pending} error={error} busy={busy} onCancel={() => setPending(null)} onApply={() => void confirm()} />
         ) : plan ? (
           <DialogContent title="Sync enum" description="The bound enum's members become the lifecycle's states, in order.">
             <ul className="flex flex-col gap-0.5 text-12" data-testid="quick-fix-plan">
@@ -165,7 +145,7 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
   );
 }
 
-function Footer(props: { error: string | null; busy: boolean; disabled: boolean; onCancel: () => void; onApply: () => void }) {
+function Footer(props: { error: string | null; busy: boolean; disabled: boolean; reason?: string | null; onCancel: () => void; onApply: () => void }) {
   return (
     <>
       {props.error ? (
@@ -175,10 +155,98 @@ function Footer(props: { error: string | null; busy: boolean; disabled: boolean;
       ) : null}
       <div className="flex justify-end gap-2">
         <Button onClick={props.onCancel}>Cancel</Button>
-        <Button variant="primary" disabled={props.busy || props.disabled} onClick={props.onApply} data-testid="quick-fix-apply">
+        <Button
+          variant="primary"
+          disabled={props.busy || props.disabled}
+          title={props.disabled ? (props.reason ?? undefined) : undefined}
+          onClick={props.onApply}
+          data-testid="quick-fix-apply"
+        >
           Apply
         </Button>
       </div>
     </>
+  );
+}
+
+/** The Sync codes dialog: the binding it is about, the codes it proposes and where each comes from, and the states that already have one. */
+export function SyncCodesDialog({
+  pending,
+  error,
+  busy,
+  onCancel,
+  onApply,
+}: {
+  pending: { process: string; entity: string; attribute: string; plan: SyncCodesResult };
+  error: string | null;
+  busy: boolean;
+  onCancel: () => void;
+  onApply: () => void;
+}) {
+  const process = useElement(pending.process);
+  const entity = useElement(pending.entity);
+  const entityName = String((entity.data?.json as { name?: string } | undefined)?.name ?? pending.entity);
+  const attributes = ((entity.data?.json as { attributes?: { id: string; name: string }[] } | undefined)?.attributes ?? []) as {
+    id: string;
+    name: string;
+    type?: { kind?: string; typeId?: string };
+    validation?: { allowedValues?: unknown[] };
+  }[];
+  // An attribute may be inherited or from a stereotype: its id shows until the entity's own list names it.
+  const attribute = attributes.find((a) => a.id === pending.attribute);
+  const attributeName = attribute?.name ?? pending.attribute;
+  const scalar = useElement(attribute?.type?.kind === "plain" ? attribute.type.typeId : undefined);
+  const binding = `${entityName}.${attributeName}`;
+  const view = codesView(pending.plan, process.data?.json as ProcessDoc | undefined);
+  const reason = applyBlockedReason(view, !!pending.plan.diagnostics.length);
+  const noList = !view.proposed.length && view.unmatched.length > 0 && hasNoValueList(attribute, scalar.data?.json as never);
+  return (
+    <DialogContent title={`Codes for ${binding}`} description={codesDescription(view, binding)}>
+      <div className="flex flex-col gap-2 text-12" data-testid="quick-fix-codes">
+        {view.proposed.length ? (
+          <ul className="flex flex-col gap-0.5" aria-label="Codes to give">
+            {view.proposed.map((c) => (
+              <li key={c.path} data-testid="quick-fix-code-new">
+                <span className="font-semibold">{c.path}</span> gets <span className="font-mono">{codeText(c.code)}</span>, {c.from}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {view.unmatched.length ? (
+          <ul className="flex flex-col gap-0.5" aria-label="States that get no code">
+            {view.unmatched.map((u) => (
+              <li key={u.path} data-testid="quick-fix-code-none">
+                <span className="font-semibold">{u.path}</span> gets no code
+                {u.candidates.length
+                  ? `: it could be ${u.candidates.map((c) => codeText(c)).join(" or ")}, give it one by hand`
+                  : ": nothing matches, give it one by hand"}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {noList ? <p data-testid="quick-fix-no-list">{NO_VALUE_LIST_NOTE}</p> : null}
+        {view.binds ? <p>The lifecycle will bind {binding}.</p> : null}
+        {view.kept.length ? (
+          <div data-testid="quick-fix-code-kept">
+            <p className="text-secondary">Already have a code, no change:</p>
+            <ul className="flex flex-col gap-0.5 text-secondary" aria-label="States that already have a code">
+              {view.kept.map((c) => (
+                <li key={c.path}>
+                  {c.path}: <span className="font-mono">{codeText(c.code)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+      <Footer
+        error={error ?? pending.plan.diagnostics[0]?.message ?? null}
+        busy={busy}
+        disabled={reason !== null}
+        reason={reason}
+        onCancel={onCancel}
+        onApply={onApply}
+      />
+    </DialogContent>
   );
 }

@@ -44,7 +44,8 @@ export function ScenariosTab({ process, name, focus }: { process: string; name: 
   const [busy, setBusy] = useState<string | null>(null);
   const lookup = indexLookup(index.data);
   const summaries = lookup.ofKind("scenario").filter((s) => s.process === process);
-  const rows = scenarioRows(summaries, statuses);
+  // Failed scenarios first, as the explorer lists them (the sort is stable: the rest keep their order).
+  const rows = scenarioRows(summaries, statuses).sort((a, b) => Number(b.status === "failed") - Number(a.status === "failed"));
   const run = async (row: ScenarioRow, what: string, action: () => Promise<string | null>) => {
     setBusy(row.id);
     try {

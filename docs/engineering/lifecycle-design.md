@@ -98,7 +98,9 @@ The halves can ship separately. The first is what teams asked for: codes, and li
     - Two lifecycles may not bind the same attribute for an entity that both of them list by name (MQ9202). Covering a derived entity doesn't count. This can only happen with `subjects`, since the one-subject form already lets an entity name only one lifecycle.
     - Two lifecycles binding one inherited or stereotype attribute for different entities stays allowed, as today. That includes a lifecycle on a base entity and another on an entity derived from it.
 12. **Under a binding, the codes must form a map** (decision 4), so the column can hold the state as one value. Otherwise it is MQ9206.
-13. **A missing code under a binding is a warning (MQ9210).** A three-save edit (add a state, add a transition into it, type its code) is never refused.
+13. **A missing code under a binding is a warning (MQ9210), one per binding.** A three-save edit (add a state, add a transition into it, type its code) is never refused.
+    - Under an enum binding there is no MQ9210: the member is the stored value, so a code is optional. MQ9207 still checks a code that is given.
+    - Under a reference-type or plain binding, one finding per binding lists the reachable states without a code, by name in state order, at most 5 and then "and N more". It sits at the binding (`/subjects/<i>/boundAttribute` on the entry, or `/boundAttribute` on the process), with the `sync-codes` fix.
 14. **An enum binding works as today, and a state's code, when given, names the same member.**
     - It matches root states by name (MQ9203), and MQ9205 still compares the default with the initial state's name.
     - An enum member may carry a name, a label, an integer value, a key (`code`) and a description, in any mix, or just a name. Maquettiste doesn't decide which of them a system uses, or how it stores them.
@@ -201,7 +203,7 @@ Also updated: the sample app's schema copies, `openapi.yaml` by hand, and the ed
 | MQ9207 | E | A code doesn't fit its binding (decisions 14 and 16) | Use a fitting code |
 | MQ9208 | W | Once the lifecycle has codes, values a binding can hold that no state covers | Add a state, or narrow `allowedValues` |
 | MQ9209 | W | The deprecated one-subject form | `use-subjects` |
-| MQ9210 | W | Under a binding, a reachable state with no code | `sync-codes` |
+| MQ9210 | W | Under a reference-type or plain binding, reachable states with no code; one finding per binding, none under an enum binding | `sync-codes` |
 
 MQ2002 already covers a subject that isn't an entity. MQ9019 gains the refusals of `sync-codes`. MQ3102 covers a `subject.x` that isn't in scope. Quick fixes that act on one binding pass its subject's `entity`.
 
@@ -320,6 +322,7 @@ Relations with several types per end, revisions, lifecycles on custom kinds and 
 6. **Mixed engine versions:** new lifecycles are written as `subjects`, even though a teammate on an older engine can't read one. The release note tells teams to upgrade together.
 7. **Two halves:** the first half (codes, subjects, bindings and output) ships on its own, before the second (guards that read the object, and scenario objects).
 8. **Enums are modeling, not storage:** a member may be any mix of an integer, a key, a label and a description, or just a name. A rule about enums never assumes how a system stores them (decision 14).
+9. **One MQ9210 per binding (2026-11-06):** none under an enum binding, and under any other binding one finding that names the states without a code (decision 13).
 
 ## 14. Tests
 

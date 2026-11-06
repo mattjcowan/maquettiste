@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TranslationsSection } from "@/l10n/TranslationsSection";
-import { CircleAlert, Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIndex, usePack, useProject, useReferences } from "@/api/queries";
 import type { DeletePlan, DeleteResolution, ElementKind, EntityDoc, ModelJson, ReferenceInfo, StereotypeDoc } from "@/api/types";
@@ -38,6 +38,9 @@ import { OpenTableButton, TableInspector } from "./TableInspector";
 import { sideReferences } from "@/references/data";
 import { DatabaseTypeFields, QueryFields, RoutineFields, SchemaField, SequenceFields, SqlObjectFields, ViewFields } from "@/editors/database/fields";
 import { EntityAttributeList } from "./AttributeList";
+import { FindingsList, findingsFor } from "@/problems/findings";
+import { useProcessSelection, type ProcessSelection } from "@/editors/process/selection";
+import { stateIndex, type ProcessDoc } from "@/model/process";
 import { ActorInspectorSection, ProcessInspectorSection, ScenarioInspectorSection, useProcessNodeShown } from "./ProcessSections";
 import { attributesView, INSPECTOR_TAB_LABELS, inspectorTabs, resolveInspectorTab } from "./tabs";
 
@@ -149,6 +152,15 @@ function PackInspector({ pack, unit }: { pack: string; unit: string | null }) {
   );
 }
 
+/** The pointer of the part selected inside a process (a state or a transition), null when the process itself is shown. */
+export function selectedPointer(json: unknown, selection: ProcessSelection | null): string | null {
+  if (!selection) return null;
+  const process = json as ProcessDoc;
+  if (selection.kind === "state") return stateIndex(process).get(selection.id)?.pointer ?? null;
+  const at = (process.transitions ?? []).findIndex((t) => t.id === selection.id);
+  return at >= 0 ? `/transitions/${at}` : null;
+}
+
 export function statusBadge(status: string | undefined, saving: boolean) {
   if (saving || status === "saving")
     return (
@@ -175,6 +187,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
   const summary = index.data?.find((r) => r.id === id);
   // A state or transition selected in the process editor: the inspector shows it in place of the process's fields.
   const processNode = useProcessNodeShown(id, kind);
+  const selection = useProcessSelection(id);
 
   useEffect(() => {
     if (!focus?.pointer || focus.id !== id) return;
@@ -209,6 +222,8 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
   }
 
   const diagnostics = draft?.diagnostics ?? [];
+  // The findings shown are those of what is selected: the state or transition picked in a process, else the element's own.
+  const partPointer = kind === "process" ? selectedPointer(json, selection) : null;
   const props: FormProps = { id, json, doc: element.data, edit, flush: () => void flush(), diagnostics };
   const stereotypeKeys = ((json as { stereotypes?: string[] }).stereotypes ?? []) as string[];
   const extensions = applicableExtensions(project.data?.extensions ?? [], kind, stereotypeKeys);
@@ -240,18 +255,7 @@ function ElementInspector({ id, tabs, onTab }: { id: string; tabs: Record<string
             {draft.error}
           </p>
         ) : null}
-        {draft?.status === "invalid" && diagnostics.length ? (
-          <ul role="alert" className="flex flex-col gap-0.5 text-12 text-danger" data-testid="draft-diagnostics">
-            {diagnostics.map((d, i) => (
-              <li key={i} className="flex gap-1">
-                <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                <span>
-                  <span className="font-mono">{d.rule}</span> {d.message}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        {draft?.status === "invalid" ? <FindingsList diagnostics={findingsFor(diagnostics, partPointer, json)} /> : null}
       </header>
       <Tabs value={tab} onValueChange={(next) => onTab(kind, next)} className="flex min-h-0 flex-1 flex-col">
         <TabsList aria-label="Inspector views">

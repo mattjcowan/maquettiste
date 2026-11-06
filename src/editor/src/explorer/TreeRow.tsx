@@ -184,7 +184,7 @@ export const TreeRow = memo(function TreeRow(props: TreeRowProps) {
       data-key={node.key}
       data-type={node.type}
       data-related={props.related ? "true" : undefined}
-      title={node.warning ?? node.tooltip}
+      title={node.warning ?? node.tooltip ?? (counted ? `${node.label}: ${counted}` : node.label)}
       style={{ ...props.style, paddingLeft: 4 + depth * 14 }}
       draggable={props.draggable}
       onClick={(e) => props.onRowClick(node.key, e)}

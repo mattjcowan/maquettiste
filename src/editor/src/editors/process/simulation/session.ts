@@ -90,6 +90,15 @@ export function setStartValue(s: Session, attribute: string, value: unknown): Se
   return restart(s, { ...s.start, context });
 }
 
+/** Takes only a scenario's start (values, clock, objects) as the session's start: a replay shows the steps itself. */
+export function loadScenarioStart(s: Session, scenario: Pick<ScenarioDoc, "start" | "objects" | "subject">): Session {
+  return restart(s, {
+    context: { ...(scenario.start?.context ?? {}) },
+    ...(scenario.start?.at ? { at: scenario.start.at } : {}),
+    ...(scenario.objects?.length ? { objects: scenario.objects, ...(scenario.subject ? { subject: scenario.subject } : {}) } : {}),
+  });
+}
+
 /** Loads a scenario's start and steps as the session's start and inputs (From scenario…). */
 export function loadScenario(s: Session, scenario: Pick<ScenarioDoc, "start" | "steps" | "objects" | "subject">): Session {
   const start: SimStart = {

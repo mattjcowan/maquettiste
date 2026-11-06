@@ -777,7 +777,7 @@ internal static partial class ProcessRules
             return;
         }
 
-        var bindings = new List<(BindingType Type, Entity Subject, ModelAttribute Attribute)>();
+        var bindings = new List<(BindingType Type, Entity Subject, ModelAttribute Attribute, string Pointer, string? EntryId)>();
         if (entries is not null)
         {
             CheckSubjects(context, process, analysis, codes, entries, bindings, report);
@@ -807,7 +807,7 @@ internal static partial class ProcessRules
     // The subjects form (lifecycle-design.md decisions 5 and 8): a lifecycle lists at least one entity, each once. An entity need not name
     // the lifecycle back, since several may govern it. Each entry's binding is judged as the one-subject form's is.
     private static void CheckSubjects(ValidationContext context, Process process, ProcessAnalysis analysis, ProcessCodes codes, IReadOnlyList<ProcessSubject> entries,
-        List<(BindingType Type, Entity Subject, ModelAttribute Attribute)> bindings, Report report)
+        List<(BindingType Type, Entity Subject, ModelAttribute Attribute, string Pointer, string? EntryId)> bindings, Report report)
     {
         var model = context.Model;
         if (entries.Count == 0)
@@ -833,10 +833,9 @@ internal static partial class ProcessRules
     }
 
     // What every binding of a lifecycle asks of its codes together (lifecycle-design.md decisions 4, 12 and 13): under any binding the codes
-    // form a map (MQ9206), and under a binding that stores codes, or an enum binding once the lifecycle has codes, each state a configuration
-    // rests in has one (MQ9210, a warning, so an edit that adds a state before its code is never refused). A process with no binding, or
-    // with only enum bindings and no codes, as every lifecycle had before codes, is judged by neither.
-    private static void CheckBoundCodes(Process process, ProcessAnalysis analysis, ProcessCodes codes, List<(BindingType Type, Entity Subject, ModelAttribute Attribute)> bindings,
+    // form a map (MQ9206), and under a binding that stores codes each state a configuration rests in has one (MQ9210, one warning per
+    // binding, so an edit that adds a state before its code is never refused). An enum binding needs none: its member is the value.
+    private static void CheckBoundCodes(Process process, ProcessAnalysis analysis, ProcessCodes codes, List<(BindingType Type, Entity Subject, ModelAttribute Attribute, string Pointer, string? EntryId)> bindings,
         Report report)
     {
         if (bindings.Count == 0)
@@ -859,20 +858,21 @@ internal static partial class ProcessRules
             }
         }
 
-        var needing = bindings.FirstOrDefault(b => b.Type.NeedsCodes);
-        if (needing.Attribute is null && settled.Count == 0)
+        // Under an enum binding the member is the stored value, so a code is optional (MQ9207 still checks one that is given). Under any other
+        // binding one finding per binding names the states without a code, at the binding where the other binding findings are.
+        var needing = bindings.Where(b => b.Type.NeedsCodes).ToList();
+        if (needing.Count == 0)
             return;
-        if (needing.Attribute is null)
-            needing = bindings[0];
-        foreach (var node in LifecycleBindings.Uncoded(analysis, codes))
+        var missing = LifecycleBindings.Uncoded(analysis, codes).Where(n => analysis.Reachable.Contains(n.Id)).Select(n => n.Path).ToList(); // else MQ9003
+        if (missing.Count == 0)
+            return;
+        const int Shown = 5;
+        var names = missing.Count <= Shown ? string.Join(", ", missing) : string.Join(", ", missing.Take(Shown)) + " and " + N(missing.Count - Shown) + " more";
+        var count = missing.Count == 1 ? "1 state of process '" + process.Name + "' has" : N(missing.Count) + " states of process '" + process.Name + "' have";
+        foreach (var binding in needing)
         {
-            if (!analysis.Reachable.Contains(node.Id))
-                continue; // MQ9003
-            // Under enum bindings only, the member holds the value: what the state lacks is the code the other states have.
-            report.Add("MQ9210", needing.Type.NeedsCodes
-                    ? $"State '{node.Path}' of process '{process.Name}' has no code, so attribute '{needing.Attribute.Name}' of entity '{needing.Subject.Name}', which the process binds, has no value for it; give the state a code."
-                    : $"State '{node.Path}' has no code, though other states of process '{process.Name}' have one; give it the code its member stands for, or remove the others.",
-                node.Pointer, node.Id);
+            report.Add("MQ9210", $"{count} no code, which binding '{binding.Subject.Name}.{binding.Attribute.Name}' needs: {names}; give each a code, or run Sync codes.",
+                binding.Pointer, binding.EntryId ?? process.Id);
         }
     }
 
@@ -884,7 +884,7 @@ internal static partial class ProcessRules
     // MQ9202 to MQ9205, MQ9207 and MQ9208 for one subject's binding, at its pointer (and, for a subjects entry, under the entry's id); MQ9207 at
     // each code that does not fit. A binding that can hold a state joins bindings, for what the lifecycle's bindings ask together.
     private static void CheckBinding(ValidationContext context, Process process, ProcessAnalysis analysis, ProcessCodes codes, Entity subject, string boundAttribute,
-        string pointer, string? entryId, List<(BindingType Type, Entity Subject, ModelAttribute Attribute)> bindings, Report report)
+        string pointer, string? entryId, List<(BindingType Type, Entity Subject, ModelAttribute Attribute, string Pointer, string? EntryId)> bindings, Report report)
     {
         var model = context.Model;
         var flat = context.Flatten(subject).FirstOrDefault(f => string.Equals(f.Attribute.Id, boundAttribute, StringComparison.Ordinal));
@@ -915,7 +915,7 @@ internal static partial class ProcessRules
             report.Add("MQ9202", $"Processes '{process.Name}' and '{other.Process.Name}' both bind attribute '{attribute.Name}' for entity '{subject.Name}', which both list, and one attribute holds one lifecycle's state; bind another attribute in one of them.", pointer, entryId);
         }
 
-        bindings.Add((type, subject, attribute));
+        bindings.Add((type, subject, attribute, pointer, entryId));
         switch (type.Kind)
         {
             case BindingKind.Enum:

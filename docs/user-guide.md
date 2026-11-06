@@ -1914,8 +1914,9 @@ of the subject, and may be typed by:
 - a **plain status**: a `string`, `text`, `int16`, `int32` or `int64` attribute, directly or through a scalar type. Each code
   must fit its type, length, pattern and `allowedValues` (MQ9207).
 
-Under any binding the codes must form a map (MQ9206). Under a binding that stores codes, a state with no code is a warning
-(MQ9210), so adding a state before its code is never refused. Values the attribute can hold that no state's code covers are a
+Under any binding the codes must form a map (MQ9206). Under a reference-type or plain binding, states with no code are a warning
+(MQ9210), one per binding that names them, so adding a state before its code is never refused. An enum binding needs no
+codes, since the member is the value; a code that is given is still checked (MQ9207). Values the attribute can hold that no state's code covers are a
 warning too (MQ9208), once per binding. Subjects of one lifecycle may share an enum without MQ9204 warning about each other.
 
 **Several instances of one lifecycle per object.** A lifecycle follows one object at a time. When one parent has many things that
@@ -2273,7 +2274,7 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9207 | error | A state code does not fit its binding: not its enum member's key, value or name, not a live code of the reference type, or not valid for the plain status attribute | |
 | MQ9208 | warning | Values the bound attribute can hold that no state's code covers | |
 | MQ9209 | warning | The deprecated one-subject form (`subject` and `boundAttribute` on the process); list it in `subjects`. Can be turned off | **Use subjects** |
-| MQ9210 | warning | Under a binding that stores codes, a state a configuration rests in has no code | **Sync codes** |
+| MQ9210 | warning | Under a reference-type or plain binding, states a configuration rests in have no code; one finding per binding names them | **Sync codes** |
 | MQ9301 | error | A scenario step accepted while it expects a refusal, or refused while it expects to be accepted | |
 | MQ9302 | error | The active states after a step differ from what the step expects | **Update expectations from replay** |
 | MQ9303 | error | The context attributes a step changed differ from what the step expects | **Update expectations from replay** |

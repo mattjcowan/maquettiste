@@ -11,7 +11,7 @@ import { soleSubject } from "@/model/process";
 import { useEditor, type Draft } from "@/state/store";
 import { EditorLayout, useEditorContext, type EditorContext } from "../EditorFrame";
 import { setView } from "../tabs";
-import { ProcessControls, useBinding } from "./ProcessControls";
+import { ProcessControls, useBinding, useSubjectMembers } from "./ProcessControls";
 import { ChartTab } from "./ChartTab";
 import { StatesTab } from "./StatesTab";
 import { TransitionsTab } from "./TransitionsTab";
@@ -38,6 +38,7 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
   const focus = useProcessFocus(id);
   const [node, setNode] = useState<{ tab: ProcessTab; node: string | null } | null>(null);
   const { members, codeKind } = useBinding(soleSubject(process)?.entity, soleSubject(process)?.boundAttribute);
+  const subjectMembers = useSubjectMembers(process);
 
   // A row of the Processes explorer asked for a tab and a node: show them, then clear the request.
   useEffect(() => {
@@ -72,7 +73,11 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
         controls={<ProcessControls ctx={ctx} />}
         tabs={[
           { value: "chart", label: PROCESS_TAB_LABELS.chart, content: <ChartTab pc={pc} />, fill: true },
-          { value: "states", label: PROCESS_TAB_LABELS.states, content: <StatesTab pc={pc} members={members} codeKind={codeKind} /> },
+          {
+            value: "states",
+            label: PROCESS_TAB_LABELS.states,
+            content: <StatesTab pc={pc} members={members} codeKind={codeKind} subjectMembers={subjectMembers} />,
+          },
           { value: "transitions", label: PROCESS_TAB_LABELS.transitions, content: <TransitionsTab pc={pc} /> },
           { value: "events", label: PROCESS_TAB_LABELS.events, content: <EventsTab pc={pc} focus={nodeOn("events")} /> },
           { value: "gates", label: PROCESS_TAB_LABELS.gates, content: <GatesTab pc={pc} /> },

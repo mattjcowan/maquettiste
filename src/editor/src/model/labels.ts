@@ -488,6 +488,7 @@ export const SIMULATION_LABELS = {
   loadedScenario: (name: string) => `Loaded the start and steps of ${name}.`,
   noContext: "The process has no context attributes.",
   objects: "Objects",
+  cast: "Cast",
   objectSubject: "subject",
   objectsHint: "The scenario's objects; edit them in the JSON view of the scenario.",
   // Enabled
@@ -509,6 +510,7 @@ export const SIMULATION_LABELS = {
   advanceTime: "advance time",
   noEnabled: "Nothing is enabled: the process waits for nothing it can take.",
   finalReached: "The process reached a final state.",
+  replayShown: "A replay is shown. Close it to raise inputs.",
   pastSelected: (label: string) => `Showing the state after ${label}. Select the last input to raise more.`,
   enabledHint: "Enter raises the focused row · 1 to 9 raise the first nine rows",
   // Time

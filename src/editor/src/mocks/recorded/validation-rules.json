@@ -2766,7 +2766,7 @@
   {
     "id": "MQ9210",
     "defaultSeverity": "warning",
-    "description": "Under a binding by code, or an enum binding once the lifecycle has codes, a reachable state that a configuration rests in has no code, so the bound attribute has no value for it; give the state a code.",
+    "description": "Under a reference-type or plain binding, reachable states that a configuration rests in have no code, so the bound attribute has no value for them; one finding per binding names them. An enum binding needs no codes, since the member is the value. Give each state a code, or run Sync codes.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true,

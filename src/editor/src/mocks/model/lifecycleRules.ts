@@ -1,7 +1,7 @@
 // The mock's rules for a lifecycle's bindings and state codes (lifecycle-design.md decisions 1 to 4 and 11 to 17), as the
-// engine's ProcessRules.cs reports them: MQ9202 to MQ9205, MQ9207 and MQ9208 per binding, MQ9206 and MQ9210 per state.
+// engine's ProcessRules.cs reports them: MQ9202 to MQ9205, MQ9207 and MQ9208 per binding, MQ9206 per state and MQ9210 per binding.
 // Binding findings sit at the binding's pointer under the subjects entry's id (the one-subject form: the process id);
-// code findings at `<state pointer>/code` under the state's id.
+// MQ9206 at `<state pointer>/code` under the state's id.
 import type { Diagnostic } from "@/api/types";
 import { bindableAttributes, classifyAttribute, type BindingType } from "@/model/binding";
 import { subjectsOf } from "@/model/process";
@@ -93,6 +93,9 @@ interface Bound {
   type: BindingType;
   subject: Json;
   attribute: Json;
+  /** The binding's pointer and the id its findings sit under (the entry's, or the process's in the one-subject form). */
+  pointer: string;
+  at: string;
 }
 
 /** The rows (code, label) of a reference type, from its seeds. */
@@ -267,7 +270,7 @@ export function bindingDiagnostics(json: Json, entry: ModelEntry, ctx: Validatio
           at,
         );
     }
-    bindings.push({ type, subject, attribute });
+    bindings.push({ type, subject, attribute, pointer, at });
     const sub = { sname, aname: String(attribute.name) };
     if (type.kind === "enum") enumBinding(json, nodes, entry, ctx, lookup, all, type.typeId!, attribute, sub, pointer, at, emit);
     else {
@@ -491,7 +494,7 @@ function uncovered(
   );
 }
 
-/** What every binding of a lifecycle asks of its codes together: a map (MQ9206) and a code on each resting state (MQ9210). */
+/** What every binding of a lifecycle asks of its codes together: a map (MQ9206) and, under a reference or plain binding, a code on each resting state (MQ9210, one finding per binding). */
 function boundCodes(process: Json, nodes: Node[], bindings: Bound[], emit: Emit): void {
   if (!bindings.length) return;
   const name = String(process.name);
@@ -516,28 +519,29 @@ function boundCodes(process: Json, nodes: Node[], bindings: Bound[], emit: Emit)
         );
     }
   }
-  let needing = bindings.find((b) => b.type.kind !== "enum");
-  if (!needing && !coded.length) return;
-  needing ??= bindings[0];
+  const needing = bindings.filter((b) => b.type.kind !== "enum");
+  if (!needing.length) return;
   const above = new Set<string>();
   for (const c of coded) for (let p = c.parent; p && !above.has(p.id); p = p.parent) above.add(p.id);
   const live = reachable(process, nodes);
-  const children = (parent: Node | null) => nodes.filter((n) => n.parent === parent);
+  const uncoded: string[] = [];
   const visit = (parent: Node | null) => {
-    for (const child of children(parent)) {
+    for (const child of nodes.filter((n) => n.parent === parent)) {
       if (restless(child.state) || codeKey(child.state.code) !== null) continue;
       if (above.has(child.id)) visit(child);
-      else if (live.has(child.id))
-        emit(
-          "MQ9210",
-          "warning",
-          needing.type.kind === "enum"
-            ? `State '${child.path}' has no code, though other states of process '${name}' have one; give it the code its member stands for, or remove the others.`
-            : `State '${child.path}' of process '${name}' has no code, so attribute '${String(needing.attribute.name)}' of entity '${String(needing.subject.name)}', which the process binds, has no value for it; give the state a code.`,
-          child.pointer,
-          child.id,
-        );
+      else if (live.has(child.id)) uncoded.push(String(child.state.name ?? child.path));
     }
   };
   visit(null);
+  if (!uncoded.length) return;
+  const shown = uncoded.slice(0, 5).join(", ") + (uncoded.length > 5 ? `, and ${uncoded.length - 5} more` : "");
+  const many = uncoded.length === 1 ? "1 state" : `${uncoded.length} states`;
+  for (const b of needing)
+    emit(
+      "MQ9210",
+      "warning",
+      `${many} of process '${name}' ${uncoded.length === 1 ? "has" : "have"} no code, which binding '${String(b.subject.name)}.${String(b.attribute.name)}' needs: ${shown}; give each a code, or run Sync codes.`,
+      b.pointer,
+      b.at,
+    );
 }

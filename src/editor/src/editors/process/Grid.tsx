@@ -4,10 +4,11 @@
 // Ctrl+Delete removes one, and a toggle flips on Enter or Space. Each commit is one draft change, so one undo step.
 // Rows are ROW_H high (--mq-row-h); a row's problems show as a badge on its first cell, a cell's marker on the cell.
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { CircleAlert, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { DEFINITION_HINT } from "@/inspector/definition";
+import { SEVERITY_ICON, SEVERITY_TONE } from "@/problems/findings";
 
 export type CellKind = "text" | "select" | "toggle" | "multi" | "readonly";
 
@@ -25,9 +26,13 @@ export interface GridTarget {
 export interface GridColumn<R> {
   key: string;
   label: string;
+  /** A tooltip on the column header. */
+  tooltip?: string;
   /** Fixed, or per row (a transition's detail is a select for an event, text for a duration). */
   kind: CellKind | ((row: R) => CellKind);
   width?: string;
+  /** Stays at the left edge while the grid scrolls sideways (the row's name). */
+  sticky?: boolean;
   mono?: boolean;
   /** The text the cell shows. */
   value: (row: R) => string;
@@ -64,7 +69,7 @@ export interface GridProps<R extends { id: string }> {
   /** Tree grid: the first column's indent level. */
   depth?: (row: R) => number;
   /** A row's problems (validation badges from the Problems store). */
-  problems?: (row: R) => { rule: string; message: string }[];
+  problems?: (row: R) => { rule: string; message: string; severity?: "error" | "warning" | "info" }[];
   /** Extra keys on a cell (true when handled). */
   onKey?: (e: KeyboardEvent<HTMLElement>, row: R) => boolean;
   /** Extra per-row buttons, before Remove. */
@@ -242,11 +247,16 @@ export function Grid<R extends { id: string }>({
   return (
     <div className="flex flex-col gap-1" data-testid={testid}>
       <div className="overflow-x-auto rounded-control border border-default">
-        <table ref={gridRef} role="grid" aria-label={label} className="w-full border-collapse text-12">
+        <table ref={gridRef} role="grid" aria-label={label} className="w-full min-w-max border-collapse text-12">
           <thead>
             <tr className="bg-app">
               {columns.map((c) => (
-                <th key={c.key} scope="col" className={cn("h-[var(--mq-row-h)] px-1.5 text-left text-11 font-semibold text-secondary", c.width)}>
+                <th
+                  key={c.key}
+                  scope="col"
+                  title={c.tooltip}
+                  className={cn("h-[var(--mq-row-h)] px-1.5 text-left text-11 font-semibold text-secondary", c.width, c.sticky && "sticky left-0 z-10 bg-app")}
+                >
                   {c.label}
                 </th>
               ))}
@@ -288,6 +298,7 @@ export function Grid<R extends { id: string }>({
                         onKeyDown={(e) => onCellKeyDown(e, r, c)}
                         className={cn(
                           "h-[var(--mq-row-h)] max-w-64 px-1.5 py-0 align-middle outline-none",
+                          column.sticky && "sticky left-0 z-10 bg-surface shadow-[1px_0_0_var(--mq-border-default)]",
                           isActive && "bg-accent-subtle ring-1 ring-inset ring-accent",
                           marker && "ring-1 ring-inset ring-danger",
                           column.mono && "font-mono",
@@ -326,14 +337,7 @@ export function Grid<R extends { id: string }>({
                           )
                         ) : (
                           <span className="flex min-w-0 items-center gap-1" style={c === 0 && depth ? { paddingLeft: `${depth(row) * 12}px` } : undefined}>
-                            {c === 0 && rowProblems.length ? (
-                              <CircleAlert
-                                className="size-3.5 shrink-0 text-danger"
-                                role="img"
-                                aria-label={rowProblems.map((p) => `${p.rule} ${p.message}`).join("; ")}
-                                data-testid="row-problem"
-                              />
-                            ) : null}
+                            {c === 0 && rowProblems.length ? <RowProblemIcon problems={rowProblems} /> : null}
                             {kind === "toggle" ? (
                               <span
                                 aria-label={column.on?.(row) ? "yes" : "no"}
@@ -395,5 +399,20 @@ export function Grid<R extends { id: string }>({
         {onCommit || onKey || onRemove ? <span className="text-11 text-secondary">{hint}</span> : null}
       </div>
     </div>
+  );
+}
+
+/** The icon of a row's findings: the worst severity decides its shape and colour (a warning is never red). */
+export function RowProblemIcon({ problems }: { problems: { rule: string; message: string; severity?: "error" | "warning" | "info" }[] }) {
+  const worst = (["error", "warning", "info"] as const).find((s) => problems.some((p) => p.severity === s)) ?? "error";
+  const Icon = SEVERITY_ICON[worst];
+  return (
+    <Icon
+      className={cn("size-3.5 shrink-0", SEVERITY_TONE[worst])}
+      role="img"
+      aria-label={problems.map((p) => `${p.rule} ${p.message}`).join("; ")}
+      data-testid="row-problem"
+      data-severity={worst}
+    />
   );
 }
