@@ -5,11 +5,14 @@
 import { bindableAttributes, classifyAttribute } from "@/model/binding";
 import { subjectsOf } from "@/model/process";
 import { codeKey } from "./lifecycleRules";
+import { Coverage } from "./coverage";
 
 type Json = Record<string, unknown>;
 type Code = string | number;
 
 export interface SyncCodesPlan {
+  /** The stereotype key, when the plan binds a stereotype entry (entity is then empty). */
+  stereotype?: string;
   process: string;
   entity: string;
   attribute: string;
@@ -112,10 +115,14 @@ export function syncCodesOf(
   attribute: string | undefined,
   stateCodes: Json | undefined,
   newId: () => string,
+  stereotypeKey?: string,
 ): SyncCodesOutcome {
   const all = [...model.entries.values()].map((e) => e.json);
   const stereotype = (key: string) => all.find((d) => d.kind === "stereotype" && d.key === key);
-  return planSyncCodes(process, entity, attribute, stateCodes, (id) => model.entries.get(id)?.json, all, stereotype, newId);
+  const covered = () =>
+    entity !== undefined &&
+    new Coverage([...model.entries].map(([id, e]) => ({ id, path: id, json: e.json }))).entryOf(process, entity)?.stereotype !== undefined;
+  return planSyncCodes(process, entity, attribute, stateCodes, (id) => model.entries.get(id)?.json, all, stereotype, newId, stereotypeKey, covered);
 }
 
 /** Plans sync-codes on a process document; `all` is every document (a reference type's seeds), `newId` mints a subjects entry id. */
@@ -128,30 +135,43 @@ export function planSyncCodes(
   all: Iterable<Json>,
   stereotype: (key: string) => Json | undefined,
   newId: () => string,
+  stereotypeKey?: string,
+  coveredByStereotype?: () => boolean,
 ): SyncCodesOutcome {
   const name = String(process.name);
   const id = String(process.id);
   if (process.use !== "lifecycle")
     return { problem: `Process '${name}' is an orchestration, which binds no attribute; set use to lifecycle first, then sync its codes.` };
-  const entity = entityId ? lookup(entityId) : undefined;
-  if (!entity || entity.kind !== "entity")
+  const onStereotype = stereotypeKey !== undefined;
+  const entity = onStereotype ? stereotype(stereotypeKey) : entityId ? lookup(entityId) : undefined;
+  if (onStereotype) {
+    if (!entity) return { problem: `'${stereotypeKey}' is not a stereotype of the model.` };
+    if (!subjectsOf(process).some((e) => e.stereotype === stereotypeKey))
+      return { problem: `Process '${name}' does not list stereotype '${stereotypeKey}' in its subjects; list it first, then sync its codes.` };
+  } else if (!entity || entity.kind !== "entity")
     return { problem: `'${String(entityId)}' is not an entity; pass the subject whose attribute holds the state as entity.` };
+  if (!onStereotype && Array.isArray(process.subjects) && !subjectsOf(process).some((e) => e.entity === entityId) && coveredByStereotype?.())
+    return {
+      problem: `Process '${name}' covers entity '${String(entity!.name)}' only through a stereotype entry; sync the codes through the stereotype's own attribute instead.`,
+    };
   if (process.boundAttribute !== undefined && typeof process.subject !== "string")
     return { problem: `Process '${name}' binds an attribute but names no subject; set its subject (or list its subjects) first, then sync its codes.` };
-  const oneSubject = typeof process.subject === "string" && !Array.isArray(process.subjects);
+  const oneSubject = !onStereotype && typeof process.subject === "string" && !Array.isArray(process.subjects);
   if (oneSubject && process.subject !== entityId)
     return {
       problem: `Process '${name}' names ${lookup(String(process.subject)) ? `entity '${String(lookup(String(process.subject))!.name)}'` : "no entity"} as its one subject, so sync-codes binds that subject's attribute only; pass it as entity, or list the subjects first (use-subjects).`,
     };
-  const attribute = bindableAttributes(entity, lookup, stereotype).find((a) => a.id === attributeId);
+  const attribute = (onStereotype ? arr(entity!.attributes) : bindableAttributes(entity, lookup, stereotype)).find((a) => a.id === attributeId);
   if (!attributeId || !attribute)
     return {
-      problem: `'${String(attributeId)}' is not an attribute of entity '${String(entity.name)}' (own, inherited or from a stereotype); pass the one that holds the state.`,
+      problem: onStereotype
+        ? `'${String(attributeId)}' is not an attribute of stereotype '${stereotypeKey}'; pass one of its own that holds the state.`
+        : `'${String(attributeId)}' is not an attribute of entity '${String(entity!.name)}' (own, inherited or from a stereotype); pass the one that holds the state.`,
     };
   const type = classifyAttribute(attribute, lookup);
   if (type.kind === "unsupported")
     return {
-      problem: `Attribute '${String(attribute.name)}' of entity '${String(entity.name)}' ${type.why}; pass an attribute typed by an enum, a reference type, or a string or integer type.`,
+      problem: `Attribute '${String(attribute.name)}' of '${String(entity!.name)}' ${type.why}; pass an attribute typed by an enum, a reference type, or a string or integer type.`,
     };
   if (type.kind === "unknown") return { problem: `The type of attribute '${String(attribute.name)}' is not in the model.` };
 
@@ -223,7 +243,15 @@ export function planSyncCodes(
 
   const next = structuredClone(process) as Json;
   const nextNodes = new Map(nodesOf(next.states, null, "", []).map((n) => [String(n.state.id), n]));
-  const plan: SyncCodesPlan = { process: id, entity: String(entityId), attribute: attributeId, binds: false, codes: [], unmatched: [] };
+  const plan: SyncCodesPlan = {
+    process: id,
+    entity: onStereotype ? "" : String(entityId),
+    ...(onStereotype ? { stereotype: stereotypeKey } : {}),
+    attribute: attributeId,
+    binds: false,
+    codes: [],
+    unmatched: [],
+  };
   for (const n of nodes) {
     const stateId = String(n.state.id);
     const write = (code: Code) => void (nextNodes.get(stateId)!.state.code = code);
@@ -240,13 +268,14 @@ export function planSyncCodes(
     } else if (unmatched.has(n)) plan.unmatched.push({ state: stateId, path: n.path, candidates: unmatched.get(n)! });
   }
 
-  const current = subjectsOf(process).find((e) => e.entity === entityId)?.boundAttribute;
+  const matches = (e: { entity?: string; stereotype?: string }) => (onStereotype ? e.stereotype === stereotypeKey : e.entity === entityId);
+  const current = subjectsOf(process).find(matches)?.boundAttribute;
   plan.binds = current !== attributeId;
   if (plan.binds) {
     if (oneSubject) next.boundAttribute = attributeId;
     else if (Array.isArray(next.subjects)) {
       const entries = next.subjects as Json[];
-      const entry = entries.find((e) => e.entity === entityId);
+      const entry = entries.find((e) => (onStereotype ? e.stereotype === stereotypeKey : e.entity === entityId));
       if (entry) entry.boundAttribute = attributeId;
       else entries.push({ id: newId(), entity: entityId, boundAttribute: attributeId });
     } else next.subjects = [{ id: newId(), entity: entityId, boundAttribute: attributeId }];

@@ -226,6 +226,8 @@ export interface RelatedMaps {
   mappingsOf: Map<string, string[]>;
   /** Entity → the lifecycles that name it as a subject (not through a base entity: the folder walks the bases). */
   lifecyclesOf: Map<string, string[]>;
+  /** Entity → the lifecycles that cover it through a stereotype entry (the index row's `covers`), with the stereotypes' ids. */
+  stereotypeLifecyclesOf: Map<string, { id: string; stereotypes: string[] }[]>;
   /** Entity → every process (any use) that names it as a subject: their rows say the entity's name. */
   processesOf: Map<string, string[]>;
   /** Actor → how many processes name it (from the index's `actors` on process rows), for "acts in 3 processes". */
@@ -347,8 +349,10 @@ function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row, actsIn?: ReadonlyM
   if (r.kind === "seed" && r.rowCount != null) return plural(r.rowCount, "row", "rows");
   if (r.kind === "process") {
     // One subject is `subject`, two or more are `subjects` (lifecycle-design.md decision 23); the row names them all.
-    const names = r.subjects?.length ? r.subjects.map((e) => nameOf(e) ?? e).join(", ") : r.subject ? nameOf(r.subject) : undefined;
-    return processSecondary(r, names, undefined);
+    const entities = r.subjects?.length ? r.subjects.map((e) => nameOf(e) ?? e) : r.subject ? [nameOf(r.subject) ?? r.subject] : [];
+    // A stereotype entry governs every entity that carries the stereotype: "every Approvable".
+    const every = (r.subjectStereotypes ?? []).map((s) => PROCESS_LABELS.everyStereotype(nameOf(s) ?? s));
+    return processSecondary(r, [...entities, ...every].join(", ") || undefined, undefined);
   }
   if (r.kind === "actor") return actorSecondary(r, actsIn?.get(r.id), memberOfText(r.memberOf, nameOf));
   if (r.kind === "operation") return [r.subject ? nameOf(r.subject) : undefined, r.effect].filter(Boolean).join(" · ");
@@ -706,6 +710,7 @@ export function buildForest(input: TreeInput): Forest {
     seedsOf: new Map(),
     mappingsOf: new Map(),
     lifecyclesOf: new Map(),
+    stereotypeLifecyclesOf: new Map(),
     processesOf: new Map(),
     actsIn: new Map(),
   };
@@ -810,6 +815,12 @@ export function buildForest(input: TreeInput): Forest {
         push(related.processesOf, e, r.id);
         if (r.use === "lifecycle") push(related.lifecyclesOf, e, r.id);
       }
+      if (r.use === "lifecycle" && r.covers?.length)
+        for (const e of r.covers) {
+          const list = related.stereotypeLifecyclesOf.get(e) ?? [];
+          list.push({ id: r.id, stereotypes: r.subjectStereotypes ?? [] });
+          related.stereotypeLifecyclesOf.set(e, list);
+        }
     }
     if (r.base) {
       related.baseOf.set(r.id, r.base);
@@ -1857,17 +1868,25 @@ function elementChildren(forest: Forest, node: TreeNode): TreeNode[] {
       );
     }
     // The lifecycles that govern the entity, including those of a base entity (a derived entity is governed by its base's).
-    const governing: { id: string; via?: string }[] = [];
+    const governing: { id: string; via?: string; stereotypes?: string[] }[] = [];
     const seen = new Set<string>();
     for (let e: string | undefined = r.id, guard = 0; e && !seen.has(e) && guard < 64; e = related.baseOf.get(e), guard++) {
       seen.add(e);
       for (const p of related.lifecyclesOf.get(e) ?? []) if (!governing.some((g) => g.id === p)) governing.push({ id: p, via: e === r.id ? undefined : e });
     }
+    // Coverage through a stereotype entry, after the entity's own and its bases' (stereotype-sets-design.md decision 4).
+    for (const c of related.stereotypeLifecyclesOf.get(r.id) ?? [])
+      if (!governing.some((g) => g.id === c.id)) governing.push({ id: c.id, stereotypes: c.stereotypes });
     if (governing.length) {
       const members = governing.map((g) => {
         const process = forest.byId.get(g.id);
         const base = g.via ? forest.byId.get(g.via) : undefined;
-        const text = base ? PROCESS_LABELS.throughBase(base.displayName || base.name) : plural(process?.stateCount ?? 0, "state", "states");
+        const through = g.stereotypes?.map((s) => forest.byId.get(s)).flatMap((s) => (s ? [s.displayName || s.name] : []));
+        const text = through
+          ? PROCESS_LABELS.throughStereotype(through.join(", "))
+          : base
+            ? PROCESS_LABELS.throughBase(base.displayName || base.name)
+            : plural(process?.stateCount ?? 0, "state", "states");
         return navigation(forest, `${node.key}/lifecycles`, g.id, text);
       });
       out.push(navFolder(forest, node, "lifecycles", PROCESS_LABELS.lifecycles, "process", members.sort(byLabel), undefined, PROCESS_TIPS.entityLifecycles));
@@ -2133,7 +2152,7 @@ function processChildren(
   if (gateRows.length) children.push(navFolder(forest, node, "gates", PROCESS_LABELS.gates, "gate", gateRows, fmt(gateRows.length), PROCESS_TIPS.gates).key);
   // The bound attribute's name is in the subject's document (the caller reads it); the row then says Subject.attribute.
   const sole = soleSubject(doc.json);
-  if (row && sole && attribute) {
+  if (row && sole?.entity && attribute) {
     const subject = forest.byId.get(sole.entity);
     node.secondary = processSecondary(row, subject ? subject.displayName || subject.name : undefined, attribute);
   }

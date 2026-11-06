@@ -5,7 +5,7 @@
 // (tests/unit/mock-model-index.test.ts checks that after random edits).
 import type { Diagnostic } from "@/api/types";
 import { subjectsOf } from "@/model/process";
-import { referencesOf, subElementIds } from "./refs";
+import { referencesOf, subElementIds, type RowResolver } from "./refs";
 import {
   entryDiagnostics,
   GLOBAL_KINDS,
@@ -43,6 +43,12 @@ export class ModelIndex {
   /** Time spent in the last sync, for window.__mqPerf.mock. */
   lastSyncMs = 0;
 
+  /** Resolves a stereotype key to its id, for a process's subject entries. */
+  private readonly keyResolver: RowResolver = {
+    rowOf: () => null,
+    stereotypeIdOf: (key) => (this.globals.stereotypes.get(key)?.id as string | undefined) ?? null,
+  };
+
   constructor(private readonly extensions: ValidationInput["extensions"]) {}
 
   /** Brings the index to `entries`, re-checking only the entries a difference can affect. Returns the ids re-checked. */
@@ -77,6 +83,8 @@ export class ModelIndex {
       const scope = this.scopeOf.get(entry.id);
       if (scope) for (const e of this.scopes.get(scope) ?? []) affected.add(e.id);
     };
+    // A subject entry names its stereotype by key, so the reverse reference index needs the current keys before the adds.
+    if (global || packageChanged) this.globals = globalsOf(entries.values());
     for (const entry of [...changed, ...removed]) {
       touch(this.snapshot.get(entry.id));
       this.remove(entry.id);
@@ -88,13 +96,12 @@ export class ModelIndex {
     }
     this.snapshot = new Map(entries);
     this.sorted = null;
-    if (global || packageChanged) this.globals = globalsOf(this.snapshot.values());
     if (global) for (const id of this.snapshot.keys()) affected.add(id);
     // The lifecycle rules read a lifecycle's subject entity, its bound attribute's type (an enum, a reference type with its seeds,
     // a scalar type) and the other lifecycles, none of which reference the process: re-check processes.
     if (all.some((e) => LIFECYCLE_READS.has(String(e.json.kind)))) for (const [id, entry] of this.snapshot) if (entry.json.kind === "process") affected.add(id);
     // MQ9201 on an entity reads its lifecycle process and the entity's bases, which the index holds no reference for.
-    if (all.some((e) => e.json.kind === "process" || e.json.kind === "entity"))
+    if (all.some((e) => e.json.kind === "process" || e.json.kind === "entity" || e.json.kind === "package"))
       for (const [id, entry] of this.snapshot) if (entry.json.kind === "entity" && typeof entry.json.lifecycle === "string") affected.add(id);
     const ctx = this.context();
     for (const id of affected) {
@@ -160,7 +167,7 @@ export class ModelIndex {
     this.idsOf.set(entry.id, ids);
     for (const id of ids) this.idCount.set(id, (this.idCount.get(id) ?? 0) + 1);
     for (const id of ids.slice(1)) this.subOwner.set(id, entry.id);
-    const targets = [...new Set(referencesOf(entry.json).map((r) => r.toId))];
+    const targets = [...new Set(referencesOf(entry.json, this.keyResolver).map((r) => r.toId))];
     this.targetsOf.set(entry.id, targets);
     if (entry.json.kind === "process" && subjectsOf(entry.json).some((e) => e.boundAttribute !== undefined)) this.binders.add(entry.id);
     for (const t of targets) {

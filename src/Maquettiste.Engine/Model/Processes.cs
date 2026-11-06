@@ -112,24 +112,36 @@ public enum ProcessUse
 }
 
 /// <summary>
-/// An entry of a process's <c>subjects</c> (lifecycle-design.md decision 5): an entity the process governs, with the entities derived
-/// from it, and the attribute that holds its state.
+/// An entry of a process's <c>subjects</c> (lifecycle-design.md decision 5, stereotype-sets-design.md decision 2): an entity the process
+/// governs, with the entities derived from it, or a stereotype, which covers every entity that carries it and the entities derived from
+/// them (<see cref="Processes.SubjectCoverage"/>); and the attribute that holds the state. An entry names exactly one of
+/// <see cref="Entity"/> and <see cref="Stereotype"/>.
 /// </summary>
 public sealed record ProcessSubject : IProcessNode
 {
     /// <inheritdoc/>
     public required string Id { get; init; }
 
-    /// <summary>The entity.</summary>
+    /// <summary>The entity, or <see langword="null"/> when the entry names a <see cref="Stereotype"/>.</summary>
     [ElementRef(ElementKind.Entity)]
-    public required string Entity { get; init; }
+    public string? Entity { get; init; }
 
-    /// <summary>The entity's attribute that holds the lifecycle state, or <see langword="null"/>.</summary>
+    /// <summary>
+    /// The key of the stereotype the entry stands for (stereotype-sets-design.md decision 2), or <see langword="null"/> when it names an
+    /// <see cref="Entity"/>. The index records it as a reference to the stereotype; an unknown key is MQ2003, and one whose stereotype does
+    /// not apply to entities MQ9211.
+    /// </summary>
+    [StereotypeKeys]
+    public string? Stereotype { get; init; }
+
+    /// <summary>The attribute that holds the lifecycle state, or <see langword="null"/>: one of the entity's (own, inherited or from a
+    /// stereotype it carries), or on a stereotype entry one of the stereotype's own attributes (MQ9202).</summary>
     [ElementRef(IndexKinds = ["attribute"])]
     public string? BoundAttribute { get; init; }
 
     /// <summary>Where the object's owner is held (actors-design.md decision 10): a single-valued attribute or a to-one relation end of the
-    /// entity (MQ9606), or <see langword="null"/> when the team's system holds it.</summary>
+    /// entity, or on a stereotype entry a single-valued attribute of the stereotype's own (MQ9606); <see langword="null"/> when the team's
+    /// system holds it.</summary>
     [ElementRef(IndexKinds = ["attribute", "end"])]
     public string? Owner { get; init; }
 }

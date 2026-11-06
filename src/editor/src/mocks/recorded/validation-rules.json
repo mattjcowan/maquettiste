@@ -170,7 +170,7 @@
   {
     "id": "MQ2003",
     "defaultSeverity": "error",
-    "description": "Unknown stereotype.",
+    "description": "Unknown stereotype: a key in a stereotype list, or in a process subject entry's stereotype, that names no stereotype.",
     "family": "MQ20xx",
     "familyLabel": "References and vocabularies",
     "canBeOff": true
@@ -2692,7 +2692,7 @@
   {
     "id": "MQ9201",
     "defaultSeverity": "error",
-    "description": "Lifecycle inconsistent: a lifecycle without a subject, an empty subjects list or an entity listed twice, a one-subject form subject whose lifecycle does not name the process, or an entity whose lifecycle names an orchestration or a lifecycle that does not govern it or a base of it; list the entity in the lifecycle's subjects, or set lifecycle on the entity to a lifecycle that governs it.",
+    "description": "Lifecycle inconsistent: a lifecycle without a subject, an empty subjects list or an entity or stereotype listed twice, a one-subject form subject whose lifecycle does not name the process, or an entity whose lifecycle names an orchestration or a lifecycle that does not govern it (it, a base, or a stereotype it or a base carries is not listed); list the entity in the lifecycle's subjects, or set lifecycle on the entity to a lifecycle that governs it.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true
@@ -2700,7 +2700,7 @@
   {
     "id": "MQ9202",
     "defaultSeverity": "error",
-    "description": "A bound attribute that is not a single-valued attribute of the subject (own, inherited or from a stereotype) typed by an enum, a reference type or a plain status (string, text, int16, int32 or int64, directly or through a scalar type), one set on an orchestration, or one attribute that two lifecycles bind for an entity both list; bind another attribute of the subject.",
+    "description": "A bound attribute that is not a single-valued attribute of the subject (own, inherited or from a stereotype; on a stereotype entry, the stereotype's own) typed by an enum, a reference type or a plain status (string, text, int16, int32 or int64, directly or through a scalar type), one set on an orchestration, or one attribute that two lifecycles bind for an entity or a stereotype both list; bind another attribute of the subject.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true
@@ -2773,6 +2773,14 @@
     "quickFix": "sync-codes"
   },
   {
+    "id": "MQ9211",
+    "defaultSeverity": "error",
+    "description": "A subject entry names a stereotype that does not apply to entities (its appliesTo leaves out entity), so no entity can carry it; name a stereotype entities carry, or an entity.",
+    "family": "MQ92xx",
+    "familyLabel": "Lifecycles",
+    "canBeOff": true
+  },
+  {
     "id": "MQ9301",
     "defaultSeverity": "error",
     "description": "A scenario step is refused while expect.accepted is true (no transition, a guard false, an actor not allowed, a gate refusal), or accepted while it is false; a refusal by actor names the step's participant and what it failed (the list it satisfies none of, or the list that does not accept the actor it acted as); fix the step's input or set accepted to what the process does.",
@@ -2810,7 +2818,7 @@
   {
     "id": "MQ9305",
     "defaultSeverity": "error",
-    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject, or a link whose end does not fit, or an owner beside its subject's owner field or that is not one of the scenario's participants; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; fix the step, the object or the participant.",
+    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit, or an owner beside its subject's owner field or that is not one of the scenario's participants; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; fix the step, the object or the participant.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true
@@ -2954,7 +2962,7 @@
   {
     "id": "MQ9604",
     "defaultSeverity": "error",
-    "description": "An actor from the object is used where it cannot be worked out: in a process with no subjects, or with a path (or within) that does not resolve on every subject (the subject's own and inherited members for one subject, a shared base entity's for several), that passes through something other than a to-one relation end, or that ends at a many-valued attribute, a value object or a to-many end. Reported at the use; a library's gate or human task at each process that uses it.",
+    "description": "An actor from the object is used where it cannot be worked out: in a process with no subjects, or with a path (or within) that does not resolve on every subject (the subject's own and inherited members and the attributes of the stereotypes it or a base carries for one subject, what every subject holds under one id for several; a stereotype entry holds its stereotype's own attributes and no relation ends, so with one a path is one step to such an attribute and within is empty), that passes through something other than a to-one relation end, or that ends at a many-valued attribute, a value object or a to-many end. Reported at the use; a library's gate or human task at each process that uses it.",
     "family": "MQ96xx",
     "familyLabel": "Actors",
     "canBeOff": true
@@ -2970,7 +2978,7 @@
   {
     "id": "MQ9606",
     "defaultSeverity": "error",
-    "description": "A subject entry's owner that is not a single-valued attribute or a to-one relation end of its entity (own or inherited; an attribute from a stereotype waits for a stereotype that stands for a set of types); clear the owner, or name a field that holds one actor.",
+    "description": "A subject entry's owner that is not a single-valued attribute or a to-one relation end of its entity (own or inherited, or an attribute of a stereotype the entity or a base carries), or on a stereotype entry a single-valued attribute of the stereotype's own; clear the owner, or name a field that holds one actor.",
     "family": "MQ96xx",
     "familyLabel": "Actors",
     "canBeOff": true

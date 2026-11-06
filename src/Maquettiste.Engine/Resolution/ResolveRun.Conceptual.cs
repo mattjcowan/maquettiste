@@ -591,15 +591,24 @@ internal sealed partial class ResolveRun
 
     /// <summary>
     /// The attribute an id names as its declaring entity resolves it (a base's own for an inherited one), or for <c>attributeId.memberId</c>
-    /// the value object member; <see langword="null"/> when no entity declares it. A process guard that reads its object ends its paths here.
+    /// the value object member; <see langword="null"/> when no entity declares it. A stereotype's attribute ends at the stereotype's own
+    /// (stereotype-sets-design.md section 6), so it has one target whichever carrier runs. A process guard that reads its object ends its
+    /// paths here.
     /// </summary>
     private RAttribute? DeclaredAttribute(string id)
     {
         var dot = id.IndexOf('.', StringComparison.Ordinal);
         var own = dot > 0 ? id[..dot] : id;
-        if (!Model.TryGetEntry(own, out var entry) || !_entities.TryGetValue(entry.OwnerId, out var entity))
+        if (!Model.TryGetEntry(own, out var entry))
             return null;
-        var attribute = entity.OwnAttributes.FirstOrDefault(a => string.Equals(a.Id, own, StringComparison.Ordinal));
+        RList<RAttribute> declared;
+        if (_entities.TryGetValue(entry.OwnerId, out var entity))
+            declared = entity.OwnAttributes;
+        else if (_byId.GetValueOrDefault(entry.OwnerId) is RStereotypeDefinition stereotype)
+            declared = stereotype.Attributes;
+        else
+            return null;
+        var attribute = declared.FirstOrDefault(a => string.Equals(a.Id, own, StringComparison.Ordinal));
         return attribute is null || dot <= 0
             ? attribute
             : attribute.Type.ValueObject?.Attributes.FirstOrDefault(m => string.Equals(m.Id, id[(dot + 1)..], StringComparison.Ordinal));

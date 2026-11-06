@@ -77,7 +77,7 @@ function useUsedSubjects(actor: string): string[] {
     const out: string[] = [];
     for (const r of index.data ?? []) {
       if (r.kind !== "process" || !r.actors?.includes(actor)) continue;
-      for (const e of r.subjects ?? (r.subject ? [r.subject] : [])) if (!out.includes(e)) out.push(e);
+      for (const e of [...(r.subjects ?? (r.subject ? [r.subject] : [])), ...(r.covers ?? [])]) if (!out.includes(e)) out.push(e);
     }
     return out;
   }, [index.data, actor]);

@@ -330,7 +330,7 @@ internal static class Participants
         };
 
     private static string FieldName(ModelSnapshot model, Entity entity, string id) =>
-        ScenarioObjects.Attributes(model, entity).FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.Ordinal))?.Name
+        ExprSites.ProcessAttributesOf(model, entity).FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.Ordinal))?.Name
             ?? (RelativeActors.OwnerEnd(model, entity, id) is { } end ? (end.Navigation.Length > 0 ? end.Navigation : end.Id) : id);
 
     private static string N(int value) => value.ToString(CultureInfo.InvariantCulture);

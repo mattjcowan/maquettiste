@@ -7851,12 +7851,24 @@ components:
           type: string
           enum: [lifecycle, orchestration, library]
         subject:
-          description: The entity a process governs, on process rows with exactly one subject in either form (`subject`, or one `subjects` entry; lifecycle-design.md decision 23); the entity an operation acts on, on operation rows that have one.
+          description: The entity a process governs, on process rows with exactly one subject in either form (`subject`, or one `subjects` entry; lifecycle-design.md decision 23) and no entry naming a stereotype (stereotype-sets-design.md section 8); the entity an operation acts on, on operation rows that have one.
           $ref: '#/components/schemas/Ulid'
         subjects:
-          description: The entities a process governs in entry order, on process rows with two or more subjects (lifecycle-design.md decision 23); such a row has no `subject`.
+          description: The entities a process's entity entries name in entry order, on process rows with two or more entity entries (lifecycle-design.md decision 23); such a row has no `subject`. Stereotype entries are not counted (`subjectStereotypes`).
           type: array
           minItems: 2
+          items:
+            $ref: '#/components/schemas/Ulid'
+        subjectStereotypes:
+          description: The ids of the stereotypes a process's subject entries name, in entry order (stereotype-sets-design.md section 8), on process rows that have such an entry; an unknown key is left out. Absent when empty.
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Ulid'
+        covers:
+          description: The ids of the entities a process's stereotype entries govern (stereotype-sets-design.md decision 4), on process rows that have such an entry, each entry's carriers by qualified name, in entry order, without repeats; a carrier that an entry naming it or a base wins is left out. Index rows carry an element's own stereotype keys, not package defaults, so the explorer reads carriers from here. Absent when empty.
+          type: array
+          minItems: 1
           items:
             $ref: '#/components/schemas/Ulid'
         stateCount:
@@ -8460,16 +8472,17 @@ components:
         default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the
         database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results
         followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and
-        4.4): `sync-enum` (`id` a lifecycle process, optional `entity` the subject whose enum binding it syncs, else the
-        lifecycle's one enum binding; its bound enum's members become the bound states in document order,
+        4.4): `sync-enum` (`id` a lifecycle process, optional `entity` the subject whose enum binding it syncs, or `stereotype`
+        the key of a stereotype entry, else the lifecycle's one enum binding; its bound enum's members become the bound states in document order,
         keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a
         default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or
-        the enum), `sync-codes` (lifecycle-design.md decision 19: `id` a lifecycle process, `entity` a subject, `attribute` the
-        subject's attribute that holds the state, optional `stateCodes` keyed by state id; it gives each state a binding maps a
+        the enum), `sync-codes` (lifecycle-design.md decision 19: `id` a lifecycle process, `entity` a subject or `stereotype` the
+        key of a stereotype the lifecycle lists, `attribute` the subject's attribute that holds the state (on a stereotype, one of
+        its own), optional `stateCodes` keyed by state id; it gives each state a binding maps a
         code, keeping the codes states have, matching the attribute type's codes by name and rows by label, and binds the
         attribute in the form the file has; see `POST /api/processes/{id}/sync-codes` for the matching and the plan. Refused with
-        MQ9019 when `id` is not a lifecycle, `entity` is not its one-subject form's subject, `attribute` is not an attribute
-        that can hold a state, a `stateCodes` key is not a state that rests, or another operation of the batch writes the
+        MQ9019 when `id` is not a lifecycle, `entity` is not its one-subject form's subject or follows it only through a
+        stereotype entry, `stereotype` is not listed, `attribute` is not an attribute that can hold a state, a `stateCodes` key is not a state that rests, or another operation of the batch writes the
         process), `set-lifecycle` (`id` an entity, `target` a
         process: it becomes the entity's named lifecycle (lifecycle-design.md decision 9). A target in the one-subject form, or
         with no subject, takes the entity as its one subject (a target with no subject gets `subjects` with one entry) and the
@@ -8615,9 +8628,15 @@ components:
             for `sync-codes`, which reads the model as it was before the batch: there it must name an existing entity (an id or a
             qualified name, not a placeholder).
           type: [string, 'null']
+        stereotype:
+          description: >-
+            `sync-enum` and `sync-codes`, in place of `entity` (stereotype-sets-design.md decision 10): the key of the stereotype whose
+            `subjects` entry the operation acts on. `sync-enum` syncs the enum that entry binds; `sync-codes` binds one of the
+            stereotype's own attributes in that entry, which the lifecycle must already list.
+          type: [string, 'null']
         attribute:
           description: >-
-            `sync-codes`: the attribute of `entity` (own, inherited or from a stereotype) that holds the state, single-valued and
+            `sync-codes`: the attribute of `entity` (own, inherited or from a stereotype), or of `stereotype` (its own), that holds the state, single-valued and
             typed by an enum, a reference type or a plain status (`string`, `text`, `int16`, `int32` or `int64`, directly or
             through a scalar type); the operation binds it in the form the file has. It must name an existing attribute (an id or a
             qualified name, not a placeholder): `sync-codes` reads the model as it was before the batch.
@@ -9957,7 +9976,7 @@ components:
             type: string
           subject:
             type: [string, 'null']
-            description: The subject entity's id when the process has exactly one subject, in either form.
+            description: The subject entity's id when the process has exactly one subject, in either form, counting a stereotype entry's governed carriers (stereotype-sets-design.md decision 12).
           boundAttribute:
             type: [string, 'null']
             description: The one subject's bound attribute, when the process has exactly one subject.
@@ -9966,9 +9985,14 @@ components:
             description: The one subject's bound enum, when the process has exactly one subject.
           subjects:
             type: array
-            description: The entries of `subjects` in file order (lifecycle-design.md section 7); absent for a process in the one-subject form or with no subject.
+            description: The entries of `subjects` in file order (lifecycle-design.md section 7), a stereotype entry expanded at its place into one subject per carrier it governs, by qualified name (stereotype-sets-design.md decision 12); absent for a process in the one-subject form or with no subject.
             items:
               $ref: '#/components/schemas/SubjectRecord'
+          stereotypeSubjects:
+            type: array
+            description: The stereotype entries of `subjects` as written, in file order (stereotype-sets-design.md section 6), each with the carriers it governs; it lists a stereotype nothing carries yet. Absent when the process has none.
+            items:
+              $ref: '#/components/schemas/StereotypeSubjectRecord'
           codesMap:
             type: boolean
             description: Whether the states' codes form a map (lifecycle-design.md decision 4); absent when no state has a code.
@@ -10016,16 +10040,19 @@ components:
               type: string
     SubjectRecord:
       x-engine-record: Maquettiste.Engine.SubjectRecord
-      description: An entry of a process's `subjects` (lifecycle-design.md decision 5).
+      description: An entry of a process's `subjects` (lifecycle-design.md decision 5), or one subject a stereotype entry gives (stereotype-sets-design.md decision 12).
       type: object
       required: [id, entity, boundAttribute, boundEnum]
       properties:
         id:
           type: string
-          description: The entry's id.
+          description: The entry's id; for a subject a stereotype entry gives, `<entry id>/<entity id>`.
         entity:
           type: string
-          description: The entity's id.
+          description: The entity's id; for a subject a stereotype entry gives, the carrier's.
+        stereotype:
+          type: string
+          description: The id of the stereotype whose entry gave the subject (stereotype-sets-design.md decision 12); absent on a subject an entity entry gave.
         boundAttribute:
           type: [string, 'null']
           description: The bound attribute's id.
@@ -10040,6 +10067,29 @@ components:
           description: |
             The id of the single-valued attribute or to-one relation end that holds the object's owner (actors-design.md decision 10),
             as the entry names it; absent when the entry names none or MQ9606 reports it.
+    StereotypeSubjectRecord:
+      x-engine-record: Maquettiste.Engine.StereotypeSubjectRecord
+      description: A stereotype entry of a process's `subjects`, as written (stereotype-sets-design.md section 6).
+      type: object
+      required: [id, stereotype, boundAttribute, entities]
+      properties:
+        id:
+          type: string
+          description: The entry's id.
+        stereotype:
+          type: string
+          description: The stereotype's id.
+        boundAttribute:
+          type: [string, 'null']
+          description: The bound attribute's id, one of the stereotype's own attributes.
+        owner:
+          type: string
+          description: The id of the stereotype's own attribute that holds the object's owner; absent when the entry names none or MQ9606 reports it.
+        entities:
+          type: array
+          description: The ids of the carriers the entry governs, by qualified name (stereotype-sets-design.md decision 4); empty when nothing carries the stereotype yet.
+          items:
+            type: string
     StateRecord:
       x-engine-record: Maquettiste.Engine.StateRecord
       description: A state.

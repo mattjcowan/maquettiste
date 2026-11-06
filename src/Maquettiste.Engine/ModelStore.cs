@@ -1863,6 +1863,8 @@ public enum BatchOp
 /// <param name="Entity">The subject whose binding the operation acts on (sync-enum, optional; sync-codes).</param>
 /// <param name="Attribute">The subject's attribute that holds the state (sync-codes).</param>
 /// <param name="StateCodes">sync-codes: codes keyed by state id, each a string or an integer; absent gives none.</param>
+/// <param name="Stereotype">sync-enum and sync-codes, in place of <paramref name="Entity"/>: the key of the stereotype whose subjects entry
+/// the operation acts on (stereotype-sets-design.md decision 10).</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
     string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null,
@@ -1870,7 +1872,7 @@ public sealed record BatchOperation(
     IReadOnlyDictionary<string, string>? ExpectedHashes = null, IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null,
     IReadOnlyList<string>? Tags = null, string? As = null, IReadOnlyList<string>? ElementIds = null, string? Prefix = null, bool? Redefine = null,
     bool? ExcludeMissing = null, bool? KeepNames = null, string? Code = null, string? To = null, IReadOnlyDictionary<string, string>? Codes = null,
-    string? Entity = null, string? Attribute = null, IReadOnlyDictionary<string, JsonElement>? StateCodes = null);
+    string? Entity = null, string? Attribute = null, IReadOnlyDictionary<string, JsonElement>? StateCodes = null, string? Stereotype = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

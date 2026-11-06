@@ -209,7 +209,7 @@ export async function demoteLifecycle(
   if (Array.isArray(process.subjects))
     process.subjects = (process.subjects as Record<string, unknown>[]).map(({ boundAttribute: _unbound, ...entry }) => entry);
   const docs = [{ id: change.process, before: before.json as ModelJson, hash: before.hash, json: process as ModelJson }];
-  for (const entity of subjectsOf(before.json as Record<string, unknown>).map((e) => e.entity)) {
+  for (const entity of subjectsOf(before.json as Record<string, unknown>).flatMap((e) => e.entity ?? [])) {
     await drafts.flush(entity);
     const doc = await endpoints.getElement(entity);
     if ((doc.json as Record<string, unknown>).lifecycle !== change.process) continue;
@@ -247,14 +247,23 @@ export async function replaceSoleSubject(
   qc: QueryClient,
   store: EditorStore,
   drafts: { flush(id: string): Promise<unknown> },
-  change: { process: string; entity: string; label: string },
+  change: { process: string; entity?: string; stereotype?: string; ownAttributes?: string[]; label: string },
 ): Promise<string | null> {
   await drafts.flush(change.process);
   const before = await endpoints.getElement(change.process);
   const process = structuredClone(before.json) as Record<string, unknown>;
   const entries = (process.subjects as Record<string, unknown>[] | undefined) ?? [];
-  const old = typeof entries[0]?.entity === "string" ? (entries[0].entity as string) : undefined;
-  process.subjects = [{ id: entries[0]?.id, entity: change.entity }];
+  const old =
+    typeof entries[0]?.entity === "string" ? (entries[0].entity as string) : typeof process.subject === "string" ? (process.subject as string) : undefined;
+  if (change.stereotype) {
+    // A stereotype entry keeps its bound attribute and owner only when they are the stereotype's own attributes (decision 6).
+    const own = (v: unknown) => (typeof v === "string" && change.ownAttributes?.includes(v) ? v : undefined);
+    const bound = own(entries[0]?.boundAttribute ?? process.boundAttribute);
+    const owner = own(entries[0]?.owner);
+    delete process.subject;
+    delete process.boundAttribute;
+    process.subjects = [{ id: entries[0]?.id, stereotype: change.stereotype, ...(bound ? { boundAttribute: bound } : {}), ...(owner ? { owner } : {}) }];
+  } else process.subjects = [{ id: entries[0]?.id, entity: change.entity }];
   const docs = [{ id: change.process, before: before.json as ModelJson, hash: before.hash, json: process as ModelJson }];
   if (old && old !== change.entity) {
     await drafts.flush(old);
@@ -265,12 +274,11 @@ export async function replaceSoleSubject(
       docs.push({ id: old, before: doc.json as ModelJson, hash: doc.hash, json: json as ModelJson });
     }
   }
-  await drafts.flush(change.entity);
-  const next = await endpoints.getElement(change.entity);
-  if (!(next.json as Record<string, unknown>).lifecycle) {
+  const next = change.entity ? (await drafts.flush(change.entity), await endpoints.getElement(change.entity)) : undefined;
+  if (next && change.entity && !(next.json as Record<string, unknown>).lifecycle) {
     const json = structuredClone(next.json) as Record<string, unknown>;
     json.lifecycle = change.process;
-    docs.push({ id: change.entity, before: next.json as ModelJson, hash: next.hash, json: json as ModelJson });
+    docs.push({ id: change.entity!, before: next.json as ModelJson, hash: next.hash, json: json as ModelJson });
   }
   const result = await endpoints.applyBatch({
     operations: docs.map((d) => ({ op: "update", id: d.id, expectedHash: d.hash, element: d.json })),
@@ -291,4 +299,50 @@ export async function replaceSoleSubject(
   void qc.invalidateQueries({ queryKey: keys.index });
   void qc.invalidateQueries({ queryKey: keys.validation });
   return null;
+}
+
+/**
+ * sync-enum and sync-codes on a stereotype entry go through the batch: the REST endpoints are entity-only (stereotype-sets-design.md
+ * decision 10). One undo step on the enum (sync-enum, `enumId`) or the process (sync-codes). Null when saved, else the refusal's message.
+ */
+export async function syncStereotypeEntry(
+  qc: QueryClient,
+  store: EditorStore,
+  change: { process: string; stereotype: string; op: "sync-enum" | "sync-codes"; enumId?: string; attribute?: string; label: string },
+): Promise<string | null> {
+  const target = change.op === "sync-enum" ? change.enumId : change.process;
+  if (!target) return "The process has no bound enum.";
+  const before = await endpoints.getElement(target);
+  const operation = { op: change.op, id: change.process, stereotype: change.stereotype, ...(change.attribute ? { attribute: change.attribute } : {}) };
+  const result = await endpoints.applyBatch({ operations: [operation] } as never);
+  if (!endpoints.isBatchResult(result)) return result.diagnostics[0]?.message ?? "The batch did not parse.";
+  if (result.outcome !== "saved")
+    return result.items.find((i) => i.outcome !== "saved")?.diagnostics[0]?.message ?? `The sync was refused (${result.outcome}).`;
+  applyBatchResult(qc, result);
+  const after = await refetch(qc, target);
+  store
+    .getState()
+    .pushUndo({ label: change.label, ids: [target], before: [before.json as ModelJson], after: [after.json as ModelJson], afterHashes: [after.hash] });
+  void qc.invalidateQueries({ queryKey: keys.index });
+  void qc.invalidateQueries({ queryKey: keys.validation });
+  return null;
+}
+
+/** The plan Sync enum shows for a stereotype entry: the states against the bound enum's members, read from the two documents. */
+export async function stereotypeEnumPlan(process: string, enumId: string): Promise<SyncEnumResult> {
+  const states = ((await endpoints.getElement(process)).json as { states?: { name: string; type?: string }[] }).states ?? [];
+  const members = ((await endpoints.getElement(enumId)).json as { members?: { name: string }[] }).members ?? [];
+  const wanted = states.filter((s) => s.type !== "history" && s.type !== "choice").map((s) => s.name);
+  const have = members.map((m) => m.name);
+  const kept = have.filter((n) => wanted.includes(n));
+  return {
+    process,
+    enum: enumId,
+    added: wanted.filter((n) => !have.includes(n)),
+    removed: have.filter((n) => !wanted.includes(n)),
+    reordered: kept.join("|") !== wanted.filter((n) => kept.includes(n)).join("|"),
+    refused: [],
+    applied: false,
+    diagnostics: [],
+  };
 }

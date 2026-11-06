@@ -769,6 +769,7 @@ internal static partial class ProcessRules
         }
 
         var entries = process.Subject is null ? process.SubjectList : null; // the subjects form
+        CheckSubjectStereotypes(context, process, entries ?? [], report);
         if (process.Use == ProcessUse.Orchestration)
         {
             if (process.BoundAttribute is not null)
@@ -785,7 +786,7 @@ internal static partial class ProcessRules
             return;
         }
 
-        var bindings = new List<(BindingType Type, Entity Subject, ModelAttribute Attribute, string Pointer, string? EntryId)>();
+        var bindings = new List<(BindingType Type, SubjectRef Subject, ModelAttribute Attribute, string Pointer, string? EntryId)>();
         if (entries is not null)
         {
             CheckSubjects(context, process, analysis, codes, entries, bindings, report);
@@ -806,16 +807,17 @@ internal static partial class ProcessRules
             }
 
             if (process.BoundAttribute is not null)
-                CheckBinding(context, process, analysis, codes, subject, process.BoundAttribute, "/boundAttribute", null, bindings, report);
+                CheckBinding(context, process, analysis, codes, SubjectRef.Of(context, subject), process.BoundAttribute, "/boundAttribute", null, bindings, report);
         }
 
         CheckBoundCodes(process, analysis, codes, bindings, report);
     }
 
-    // The subjects form (lifecycle-design.md decisions 5 and 8): a lifecycle lists at least one entity, each once. An entity need not name
-    // the lifecycle back, since several may govern it. Each entry's binding is judged as the one-subject form's is.
+    // The subjects form (lifecycle-design.md decisions 5 and 8): a lifecycle lists at least one entity or stereotype, each once. An entity
+    // need not name the lifecycle back, since several may govern it. Each entry's binding is judged as the one-subject form's is; a
+    // stereotype entry's binds one of the stereotype's own attributes (stereotype-sets-design.md decision 6).
     private static void CheckSubjects(ValidationContext context, Process process, ProcessAnalysis analysis, ProcessCodes codes, IReadOnlyList<ProcessSubject> entries,
-        List<(BindingType Type, Entity Subject, ModelAttribute Attribute, string Pointer, string? EntryId)> bindings, Report report)
+        List<(BindingType Type, SubjectRef Subject, ModelAttribute Attribute, string Pointer, string? EntryId)> bindings, Report report)
     {
         var model = context.Model;
         if (entries.Count == 0)
@@ -828,22 +830,81 @@ internal static partial class ProcessRules
         for (var i = 0; i < entries.Count; i++)
         {
             var entry = entries[i];
-            if (!listed.Add(entry.Entity))
+            if (entry.Stereotype is { } key)
+            {
+                if (!listed.Add("s:" + key))
+                {
+                    report.Add("MQ9201", $"Process '{process.Name}' lists {SubjectLabel(model, entry)} more than once in subjects; remove the repeated entry.",
+                        "/subjects/" + N(i) + "/stereotype", entry.Id);
+                    continue;
+                }
+
+                // An unknown key is MQ2003, one that does not apply to entities MQ9211 (CheckSubjectStereotypes).
+                if (entry.BoundAttribute is not null && model.GetStereotype(key) is { } stereotype && AppliesToEntities(stereotype))
+                    CheckBinding(context, process, analysis, codes, SubjectRef.Of(stereotype), entry.BoundAttribute, "/subjects/" + N(i) + "/boundAttribute", entry.Id, bindings, report);
+                continue;
+            }
+
+            if (entry.Entity is not { } entityId)
+                continue; // the schema asks for one of entity and stereotype
+            if (!listed.Add("e:" + entityId))
             {
                 report.Add("MQ9201", $"Process '{process.Name}' lists {SubjectLabel(model, entry)} more than once in subjects; remove the repeated entry.",
                     "/subjects/" + N(i) + "/entity", entry.Id);
                 continue;
             }
 
-            if (entry.BoundAttribute is not null && model.Get<Entity>(entry.Entity) is { } entity) // else MQ2001 or MQ2002
-                CheckBinding(context, process, analysis, codes, entity, entry.BoundAttribute, "/subjects/" + N(i) + "/boundAttribute", entry.Id, bindings, report);
+            if (entry.BoundAttribute is not null && model.Get<Entity>(entityId) is { } entity) // else MQ2001 or MQ2002
+                CheckBinding(context, process, analysis, codes, SubjectRef.Of(context, entity), entry.BoundAttribute, "/subjects/" + N(i) + "/boundAttribute", entry.Id, bindings, report);
         }
+    }
+
+    // MQ2003 and MQ9211 (stereotype-sets-design.md decision 5): a subject entry's stereotype is a known key of a stereotype that applies to
+    // entities, on lifecycles and orchestrations alike.
+    private static void CheckSubjectStereotypes(ValidationContext context, Process process, IReadOnlyList<ProcessSubject> entries, Report report)
+    {
+        for (var i = 0; i < entries.Count; i++)
+        {
+            if (entries[i].Stereotype is not { } key)
+                continue;
+            var pointer = "/subjects/" + N(i) + "/stereotype";
+            if (context.Model.GetStereotype(key) is not { } stereotype)
+                report.Add("MQ2003", $"Stereotype '{key}' is not defined in model/vocabularies/stereotypes.", pointer, entries[i].Id);
+            else if (!AppliesToEntities(stereotype))
+                report.Add("MQ9211", $"Subject {N(i + 1)} of process '{process.Name}' names stereotype '{key}', which applies to {string.Join(", ", stereotype.AppliesTo)}, not to entities, so no entity can carry it; name a stereotype entities carry, or an entity.", pointer, entries[i].Id);
+        }
+    }
+
+    /// <summary>Whether entities may carry a stereotype: its <c>appliesTo</c> is empty or names <c>entity</c>.</summary>
+    /// <param name="stereotype">The stereotype.</param>
+    /// <returns>Whether it applies to entities.</returns>
+    internal static bool AppliesToEntities(Stereotype stereotype) =>
+        stereotype.AppliesTo.Count == 0 || stereotype.AppliesTo.Contains(KindInfo.Get(ElementKind.Entity).Name, StringComparer.Ordinal);
+
+    /// <summary>
+    /// The subject a binding is judged for: an entity, whose attributes are its own, inherited and those of the stereotypes it carries; or a
+    /// stereotype entry's stereotype, whose attributes are its own (stereotype-sets-design.md decision 6).
+    /// </summary>
+    /// <param name="Id">The entity's id, or the stereotype's key.</param>
+    /// <param name="Name">The entity's name, or the stereotype's key.</param>
+    /// <param name="Label">How findings name it: <c>entity 'Order'</c> or <c>stereotype 'approvable'</c>.</param>
+    /// <param name="Stereotype">The stereotype key for a stereotype entry, else <see langword="null"/>.</param>
+    /// <param name="Find">Finds one of the subject's attributes by id.</param>
+    private sealed record SubjectRef(string Id, string Name, string Label, string? Stereotype, Func<string, ModelAttribute?> Find)
+    {
+        public static SubjectRef Of(ValidationContext context, Entity entity) =>
+            new(entity.Id, entity.Name, "entity '" + entity.Name + "'", null,
+                id => context.Flatten(entity).FirstOrDefault(f => string.Equals(f.Attribute.Id, id, StringComparison.Ordinal))?.Attribute);
+
+        public static SubjectRef Of(Stereotype stereotype) =>
+            new(stereotype.Key, stereotype.Key, "stereotype '" + stereotype.Key + "'", stereotype.Key,
+                id => stereotype.Attributes.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.Ordinal)));
     }
 
     // What every binding of a lifecycle asks of its codes together (lifecycle-design.md decisions 4, 12 and 13): under any binding the codes
     // form a map (MQ9206), and under a binding that stores codes each state a configuration rests in has one (MQ9210, one warning per
     // binding, so an edit that adds a state before its code is never refused). An enum binding needs none: its member is the value.
-    private static void CheckBoundCodes(Process process, ProcessAnalysis analysis, ProcessCodes codes, List<(BindingType Type, Entity Subject, ModelAttribute Attribute, string Pointer, string? EntryId)> bindings,
+    private static void CheckBoundCodes(Process process, ProcessAnalysis analysis, ProcessCodes codes, List<(BindingType Type, SubjectRef Subject, ModelAttribute Attribute, string Pointer, string? EntryId)> bindings,
         Report report)
     {
         if (bindings.Count == 0)
@@ -887,22 +948,23 @@ internal static partial class ProcessRules
     private static string PathOf(ProcessAnalysis analysis, string stateId) => analysis.Find(stateId)?.Path ?? stateId;
 
     private static string SubjectLabel(ModelSnapshot model, ProcessSubject entry) =>
-        model.Get<Entity>(entry.Entity) is { } entity ? "entity '" + entity.Name + "'" : "'" + entry.Entity + "'";
+        entry.Stereotype is { } key ? "stereotype '" + key + "'"
+        : model.Get<Entity>(entry.Entity ?? "") is { } entity ? "entity '" + entity.Name + "'" : "'" + entry.Entity + "'";
 
     // MQ9202 to MQ9205, MQ9207 and MQ9208 for one subject's binding, at its pointer (and, for a subjects entry, under the entry's id); MQ9207 at
     // each code that does not fit. A binding that can hold a state joins bindings, for what the lifecycle's bindings ask together.
-    private static void CheckBinding(ValidationContext context, Process process, ProcessAnalysis analysis, ProcessCodes codes, Entity subject, string boundAttribute,
-        string pointer, string? entryId, List<(BindingType Type, Entity Subject, ModelAttribute Attribute, string Pointer, string? EntryId)> bindings, Report report)
+    private static void CheckBinding(ValidationContext context, Process process, ProcessAnalysis analysis, ProcessCodes codes, SubjectRef subject, string boundAttribute,
+        string pointer, string? entryId, List<(BindingType Type, SubjectRef Subject, ModelAttribute Attribute, string Pointer, string? EntryId)> bindings, Report report)
     {
         var model = context.Model;
-        var flat = context.Flatten(subject).FirstOrDefault(f => string.Equals(f.Attribute.Id, boundAttribute, StringComparison.Ordinal));
-        if (flat is null)
+        if (subject.Find(boundAttribute) is not { } attribute)
         {
-            report.Add("MQ9202", $"The bound attribute of process '{process.Name}' is not an attribute of entity '{subject.Name}' (own, inherited or from a stereotype); bind one of the subject's attributes that can hold the state.", pointer, entryId);
+            report.Add("MQ9202", subject.Stereotype is null
+                ? $"The bound attribute of process '{process.Name}' is not an attribute of entity '{subject.Name}' (own, inherited or from a stereotype); bind one of the subject's attributes that can hold the state."
+                : $"The bound attribute of process '{process.Name}' is not an attribute of stereotype '{subject.Name}'; a stereotype subject binds one of the stereotype's own attributes that can hold the state.", pointer, entryId);
             return;
         }
 
-        var attribute = flat.Attribute;
         var type = LifecycleBindings.Classify(model, attribute);
         if (type.Kind == BindingKind.Unsupported)
         {
@@ -910,17 +972,19 @@ internal static partial class ProcessRules
             return;
         }
 
-        // Two lifecycles may not bind one attribute for an entity both list by name (decision 11); a base or derived entity does not count.
-        // Two lifecycles in the one-subject form already disagree on the entity's one lifecycle (MQ9201), and stay as they were.
+        // Two lifecycles may not bind one attribute for an entity both list by name, or a stereotype both list (decision 11,
+        // stereotype-sets-design.md decision 8); a base or derived entity, or covering through a stereotype, does not count. Two lifecycles in
+        // the one-subject form already disagree on the entity's one lifecycle (MQ9201), and stay as they were.
         foreach (var other in LifecycleBindings.Of(model).ByAttribute.GetValueOrDefault(attribute.Id, []))
         {
             if (ReferenceEquals(other.Process, process) || string.Equals(other.Process.Id, process.Id, StringComparison.Ordinal)
-                || !string.Equals(other.Entity, subject.Id, StringComparison.Ordinal) || (process.UsesOneSubjectForm && other.Process.UsesOneSubjectForm))
+                || !(subject.Stereotype is { } key ? string.Equals(other.Stereotype, key, StringComparison.Ordinal) : string.Equals(other.Entity, subject.Id, StringComparison.Ordinal))
+                || (process.UsesOneSubjectForm && other.Process.UsesOneSubjectForm))
             {
                 continue;
             }
 
-            report.Add("MQ9202", $"Processes '{process.Name}' and '{other.Process.Name}' both bind attribute '{attribute.Name}' for entity '{subject.Name}', which both list, and one attribute holds one lifecycle's state; bind another attribute in one of them.", pointer, entryId);
+            report.Add("MQ9202", $"Processes '{process.Name}' and '{other.Process.Name}' both bind attribute '{attribute.Name}' for {subject.Label}, which both list, and one attribute holds one lifecycle's state; bind another attribute in one of them.", pointer, entryId);
         }
 
         bindings.Add((type, subject, attribute, pointer, entryId));
@@ -943,7 +1007,7 @@ internal static partial class ProcessRules
 
     // MQ9203 to MQ9205 and MQ9207 for an enum binding (decision 14): states match the enum's members by name, as before codes, and a root
     // state's code names its member by one of the member's own identifiers.
-    private static void CheckEnumBinding(ValidationContext context, Process process, ProcessAnalysis analysis, ProcessCodes codes, Entity subject, ModelAttribute attribute,
+    private static void CheckEnumBinding(ValidationContext context, Process process, ProcessAnalysis analysis, ProcessCodes codes, SubjectRef subject, ModelAttribute attribute,
         EnumType enumType, string pointer, string? entryId, Report report)
     {
         var model = context.Model;
@@ -987,7 +1051,7 @@ internal static partial class ProcessRules
             var code = ProcessCodes.Text(coded.State.Code!.Value);
             if (node.Parent is not null)
             {
-                report.Add("MQ9207", $"State '{node.Path}' of process '{process.Name}' has code {code}, but enum '{enumType.Name}', which attribute '{attribute.Name}' of entity '{subject.Name}' binds, holds root states only, by name; move the code to root state '{node.Path.Split('.')[0]}', or remove it.",
+                report.Add("MQ9207", $"State '{node.Path}' of process '{process.Name}' has code {code}, but enum '{enumType.Name}', which attribute '{attribute.Name}' of {subject.Label} binds, holds root states only, by name; move the code to root state '{node.Path.Split('.')[0]}', or remove it.",
                     coded.Pointer + "/code", coded.State.Id);
                 continue;
             }
@@ -1006,13 +1070,13 @@ internal static partial class ProcessRules
             if (member.Value is { } v)
                 identifiers.Add(v.ToString(CultureInfo.InvariantCulture));
             identifiers.Add("'" + member.Name + "'");
-            report.Add("MQ9207", $"State '{node.Path}' of process '{process.Name}' has code {code}, but member '{member.Name}' of enum '{enumType.Name}', which attribute '{attribute.Name}' of entity '{subject.Name}' binds, is {Names(identifiers)}; write one of those as the code.",
+            report.Add("MQ9207", $"State '{node.Path}' of process '{process.Name}' has code {code}, but member '{member.Name}' of enum '{enumType.Name}', which attribute '{attribute.Name}' of {subject.Label} binds, is {Names(identifiers)}; write one of those as the code.",
                 coded.Pointer + "/code", coded.State.Id);
         }
     }
 
     // MQ9207 for a reference binding (decision 16): every code is a live code of the type; a former code is reported with its replacement.
-    private static void CheckReferenceCodes(ValidationContext context, Process process, ProcessCodes codes, Entity subject, ModelAttribute attribute, ReferenceType type,
+    private static void CheckReferenceCodes(ValidationContext context, Process process, ProcessCodes codes, SubjectRef subject, ModelAttribute attribute, ReferenceType type,
         Report report)
     {
         foreach (var coded in codes.Coded)
@@ -1023,7 +1087,7 @@ internal static partial class ProcessRules
             if (!context.CodeMissing(type.Id, value))
                 continue;
             var where = $"State '{coded.State.Name}' of process '{process.Name}' has code {ProcessCodes.Text(value)}";
-            var binding = $"reference type '{type.Name}', which attribute '{attribute.Name}' of entity '{subject.Name}' binds";
+            var binding = $"reference type '{type.Name}', which attribute '{attribute.Name}' of {subject.Label} binds";
             if (context.ReferenceData.ReplacedByOf(type.Id, value) is { } rowId)
             {
                 var current = ReferenceDataRules.CodeOfRow(context, rowId);
@@ -1040,7 +1104,7 @@ internal static partial class ProcessRules
     }
 
     // MQ9207 for a plain status (decision 16): every code fits the attribute's type, length, pattern and allowedValues, as a default would.
-    private static void CheckPlainCodes(Process process, ProcessCodes codes, Entity subject, ModelAttribute attribute, EffectiveType type,
+    private static void CheckPlainCodes(Process process, ProcessCodes codes, SubjectRef subject, ModelAttribute attribute, EffectiveType type,
         Report report)
     {
         foreach (var coded in codes.Coded)
@@ -1050,7 +1114,7 @@ internal static partial class ProcessRules
             var value = coded.State.Code!.Value;
             if (AttributeRules.DefaultMismatch(type, attribute, value) is not { } reason)
                 continue;
-            report.Add("MQ9207", $"State '{coded.State.Name}' of process '{process.Name}' has code {ProcessCodes.Text(value)}, which does not fit attribute '{attribute.Name}' of entity '{subject.Name}' ({type.Describe()}), which the process binds: {reason}; write a code that fits it.",
+            report.Add("MQ9207", $"State '{coded.State.Name}' of process '{process.Name}' has code {ProcessCodes.Text(value)}, which does not fit attribute '{attribute.Name}' of {subject.Label} ({type.Describe()}), which the process binds: {reason}; write a code that fits it.",
                 coded.Pointer + "/code", coded.State.Id);
         }
     }
@@ -1074,7 +1138,7 @@ internal static partial class ProcessRules
     // MQ9208 (decision 17): the values a binding can hold that no state's code covers, once per binding: the attribute's allowedValues when
     // it has them (else a scalar type's), else a reference type's stored rows. Rows a script fills are not judged, and a lifecycle with no
     // codes yet is left to MQ9210.
-    private static void CheckUncoveredValues(ValidationContext context, Process process, ProcessCodes codes, Entity subject, ModelAttribute attribute, BindingType type,
+    private static void CheckUncoveredValues(ValidationContext context, Process process, ProcessCodes codes, SubjectRef subject, ModelAttribute attribute, BindingType type,
         string pointer, string? entryId, Report report)
     {
         // While the lifecycle has no codes, MQ9210 already asks one of each state it rests in; listing every value as well adds nothing.
@@ -1101,7 +1165,7 @@ internal static partial class ProcessRules
             return;
         var shown = Names(uncovered.Take(10).Select(v => "'" + v + "'")) + (uncovered.Count > 10 ? $" and {N(uncovered.Count - 10)} more" : "");
         var from = allowed.Count > 0 ? "allowedValues of attribute '" + attribute.Name + "'" : "the rows of reference type '" + type.Reference!.Name + "'";
-        report.Add("MQ9208", $"No state of process '{process.Name}' has {(uncovered.Count == 1 ? "the value" : "the values")} {shown} from {from} of entity '{subject.Name}', which the process binds; add a state with each code, or narrow the attribute's allowedValues.",
+        report.Add("MQ9208", $"No state of process '{process.Name}' has {(uncovered.Count == 1 ? "the value" : "the values")} {shown} from {from} of {subject.Label}, which the process binds; add a state with each code, or narrow the attribute's allowedValues.",
             pointer, entryId);
     }
 
@@ -1166,9 +1230,10 @@ internal static partial class ProcessRules
             report.Add("MQ9201", $"Entity '{entity.Name}' names process '{process.Name}' as its lifecycle, but that process is {(process.Use == ProcessUse.Library ? "a library" : "an orchestration")}; name a lifecycle process, or set its use to lifecycle.", "/lifecycle");
         else if (process.Subject is null && process.SubjectList is { } entries)
         {
-            // The subjects form (lifecycle-design.md decision 8): the named lifecycle lists the entity, or a base of it.
+            // The subjects form (lifecycle-design.md decision 8): the named lifecycle lists the entity, or a base of it, or a stereotype it or
+            // a base carries (stereotype-sets-design.md section 5).
             var chain = context.Ancestors(entity).Select(a => a.Id).Prepend(entity.Id).ToHashSet(StringComparer.Ordinal);
-            if (!entries.Any(e => chain.Contains(e.Entity)))
+            if (!entries.Any(e => e.Entity is { } listed && chain.Contains(listed)) && !SubjectCoverage.Governs(context.Model, process, entity))
                 report.Add("MQ9201", $"Entity '{entity.Name}' names process '{process.Name}' as its lifecycle, but that process does not list it, or an entity it derives from, in its subjects; add the entity to the process's subjects, or name another lifecycle.", "/lifecycle");
         }
         else if (!string.Equals(process.Subject, entity.Id, StringComparison.Ordinal))

@@ -265,11 +265,13 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
   const process = useElement(scenario.process).data?.json as unknown as ProcessDoc | undefined;
   const index = useIndex();
   const entities = useMemo(() => new Map((index.data ?? []).filter((r) => r.kind === "entity").map((r) => [r.id, r.name])), [index.data]);
-  const withOwnerField = new Set(
-    subjectsOf(process)
-      .filter((e) => e.owner)
-      .map((e) => e.entity),
-  );
+  // An entity covered through a stereotype entry with an owner field has one too (stereotype-sets-design.md decision 6); the
+  // process's index row lists the carriers that entry governs.
+  const owned = subjectsOf(process).filter((e) => e.owner);
+  const withOwnerField = new Set<string>([
+    ...owned.flatMap((e) => e.entity ?? []),
+    ...(owned.some((e) => e.stereotype !== undefined) ? ((index.data ?? []).find((r) => r.id === scenario.process)?.covers ?? []) : []),
+  ]);
   const participants = scenario.participants ?? [];
   const [adding, setAdding] = useState(false);
   const rows: ObjectRow[] = (scenario.objects ?? []).map((o, i) => ({

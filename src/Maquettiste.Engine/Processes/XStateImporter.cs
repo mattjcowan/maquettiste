@@ -829,9 +829,13 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
         {
             var entry = entries[i];
             var entity = EntityOf(entry) ?? "";
-            var matched = intoEntries.FirstOrDefault(e => string.Equals(e.Entity, entity, StringComparison.Ordinal));
+            // A stereotype entry (stereotype-sets-design.md decision 2) keeps the id of the target's entry that names the same key.
+            var stereotype = entry["stereotype"] is JsonValue sv && sv.GetValueKind() == JsonValueKind.String ? sv.GetValue<string>() : null;
+            var matched = intoEntries.FirstOrDefault(e => stereotype is not null
+                ? string.Equals(e.Stereotype, stereotype, StringComparison.Ordinal)
+                : string.Equals(e.Entity, entity, StringComparison.Ordinal));
             var id = Assign(Carried(entry), "subject", "/meta/maquettiste/subjects/" + i.ToString(CultureInfo.InvariantCulture) + "/id",
-                matched is null ? null : new JsonObject { ["id"] = matched.Id }, "subject:" + entity);
+                matched is null ? null : new JsonObject { ["id"] = matched.Id }, "subject:" + (stereotype is not null ? "stereotype:" + stereotype : entity));
             var ordered = new JsonObject { ["id"] = id };
             foreach (var (key, value) in entry)
             {

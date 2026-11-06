@@ -40,6 +40,40 @@ export function entityChain(entity: string, doc: (id: string) => Json | undefine
   return out;
 }
 
+/** One attribute as a field. */
+function attributeField(a: Json, fromStereotype: boolean, src: Pick<FieldSources, "doc" | "kindOf">): ObjectField {
+  const id = typeof a.id === "string" ? a.id : "";
+  const type = a.type as { ref?: unknown } | string | undefined;
+  const ref = type && typeof type === "object" && typeof type.ref === "string" ? type.ref : undefined;
+  let scalar = typeof type === "string" ? type : undefined;
+  for (let at = ref, hops = 0; at && hops < 8; hops++) {
+    const d = src.doc(at);
+    if (d?.kind !== "scalar-type") break;
+    const base = d.base;
+    if (typeof base === "string" && !src.doc(base)) {
+      scalar = base;
+      break;
+    }
+    at = typeof base === "string" ? base : undefined;
+  }
+  return {
+    id,
+    name: String(a.name ?? id),
+    kind: "attribute",
+    many: a.collection === true,
+    valueObject: !!ref && src.kindOf(ref) === "value-object",
+    ...(scalar ? { scalar } : {}),
+    ...(fromStereotype ? { fromStereotype } : {}),
+  };
+}
+
+/** A stereotype entry's fields: the stereotype's own attributes and no ends (stereotype-sets-design.md decision 7). */
+export function stereotypeFields(stereotype: Json | undefined, src: Pick<FieldSources, "doc" | "kindOf">): ObjectField[] {
+  return arr(stereotype?.attributes)
+    .filter((a) => typeof a.id === "string" && a.id)
+    .map((a) => attributeField(a, false, src));
+}
+
 /** An entity's fields: its attributes, its bases' and its stereotypes', then the ends that lead away from it (or a base). */
 export function objectFields(entity: string, src: FieldSources): ObjectField[] {
   const chain = entityChain(entity, src.doc);
@@ -54,28 +88,7 @@ export function objectFields(entity: string, src: FieldSources): ObjectField[] {
       const id = typeof a.id === "string" ? a.id : "";
       if (!id || seen.has(id)) continue;
       seen.add(id);
-      const type = a.type as { ref?: unknown } | string | undefined;
-      const ref = type && typeof type === "object" && typeof type.ref === "string" ? type.ref : undefined;
-      let scalar = typeof type === "string" ? type : undefined;
-      for (let at = ref, hops = 0; at && hops < 8; hops++) {
-        const d = src.doc(at);
-        if (d?.kind !== "scalar-type") break;
-        const base = d.base;
-        if (typeof base === "string" && !src.doc(base)) {
-          scalar = base;
-          break;
-        }
-        at = typeof base === "string" ? base : undefined;
-      }
-      out.push({
-        id,
-        name: String(a.name ?? id),
-        kind: "attribute",
-        many: a.collection === true,
-        valueObject: !!ref && src.kindOf(ref) === "value-object",
-        ...(scalar ? { scalar } : {}),
-        ...(fromStereotype ? { fromStereotype } : {}),
-      });
+      out.push(attributeField(a, fromStereotype, src));
     }
   }
   const mine = new Set(chain.map((c) => String(c.id)));
@@ -108,8 +121,8 @@ const PERSON_TYPES = new Set(["string", "text", "guid", "uuid", "int16", "int32"
 /** Whether a field can name a person: a to-one end, or a single-valued attribute typed string, text, guid, uuid or a whole number. Guidance only. */
 export const canNamePerson = (f: ObjectField): boolean => holdsOneActor(f) && (f.kind === "end" || (!!f.scalar && PERSON_TYPES.has(f.scalar.toLowerCase())));
 
-/** The fields an Owner picker offers: those that can name a person, and no attribute of a stereotype (MQ9606). */
-export const canBeOwner = (f: ObjectField): boolean => canNamePerson(f) && !f.fromStereotype;
+/** The fields an Owner picker offers: those that can name a person (a stereotype's attributes too, stereotype-sets-design.md decision 7). */
+export const canBeOwner = (f: ObjectField): boolean => canNamePerson(f);
 
 /**
  * Why `steps` cannot be worked out from `entity`, or null. A path follows to-one ends and may finish at a single-valued

@@ -215,21 +215,24 @@ export function bindingDiagnostics(json: Json, entry: ModelEntry, ctx: Validatio
   const bindings: Bound[] = [];
   const listed = new Set<string>();
   entries.forEach((e, i) => {
-    if (listed.has(e.entity)) return; // MQ9201
-    listed.add(e.entity);
+    const listKey = e.stereotype !== undefined ? `stereotype:${e.stereotype}` : e.entity!;
+    if (listed.has(listKey)) return; // MQ9201
+    listed.add(listKey);
     if (e.boundAttribute === undefined) return;
-    const subject = lookup(e.entity);
-    if (!subject || subject.kind !== "entity") return; // MQ2001 or MQ2002
+    // A stereotype entry binds one of the stereotype's own attributes (stereotype-sets-design.md decision 6).
+    const subject = e.stereotype !== undefined ? ctx.stereotypes.get(e.stereotype) : lookup(e.entity!);
+    if (!subject || (e.stereotype === undefined && subject.kind !== "entity")) return; // MQ2001, MQ2002 or MQ2003
     const pointer = pointerOf(i);
     const at = idOf(i);
-    const sname = String(subject.name);
-    const candidates = bindableAttributes(subject, lookup, (key) => ctx.stereotypes.get(key));
+    const sname = e.stereotype !== undefined ? String(subject.key) : String(subject.name);
+    const label = e.stereotype !== undefined ? `stereotype '${sname}'` : `entity '${sname}'`;
+    const candidates = e.stereotype !== undefined ? arr(subject.attributes) : bindableAttributes(subject, lookup, (key) => ctx.stereotypes.get(key));
     const attribute = candidates.find((a) => a.id === e.boundAttribute);
     if (!attribute) {
       emit(
         "MQ9202",
         "error",
-        `The bound attribute of process '${name}' is not an attribute of entity '${sname}' (own, inherited or from a stereotype); bind one of the subject's attributes that can hold the state.`,
+        `The bound attribute of process '${name}' is not an attribute of ${label} (${e.stereotype !== undefined ? "its own" : "own, inherited or from a stereotype"}); bind one of the subject's attributes that can hold the state.`,
         pointer,
         at,
       );
@@ -240,7 +243,7 @@ export function bindingDiagnostics(json: Json, entry: ModelEntry, ctx: Validatio
       emit(
         "MQ9202",
         "error",
-        `The bound attribute '${String(attribute.name)}' of process '${name}' ${type.why}; bind a single-valued attribute of '${sname}' typed by an enum, a reference type, or a string or integer type.`,
+        `The bound attribute '${String(attribute.name)}' of process '${name}' ${type.why}; bind a single-valued attribute of ${label} typed by an enum, a reference type, or a string or integer type.`,
         pointer,
         at,
       );
@@ -250,7 +253,7 @@ export function bindingDiagnostics(json: Json, entry: ModelEntry, ctx: Validatio
       emit(
         "MQ9202",
         "error",
-        `The type of the bound attribute '${String(attribute.name)}' of process '${name}' is not in the model; bind a single-valued attribute of '${sname}' typed by an enum, a reference type, or a string or integer type.`,
+        `The type of the bound attribute '${String(attribute.name)}' of process '${name}' is not in the model; bind a single-valued attribute of ${label} typed by an enum, a reference type, or a string or integer type.`,
         pointer,
         at,
       );
@@ -261,11 +264,15 @@ export function bindingDiagnostics(json: Json, entry: ModelEntry, ctx: Validatio
     for (const other of all()) {
       if (other.id === entry.id || other.json.kind !== "process" || other.json.use !== "lifecycle") continue;
       if (!listForm && !Array.isArray(other.json.subjects)) continue;
-      if (subjectsOf(other.json).some((o) => o.entity === e.entity && o.boundAttribute === e.boundAttribute))
+      if (
+        subjectsOf(other.json).some(
+          (o) => (e.stereotype !== undefined ? o.stereotype === e.stereotype : o.entity === e.entity) && o.boundAttribute === e.boundAttribute,
+        )
+      )
         emit(
           "MQ9202",
           "error",
-          `Processes '${name}' and '${String(other.json.name)}' both bind attribute '${String(attribute.name)}' for entity '${sname}', which both list, and one attribute holds one lifecycle's state; bind another attribute in one of them.`,
+          `Processes '${name}' and '${String(other.json.name)}' both bind attribute '${String(attribute.name)}' for ${label}, which both list, and one attribute holds one lifecycle's state; bind another attribute in one of them.`,
           pointer,
           at,
         );
@@ -361,7 +368,7 @@ function enumBinding(
       emit(
         "MQ9207",
         "error",
-        `State '${node.path}' of process '${name}' has code ${text(c)}, but enum '${ename}', which attribute '${n.aname}' of entity '${n.sname}' binds, holds root states only, by name; move the code to root state '${node.path.split(".")[0]}', or remove it.`,
+        `State '${node.path}' of process '${name}' has code ${text(c)}, but enum '${ename}', which attribute '${n.aname}' of '${n.sname}' binds, holds root states only, by name; move the code to root state '${node.path.split(".")[0]}', or remove it.`,
         `${node.pointer}/code`,
         node.id,
       );
@@ -377,7 +384,7 @@ function enumBinding(
     emit(
       "MQ9207",
       "error",
-      `State '${node.path}' of process '${name}' has code ${text(c)}, but member '${String(member.name)}' of enum '${ename}', which attribute '${n.aname}' of entity '${n.sname}' binds, is ${names(ids)}; write one of those as the code.`,
+      `State '${node.path}' of process '${name}' has code ${text(c)}, but member '${String(member.name)}' of enum '${ename}', which attribute '${n.aname}' of '${n.sname}' binds, is ${names(ids)}; write one of those as the code.`,
       `${node.pointer}/code`,
       node.id,
     );
@@ -394,7 +401,7 @@ function referenceCodes(process: Json, nodes: Node[], type: Json, typeId: string
     const key = codeKey(node.state.code)!;
     if (live.has(key)) continue;
     const where = `State '${String(node.state.name)}' of process '${String(process.name)}' has code ${text(node.state.code as Code)}`;
-    const binding = `reference type '${String(type.name)}', which attribute '${n.aname}' of entity '${n.sname}' binds`;
+    const binding = `reference type '${String(type.name)}', which attribute '${n.aname}' of '${n.sname}' binds`;
     const replacement = former.get(key);
     const current = replacement ? rows.find((r) => r.id === replacement)?.code : undefined;
     emit(
@@ -420,7 +427,7 @@ function plainCodes(process: Json, nodes: Node[], attribute: Json, scalar: Json 
     emit(
       "MQ9207",
       "error",
-      `State '${String(node.state.name)}' of process '${String(process.name)}' has code ${text(node.state.code as Code)}, which does not fit attribute '${n.aname}' of entity '${n.sname}' (${shown}), which the process binds: ${reason}; write a code that fits it.`,
+      `State '${String(node.state.name)}' of process '${String(process.name)}' has code ${text(node.state.code as Code)}, which does not fit attribute '${n.aname}' of '${n.sname}' (${shown}), which the process binds: ${reason}; write a code that fits it.`,
       `${node.pointer}/code`,
       node.id,
     );
@@ -488,7 +495,7 @@ function uncovered(
   emit(
     "MQ9208",
     "warning",
-    `No state of process '${String(process.name)}' has ${missing.length === 1 ? "the value" : "the values"} ${shown} from ${from} of entity '${n.sname}', which the process binds; add a state with each code, or narrow the attribute's allowedValues.`,
+    `No state of process '${String(process.name)}' has ${missing.length === 1 ? "the value" : "the values"} ${shown} from ${from} of '${n.sname}', which the process binds; add a state with each code, or narrow the attribute's allowedValues.`,
     pointer,
     at,
   );

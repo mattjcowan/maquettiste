@@ -643,7 +643,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       // A lifecycle row says Subject.attribute: the attribute's name is in the subject's document.
       const sole = node.kind === "process" ? soleSubject(doc.json) : undefined;
       let attribute: string | undefined;
-      if (sole?.boundAttribute) {
+      if (sole?.boundAttribute && sole.entity) {
         const subject = await queryClient.fetchQuery(elementQuery(sole.entity)).catch(() => null);
         const list = ((subject?.json as { attributes?: { id?: string; name?: string }[] } | undefined)?.attributes ?? []).filter(Boolean);
         attribute = list.find((a) => a.id === sole.boundAttribute)?.name;

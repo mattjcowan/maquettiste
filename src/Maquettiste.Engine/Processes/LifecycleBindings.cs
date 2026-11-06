@@ -36,9 +36,10 @@ internal sealed record BindingType(BindingKind Kind, EnumType? Enum = null, Refe
 
 /// <summary>A lifecycle's binding of one subject: the process, the entity and the attribute.</summary>
 /// <param name="Process">The lifecycle.</param>
-/// <param name="Entity">The subject entity.</param>
+/// <param name="Entity">The subject entity, or <see langword="null"/> for a stereotype entry.</param>
 /// <param name="Attribute">The bound attribute's id.</param>
-internal sealed record LifecycleBinding(Process Process, string Entity, string Attribute);
+/// <param name="Stereotype">The stereotype key a stereotype entry names (stereotype-sets-design.md decision 8), else <see langword="null"/>.</param>
+internal sealed record LifecycleBinding(Process Process, string? Entity, string Attribute, string? Stereotype = null);
 
 /// <summary>
 /// The lifecycles' bindings over a model (lifecycle-design.md decisions 11 and 18): how an attribute holds a state, and per snapshot which
@@ -66,7 +67,7 @@ internal sealed class LifecycleBindings
                     continue;
                 if (!byAttribute.TryGetValue(attributeId, out var list))
                     byAttribute[attributeId] = list = [];
-                list.Add(new LifecycleBinding(process, entry.Entity, attributeId));
+                list.Add(new LifecycleBinding(process, entry.Entity, attributeId, entry.Stereotype));
                 if (Find(model, attributeId)?.Type.Ref is { } typeId)
                 {
                     if (!byType.TryGetValue(typeId, out var processes))

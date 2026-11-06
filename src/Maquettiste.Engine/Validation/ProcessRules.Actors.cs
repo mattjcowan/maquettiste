@@ -32,23 +32,38 @@ internal static partial class ProcessRules
             report.Add("MQ9603", $"Actor '{actor.Name}' is the system itself (type system), which is never worked out from the object; remove relative, or change the type.", "/relative");
     }
 
-    // MQ9606: a subject entry's owner names a single-valued attribute (own or inherited) or a to-one end of its entity. An attribute from a
-    // stereotype waits for the stereotype as a set of types (actors-design.md decision 19), as guard conditions do.
+    // MQ9606: a subject entry's owner names a single-valued attribute (own, inherited, or of a stereotype the entity or a base carries) or a
+    // to-one end of its entity; on a stereotype entry, a single-valued attribute of the stereotype's own (stereotype-sets-design.md decision 6).
     private static void CheckSubjectOwners(ValidationContext context, Process process, Report report)
     {
         var model = context.Model;
         var entries = process.SubjectList ?? [];
         for (var i = 0; i < entries.Count; i++)
         {
-            if (entries[i].Owner is not { } owner || model.Get<Entity>(entries[i].Entity) is not { } entity || !model.TryGetEntry(owner, out _))
+            if (entries[i].Owner is not { } owner || !model.TryGetEntry(owner, out _))
                 continue; // MQ2001, MQ2002
             var pointer = "/subjects/" + N(i) + "/owner";
             string? why = null;
+            if (entries[i].Stereotype is { } key)
+            {
+                if (model.GetStereotype(key) is not { } stereotype)
+                    continue; // MQ2003
+                if (stereotype.Attributes.FirstOrDefault(a => string.Equals(a.Id, owner, StringComparison.Ordinal)) is not { } own)
+                    why = $"is not an attribute of stereotype '{stereotype.Key}'; a stereotype subject's owner is one of the stereotype's own attributes";
+                else if (own.Collection)
+                    why = $"is attribute '{own.Name}', which holds many values";
+                else if (own.Type.Ref is { } ownType && model.Get<ValueObject>(ownType) is { } held)
+                    why = $"is attribute '{own.Name}', which holds value object '{held.Name}'";
+                if (why is not null)
+                    report.Add("MQ9606", $"The owner of subject {SubjectLabel(model, entries[i])} of process '{process.Name}' {why}; name a single-valued attribute that holds one actor, or clear the owner.", pointer, entries[i].Id);
+                continue;
+            }
+
+            if (entries[i].Entity is not { } entityId || model.Get<Entity>(entityId) is not { } entity)
+                continue; // MQ2001, MQ2002
             if (context.Flatten(entity).FirstOrDefault(f => string.Equals(f.Attribute.Id, owner, StringComparison.Ordinal)) is { } flat)
             {
-                if (flat.Source == AttributeSource.Virtual)
-                    why = $"is attribute '{flat.Attribute.Name}', which comes from stereotype '{flat.From}'; an owner field from a stereotype can't be read until a stereotype can stand for a set of types";
-                else if (flat.Attribute.Collection)
+                if (flat.Attribute.Collection)
                     why = $"is attribute '{flat.Attribute.Name}', which holds many values";
                 else if (flat.Attribute.Type.Ref is { } typeId && model.Get<ValueObject>(typeId) is { } valueObject)
                     why = $"is attribute '{flat.Attribute.Name}', which holds value object '{valueObject.Name}'";

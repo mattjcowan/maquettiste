@@ -102,14 +102,14 @@ describe("the Subject control", () => {
   it("changing the subject of a one-entry subjects lifecycle moves the entity's lifecycle in one batch", async () => {
     const { queryClient, store, drafts } = api.services;
     const before = subjectsOf(json(api.backend, INVOICE_LIFECYCLE))[0];
-    expect(json(api.backend, before.entity).lifecycle).toBe(INVOICE_LIFECYCLE);
+    expect(json(api.backend, before.entity!).lifecycle).toBe(INVOICE_LIFECYCLE);
     const other = create(api.backend, entity("01JQZZZ0000000000000000010", "Quote"));
     const refused = await replaceSoleSubject(queryClient, store, drafts, { process: INVOICE_LIFECYCLE, entity: other, label: "Set the subject" });
     expect(refused).toBeNull();
     const after = subjectsOf(json(api.backend, INVOICE_LIFECYCLE));
     expect(after.map((e) => e.entity)).toEqual([other]);
     expect(after[0].id).toBe(before.id);
-    expect(json(api.backend, before.entity).lifecycle).toBeUndefined();
+    expect(json(api.backend, before.entity!).lifecycle).toBeUndefined();
     expect(json(api.backend, other).lifecycle).toBe(INVOICE_LIFECYCLE);
     expect(rule(api.backend, "MQ9201")).toEqual([]);
   });

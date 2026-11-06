@@ -25,10 +25,12 @@ internal static class RelativeActors
 {
     /// <summary>
     /// The steps of an actor's path (<see cref="ActorRelative.Steps"/>) on a process's subjects, or why they cannot be worked out (MQ9604):
-    /// the process has no subjects; a step is not held under one id by every subject (their own and inherited members, a shared base's for
-    /// several); a step before the last, or any <c>within</c> step, is not a to-one relation end; or the path ends at a many-valued
-    /// attribute, a value object or a to-many end. An id the model does not hold, a subject whose entity is missing, or a relative with no
-    /// form or several (MQ2001, MQ9603) gives no reason and no steps.
+    /// the process has no subjects; a step is not held under one id by every subject entry (an entity entry's own and inherited members and
+    /// the attributes of the stereotypes it or a base carries, a stereotype entry's own attributes and no relation ends,
+    /// stereotype-sets-design.md decision 7; after a relation end, the reached entity's own and inherited members); a step before the last,
+    /// or any <c>within</c> step, is not a to-one relation end; or the path ends at a many-valued attribute, a value object or a to-many end.
+    /// An id the model does not hold, a subject whose entity or stereotype is missing, or a relative with no form or several (MQ2001, MQ2003,
+    /// MQ9603) gives no reason and no steps.
     /// </summary>
     /// <param name="model">The model.</param>
     /// <param name="process">The process that uses the actor.</param>
@@ -43,9 +45,20 @@ internal static class RelativeActors
             return ([], null);
         if (process.Subjects.Count == 0)
             return ([], $"is worked out from the object, but process '{process.Name}' has no subjects");
-        var current = process.Subjects.Select(s => model.Get<Entity>(s.Entity)).OfType<Entity>().DistinctBy(e => e.Id).ToList();
-        if (current.Count < process.Subjects.Select(s => s.Entity).Distinct(StringComparer.Ordinal).Count())
-            return ([], null);
+        // What each subject entry holds, each entity or stereotype once; then, after a relation end, the entity it reaches.
+        var current = new List<(string Label, bool Stereotype, IReadOnlyList<ModelAttribute> Attributes, IReadOnlyList<RelationEnd> Navigations)>();
+        var named = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in process.Subjects)
+        {
+            if (!named.Add(entry.Entity is { } entityId ? "e:" + entityId : "s:" + entry.Stereotype))
+                continue;
+            if (ExprSites.EntryMembers(model, entry) is not { } members)
+                return ([], null);
+            current.Add(entry.Stereotype is { } key
+                ? ("stereotype '" + key + "'", true, members.Attributes, members.Navigations)
+                : ("'" + model.Get<Entity>(entry.Entity!)!.Name + "'", false, members.Attributes, members.Navigations));
+        }
+
         var endsOnly = relative.Form == "members-of";
         var steps = relative.Steps;
         var resolved = new List<RelativeStep>();
@@ -55,7 +68,7 @@ internal static class RelativeActors
             var last = k == steps.Count - 1;
             if (!model.TryGetEntry(id, out _))
                 return ([], null);
-            var ends = current.Select(e => ExprSites.NavigationsOf(model, e).Select(n => n.To).FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.Ordinal))).ToList();
+            var ends = current.Select(c => c.Navigations.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.Ordinal))).ToList();
             if (ends.All(e => e is not null))
             {
                 var end = ends[0]!;
@@ -64,11 +77,12 @@ internal static class RelativeActors
                 resolved.Add(new RelativeStep(id, end, null));
                 if (model.Get<Entity>(end.Entity) is not { } next)
                     return ([], null);
-                current = [next];
+                // A stereotype's attribute on an entity reached by navigation is not readable yet (decision 7).
+                current = [("'" + next.Name + "'", false, ExprSites.AttributesOf(model, next).ToList(), ExprSites.NavigationsOf(model, next).Select(n => n.To).ToList())];
                 continue;
             }
 
-            var attributes = current.Select(e => ExprSites.AttributesOf(model, e).FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.Ordinal))).ToList();
+            var attributes = current.Select(c => c.Attributes.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.Ordinal))).ToList();
             if (attributes.All(a => a is not null))
             {
                 var attribute = attributes[0]!;
@@ -84,7 +98,17 @@ internal static class RelativeActors
                 continue;
             }
 
-            var names = string.Join(", ", current.Select(e => "'" + e.Name + "'"));
+            if (current.Any(c => c.Stereotype))
+            {
+                if (endsOnly)
+                    return ([], $"names '{IdName(model, id)}' in within, but a stereotype subject offers no relation ends; leave within empty");
+                var labels = string.Join(", ", current.Select(c => (c.Stereotype ? "" : "entity ") + c.Label));
+                return ([], current.Count == 1
+                    ? $"names '{IdName(model, id)}', which is not an attribute of {labels}; with a stereotype subject a path is one step to one of its own attributes"
+                    : $"names '{IdName(model, id)}', which subjects {labels} do not all hold under one id (a stereotype subject holds its own attributes and no relation ends)");
+            }
+
+            var names = string.Join(", ", current.Select(c => c.Label));
             return ([], current.Count == 1
                 ? $"names '{IdName(model, id)}', which is not an attribute or a navigable relation end of entity {names} or its bases"
                 : $"names '{IdName(model, id)}', which entities {names} do not all hold under one id (a shared base's attribute or end)");
@@ -134,7 +158,7 @@ internal static class RelativeActors
         {
             if (EntryOf(model, process, rootEntity)?.Owner is not { } owner)
                 return null;
-            if (ExprSites.AttributesOf(model, rootEntity).FirstOrDefault(a => string.Equals(a.Id, owner, StringComparison.Ordinal)) is { } attribute)
+            if (ExprSites.ProcessAttributesOf(model, rootEntity).FirstOrDefault(a => string.Equals(a.Id, owner, StringComparison.Ordinal)) is { } attribute)
                 return new RelativeTarget(ValueOf(root, attribute), null);
             return Linked(root, owner, byId) is { } linked ? new RelativeTarget(null, linked.Id) : null;
         }
@@ -155,35 +179,19 @@ internal static class RelativeActors
         return new RelativeTarget(null, current.Id);
     }
 
-    /// <summary>The subject entry of a process that governs an entity: its own, else its nearest base's; <see langword="null"/> when none
-    /// does.</summary>
+    /// <summary>The subject entry of a process that governs an entity (stereotype-sets-design.md decision 4): its own, else its nearest
+    /// base's, else the first stereotype entry that covers it; <see langword="null"/> when none does.</summary>
     /// <param name="model">The model.</param>
     /// <param name="process">The process.</param>
     /// <param name="entity">The entity.</param>
     /// <returns>The entry.</returns>
-    public static ProcessSubject? EntryOf(ModelSnapshot model, Process process, Entity entity)
-    {
-        ArgumentNullException.ThrowIfNull(model);
-        ArgumentNullException.ThrowIfNull(process);
-        ArgumentNullException.ThrowIfNull(entity);
-        var chain = Chain(model, entity);
-        return process.Subjects.Where(s => chain.Contains(s.Entity)).OrderBy(s => chain.IndexOf(s.Entity)).FirstOrDefault();
-    }
+    public static ProcessSubject? EntryOf(ModelSnapshot model, Process process, Entity entity) => SubjectCoverage.EntryOf(model, process, entity);
 
     private static JsonElement ValueOf(ScenarioObject obj, ModelAttribute attribute) =>
         obj.Values.TryGetValue(attribute.Id, out var given) ? given : attribute.Default ?? JsonDocument.Parse("null").RootElement.Clone();
 
     private static ScenarioObject? Linked(ScenarioObject obj, string end, Dictionary<string, ScenarioObject> byId) =>
         obj.Links.FirstOrDefault(l => string.Equals(l.End, end, StringComparison.Ordinal)) is { } link ? byId.GetValueOrDefault(link.Object) : null;
-
-    // The ids of an entity and its bases, nearest first.
-    private static List<string> Chain(ModelSnapshot model, Entity entity)
-    {
-        var chain = new List<string>();
-        for (var current = entity; current is not null && !chain.Contains(current.Id, StringComparer.Ordinal); current = current.Base is { } b ? model.Get<Entity>(b) : null)
-            chain.Add(current.Id);
-        return chain;
-    }
 
     private static string EndName(ModelSnapshot model, RelationEnd end) =>
         end.Navigation.Length > 0 ? end.Navigation : !string.IsNullOrEmpty(end.Role) ? end.Role : end.Id;
@@ -194,6 +202,8 @@ internal static class RelativeActors
             return id;
         if (model.Get<Entity>(entry.OwnerId) is { } entity && entity.Attributes.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.Ordinal)) is { } attribute)
             return entity.Name + "." + attribute.Name;
+        if (model.Get<Stereotype>(entry.OwnerId) is { } stereotype && stereotype.Attributes.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.Ordinal)) is { } own)
+            return stereotype.Key + "." + own.Name;
         if (model.Get<Relation>(entry.OwnerId) is { } relation && relation.Ends.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal)) is { } end)
             return relation.Name + "." + EndName(model, end);
         return id;

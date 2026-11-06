@@ -543,6 +543,11 @@ public sealed class ProcessRuleTests
             m.Entity["attributes"]!.AsArray().Add(new JsonObject { ["id"] = StateAttr, ["name"] = "state", ["type"] = "string" });
             m.Process["boundAttribute"] = StateAttr;
         },
+        ["MQ9211 a subject entry names a stereotype for actors"] = m =>
+        {
+            m.UseSubjects();
+            m.Process["subjects"]!.AsArray().Add(new JsonObject { ["id"] = "01JPRX00000000000000000291", ["stereotype"] = "persona" });
+        },
         ["MQ9209 the one-subject form"] = _ => { },
         ["MQ9209 an orchestration in the one-subject form"] = m =>
         {
@@ -687,6 +692,7 @@ public sealed class ProcessRuleTests
         ["MQ9210 every state a configuration rests in has a code"] = m => m.BindReference(),
         ["MQ9210 an enum binding with no codes, as before codes"] = _ => { },
         ["MQ9210 an enum binding with one coded state needs no more"] = m => m.State(Draft)["code"] = "Draft",
+        ["MQ9211 the subjects form without a stereotype entry"] = m => m.UseSubjects(),
         ["MQ9209 the subjects form"] = m => m.UseSubjects(),
         ["MQ9209 an orchestration with subjects"] = m =>
         {
@@ -969,7 +975,7 @@ public sealed class ProcessRuleTests
         var rules = RuleCatalog.All.Select(r => r.Id).Where(id => (id.StartsWith("MQ90", StringComparison.Ordinal)
             || id.StartsWith("MQ91", StringComparison.Ordinal) || id.StartsWith("MQ92", StringComparison.Ordinal)) && id != "MQ9019").ToList();
 
-        Assert.Equal(37, rules.Count);
+        Assert.Equal(38, rules.Count);
         Assert.Equal(rules, Failing.Keys.Select(k => k[..6]).Distinct().Order(StringComparer.Ordinal));
         Assert.Equal(rules, Passing.Keys.Select(k => k[..6]).Distinct().Order(StringComparer.Ordinal));
         Assert.All(rules, id => Assert.Contains(";", RuleCatalog.Get(id).Description, StringComparison.Ordinal));

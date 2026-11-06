@@ -223,11 +223,29 @@ internal sealed partial class ResolveRun
         {
             if (r.Use != "lifecycle")
                 continue;
-            foreach (var entity in sources[r.Id].Subjects.Select(s => s.Entity).Distinct(StringComparer.Ordinal))
+            foreach (var entity in sources[r.Id].Subjects.Select(s => s.Entity).OfType<string>().Distinct(StringComparer.Ordinal))
             {
                 if (!governing.TryGetValue(entity, out var list))
                     governing[entity] = list = [];
                 list.Add(r);
+            }
+        }
+
+        // A lifecycle that covers an entity through a stereotype (stereotype-sets-design.md section 6), after decision 4's precedence; only
+        // while some entry names a stereotype, so a model without one keeps its keys.
+        var coverage = SubjectCoverage.Of(Model);
+        List<(RProcess Resolved, Process Source)> through = coverage.Any
+            ? [.. _processOrder.Where(p => p.Use == "lifecycle" && SubjectCoverage.NamesStereotype(sources[p.Id])).Select(p => (p, sources[p.Id]))]
+            : [];
+        var throughKeys = new List<string>();
+        if (through.Count > 0)
+        {
+            throughKeys.Add("k:stereotype");
+            throughKeys.Add("k:package");
+            foreach (var key in coverage.Keys)
+            {
+                if (Model.GetStereotype(key) is { } stereotype)
+                    throughKeys.Add(Keys.Referrers(stereotype.Id)); // a process that starts or stops naming it
             }
         }
 
@@ -245,8 +263,101 @@ internal sealed partial class ResolveRun
                     found.AddRange(list);
             }
 
+            if (through.Count > 0 && _entitySources.TryGetValue(id, out var source))
+            {
+                foreach (var (resolved, process) in through)
+                {
+                    if (SubjectCoverage.EntryOf(Model, process, source) is { Stereotype: not null })
+                        found.Add(resolved);
+                }
+
+                keys = [.. new DependencySet(Keys).AddRange(keys).AddRange(throughKeys)
+                    .AddRange(Chain(source).SelectMany(level => CarryingKeys(level).Prepend(Keys.Element(level.Id)))).ToList()];
+            }
+
             r.Lifecycles = new RList<RProcess>(found.Distinct().OrderBy(p => p.Name, StringComparer.Ordinal).ThenBy(p => p.Id, StringComparer.Ordinal), keys);
         }
+    }
+
+    private IReadOnlyList<string>? _carrierKeys;
+
+    /// <summary>
+    /// What decides which entities carry a stereotype (stereotype-sets-design.md section 6): which entities, packages and stereotypes exist
+    /// and every one of their files (an entity's own list, a package's defaults, a stereotype's implies and appliesTo). Built once per run,
+    /// only when a process names a stereotype.
+    /// </summary>
+    private IReadOnlyList<string> CarrierKeys()
+    {
+        if (_carrierKeys is not null)
+            return _carrierKeys;
+        var keys = new DependencySet(Keys).Add("k:entity").Add("k:package").Add("k:stereotype");
+        foreach (var entity in Model.All<Entity>())
+            keys.Element(entity.Id);
+        foreach (var package in Model.All<Package>())
+            keys.Element(package.Id);
+        foreach (var stereotype in Model.All<Stereotype>())
+            keys.Element(stereotype.Id);
+        return _carrierKeys = keys.ToList();
+    }
+
+    /// <summary>
+    /// What decides the stereotypes one entity carries itself, besides its own file: its package and their parents (their defaults), and
+    /// every stereotype (implies).
+    /// </summary>
+    private IEnumerable<string> CarryingIds(Entity entity)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var id = entity.Package; id is not null && seen.Add(id); id = Model.Get<Package>(id)?.Parent)
+            yield return id;
+        foreach (var stereotype in Model.All<Stereotype>())
+            yield return stereotype.Id;
+    }
+
+    /// <summary><see cref="CarryingIds"/> as <c>e:</c> keys.</summary>
+    private IEnumerable<string> CarryingKeys(Entity entity) => CarryingIds(entity).Select(Keys.Element);
+
+    /// <summary>
+    /// A subject entry that names a stereotype (stereotype-sets-design.md decision 12): the entry as written, with the stereotype's own bound
+    /// and owner attributes and the carriers it governs; and, added to <paramref name="subjects"/> at the entry's place, one subject per
+    /// governed carrier, by qualified name, with the id <c>&lt;entry id&gt;/&lt;entity id&gt;</c> and the carrier's copies of those attributes.
+    /// </summary>
+    private RStereotypeSubject ExpandStereotypeEntry(Process process, ProcessSubject entry, string key, List<RSubject> subjects, DependencySet deps)
+    {
+        var definition = _stereotypeDefinitions.GetValueOrDefault(key);
+        var r = new RStereotypeSubject { Id = entry.Id, Stereotype = definition };
+        if (definition is not null)
+            deps.Element(definition.Id);
+        RAttribute? Own(string? id) =>
+            id is null ? null : definition?.Attributes.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.Ordinal));
+        r.BoundAttribute = Own(entry.BoundAttribute);
+        // The stereotype's own single-valued attribute (MQ9606); a stereotype has no relation ends.
+        r.OwnerAttribute = Own(entry.Owner) is { Collection: false, Type.ValueObject: null } owner ? owner : null;
+        var carriers = new List<REntity>();
+        foreach (var carrier in SubjectCoverage.Governed(Model, process, entry))
+        {
+            if (!_entities.TryGetValue(carrier.Id, out var entity) || entity.Id.Length == 0)
+                continue;
+            carriers.Add(entity);
+            deps.Element(entity.Id);
+            var subject = new RSubject { Id = entry.Id + "/" + entity.Id, Entity = entity, Stereotype = definition };
+            if (r.BoundAttribute is { } bound)
+            {
+                subject.BoundAttribute = entity.Attributes.FirstOrDefault(a => string.Equals(a.Id, bound.Id, StringComparison.Ordinal));
+                subject.BoundEnum = subject.BoundAttribute?.Type.Enum;
+                if (subject.BoundEnum is { } enumType)
+                    deps.Element(enumType.Id);
+                subject.BoundReferenceType = subject.BoundAttribute?.Type.ReferenceType;
+                if (subject.BoundReferenceType is { } referenceType)
+                    deps.Element(referenceType.Id);
+            }
+
+            if (r.OwnerAttribute is { } ownerAttribute)
+                subject.OwnerAttribute = entity.Attributes.FirstOrDefault(a => string.Equals(a.Id, ownerAttribute.Id, StringComparison.Ordinal));
+            subjects.Add(subject);
+        }
+
+        r.Entities = new RList<REntity>(carriers, []);
+        return r;
     }
 
     private IReadOnlyList<RProcessNode> LibraryUsers(RProcessNode member) => _libraryUsers.TryGetValue(member, out var users) ? users : [];
@@ -263,9 +374,16 @@ internal sealed partial class ResolveRun
         // process's id. Subject, BoundAttribute and BoundEnum are set only when there is exactly one subject.
         var listed = process.Subjects;
         var subjects = new List<RSubject>();
+        var stereotypeSubjects = new List<RStereotypeSubject>();
         foreach (var entry in listed)
         {
-            if (!_entities.TryGetValue(entry.Entity, out var entity) || entity.Id.Length == 0)
+            if (entry.Stereotype is { } key)
+            {
+                stereotypeSubjects.Add(ExpandStereotypeEntry(process, entry, key, subjects, deps));
+                continue;
+            }
+
+            if (entry.Entity is null || !_entities.TryGetValue(entry.Entity, out var entity) || entity.Id.Length == 0)
                 continue;
             deps.Element(entry.Entity);
             var subject = new RSubject { Id = entry.Id, Entity = entity };
@@ -285,8 +403,9 @@ internal sealed partial class ResolveRun
             {
                 if (entity.Attributes.FirstOrDefault(a => string.Equals(a.Id, ownerId, StringComparison.Ordinal)) is { } owner)
                 {
-                    // Own or inherited only: an attribute from a stereotype is MQ9606.
-                    var declared = ExprSites.AttributesOf(Model, modelEntity).Any(a => string.Equals(a.Id, ownerId, StringComparison.Ordinal));
+                    // Own, inherited, or from a stereotype the entity or a base carries (stereotype-sets-design.md decision 7).
+                    var declared = owner.FromStereotype is not null
+                        || ExprSites.AttributesOf(Model, modelEntity).Any(a => string.Equals(a.Id, ownerId, StringComparison.Ordinal));
                     subject.OwnerAttribute = !declared || owner.Collection || owner.Type.ValueObject is not null ? null : owner;
                 }
                 else if (Processes.RelativeActors.OwnerEnd(Model, modelEntity, ownerId) is { Max: MaxCardinality.One } && _byId.GetValueOrDefault(ownerId) is REnd ownerEnd)
@@ -298,7 +417,8 @@ internal sealed partial class ResolveRun
             subjects.Add(subject);
         }
 
-        if (listed.Count == 1 && subjects.Count == 1)
+        // With a stereotype entry, from the expanded count (stereotype-sets-design.md decision 12): one carrier gives them, as one entity does.
+        if (stereotypeSubjects.Count > 0 ? subjects.Count == 1 : listed.Count == 1 && subjects.Count == 1)
         {
             r.Subject = subjects[0].Entity;
             r.BoundAttribute = subjects[0].BoundAttribute;
@@ -321,10 +441,32 @@ internal sealed partial class ResolveRun
                 baseKeys.Element(referenceType.Id);
         }
 
+        foreach (var entry in stereotypeSubjects)
+        {
+            if (entry.Stereotype is { } definition)
+                baseKeys.Element(definition.Id);
+        }
+
         var nodeKeys = baseKeys.ToList();
+        var subjectKeys = nodeKeys;
+        if (stereotypeSubjects.Count > 0)
+        {
+            // Which entities carry a stereotype changes with any entity, package or stereotype (stereotype-sets-design.md section 6), and
+            // with it the subjects and the one-subject fields.
+            subjectKeys = new DependencySet(Keys).AddRange(nodeKeys).AddRange(CarrierKeys()).ToList();
+            deps.AddRange(CarrierKeys());
+            foreach (var entry in stereotypeSubjects)
+            {
+                DepsOf(entry).AddRange(subjectKeys);
+                entry.Entities = new RList<REntity>(entry.Entities, subjectKeys);
+            }
+
+            r.StereotypeSubjects = new RList<RStereotypeSubject>(stereotypeSubjects, subjectKeys);
+        }
+
         foreach (var subject in subjects)
-            DepsOf(subject).AddRange(nodeKeys);
-        r.Subjects = new RList<RSubject>(subjects, nodeKeys);
+            DepsOf(subject).AddRange(subjectKeys);
+        r.Subjects = new RList<RSubject>(subjects, subjectKeys);
         var actorListKeys = new DependencySet(Keys).AddRange(nodeKeys).Add(ActorKind).ToList();
 
         T Node<T>(T node, string id) where T : RProcessNode
@@ -420,7 +562,15 @@ internal sealed partial class ResolveRun
             var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Guard,
                 ExprResolution.ApiColumns(Model, source.Id, Model.GetDocument(process.Id)?.Path));
             var readsSubject = ExprSites.ReadsSubject(process, typed.Typed);
-            guard.Condition = ExprResolution.Build(root, m => AttributeTarget(readable, m.Id) ?? (readsSubject ? DeclaredAttribute(m.Id) : null), EnumMemberOf);
+            var readsStereotype = false;
+            guard.Condition = ExprResolution.Build(root, m =>
+            {
+                if (AttributeTarget(readable, m.Id) is { } target)
+                    return target;
+                var declared = readsSubject ? DeclaredAttribute(m.Id) : null;
+                readsStereotype |= declared?.Owner is RStereotypeDefinition;
+                return declared;
+            }, EnumMemberOf);
             var guardDeps = DepsOf(guard);
             foreach (var name in ExprResolution.Names(Model, typed.Typed))
                 guardDeps.Element(name);
@@ -428,10 +578,18 @@ internal sealed partial class ResolveRun
                 return;
             foreach (var entry in process.Subjects)
             {
-                if (EntitySource(entry.Entity) is not { } entity)
+                if (entry.Stereotype is { } key && Model.GetStereotype(key) is { } stereotype)
+                    guardDeps.Element(stereotype.Id);
+                if (entry.Entity is null || EntitySource(entry.Entity) is not { } entity)
                     continue;
                 foreach (var level in Chain(entity))
+                {
                     guardDeps.Element(level.Id);
+                    // A stereotype's attribute is in scope while the entity or a base carries it: its packages' defaults and the stereotypes'
+                    // implies decide that (stereotype-sets-design.md decision 7).
+                    if (readsStereotype)
+                        guardDeps.AddRange(CarryingKeys(level));
+                }
             }
         }
 
@@ -829,6 +987,15 @@ internal sealed partial class ResolveRun
                         var chain = new HashSet<string>(StringComparer.Ordinal);
                         for (var id = subject.Entity; id is not null && chain.Add(id); id = Model.Get<Entity>(id)?.Base)
                             stepDeps.Element(id);
+                        if (subject.Stereotype is not { } key || Model.GetStereotype(key) is not { } stereotype)
+                            continue;
+                        // A stereotype entry: its attributes and the carriers it governs, with their bases.
+                        stepDeps.Element(stereotype.Id);
+                        foreach (var carrier in SubjectCoverage.Governed(Model, runs, subject))
+                        {
+                            for (var id = carrier.Id; id is not null && chain.Add(id); id = Model.Get<Entity>(id)?.Base)
+                                stepDeps.Element(id);
+                        }
                     }
                 }
 
@@ -988,14 +1155,46 @@ internal sealed partial class ResolveRun
     {
         var ids = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var subjects = Model.Get<Process>(scenario.Process) is { } process
-            ? ExprSites.InvokedProcesses(Model, process).Prepend(process).Where(p => ExprSites.SubjectDepth(Model, p) is not null).SelectMany(p => p.Subjects)
+        var processes = Model.Get<Process>(scenario.Process) is { } process
+            ? ExprSites.InvokedProcesses(Model, process).Prepend(process).Where(p => ExprSites.SubjectDepth(Model, p) is not null).ToList()
             : [];
-        var entities = subjects.Select(x => x.Entity).Concat(scenario.Objects.Select(o => o.Entity));
+        var entities = processes.SelectMany(p => p.Subjects.Select(x => x.Entity)).Concat(scenario.Objects.Select(o => o.Entity));
         foreach (var start in entities)
         {
             for (var id = start; id is not null && seen.Add(id); id = Model.Get<Entity>(id)?.Base)
                 ids.Add(id);
+        }
+
+        // A stereotype entry (stereotype-sets-design.md section 5): the stereotype declares the attributes, its carriers' defaults are what a
+        // condition sees, and which entry governs an object depends on what it carries (its packages, the stereotypes' implies).
+        if (processes.Any(SubjectCoverage.NamesStereotype) || (Model.Get<Process>(scenario.Process) is { } runs && SubjectCoverage.NamesStereotype(runs)))
+        {
+            foreach (var p in processes.Append(Model.Get<Process>(scenario.Process)).OfType<Process>())
+            {
+                foreach (var entry in p.Subjects)
+                {
+                    if (entry.Stereotype is not { } key || Model.GetStereotype(key) is not { } stereotype)
+                        continue;
+                    if (seen.Add(stereotype.Id))
+                        ids.Add(stereotype.Id);
+                    foreach (var carrier in SubjectCoverage.Governed(Model, p, entry))
+                    {
+                        for (var id = carrier.Id; id is not null && seen.Add(id); id = Model.Get<Entity>(id)?.Base)
+                            ids.Add(id);
+                    }
+                }
+            }
+
+            foreach (var obj in scenario.Objects)
+            {
+                if (Model.Get<Entity>(obj.Entity) is not { } entity)
+                    continue;
+                foreach (var id in Chain(entity).SelectMany(CarryingIds))
+                {
+                    if (seen.Add(id))
+                        ids.Add(id);
+                }
+            }
         }
 
         foreach (var link in scenario.Objects.SelectMany(o => o.Links))

@@ -16,9 +16,9 @@ export type QuickFix =
   /** A named batch operation; `ids` are every document it may change (the undo step's before and after). */
   | { kind: "operation"; op: QuickFixOperation; id: string; target?: string; label: string; ids: string[]; choices?: { id: string; name: string }[] }
   /** Sync enum: a dry run first, then the apply (the process's own endpoint). */
-  | { kind: "sync-enum"; process: string; label: string; entity?: string }
+  | { kind: "sync-enum"; process: string; label: string; entity?: string; stereotype?: string }
   /** Sync codes (MQ9210): the process and the binding the finding sits on (a dry run first, then the apply). */
-  | { kind: "sync-codes"; process: string; entity: string; attribute: string; label: string }
+  | { kind: "sync-codes"; process: string; entity?: string; stereotype?: string; attribute: string; label: string }
   /** A plain update of one document. */
   | { kind: "update"; id: string; json: ModelJson; label: string };
 
@@ -138,14 +138,24 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
     // The finding sits on the binding (`/subjects/<i>/boundAttribute`, or `/boundAttribute`): its entry names the entity and the attribute.
     if (element.kind !== "process") return null;
     const entry = entryOf(element, pointer);
-    return entry?.entity && entry.boundAttribute
+    if (!entry?.boundAttribute) return null;
+    // A stereotype entry syncs through the batch, which takes the stereotype's key (stereotype-sets-design.md decision 10).
+    if (entry.stereotype)
+      return { kind: "sync-codes", process: str(element.id) ?? id, stereotype: entry.stereotype, attribute: entry.boundAttribute, label: "Sync codes" };
+    return entry.entity
       ? { kind: "sync-codes", process: str(element.id) ?? id, entity: entry.entity, attribute: entry.boundAttribute, label: "Sync codes" }
       : null;
   }
   // Sync enum for one binding: a subjects entry's finding sends its entity; the one-subject form omits it (decision 15).
   if (catalogFix === "sync-enum" && element.kind === "process" && Array.isArray(element.subjects)) {
-    const entity = entryOf(element, pointer)?.entity;
-    return { kind: "sync-enum", process: str(element.id) ?? id, label: "Sync enum", ...(entity ? { entity } : {}) };
+    const entry = entryOf(element, pointer);
+    return {
+      kind: "sync-enum",
+      process: str(element.id) ?? id,
+      label: "Sync enum",
+      ...(entry?.entity ? { entity: entry.entity } : {}),
+      ...(entry?.stereotype ? { stereotype: entry.stereotype } : {}),
+    };
   }
   if (catalogFix === "sync-enum") return element.kind === "process" ? { kind: "sync-enum", process: id, label: "Sync enum" } : null;
   if (catalogFix === "refresh-scenario")

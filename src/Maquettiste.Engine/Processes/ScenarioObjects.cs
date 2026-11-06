@@ -15,7 +15,7 @@ internal static class ScenarioObjects
     private static readonly JsonElement NoObject = JsonDocument.Parse("{}").RootElement.Clone();
 
     /// <summary>
-    /// The subject's row as a run of a process sees it: <see cref="Row(ModelSnapshot, IReadOnlyList{ScenarioObject}, string?, int)"/>
+    /// The subject's row as a run of a process sees it: <see cref="Row(ModelSnapshot, IReadOnlyList{ScenarioObject}, string?, int, IReadOnlySet{string}?)"/>
     /// nested as deep as the longest path under <c>subject</c> any guard condition of the process, or of a process it invokes, reads
     /// (<see cref="ExprSites.SubjectRowDepth"/>), so a row holds no links when no condition reads the object.
     /// </summary>
@@ -31,7 +31,7 @@ internal static class ScenarioObjects
         ArgumentNullException.ThrowIfNull(objects);
         if (subject is null || objects.Count == 0)
             return NoObject;
-        return Row(model, objects, subject, ExprSites.SubjectRowDepth(model, process));
+        return Row(model, objects, subject, ExprSites.SubjectRowDepth(model, process), ExprSites.StereotypeAttributesRead(model, process));
     }
 
     /// <summary>
@@ -45,8 +45,12 @@ internal static class ScenarioObjects
     /// <param name="objects">The objects.</param>
     /// <param name="subject">The id of the subject among them.</param>
     /// <param name="depth">How many links deep the row nests: 0 for the subject's attributes alone.</param>
+    /// <param name="stereotypeAttributes">The ids of the stereotype attributes a guard reads on the object
+    /// (<see cref="ExprSites.StereotypeAttributesRead"/>): the subject's own row gains those its entity holds, after its entity's attributes
+    /// (stereotype-sets-design.md section 6); <see langword="null"/> or empty for none.</param>
     /// <returns>The row.</returns>
-    internal static JsonElement Row(ModelSnapshot model, IReadOnlyList<ScenarioObject> objects, string? subject, int depth)
+    internal static JsonElement Row(ModelSnapshot model, IReadOnlyList<ScenarioObject> objects, string? subject, int depth,
+        IReadOnlySet<string>? stereotypeAttributes = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(objects);
@@ -55,14 +59,15 @@ internal static class ScenarioObjects
         var byId = new Dictionary<string, ScenarioObject>(StringComparer.Ordinal);
         foreach (var obj in objects)
             byId.TryAdd(obj.Id, obj);
-        return byId.TryGetValue(subject, out var root) ? RowOf(model, root, byId, new HashSet<string>(StringComparer.Ordinal), depth) : NoObject;
+        return byId.TryGetValue(subject, out var root) ? RowOf(model, root, byId, new HashSet<string>(StringComparer.Ordinal), depth, stereotypeAttributes) : NoObject;
     }
 
     /// <summary>
     /// Why a run's objects are bad, with the pointer of the first problem, or <see langword="null"/>: a value an object gives that is not
-    /// an attribute of its entity or its bases, or that does not fit its attribute; a link through an end that does not lead from the
-    /// object's entity (or a base) to the linked object's entity (or a base); or a subject whose entity is not one of the process's
-    /// subjects or derived from one. An object, an end or a subject that is not in the model is left to MQ2001.
+    /// an attribute of its entity or its bases, or of a stereotype they carry (stereotype-sets-design.md decision 7), or that does not fit
+    /// its attribute; a link through an end that does not lead from the
+    /// object's entity (or a base) to the linked object's entity (or a base); or a subject whose entity the process does not govern (it, a
+    /// base, or a stereotype it or a base carries is not listed; <see cref="SubjectCoverage.Governs"/>). An object, an end or a subject that is not in the model is left to MQ2001.
     /// </summary>
     /// <param name="model">The model.</param>
     /// <param name="process">The process the run is of.</param>
@@ -86,7 +91,7 @@ internal static class ScenarioObjects
             if (model.Get<Entity>(obj.Entity) is not { } entity)
                 continue;
             var attributes = new Dictionary<string, ModelAttribute>(StringComparer.Ordinal);
-            foreach (var attribute in Attributes(model, entity))
+            foreach (var attribute in ExprSites.ProcessAttributesOf(model, entity))
                 attributes.TryAdd(attribute.Id, attribute);
             var pointer = "/objects/" + i.ToString(CultureInfo.InvariantCulture);
             foreach (var (id, value) in obj.Values.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -119,9 +124,10 @@ internal static class ScenarioObjects
         }
 
         if (subject is not null && byId.GetValueOrDefault(subject) is { } root && model.Get<Entity>(root.Entity) is { } rootEntity
-            && !process.Subjects.Any(x => Chain(model, rootEntity).Contains(x.Entity)))
+            && !SubjectCoverage.Governs(model, process, rootEntity))
         {
-            var names = process.Subjects.Select(x => model.Get<Entity>(x.Entity)?.Name ?? x.Entity).Distinct(StringComparer.Ordinal).ToList();
+            var names = process.Subjects.Select(x => x.Stereotype is { } key ? "stereotype '" + key + "'" : model.Get<Entity>(x.Entity!)?.Name ?? x.Entity!)
+                .Distinct(StringComparer.Ordinal).ToList();
             return (names.Count == 0
                 ? $"The subject '{root.Name}' is an object of entity '{rootEntity.Name}', but process '{process.Name}' has no subject; leave subject and objects out, or give the process a subject."
                 : $"The subject '{root.Name}' is an object of entity '{rootEntity.Name}', which is not a subject of process '{process.Name}' ({string.Join(", ", names)}) or derived from one; make an object of a subject's entity the subject.",
@@ -156,7 +162,8 @@ internal static class ScenarioObjects
         }
     }
 
-    private static JsonElement RowOf(ModelSnapshot model, ScenarioObject obj, Dictionary<string, ScenarioObject> byId, HashSet<string> path, int depth)
+    private static JsonElement RowOf(ModelSnapshot model, ScenarioObject obj, Dictionary<string, ScenarioObject> byId, HashSet<string> path, int depth,
+        IReadOnlySet<string>? stereotypeAttributes = null)
     {
         path.Add(obj.Id);
         var row = new SortedDictionary<string, object>(StringComparer.Ordinal);
@@ -164,6 +171,15 @@ internal static class ScenarioObjects
         {
             foreach (var attribute in Attributes(model, entity))
                 row.TryAdd(attribute.Name, obj.Values.TryGetValue(attribute.Id, out var given) ? given : attribute.Default ?? Null);
+            if (stereotypeAttributes is { Count: > 0 })
+            {
+                // Only the object itself offers a stereotype's attributes, and only those a guard reads (stereotype-sets-design.md section 6).
+                foreach (var attribute in ExprSites.ProcessAttributesOf(model, entity))
+                {
+                    if (stereotypeAttributes.Contains(attribute.Id))
+                        row.TryAdd(attribute.Name, obj.Values.TryGetValue(attribute.Id, out var given) ? given : attribute.Default ?? Null);
+                }
+            }
         }
 
         foreach (var link in depth > 0 ? obj.Links : [])

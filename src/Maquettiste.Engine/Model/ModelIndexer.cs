@@ -587,7 +587,7 @@ internal static class ModelIndexer
     {
         static string Bindings(Process process)
         {
-            var bound = process.Subjects.Where(s => s.BoundAttribute is not null).Select(s => s.Entity + "|" + s.BoundAttribute).ToList();
+            var bound = process.Subjects.Where(s => s.BoundAttribute is not null).Select(s => (s.Entity ?? "@" + s.Stereotype) + "|" + s.BoundAttribute).ToList();
             return bound.Count == 0 ? "" : process.Use + ";" + string.Join(";", bound);
         }
 
@@ -759,11 +759,59 @@ internal static class ModelIndexer
             StepCount: element is Scenario steps ? steps.Steps.Count : null,
             Effect: element is Operation effect ? (effect.Effect == OperationEffect.Change ? "change" : "read") : null,
             Type: element is Custom typed ? typed.Type : null,
-            Subjects: element is Process { Subjects.Count: > 1 } several ? [.. several.Subjects.Select(s => s.Entity)] : null,
+            Subjects: element is Process { Subjects.Count: > 1 } several && EntityEntries(several) is { Count: > 1 } named ? named : null,
             Actors: actors,
             MemberOf: element is Actor { MemberOf.Count: > 0 } member ? [.. member.MemberOf] : null,
             Relative: element is Actor { Relative: { } relative } ? relative.Form : null,
             Participants: element is Scenario { Participants.Count: > 0 } cast ? cast.Participants.Count : null);
+
+    /// <summary>The entities a process's entity entries name, in entry order (a stereotype entry is not counted).</summary>
+    private static List<string> EntityEntries(Process process) => [.. process.Subjects.Select(s => s.Entity).OfType<string>()];
+
+    /// <summary>
+    /// The index rows of a snapshot with each process row that has a stereotype entry completed (stereotype-sets-design.md section 8): its
+    /// <see cref="ElementSummary.SubjectStereotypes"/> and <see cref="ElementSummary.Covers"/>, and no <see cref="ElementSummary.Subject"/>.
+    /// Carriers follow package defaults, implied stereotypes and bases, which other files decide, so this runs per snapshot, and only while
+    /// some entry names a stereotype: otherwise the rows are returned as they are.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="rows">Its rows, as the index built them.</param>
+    /// <returns>The rows.</returns>
+    internal static IReadOnlyList<ElementSummary> WithSubjectCoverage(ModelSnapshot model, ImmutableArray<ElementSummary> rows)
+    {
+        if (!Processes.SubjectCoverage.Of(model).Any)
+            return rows;
+        var result = rows.ToBuilder();
+        for (var i = 0; i < result.Count; i++)
+        {
+            var row = result[i];
+            if (row.Kind != "process" || model.Get<Process>(row.Id) is not { } process || !Processes.SubjectCoverage.NamesStereotype(process))
+                continue;
+            var stereotypes = new List<string>();
+            var covers = new List<string>();
+            foreach (var entry in process.Subjects)
+            {
+                if (entry.Stereotype is not { } key)
+                    continue;
+                if (model.GetStereotype(key) is { } stereotype)
+                    stereotypes.Add(stereotype.Id);
+                foreach (var carrier in Processes.SubjectCoverage.Governed(model, process, entry))
+                {
+                    if (!covers.Contains(carrier.Id, StringComparer.Ordinal))
+                        covers.Add(carrier.Id);
+                }
+            }
+
+            result[i] = row with
+            {
+                Subject = null,
+                SubjectStereotypes = stereotypes.Count > 0 ? stereotypes : null,
+                Covers = covers.Count > 0 ? covers : null,
+            };
+        }
+
+        return result.ToImmutable();
+    }
 
     /// <summary>
     /// The actors a process's document names: the targets of its references (every field, custom properties included) whose element is
@@ -1142,6 +1190,11 @@ internal static class ModelIndexer
                         var k = 0;
                         foreach (var item in keys)
                             AddKeyed(ownerId, fromId, childPointer + "/" + k++, property.Name, item);
+                        break;
+                    case PropertyRole.StereotypeKeys when child is string single:
+                        // One key (a subject entry's stereotype, stereotype-sets-design.md decision 2); an unknown key is no reference (MQ2003).
+                        if (stereotypes.TryGetValue(single, out var named))
+                            References.Add(new ReferenceInfo(ownerId, fromId, childPointer, property.Name, named.Id));
                         break;
                     case PropertyRole.StereotypeKeys when child is IEnumerable<string> stereotypeKeys:
                         var j = 0;
