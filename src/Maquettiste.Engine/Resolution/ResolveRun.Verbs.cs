@@ -142,6 +142,7 @@ internal sealed partial class ResolveRun
             verb.Transitions = new RList<RTransition>(transitions.Where(t => ReferenceEquals(t.Node.Verb, verb)).Select(t => t.Node), usesKeys);
             verb.Operations = new RList<ROperation>(operations.Where(o => ReferenceEquals(o.Node.Verb, verb)).Select(o => o.Node), usesKeys);
             verb.Used = verb.Events.Count > 0 || verb.Transitions.Count > 0 || verb.Operations.Count > 0;
+            verb.Rights = RightsOf(verb);
             if (verb.Id is not null)
                 Register(verb);
         }

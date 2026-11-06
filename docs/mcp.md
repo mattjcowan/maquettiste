@@ -197,7 +197,7 @@ claude mcp add maquettiste -- docker run -i --rm --user 0:0 -v "$PWD:/repo" -w /
 
 Checked on Linux (Docker Engine, amd64) with a stdio client over `docker run -i --rm --user ... maquettiste mcp`:
 `initialize` in 0.7 s, `tools/list` with 18 tools (image 0.1.0; the published 0.2.0 image lists 24,
-the current source 77), `validate` in 55 ms, the container removed on exit. The registration (the arguments exactly,
+the current source 78), `validate` in 55 ms, the container removed on exit. The registration (the arguments exactly,
 both forms and both runtimes, the merge, the replacement and the removal of an earlier `mcp.sh`) is covered by the CLI
 tests; the `/bin/sh` line was run with a stand-in `docker` reachable only through `$HOME/.docker/bin` from a folder
 behind a symbolic link (the real path mounted, stderr in the log). A Mac client started from the Dock over this entry
@@ -219,7 +219,7 @@ Create the copy first with `docker/dev-billing.sh`, or without Docker, then buil
 ```sh
 mkdir -p tmp/billing && cp -r tests/fixtures/models/billing/.maquettiste tmp/billing/
 dotnet build src/Maquettiste.Cli -c Release
-claude                               # then /mcp shows maquettiste connected with 77 tools
+claude                               # then /mcp shows maquettiste connected with 78 tools
 ```
 
 A headless check that needs no approval prompt (an explicit `--mcp-config` is trusted):
@@ -275,6 +275,7 @@ change to the other. The assistant has none of the write tools; it proposes mode
 | `simulate_process` | simulateProcess | `process` (id, name or model path), `steps` (scenario steps without `expect`; ids optional), `start` (`{ context, at }`), `objects` and `subject` (the scenario's cast, as in a scenario), `participants` (the scenario's participants; a step may name its `participant`), `scenario` (its start and steps run first), `document` (an unsaved draft; invalid is `invalid` with diagnostics), `from` | `{ processHash, trace, configuration, context, enabled, pending, timers, gates, final, clock, diagnostics }`; nothing is kept between calls: send the whole input list each time |
 | `record_scenario` | recordScenario | `process`, `name`, `steps`, `start`, `objects`, `subject`, `participants`, `outcome` (the replay's when absent), `dryRun` | `{ id, element, hash, applied, diagnostics }`: the scenario with every step's `expect` and the outcome filled from the engine's replay, saved unless `dryRun` |
 | `verify_scenarios` | verifyScenarios | `process`, `scenarios` (ids or names; all when absent) | `{ process, results: [{ scenario, name, passed, steps, failure }], passed }`; `failure` is `{ step, rule, message, expected, actual }` |
+| `get_rights` | getRights | `process` (a lifecycle's id, name or model path), `states`, `actors` (ids), `verbs` (keys), `entity` (one of its subjects), `cursor`, `limit` | `{ lifecycle, rightsDefault, rows: [{ state, actor, verb, entity, answer, byDefault, by, dependsOn }], next }`: who can do what, per atomic state, actor (`null` for everyone else) and verb, `allowed`, `denied` or `depends`, with the ids that decide; each lifecycle answers on its own and any no wins, and another lifecycle that could say no in only some of its states makes the cell depend on it (`dependsOn`); `entity` only on a cell whose answer differs by entity. Read from the model, never resolving it |
 | `export_process` | exportProcess | `process`, `format` (`xstate`) | the XState v5 machine config text (canonical key order; the model data without an XState home under `meta.maquettiste`), then, when there are any, a second block `{ diagnostics }` (MQ9404, MQ9406) |
 | `import_process` | importProcess | `config` (object or string), `package`, `name`, `use`, `subject` for a new process, or `into` (id or name) and `expectedHash`; `apply` (false: a dry run) | `{ document, diagnostics, created, removed, applied, id, hash }`; the diagnostics are MQ9401 to MQ9405 (and, when applied, the save's findings), and an error among them (MQ9403, MQ9405) or a changed `into` refuses the apply |
 | `sync_enum_from_process` | syncEnumFromProcess | `process` (a lifecycle), `entity` or `stereotype` (the subject entry whose enum to sync; absent means its one enum binding), `expectedHash`, `apply` (false: a dry run) | `{ process, enum, added, removed, reordered, refused, applied, diagnostics }`; a member still in use is refused, never removed |

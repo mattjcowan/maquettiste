@@ -63,7 +63,7 @@ One row per step: who acts{{ if cast }} and the actor they act as{{ end }}, the 
 | --- |{{ if cast }} --- |{{ end }} --- | --- | --- | --- | --- |
 {{- for st in sc.steps }}
 {{- notes = [] }}
-{{- if cast && st.participant && !st.acts_as }}{{ notes[notes.size] = "matches no actor the step accepts" }}{{ end }}
+{{- if cast && st.participant && !st.acts_as && st.input != "verb" }}{{ notes[notes.size] = "matches no actor the step accepts" }}{{ end }}
 {{- if st.signer }}{{ notes[notes.size] = "signer " + (md_code st.signer) + (st.meaning ? " as " + (md_code st.meaning.name) : "") }}{{ end }}
 {{- if !st.signer && st.meaning }}{{ notes[notes.size] = "meaning " + (md_code st.meaning.name) }}{{ end }}
 {{- if st.reason }}{{ notes[notes.size] = "reason \"" + (md_cell st.reason) + "\"" }}{{ end }}
@@ -71,11 +71,14 @@ One row per step: who acts{{ if cast }} and the actor they act as{{ end }}, the 
 {{- for kv in st.assume }}{{ notes[notes.size] = "guard " + (md_code kv.key) + " assumed " + (kv.value ? "true" : "false") }}{{ end }}
 {{- if st.expect }}{{ for kv in st.expect.context }}{{ notes[notes.size] = (md_code kv.key) + " becomes " + (md_code (json kv.value)) }}{{ end }}{{ end }}
 {{- if st.expect }}{{ for kv in st.expect.values }}{{ notes[notes.size] = "sets " + (md_code kv.key) + " to " + (md_code (json kv.value)) }}{{ end }}{{ end }}
+{{- for kv in st.values }}{{ notes[notes.size] = "value " + (md_code kv.key) + " = " + (md_code (json kv.value)) }}{{ end }}
+{{- if st.expect && st.expect.refused_by }}{{ notes[notes.size] = "refused by " + refuser(st.expect.refused_by, p) }}{{ else if st.expect && st.expect.refusal }}{{ notes[notes.size] = "refused: " + (md_code st.expect.refusal) }}{{ end }}
 {{- input = st.input }}
 {{- if st.input == "event" }}{{ input = "event " + (st.event ? (md_code st.event.name) : "`?`") }}
 {{- else if st.input == "time" }}{{ input = "time passes: " + (md_code st.after) }}
 {{- else if st.input == "invoke-done" }}{{ input = (st.invoke ? (md_code st.invoke.name) : "`?`") + " done" }}
-{{- else if st.input == "invoke-error" }}{{ input = (st.invoke ? (md_code st.invoke.name) : "`?`") + " fails" }}{{ end }}
+{{- else if st.input == "invoke-error" }}{{ input = (st.invoke ? (md_code st.invoke.name) : "`?`") + " fails" }}
+{{- else if st.input == "verb" }}{{ input = "does " + (st.verb ? (md_code st.verb.key) : "`?`") + (st.end ? " on the link through " + (md_code st.end.name) + (st.object ? " to " + (md_code st.object.name) : "") : "") }}{{ end }}
 | {{ st.index + 1 }} |{{ if cast }} {{ st.participant ? (md_code st.participant.name) : "" }} |{{ end }} {{ (cast ? st.acts_as : st.actor) ? actor_link(cast ? st.acts_as : st.actor, "../../") : "" }} | {{ input }} | {{ !st.expect ? "not checked" : (st.expect.accepted ? "accepted" : "**refused**") }} | {{ st.expect ? code_paths(st.expect.states) : "" }} | {{ notes | array.join "; " }}{{ if st.description }}{{ notes.size > 0 ? ". " : "" }}{{ md_inline(st.description) }}{{ end }} |
 {{- end }}
 

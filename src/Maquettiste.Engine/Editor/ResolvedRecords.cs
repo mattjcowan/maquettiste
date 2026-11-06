@@ -502,6 +502,10 @@ public sealed record SeedRowRecord(string Id, int Order, IReadOnlyDictionary<str
 /// a code.</param>
 /// <param name="StereotypeSubjects">The stereotype entries of <c>subjects</c> as written (stereotype-sets-design.md section 6);
 /// <see langword="null"/>, and left out of the JSON, when the process has none.</param>
+/// <param name="RightsDefault">A lifecycle's <c>rightsDefault</c> as its file writes it (rights-design.md decision 9); <see langword="null"/>, and
+/// left out of the JSON, when it writes none.</param>
+/// <param name="Rights">The entries of a lifecycle's rights in file order (decisions 1 and 7); <see langword="null"/>, and left out of the JSON,
+/// when it has none.</param>
 public sealed record ProcessRecord(string Id, string Kind, string Name, string? Package, string Use, string? Subject, string? BoundAttribute,
     string? BoundEnum, string? Initial, IReadOnlyList<AttributeRecord> Context, IReadOnlyList<StateRecord> States, IReadOnlyList<TransitionRecord> Transitions,
     IReadOnlyList<EventRecord> Events, IReadOnlyList<GuardRecord> Guards, IReadOnlyList<ActionRecord> Actions, IReadOnlyList<GateRecord> Gates,
@@ -510,7 +514,62 @@ public sealed record ProcessRecord(string Id, string Kind, string Name, string? 
     IReadOnlyDictionary<string, GenerationHints> Generation,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SubjectRecord>? Subjects = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? CodesMap = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<StereotypeSubjectRecord>? StereotypeSubjects = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<StereotypeSubjectRecord>? StereotypeSubjects = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RightsDefault = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ProcessRightRecord>? Rights = null);
+
+/// <summary>
+/// One entry of a lifecycle's rights (rights-design.md decisions 1, 3 and 7): an inline right, which carries what it says and shares its id
+/// with the entry, or a use of a named right, whose record (kind <c>right</c>) carries what it says.
+/// </summary>
+/// <param name="Id">The entry's id.</param>
+/// <param name="Right">The right's id: the entry's own for an inline right, the named right's for a use.</param>
+/// <param name="Named">Whether the entry uses a named right.</param>
+/// <param name="States">The ids of the states where the right holds; empty for every state.</param>
+/// <param name="Condition">The right's condition typed for this lifecycle's subjects; left out when it has none or it does not type.</param>
+/// <param name="Name">An inline right's name; left out for a use.</param>
+/// <param name="DisplayName">An inline right's display name; left out when it has none, and for a use.</param>
+/// <param name="Description">An inline right's description; left out when it has none, and for a use.</param>
+/// <param name="Access">An inline right's access, <c>allow</c> or <c>deny</c>; left out for a use.</param>
+/// <param name="Actors">An inline right's actor ids in file order, empty for everyone; left out for a use.</param>
+/// <param name="Except">The ids of the actors an inline right does not apply to; left out for a use.</param>
+/// <param name="Verbs">An inline right's verb keys in file order; left out for a use.</param>
+/// <param name="Ends">The ids of the relation ends whose links an inline right speaks of; left out for a use.</param>
+public sealed record ProcessRightRecord(string Id, string Right, bool Named, IReadOnlyList<string> States,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? Condition = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Name = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DisplayName = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Description = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Access = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Actors = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Except = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Verbs = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Ends = null);
+
+/// <summary>A named right (rights-design.md decision 7), with what it says and the lifecycles that use it.</summary>
+/// <param name="Id">The id.</param>
+/// <param name="Kind"><c>right</c>.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Package">The package's id.</param>
+/// <param name="Access"><c>allow</c> or <c>deny</c>.</param>
+/// <param name="Actors">The ids of the actors it applies to, in file order; empty for everyone.</param>
+/// <param name="Except">The ids of the actors it does not apply to.</param>
+/// <param name="Verbs">Its verb keys, in file order.</param>
+/// <param name="Ends">The ids of the relation ends whose links it speaks of.</param>
+/// <param name="ConditionText">Its condition's text, printed from current names, or as stored for a right no lifecycle uses.</param>
+/// <param name="Processes">The ids of the lifecycles that use it.</param>
+/// <param name="DisplayName">The display name.</param>
+/// <param name="PluralName">The plural name.</param>
+/// <param name="Description">The description.</param>
+/// <param name="Tags">The tags.</param>
+/// <param name="Category">The category id.</param>
+/// <param name="Stereotypes">The stereotype keys.</param>
+/// <param name="Properties">The custom properties.</param>
+/// <param name="Generation">The generation hints.</param>
+public sealed record RightRecord(string Id, string Kind, string Name, string? Package, string Access, IReadOnlyList<string> Actors, IReadOnlyList<string> Except,
+    IReadOnlyList<string> Verbs, IReadOnlyList<string> Ends, string? ConditionText, IReadOnlyList<string> Processes, string DisplayName, string PluralName,
+    string? Description, IReadOnlyList<string> Tags, string? Category, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
+    IReadOnlyDictionary<string, GenerationHints> Generation);
 
 /// <summary>An entry of a process's <c>subjects</c> (lifecycle-design.md decision 5), or one subject a stereotype entry gives
 /// (stereotype-sets-design.md decision 12).</summary>
@@ -832,11 +891,19 @@ public sealed record ScenarioStartRecord(IReadOnlyDictionary<string, object?> Co
 /// <param name="Participant">The id of the participant that acts (actors-design.md decision 15); left out for a step with none.</param>
 /// <param name="ActsAs">With a participant, the id of the actor the step acts as; left out without a participant, or when it satisfies
 /// none of the actors the step needs.</param>
+/// <param name="Verb">A verb step's verb key (rights-design.md decision 25); left out for other steps.</param>
+/// <param name="Values">The values a modify verb step sets, by attribute name; left out when it gives none.</param>
+/// <param name="End">The id of the subject's relation end a verb step's link goes through; left out when it names none.</param>
+/// <param name="Object">The id of the scenario object at the other end of a verb step's link; left out when it names none.</param>
 public sealed record StepRecord(string Id, int Index, string Input, string? Event, string? Invoke, string? After, long? AfterMs, long? AfterTicks, string? Actor,
     string? Signer, string? Meaning, string? Reason, IReadOnlyDictionary<string, object?> Payload, IReadOnlyDictionary<string, object?> Assume,
     ExpectationRecord? Expect, string? Description,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Participant = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ActsAs = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ActsAs = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, object?>? Values = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? End = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Object = null);
 
 /// <summary>What a step expects.</summary>
 /// <param name="Accepted">Whether the input is accepted.</param>
@@ -845,8 +912,12 @@ public sealed record StepRecord(string Id, int Index, string Input, string? Even
 /// <param name="Context">The expected context values.</param>
 /// <param name="Values">The object's values the step expects it set, by attribute name (object-effects-design.md decision 4); left out when
 /// the file gives none.</param>
+/// <param name="Refusal">The refusal the step expects (rights-design.md decision 26); left out when the file gives none.</param>
+/// <param name="RefusedBy">The id of the element the step expects to refuse it; left out when the file gives none.</param>
 public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> States, IReadOnlyList<string> StatePaths, IReadOnlyDictionary<string, object?> Context,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, object?>? Values = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, object?>? Values = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Refusal = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RefusedBy = null);
 
 /// <summary>A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors, with the events it fires and
 /// what it requires by id.</summary>
@@ -1262,6 +1333,10 @@ public static class ResolvedRecords
         {
             foreach (var v in model.Verbs)
                 yield return new Entry("verb", v.Key, v.Id ?? "", () => Projection.Verb(v), v);
+
+            // Named rights (rights-design.md section 6) likewise, and only in a model that has them.
+            foreach (var r in model.Rights)
+                yield return new Entry("right", r.Name, r.Id, () => context.Right(r), r);
         }
 
         if (all || scope == "databases")
@@ -1493,7 +1568,29 @@ public static class ResolvedRecords
                 s.OwnerAttribute?.Id ?? s.OwnerEnd?.Id, s.Stereotype?.Id))] : null,
             p.HasCodes ? p.CodesMap : null,
             p.StereotypeSubjects.Count == 0 ? null : [.. p.StereotypeSubjects.Where(e => e.Stereotype is not null)
-                .Select(e => new StereotypeSubjectRecord(e.Id, e.Stereotype!.Id, e.BoundAttribute?.Id, Ids(e.Entities), e.OwnerAttribute?.Id))]);
+                .Select(e => new StereotypeSubjectRecord(e.Id, e.Stereotype!.Id, e.BoundAttribute?.Id, Ids(e.Entities), e.OwnerAttribute?.Id))],
+            model.Source.Get<Model.Process>(p.Id) is { Use: Model.ProcessUse.Lifecycle, RightsDefault: { } written } ? (written == Model.RightAccess.Deny ? "deny" : "allow") : null,
+            p.Rights.Count == 0 ? null : [.. p.Rights.Select(ProcessRight)]);
+
+        private ProcessRightRecord ProcessRight(RRightUse u)
+        {
+            var r = u.Right;
+            if (r.Named)
+                return new ProcessRightRecord(u.Id, r.Id, true, Ids(u.States), Expression(u.Condition));
+            var entry = model.Source.Get<Model.Process>(u.Process.Id)?.Rights.FirstOrDefault(e => e.Id == u.Id);
+            return new ProcessRightRecord(u.Id, r.Id, false, Ids(u.States), Expression(u.Condition), r.Name, entry?.DisplayName, r.Description, r.Access,
+                Ids(r.Actors), Ids(r.Except), [.. r.Verbs.Select(v => v.Key)], Ids(r.Ends));
+        }
+
+        public RightRecord Right(RRight r)
+        {
+            var source = model.Source.Get<Model.Right>(r.Id);
+            return new RightRecord(r.Id, "right", r.Name, r.Package?.Id, r.Access, Ids(r.Actors), Ids(r.Except), [.. r.Verbs.Select(v => v.Key)], Ids(r.Ends),
+                r.ConditionText, [.. r.Uses.Select(u => u.Process.Id).Distinct(StringComparer.Ordinal)], r.DisplayName, r.PluralName, r.Description,
+                source?.Tags ?? [], source?.Category, source?.Stereotypes ?? [],
+                new SortedDictionary<string, object?>((source?.Properties ?? new Dictionary<string, System.Text.Json.JsonElement>()).ToDictionary(kv => kv.Key, kv => (object?)kv.Value), StringComparer.Ordinal),
+                source?.Generation ?? new Dictionary<string, GenerationHints>());
+        }
 
         public ActorRecord Actor(RActor a) => new(a.Id, "actor", a.Name, a.Package?.Id, a.Type, Ids(a.Processes), Ids(a.Events), Ids(a.Gates),
             a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation,
@@ -1503,8 +1600,9 @@ public static class ResolvedRecords
         public ScenarioRecord Scenario(RScenario s) => new(s.Id, "scenario", s.Name, s.Package?.Id, s.Process.Id, new ScenarioStartRecord(Plain(s.Start.Context), s.Start.At),
             [.. s.Steps.Select(t => new StepRecord(t.Id, t.Index, t.Input, t.Event?.Id, t.Invoke?.Id, t.After, t.AfterMs, t.AfterTicks, t.Actor?.Id, t.Signer, t.Meaning?.Id,
                 t.Reason, Plain(t.Payload), Plain(t.Assume),
-                t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context), x.Values.Count == 0 ? null : Plain(x.Values)) : null, t.Description,
-                t.Participant?.Id, t.Participant is null ? null : t.ActsAs?.Id))],
+                t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context), x.Values.Count == 0 ? null : Plain(x.Values),
+                    x.Refusal, x.RefusedBy) : null, t.Description,
+                t.Participant?.Id, t.Participant is null ? null : t.ActsAs?.Id, t.Verb?.Key, t.Values.Count == 0 ? null : Plain(t.Values), t.End?.Id, t.Object?.Id))],
             s.Outcome, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation,
             s.Objects.Count == 0 ? null : [.. s.Objects.Select(o => new ScenarioObjectRecord(o.Id, o.Name, o.Entity.Id, Plain(o.Values),
                 [.. o.Links.Select(l => new ScenarioLinkRecord(l.End.Id, l.Object.Id))], o.Owner?.Id, o.States.Count == 0 ? null : Ids(o.States)))],

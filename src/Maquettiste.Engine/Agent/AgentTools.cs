@@ -94,6 +94,7 @@ public sealed partial class AgentTools
             ["get_project"] = GetProjectAsync,
             ["get_references"] = GetReferencesAsync,
             ["get_resolved_model"] = GetResolvedModelAsync,
+            ["get_rights"] = GetRightsAsync,
             ["get_schema"] = GetSchemaAsync,
             ["get_settings"] = GetSettingsAsync,
             ["list_migrations"] = ListMigrationsAsync,

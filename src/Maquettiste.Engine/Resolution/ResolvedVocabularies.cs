@@ -132,6 +132,13 @@ public sealed class RVerb : IResolvedObject
     /// <summary>Whether an event, a transition or an operation names it.</summary>
     public bool Used { get; internal set; }
 
+    /// <summary>
+    /// The rights that name it (rights-design.md section 6): the named rights in <see cref="ResolvedModel.Rights"/> order, then the inline
+    /// rights in process order and file order. It keys on the rights naming key, and in a project that uses rights also on every named
+    /// right and every lifecycle with rights; empty in a project without rights.
+    /// </summary>
+    public RList<RRight> Rights { get; internal set; } = RList<RRight>.Empty;
+
     /// <inheritdoc/>
     public string Kind => "verb";
 

@@ -179,6 +179,32 @@ public sealed partial class AgentTools
         return Ok(await _store.GetReferencesAsync(id, ct).ConfigureAwait(false));
     }
 
+    /// <summary>Who can do what in a lifecycle (rights-design.md decision 31): one page of <c>getRights</c>, read from the snapshot.</summary>
+    private async Task<AgentToolResult> GetRightsAsync(ToolArguments args, CancellationToken ct)
+    {
+        var key = args.String("process");
+        if (string.IsNullOrEmpty(key))
+            return BadRequest("process is required: a lifecycle's id, name or model path.");
+        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var matches = Processes.ProcessApi.Resolve(snapshot, key);
+        if (matches.Count == 0)
+            return NotFound("process", key);
+        if (matches.Count > 1)
+            return BadRequest($"'{key}' names {matches.Count} processes; pass one id: {string.Join(", ", matches.Select(m => m.Id + " (" + m.Name + ")"))}.");
+        var filter = new Processes.RightsFilter
+        {
+            States = args.Strings("states") ?? [], Actors = args.Strings("actors") ?? [], Verbs = args.Strings("verbs") ?? [],
+            Entity = args.String("entity") is { Length: > 0 } entity ? entity : null,
+        };
+        var call = await _store.GetRightsAsync(matches[0].Id, filter, args.String("cursor"), args.Int("limit") ?? ModelPages.DefaultLimit, ct).ConfigureAwait(false);
+        return call.Status switch
+        {
+            Processes.ProcessCallStatus.Ok => Ok(call.Value),
+            Processes.ProcessCallStatus.NotFound => NotFound("process", key),
+            _ => BadRequest(call.Detail ?? "The request is not valid."),
+        };
+    }
+
     private async Task<AgentToolResult> GetCalculatedAsync(ToolArguments args, CancellationToken ct)
     {
         var ids = args.Strings("ids");

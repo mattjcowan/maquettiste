@@ -204,6 +204,7 @@ internal sealed partial class ResolveRun
             actor.Processes = new RList<RProcess>(own?.Processes ?? [], keys);
             actor.Events = new RList<REvent>(own?.Events ?? [], keys);
             actor.Gates = new RList<RGate>(own?.Gates ?? [], keys);
+            actor.Rights = RightsOf(actor);
         }
 
         foreach (var (id, entity) in _entitySources)
@@ -1136,6 +1137,7 @@ internal sealed partial class ResolveRun
             ResolveScenarioObjects(s, scenario, keys);
             var participants = ResolveParticipants(s, scenario, keys);
             var traced = TraceInputs(scenario);
+            var rightsKeys = RightsReplayKeys(scenario);
             var runs = scenario.Participants.Count > 0 ? Model.Get<Process>(scenario.Process) : null;
             // A process that reads current_actor() (object-effects-design.md section 7): the identity comes from each step's signer, participant and
             // actor, and an automatic move's from the system actor, so every step reads the actors as a participant's step does.
@@ -1236,6 +1238,7 @@ internal sealed partial class ResolveRun
 
                 foreach (var id in traced)
                     stepDeps.Element(id);
+                stepDeps.AddRange(rightsKeys);
                 if (step.Expect is { } expect)
                 {
                     var expected = expect.States.Select(id => lookup.States.GetValueOrDefault(id)).OfType<RState>().ToList();

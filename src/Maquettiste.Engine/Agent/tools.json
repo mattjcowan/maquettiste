@@ -355,7 +355,7 @@
     {
       "name": "get_model_index",
       "title": "Model index",
-      "description": "Summaries of the top-level elements (id, kind, name, package, tags, category, stereotypes, hash, path; operation rows add subject and effect, and verb when the operation names one; process rows add verbs, the verb keys their events and transitions name, when they name any; custom element rows type and memberCount). Every filter is optional and they combine with AND. Without cursor or limit the answer is the whole list; with either it is one page, {items, next}, ordered by kind, name and id: pass next as cursor until it is null. Use the index to find elements, get_elements to read their documents in bulk, get_resolved_model for what generation sees (resolved types, inherited attributes, tables), get_model_kinds for the counts.",
+      "description": "Summaries of the top-level elements (id, kind, name, package, tags, category, stereotypes, hash, path; operation rows add subject and effect, and verb when the operation names one; process rows add verbs, the verb keys their events, transitions and rights name, when they name any, and rights, the number of entries in a lifecycle's rights, when it has any; named right rows add access and verbs; custom element rows type and memberCount). Every filter is optional and they combine with AND. Without cursor or limit the answer is the whole list; with either it is one page, {items, next}, ordered by kind, name and id: pass next as cursor until it is null. Use the index to find elements, get_elements to read their documents in bulk, get_resolved_model for what generation sees (resolved types, inherited attributes, tables), get_model_kinds for the counts.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -527,7 +527,7 @@
     {
       "name": "get_references",
       "title": "Where used",
-      "description": "Every reference to an element: the referring element id, the referring (sub-)element id, the JSON pointer and field in the referring document, and the referenced id. A custom property value an x-ref types is a reference too: its row carries schema (extension:<name> or stereotype:<key>) and, when every schema that types it allows remove-references to clear it, optional: true.",
+      "description": "Every reference to an element: the referring element id, the referring (sub-)element id, the JSON pointer and field in the referring document, and the referenced id. A custom property value an x-ref types is a reference too: its row carries schema (extension:<name> or stereotype:<key>) and, when every schema that types it allows remove-references to clear it, optional: true. A right refers to the actors in its actors and except, its own verbs, its states and ends and the paths of its condition; a lifecycle's use of a named right refers to it; a verb step refers to its end and object.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -548,7 +548,7 @@
     {
       "name": "get_resolved_model",
       "title": "Resolved model",
-      "description": "The resolved model, what templates read, as flat records in pages: {items, next, diagnostics}. Each record has id, kind and name; other objects appear by id. entities: attributes resolved (type, default, isKey, isInherited for the base's; an attribute without a description of its own shows the comment of the column a binding maps it to, and descriptionColumn names that column), key, alternate keys, base and derived, navigations, relations, mappings per database (table and columns), annotations. relations: ends, attributes, mappings. processes: every state, transition, event, guard, action, gate and invoke, actors by id; an event names its verb key, and a transition the verb of its move (its own, else its event's), only where set. operations: subject, level, effect, verb (only where named), input members (type, keyOf or file with mediaTypes), outcomes (isDefault, completes, returns with members, entity or file, list, paging and maxPageSize), errors (code, input, and memberOrigin for an error a stereotype contributes, keyed <operationId>.<errorId>), defaultOutcome, fires and requires by id. custom-elements: one custom element per record with type, package, content as written and members (id, name, array, parent, pointer), every member at any depth. constraints: one named constraint per record with its typed parameters, condition and message; an entity's checks, a derived attribute's value and a process or operation guard's condition are written in the same expression language, each {text (printed from current names), type, nullable, tree (the ids the file holds)}, keys a model without expressions does not have. databases: the database view (tables with columns, keys, foreign keys and indexes, members a stereotype contributes keyed <tableKey>.<memberId> with their memberOrigin, and on a table without a file the stereotypes its schema and package defaults give it; views, sequences, routines, database types, SQL objects, queries with their SQL); tables, routines, database-types, sql-objects, queries: one object per record. migrations: one open migration fact per record, by database name then applied order, with its state, missing intent, after links, object, current key, from, to and content hash. Also packages, enums, value-objects, scalar-types, reference-types (with rows), seeds, actors, scenarios; all also lists one verb record per item of model.verbs (key, displayName, description, builtIn, group, hidden, used, and the ids of the events, transitions and operations that name it), only when the project uses verbs; all is every scope but tables, routines, database-types, sql-objects and queries, which databases holds. Each page also carries calculated: the calculated values of its records and the sub-objects they list, by site (the object id, or <holder id>/<attribute id> for an attribute its holder does not own) then name; a value that fails is left out and its diagnostic joins diagnostics. A model with errors returns no items and the errors in diagnostics, unless its only errors are pending migration facts (MQ4101): those still return items.",
+      "description": "The resolved model, what templates read, as flat records in pages: {items, next, diagnostics}. Each record has id, kind and name; other objects appear by id. entities: attributes resolved (type, default, isKey, isInherited for the base's; an attribute without a description of its own shows the comment of the column a binding maps it to, and descriptionColumn names that column), key, alternate keys, base and derived, navigations, relations, mappings per database (table and columns), annotations. relations: ends, attributes, mappings. processes: every state, transition, event, guard, action, gate and invoke, actors by id; an event names its verb key, and a transition the verb of its move (its own, else its event's), only where set. A lifecycle adds rightsDefault, as its file writes it, and rights, its entries in file order (an inline right with what it says, or a use of a named right, each with its states and its condition typed for the lifecycle), only where present. operations: subject, level, effect, verb (only where named), input members (type, keyOf or file with mediaTypes), outcomes (isDefault, completes, returns with members, entity or file, list, paging and maxPageSize), errors (code, input, and memberOrigin for an error a stereotype contributes, keyed <operationId>.<errorId>), defaultOutcome, fires and requires by id. custom-elements: one custom element per record with type, package, content as written and members (id, name, array, parent, pointer), every member at any depth. constraints: one named constraint per record with its typed parameters, condition and message; an entity's checks, a derived attribute's value and a process or operation guard's condition are written in the same expression language, each {text (printed from current names), type, nullable, tree (the ids the file holds)}, keys a model without expressions does not have. databases: the database view (tables with columns, keys, foreign keys and indexes, members a stereotype contributes keyed <tableKey>.<memberId> with their memberOrigin, and on a table without a file the stereotypes its schema and package defaults give it; views, sequences, routines, database types, SQL objects, queries with their SQL); tables, routines, database-types, sql-objects, queries: one object per record. migrations: one open migration fact per record, by database name then applied order, with its state, missing intent, after links, object, current key, from, to and content hash. Also packages, enums, value-objects, scalar-types, reference-types (with rows), seeds, actors, scenarios; all also lists one verb record per item of model.verbs (key, displayName, description, builtIn, group, hidden, used, and the ids of the events, transitions and operations that name it), only when the project uses verbs; all also lists one right record per named right (access, actors, except, verbs, ends, conditionText, and the lifecycles that use it), only when the model has named rights; a scenario step adds verb, values, end and object for a verb step, and its expect refusal and refusedBy, only where set; all is every scope but tables, routines, database-types, sql-objects and queries, which databases holds. Each page also carries calculated: the calculated values of its records and the sub-objects they list, by site (the object id, or <holder id>/<attribute id> for an attribute its holder does not own) then name; a value that fails is left out and its diagnostic joins diagnostics. A model with errors returns no items and the errors in diagnostics, unless its only errors are pending migration facts (MQ4101): those still return items.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -585,6 +585,84 @@
             "default": null
           }
         }
+      }
+    },
+    {
+      "name": "get_rights",
+      "title": "Who can do what",
+      "description": "Who can do what in a lifecycle: per atomic state, actor and verb, whether the verb is allowed, denied or depends, read from the model without resolving it: {lifecycle, rightsDefault, rows: [{state, actor, verb, entity, answer, byDefault, by, dependsOn}], next}. The actors are those the lifecycle's rights (actors and except), events, human tasks and gates' signers name, by name, then everyone else (actor null); the verbs are those its rights and events name. A row is one kind of caller: one who satisfies that actor, and so every actor it is a member of, and no other actor the grid names. Each lifecycle answers on its own and any no wins: the lifecycle's denies, then its allows (an event that names the verb and can be sent from the state lets its actors through, a human task its actors for complete, a gate its signers for sign and for the gated event), then its default; depends means a condition or an actor from the object decides. Another lifecycle that governs the object answers only for object, link and own verbs: one that says no in every one of its states denies the cell; one that could say no in only some of them, or under a condition, makes it depend and is named in dependsOn. When the lifecycle's subjects are governed by different other lifecycles and that changes a cell, the cell has one row per entity (entity); otherwise entity is left out. by names what decides: rights (an inline right, or the named right), events, human tasks, gates, or the lifecycle whose default answers (byDefault true). A project without rights still gets answers, from the closed lists and the default. Rows come by state, actor, verb, then entity: pass next as cursor until it is null. A process that is no lifecycle, or an entity that is not one of its subjects, is bad-request. Nothing is written.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "process": {
+            "description": "The lifecycle's id, name or model path; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "states": {
+            "description": "State ids: only the rows of the atomic states that are, or are inside, one of them.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "default": null
+          },
+          "actors": {
+            "description": "Actor ids: only the rows of these actors (the row of everyone else is left out).",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "default": null
+          },
+          "verbs": {
+            "description": "Verb keys: only the rows of these verbs.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "default": null
+          },
+          "entity": {
+            "description": "An entity id, one of the lifecycle's subjects: only the rows that hold for it.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "cursor": {
+            "description": "The next value of the previous page.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "limit": {
+            "description": "The page size, 1 to 1000 (default 100).",
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "process"
+        ]
       }
     },
     {
@@ -783,7 +861,7 @@
     {
       "name": "preview_expression",
       "title": "Preview expression",
-      "description": "One expression of the expression language (a check, an entity check, a derived value, a process or operation guard, a value an action sets, a constraint's condition), read from one element and never the whole model: {preview: {text, type, nullable, javascript, sql, sqlNote, answer}, diagnostics}. text is printed from current names; type is bool, int16, int32, int64, decimal, double, string, date, time, datetime, datetimeoffset, uuid, json, enum <id> or code <id>; javascript is the function over a row that calls the expression runtime as mq; sql is the PostgreSQL text through the one table the site reads (a table's own columns; for an entity's check or value, its binding's field map onto the binding's table), else null with sqlNote saying why (a guard or a constraint reads no table, another dialect is MQ4056). Preview a stored expression with element (the element, or the check, guard, attribute or set that holds it) and at (its pointer, /checks/0/condition, /actions/0/sets/0/value; optional when the element holds one), or text that is not saved with element, text and site: check, value or guard, or set with element the action and attribute the id of the attribute the value is for (its type must fit, MQ3103), or the pointer of a site, whose scope and mode the text takes (a JavaScript guard's /guards/0/condition reads the payloads of the events that use it; use it to rewrite a guard by hand and compare with simulate_process). values (a JSON object of the row by member name: a table's column names, an entity's attribute names, a process's context with the event's payload under event, an operation's input with the subject under subject) adds answer under the site's mode: a check passes on true or unknown, a guard holds on true only, a value answers itself (a decimal as exact text); now() reads the sandbox's fixed clock, 2000-01-01T00:00:00Z. current_actor() (who acts) and in_state(object, states) (whether an object is in a state of a lifecycle) preview at guard and set sites only, with no sql and no answer: only a simulation knows who acts and the states of a run. Send numbers with many digits as strings. preview is null when the text does not parse or the expression does not type (MQ3101 to MQ3113 in diagnostics). An unknown element is not-found; a request without element, with both at and text, an unknown site or database, is bad-request. Nothing is written.",
+      "description": "One expression of the expression language (a check, an entity check, a derived value, a process or operation guard, a value an action sets, a constraint's condition, a right's condition), read from one element and never the whole model: {preview: {text, type, nullable, javascript, sql, sqlNote, answer}, diagnostics}. text is printed from current names; type is bool, int16, int32, int64, decimal, double, string, date, time, datetime, datetimeoffset, uuid, json, enum <id> or code <id>; javascript is the function over a row that calls the expression runtime as mq; sql is the PostgreSQL text through the one table the site reads (a table's own columns; for an entity's check or value, its binding's field map onto the binding's table), else null with sqlNote saying why (a guard or a constraint reads no table, another dialect is MQ4056). Preview a stored expression with element (the element, or the check, guard, attribute or set that holds it) and at (its pointer, /checks/0/condition, /actions/0/sets/0/value; optional when the element holds one), or text that is not saved with element, text and site: check, value or guard, or set with element the action and attribute the id of the attribute the value is for (its type must fit, MQ3103), or the pointer of a site, whose scope and mode the text takes (a JavaScript guard's /guards/0/condition reads the payloads of the events that use it; use it to rewrite a guard by hand and compare with simulate_process). values (a JSON object of the row by member name: a table's column names, an entity's attribute names, a process's context with the event's payload under event, an operation's input with the subject under subject) adds answer under the site's mode: a check passes on true or unknown, a guard holds on true only, a value answers itself (a decimal as exact text); now() reads the sandbox's fixed clock, 2000-01-01T00:00:00Z. current_actor() (who acts) and in_state(object, states) (whether an object is in a state of a lifecycle) preview at guard, set and right sites only, with no sql and no answer: only a simulation knows who acts and the states of a run. Send numbers with many digits as strings. preview is null when the text does not parse or the expression does not type (MQ3101 to MQ3113 in diagnostics). A right's condition previews at its pointer (/rights/0/condition on a lifecycle, /condition on a named right), or as text with site right; a named right with no use needs lifecycle. An unknown element is not-found; a request without element, with both at and text, an unknown site or database, is bad-request. Nothing is written.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -812,7 +890,7 @@
             "default": null
           },
           "site": {
-            "description": "With text: check (a table, stereotype, entity or constraint), value (an entity's derived value), guard (a process or operation) or set (a value the action element names sets, with attribute), or the pointer of one of the element's sites.",
+            "description": "With text: check (a table, stereotype, entity or constraint), value (an entity's derived value), guard (a process or operation), set (a value the action element names sets, with attribute) or right (a right's condition, on a lifecycle or a named right), or the pointer of one of the element's sites.",
             "type": [
               "string",
               "null"
@@ -829,6 +907,14 @@
           },
           "database": {
             "description": "A database id or name: an entity's expression lowers to SQL through its binding to that database; omit for the binding that lists the check, or the only one.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "lifecycle": {
+            "description": "A lifecycle id or name: a named right's condition, or text written for one, previews as if the right were used there. Without it a named right's condition previews in the scope of all its uses; a named right with no use needs one.",
             "type": [
               "string",
               "null"

@@ -1,0 +1,35 @@
+{
+  "kind": "process",
+  "id": "01JRT000000000000000000C02",
+  "name": "Hr",
+  "displayName": "HR",
+  "package": "01JRT000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JRT000000000000000000B02",
+      "entity": "01JRT000000000000000000E02"
+    }
+  ],
+  "rightsDefault": "deny",
+  "states": [
+    {
+      "id": "01JRT000000000000000000S11",
+      "name": "Active"
+    }
+  ],
+  "initial": "01JRT000000000000000000S11",
+  "rights": [
+    {
+      "id": "01JRT000000000000000000R21",
+      "name": "HrStaffEdits",
+      "access": "allow",
+      "actors": [
+        "01JRT000000000000000000K03"
+      ],
+      "verbs": [
+        "modify"
+      ]
+    }
+  ]
+}

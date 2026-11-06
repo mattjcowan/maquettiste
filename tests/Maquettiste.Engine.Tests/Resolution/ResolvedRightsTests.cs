@@ -1,8 +1,11 @@
 using System.Text.Json;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Planning;
+using Maquettiste.Engine.Processes;
 using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.SchemaDiff;
 using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Resolution;
@@ -51,7 +54,7 @@ public sealed class ResolvedRightsTests
         Op = "eq", Args = [new Expr { Path = [Classification] }, new Expr { Value = JsonSerializer.SerializeToElement("secret") }],
     };
 
-    private static ModelSnapshot Model(bool rights = true)
+    private static ModelSnapshot Model(bool rights = true, Func<Element, Element>? edit = null)
     {
         var documents = Lifecycle(Documents, "Documents", Document, [new ProcessState { Id = Draft, Name = "Draft" }, new ProcessState { Id = Released, Name = "Released" }]);
         var hr = Lifecycle(Hr, "HR", Employee, [new ProcessState { Id = "01JRRS00000000000000000011", Name = "Active" }]);
@@ -137,6 +140,8 @@ public sealed class ResolvedRightsTests
             });
         }
 
+        if (edit is not null)
+            elements = [.. elements.Select(edit)];
         var docs = elements.Select((e, i) => Doc(e, $"model/x/{i:D2}-{e.Name}.json")).OrderBy(d => d.Path, StringComparer.Ordinal).ToList();
         return ModelSnapshot.Create(docs, new ProjectSettings { FormatVersion = EngineVersion.FormatVersion }, "", [], [], 1);
     }
@@ -272,4 +277,188 @@ public sealed class ResolvedRightsTests
     }
 
     private static IReadOnlyList<string> Keys(ResolvedModel model, string id) => model.Find(id)!.Dependencies;
+
+    private const string Active = "01JRRS00000000000000000011";
+    private const string Open = "01JRRS00000000000000000021";
+
+    // What a unit that read these keys hashes to over a snapshot: a changed hash renders or replays it again.
+    private static string HashOf(ModelSnapshot snapshot, IEnumerable<string> keys) =>
+        new DependencyHasher(snapshot, ResolutionKit.Resolve(snapshot), new PackSet([], []), new Dictionary<string, SchemaDiffResult>())
+            .InputHash("unit", [.. keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]);
+
+    private static Func<Element, Element> OnProcess(string id, Func<Process, Process> edit) => e => e is Process p && p.Id == id ? edit(p) : e;
+
+    private static string Cell(RAccessCell c) =>
+        $"{c.State.Name}/{c.Actor?.Name ?? "*"}/{c.Verb.Key}{(c.Entity is { } e ? "/" + e.Name : "")}: {c.Answer}{(c.ByDefault ? " by default" : "")}"
+        + $" by {string.Join(",", c.By.Select(b => b.Id))}{(c.DependsOn.Count > 0 ? " on " + string.Join(",", c.DependsOn.Select(d => d.Name)) : "")}";
+
+    [Fact]
+    public void The_access_grid_answers_per_state_actor_and_verb()
+    {
+        var model = ResolutionKit.Resolve(Model());
+        var grid = ProcessOf(model, Documents).AccessGrid.Select(Cell).ToList();
+
+        // A deny whose condition or exception can't be known makes an allowed cell depend; the default answers everyone else.
+        Assert.Contains($"Draft/Author/modify: depends by {SecretOnlyOwner}", grid);
+        Assert.Contains($"Draft/*/modify: denied by default by {Documents}", grid);
+        Assert.Contains($"Draft/DocumentOwner/modify: denied by default by {Documents}", grid);
+        Assert.Contains($"Released/Author/modify: denied by {ReleasedIsReadOnly}", grid);
+        Assert.Contains($"Draft/Author/connect: allowed by {AuthorsEditDrafts}", grid);
+        Assert.Equal(["Author", "DocumentOwner", "*"], ProcessOf(model, Documents).AccessGrid.Select(c => c.Actor?.Name ?? "*").Distinct());
+        Assert.Equal(["change-owner", "connect", "delete", "modify"], ProcessOf(model, Documents).AccessGrid.Select(c => c.Verb.Key).Distinct());
+
+        // HR denies by default and lets HR staff modify, Projects lets project managers modify: a project manager is refused by HR's default.
+        Assert.Equal([$"Open/ProjectManager/modify: denied by default by {Hr}", $"Open/*/modify: denied by default by {Hr}"],
+            ProcessOf(model, Projects).AccessGrid.Select(Cell));
+        Assert.Empty(ProcessOf(model, Onboarding).AccessGrid);
+    }
+
+    [Fact]
+    public void A_cell_depends_on_another_lifecycle_and_splits_by_entity_where_answers_differ()
+    {
+        // HR allows by default and denies modify only in Active, beside another state: it could say no in only some of its states.
+        var snapshot = Model(edit: e => e switch
+        {
+            Process { Id: Hr } p => p with
+            {
+                RightsDefault = null,
+                States = [.. p.States, new ProcessState { Id = "01JRRS00000000000000000012", Name = "Leave" }],
+                Rights = [new ProcessRight { Id = HrStaffModify, Name = "NoEditsWhileActive", Access = RightAccess.Deny, Verbs = ["modify"], States = [Active] }],
+            },
+            Process { Id: Projects } p => p with
+            {
+                SubjectList = [.. p.SubjectList!, new ProcessSubject { Id = "01JRRB00000000000000000099", Entity = Document }],
+            },
+            _ => e,
+        });
+        var model = ResolutionKit.Resolve(snapshot);
+        var grid = ProcessOf(model, Projects).AccessGrid.Select(Cell).ToList();
+
+        // Employee: HR could say no; Document: Documents says no in every state, by its default or its read-only right.
+        Assert.Contains($"Open/ProjectManager/modify/Document: denied by default by {Documents}", grid);
+        Assert.Contains($"Open/ProjectManager/modify/Employee: depends by {PmModify} on HR", grid);
+        Assert.Equal(4, grid.Count);
+
+        // get_rights gives the same rows, filters them and pages them.
+        var projects = snapshot.Get<Process>(Projects)!;
+        var rows = RightsGrid.Rows(snapshot, projects, null, TestContext.Current.CancellationToken);
+        Assert.Equal(ProcessOf(model, Projects).AccessGrid.Select(c => (c.State.Id, c.Actor?.Id, c.Verb.Key, c.Entity?.Id, c.Answer)),
+            rows.Select(r => (r.State, r.Actor, r.Verb, r.Entity, r.Answer)));
+        Assert.Equal([Employee], RightsGrid.Rows(snapshot, projects, new RightsFilter { Actors = [ProjectManager], Entity = Employee }, TestContext.Current.CancellationToken).Select(r => r.Entity));
+        var first = RightsGrid.Page(snapshot, projects, null, null, 3, TestContext.Current.CancellationToken)!;
+        Assert.Equal(("3", "allow"), (first.Next, first.RightsDefault));
+        var last = RightsGrid.Page(snapshot, projects, null, first.Next, 3, TestContext.Current.CancellationToken)!;
+        Assert.Null(last.Next);
+        Assert.Equal(rows.Select(r => (r.State, r.Actor, r.Verb, r.Entity)), first.Rows.Concat(last.Rows).Select(r => (r.State, r.Actor, r.Verb, r.Entity)));
+        Assert.Null(RightsGrid.Page(snapshot, projects, null, "x", 3, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public void Get_rights_answers_from_the_closed_lists_and_the_default_without_rights()
+    {
+        var snapshot = Model(rights: false, edit: OnProcess(Documents, p => p with
+        {
+            Events = [new ProcessEvent { Id = "01JRRX00000000000000000011", Name = "edit", Verb = "modify", Actors = [Author] }],
+            Transitions = [new ProcessTransition { Id = "01JRRT00000000000000000011", Source = Draft, Event = "01JRRX00000000000000000011", Targets = [Released] }],
+        }));
+        var model = ResolutionKit.Resolve(snapshot);
+        Assert.Empty(ProcessOf(model, Documents).AccessGrid);
+
+        var rows = RightsGrid.Rows(snapshot, snapshot.Get<Process>(Documents)!, null, TestContext.Current.CancellationToken).Select(r => $"{r.State}/{r.Actor ?? "*"}/{r.Verb}: {r.Answer} {string.Join(",", r.By)}");
+        Assert.Equal([$"{Draft}/{Author}/modify: allowed 01JRRX00000000000000000011", $"{Draft}/*/modify: denied 01JRRX00000000000000000011",
+            $"{Released}/{Author}/modify: allowed {Documents}", $"{Released}/*/modify: allowed {Documents}"], rows);
+    }
+
+    [Fact]
+    public void Actors_and_verbs_list_the_rights_that_name_them()
+    {
+        var model = ResolutionKit.Resolve(Model());
+        var owner = model.Actors.Single(a => a.Id == Owner);
+        Assert.Equal([SecretOnlyOwner], owner.Rights.Select(r => r.Id));
+        Assert.Equal([AuthorsEditDrafts], model.Actors.Single(a => a.Id == Author).Rights.Select(r => r.Id));
+        Assert.Equal([SecretOnlyOwner, AuthorsEditDrafts, ReleasedIsReadOnly, HrStaffModify, PmModify],
+            model.Verbs.Single(v => v.Key == "modify").Rights.Select(r => r.Id));
+
+        // An actor page gains no key: the rights key on the actor's referrers, as its events do.
+        Assert.Subset(owner.Events.MembershipKeys.ToHashSet(), owner.Rights.MembershipKeys.ToHashSet());
+
+        // A project that uses verbs but no rights: verb.rights keys on the rights naming key only.
+        var plain = ResolutionKit.Resolve(Model(rights: false));
+        Assert.All(plain.Verbs, v => Assert.Equal([RightsNaming.Key], v.Rights.MembershipKeys));
+        Assert.All(plain.Verbs, v => Assert.Empty(v.Rights));
+    }
+
+    [Fact]
+    public void The_grid_renders_again_when_another_lifecycle_gets_its_first_right_or_changes_a_deny()
+    {
+        // HR states nothing at first; Projects' grid reads modify, which HR governs.
+        var before = Model(edit: OnProcess(Hr, p => p with { RightsDefault = null, Rights = [] }));
+        var keys = ProcessOf(ResolutionKit.Resolve(before), Projects).AccessGrid.MembershipKeys;
+        var hash = HashOf(before, keys);
+        Assert.NotEqual(hash, HashOf(Model(edit: OnProcess(Hr, p => p with { Rights = [] })), keys)); // a default of deny
+
+        // A deny on a verb only the lifecycle's rights name, then a change to that deny's states.
+        static Process WithDeny(Process p, IReadOnlyList<string> states) => p with
+        {
+            RightsDefault = null, Rights = [new ProcessRight { Id = HrStaffModify, Name = "Frozen", Access = RightAccess.Deny, Verbs = ["modify"], States = states }],
+        };
+
+        var denying = Model(edit: OnProcess(Hr, p => WithDeny(p, [Active])));
+        Assert.NotEqual(hash, HashOf(denying, keys));
+        var denyKeys = ProcessOf(ResolutionKit.Resolve(denying), Projects).AccessGrid.MembershipKeys;
+        Assert.NotEqual(HashOf(denying, denyKeys), HashOf(Model(edit: OnProcess(Hr, p => WithDeny(p, []))), denyKeys));
+    }
+
+    [Fact]
+    public void A_scenario_replays_when_another_lifecycle_could_now_refuse_its_verb_step()
+    {
+        const string Ann = "01JRRC00000000000000000013";
+        Element WithScenario(Element e) => e is Scenario { Id: Scenario } s ? s with
+        {
+            Process = Projects, Subject = Ann, Objects = [new ScenarioObject { Id = Ann, Name = "ann", Entity = Employee }],
+            Steps = [s.Steps[0] with { Verb = "delete", Values = new Dictionary<string, JsonElement>(), Expect = null }],
+        } : e;
+        Element Hr0(Element e) => WithScenario(e is Process { Id: Hr } p ? p with { RightsDefault = null, Rights = [] } : e);
+        Func<Element, Element> HrDeny(Expr? condition) => e => WithScenario(e is Process { Id: Hr } p ? p with
+        {
+            RightsDefault = null, Rights = [new ProcessRight { Id = HrStaffModify, Name = "NoDelete", Access = RightAccess.Deny, Verbs = ["delete"], Condition = condition }],
+        } : e);
+
+        var before = Model(edit: Hr0);
+        var keys = Keys(ResolutionKit.Resolve(before), Step);
+        Assert.Contains(RightsNaming.Key, keys);
+        Assert.NotEqual(HashOf(before, keys), HashOf(Model(edit: HrDeny(null)), keys)); // HR gains a deny on delete
+
+        var denying = Model(edit: HrDeny(null));
+        var denyKeys = Keys(ResolutionKit.Resolve(denying), Step);
+        Assert.Contains("e:" + Hr, denyKeys);
+        Assert.NotEqual(HashOf(denying, denyKeys), HashOf(Model(edit: HrDeny(IsSecret)), denyKeys)); // that deny's condition changes
+
+        // A project without rights: the step keys on the rights naming key, whose hash never changes there.
+        var plain = Model(rights: false, edit: WithScenario);
+        var plainKeys = Keys(ResolutionKit.Resolve(plain), Step);
+        Assert.Contains(RightsNaming.Key, plainKeys);
+        Assert.DoesNotContain("e:" + Hr, plainKeys);
+    }
+
+    [Fact]
+    public void Records_carry_rights_only_where_present()
+    {
+        var model = ResolutionKit.Resolve(Model());
+        var documents = (ProcessRecord)ResolvedRecords.Entries(model, "processes", null).Single(e => e.Id == Documents).Project();
+        Assert.Equal("deny", documents.RightsDefault);
+        Assert.Equal([AuthorsEditDrafts, ReleasedIsReadOnly, SecretOnlyOwner], documents.Rights!.Select(r => r.Right));
+        Assert.Equal(("AuthorsEditDrafts", "allow", false), (documents.Rights![0].Name, documents.Rights[0].Access, documents.Rights[0].Named));
+        Assert.Null(documents.Rights[2].Access);
+        var right = (RightRecord)ResolvedRecords.Entries(model, "all", null).Single(e => e.Id == SecretOnlyOwner).Project();
+        Assert.Equal("deny", right.Access);
+        Assert.Equal([Documents], right.Processes);
+        var scenario = (ScenarioRecord)ResolvedRecords.Entries(model, "scenarios", null).Single(e => e.Id == Scenario).Project();
+        Assert.Equal(("modify", "right", SecretOnlyOwner), (scenario.Steps[0].Verb, scenario.Steps[0].Expect!.Refusal, scenario.Steps[0].Expect!.RefusedBy));
+
+        var plain = ResolutionKit.Resolve(Model(rights: false));
+        var json = JsonSerializer.Serialize(ResolvedRecords.Entries(plain, "processes", null).Select(e => e.Project()).ToList(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain("\"rights", json, StringComparison.Ordinal);
+        Assert.DoesNotContain(ResolvedRecords.Entries(plain, "all", null), e => e.Kind == "right");
+    }
 }

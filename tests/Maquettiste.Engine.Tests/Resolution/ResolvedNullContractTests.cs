@@ -127,6 +127,7 @@ public sealed class ResolvedNullContractTests
         ["RRight"] = "rights: ResolvedRightsTests",
         ["RRightUse"] = "rights: ResolvedRightsTests",
         ["RMayRefuse"] = "rights: ResolvedRightsTests",
+        ["RAccessCell"] = "rights: ResolvedRightsTests",
     };
 
     [Fact]

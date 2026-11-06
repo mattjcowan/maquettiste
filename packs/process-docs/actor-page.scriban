@@ -76,6 +76,17 @@
 | {{ md_code x.event.name }} | {{ process_link(x.process, "../") }} | {{ for t in x.event.transitions }}{{ for.first ? "" : ", " }}{{ md_code t.source.path }} to {{ t.is_targetless ? "itself (stays)" : code_paths(t.targets) }}{{ end }} | {{ attr_list(x.event.payload) }} |
 {{- end }}
 {{- end }}
+{{- if a.rights.size > 0 }}
+
+## Rights that name it
+
+| Right | Allows or denies | As | Does | Where |
+| --- | --- | --- | --- | --- |
+{{- for r in a.rights }}
+{{- where = [] }}{{ for u in r.uses }}{{ where[where.size] = process_link(u.process, "../") + (u.states.size == 0 ? "" : " in " + code_paths(u.states)) }}{{ end }}
+| {{ md_code r.name }} | {{ r.access == "deny" ? "denies" : "allows" }} | {{ has_actor(r.except, a) ? "an exception" : "one it applies to" }} | {{ right_does(r) }} | {{ where | array.join ", " }} |
+{{- end }}
+{{- end }}
 {{- if gates.size > 0 }}
 
 ## Gates it signs

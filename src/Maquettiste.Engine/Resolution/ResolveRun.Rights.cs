@@ -18,6 +18,9 @@ internal sealed partial class ResolveRun
     private readonly Dictionary<RRight, List<RRightUse>> _namedRightUses = new(ReferenceEqualityComparer.Instance);
     private List<RRight> _rightOrder = [];
 
+    /// <summary>Every right: the named rights in <c>model.rights</c> order, then the inline rights in process order and file order.</summary>
+    private List<RRight> _allRights = [];
+
     /// <summary>
     /// Verb lists waiting for <c>model.verbs</c>, which is resolved after the processes: each takes the verb of a key and the keys of the
     /// vocabulary that decides what a key names.
@@ -42,6 +45,7 @@ internal sealed partial class ResolveRun
                 Named = true,
                 Name = right.Name,
                 DisplayName = right.DisplayName ?? right.Name,
+                PluralName = right.PluralName ?? Inflector.Pluralize(right.Name),
                 Description = right.Description is { } d ? d.Text ?? (d.File is null ? null : Model.GetDocument(right.Id)?.SidecarText) : null,
                 Access = AccessName(right.Access),
                 Everyone = right.Actors.Count == 0,
@@ -194,12 +198,17 @@ internal sealed partial class ResolveRun
     {
         foreach (var (right, uses) in _namedRightUses)
             right.Uses = new RList<RRightUse>(uses, [Keys.Referrers(right.Id)]); // a lifecycle that starts or stops using it
+        _allRights = [.. _rightOrder, .. _processOrder.SelectMany(p => p.Rights).Select(u => u.Right).Where(r => !r.Named)];
 
         var evaluator = RightsEvaluator.Of(Model);
         if (!evaluator.Uses)
         {
             foreach (var r in _processOrder)
+            {
                 r.MayRefuse = new RList<RMayRefuse>([], [Keys.Element(r.Id), RightsNaming.Key]);
+                r.AccessGrid = new RList<RAccessCell>([], [Keys.Element(r.Id), RightsNaming.Key]);
+            }
+
             return;
         }
 
@@ -265,7 +274,161 @@ internal sealed partial class ResolveRun
             }
 
             r.MayRefuse = new RList<RMayRefuse>(entries, listKeys);
+            r.AccessGrid = process.Use == ProcessUse.Lifecycle
+                ? BuildAccessGrid(process, r, keys, found.Select(f => f.Lifecycle))
+                : new RList<RAccessCell>([], listKeys);
         }
+    }
+
+    /// <summary>
+    /// A lifecycle's "who can do what" (decision 31), from <see cref="RightsGrid"/>, the rows <c>get_rights</c> answers. Its keys are
+    /// <c>may_refuse</c>'s (<paramref name="keys"/>), every actor file (memberships), the libraries the lifecycle uses, the verb vocabulary,
+    /// and each lifecycle that could say no with the named rights it uses: its states and conditions decide a cell that depends on it.
+    /// </summary>
+    private RList<RAccessCell> BuildAccessGrid(Process process, RProcess r, DependencySet keys, IEnumerable<RProcess> mayRefuse)
+    {
+        keys = new DependencySet(Keys).AddRange(keys.ToList()).Add(ActorKind);
+        foreach (var actor in _actorOrder)
+            keys.Element(actor.Id);
+        foreach (var use in ProcessLibraries.UsesOf(Model, process))
+            keys.Element(use.Library.Id);
+        foreach (var other in mayRefuse)
+        {
+            keys.Element(other.Id);
+            foreach (var entry in Model.Get<Process>(other.Id)?.Rights ?? [])
+            {
+                if (entry.Right is { } named)
+                    keys.Element(named);
+            }
+        }
+
+        var rows = RightsGrid.Rows(Model, process, null, Ct);
+        var states = r.AllStates.ToDictionary(st => st.Id, StringComparer.Ordinal);
+        var cells = new List<RAccessCell>(rows.Count);
+        var listKeys = keys.ToList();
+        foreach (var row in rows)
+        {
+            if (!states.TryGetValue(row.State, out var state))
+                continue;
+            var cell = new RAccessCell
+            {
+                Id = r.Id + "/access/" + row.State + "/" + (row.Actor ?? "*") + "/" + row.Verb + (row.Entity is { } e ? "/" + e : ""),
+                Dependencies = listKeys,
+                State = state,
+                Actor = row.Actor is null ? null : _actors.GetValueOrDefault(row.Actor),
+                Entity = row.Entity is null ? null : _entities.GetValueOrDefault(row.Entity),
+                Answer = row.Answer,
+                ByDefault = row.ByDefault,
+                By = [.. row.By.Select(id => _byId.GetValueOrDefault(id)).OfType<RObject>()],
+                DependsOn = new RList<RProcess>(row.DependsOn.Select(id => _processes.GetValueOrDefault(id)).OfType<RProcess>(), listKeys),
+            };
+            var verb = row.Verb;
+            _verbKeysNamed.Add(verb);
+            _verbFills.Add((verbOf, vocabularyKeys) =>
+            {
+                cell.Verb = verbOf(verb)!;
+                cell.Dependencies = [.. listKeys, .. vocabularyKeys];
+            });
+            cells.Add(cell);
+        }
+
+        var grid = new RList<RAccessCell>([], listKeys);
+        _verbFills.Add((_, vocabularyKeys) =>
+            r.AccessGrid = new RList<RAccessCell>(cells.Where(c => c.Verb is not null), [.. listKeys, .. vocabularyKeys]));
+        return grid;
+    }
+
+    /// <summary>
+    /// The rights that name an actor directly (section 6, <c>actor.rights</c>), keyed on its referrers: every right that names it refers to it.
+    /// </summary>
+    private RList<RRight> RightsOf(RActor actor) =>
+        new(_allRights.Where(r => r.Actors.Contains(actor) || r.Except.Contains(actor)), [Keys.Referrers(actor.Id)]);
+
+    /// <summary>
+    /// The rights that name a verb (section 6, <c>verb.rights</c>): keyed on the rights naming key alone in a project without rights, whose
+    /// hash never changes there; otherwise also on the named right kind, every named right and every lifecycle with rights.
+    /// </summary>
+    private RList<RRight> RightsOf(RVerb verb)
+    {
+        if (!RightsEvaluator.Of(Model).Uses)
+            return new RList<RRight>([], [RightsNaming.Key]);
+        var keys = new DependencySet(Keys).Add(RightsNaming.Key).Add(RightKind);
+        foreach (var right in _rightOrder)
+            keys.Element(right.Id);
+        foreach (var process in Model.All<Process>())
+        {
+            if (process.Rights.Count > 0)
+                keys.Element(process.Id);
+        }
+
+        return new RList<RRight>(_allRights.Where(r => r.Verbs.Contains(verb)), keys.ToList());
+    }
+
+    /// <summary>
+    /// The keys a scenario's replay adds for rights (section 7): the named rights its process uses; and when a step checks an object, link
+    /// or own verb (a verb step, or an event that names one), the rights naming key, and in a project that uses rights the governing keys of
+    /// the subject's entity (of every subject entity of the process when the scenario has no subject) and each other lifecycle that governs
+    /// it and could say no to a verb a step checks, with that lifecycle's file and the named rights it uses. Empty for a process with no
+    /// rights whose scenario checks none of those verbs.
+    /// </summary>
+    private IReadOnlyList<string> RightsReplayKeys(Scenario scenario)
+    {
+        var keys = new DependencySet(Keys);
+        if (Model.Get<Process>(scenario.Process) is not { } running)
+            return keys.ToList();
+        foreach (var entry in running.Rights)
+        {
+            if (entry.Right is { } named)
+                keys.Element(named);
+        }
+
+        var checkedVerbs = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var step in scenario.Steps)
+        {
+            var verb = step.Verb ?? (step.Event is { } eventId ? running.Events.FirstOrDefault(e => string.Equals(e.Id, eventId, StringComparison.Ordinal))?.Verb : null);
+            if (RightsEvaluator.SpeaksOfObject(verb))
+                checkedVerbs.Add(verb!);
+        }
+
+        if (checkedVerbs.Count == 0)
+            return keys.ToList();
+        keys.Add(RightsNaming.Key);
+        var evaluator = RightsEvaluator.Of(Model);
+        if (!evaluator.Uses)
+            return keys.ToList();
+
+        var subject = scenario.Objects.FirstOrDefault(o => string.Equals(o.Id, scenario.Subject, StringComparison.Ordinal));
+        IReadOnlyList<Entity> entities = subject is not null
+            ? Model.Get<Entity>(subject.Entity) is { } subjectEntity ? [subjectEntity] : []
+            : RightsGrid.Subjects(Model, running);
+        var coverage = SubjectCoverage.Of(Model);
+        keys.Add(ProcessKind).Add(SubjectCoverage.NamingKey);
+        foreach (var key in coverage.Keys)
+            keys.Add(SubjectCoverage.CarrierSetKey(key));
+        foreach (var entity in entities)
+        {
+            foreach (var id in SubjectCoverage.Chain(Model, entity))
+                keys.Referrers(id);
+        }
+
+        foreach (var other in Model.All<Process>())
+        {
+            if (other.Use != ProcessUse.Lifecycle || string.Equals(other.Id, running.Id, StringComparison.Ordinal)
+                || (other.Rights.Count == 0 && other.RightsDefault is null) || !entities.Any(e => SubjectCoverage.Governs(Model, other, e)))
+                continue;
+            var denies = RightsEvaluator.DefaultOf(other) == RightAccess.Deny
+                || evaluator.RulesOf(other).Any(rule => rule.Access == RightAccess.Deny && rule.Verbs.Any(checkedVerbs.Contains));
+            if (!denies)
+                continue;
+            keys.Element(other.Id);
+            foreach (var entry in other.Rights)
+            {
+                if (entry.Right is { } named)
+                    keys.Element(named);
+            }
+        }
+
+        return keys.ToList();
     }
 
     /// <summary>The element keys of each subject entity of a process and of its bases.</summary>

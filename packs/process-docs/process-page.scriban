@@ -164,6 +164,39 @@ The audit record, one per signature attempt and per outcome of the gate:
 | {{ md_code e.name }} |{{ if event_verbs }} {{ e.verb ? (md_code e.verb.key) : "" }} |{{ end }} {{ e.actors.size > 0 ? actor_links(e.actors, "../") : "any actor" }} | {{ attr_list(e.payload) }} | {{ for t in e.transitions }}{{ for.first ? "" : ", " }}{{ numbers[t.id] }}{{ end }} | {{ md_inline(e.description) }} |
 {{- end }}
 {{- end }}
+{{- if p.rights.size > 0 || p.rights_default == "deny" }}
+
+## Rights
+
+{{ p.rights_default == "deny" ? "Anything not stated here is denied." : "Anything not stated here is allowed." }} Each lifecycle that governs an
+object answers on its own, and any no wins.
+{{- if p.rights.size > 0 }}
+
+| Right | Allows or denies | Who | Except | Does | In states | When | Why |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+{{- for u in p.rights }}{{ r = u.right }}
+| {{ md_code r.name }}{{ if r.named }} ([named](../rights.md)){{ end }} | {{ r.access == "deny" ? "denies" : "allows" }} | {{ right_who(r, "../") }} | {{ actor_links(r.except, "../") }} | {{ right_does(r) }} | {{ u.states.size == 0 ? "all states" : code_paths(u.states) }} | {{ r.condition_text ? (md_code r.condition_text) : "" }} | {{ md_inline(r.description) }} |
+{{- end }}
+{{- end }}
+{{- if p.access_grid.size > 0 }}
+
+### Who can do what
+
+One table per state: each actor the rights, events, tasks and gates name, then everyone else, and each verb.
+{{- for s in p.all_states }}{{ cells = [] }}{{ for c in p.access_grid }}{{ if c.state.id == s.id }}{{ cells[cells.size] = c }}{{ end }}{{ end }}
+{{- if cells.size > 0 }}
+
+#### {{ md_code s.path }}
+
+| Who | Does | Answer | Decided by |
+| --- | --- | --- | --- |
+{{- for c in cells }}
+| {{ c.actor ? actor_link(c.actor, "../") : "everyone else" }}{{ c.entity ? " (" + (md_code c.entity.name) + ")" : "" }} | {{ md_code c.verb.key }} | {{ cell_answer(c) }} | {{ cell_by(c) }} |
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if p.context.size > 0 }}
 
 ## Context

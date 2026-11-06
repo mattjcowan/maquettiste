@@ -16,6 +16,9 @@ public sealed class RRight : RObject
     /// <summary>The display name, falling back to the name.</summary>
     public string DisplayName { get; internal set; } = "";
 
+    /// <summary>A named right's plural name, for its record: the file's, else the name made plural.</summary>
+    internal string PluralName { get; set; } = "";
+
     /// <summary>Why the right is there, shown with every refusal; <see langword="null"/> when there is none.</summary>
     public string? Description { get; internal set; }
 
@@ -105,4 +108,51 @@ public sealed class RMayRefuse : IResolvedObject
 
     /// <summary>Whether an event of the process names one of <see cref="Verbs"/>, so a generated event check needs that lifecycle's states.</summary>
     public bool ByEvents { get; internal set; }
+}
+
+/// <summary>
+/// One cell of a lifecycle's "who can do what" (rights-design.md decision 31 and section 6): whether one kind of caller, one who satisfies
+/// <see cref="Actor"/> and no other actor the grid names, may do <see cref="Verb"/> while the object is in <see cref="State"/>. The same rows
+/// <c>get_rights</c> answers.
+/// </summary>
+public sealed class RAccessCell : IResolvedObject
+{
+    /// <summary>
+    /// The synthesized id, <c>&lt;process id&gt;/access/&lt;state id&gt;/&lt;actor id or *&gt;/&lt;verb key&gt;</c>, then <c>/&lt;entity id&gt;</c> on a
+    /// row for one entity: a cell is no element of the model.
+    /// </summary>
+    public string Id { get; internal set; } = "";
+
+    /// <inheritdoc/>
+    public string Kind => "access-cell";
+
+    /// <summary>The keys of the process's <see cref="RProcess.AccessGrid"/> list, which decide the cell too.</summary>
+    public IReadOnlyList<string> Dependencies { get; internal set; } = [];
+
+    /// <summary>An atomic state of the lifecycle.</summary>
+    public RState State { get; internal set; } = null!;
+
+    /// <summary>The actor of the row; <see langword="null"/> for everyone else, who satisfies none of the actors the grid names.</summary>
+    public RActor? Actor { get; internal set; }
+
+    /// <summary>The verb.</summary>
+    public RVerb Verb { get; internal set; } = null!;
+
+    /// <summary>
+    /// The entity the row holds for, when the lifecycle's subjects are governed by different other lifecycles and that changes the answer;
+    /// <see langword="null"/> when one row holds for every entity the lifecycle governs.
+    /// </summary>
+    public REntity? Entity { get; internal set; }
+
+    /// <summary><c>allowed</c>, <c>denied</c> or <c>depends</c>.</summary>
+    public string Answer { get; internal set; } = "";
+
+    /// <summary>Whether a lifecycle's default decides it, no right or closed list.</summary>
+    public bool ByDefault { get; internal set; }
+
+    /// <summary>What decides: the rights (an inline right, or the named right), events, human tasks, gates, or the lifecycle whose default answers.</summary>
+    public IReadOnlyList<RObject> By { get; internal set; } = [];
+
+    /// <summary>The other lifecycles that govern the object and may say no, by name; empty otherwise.</summary>
+    public RList<RProcess> DependsOn { get; internal set; } = RList<RProcess>.Empty;
 }

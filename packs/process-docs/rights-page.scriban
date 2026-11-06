@@ -1,0 +1,40 @@
+{{-
+# The rights page (rights-design.md section 9), written only when the model has named rights, so a project without them gets no file:
+# each named right, what it says, why, and the lifecycles that use it.
+include "_docs.scriban"
+if model.rights.size > 0
+  capture content
+-}}
+{{ banner "<!--" }} -->
+
+# Rights
+
+Named rights: each one is stated once, and every lifecycle that uses it says in which of its states it holds.
+{{- for r in model.rights }}
+
+## {{ md_cell r.display_name }}
+{{- if r.description }}
+
+{{ r.description }}
+{{- end }}
+
+| | |
+| --- | --- |
+| Name | {{ md_code r.name }} |
+| Allows or denies | {{ r.access == "deny" ? "denies" : "allows" }} |
+| Who | {{ right_who(r, "") }} |
+{{- if r.except.size > 0 }}
+| Except | {{ actor_links(r.except, "") }} |
+{{- end }}
+| Does | {{ right_does(r) }} |
+{{- if r.condition_text }}
+| When | {{ md_code r.condition_text }} |
+{{- end }}
+{{- where = [] }}{{ for u in r.uses }}{{ where[where.size] = process_link(u.process, "") + (u.states.size == 0 ? " (all states)" : " in " + code_paths(u.states)) }}{{ end }}
+| Used by | {{ where.size == 0 ? "no lifecycle yet" : (where | array.join ", ") }} |
+{{- end }}
+{{ end -}}
+{{-
+  file "rights.md" content
+end
+-}}

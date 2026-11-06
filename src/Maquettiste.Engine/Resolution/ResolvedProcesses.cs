@@ -114,6 +114,16 @@ public sealed class RProcess : RElement
     /// rights also on the named rights the process uses and on what decides which lifecycles govern each subject's entity.
     /// </summary>
     public RList<RMayRefuse> MayRefuse { get; internal set; } = RList<RMayRefuse>.Empty;
+
+    /// <summary>
+    /// "Who can do what" in a lifecycle (rights-design.md decision 31): for each atomic state in document order, each actor its rights,
+    /// events, human tasks and gates name (by name, then everyone else) and each verb its rights and events name (by key), the answer, with
+    /// one cell per entity where answers differ by entity. Filled for lifecycles only in a project that uses rights; empty otherwise. It keys
+    /// on the process's file and the rights naming key, and in a project that uses rights also on the named rights it uses, every actor
+    /// file, the verb vocabulary, what decides which lifecycles govern each subject's entity, and each lifecycle of <see cref="MayRefuse"/>
+    /// with the named rights it uses.
+    /// </summary>
+    public RList<RAccessCell> AccessGrid { get; internal set; } = RList<RAccessCell>.Empty;
 }
 
 /// <summary>The members common to the nodes of a process: states, transitions, events, guards, actions, invokes, gates, meanings.</summary>
@@ -585,6 +595,12 @@ public sealed class RActor : RElement
 
     /// <summary>The gates the actor may sign, in process order then transition priority.</summary>
     public RList<RGate> Gates { get; internal set; } = RList<RGate>.Empty;
+
+    /// <summary>
+    /// The rights that name the actor directly, in <c>actors</c> or <c>except</c> (rights-design.md section 6): the named rights in
+    /// <see cref="ResolvedModel.Rights"/> order, then the inline rights in process order and file order. It keys on the actor's referrers.
+    /// </summary>
+    public RList<RRight> Rights { get; internal set; } = RList<RRight>.Empty;
 }
 
 /// <summary>A resolved scenario (phase-3-design.md section 2.4): a recorded input sequence of one process.</summary>

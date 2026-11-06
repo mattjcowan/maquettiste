@@ -3900,7 +3900,6 @@ paths:
         the model is never resolved, and nothing is written. Rows come in the order of `process.access_grid`: state, actor, verb,
         then entity; pass `next` as `cursor` until it is null. The MCP tool `get_rights` answers the same.
       x-maquettiste-role: viewer
-      x-maquettiste-handler: planned
       parameters:
         - name: states
           in: query
