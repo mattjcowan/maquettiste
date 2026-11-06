@@ -1057,13 +1057,30 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     // bind one attribute, and the bound reference or scalar type with its seeds.
     internal static IEnumerable<ElementDocument> ProcessPeers(ModelSnapshot model, Element element)
     {
-        if (element is Process process)
+        // An actor's type and memberships decide MQ9106, MQ9602 and MQ9605 on other actors (a membership that goes leaves no reference in
+        // the candidate), and, once the model has memberships, MQ9102 and MQ9105 on the processes that name actors and their scenarios'
+        // replays (actors-design.md section 14).
+        var membershipsMatter = element is Actor && Processes.ActorMembership.Of(model).Any;
+        if (element is Process or Actor)
         {
             foreach (var actor in model.All<Actor>())
             {
-                if (model.GetDocument(actor.Id) is { } peer)
+                if (!ReferenceEquals(actor, element) && model.GetDocument(actor.Id) is { } peer)
                     yield return peer;
             }
+        }
+
+        if (membershipsMatter)
+        {
+            foreach (var named in model.All<Process>())
+            {
+                if (NamesActor(model, named) && model.GetDocument(named.Id) is { } peer)
+                    yield return peer;
+            }
+        }
+
+        if (element is Process process)
+        {
 
             var seen = new HashSet<string>(StringComparer.Ordinal) { process.Id };
             var queue = new Queue<Process>([process]);
@@ -1113,6 +1130,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 Entity entity => Governs(model, candidate, entity.Id)
                     || ExprSites.InvokedProcesses(model, candidate).Any(p => Governs(model, p, entity.Id) && ExprSites.SubjectDepth(model, p) is not null),
                 EnumType or ValueObject or ScalarType => UsesType(candidate, element.Id),
+                // Replay accepts members of listed actors (actors-design.md decision 5).
+                Actor => membershipsMatter && NamesActor(model, candidate),
                 _ => false,
             };
             if (affected)
@@ -1130,6 +1149,10 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 yield return peer;
         }
     }
+
+    // Whether a process document names an actor anywhere (the index row's actors).
+    private static bool NamesActor(ModelSnapshot model, Process process) =>
+        model.ReferencesFrom(process.Id).Any(r => model.Get<Actor>(r.ToId) is not null);
 
     // Whether a scenario's objects read the element: an entity they are or derive from, a type an attribute of those entities has, or a
     // relation one of their links goes through.

@@ -337,7 +337,10 @@ export const PROCESS_TIPS = {
   orchestrations: "Orchestrations: flows of work across people, roles and systems",
   libraries: "Libraries: guards, actions and gates other processes share",
   people: "People: actors who are individual persons",
-  roles: "Roles: jobs or groups anyone in them can fill",
+  roles: "Roles: jobs that anyone who holds them can fill",
+  groups: "Groups: sets of actors, such as a night shift",
+  organizations: "Organizations: units with a place in a hierarchy, such as a supplier or a plant",
+  automatic: "Automatic: the system itself, which makes the moves nobody does",
   systems: "Systems: outside systems that act in processes",
   guards: "Conditions transitions check, and effects they run",
   gates: "Signatures a transition waits for",
@@ -361,6 +364,9 @@ export const PROCESS_LABELS = {
   /** The folders that group actors by type; "Systems" is the folder's label only (the type's label is "external system"). */
   people: "People",
   roles: "Roles",
+  groups: "Groups",
+  organizations: "Organizations",
+  automatic: "Automatic",
   systems: "Systems",
   guard: "guard",
   action: "action",
@@ -559,6 +565,8 @@ export const SIMULATION_LABELS = {
   noInputs: "No input yet: raise one from Enabled.",
   timeInput: (after: string) => `time +${after}`,
   asActor: (actor: string) => `as ${actor}`,
+  /** The actor of a move the input names no actor for: the system actor (Automatic) of the initial entry, a time step or an invoke completion. */
+  byActor: (actor: string) => `by ${actor}`,
   bySigner: (signer: string) => `signed by ${signer}`,
   // Record
   record: "Record to scenario…",
@@ -596,7 +604,35 @@ export const SIMULATION_LABELS = {
 } as const;
 
 /** An actor's type as a row shows it. */
-export const ACTOR_TYPE_LABELS = { person: "person", role: "role", "external-system": "external system" } as const;
+export const ACTOR_TYPE_LABELS = {
+  person: "person",
+  role: "role",
+  group: "group",
+  organization: "organization",
+  "external-system": "external system",
+  system: "Automatic",
+} as const;
+export const ACTOR_TYPES = ["person", "role", "group", "organization", "external-system", "system"] as const;
+export type ActorType = (typeof ACTOR_TYPES)[number];
+/** The types that may have members and be named in another actor's memberOf. */
+export const MEMBER_HOLDER_TYPES: readonly ActorType[] = ["role", "group", "organization"];
+/** The type picker's option text in the actor editor; the system actor is spelled out. */
+export const ACTOR_TYPE_OPTION_LABELS: Record<ActorType, string> = { ...ACTOR_TYPE_LABELS, system: "Automatic (the system itself)" };
+
+/** The actor editor's membership text. */
+export const ACTOR_MEMBER_LABELS = {
+  memberOf: "Member of",
+  noHolders: "No role, group or organization to join yet.",
+  members: "Members",
+  add: "Add members…",
+  noMembers: "No members yet.",
+  noCandidates: "There is no actor left to add.",
+  failed: "The members could not be added.",
+  count: (direct: number, all: number) => (all > direct ? `${direct} direct, ${all} in all` : `${direct}`),
+  addTitle: (name: string) => `Add members to ${name}`,
+  addApply: (n: number) => (n ? `Add ${n}` : "Add"),
+  addUndo: (name: string) => `Add members to ${name}`,
+} as const;
 
 /** A library process, which has no chart to open. */
 export const LIBRARY_LABELS = {

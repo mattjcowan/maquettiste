@@ -1,6 +1,7 @@
 // The mock's validator: a deterministic subset of the engine's built-in rules (engine-design.md 6),
 // enough for the editor's problems panel, inline save diagnostics and the invalid-save path. The
 // rule ids, severities and messages follow RuleCatalog; line and column are left null.
+import { actorDiagnostics } from "./actorRules";
 import type { Diagnostic } from "@/api/types";
 import Ajv2020 from "ajv/dist/2020";
 import { schemaValidator } from "../contract";
@@ -318,6 +319,8 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   // MQ9202 to MQ9208, MQ9206 and MQ9210: the lifecycle's bindings and state codes (lifecycleRules.ts)
   if (kind === "process" && ctx.lookup)
     bindingDiagnostics(json, entry, ctx, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
+  // MQ9601, MQ9602 and MQ9605: an actor's memberOf and the one system actor (actorRules.ts)
+  if (kind === "actor" && ctx.all) out.push(...actorDiagnostics(json, entry, ctx.all()));
   // MQ9001 initial and MQ9201 (process side), as ProcessRules.cs reports them
   if (kind === "process") out.push(...lifecycleDiagnostics(json, entry, ctx.lookup));
   // MQ9501 guard and action expressions: one JavaScript expression each (parsed, never run)

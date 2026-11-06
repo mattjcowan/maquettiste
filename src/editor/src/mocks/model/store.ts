@@ -4,6 +4,7 @@
 // checks and remove-references, atomic batches, references, validation and settings. Hashes are
 // SHA-256 of the mock's own JSON text, not the engine's canonical bytes; nothing may compare them
 // with real hashes.
+import { ACTOR_TYPES } from "@/model/labels";
 import { applySchemaOperation, SCHEMA_OPS, type SchemaOp } from "@/model/databaseSchemas";
 import { DATABASE_MEMBER_KINDS } from "@/model/model";
 import { subjectsOf } from "@/model/process";
@@ -1410,7 +1411,12 @@ function e5(json: Json): Partial<ElementSummary> {
     const count = (states: unknown): number => (Array.isArray(states) ? (states as Json[]).reduce((n, s) => n + 1 + count(s.states), 0) : 0);
     out.stateCount = count(json.states);
   }
-  if (kind === "actor" && (json.type === "person" || json.type === "role" || json.type === "external-system")) out.actorType = json.type;
+  if (kind === "actor" && typeof json.type === "string" && (ACTOR_TYPES as readonly string[]).includes(json.type)) {
+    out.actorType = json.type as (typeof ACTOR_TYPES)[number];
+    // memberOf only when non-empty, in file order, as the engine's index row has it.
+    const memberOf = Array.isArray(json.memberOf) ? json.memberOf.filter((m): m is string => typeof m === "string") : [];
+    if (memberOf.length) out.memberOf = memberOf;
+  }
   if (kind === "scenario") {
     if (typeof json.process === "string") out.process = json.process;
     out.stepCount = Array.isArray(json.steps) ? json.steps.length : 0;

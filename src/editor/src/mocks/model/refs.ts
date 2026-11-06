@@ -114,6 +114,10 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
           push(`${at}/write/table`, "table", write.table, false, at);
       });
       break;
+    case "actor":
+      // A deleted role, group or organization leaves its members' memberOf lists (actors-design.md decision 3).
+      arr(doc.memberOf).forEach((_, i) => push(`/memberOf/${i}`, "memberOf", (doc.memberOf as unknown[])[i], false, `/memberOf/${i}`));
+      break;
     case "value-object":
     case "stereotype":
       attributeRefs(id, "/attributes", doc.attributes, out);

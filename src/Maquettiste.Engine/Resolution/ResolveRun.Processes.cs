@@ -71,6 +71,32 @@ internal sealed partial class ResolveRun
         public List<string> LibraryGateKeys { get; } = [];
     }
 
+    /// <summary>
+    /// The actors' memberships (actors-design.md section 6). Every actor gets its lists, empty without memberships, so a template that
+    /// reads one renders again once a membership appears: <c>member_of</c> keys on the actor's file and the files it names,
+    /// <c>all_member_of</c> on each file along the chain and the files they name, <c>members</c> on the actor's file and its referrers
+    /// (a file that starts naming it in memberOf), and <c>all_members</c> on the actor's file and the referrers of it and each member.
+    /// </summary>
+    private void ResolveMemberships()
+    {
+        var membership = Maquettiste.Engine.Processes.ActorMembership.Of(Model);
+        IReadOnlyList<string> Named(string id) => Model.Get<Actor>(id)?.MemberOf ?? [];
+        List<RActor> ByName(IEnumerable<string> ids) =>
+            [.. ids.Select(id => _actors.GetValueOrDefault(id)).OfType<RActor>().OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.Id, StringComparer.Ordinal)];
+        foreach (var actor in _actorOrder)
+        {
+            var id = actor.Id;
+            actor.MemberOf = new RList<RActor>([.. membership.MemberOf(id).Select(t => _actors.GetValueOrDefault(t)).OfType<RActor>()],
+                [Keys.Element(id), .. Named(id).Select(Keys.Element)]);
+            actor.Members = new RList<RActor>(ByName(membership.Members(id)), [Keys.Element(id), Keys.Referrers(id)]);
+            var chain = membership.AllMemberOf(id).Prepend(id).ToList();
+            actor.AllMemberOf = new RList<RActor>(ByName(membership.AllMemberOf(id)),
+                new DependencySet(Keys).AddRange(chain.Select(Keys.Element)).AddRange(chain.SelectMany(Named).Select(Keys.Element)).ToList());
+            actor.AllMembers = new RList<RActor>(ByName(membership.AllMembers(id)),
+                new DependencySet(Keys).Add(Keys.Element(id)).AddRange(membership.AllMembers(id).Prepend(id).Select(Keys.Referrers)).ToList());
+        }
+    }
+
     /// <summary>Resolves actors, processes and scenarios, the actors' uses and the entities' lifecycles.</summary>
     private void ResolveProcesses()
     {
@@ -86,6 +112,7 @@ internal sealed partial class ResolveRun
         }
 
         _actorOrder = [.. _actors.Values.OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.Id, StringComparer.Ordinal)];
+        ResolveMemberships();
 
         // Shells first: an invoke names another process.
         var sources = new Dictionary<string, Process>(StringComparer.Ordinal);

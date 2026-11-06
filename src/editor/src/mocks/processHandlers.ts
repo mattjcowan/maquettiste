@@ -17,6 +17,7 @@ import { normalizeInput, readAt, replay, simulate } from "./model/stepper";
 import { enumDrift, schemaDiagnostics } from "./model/validate";
 import { syncCodesOf } from "./model/syncCodes";
 import { report } from "./model/store";
+import { Membership } from "./model/membership";
 
 type Json = Record<string, unknown>;
 type StateDoc = { id: string; name: string; type?: string; initial?: string; states?: StateDoc[] };
@@ -194,6 +195,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         return hits.length === 1 ? hits[0].id : undefined;
       },
       actorName: (id: string) => actors.find((a) => a.id === id)?.json.name as string | undefined,
+      membership: new Membership(actors),
     };
   };
   const scenariosOf = (processId: string) =>

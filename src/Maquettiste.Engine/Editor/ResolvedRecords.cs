@@ -673,7 +673,7 @@ public sealed record AuditFieldRecord(string Id, string Name, string Type, bool 
 /// <param name="Kind"><c>actor</c>.</param>
 /// <param name="Name">The name.</param>
 /// <param name="Package">The package's id, or <see langword="null"/>.</param>
-/// <param name="Type"><c>person</c>, <c>role</c> or <c>external-system</c>.</param>
+/// <param name="Type"><c>person</c>, <c>role</c>, <c>group</c>, <c>organization</c>, <c>external-system</c> or <c>system</c>.</param>
 /// <param name="Processes">The ids of the processes it takes part in.</param>
 /// <param name="Events">The ids of the events it may send.</param>
 /// <param name="Gates">The ids of the gates it may sign.</param>
@@ -685,9 +685,13 @@ public sealed record AuditFieldRecord(string Id, string Name, string Type, bool 
 /// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+/// <param name="MemberOf">The ids of the roles, groups and organizations it is a member of, in file order, each once, without the entries
+/// MQ9601 reports; left out when none
+/// (actors-design.md section 6).</param>
 public sealed record ActorRecord(string Id, string Kind, string Name, string? Package, string Type, IReadOnlyList<string> Processes, IReadOnlyList<string> Events,
     IReadOnlyList<string> Gates, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
-    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? MemberOf = null);
 
 /// <summary>A resolved scenario.</summary>
 /// <param name="Id">The scenario id.</param>
@@ -1377,7 +1381,8 @@ public static class ResolvedRecords
             p.HasCodes ? p.CodesMap : null);
 
         public ActorRecord Actor(RActor a) => new(a.Id, "actor", a.Name, a.Package?.Id, a.Type, Ids(a.Processes), Ids(a.Events), Ids(a.Gates),
-            a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation);
+            a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation,
+            a.MemberOf.Count > 0 ? Ids(a.MemberOf) : null);
 
         public ScenarioRecord Scenario(RScenario s) => new(s.Id, "scenario", s.Name, s.Package?.Id, s.Process.Id, new ScenarioStartRecord(Plain(s.Start.Context), s.Start.At),
             [.. s.Steps.Select(t => new StepRecord(t.Id, t.Index, t.Input, t.Event?.Id, t.Invoke?.Id, t.After, t.AfterMs, t.AfterTicks, t.Actor?.Id, t.Signer, t.Meaning?.Id,

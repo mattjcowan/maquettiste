@@ -508,14 +508,15 @@ public static class ProcessApi
                 diagnostics.Add(d);
         }
 
-        var enabled = interpreter.IsFinal ? [] : Enabled(chart, interpreter, ProcessExpressions.Get(runtime.Model, chart.Process).Compiled);
+        var membership = ActorMembership.Of(runtime.Model);
+        var enabled = interpreter.IsFinal ? [] : Enabled(chart, interpreter, ProcessExpressions.Get(runtime.Model, chart.Process).Compiled, runtime.Model, membership);
         var signatures = interpreter.Signatures;
         var gates = new List<GateState>();
         foreach (var t in ActiveTransitions(chart, interpreter).Where(t => t.Gate is not null && t.Trigger == TransitionTrigger.Event))
         {
             var gate = t.Gate!;
             var signed = signatures.TryGetValue(t.Id, out var list) ? list : [];
-            var satisfied = signed.Count >= Math.Max(1, gate.Required) && gate.RequiredActors.All(a => signed.Any(s => string.Equals(s.Actor, a, StringComparison.Ordinal)));
+            var satisfied = signed.Count >= Math.Max(1, gate.Required) && gate.RequiredActors.All(a => signed.Any(s => membership.Accepts(a, s.Actor)));
             gates.Add(new GateState(gate.Id, t.Id, [.. signed.Select(s => new GateSignature(s.Signer, s.Actor, s.Meaning, s.Reason))], satisfied));
         }
 
@@ -636,8 +637,30 @@ public static class ProcessApi
     }
 
     // compiled: the guards that run, an expression's or a condition's; any other guard needs an assume value.
-    private static List<EnabledTrigger> Enabled(StatechartModel chart, StatechartInterpreter interpreter, IReadOnlySet<string> compiled)
+    private static List<EnabledTrigger> Enabled(StatechartModel chart, StatechartInterpreter interpreter, IReadOnlySet<string> compiled, ModelSnapshot model,
+        ActorMembership membership)
     {
+        // Each listed actor, then its members at any depth that the list does not hold, by (name, id): the Act-as list offers them
+        // (actors-design.md decision 5). Without memberships, the list as the model gives it.
+        IReadOnlyList<string> WithMembers(IReadOnlyList<string> listed)
+        {
+            if (!membership.Any || listed.Count == 0)
+                return listed;
+            var result = new List<string>(listed);
+            var seen = new HashSet<string>(listed, StringComparer.Ordinal);
+            foreach (var id in listed)
+            {
+                foreach (var member in membership.AllMembers(id).Select(m => (Id: m, Name: model.Get<Actor>(m)?.Name ?? m))
+                    .OrderBy(m => m.Name, StringComparer.Ordinal).ThenBy(m => m.Id, StringComparer.Ordinal))
+                {
+                    if (seen.Add(member.Id))
+                        result.Add(member.Id);
+                }
+            }
+
+            return result;
+        }
+
         var active = ActiveTransitions(chart, interpreter);
         var signatures = interpreter.Signatures;
         bool Unknown(ChartTransition t) => t.Guard is { } g && !compiled.Contains(g.Id);
@@ -657,7 +680,7 @@ public static class ProcessApi
                     actors = gated.Gate.Signers;
             }
 
-            result.Add(new EnabledTrigger("event", ev.Id, null, [.. candidates.Select(t => t.Id)], actors, candidates.Any(Unknown), gate));
+            result.Add(new EnabledTrigger("event", ev.Id, null, [.. candidates.Select(t => t.Id)], WithMembers(actors), candidates.Any(Unknown), gate));
         }
 
         foreach (var (invokeId, stateId) in interpreter.Pending)
@@ -667,7 +690,7 @@ public static class ProcessApi
             foreach (var (trigger, name) in new[] { (TransitionTrigger.InvokeDone, "invoke-done"), (TransitionTrigger.InvokeError, "invoke-error") })
             {
                 var candidates = active.Where(t => t.Trigger == trigger && string.Equals(t.Transition.Invoke, invokeId, StringComparison.Ordinal)).ToList();
-                result.Add(new EnabledTrigger(name, null, invokeId, [.. candidates.Select(t => t.Id)], found.Invoke.Type == InvokeType.HumanTask ? found.Invoke.Actors : [],
+                result.Add(new EnabledTrigger(name, null, invokeId, [.. candidates.Select(t => t.Id)], found.Invoke.Type == InvokeType.HumanTask ? WithMembers(found.Invoke.Actors) : [],
                     candidates.Any(Unknown), null));
             }
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Actor",
-  "description": "A person, a role or an external system that takes part in processes (model/actors/).",
+  "description": "A person, a role, a group, an organization, an external system or the system itself that takes part in processes (model/actors/). A role, group or organization may have members, which state it in their memberOf.",
   "type": "object",
   "x-order": [
     "$schema",
@@ -12,6 +12,7 @@
     "pluralName",
     "package",
     "type",
+    "memberOf",
     "description",
     "rationale",
     "decision",
@@ -49,11 +50,20 @@
       "$ref": "common.json#/$defs/id"
     },
     "type": {
+      "description": "What the actor is. A role, a group and an organization may have members. system is the system itself (shown as Automatic): at most one per project (MQ9605).",
       "enum": [
         "person",
         "role",
-        "external-system"
+        "group",
+        "organization",
+        "external-system",
+        "system"
       ]
+    },
+    "memberOf": {
+      "description": "The roles, groups and organizations this actor is a member of. An actor in a process's list stands for itself and its members at any depth. Each entry names a role, group or organization other than the actor itself, once (MQ9601); memberships form no cycle (MQ9602).",
+      "$ref": "common.json#/$defs/idList",
+      "default": []
     },
     "description": {
       "$ref": "common.json#/$defs/description"

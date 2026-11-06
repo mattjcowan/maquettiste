@@ -207,7 +207,7 @@ describe("Processes explorer groups", () => {
     expect(nodeOf(f, child(f, billing, "Libraries"))!.tooltip).toBe("Libraries: guards, actions and gates other processes share");
     const actors = child(f, f.roots.processes, "Actors");
     expect(nodeOf(f, child(f, actors, "People"))!.tooltip).toBe("People: actors who are individual persons");
-    expect(nodeOf(f, child(f, actors, "Roles"))!.tooltip).toBe("Roles: jobs or groups anyone in them can fill");
+    expect(nodeOf(f, child(f, actors, "Roles"))!.tooltip).toBe("Roles: jobs that anyone who holds them can fill");
     expect(nodeOf(f, child(f, actors, "Systems"))!.tooltip).toBe("Systems: outside systems that act in processes");
     expect(nodeOf(f, child(f, "E1", "Lifecycles"))!.tooltip).toBe("Lifecycles that govern this entity, including its base entity's");
   });

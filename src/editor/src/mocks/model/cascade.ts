@@ -85,8 +85,11 @@ function removeAt(json: Json, pointer: string, item: boolean): void {
   const last = parts.pop()!;
   let parent: unknown = json;
   for (const p of parts) parent = (parent as Json)[p];
-  if (Array.isArray(parent) && item) parent.splice(Number(last), 1);
-  else if (parent && typeof parent === "object") delete (parent as Json)[last];
+  if (Array.isArray(parent) && item) {
+    parent.splice(Number(last), 1);
+    // An actor's memberOf is left out when empty, as the engine writes it.
+    if (parts.length === 1 && parts[0] === "memberOf" && parent.length === 0) delete json.memberOf;
+  } else if (parent && typeof parent === "object") delete (parent as Json)[last];
 }
 
 /** Ids held under `pointer` in `json` (the removed sub-element and what it nests). */

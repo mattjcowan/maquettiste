@@ -125,6 +125,14 @@ public sealed record StepTrace(
     IReadOnlyList<GateAuditRecord> Audit, IReadOnlyList<string> Configuration, IReadOnlyDictionary<string, JsonElement> Context,
     IReadOnlyDictionary<string, JsonElement> Changed, string Clock, bool Final, IReadOnlyList<Diagnostic> Diagnostics)
 {
+    /// <summary>
+    /// The actor of the move (actors-design.md decision 2): the input's actor when it names one; else, for the initial entry, a time step
+    /// or a finished invoke that is not a human task, the project's system actor when it has exactly one; else <see langword="null"/>,
+    /// and the member is left out of the JSON.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Actor { get; init; }
+
     /// <summary>Whether a guard's result was missing (MQ9306): what followed in this input is not meaningful.</summary>
     public bool Incomplete => Guards.Any(g => g.Source == GuardSource.Missing) || Diagnostics.Any(d => d.Rule is "MQ9305" or "MQ9507");
 }

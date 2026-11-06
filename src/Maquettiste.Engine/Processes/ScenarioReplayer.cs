@@ -57,15 +57,21 @@ public sealed class ProcessRuntime : IDisposable
     /// <summary>The interpreter options over this runtime's model.</summary>
     /// <param name="instance">The instance identity recorded in audit records.</param>
     /// <returns>The options.</returns>
-    public InterpreterOptions Options(string instance) => new()
+    public InterpreterOptions Options(string instance)
     {
-        Instance = instance,
-        SubProcess = Chart,
-        Expressions = Session,
-        ActorName = id => Model.Get<Actor>(id)?.Name,
-        Fits = Fits,
-        CancellationToken = CancellationToken,
-    };
+        var membership = ActorMembership.Of(Model);
+        return new()
+        {
+            Instance = instance,
+            SubProcess = Chart,
+            Expressions = Session,
+            ActorName = id => Model.Get<Actor>(id)?.Name,
+            Accepts = membership.Any ? membership.Accepts : null,
+            SystemActor = membership.SystemActor,
+            Fits = Fits,
+            CancellationToken = CancellationToken,
+        };
+    }
 
     /// <summary>Why a value does not fit an attribute, or <see langword="null"/>.</summary>
     /// <param name="attribute">The attribute.</param>

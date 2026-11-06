@@ -33,6 +33,7 @@ import { useProcessContext, type ProcessContext } from "@/editors/process/shared
 import { ScenarioStatusBadge } from "@/editors/process/ScenariosTab";
 import { useScenarioReplay } from "@/editors/scenario/ScenarioEditor";
 import { ActorTypeField, ActorUsesList } from "@/editors/actor/ActorEditor";
+import { MemberOfField } from "@/editors/actor/ActorMembers";
 import { useCodeGenerationTab } from "@/editors/EditorFrame";
 import { ChipsEditor, TextField, type FormProps } from "./fields";
 import { applicableExtensions, SchemaForm } from "./SchemaForm";
@@ -329,6 +330,7 @@ export function ActorInspectorSection(props: FormProps) {
     <section className="flex flex-col gap-2" aria-label="Actor" data-testid="inspector-actor">
       <SectionTitle>{KIND_LABELS.actor}</SectionTitle>
       <ActorTypeField ctx={props} dom={`${props.id}-insp`} />
+      <MemberOfField ctx={props} />
       <ActorUsesList actor={props.id} />
     </section>
   );

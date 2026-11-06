@@ -11702,13 +11702,24 @@
             "description": "The number of states at every depth, on process rows."
           },
           "actorType": {
-            "description": "The actor's type, on actor rows.",
+            "description": "The actor's type, on actor rows. `system` is the system itself, shown as Automatic (actors-design.md decision 2).",
             "type": "string",
             "enum": [
               "person",
               "role",
-              "external-system"
+              "group",
+              "organization",
+              "external-system",
+              "system"
             ]
+          },
+          "memberOf": {
+            "description": "The roles, groups and organizations the actor is a member of, as ids in file order (actors-design.md decision 3), on actor\nrows that name at least one. Left out when the actor names none.\n",
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
           },
           "process": {
             "description": "The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows.",
@@ -16236,6 +16247,7 @@
                 ]
               },
               "type": {
+                "description": "person, role, group, organization, external-system or system (the system itself, shown as Automatic).",
                 "type": "string"
               },
               "processes": {
@@ -16252,6 +16264,14 @@
               },
               "gates": {
                 "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "memberOf": {
+                "description": "The ids of the roles, groups and organizations the actor is a member of, in file order, each once; an entry MQ9601 reports is left out (actors-design.md section 6). Left out when there are none.",
+                "type": "array",
+                "minItems": 1,
                 "items": {
                   "type": "string"
                 }
@@ -23994,6 +24014,10 @@
           "incomplete": {
             "description": "A guard result was missing or the replay stopped (MQ9305, MQ9306, MQ9507); later inputs did not run.",
             "type": "boolean"
+          },
+          "actor": {
+            "description": "The actor of the move (actors-design.md decision 2): the input's actor when it names one; else, for the initial entry, a\ntime step or a finished invoke that is not a human task, the project's system actor (type `system`, shown as Automatic) when it\nhas exactly one. Left out when there is none, as for an event or a human task's completion that names no actor.\n",
+            "$ref": "#/components/schemas/Ulid"
           }
         }
       },
@@ -24206,7 +24230,7 @@
             }
           },
           "actors": {
-            "description": "The actors the input must come from; empty for any.",
+            "description": "The actors the input must come from; empty for any. Each listed actor is followed by its members at any depth that the list\ndoes not already hold, by name (actors-design.md decision 5), so the Act-as list offers them; without memberships, the list as\nthe model gives it.\n",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Ulid"
@@ -24329,6 +24353,7 @@
             }
           },
           "satisfied": {
+            "description": "Whether the gate has enough signatures and each required actor signed, a signature counting for a required actor when its actor is that actor or one of its members at any depth.",
             "type": "boolean"
           }
         }
@@ -37154,7 +37179,7 @@
       "actor": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "Actor",
-        "description": "A person, a role or an external system that takes part in processes (model/actors/).",
+        "description": "A person, a role, a group, an organization, an external system or the system itself that takes part in processes (model/actors/). A role, group or organization may have members, which state it in their memberOf.",
         "type": "object",
         "x-order": [
           "$schema",
@@ -37165,6 +37190,7 @@
           "pluralName",
           "package",
           "type",
+          "memberOf",
           "description",
           "rationale",
           "decision",
@@ -37202,11 +37228,20 @@
             "$ref": "#/components/schemas/id"
           },
           "type": {
+            "description": "What the actor is. A role, a group and an organization may have members. system is the system itself (shown as Automatic): at most one per project (MQ9605).",
             "enum": [
               "person",
               "role",
-              "external-system"
+              "group",
+              "organization",
+              "external-system",
+              "system"
             ]
+          },
+          "memberOf": {
+            "description": "The roles, groups and organizations this actor is a member of. An actor in a process's list stands for itself and its members at any depth. Each entry names a role, group or organization other than the actor itself, once (MQ9601); memberships form no cycle (MQ9602).",
+            "$ref": "#/components/schemas/idList",
+            "default": []
           },
           "description": {
             "$ref": "#/components/schemas/description"

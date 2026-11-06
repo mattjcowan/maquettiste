@@ -568,9 +568,11 @@ internal static partial class ProcessRules
         if (gate.Meanings.Count == 0)
             report.Add("MQ9104", $"{name} has no meanings; add at least one, saying what a signature means (\"Reviewed as finance controller\").", pointer + "/meanings", gate.Id);
 
+        // A required actor that is a member of a signer, at any depth, counts as among them (actors-design.md decision 6).
+        var membership = ActorMembership.Of(context.Model);
         for (var i = 0; i < gate.RequiredActors.Count; i++)
         {
-            if (!gate.Signers.Contains(gate.RequiredActors[i], StringComparer.Ordinal))
+            if (!membership.Allows(gate.Signers, gate.RequiredActors[i]))
                 report.Add("MQ9102", $"{name} requires a signature from {ActorName(context, gate.RequiredActors[i])}, which is not one of its signers; add it to signers.", pointer + "/requiredActors/" + N(i), gate.Id);
         }
 
@@ -584,9 +586,11 @@ internal static partial class ProcessRules
     {
         if (t.Trigger == TransitionTrigger.Event && t.Event is not null && locals.Events.TryGetValue(t.Event, out var e) && e.Actors.Count > 0)
         {
+            // A signer that is a member of one of the event's actors, at any depth, may raise it (actors-design.md decision 6).
+            var membership = ActorMembership.Of(context.Model);
             for (var i = 0; i < gate.Signers.Count; i++)
             {
-                if (!e.Actors.Contains(gate.Signers[i], StringComparer.Ordinal))
+                if (!membership.Allows(e.Actors, gate.Signers[i]))
                     report.Add("MQ9105", $"{name} lists signer {ActorName(context, gate.Signers[i])}, but event '{e.Name}' may only be raised by {Names(e.Actors.Select(a => ActorName(context, a)))}; add the signer to the event's actors.", pointer + "/signers/" + N(i), gate.Id);
             }
         }
@@ -1167,13 +1171,108 @@ internal static partial class ProcessRules
             report.Add("MQ9201", $"Entity '{entity.Name}' names process '{process.Name}' as its lifecycle, but that process's subject is {(process.Subject is not null && context.Model.Get<Entity>(process.Subject) is { } other ? "entity '" + other.Name + "'" : "not this entity")}; set the process's subject to this entity, or name its own lifecycle.", "/lifecycle");
     }
 
-    // MQ9106.
+    // MQ9106, MQ9601, MQ9602, MQ9605.
     private static void CheckActor(ValidationContext context, Actor actor, Report report)
     {
         var model = context.Model;
-        if (!model.ReferencesTo(actor.Id).Any(r => model.Get<Process>(r.FromElementId) is not null))
-            report.Add("MQ9106", $"Actor '{actor.Name}' is not referenced by any process (event actors, gate signers or human tasks); use it in a process or remove it.", "");
+        var membership = ActorMembership.Of(model);
+        bool Named(string id) => model.ReferencesTo(id).Any(r => model.Get<Process>(r.FromElementId) is not null);
+        // An actor counts as used when a process names it, one of its members at any depth, or an actor it is a member of at any depth
+        // (actors-design.md decision 6). The message is today's unless the actor has memberships or members.
+        if (!Named(actor.Id) && !membership.AllMembers(actor.Id).Any(Named) && !membership.AllMemberOf(actor.Id).Any(Named))
+        {
+            report.Add("MQ9106", membership.MemberOf(actor.Id).Count > 0 || membership.Members(actor.Id).Count > 0
+                ? $"Actor '{actor.Name}' is not referenced by any process (event actors, gate signers or human tasks), directly, through its members or through the actors it is a member of; use it in a process or remove it."
+                : $"Actor '{actor.Name}' is not referenced by any process (event actors, gate signers or human tasks); use it in a process or remove it.", "");
+        }
+
+        CheckMemberships(model, membership, actor, report);
+        if (actor.Type == ActorType.System)
+        {
+            var others = model.All<Actor>().Where(a => a.Type == ActorType.System && !string.Equals(a.Id, actor.Id, StringComparison.Ordinal))
+                .Select(a => "'" + a.Name + "'").Order(StringComparer.Ordinal).ToList();
+            if (others.Count > 0)
+                report.Add("MQ9605", $"Actor '{actor.Name}' is of type system, as {(others.Count == 1 ? "is" : "are")} {Names(others)}; a project has one system actor, the system itself (shown as Automatic). Change the type of all but one, for example to external-system.", "/type");
+        }
     }
+
+    // MQ9601 and MQ9602 (actors-design.md decisions 4 and 5): what an actor's memberOf gets wrong.
+    private static void CheckMemberships(ModelSnapshot model, ActorMembership membership, Actor actor, Report report)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        string? cycle = null;
+        for (var i = 0; i < actor.MemberOf.Count; i++)
+        {
+            var target = actor.MemberOf[i];
+            var pointer = "/memberOf/" + N(i);
+            if (!seen.Add(target))
+            {
+                report.Add("MQ9601", $"Actor '{actor.Name}' lists {ActorName(model, target)} twice in memberOf; remove the repeated entry.", pointer);
+                continue;
+            }
+
+            if (string.Equals(target, actor.Id, StringComparison.Ordinal))
+            {
+                report.Add("MQ9601", $"Actor '{actor.Name}' names itself in memberOf; an actor already stands for itself. Remove the entry.", pointer);
+                continue;
+            }
+
+            if (model.Get<Actor>(target) is not { } holder)
+                continue; // MQ2001, MQ2002
+            if (!ActorTypes.HoldsMembers(holder.Type))
+            {
+                report.Add("MQ9601", $"Actor '{actor.Name}' is a member of '{holder.Name}', which is {TypeText(holder.Type)}; only a role, a group or an organization has members. Remove the entry, or name a role, group or organization.", pointer);
+                continue;
+            }
+
+            if (cycle is null && membership.AllMemberOf(target).Contains(actor.Id) && CyclePath(model, membership, actor.Id, target) is { } path)
+            {
+                cycle = path;
+                report.Add("MQ9602", $"Memberships form a cycle: {path}; an actor cannot be a member of itself. Remove one of these memberships.", pointer);
+            }
+        }
+    }
+
+    // The shortest way back from target to the actor along counted memberships, taken in file order: "A -> B -> A" by name.
+    private static string? CyclePath(ModelSnapshot model, ActorMembership membership, string actorId, string target)
+    {
+        var previous = new Dictionary<string, string?>(StringComparer.Ordinal) { [target] = null };
+        var queue = new Queue<string>([target]);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var next in membership.MemberOf(current))
+            {
+                if (string.Equals(next, actorId, StringComparison.Ordinal))
+                {
+                    var chain = new List<string> { actorId };
+                    for (string? step = current; step is not null; step = previous[step])
+                        chain.Add(step);
+                    chain.Add(actorId);
+                    chain.Reverse(1, chain.Count - 2);
+                    return string.Join(" -> ", chain.Select(id => model.Get<Actor>(id)?.Name ?? id));
+                }
+
+                if (previous.TryAdd(next, current))
+                    queue.Enqueue(next);
+            }
+        }
+
+        return null;
+    }
+
+    private static string TypeText(ActorType type) => type switch
+    {
+        ActorType.Person => "a person",
+        ActorType.ExternalSystem => "an external system",
+        ActorType.System => "the system actor",
+        ActorType.Role => "a role",
+        ActorType.Group => "a group",
+        _ => "an organization",
+    };
+
+    private static string ActorName(ModelSnapshot model, string id) =>
+        model.Get<Actor>(id) is { } actor ? "'" + actor.Name + "'" : "'" + id + "'";
 
     // MQ9016.
     private static void CheckDiagram(ValidationContext context, Diagram diagram, Report report)
