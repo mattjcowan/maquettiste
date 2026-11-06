@@ -57,13 +57,13 @@ public static partial class Actors
 {
 {{- for a in model.actors }}
     /// <summary>{{ cs_line a.display_name | escape_xml }} ({{ a.type }}){{ if a.description }}: {{ cs_line a.description | string.strip | escape_xml }}{{ end }}</summary>
-    public const string {{ pascal a.name }} = {{ json a.name }};
+    public const string {{ actor_member a }} = {{ json a.name }};
 {{ end }}
     /// <summary>Every actor, by name.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
 {{- for a in model.actors }}
-        {{ pascal a.name }},
+        {{ actor_member a }},
 {{- end }}
     ];
 
@@ -73,7 +73,7 @@ public static partial class Actors
     public static ActorType TypeOf(string actor) => actor switch
     {
 {{- for a in model.actors }}
-        {{ pascal a.name }} => ActorType.{{ pascal a.type }},
+        {{ actor_member a }} => ActorType.{{ pascal a.type }},
 {{- end }}
         _ => throw new ArgumentOutOfRangeException(nameof(actor), actor, "Not an actor of the model."),
     };
@@ -87,7 +87,7 @@ public static partial class Actors
     {
 {{- for a in model.actors }}
 {{- if a.all_member_of.size > 0 }}
-        [{{ pascal a.name }}] = [{{ for m in a.all_member_of }}{{ for.first ? "" : ", " }}{{ pascal m.name }}{{ end }}],
+        [{{ actor_member a }}] = [{{ for m in a.all_member_of }}{{ for.first ? "" : ", " }}{{ actor_member m }}{{ end }}],
 {{- end }}
 {{- end }}
     };

@@ -366,6 +366,67 @@ public sealed class ActorMembershipTests
     }
 
     [Fact]
+    public async Task An_intermediate_holder_whose_type_changes_changes_the_keys_of_all_members()
+    {
+        // Pat is a member of Plant, a member of Seniors, a member of Manager. Plant becoming a person stops it holding Pat (an outside
+        // edit: the editor refuses it, MQ9601), so Manager's all_members loses Pat. Plant names Seniors, a member of Manager, so the
+        // referrers key of Seniors follows Plant's file and the list renders again.
+        static Action<Loading.LoaderHarness> Chain(string plantType) => harness =>
+        {
+            harness.Write("model/actors/seniors.json", ActorKit.Actor(ActorKit.Seniors, "Seniors", "group", ActorKit.Manager));
+            harness.Write("model/actors/plant.json", ActorKit.Actor(ActorKit.Plant, "Plant", plantType, ActorKit.Seniors));
+            harness.Write("model/actors/pat.json", ActorKit.Actor(ActorKit.Pat, "Pat", "person", ActorKit.Plant));
+        };
+        var (h, store) = await ActorKit.OpenAsync(Chain("organization"));
+        using var _ = h;
+        await using var __ = store;
+        var (h2, edited) = await ActorKit.OpenAsync(Chain("person"));
+        using var ___ = h2;
+        await using var ____ = edited;
+        var before = store.Current!;
+        var after = edited.Current!;
+        var manager = ResolutionKit.Resolve(before).Actors.Single(a => a.Id == ActorKit.Manager);
+        Assert.Equal(["Pat", "Plant", "Seniors"], manager.AllMembers.Select(a => a.Name));
+
+        Assert.Equal(["Plant", "Seniors"], ResolutionKit.Resolve(after).Actors.Single(a => a.Id == ActorKit.Manager).AllMembers.Select(a => a.Name));
+        Assert.NotEqual(KeysHash(before, manager.AllMembers.MembershipKeys), KeysHash(after, manager.AllMembers.MembershipKeys));
+    }
+
+    [Fact]
+    public async Task A_gate_counts_a_signature_by_a_member_of_a_required_actor()
+    {
+        // The approval gate needs two signatures and Finance. Fay, a member of Finance, signs first: one signature, the gate stays open
+        // and unsatisfied; Pat, a member of Manager, signs second and Fay's signature stands for Finance, so the gate completes.
+        var (h, store) = await ActorKit.OpenAsync(harness =>
+        {
+            harness.Write("model/actors/pat.json", ActorKit.Actor(ActorKit.Pat, "Pat", "person", ActorKit.Manager));
+            harness.Write("model/actors/fay.json", ActorKit.Actor(ActorKit.Fay, "Fay", "person", ActorKit.Finance));
+        });
+        using var _ = h;
+        await using var __ = store;
+        using var runtime = new ProcessRuntime(store.Current!, 1, Ct);
+        var start = new ScenarioStart
+        {
+            Context = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+            {
+                ["01JATT00000000000000000011"] = JsonSerializer.SerializeToElement(500),
+                ["01JATT00000000000000000012"] = JsonSerializer.SerializeToElement(false),
+            },
+        };
+        var submit = ActorKit.Step(ActorKit.Submit, ActorKit.Clerk);
+        var fay = ActorKit.Step(ActorKit.Approve, ActorKit.Fay, "bob", ActorKit.AsFinance);
+
+        var open = ProcessApi.Simulate(runtime.Chart(ActorKit.P)!, "h", runtime, start, [submit, fay]);
+        var gate = Assert.Single(open.Gates);
+        Assert.Equal([ActorKit.Fay], gate.Signatures.Select(s => s.Actor));
+        Assert.False(gate.Satisfied);
+
+        var done = ProcessApi.Simulate(runtime.Chart(ActorKit.P)!, "h", runtime, start, [submit, fay, ActorKit.Step(ActorKit.Approve, ActorKit.Pat, "ann", ActorKit.AsManager)]);
+        Assert.Empty(done.Gates);
+        Assert.Equal([ActorKit.Packing, ActorKit.Invoicing], done.Configuration);
+    }
+
+    [Fact]
     public async Task The_first_membership_of_a_model_changes_the_keys_of_members()
     {
         // Before the change no actor has memberOf, so the lists are empty; they still carry keys, else nothing would render again.

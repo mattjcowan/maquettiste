@@ -175,6 +175,69 @@ public sealed class ActorRuleTests
     }
 
     [Fact]
+    public async Task Deleting_a_system_actor_rechecks_the_others()
+    {
+        // Three system actors: the deleted one names no one, so only the store's scope brings the two left to report each other alone.
+        const string bot = "01JACT00000000000000000027";
+        var (h, store) = await ActorKit.OpenAsync(harness =>
+        {
+            harness.Write("model/actors/auto.json", ActorKit.Actor(ActorKit.Auto, "Automatic", "system"));
+            harness.Write("model/actors/auto2.json", ActorKit.Actor(ActorKit.Auto2, "Robot", "system"));
+            harness.Write("model/actors/bot.json", ActorKit.Actor(bot, "Bot", "system"));
+        });
+        using var _ = h;
+        await using var __ = store;
+
+        var deleted = await store.DeleteAsync(ActorKit.Auto2, store.Current!.GetDocument(ActorKit.Auto2)!.Hash, DeleteResolution.Refuse, ChangeSource.Editor, ActorKit.Ct);
+
+        Assert.Equal(SaveOutcome.Saved, deleted.Outcome);
+        var hits = deleted.Diagnostics.Where(d => d.Rule == "MQ9605").OrderBy(d => d.ElementId, StringComparer.Ordinal).ToList();
+        Assert.Equal([ActorKit.Auto, bot], hits.Select(d => d.ElementId));
+        Assert.Equal("Actor 'Automatic' is the Automatic actor, as is 'Bot'; a project has at most one. Change the type of all but one, for example to external-system.",
+            hits[0].Message);
+    }
+
+    [Fact]
+    public async Task Deleting_a_member_rechecks_the_actor_it_was_a_member_of()
+    {
+        // Pat names Auditor, not the other way round: deleting Pat leaves Auditor without members, so its MQ9106 takes today's message.
+        var (h, store) = await ActorKit.OpenAsync(harness =>
+        {
+            harness.Write("model/actors/auditor.json", ActorKit.Actor(ActorKit.Auditor, "Auditor", "role"));
+            harness.Write("model/actors/pat.json", ActorKit.Actor(ActorKit.Pat, "Pat", "person", ActorKit.Auditor));
+        });
+        using var _ = h;
+        await using var __ = store;
+        Assert.Contains("through its members", Assert.Single(await ActorKit.ValidateAsync(h, store.Current!), d => d.Rule == "MQ9106" && d.ElementId == ActorKit.Auditor).Message,
+            StringComparison.Ordinal);
+
+        var deleted = await store.DeleteAsync(ActorKit.Pat, store.Current!.GetDocument(ActorKit.Pat)!.Hash, DeleteResolution.Refuse, ChangeSource.Editor, ActorKit.Ct);
+
+        Assert.Equal(SaveOutcome.Saved, deleted.Outcome);
+        Assert.Equal(TodaysMq9106, Assert.Single(deleted.Diagnostics, d => d.Rule == "MQ9106" && d.ElementId == ActorKit.Auditor).Message);
+    }
+
+    [Fact]
+    public async Task Deleting_the_only_used_member_rechecks_its_holder()
+    {
+        // Clerk, whom submit names, is the only member of Auditor: deleting Clerk leaves Auditor unused.
+        var (h, store) = await ActorKit.OpenAsync(harness =>
+        {
+            harness.Write("model/actors/auditor.json", ActorKit.Actor(ActorKit.Auditor, "Auditor", "role"));
+            harness.Write("model/actors/clerk.json", ActorKit.Actor(ActorKit.Clerk, "Clerk", "person", ActorKit.Auditor));
+        });
+        using var _ = h;
+        await using var __ = store;
+        Assert.DoesNotContain(await ActorKit.ValidateAsync(h, store.Current!), d => d.Rule == "MQ9106");
+
+        var deleted = await store.DeleteAsync(ActorKit.Clerk, store.Current!.GetDocument(ActorKit.Clerk)!.Hash, DeleteResolution.RemoveReferences, ChangeSource.Editor,
+            ActorKit.Ct);
+
+        Assert.Equal(SaveOutcome.Saved, deleted.Outcome);
+        Assert.Equal(TodaysMq9106, Assert.Single(deleted.Diagnostics, d => d.Rule == "MQ9106" && d.ElementId == ActorKit.Auditor).Message);
+    }
+
+    [Fact]
     public async Task A_model_without_the_new_keys_and_types_answers_as_today()
     {
         var (h, store) = await ActorKit.OpenAsync();
@@ -234,6 +297,24 @@ public sealed class SystemActorTests
         Assert.Null(traces[5].Actor);
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(traces[3], EngineJson.Options));
         Assert.Equal(ActorKit.Auto, json.RootElement.GetProperty("actor").GetString());
+    }
+
+    [Fact]
+    public async Task A_refused_automatic_move_names_no_actor()
+    {
+        var (h, store) = await ActorKit.OpenAsync(harness => harness.Write("model/actors/auto.json", ActorKit.Actor(ActorKit.Auto, "Automatic", "system")));
+        using var _ = h;
+        await using var __ = store;
+
+        // A time step without a positive duration, and the end of an invoke that is not pending and not a human task: nothing moved.
+        var traces = ActorKit.Run(store.Current!,
+            ActorKit.Step(input: StepInput.Time, after: "P0D"),
+            ActorKit.Step(input: StepInput.InvokeDone, invoke: "01JPRX00000000000000000099"),
+            ActorKit.Step(input: StepInput.InvokeError, invoke: "01JPRX00000000000000000099"));
+
+        Assert.Equal(ActorKit.Auto, traces[0].Actor);
+        Assert.All(traces.Skip(1), t => Assert.Equal(Refusals.NoTransition, t.Refusal));
+        Assert.All(traces.Skip(1), t => Assert.Null(t.Actor));
     }
 
     [Fact]

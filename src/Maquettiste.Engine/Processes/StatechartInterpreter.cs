@@ -988,10 +988,11 @@ public sealed class StatechartInterpreter
     // The actor of the move (actors-design.md decision 2), named only when the system actor made it: a move no one sends (the initial
     // entry, a time step, a finished invoke that is not a human task) whose input names no actor, in a project with exactly one system
     // actor. A step's own actor is already in its input, so the trace leaves it out and answers stay as they were without a system actor.
+    // A refused step moved nothing, so it names no actor.
     private string? MoveActor()
     {
         var input = _scope.Input;
-        if (_options.SystemActor is not { } system || input?.Actor is not null)
+        if (_options.SystemActor is not { } system || input?.Actor is not null || _scope.Refusal is not null)
             return null;
         return input is null || input.Input == StepInput.Time || (input.Input is StepInput.InvokeDone or StepInput.InvokeError && !_scope.HumanTask)
             ? system

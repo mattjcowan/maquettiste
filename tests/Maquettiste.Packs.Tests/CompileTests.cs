@@ -267,6 +267,44 @@ public sealed class CompileTests
         Assert.True(run.ExitCode == 0 && run.Output.Contains("actors ok", StringComparison.Ordinal), run.Output);
     }
 
+    [Fact]
+    public async Task Actors_named_like_the_members_of_the_actors_class_compile()
+    {
+        // An actor named Accepts or All would clash with the class's own members: only those constants get "Actor" appended, the
+        // others keep their names, and the checks still read the names envelopes carry.
+        using var repo = PackRepo.Actors();
+        repo.Write(".maquettiste/model/actors/accepts.json",
+            """{ "kind": "actor", "id": "01JAC000000000000000000K91", "name": "Accepts", "type": "person", "memberOf": ["01JAC000000000000000000K04"] }""");
+        repo.Write(".maquettiste/model/actors/all.json", """{ "kind": "actor", "id": "01JAC000000000000000000K92", "name": "All", "type": "role" }""");
+        await repo.GenerateCleanlyAsync();
+        var actors = File.ReadAllText(Path.Combine(repo.PathOf("out"), "Processes", "Actors.cs"));
+        Assert.Contains("public const string AcceptsActor = \"Accepts\";", actors, StringComparison.Ordinal);
+        Assert.Contains("public const string AllActor = \"All\";", actors, StringComparison.Ordinal);
+        Assert.Contains("public const string Pat = \"Pat\";", actors, StringComparison.Ordinal);
+        var project = Path.Combine(repo.Repo.Root, "clash");
+        WriteProject(project, repo.PathOf("out"), """
+            using System;
+            using System.Linq;
+            using App.Model.Processes;
+
+            Check(Actors.AcceptsActor == "Accepts" && Actors.AllActor == "All", "the names");
+            Check(Actors.Accepts(Actors.Approver, Actors.AcceptsActor), "Accepts acts for Approver through Seniors");
+            Check(Actors.All.Contains(Actors.AllActor) && Actors.TypeOf(Actors.AllActor) == ActorType.Role, "All is a role");
+            Console.WriteLine("clash ok");
+
+            static void Check(bool ok, string what)
+            {
+                if (!ok)
+                    throw new InvalidOperationException("Failed: " + what);
+            }
+
+            """, web: true);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll")], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("clash ok", StringComparison.Ordinal), run.Output);
+    }
+
     private const string ActorsProgram = """
         using System;
         using System.Linq;

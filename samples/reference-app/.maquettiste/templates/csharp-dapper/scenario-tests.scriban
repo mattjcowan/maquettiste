@@ -17,7 +17,7 @@ end
 func envelope(step)
   $parts = "Instance"
   if step.actor
-    $parts = $parts + ", Actor: Actors." + (pascal step.actor.name)
+    $parts = $parts + ", Actor: Actors." + actor_member(step.actor)
   end
   if step.signer
     $parts = $parts + ", Signer: " + (json step.signer)
