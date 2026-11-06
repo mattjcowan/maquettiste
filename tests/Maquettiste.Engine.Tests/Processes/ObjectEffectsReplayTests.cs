@@ -58,7 +58,7 @@ public sealed class ObjectEffectsReplayTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private const string ActorValue = "{\"actor\":true}";
+    private const string ActorValue = "{\"currentActor\":true}";
 
     private static string Path(string id) => $$"""{"path":["{{id}}"]}""";
 
@@ -103,7 +103,7 @@ public sealed class ObjectEffectsReplayTests
              "events":[{"id":"{{Submit}}","name":"submit"},{"id":"{{Approve}}","name":"approve"},{"id":"{{Swap}}","name":"swap"},{"id":"{{Bump}}","name":"bump"},
                {"id":"{{Claim}}","name":"claim"},{"id":"{{Own}}","name":"own"},{"id":"{{Take}}","name":"take","actors":["{{Owner}}"]}],
              "guards":[{"id":"01JPRX00000000000000000721","name":"notSubmitter",
-               "condition":{"op":"and","args":[{"op":"ne","args":[{{Path(SubmittedBy)}},{"actor":true}]},{"inState":["{{Review}}"]}]} }],
+               "condition":{"op":"and","args":[{"op":"ne","args":[{{Path(SubmittedBy)}},{"currentActor":true}]},{"inState":["{{Review}}"]}]} }],
              "actions":[
                {"id":"{{LeaveDraft}}","name":"leaveDraft","sets":[{{Set(1, Trail, Append(Trail, "x"))}}]},
                {"id":"{{Move}}","name":"move","sets":[{{Set(2, Trail, Append(Trail, "t"))}},{{Set(3, SubmittedBy, ActorValue)}}]},
@@ -243,12 +243,12 @@ public sealed class ObjectEffectsReplayTests
         Assert.Equal(42, number.ValuesChanged![ApproverNo].GetInt32());
         Assert.Equal(JsonValueKind.Null, number.Microsteps.Single().Actions.Single().Sets![OwnerId].ValueKind);
         Assert.False(number.ValuesChanged.ContainsKey(OwnerId)); // null before, null after
-        Assert.Equal(["The identity '42' is not a uuid, so actor() reads null where it meets one."], number.Notes);
+        Assert.Equal(["The identity '42' is not a uuid, so current_actor() reads null where it meets one."], number.Notes);
 
         var uuid = result.Trace[3];
         Assert.Equal("6f9619ff-8b86-d011-b42d-00cf4fc964ff", Text(uuid.ValuesChanged, OwnerId));
         Assert.Equal(JsonValueKind.Null, uuid.ValuesChanged![ApproverNo].ValueKind);
-        Assert.Equal(["The identity '6f9619ff-8b86-d011-b42d-00cf4fc964ff' is not an integer, so actor() reads null where it meets one."], uuid.Notes);
+        Assert.Equal(["The identity '6f9619ff-8b86-d011-b42d-00cf4fc964ff' is not an integer, so current_actor() reads null where it meets one."], uuid.Notes);
     }
 
     [Fact]

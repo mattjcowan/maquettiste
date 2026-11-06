@@ -41,10 +41,10 @@ public sealed record Expr
     public bool? Now { get; init; }
 
     /// <summary>
-    /// The identity of whoever acts (<c>actor()</c>, object-effects-design.md decision 5), when <see langword="true"/>; guard and set sites
+    /// The identity of whoever acts (<c>current_actor()</c>, object-effects-design.md decision 5), when <see langword="true"/>; guard and set sites
     /// only. It takes the type of what it meets (a comparison, <c>in</c>, <c>coalesce</c>, a case branch, a set's attribute), else a string.
     /// </summary>
-    public bool? Actor { get; init; }
+    public bool? CurrentActor { get; init; }
 
     /// <summary>
     /// The states <c>in_state</c> asks about (object-effects-design.md decision 7), all of one lifecycle: true when the object is in any of

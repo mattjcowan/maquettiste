@@ -20,7 +20,7 @@ const process: Json = {
       name: "Record",
       sets: [
         { id: "S1", attribute: "TOTAL", value: { op: "add", args: [{ path: ["PRICE"] }, { value: 1 }] } },
-        { id: "S2", attribute: "BY", value: { actor: true } },
+        { id: "S2", attribute: "BY", value: { currentActor: true } },
         { id: "S3", attribute: "OK", value: { inState: ["ACTIVE"], of: ["END"] } },
       ],
     },

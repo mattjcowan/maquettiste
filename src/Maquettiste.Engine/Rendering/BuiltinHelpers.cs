@@ -716,10 +716,10 @@ internal static class BuiltinHelpers
         if (target is not REntityBinding binding)
             throw new RenderHelperException("MQ6006", $"`expression_sql` takes a binding (entity.bindings[database name]) second, not a {TemplateValues.TypeName(target)}.");
         context.Recorder.RecordObject(binding);
-        // A value an action sets, and a condition that reads actor() or in_state, run where the process runs: no database reads them
+        // A value an action sets, and a condition that reads current_actor() or in_state, run where the process runs: no database reads them
         // (object-effects-design.md decision 11).
         if (root.Site == ExprSiteKind.Set || ExprLowering.IsEngineOnly(root.Typed))
-            throw new RenderHelperException("MQ6006", "`expression_sql` takes a check or a derived value; a value an action sets, actor() and in_state have no SQL form.");
+            throw new RenderHelperException("MQ6006", "`expression_sql` takes a check or a derived value; a value an action sets, current_actor() and in_state have no SQL form.");
         var check = root.Site == ExprSiteKind.Check;
         var columns = new Dictionary<string, ExprColumn>(StringComparer.Ordinal);
         foreach (var id in ExprResolution.Paths(root.Typed))

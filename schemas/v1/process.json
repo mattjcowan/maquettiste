@@ -668,7 +668,7 @@
           "minLength": 1
         },
         "value": {
-          "description": "The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute.",
+          "description": "The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), current_actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute.",
           "$ref": "common.json#/$defs/expr"
         }
       },

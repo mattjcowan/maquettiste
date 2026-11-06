@@ -161,7 +161,7 @@ public sealed partial class ModelStore
             ? TableMapping(snapshot, element, null, site.SubId, document.Path)
             : ExprResolution.ApiColumns(snapshot, site.SubId, document.Path);
         var javaScript = ExprLowering.ToJavaScript(typed, site.Kind, columns);
-        // actor() and in_state read who acts and the states of a run, which only a simulation has: no answer (object-effects-design.md section 8).
+        // current_actor() and in_state read who acts and the states of a run, which only a simulation has: no answer (object-effects-design.md section 8).
         var answer = request.Values is { ValueKind: JsonValueKind.Object } values && !ExprLowering.IsEngineOnly(typed) ? Answer(javaScript, values, problems, ct) : null;
         var detail = new ExpressionPreviewDetail(ExprText.Print(tree, scope), typed.Type.ToString(), typed.Nullable, javaScript, sql, sql is null ? note : null, answer);
         return new ExpressionPreview(detail, Outcomes.Sort(problems));

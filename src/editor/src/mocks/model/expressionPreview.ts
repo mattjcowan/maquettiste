@@ -1,6 +1,6 @@
 // The mock's expression preview (POST /api/model/expressions/preview), for a set's value only. The mock has no expression
 // engine: it prints a stored tree, echoes text, and guesses the type of the few forms it reads (effects.ts). A tree that uses
-// actor() or in_state previews JavaScript but no SQL and no answer, as the engine's does (object-effects-design.md decision 11).
+// current_actor() or in_state previews JavaScript but no SQL and no answer, as the engine's does (object-effects-design.md decision 11).
 import { printTree } from "./effects";
 
 type Json = Record<string, unknown>;
@@ -30,7 +30,7 @@ const diagnostic = (rule: string, message: string, elementId: string) => ({
 });
 
 function typeOfText(text: string): string {
-  if (text === "actor()") return "string";
+  if (text === "current_actor()") return "string";
   if (text === "now()") return "datetimeoffset";
   if (text === "true" || text === "false" || /^in_state\(/.test(text)) return "bool";
   if (/^-?\d+$/.test(text)) return "int32";
@@ -72,11 +72,11 @@ export function previewExpression(entries: Iterable<Entry>, req: Request) {
     );
   }
   const t = tree as Json | undefined;
-  const usesIdentity = /actor\(\)|in_state\(/.test(text) || (t && (t.actor === true || Array.isArray(t.inState)));
+  const usesIdentity = /current_actor\(\)|in_state\(/.test(text) || (t && (t.currentActor === true || Array.isArray(t.inState)));
   const type = t
     ? "null" in t
       ? "unknown"
-      : t.actor === true
+      : t.currentActor === true
         ? "string"
         : t.now === true
           ? "datetimeoffset"

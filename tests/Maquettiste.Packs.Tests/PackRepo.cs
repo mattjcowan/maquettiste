@@ -668,7 +668,7 @@ internal sealed class PackRepo : IDisposable
 
     /// <summary>
     /// The csharp-dapper pack's <c>object-effects</c> case (object-effects-design.md section 9): a request lifecycle whose actions set the
-    /// object's data (one with only sets, one with a translated expression too), a guard that reads <c>actor()</c> and one that reads
+    /// object's data (one with only sets, one with a translated expression too), a guard that reads <c>current_actor()</c> and one that reads
     /// another lifecycle's state with <c>in_state</c>. csharp-dapper writes to <c>out</c>, process-docs to <c>docs</c>.
     /// </summary>
     /// <returns>The repo.</returns>

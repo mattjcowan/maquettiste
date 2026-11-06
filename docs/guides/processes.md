@@ -240,10 +240,10 @@ Say `StockTransfer` has a lifecycle `Transfer` with states `Draft`, `Review`, `A
 `ShopStatus` with the states `Open` and `Closed`.
 
 1. On `Transfer`'s **Transitions** tab, add an action `RecordSubmission`. In its **Sets** cell, add one set: attribute
-   `submittedBy`, value `actor()`. Put the action on the `Submit` move.
-2. Add an action `RecordApproval` with two sets: `approvedBy` is `actor()`, and `approvedOn` is `date_of(now())`. Put it on the
+   `submittedBy`, value `current_actor()`. Put the action on the `Submit` move.
+2. Add an action `RecordApproval` with two sets: `approvedBy` is `current_actor()`, and `approvedOn` is `date_of(now())`. Put it on the
    `Approve` move.
-3. Add a guard `NotTheSubmitter` with the condition `subject.submittedBy <> actor()`. Put it on `Approve`. The submitter is read
+3. Add a guard `NotTheSubmitter` with the condition `subject.submittedBy <> current_actor()`. Put it on `Approve`. The submitter is read
    from the object, so the earlier set is what the guard sees.
 4. Add a guard `ShopIsOpen` with the condition `in_state(subject.fromShop, ShopStatus.Open)`. Put it on `Submit`.
 

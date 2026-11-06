@@ -154,7 +154,7 @@ internal static class Participants
         choice = null;
         if (step.Participant is null || cast.Participant(step.Participant) is not { } participant)
             return interpreter.Step(step);
-        // actor() reads the signer, else the participant's identity (object-effects-design.md decision 5).
+        // current_actor() reads the signer, else the participant's identity (object-effects-design.md decision 5).
         choice = interpreter.Acting(step, step.Signer ?? participant.IdentityText);
         var actsAs = ActsAs(model, process, cast, step, choice);
         var effective = step with

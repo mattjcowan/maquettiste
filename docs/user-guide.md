@@ -1979,8 +1979,7 @@ it acts as (the engine's answer, shown as "acting as"), or says the participant 
 needs. The step's row reads like "approve by SalesApprover, acting as Approver, signed by erin". A recorded step keeps the
 participant, and recording turns the participant names you give into ids.
 `simulate_process` and `record_scenario` take `participants` and a step's `participant`. When the participant satisfies
-none of the list, the step is refused, and MQ9301 names the participant and the list. "Participants" is a working name,
-and the owner will confirm it before release.
+none of the list, the step is refused, and MQ9301 names the participant and the list.
 
 ```json
 "participants": [
@@ -2278,7 +2277,7 @@ its room; expand it with the chevron on that row (the choice is remembered in th
 - **Configuration**: the active states by path; the chart highlights them, and the edges just taken flash once.
 - **Last step**: the guards evaluated (with their result and where it came from: an expression, an assumption, or
   missing), the actions run and what they changed in the context, the sets each action ran and the values the step changed
-  on the object, any notes (a state the run assumed, an identity that did not fit the type `actor()` met, sets an invoked
+  on the object, any notes (a state the run assumed, an identity that did not fit the type `current_actor()` met, sets an invoked
   sub-process could not apply), the gate's signatures and audit records, or the
   refusal and its reason.
 - **Trace**: the inputs so far. Selecting one shows the state after it (the chart follows); Delete removes it and every
@@ -2398,7 +2397,7 @@ without sets work as before.
 "actions": [
   { "id": "…", "name": "RecordSubmission",
     "sets": [
-      { "id": "…", "attribute": "…PurchaseRequest.submittedBy", "value": { "actor": true } },
+      { "id": "…", "attribute": "…PurchaseRequest.submittedBy", "value": { "currentActor": true } },
       { "id": "…", "attribute": "…PurchaseRequest.submittedOn", "value": { "now": true } }
     ] }
 ]
@@ -2409,7 +2408,7 @@ without sets work as before.
   and an attribute of a linked object cannot be set (MQ9801). A derived attribute cannot be set, nor can an attribute that holds a
   lifecycle's state (MQ9802). The chart owns the state. One action sets an attribute once (MQ9803).
 - **What the value reads.** What a guard reads: the context, the object as `subject.<attribute>` (to-one paths too), the
-  payload of the events whose moves list the action, `now()`, `actor()` and `in_state`. An entry or exit action reads no payload,
+  payload of the events whose moves list the action, `now()`, `current_actor()` and `in_state`. An entry or exit action reads no payload,
   since several events may enter or leave a state. The value must fit the attribute (MQ3103). Null is allowed, and clears the
   attribute.
 - **When sets run.** Where actions run: on a move (the transition's `actions`), when a state is entered (`entry`) and when it is
@@ -2431,7 +2430,7 @@ set, an **Attribute** picker that offers only what can be set, and a **Value** b
 the team's stub, as it keeps any action without an expression. Beside it the generated code adds a `Record<Action>` hook, a
 partial method that the team's half fills in, with each set printed in the comment. The generated action calls the hook before
 it returns the context. A new hook fails the build until the team writes it. An action that also has an expression keeps its
-generated code. A guard that uses `actor()` or `in_state` is left to a person. `process-docs` adds a **Sets** column. Templates
+generated code. A guard that uses `current_actor()` or `in_state` is left to a person. `process-docs` adds a **Sets** column. Templates
 read `action.sets`, `set.attribute` and `set.value`, so a pack with an object to write to can write the assignments itself.
 
 ### Libraries: shared guards, actions and gate policies
@@ -2484,7 +2483,7 @@ name a library's actions the same way, and `transition.gatePolicy` names a libra
 
 A verb says what is done: what an actor does by sending an event, what an automatic move does, or what an operation does. Name one in
 an event's, an eventless transition's or an operation's `verb`, by its key. Verbs carry no behaviour yet; they give rights and trigger
-points one shared list of names. The built-in names are a working set. The owner will confirm them before release.
+points one shared list of names.
 
 - An **event** names what the actor does by sending it: `Submit` promotes, `SendBack` demotes.
 - A **transition** names a verb only when it has no event (`after`, `always`, `done`, `invoke-done`, `invoke-error`). With an event,
@@ -3052,7 +3051,7 @@ attribute's `required`, never the expression's concern.
   take the path syntax of the other conditions (`{ "member": "properties.retentionDays" }`), typed from the resolved
   record of the selected kind. Lists and objects are not values: `count` and `has` stay for them.
 
-Check sites and value sites read one row: they take no navigation (MQ3102), no `now()`, no `actor()` and no `in_state` (MQ3104),
+Check sites and value sites read one row: they take no navigation (MQ3102), no `now()`, no `current_actor()` and no `in_state` (MQ3104),
 since a CHECK must not depend on the clock and a derived value must be the same wherever it is computed. An action's set
 is a site too: its value reads like a guard, and types like a value site (MQ3103). Paths through to-many
 navigations, aggregates and subqueries are not in the language.
@@ -3104,11 +3103,11 @@ one change.
 Two names read the run rather than a row. They work at process guards, operation guards and sets (MQ3104 anywhere else), since
 a check or a derived value must hold however the object moves.
 
-**`actor()`** is whoever acts now. In a run it is the step's signer if given, else its participant's identity, else the
+**`current_actor()`** is whoever acts now. In a run it is the step's signer if given, else its participant's identity, else the
 participant's name, else the name of the actor the step acts as. An automatic move acts as the system actor when the project has
-one. Otherwise it is null. So one guard says "the approver is not the submitter": `subject.submittedBy <> actor()`.
+one. Otherwise it is null. So one guard says "the approver is not the submitter": `subject.submittedBy <> current_actor()`.
 
-- Next to a comparison, `in`, `coalesce` or a `case` branch, or as a set's value, `actor()` takes the other side's type. So a team
+- Next to a comparison, `in`, `coalesce` or a `case` branch, or as a set's value, `current_actor()` takes the other side's type. So a team
   that knows people by number or uuid is not blocked. When the identity does not convert, the value is null and the trace notes it.
 - Anywhere else it is a string.
 - `event.actor` in an action's JavaScript is the name of the actor element, not the person.
@@ -3242,7 +3241,7 @@ reports one MQ5003 or MQ5002 instead of a finding on every object. MQ3112 is not
 | MQ3101 | error | An expression does not parse, or a node is malformed: an unknown operator or function, a wrong number of operands. A save whose text does not parse is refused |
 | MQ3102 | error | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, a payload attribute that an event using the guard lacks, a context attribute named `event`, under which a guard's condition reads the payload, or an overlay's column named like an attribute of its entity, which text reads as the attribute |
 | MQ3103 | error | The types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, `+` on a date, `date_part` of `hour` or `minute` on a date, a site's answer that is not a boolean, a derived value of another type than its attribute, a type the language does not have (`float` among them), an enum member or code against a value of no enum or reference type, a code the column it is compared with cannot store, or a set's value that does not fit its attribute |
-| MQ3104 | error | `now()`, `actor()` or `in_state` at a check, a value or a rule condition, directly or through a constraint; guards and sets read the clock, and guards, operation guards and sets read the other two |
+| MQ3104 | error | `now()`, `current_actor()` or `in_state` at a check, a value or a rule condition, directly or through a constraint; guards and sets read the clock, and guards, operation guards and sets read the other two |
 | MQ3105 | error | A regular expression outside the portable subset |
 | MQ3106 | error | An argument that must be a literal is not (a pattern, a `date_part` part, the digits of `round`, an `in` list item), or an `in` list holds null |
 | MQ3107 | error | A site holds both its raw form and a tree, or neither; a process guard with neither is a stub and is not reported |

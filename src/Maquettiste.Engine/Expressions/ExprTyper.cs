@@ -85,13 +85,13 @@ public static class ExprTyper
         }
         else if (scope.ValueType is { } wanted)
         {
-            // actor() takes the type of the attribute it is set to (object-effects-design.md decision 5): an identity is a string, an integer
+            // current_actor() takes the type of the attribute it is set to (object-effects-design.md decision 5): an identity is a string, an integer
             // or a uuid, so any other type is MQ3103.
-            if (scope.Site == ExprSiteKind.Set && typed.Node.Actor == true && wanted.IsAvailable)
+            if (scope.Site == ExprSiteKind.Set && typed.Node.CurrentActor == true && wanted.IsAvailable)
             {
                 if (!Run.ActorFits(wanted))
                 {
-                    run.Report("MQ3103", typed.Pointer, "actor() is the identity of whoever acts, a string, an integer or a uuid; the set's value must be "
+                    run.Report("MQ3103", typed.Pointer, "current_actor() is the identity of whoever acts, a string, an integer or a uuid; the set's value must be "
                         + wanted + ", which an identity can't be.");
                     return null;
                 }
@@ -205,14 +205,14 @@ public static class ExprTyper
         {
             var shapes = (e.Value is not null ? 1 : 0) + (e.Null is not null ? 1 : 0) + (e.Path is not null ? 1 : 0) + (e.Ref is not null ? 1 : 0)
                 + (e.Member is not null ? 1 : 0) + (e.Now is not null ? 1 : 0) + (e.Op is not null ? 1 : 0) + (e.Call is not null ? 1 : 0)
-                + (e.Case is not null ? 1 : 0) + (e.Satisfies is not null ? 1 : 0) + (e.Text is not null ? 1 : 0) + (e.Actor is not null ? 1 : 0)
+                + (e.Case is not null ? 1 : 0) + (e.Satisfies is not null ? 1 : 0) + (e.Text is not null ? 1 : 0) + (e.CurrentActor is not null ? 1 : 0)
                 + (e.InState is not null ? 1 : 0);
             if (shapes != 1)
             {
-                // A node with neither actor nor inState keeps the message it had before them (object-effects-design.md section 11).
+                // A node with neither currentActor nor inState keeps the message it had before them (object-effects-design.md section 11).
                 return Malformed(pointer, shapes == 0 ? "The node is empty."
-                    : e.Actor is null && e.InState is null ? "The node holds more than one of value, null, path, ref, member, now, op, call, case, satisfies and text."
-                    : "The node holds more than one of value, null, path, ref, member, now, actor, inState, op, call, case, satisfies and text.");
+                    : e.CurrentActor is null && e.InState is null ? "The node holds more than one of value, null, path, ref, member, now, op, call, case, satisfies and text."
+                    : "The node holds more than one of value, null, path, ref, member, now, currentActor, inState, op, call, case, satisfies and text.");
             }
 
             if (e.Of is not null && e.InState is null)
@@ -256,13 +256,13 @@ public static class ExprTyper
                 return new TypedExpr(e, pointer, ExprType.DateTimeOffset, false, []);
             }
 
-            if (e.Actor is not null)
+            if (e.CurrentActor is not null)
             {
-                if (e.Actor != true)
+                if (e.CurrentActor != true)
                     return Malformed(pointer, "'actor' must be true.");
                 if (!scope.AllowsActor)
                 {
-                    Report("MQ3104", pointer, "actor() is whoever acts; only a guard or a value an action sets may read it.");
+                    Report("MQ3104", pointer, "current_actor() is whoever acts; only a guard or a value an action sets may read it.");
                     return null;
                 }
 
@@ -822,31 +822,31 @@ public static class ExprTyper
             return WithinSize(tree, pointer) ? Node(tree, pointer, flat: true) : null;
         }
 
-        /// <summary>Whether <c>actor()</c> can take a type: an identity is a string, an integer or a uuid (object-effects-design.md decision 5).</summary>
+        /// <summary>Whether <c>current_actor()</c> can take a type: an identity is a string, an integer or a uuid (object-effects-design.md decision 5).</summary>
         internal static bool ActorFits(ExprType type) => type.Kind is "string" or "int" or "uuid";
 
         /// <summary>
-        /// Gives each <c>actor()</c> among the operands at <paramref name="indices"/> the type the others share (object-effects-design.md
+        /// Gives each <c>current_actor()</c> among the operands at <paramref name="indices"/> the type the others share (object-effects-design.md
         /// decision 5), as a null literal fits any type; it stays a string when none has a type it can take.
         /// </summary>
         private static void Adopt(List<TypedExpr> typed, IEnumerable<int> indices)
         {
             var at = indices.ToList();
-            if (!at.Any(i => typed[i].Node.Actor == true))
+            if (!at.Any(i => typed[i].Node.CurrentActor == true))
                 return;
             ExprType? common = null;
             foreach (var i in at)
             {
-                if (typed[i].Node.Actor != true)
+                if (typed[i].Node.CurrentActor != true)
                     common = common is null ? typed[i].Type : Unify(common, typed[i].Type) ?? common;
             }
 
-            // An identity is a string, an integer or a uuid: beside any other type actor() stays a string, which doesn't fit it (MQ3103).
+            // An identity is a string, an integer or a uuid: beside any other type current_actor() stays a string, which doesn't fit it (MQ3103).
             if (common is null || common.Kind == "null" || !common.IsAvailable || !ActorFits(common))
                 return;
             foreach (var i in at)
             {
-                if (typed[i].Node.Actor == true)
+                if (typed[i].Node.CurrentActor == true)
                     typed[i] = typed[i] with { Type = common };
             }
         }

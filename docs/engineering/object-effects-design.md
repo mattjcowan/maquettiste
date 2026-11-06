@@ -1,6 +1,6 @@
 # Setting the object's data, and reading another lifecycle's state: design
 
-**Status (2026-11-06): a design for the owner, not built.** It designs the fourth item in the owner's order after 4.1: a move that sets the object's data, and a condition that reads the object's state in another lifecycle. [Who, what and when](lifecycle-actors-scenarios.md) section 6 sets its direction, and calls both prerequisites for rights. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick. [The verbs design](verbs-design.md) and [the actors design](actors-design.md) give its shape. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
+**Status (2026-11-06): built for 0.14.0 (#52).** It designs the fourth item in the owner's order after 4.1: a move that sets the object's data, and a condition that reads the object's state in another lifecycle. [Who, what and when](lifecycle-actors-scenarios.md) section 6 sets its direction, and calls both prerequisites for rights. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick. [The verbs design](verbs-design.md) and [the actors design](actors-design.md) give its shape. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
 
 ## 1. In short
 
@@ -8,7 +8,7 @@ Today nothing can set the object's data. A process's actions change its context,
 
 | Layer | What changes |
 | --- | --- |
-| The model | An **action** may list **`sets`**: an attribute of the object and a value in the expression language, such as `submittedBy` set to `actor()` and `submittedOn` set to `now()`. Where the action runs says when: on a move, on entering a state or on leaving it. The expression language gains **`actor()`**, the identity of whoever acts, and **`in_state(object, state, …)`**, which asks whether an object is in a state of any lifecycle, however the state is stored. The object is the subject or a to-one link from it. A scenario object may give its **`states`** in other lifecycles, and a step may expect the **`values`** it changed |
+| The model | An **action** may list **`sets`**: an attribute of the object and a value in the expression language, such as `submittedBy` set to `current_actor()` and `submittedOn` set to `now()`. Where the action runs says when: on a move, on entering a state or on leaving it. The expression language gains **`current_actor()`**, the identity of whoever acts, and **`in_state(object, state, …)`**, which asks whether an object is in a state of any lifecycle, however the state is stored. The object is the subject or a to-one link from it. A scenario object may give its **`states`** in other lifecycles, and a step may expect the **`values`** it changed |
 | Simulation and replay | Sets run. The scenario object's values change, and later guards and sets see the new values. `in_state` reads the running chart for the process's own states, and a scenario object's states for other lifecycles. A step's `expect.values` and a trace's sets are keyed by attribute id; resolved records use names |
 | Code generation | Templates read each action's sets and the new expression nodes. `csharp-dapper` writes one method per action that sets data, for the team to fill in (an action with only sets stays the team's stub, like any action the pack can't translate, so an existing team file still builds), and leaves a guard that uses the new nodes to a person, as today for any guard it can't translate. `process-docs` adds a Sets column and shows the scenario objects' states and expected values. Each happens only when the model uses them |
 | The team's system, or a lifecycle system | Nothing changes until the team uses the new output or builds from the model |
@@ -19,7 +19,7 @@ Today nothing can set the object's data. A process's actions change its context,
 
 | | What | Section |
 | --- | --- | --- |
-| **This item** | `sets` on actions; `actor()` and `in_state` in guards and sets; the states of scenario objects; expected values on steps; rules; simulation and replay; the resolved model, packs, tools and the editor | 3 to 10 |
+| **This item** | `sets` on actions; `current_actor()` and `in_state` in guards and sets; the states of scenario objects; expected values on steps; rules; simulation and replay; the resolved model, packs, tools and the editor | 3 to 10 |
 | **Kept out, perhaps later** | `sets` on an operation's outcomes (the direction covers moves and actions only; a trigger point may let an outcome name an action); setting a linked object's data or a link; setting context values in the expression language; reading through to-many links ("every affected item is Released"); a library action that sets data; a scenario that starts part way through its own lifecycle | 12 |
 | **Left to trigger points** | An action that moves another object in its lifecycle, including by setting the attribute that holds its state | 12 |
 | **Left to rights** | Conditions on rights, which read the same things as guards | 12 |
@@ -43,7 +43,7 @@ Each decision gives its confidence: **high**, **medium** or **low**.
    - One action sets an attribute once (MQ9803).
    - **Kept out, perhaps later:** a member of a value object (`amount.value`), a collection, a to-one end (setting a link), and an attribute of a linked object. Each would widen what `attribute` accepts and change no file.
 3. **A set's value reads what a guard reads.** Confidence: high.
-   - It reads the context, the object under `subject` (to-one paths too), `now()`, `actor()` and `in_state`.
+   - It reads the context, the object under `subject` (to-one paths too), `now()`, `current_actor()` and `in_state`.
    - It reads the payload of the events whose transitions list the action, as a guard reads the payload of the events whose transitions use it. An entry or exit action reads no payload, since the event that enters or leaves a state isn't fixed (MQ3102, as today for a payload some event lacks).
    - It must fit the attribute's type, as a derived value must (MQ3103). A value that may be null is allowed: setting null clears the attribute.
    - **The site kind:** a new `Set` site kind, not the `Value` kind with scope flags. A `Value` site is a derived value or a default, which must hold for any row and can't read a lifecycle or an actor, so reusing it with flags would let those rules leak into set sites. The `Set` kind is handled explicitly where a default would mis-treat it: `ExprJs.cs:23` (the JavaScript entry), `ExprTyper.cs:63` (the site rules), `ExprScope.cs:195-196` (what a site may read), `ExprSql.cs` (refuses), `BuiltinHelpers.cs:719` (the helper's site switch) and `ModelStore.ExpressionPreview.cs:87-89` (previews). It types as a value site does and reads like a guard site.
@@ -57,15 +57,15 @@ Each decision gives its confidence: **high**, **medium** or **low**.
    - **An invoked sub-process** sees no object (4.1 decision 22). Its sets change nothing in a run, and the trace says so.
    - **The trace** lists each action's sets and the values the step changed. **A scenario step** may expect them in `expect.values`, keyed by attribute id, as `expect.context` and an object's `values` are in files, compared as `expect.context` is: exactly the attributes the step changed (MQ9307). `record_scenario` writes `expect.values` only when a step changed one.
    - **Why `values`:** a scenario object already lists its `values`. When steps later name the object they act on (the direction, section 9), `expect.values` keeps its meaning: the values of the step's object, which today is always the scenario's subject.
-5. **`actor()` is the identity of whoever acts.** Confidence: high that it is needed; medium-high for how it types.
-   - In a run, it is the step's `signer` when given, else its participant's identity (or the participant's name when it has none, actors decision 14), else the name of the actor the step acts as, else null. An automatic move acts as the system actor when the project has one (actors decision 2), so `actor()` is its name. Otherwise it is null.
-   - **It reads at guard sites too,** so "the approver is not the submitter" is one guard today: `subject.submittedBy <> actor()`. It reads at process guards, operation guards and sets, and nowhere else (MQ3104).
+5. **`current_actor()` is the identity of whoever acts.** Confidence: high that it is needed; medium-high for how it types.
+   - In a run, it is the step's `signer` when given, else its participant's identity (or the participant's name when it has none, actors decision 14), else the name of the actor the step acts as, else null. An automatic move acts as the system actor when the project has one (actors decision 2), so `current_actor()` is its name. Otherwise it is null.
+   - **It reads at guard sites too,** so "the approver is not the submitter" is one guard today: `subject.submittedBy <> current_actor()`. It reads at process guards, operation guards and sets, and nowhere else (MQ3104).
    - **How it types:**
      - When it meets a comparison, `in`, `coalesce`, a `case` branch or a set's attribute, it takes the other side's type, as a null literal fits any type. The typer records that type on the `actor` node.
      - Anywhere else it is a string.
      - **Lowering** reads the identity text through that type's reader (a number, a uuid, a string). When the text doesn't convert, the value is null, with a note in the trace. A team that stores people by number isn't blocked.
    - **The alternative:** a fixed string type. It would refuse a team whose people are known by a number or a uuid. It is not chosen.
-   - **Why "actor", and a caution:** the model already says "actor" for who may act. `actor()` is the person acting now. Action JavaScript's `event.actor` is the name of the actor element, not the person, and a step's `actor` also means the element. Owner question 1 confirms the name.
+   - **Why `current_actor()`:** the model already says "actor" for who may act. Action JavaScript's `event.actor` is the name of the actor element, not the person, and a step's `actor` also means the element. The owner chose `current_actor()` over the working name `actor()`, so the name itself says it is the person acting now (owner question 1).
 6. **`now()` at a set** is the run's clock, as at a guard. Confidence: high. A date attribute takes `date_of(now())`.
 
 ### Reading another lifecycle's state
@@ -105,7 +105,7 @@ Each decision gives its confidence: **high**, **medium** or **low**.
     - **An existing team file still builds.** Translated actions are static today (`process-handlers.scriban:67`). Adding `Record` makes the actions that call it instance methods, so only an action with sets changes shape; the rest stay static. An action with only sets (no JavaScript `expression`) stays the team's stub, like any action the pack can't translate: the generated half declares it, and the dispatch calls `Run<Action>`, which calls `Record<Action>`, then the team's action. An action with an expression the pack can't translate works the same way. A team that has already written the action keeps it. The only method the team must add is a new `Record<Action>`, and the build names it.
     - **The alternative:** the pack works out each value it can translate and passes the values in. Values that read the object or another lifecycle can't be translated, so the method's shape would depend on what each value reads. It is not chosen now. With 4.6, the pack can write the assignments itself.
     - Templates read every set's attribute and typed value, so any pack with an object to write to can write assignments today.
-13. **A guard that uses `actor()` or `in_state` is left to a person in `csharp-dapper`,** as any guard it can't translate. Confidence: high. Nothing changes in `helpers.js`, whose renderer already gives up on a node it doesn't know, so no unit of the pack renders again for it.
+13. **A guard that uses `current_actor()` or `in_state` is left to a person in `csharp-dapper`,** as any guard it can't translate. Confidence: high. Nothing changes in `helpers.js`, whose renderer already gives up on a node it doesn't know, so no unit of the pack renders again for it.
 14. **Packs write the new output only when the model uses it.** Confidence: high.
 
 ### Release
@@ -127,13 +127,13 @@ Also updated: the sample app's schema copies, `openapi.yaml` by hand (the proces
 "actions": [
   { "id": "…", "name": "RecordSubmission",
     "sets": [
-      { "id": "…", "attribute": "<id of PurchaseRequest.submittedBy>", "value": { "actor": true } },
+      { "id": "…", "attribute": "<id of PurchaseRequest.submittedBy>", "value": { "currentActor": true } },
       { "id": "…", "attribute": "<id of PurchaseRequest.submittedOn>", "value": { "now": true } }
     ] }
 ],
 "guards": [
   { "id": "…", "name": "NotTheSubmitter",
-    "condition": { "op": "ne", "args": [ { "path": ["<id of submittedBy>"] }, { "actor": true } ] } }
+    "condition": { "op": "ne", "args": [ { "path": ["<id of submittedBy>"] }, { "currentActor": true } ] } }
 ]
 ```
 
@@ -165,7 +165,7 @@ Also updated: the sample app's schema copies, `openapi.yaml` by hand (the proces
 
 **Existing rules that gain a case.** No finding changes for a model that uses none of this.
 - **MQ3103:** a set's value that doesn't fit its attribute, as for a derived value.
-- **MQ3104:** `actor()` or `in_state` at a check, a value or a rule condition. `now()` becomes allowed at a set, as at a guard.
+- **MQ3104:** `current_actor()` or `in_state` at a check, a value or a rule condition. `now()` becomes allowed at a set, as at a guard.
 - **MQ9020:** a library action with `sets`. A library's members read the using process by name, and sets name attributes by id, as conditions do, which MQ9020 already refuses on library guards.
 - **MQ9305:** an object's `states` naming a state of a lifecycle that can't govern it, two states of one lifecycle that can't be active together, the state of the process the scenario runs on its subject, or a state that disagrees with a bound attribute's value the object gives (decision 10).
 
@@ -200,11 +200,11 @@ public sealed class RSet
 - **The object's row becomes the run's.** `StatechartInterpreter` holds the subject's row for the root instance and applies each action's sets to it. Today the row is read-only (`_subject`).
 - **States in the row.** Each object in the row carries the states of the lifecycles a condition reads, under a member no attribute can be named, filled from decision 10. For the running process on the subject, the member is the current configuration, filled at each evaluation. The lowered JavaScript of `in_state` reads that member. A process with no `in_state` keeps today's row. The subject row (`ScenarioObjects.cs:32`) must exist for sets, even when a scenario has no objects, and `ProcessExpressions.cs:170` writes no defaults row unless a condition reads `subject`, so a set must count as a read too.
 - **Where the helpers live.** The `actor` and `in_state` helpers go in the engine-only start-up code beside `mqAt` (`ExprLowering.cs:154`), not in `expr-runtime.js`, whose bytes `BuiltinHelpers.cs:194` writes into output. So no generated file changes for a project that doesn't use them. `RExpression.JavaScript` is null for a tree that uses these nodes, so packs never see engine-only calls.
-- **`actor()`** is passed with each evaluation, from decision 5.
-- **The trace:** each action entry gains `sets` (attribute id to new value), and each step gains `valuesChanged` (by attribute id too), both only when something was set. Resolved records (`step.expect.values`) use attribute names, as they do for the context. A trace also gains `notes`, left out when empty, which holds the "initial state assumed" note (`StepTrace.cs:123`) and the notes below. An action that has only sets has no JavaScript, so its action source (`StepTrace.cs:46`) is its sets in text form (`submittedBy = actor()`), not an empty expression. Notes say when a state was assumed (decision 10.3), when an identity didn't convert (decision 5), and when a sub-process's sets did nothing (decision 4).
+- **`current_actor()`** is passed with each evaluation, from decision 5.
+- **The trace:** each action entry gains `sets` (attribute id to new value), and each step gains `valuesChanged` (by attribute id too), both only when something was set. Resolved records (`step.expect.values`) use attribute names, as they do for the context. A trace also gains `notes`, left out when empty, which holds the "initial state assumed" note (`StepTrace.cs:123`) and the notes below. An action that has only sets has no JavaScript, so its action source (`StepTrace.cs:46`) is its sets in text form (`submittedBy = current_actor()`), not an empty expression. Notes say when a state was assumed (decision 10.3), when an identity didn't convert (decision 5), and when a sub-process's sets did nothing (decision 4).
 - **Replay** compares `expect.values` (MQ9307). A scenario's replay also depends on the lifecycles its conditions read through `in_state` (their states, initial states, codes, bindings, and the enum of an enum binding), and on the attributes its process sets.
 - **Replay keys** (`ResolveRun.Processes.cs`):
-  - A process that reads `actor()` keys every step on the actor kind (`:980`), since the identity comes from the step's actor and participant.
+  - A process that reads `current_actor()` keys every step on the actor kind (`:980`), since the identity comes from the step's actor and participant.
   - The replay inputs (`:1158`) also count processes that set data, not only those whose conditions read the object.
   - The enum of an enum binding is added to the keys. So editing one of them replays it, and a scenario that uses none of this keeps today's keys.
 - **Speed:** the row is copied only when an action with sets runs. States are worked out only for lifecycles a condition reads.
@@ -212,7 +212,7 @@ public sealed class RSet
 ## 8. Tools
 
 - **`simulate_process`, `record_scenario`, `verify_scenarios`:** objects take `states`. The trace gains `sets`, `valuesChanged` and `notes`. Each run passes the run's current objects to the actor lookup (decision 4). Recording writes `expect.values`.
-- **`preview_expression`:** previews a set's value at its pointer, and text written for a set, given the action and the attribute. `actor()` and `in_state` preview at guard and set sites, with no SQL form.
+- **`preview_expression`:** previews a set's value at its pointer, and text written for a set, given the action and the attribute. `current_actor()` and `in_state` preview at guard and set sites, with no SQL form.
 - **`get_references`, `referenced_by`:** a set's attribute, an `in_state`'s states and ends, and an object's `states` are references.
 - **Deletes:** deleting an attribute that an action sets is refused, unless `remove-references` (it removes the set) or `delete-dependents` (the same). A state or end read by `in_state` is treated as a path in a condition is today. An object's `states` entry goes with `remove-references`.
 - **`export_process`, `import_process`:** an action's `sets` travel in its `meta.maquettiste`, so a round trip keeps them.
@@ -224,12 +224,12 @@ public sealed class RSet
 Output changes only for a model that uses sets, the new nodes, objects' states or expected values.
 
 **`csharp-dapper`**
-- **Handlers (`process-handlers.scriban`):** for each action with sets, a partial method `Record<Action>(call)` in the generated half, documented with each set in text form, such as `submittedBy = actor()`. The generated `Action<Name>` calls it, then returns the context it returns today. The team's half (`process-handlers.partial.scriban`) gains a stub for it in new projects. In an existing project, the build names the missing method, as for a new stub action today.
-- **Guards** that use `actor()` or `in_state` become partial methods, with the condition in the comment (decision 13).
+- **Handlers (`process-handlers.scriban`):** for each action with sets, a partial method `Record<Action>(call)` in the generated half, documented with each set in text form, such as `submittedBy = current_actor()`. The generated `Action<Name>` calls it, then returns the context it returns today. The team's half (`process-handlers.partial.scriban`) gains a stub for it in new projects. In an existing project, the build names the missing method, as for a new stub action today.
+- **Guards** that use `current_actor()` or `in_state` become partial methods, with the condition in the comment (decision 13).
 - **Nothing goes in `helpers.js` or `expr-runtime.js`,** since changing either renders every unit of the pack again (section 7).
 
 **`process-docs`**
-- **The process page** (`process-page.scriban:200`): the Actions table gains a Sets column when an action of the process sets data, such as "submittedBy ← actor()". An action that has only sets shows its sets in the expression cell, not an empty expression. Guard conditions already print their text, so `in_state(…)` and `actor()` show with no change.
+- **The process page** (`process-page.scriban:200`): the Actions table gains a Sets column when an action of the process sets data, such as "submittedBy ← current_actor()". An action that has only sets shows its sets in the expression cell, not an empty expression. Guard conditions already print their text, so `in_state(…)` and `current_actor()` show with no change.
 - **The scenario page:** the objects table gains a States column when an object gives states. A step's expected values join its "then" line when given.
 
 **`sql-ddl`, `seed-data` and the TypeScript sample:** no change.
@@ -237,7 +237,7 @@ Output changes only for a model that uses sets, the new nodes, objects' states o
 ## 10. Editor
 
 **Process editor, Actions grid:**
-- A **Sets** column summarizes each action's sets ("submittedBy ← actor(), submittedOn ← now()").
+- A **Sets** column summarizes each action's sets ("submittedBy ← current_actor(), submittedOn ← now()").
 - Its cell opens a small editor: one row per set, with an **Attribute** picker (the attributes every subject holds, without the ones MQ9802 refuses) and a **Value** box. **Add set** and **Remove** buttons carry tooltips.
 - **The Value box** takes text. On commit, it saves `{ "text": … }`, which the server stores as a tree. It shows the printed form, the type and any finding, through the preview endpoint. It is one shared component, written so the guard and check inspectors can use it later (the phase 3 follow-up); this item uses it only for sets.
 
@@ -270,7 +270,7 @@ Output changes only for a model that uses sets, the new nodes, objects' states o
 
 | Item | What it takes from this one |
 | --- | --- |
-| Rights | A right's condition is an expression at a guard-like site, so it reads the object, `actor()` and `in_state` with no new syntax. "Forbid modify when the item is secret, unless the actor is its owner" is `subject.classification = 'secret' and subject.ownerLogin <> actor()`. A lifecycle that answers only in some states uses `in_state` for another lifecycle's. Combining across an object's lifecycles needs each one's state, which scenarios now give. Refusal reasons name the right, as they name a guard today |
+| Rights | A right's condition is an expression at a guard-like site, so it reads the object, `current_actor()` and `in_state` with no new syntax. "Forbid modify when the item is secret, unless the actor is its owner" is `subject.classification = 'secret' and subject.ownerLogin <> current_actor()`. A lifecycle that answers only in some states uses `in_state` for another lifecycle's. Combining across an object's lifecycles needs each one's state, which scenarios now give. Refusal reasons name the right, as they name a guard today |
 | Separation of duties (richer sign-off) | "The approver is not the submitter" is a guard today: a move sets `submittedBy`, and the next move's guard reads it. Richer sign-off can name it as a rule over signatures |
 | Trigger points | A trigger's action kind names an action, with its sets. "An action that moves another object" comes there: a target on a linked object, or a move sent to it. That is also when setting another lifecycle's bound attribute can become allowed. Generated step methods take `Record<Action>` into the pipeline |
 | Scenarios across objects | Steps that act on any object, and `expect.values` on that object. Steps that move a second object change its states during the run |
@@ -280,21 +280,21 @@ Output changes only for a model that uses sets, the new nodes, objects' states o
 
 ## 13. Decisions the owner must make
 
-1. **Confirm the new names before release: `sets`, `actor()`, `in_state`, an object's `states`, and a step's `expect.values`.** Names are permanent once released.
+1. **Confirm the new names before release: `sets`, `current_actor()`, `in_state`, an object's `states`, and a step's `expect.values`.** Names are permanent once released.
    - `sets`, `in_state`, an object's `states` and a step's `expect.values`: confidence high. `in_state` is short and reads as the question it asks. `values` matches the scenario object's own list.
-   - `actor()`: confidence medium-high. The model's word for who may act is "actor", but action JavaScript's `event.actor` and a step's `actor` mean the actor element (the role), not the person. `actor()` is the person acting now. A reader may confuse the two, so the owner should confirm the name.
-   - Recommended: as listed. The build proceeds with all five, and the release waits for the owner's word.
+   - The working name `actor()`: confidence medium-high. The model's word for who may act is "actor", but action JavaScript's `event.actor` and a step's `actor` mean the actor element (the role), not the person. A reader may confuse the two.
+   - **Decided (2026-11-06): the owner kept `sets`, `in_state`, `states` and `expect.values`, and renamed `actor()` to `current_actor()`.** Its stored node is `{ "currentActor": true }`, and the resolved node is `current-actor`.
 
 ## 14. Tests
 
 - **`ObjectEffectsRuleTests` (new):** failing and passing cases for MQ9801 to MQ9803, MQ3116 and MQ9307, and the new cases of MQ3103, MQ3104, MQ9020 and MQ9305. Today's models give the same findings.
 - **`ExprActorInStateTests` (new):**
-  - Text to tree and back for `actor()` and `in_state`, with nested state paths and several states; renaming a state or a lifecycle reprints the text.
-  - Typing: `actor()` beside a string, an integer and a uuid, and alone; `in_state` over the subject, a to-one path, a stereotype subject and the process's own lifecycle; refusals at checks, values and rule conditions.
+  - Text to tree and back for `current_actor()` and `in_state`, with nested state paths and several states; renaming a state or a lifecycle reprints the text.
+  - Typing: `current_actor()` beside a string, an integer and a uuid, and alone; `in_state` over the subject, a to-one path, a stereotype subject and the process's own lifecycle; refusals at checks, values and rule conditions.
   - The JavaScript lowering, and no SQL form.
 - **`ObjectEffectsReplayTests` (new):**
   - Sets in order: exit, transition and entry actions; values from before the action within one action (the swap); a later guard sees a new value; no objects; an invoked sub-process sets nothing.
-  - `actor()` from the signer, the participant's identity, its name, the acting actor and the system actor; an identity that doesn't convert.
+  - `current_actor()` from the signer, the participant's identity, its name, the acting actor and the system actor; an identity that doesn't convert.
   - `in_state` from `states`, from a bound value (enum and code), and from the initial state, with the trace note; a missing link reads null; parallel regions of the running chart.
   - `expect.values`: recording, MQ9307, and replay keys that change when a read lifecycle or a set attribute changes and stay the same otherwise.
 - **`ResolvedObjectEffectsTests` (new):** `action.sets`, the `in-state` node's codes under an enum binding, a code binding and no binding, `object.states`, `step.expect.values`, and dependency keys.
@@ -302,7 +302,7 @@ Output changes only for a model that uses sets, the new nodes, objects' states o
 - **Pack tests:** a new test case per pack. `csharp-dapper`'s `Record<Action>` and guard partials build with warnings as errors. `process-docs`' Sets column, objects' States column and expected values.
 - **Editor:** unit tests for the attribute picker's filter and the states picker's grouping. Browser tests (in the browser pass) for adding a set with text and seeing its type, a set that doesn't type, giving an object's states, and updating expected values from a replay.
 - **Acceptance**, on an invented model:
-  - A purchase request lifecycle: `Submit` runs `RecordSubmission`, which sets `submittedBy` to `actor()` and `submittedOn` to `now()`. `Approve` is guarded by `subject.submittedBy <> actor()`. A scenario where Bob submits and Bob is refused approval, then Carol approves.
+  - A purchase request lifecycle: `Submit` runs `RecordSubmission`, which sets `submittedBy` to `current_actor()` and `submittedOn` to `now()`. `Approve` is guarded by `subject.submittedBy <> current_actor()`. A scenario where Bob submits and Bob is refused approval, then Carol approves.
   - An employee in an `Employment` lifecycle, and an `Assignment` lifecycle whose `Start` move needs `in_state(subject.employee, Employment.Active)`. One scenario gives Ann as Active and passes. One gives no state and is refused, with the note that the initial state was assumed.
   - A `Training` lifecycle on the same employee, reading `Employment` on the subject itself.
 
@@ -318,7 +318,7 @@ The sizes are days for a person who knows the code, with tests and a review. The
 | --- | --- | --- | --- |
 | 1 | Contract and language | The schemas, `openapi.yaml`, rule texts; `Expr` gains `Actor`, `InState` and `Of`; the `Set` site kind; text parse and print; typing, lowering; `ExprSites` for set sites; MQ9801 to MQ9803, MQ3116 and the four changed rules; references and deletes (these two go to a references agent, below) | Two days |
 | 1 | Editor | The Sets editor and the Value box, the objects' States cell, expected values, the simulation panel, quick fixes, the mock | A day and a half |
-| 2 | Simulation and scenarios | The interpreter's own row and sets; states in rows; `actor()`; trace members and notes; MQ9307; replay keys; simulate, record and verify; the exporter's meta | A day and a half |
+| 2 | Simulation and scenarios | The interpreter's own row and sets; states in rows; `current_actor()`; trace members and notes; MQ9307; replay keys; simulate, record and verify; the exporter's meta | A day and a half |
 | 2 | Resolved model and output | `RSet`, the new nodes in `RExpression`, records, tool texts; `csharp-dapper` and `process-docs` | A day |
 | 3 | Docs | User guide (processes, expressions, scenarios), releases, modeling skill, capabilities rows, `next.md` | Half a day |
 
@@ -326,7 +326,7 @@ That comes to about six and a half days for a person.
 
 **Checklist for every group.** Anything that reads or writes an action, an expression node, a scenario object or a step's expectation must be found and handled:
 - **The expression language:** `Model/Expressions.cs`, `Expressions/ExprText.cs` (parse beside `now`, print), `Expressions/ExprTyper.cs` (site rules beside `AllowsNow`), `Expressions/ExprLowering.cs` and `ExprJs.cs`, `Expressions/ExprSql.cs` (refuse), `Expressions/ExprScope.cs`, the expression runtime's `mq` functions, and `Validation/ExpressionRules.cs` (`ExprSites.Of` for set sites, `ReadsSubject` and `SubjectRowDepth` counting `of` paths).
-- **Processes:** `Model/Processes.cs` (`ProcessAction`, `ScenarioObject`, the step expectation), `Processes/ProcessExpressions.cs` (lowered sets beside lowered conditions, the row with states and `actor()`; `:146` skips lowering when no guard has a condition, so it must lower for sets too; `:170` writes no defaults row unless a condition reads `subject`, so sets must count), `Processes/StatechartInterpreter.cs` (the row for the root instance, now written), `Processes/ScenarioObjects.cs` (the subject row at `:32` must exist for sets), `Processes/ScenarioReplayer.cs`, `Processes/StepTrace.cs`, `Processes/ProcessLibraries.cs` and `Validation/ProcessRules.cs` (MQ9020), `Processes/XStateExporter.cs` and `XStateImporter.cs`.
+- **Processes:** `Model/Processes.cs` (`ProcessAction`, `ScenarioObject`, the step expectation), `Processes/ProcessExpressions.cs` (lowered sets beside lowered conditions, the row with states and `current_actor()`; `:146` skips lowering when no guard has a condition, so it must lower for sets too; `:170` writes no defaults row unless a condition reads `subject`, so sets must count), `Processes/StatechartInterpreter.cs` (the row for the root instance, now written), `Processes/ScenarioObjects.cs` (the subject row at `:32` must exist for sets), `Processes/ScenarioReplayer.cs`, `Processes/StepTrace.cs`, `Processes/ProcessLibraries.cs` and `Validation/ProcessRules.cs` (MQ9020), `Processes/XStateExporter.cs` and `XStateImporter.cs`.
 - **Resolver and records:** `Resolution/ResolvedProcesses.cs`, `Resolution/ResolvedExpressions.cs`, `Editor/ResolvedRecords.cs`.
 - **The `Set` site kind:** `ExprJs.cs:23`, `ExprTyper.cs:63`, `ExprScope.cs:195-196`, `ExprSql.cs`, `BuiltinHelpers.cs:719`, `ModelStore.ExpressionPreview.cs:87-89` (decision 3).
 - **Contracts:** the schema copies, `openapi.yaml` and its generated files. `validation-rules.json` is written only by the fixed command.

@@ -49,8 +49,8 @@ internal static class ExprJs
                 return Read(t, "mq.at(row" + string.Concat(member.Split('.').Select(k => ", " + Str(k))) + ")", ColumnOf(t));
             if (e.Now is not null)
                 return "mq.now()";
-            if (e.Actor is not null)
-                return Read(t, "mq.actor()", new ExprColumn("actor") { Form = form ?? ExprStoredForm.Text });
+            if (e.CurrentActor is not null)
+                return Read(t, "mq.currentActor()", new ExprColumn("actor") { Form = form ?? ExprStoredForm.Text });
             if (e.InState is not null)
                 return InState(t);
             if (e.Op is { } op)

@@ -435,10 +435,10 @@ public static class ExprText
                 return new Expr { Now = true };
             }
 
-            if (name == "actor")
+            if (name == "current_actor")
             {
                 ExpectSymbol(")");
-                return new Expr { Actor = true };
+                return new Expr { CurrentActor = true };
             }
 
             if (name == "in_state")
@@ -795,9 +795,9 @@ public static class ExprText
                 return;
             }
 
-            if (e.Actor is not null)
+            if (e.CurrentActor is not null)
             {
-                sb.Append("actor()");
+                sb.Append("current_actor()");
                 return;
             }
 
