@@ -11,7 +11,13 @@
 | | |
 | --- | --- |
 | Name | {{ md_code a.name }} |
-| Type | {{ a.type }} |
+| Type | {{ actor_type(a) }} |
+{{- if a.member_of.size > 0 }}
+| Member of | {{ actor_links(a.member_of, "../") }} |
+{{- end }}
+{{- if a.members.size > 0 }}
+| Members | {{ actor_links(a.members, "../") }} |
+{{- end }}
 {{- if a.stereotypes.size > 0 }}
 | Stereotypes | {{ for st in a.stereotypes }}{{ for.first ? "" : ", " }}{{ md_code st.key }}{{ end }} |
 {{- end }}
@@ -82,5 +88,57 @@
 | --- | --- | --- | --- |
 {{- for x in tasks }}
 | {{ md_code x.invoke.name }} | {{ x.invoke.type }} | {{ process_link(x.process, "../") }} | {{ md_code x.invoke.state.path }} |
+{{- end }}
+{{- end }}
+{{- # What it acts in through its memberships at any depth (actors-design.md decision 5): a list that names a role, group or
+    # organization it is a member of, and not the actor itself. One row per event, gate or task, with the actors it comes through.
+    through = []
+    seen = {}
+    for m in a.all_member_of
+      for p in m.processes
+        for e in p.events
+          if has_actor(e.actors, m) && !has_actor(e.actors, a)
+            key = "event:" + e.id
+            if seen[key] == null
+              seen[key] = through.size
+              through[through.size] = { what: "Event " + (md_code e.name), process: p, via: [] }
+            end
+            row = through[seen[key]]
+            row.via[row.via.size] = m
+          end
+        end
+        for g in p.gates
+          if has_actor(g.signers, m) && !has_actor(g.signers, a)
+            key = "gate:" + g.id
+            if seen[key] == null
+              seen[key] = through.size
+              through[through.size] = { what: "Gate " + (md_cell g.display_name) + " (" + (md_code g.name) + ")", process: p, via: [] }
+            end
+            row = through[seen[key]]
+            row.via[row.via.size] = m
+          end
+        end
+        for i in p.invokes
+          if has_actor(i.actors, m) && !has_actor(i.actors, a)
+            key = "task:" + i.id
+            if seen[key] == null
+              seen[key] = through.size
+              through[through.size] = { what: "Task " + (md_code i.name), process: p, via: [] }
+            end
+            row = through[seen[key]]
+            row.via[row.via.size] = m
+          end
+        end
+      end
+    end
+}}
+{{- if through.size > 0 }}
+
+## Through membership
+
+| What | Process | Through |
+| --- | --- | --- |
+{{- for x in through }}
+| {{ x.what }} | {{ process_link(x.process, "../") }} | {{ actor_links(x.via, "../") }} |
 {{- end }}
 {{- end }}

@@ -251,6 +251,108 @@ public sealed class CompileTests
         Assert.True(run.ExitCode == 0 && run.Output.Contains("codes ok", StringComparison.Ordinal), run.Output);
     }
 
+    [Fact]
+    public async Task Actor_types_and_membership_compile_and_let_members_act()
+    {
+        // actors-design.md decisions 25 and 26: the actors case's output (a group, an organization, the system actor and membership
+        // three levels deep) builds with warnings as errors, an enum member named System included, and members act for their holders.
+        using var repo = PackRepo.Actors();
+        await repo.GenerateCleanlyAsync();
+        Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "actors", "expected"), repo.PathOf("out"));
+        var project = Path.Combine(repo.Repo.Root, "actors");
+        WriteProject(project, repo.PathOf("out"), ActorsProgram, web: true);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll")], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("actors ok", StringComparison.Ordinal), run.Output);
+    }
+
+    [Fact]
+    public async Task Actors_named_like_the_members_of_the_actors_class_compile()
+    {
+        // An actor named Accepts or All would clash with the class's own members: only those constants get "Actor" appended, the
+        // others keep their names, and the checks still read the names envelopes carry.
+        using var repo = PackRepo.Actors();
+        repo.Write(".maquettiste/model/actors/accepts.json",
+            """{ "kind": "actor", "id": "01JAC000000000000000000K91", "name": "Accepts", "type": "person", "memberOf": ["01JAC000000000000000000K04"] }""");
+        repo.Write(".maquettiste/model/actors/all.json", """{ "kind": "actor", "id": "01JAC000000000000000000K92", "name": "All", "type": "role" }""");
+        await repo.GenerateCleanlyAsync();
+        var actors = File.ReadAllText(Path.Combine(repo.PathOf("out"), "Processes", "Actors.cs"));
+        Assert.Contains("public const string AcceptsActor = \"Accepts\";", actors, StringComparison.Ordinal);
+        Assert.Contains("public const string AllActor = \"All\";", actors, StringComparison.Ordinal);
+        Assert.Contains("public const string Pat = \"Pat\";", actors, StringComparison.Ordinal);
+        var project = Path.Combine(repo.Repo.Root, "clash");
+        WriteProject(project, repo.PathOf("out"), """
+            using System;
+            using System.Linq;
+            using App.Model.Processes;
+
+            Check(Actors.AcceptsActor == "Accepts" && Actors.AllActor == "All", "the names");
+            Check(Actors.Accepts(Actors.Approver, Actors.AcceptsActor), "Accepts acts for Approver through Seniors");
+            Check(Actors.All.Contains(Actors.AllActor) && Actors.TypeOf(Actors.AllActor) == ActorType.Role, "All is a role");
+            Console.WriteLine("clash ok");
+
+            static void Check(bool ok, string what)
+            {
+                if (!ok)
+                    throw new InvalidOperationException("Failed: " + what);
+            }
+
+            """, web: true);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll")], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("clash ok", StringComparison.Ordinal), run.Output);
+    }
+
+    private const string ActorsProgram = """
+        using System;
+        using System.Linq;
+        using App.Model.Ops;
+        using App.Model.Processes;
+        using App.Model.Runtime;
+
+        // Membership at any depth: Pat is in Seniors, Seniors in Approver, Approver in Plant; the system actor is in Scheduler.
+        Check(Actors.Allows([Actors.Plant], Actors.Pat), "Pat acts for Plant");
+        Check(Actors.Accepts(Actors.Approver, Actors.Seniors), "Seniors act for Approver");
+        Check(!Actors.Allows([Actors.Seniors], Actors.Approver), "a holder does not act for its members");
+        Check(!Actors.Allows([Actors.Plant, Actors.Scheduler], Actors.Clerk), "Clerk is a member of nothing");
+        Check(Actors.Accepts(Actors.Scheduler, Actors.Automatic), "the system actor holds Scheduler");
+        Check(Actors.TypeOf(Actors.Automatic) == ActorType.System, "System");
+        Check(Actors.TypeOf(Actors.Plant) == ActorType.Organization, "Organization");
+        Check(Actors.TypeOf(Actors.Seniors) == ActorType.Group, "Group");
+
+        // The interpreter follows membership for a human task, a gate's signers and its required actor, and an event.
+        var clock = new ManualClock(DateTimeOffset.UnixEpoch);
+        var machine = new RequestFlowMachine(new RequestFlowHandlers(), clock);
+        var step = machine.Submit(machine.Start("r-1").Snapshot, new RequestFlowSubmitCommand(new ProcessEnvelope("r-1", Actors.Clerk)));
+        Check(step.Accepted && step.States.SequenceEqual([RequestFlowStates.Reviewing]), "submit");
+        var refused = machine.Complete(step.Snapshot, new RequestFlowInvokeResultControl(new ProcessEnvelope("r-1", Actors.Clerk), "review"));
+        Check(!refused.Accepted && refused.Refusal == Refusals.Actor, "Clerk may not review");
+        step = machine.Complete(step.Snapshot, new RequestFlowInvokeResultControl(new ProcessEnvelope("r-1", Actors.Pat), "review"));
+        Check(step.Accepted && step.States.SequenceEqual([RequestFlowStates.Pending]), "Pat reviews as an Approver");
+        var approved = machine.Approve(step.Snapshot, new RequestFlowApproveCommand(new ProcessEnvelope("r-1", Actors.Pat, Signer: "pat", Meaning: "approved")));
+        Check(approved.Accepted && approved.States.SequenceEqual([RequestFlowStates.Approved]), "Pat signs for Plant and counts as the required Approver");
+
+        // A second request waits in Pending until its timer escalates it; the system actor may then cancel it as a Scheduler.
+        step = machine.Submit(machine.Start("r-2").Snapshot, new RequestFlowSubmitCommand(new ProcessEnvelope("r-2", Actors.Clerk)));
+        step = machine.Complete(step.Snapshot, new RequestFlowInvokeResultControl(new ProcessEnvelope("r-2", Actors.Seniors), "review"));
+        Check(step.Accepted && step.States.SequenceEqual([RequestFlowStates.Pending]), "Seniors review as an Approver");
+        clock.Advance(TimeSpan.FromDays(2));
+        var escalated = machine.Tick(step.Snapshot);
+        Check(escalated.States.SequenceEqual([RequestFlowStates.Escalated]), "the timer");
+        var cancelled = machine.Cancel(escalated.Snapshot, new RequestFlowCancelCommand(new ProcessEnvelope("r-2", Actors.Automatic)));
+        Check(cancelled.Accepted && cancelled.States.SequenceEqual([RequestFlowStates.Cancelled]), "the system actor cancels as Scheduler");
+        Console.WriteLine("actors ok");
+
+        static void Check(bool ok, string what)
+        {
+            if (!ok)
+                throw new InvalidOperationException("Failed: " + what);
+        }
+
+        """;
+
     private const string LifecycleCodesProgram = """
         using System;
         using System.Linq;

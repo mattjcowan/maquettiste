@@ -11,7 +11,7 @@ import type {
   RelationEndDoc,
   TypeRef,
 } from "@/api/types";
-import { KIND_LABELS } from "./labels";
+import { ACTOR_TYPES, KIND_LABELS, type ActorType } from "./labels";
 import { subjectsOf } from "./process";
 
 export const BUILTIN_TYPES: BuiltinType[] = [
@@ -184,7 +184,12 @@ function indexMembers(json: Record<string, unknown>, actorIds?: ReadonlySet<stri
     const actors = actorIdsIn(json, actorIds);
     if (actors.length) out.actors = actors;
   }
-  if (kind === "actor" && (json.type === "person" || json.type === "role" || json.type === "external-system")) out.actorType = json.type;
+  if (kind === "actor" && typeof json.type === "string" && (ACTOR_TYPES as readonly string[]).includes(json.type)) {
+    out.actorType = json.type as ActorType;
+    // The index lists memberOf only when non-empty, in file order.
+    const memberOf = Array.isArray(json.memberOf) ? json.memberOf.filter((m): m is string => typeof m === "string") : [];
+    if (memberOf.length > 0) out.memberOf = memberOf;
+  }
   if (kind === "scenario") {
     if (typeof json.process === "string") out.process = json.process;
     out.stepCount = Array.isArray(json.steps) ? json.steps.length : 0;

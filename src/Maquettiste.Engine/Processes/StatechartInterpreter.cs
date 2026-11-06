@@ -24,6 +24,16 @@ public sealed record InterpreterOptions
     /// <summary>An actor's name for the <c>event.actor</c> an expression sees; the id when absent.</summary>
     public Func<string, string?>? ActorName { get; init; }
 
+    /// <summary>
+    /// Whether an acting actor (the second argument) satisfies a listed actor (the first): it is that actor or one of its members at any
+    /// depth (actors-design.md decision 5). Events, human tasks, gate signers and required actors use it; ordinal equality when absent.
+    /// </summary>
+    public Func<string, string, bool>? Accepts { get; init; }
+
+    /// <summary>The project's system actor (actors-design.md decision 2), named by a trace whose move gives no actor: the initial entry,
+    /// a time step or a finished invoke that is not a human task. No trace names it when absent.</summary>
+    public string? SystemActor { get; init; }
+
     /// <summary>Why a value does not fit a context attribute (MQ9505), or <see langword="null"/>; no check when absent.</summary>
     public Func<ModelAttribute, JsonElement, string?>? Fits { get; init; }
 
@@ -168,7 +178,7 @@ public sealed class StatechartInterpreter
         }
 
         var ev = target.Chart.Events[input.Event!];
-        if (ev.Actors.Count > 0 && (input.Actor is null || !ev.Actors.Contains(input.Actor, StringComparer.Ordinal)))
+        if (ev.Actors.Count > 0 && (input.Actor is null || !Allows(ev.Actors, input.Actor)))
         {
             Refuse(Refusals.Actor);
             return;
@@ -233,13 +243,15 @@ public sealed class StatechartInterpreter
         if (found.Instance is null)
         {
             var name = input.Invoke is not null && Chart.Invokes.TryGetValue(input.Invoke, out var known) ? known.Invoke.Name : input.Invoke;
+            _scope.HumanTask = input.Invoke is not null && Chart.Invokes.TryGetValue(input.Invoke, out var declared) && declared.Invoke.Type == InvokeType.HumanTask;
             Problem("MQ9305", $"The invoke '{name}' is not pending (its state is not active, or it already completed); complete an invoke of an active state.");
             Refuse(Refusals.NoTransition);
             return;
         }
 
+        _scope.HumanTask = found.Invoke.Type == InvokeType.HumanTask;
         if (found.Invoke.Type == InvokeType.HumanTask && found.Invoke.Actors.Count > 0
-            && (input.Actor is null || !found.Invoke.Actors.Contains(input.Actor, StringComparer.Ordinal)))
+            && (input.Actor is null || !Allows(found.Invoke.Actors, input.Actor)))
         {
             Refuse(Refusals.Actor);
             return;
@@ -596,7 +608,7 @@ public sealed class StatechartInterpreter
         var input = _scope.Input!;
         var signatures = inst.Signatures.TryGetValue(t.Id, out var existing) ? existing : [];
         string? refusal = null;
-        if (input.Actor is null || string.IsNullOrEmpty(input.Signer) || !gate.Signers.Contains(input.Actor, StringComparer.Ordinal))
+        if (input.Actor is null || string.IsNullOrEmpty(input.Signer) || !Allows(gate.Signers, input.Actor))
             refusal = Refusals.GateSigner;
         else if (!gate.AllowRepeatSigner && signatures.Any(s => string.Equals(s.Signer, input.Signer, StringComparison.Ordinal)))
             refusal = Refusals.GateRepeat;
@@ -634,7 +646,7 @@ public sealed class StatechartInterpreter
         signatures.Add(new Signature(input.Signer!, input.Actor!, meaning, input.Reason));
         Audit(inst, gate, t, input.Signer, input.Actor, meaning, input.Reason, GateOutcome.Signed, attributes);
         var complete = signatures.Count >= Math.Max(1, gate.Required)
-            && gate.RequiredActors.All(a => signatures.Any(s => string.Equals(s.Actor, a, StringComparison.Ordinal)));
+            && gate.RequiredActors.All(a => signatures.Any(s => Accepts(a, s.Actor)));
         if (complete)
         {
             Audit(inst, gate, t, input.Signer, input.Actor, meaning, input.Reason, GateOutcome.Completed, attributes);
@@ -970,7 +982,36 @@ public sealed class StatechartInterpreter
 
         var diagnostics = _scope.Diagnostics.Distinct().ToList();
         return new StepTrace(_index, _scope.Input, _scope.Refusal is null, _scope.Refusal, _scope.Microsteps, _scope.Guards, _scope.Audit,
-            Configuration, Snapshot(), changed, ClockText(), _root.Done, diagnostics);
+            Configuration, Snapshot(), changed, ClockText(), _root.Done, diagnostics) { Actor = MoveActor() };
+    }
+
+    // The actor of the move (actors-design.md decision 2), named only when the system actor made it: a move no one sends (the initial
+    // entry, a time step, a finished invoke that is not a human task) whose input names no actor, in a project with exactly one system
+    // actor. A step's own actor is already in its input, so the trace leaves it out and answers stay as they were without a system actor.
+    // A refused step moved nothing, so it names no actor.
+    private string? MoveActor()
+    {
+        var input = _scope.Input;
+        if (_options.SystemActor is not { } system || input?.Actor is not null || _scope.Refusal is not null)
+            return null;
+        return input is null || input.Input == StepInput.Time || (input.Input is StepInput.InvokeDone or StepInput.InvokeError && !_scope.HumanTask)
+            ? system
+            : null;
+    }
+
+    // Whether the acting actor satisfies the listed one: itself, or one of its members at any depth (actors-design.md decision 5).
+    private bool Accepts(string listed, string actor) =>
+        _options.Accepts?.Invoke(listed, actor) ?? string.Equals(listed, actor, StringComparison.Ordinal);
+
+    private bool Allows(IReadOnlyList<string> list, string actor)
+    {
+        foreach (var listed in list)
+        {
+            if (Accepts(listed, actor))
+                return true;
+        }
+
+        return false;
     }
 
     private SortedDictionary<string, JsonElement> Snapshot() => new(_root.Context, StringComparer.Ordinal);
@@ -1081,6 +1122,7 @@ public sealed class StatechartInterpreter
         public ScenarioStep? Input { get; } = input;
         public JsonElement Event { get; set; } = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["name"] = null, ["actor"] = null, ["payload"] = new Dictionary<string, object?>() });
         public string? Refusal { get; set; }
+        public bool HumanTask { get; set; }
         public List<MicrostepTrace> Microsteps { get; } = [];
         public List<GuardEvaluation> Guards { get; } = [];
         public List<GateAuditRecord> Audit { get; } = [];

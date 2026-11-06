@@ -2,6 +2,13 @@
 # interpreter (generated side): runtime/statechart.gen.ts, the interpreter every generated process runs on. Written only when
 # the model has processes. The TypeScript below is copied as written (an escaped block), so it may use any braces.
 if model.processes.size > 0
+# Whether any actor is a member of another (actors-design.md decision 25): only then do actor checks follow membership.
+has_members = false
+for a in model.actors
+  if a.member_of.size > 0
+    has_members = true
+  end
+end
 -}}
 {{- capture content -}}
 {{ banner "//" }}
@@ -1320,5 +1327,18 @@ function describe(value: unknown): string {
 }
 }%}
 {{- end -}}
+{{-
+# With memberships, the actor checks for events, human tasks, signers and required actors call the actors module's allows and
+# accepts. The interpreter is an escaped block, so the checks are swapped in its text; without memberships it is left as written.
+if has_members
+  host_line = "import { createHost } from " + (ts_string (ts_module "process-host" pack.params.importExtension)) + ";"
+  actors_line = "import { accepts, allows } from " + (ts_string (ts_import "runtime/statechart.gen.ts" (pack.params.processFolder + "/actors") pack.params.importExtension)) + ";"
+  content = content | string.replace host_line (host_line + "\n" + actors_line)
+  content = content | string.replace "!ev.actors.includes(actor)" "!allows(ev.actors, actor)"
+  content = content | string.replace "!def.actors.includes(actor)" "!allows(def.actors, actor)"
+  content = content | string.replace "!gate.signers.includes(actor)" "!allows(gate.signers, actor)"
+  content = content | string.replace "all.some((s) => s.actor === a)" "all.some((s) => accepts(a, s.actor))"
+end
+-}}
 {{- file "runtime/statechart.gen.ts" content -}}
 {{- end -}}

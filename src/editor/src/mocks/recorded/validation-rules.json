@@ -2652,7 +2652,7 @@
   {
     "id": "MQ9102",
     "defaultSeverity": "error",
-    "description": "A gate's required actors are not all among its signers; add them to signers.",
+    "description": "A gate's required actors are not all among its signers (a required actor that is a member, at any depth, of a signer counts as among them); add them to signers.",
     "family": "MQ91xx",
     "familyLabel": "Actors and gates",
     "canBeOff": true
@@ -2676,7 +2676,7 @@
   {
     "id": "MQ9105",
     "defaultSeverity": "warning",
-    "description": "A gate signer that may not raise the gate's event (the event lists its actors and leaves the signer out); add the signer to the event's actors.",
+    "description": "A gate signer that may not raise the gate's event (the event lists its actors and leaves the signer out, and the signer is not a member of one of them at any depth); add the signer to the event's actors.",
     "family": "MQ91xx",
     "familyLabel": "Actors and gates",
     "canBeOff": true
@@ -2684,7 +2684,7 @@
   {
     "id": "MQ9106",
     "defaultSeverity": "info",
-    "description": "An actor no process references (event actors, gate signers, human tasks); use it in a process or remove it.",
+    "description": "An actor no process references (event actors, gate signers, human tasks), directly, through a member at any depth, or through an actor it is a member of at any depth; use it in a process or remove it.",
     "family": "MQ91xx",
     "familyLabel": "Actors and gates",
     "canBeOff": true
@@ -2925,6 +2925,30 @@
     "description": "A macrostep ran more than 1,000 microsteps (an eventless loop whose guards keep holding, or internal events that keep raising each other); break the loop with a guard that turns false.",
     "family": "MQ95xx",
     "familyLabel": "Process expressions and simulation",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9601",
+    "defaultSeverity": "error",
+    "description": "A memberOf entry that does not name a role, group or organization, names the actor itself, or is listed twice; remove the entry.",
+    "family": "MQ96xx",
+    "familyLabel": "Actor types and membership",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9602",
+    "defaultSeverity": "error",
+    "description": "Memberships form a cycle (an actor is, through memberOf, a member of itself); the message names the cycle. Remove one of its memberships.",
+    "family": "MQ96xx",
+    "familyLabel": "Actor types and membership",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9605",
+    "defaultSeverity": "error",
+    "description": "Two or more actors of type system: the system itself (shown as Automatic) is one actor per project; change the type of all but one, for example to external-system, or give it roles through memberOf.",
+    "family": "MQ96xx",
+    "familyLabel": "Actor types and membership",
     "canBeOff": true
   }
 ]

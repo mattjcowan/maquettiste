@@ -1207,7 +1207,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         // baseline too, so their pre-existing errors never block the delete.
         var changed = plan.ChangeByElement.Keys.Order(StringComparer.Ordinal).ToList();
         var placements = FormerPlacements(changed, before, candidate).Concat(FormerRowTables(changed, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
-        var followers = FormerFactFollowers(changed, before, candidate).ToList();
+        var followers = FormerFactFollowers(changed, before, candidate).Concat(FormerActorPeers(changed, before, candidate)).ToList();
         // A dry run counts the deletes too: what a deleted element had shows as removed.
         if ((preview is null ? plan.ChangedIds.Count : changed.Count) == 0 && placements.Count == 0 && followers.Count == 0)
             return [];
@@ -1350,6 +1350,20 @@ public sealed partial class ModelStore : IAsyncDisposable
             if (fact.After.Any(deleted.Contains))
                 yield return fact.Id;
         }
+    }
+
+    /// <summary>
+    /// Every other actor when the change deleted an actor (actors-design.md section 14): an actor's type and memberships decide MQ9106,
+    /// MQ9602 and MQ9605 on other actors, and the validator's peers of an actor (<see cref="Validation.ModelValidator.ProcessPeers"/>)
+    /// come from its document, which a deleted actor no longer has. A member or a second system actor names no one, so the actors whose
+    /// findings it changed are not its referrers. One pass over the candidate's actors, only when the change deleted an actor.
+    /// </summary>
+    private static IEnumerable<string> FormerActorPeers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        if (!changedIds.Any(id => before.GetDocument(id)?.Element is Actor && candidate.GetDocument(id) is null))
+            yield break;
+        foreach (var actor in candidate.All<Actor>())
+            yield return actor.Id;
     }
 
     private static IEnumerable<string> FormerReferrers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)

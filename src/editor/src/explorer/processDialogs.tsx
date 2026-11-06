@@ -12,7 +12,8 @@ import { requestSimulation } from "@/editors/process/simulation/requests";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
-import { ACTOR_TYPE_LABELS, GROUP_LABELS, PROCESS_LABELS } from "@/model/labels";
+import { systemActorProblem } from "@/model/actors";
+import { ACTOR_TYPE_OPTION_LABELS, GROUP_LABELS, PROCESS_LABELS } from "@/model/labels";
 import { newId } from "@/lib/ids";
 import { clone } from "@/lib/json";
 import { domainChoices } from "./dialogs";
@@ -324,7 +325,8 @@ function NewActorDialog({ forest, onClose }: { forest: Forest; onClose: () => vo
     .map((s) => ({ key: String(s.key), name: String(s.name ?? s.key) }));
   const withGoals = goalsStereotypes((project.data?.extensions ?? []) as never);
   const showGoals = chosen.some((k) => withGoals.has(k));
-  const problem = processNameProblem(name);
+  const systemProblem = type === "system" ? systemActorProblem(forest.byId.values()) : null;
+  const problem = processNameProblem(name) ?? systemProblem;
   const save = async () => {
     if (problem || busy) return;
     setBusy(true);
@@ -358,7 +360,7 @@ function NewActorDialog({ forest, onClose }: { forest: Forest; onClose: () => vo
             <Select id="new-actor-type" value={type} onChange={(e) => setType(e.target.value as ActorType)}>
               {ACTOR_TYPES.map((t) => (
                 <option key={t} value={t}>
-                  {ACTOR_TYPE_LABELS[t]}
+                  {ACTOR_TYPE_OPTION_LABELS[t]}
                 </option>
               ))}
             </Select>
@@ -383,7 +385,7 @@ function NewActorDialog({ forest, onClose }: { forest: Forest; onClose: () => vo
               <Textarea id="new-actor-goals" rows={3} value={goals} onChange={(e) => setGoals(e.target.value)} />
             </Field>
           ) : null}
-          {name !== "" && problem ? <p className="text-12 text-danger">{problem}</p> : null}
+          {(name !== "" || systemProblem) && problem ? <p className="text-12 text-danger">{problem}</p> : null}
           <ErrorLine error={error} />
           <Actions onCancel={onClose} disabled={!!problem || busy} testid="new-actor-create" />
         </form>

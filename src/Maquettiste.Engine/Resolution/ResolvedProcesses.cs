@@ -432,14 +432,30 @@ public sealed class RAuditField : RObject
     public RAttribute? Attribute { get; internal set; }
 }
 
-/// <summary>A resolved actor (phase-3-design.md section 2.5): a person, a role or an external system.</summary>
+/// <summary>A resolved actor (phase-3-design.md section 2.5, actors-design.md section 6): a person, a role, a group, an organization, an
+/// external system or the system itself, with its memberships.</summary>
 public sealed class RActor : RElement
 {
     /// <inheritdoc/>
     public override string Kind => "actor";
 
-    /// <summary><c>person</c>, <c>role</c> or <c>external-system</c>.</summary>
+    /// <summary><c>person</c>, <c>role</c>, <c>group</c>, <c>organization</c>, <c>external-system</c> or <c>system</c> (the system itself,
+    /// shown as Automatic).</summary>
     public string Type { get; internal set; } = "person";
+
+    /// <summary>The roles, groups and organizations the actor is directly a member of, in file order (actors-design.md section 6). An
+    /// entry that names no role, group or organization, or the actor itself (MQ9601), is left out.</summary>
+    public RList<RActor> MemberOf { get; internal set; } = RList<RActor>.Empty;
+
+    /// <summary>The actors directly members of this one, by (name, id); empty unless it is a role, group or organization.</summary>
+    public RList<RActor> Members { get; internal set; } = RList<RActor>.Empty;
+
+    /// <summary>The roles, groups and organizations the actor is a member of at any depth, by (name, id), each once and never the actor
+    /// itself, even in a cycle (MQ9602).</summary>
+    public RList<RActor> AllMemberOf { get; internal set; } = RList<RActor>.Empty;
+
+    /// <summary>The actors members of this one at any depth, by (name, id), each once and never the actor itself.</summary>
+    public RList<RActor> AllMembers { get; internal set; } = RList<RActor>.Empty;
 
     /// <summary>The processes that reference the actor (event actors, invoke actors, gate signers), in process order.</summary>
     public RList<RProcess> Processes { get; internal set; } = RList<RProcess>.Empty;

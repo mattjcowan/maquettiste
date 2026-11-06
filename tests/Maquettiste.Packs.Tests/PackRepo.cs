@@ -600,6 +600,48 @@ internal sealed class PackRepo : IDisposable
     }
 
     /// <summary>
+    /// The csharp-dapper pack's own <c>actors</c> case (<c>packs/csharp-dapper/tests/actors</c>, actors-design.md section 8): a person,
+    /// roles, a group, an organization and the system actor, with membership three levels deep (Pat in Seniors, Seniors in Approver,
+    /// Approver in Plant) and the system actor in Scheduler; RequestFlow lists them on events, a human task and a gate with a required
+    /// actor, and has a timer. csharp-dapper writes to <c>out</c>; with <paramref name="typeScript"/> the TypeScript sample pack writes
+    /// to <c>web</c> instead, set up as in <see cref="TypeScript"/>.
+    /// </summary>
+    /// <param name="typeScript">Whether to run the TypeScript sample pack instead of csharp-dapper.</param>
+    /// <returns>The repo.</returns>
+    public static PackRepo Actors(bool typeScript = false)
+    {
+        var repo = new PackRepo();
+        var source = Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "actors");
+        CopyTree(Path.Combine(source, "model"), Path.Combine(repo.Repo.ModelRoot, "model"));
+        if (typeScript)
+        {
+            CopyTree(Path.Combine(Fixtures.RepoRoot, "samples", "typescript-pack"), Path.Combine(repo.Repo.ModelRoot, "templates", "typescript"));
+            repo.Write(".maquettiste/maquettiste.json", """
+                {
+                  "formatVersion": 1,
+                  "name": "actors",
+                  "outputs": { "allow": [ { "path": "web" } ] },
+                  "packs": { "typescript": { "output": "web", "parameters": { "importExtension": ".ts", "zod": false } } }
+                }
+
+                """);
+            return repo;
+        }
+
+        CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper"), Path.Combine(repo.Repo.ModelRoot, "templates", "csharp-dapper"));
+        repo.Write(".maquettiste/maquettiste.json", """
+            {
+              "formatVersion": 1,
+              "name": "actors",
+              "outputs": { "allow": [ { "path": "out" } ] },
+              "packs": { "csharp-dapper": { "output": "out" } }
+            }
+
+            """);
+        return repo;
+    }
+
+    /// <summary>
     /// The gate 3 fixture (<c>tests/fixtures/models/processes</c>, phase-3-design.md section 8.1) with every example pack its settings
     /// name that exists under <c>packs/</c>. With <paramref name="sources"/> the fixture's C# solution comes along (its isolation files,
     /// projects, the committed companions under <c>src/Processes.Data/Custom</c> and the test host), so the generated code can be built

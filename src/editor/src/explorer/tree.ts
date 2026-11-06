@@ -10,6 +10,7 @@ import type { Diagnostic, ElementDocument, ElementSummary, ExplorerFolder, Table
 import type { AttributeDoc } from "@/api/types";
 import { attributesOf, typeLabel } from "@/model/model";
 import { soleSubject } from "@/model/process";
+import { memberOfText } from "@/model/actors";
 import { tableKeyOf } from "@/search/engine";
 import type { TablePart, TablePartKind } from "@/workspaces/database/tableParts";
 import { patchesBetween, type IndexPatch } from "@/api/indexPatch";
@@ -347,7 +348,7 @@ function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row, actsIn?: ReadonlyM
     const names = r.subjects?.length ? r.subjects.map((e) => nameOf(e) ?? e).join(", ") : r.subject ? nameOf(r.subject) : undefined;
     return processSecondary(r, names, undefined);
   }
-  if (r.kind === "actor") return actorSecondary(r, actsIn?.get(r.id));
+  if (r.kind === "actor") return actorSecondary(r, actsIn?.get(r.id), memberOfText(r.memberOf, nameOf));
   if (r.kind === "operation") return [r.subject ? nameOf(r.subject) : undefined, r.effect].filter(Boolean).join(" · ");
   return undefined;
 }
@@ -363,8 +364,10 @@ export function processSecondary(r: Pick<Row, "use" | "stateCount">, subject: st
 }
 
 /** An actor row's secondary text: its type, its stereotypes, then where it acts ("role · persona · acts in 3 processes"). */
-export function actorSecondary(r: Pick<Row, "actorType" | "stereotypes">, actsIn?: number): string {
-  return [r.actorType ? ACTOR_TYPE_LABELS[r.actorType] : "", ...(r.stereotypes ?? []), actsIn ? PROCESS_LABELS.actsIn(actsIn) : ""].filter(Boolean).join(" · ");
+export function actorSecondary(r: Pick<Row, "actorType" | "stereotypes">, actsIn?: number, memberOf?: string): string {
+  return [r.actorType ? ACTOR_TYPE_LABELS[r.actorType] : "", memberOf, ...(r.stereotypes ?? []), actsIn ? PROCESS_LABELS.actsIn(actsIn) : ""]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /** A scenario's status words: "passed", "failed at step 2", "not run". */
@@ -1509,16 +1512,43 @@ export function buildForest(input: TreeInput): Forest {
   processTop.push(...groupByUse(ROOTS.processes, looseByUse));
   if (actorRows.length) {
     const byType = new Map<string, TreeNode[]>();
+    // A role, group or organization lists its members as rows that go to the member's own row, built when the holder opens.
+    // The walk stops at an actor already on the path, so a model with a membership cycle (MQ9602) still draws.
+    const membersOf = new Map<string, Row[]>();
+    for (const r of actorRows) for (const holder of new Set(r.memberOf ?? [])) push(membersOf, holder, r);
+    const attachMembers = (node: TreeNode, path: readonly string[]) => {
+      const list = (membersOf.get(node.id!) ?? []).filter((m) => !path.includes(m.id));
+      if (!list.length) return;
+      node.children = undefined;
+      pending.set(node.key, () =>
+        list
+          .map((m) => {
+            const key = `${node.key}/m:${m.id}`;
+            const row = add(newElementNode(byId, m, "processes", key, 0, related.actsIn));
+            row.home = false;
+            row.target = processPlace.get(m.id);
+            row.load = undefined;
+            parent.set(key, node.key);
+            attachMembers(row, [...path, m.id]);
+            return row;
+          })
+          .sort(byLabel),
+      );
+    };
     const actorNodes = actorRows.map((r) => {
       const node = add(newElementNode(byId, r, "processes", `${ROOTS.processes}/a:${r.id}`, errorsOf(r.id), related.actsIn));
       processPlace.set(r.id, node.key);
+      attachMembers(node, [r.id]);
       push(byType, r.actorType ?? "", node);
       return node;
     });
     const ACTOR_FOLDERS = [
       ["person", PROCESS_LABELS.people, "people", PROCESS_TIPS.people],
       ["role", PROCESS_LABELS.roles, "actor", PROCESS_TIPS.roles],
+      ["group", PROCESS_LABELS.groups, "actor", PROCESS_TIPS.groups],
+      ["organization", PROCESS_LABELS.organizations, "actor", PROCESS_TIPS.organizations],
       ["external-system", PROCESS_LABELS.systems, "actor", PROCESS_TIPS.systems],
+      ["system", PROCESS_LABELS.automatic, "actor", PROCESS_TIPS.automatic],
     ] as const;
     const typed = ACTOR_FOLDERS.flatMap(([type, label, icon, tip]) => {
       const list = byType.get(type);
@@ -2475,5 +2505,6 @@ export function isExpandable(forest: Forest, key: string): boolean {
   if (!node) return false;
   if (CONTAINERS.has(node.type) || node.load !== undefined) return true;
   if (node.children) return node.children.length > 0;
+  if (forest.pending.has(key)) return true;
   return node.home && !!node.kind && INDEX_CHILD_KINDS.has(node.kind);
 }

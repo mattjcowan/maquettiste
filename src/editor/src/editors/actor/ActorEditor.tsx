@@ -1,13 +1,16 @@
 // The actor editor (phase-3-design.md 2.5 and 6.2): a small form tab (name, type, the stereotype, tag and category
 // chips, the processes and gates that use it), Code generation and References. Actors are not in a domain.
+import { useState } from "react";
 import { useIndex, useElements } from "@/api/queries";
 import { Field, Select } from "@/components/ui/input";
 import { SectionTitle } from "@/components/ui/misc";
 import { References } from "@/inspector/Inspector";
 import { TextField } from "@/inspector/fields";
 import { indexLookup } from "@/model/index";
-import { ACTOR_TYPE_LABELS, EDITOR_TAB_LABELS } from "@/model/labels";
+import { systemActorProblem, type ActorRow } from "@/model/actors";
+import { ACTOR_TYPE_OPTION_LABELS, EDITOR_TAB_LABELS } from "@/model/labels";
 import { actorUses, type ProcessDoc } from "@/model/process";
+import { MemberOfField, MembersSection } from "./ActorMembers";
 import { domIdOf, EditorLayout, MarkChips, useCodeGenerationTab, useEditorContext, type EditorContext } from "../EditorFrame";
 
 type Rec = Record<string, unknown>;
@@ -31,23 +34,35 @@ export function useActorUses(actor: string): string[] {
   });
 }
 
-export function ActorTypeField({ ctx, dom }: { ctx: Pick<EditorContext, "json" | "edit" | "flush">; dom: string }) {
+export function ActorTypeField({ ctx, dom }: { ctx: Pick<EditorContext, "json" | "edit" | "flush"> & { id?: string }; dom: string }) {
+  const index = useIndex();
+  // Automatic (the system itself) is one actor per project: choosing it while another has it is refused, with the reason.
+  const [refused, setRefused] = useState<string | null>(null);
   return (
     <Field label="Type" htmlFor={`${dom}-actor-type`}>
       <Select
         id={`${dom}-actor-type`}
         value={String((ctx.json as Rec).type ?? "person")}
         onChange={(e) => {
-          ctx.edit((j) => void ((j as Rec).type = e.target.value));
+          const next = e.target.value;
+          const problem = next === "system" ? systemActorProblem((index.data ?? []) as ActorRow[], ctx.id) : null;
+          setRefused(problem);
+          if (problem) return;
+          ctx.edit((j) => void ((j as Rec).type = next));
           ctx.flush();
         }}
       >
-        {Object.entries(ACTOR_TYPE_LABELS).map(([value, label]) => (
+        {Object.entries(ACTOR_TYPE_OPTION_LABELS).map(([value, label]) => (
           <option key={value} value={value}>
             {label}
           </option>
         ))}
       </Select>
+      {refused ? (
+        <p className="text-11 text-danger" role="alert" data-testid="actor-type-refused">
+          {refused}
+        </p>
+      ) : null}
     </Field>
   );
 }
@@ -91,11 +106,21 @@ function ActorBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
             />
             <ActorTypeField ctx={ctx} dom={dom} />
           </div>
+          <MemberOfField ctx={ctx} />
           <MarkChips {...ctx} />
         </div>
       }
       tabs={[
-        { value: "general", label: "General", content: <ActorUsesList actor={ctx.id} /> },
+        {
+          value: "general",
+          label: "General",
+          content: (
+            <div className="flex flex-col gap-3">
+              <MembersSection id={ctx.id} type={String(rec.type ?? "")} />
+              <ActorUsesList actor={ctx.id} />
+            </div>
+          ),
+        },
         codeGeneration,
         { value: "references", label: EDITOR_TAB_LABELS.references, content: <References id={ctx.id} /> },
       ]}

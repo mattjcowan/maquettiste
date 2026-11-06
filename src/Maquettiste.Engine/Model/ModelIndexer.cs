@@ -743,6 +743,9 @@ internal static class ModelIndexer
             {
                 Model.ActorType.Person => "person",
                 Model.ActorType.Role => "role",
+                Model.ActorType.Group => "group",
+                Model.ActorType.Organization => "organization",
+                Model.ActorType.System => "system",
                 _ => "external-system",
             } : null,
             Process: element switch
@@ -755,7 +758,8 @@ internal static class ModelIndexer
             Effect: element is Operation effect ? (effect.Effect == OperationEffect.Change ? "change" : "read") : null,
             Type: element is Custom typed ? typed.Type : null,
             Subjects: element is Process { Subjects.Count: > 1 } several ? [.. several.Subjects.Select(s => s.Entity)] : null,
-            Actors: actors);
+            Actors: actors,
+            MemberOf: element is Actor { MemberOf.Count: > 0 } member ? [.. member.MemberOf] : null);
 
     /// <summary>
     /// The actors a process's document names: the targets of its references (every field, custom properties included) whose element is

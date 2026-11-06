@@ -506,8 +506,9 @@ public sealed record GateMeaning : IProcessNode
 }
 
 /// <summary>
-/// A person, a role or an external system that takes part in processes (phase-3-design.md section 2.5; <c>model/actors/</c>). An actor
-/// may join a package (membership only). A persona is an actor carrying a project-defined stereotype: the product defines none.
+/// A person, a role, a group, an organization, an external system or the system itself that takes part in processes (phase-3-design.md
+/// section 2.5, actors-design.md; <c>model/actors/</c>). An actor may join a package (membership only), and be a member of roles, groups
+/// and organizations (<see cref="MemberOf"/>). A persona is an actor carrying a project-defined stereotype: the product defines none.
 /// </summary>
 public sealed record Actor : Element, IPackaged
 {
@@ -522,6 +523,11 @@ public sealed record Actor : Element, IPackaged
 
     /// <summary>What the actor is.</summary>
     public required ActorType Type { get; init; }
+
+    /// <summary>The roles, groups and organizations the actor is a member of, in file order (actors-design.md decisions 3 to 5): an actor
+    /// in a process's list stands for itself and its members at any depth.</summary>
+    [ElementRef(ElementKind.Actor)]
+    public IReadOnlyList<string> MemberOf { get; init; } = [];
 }
 
 /// <summary>What an actor is.</summary>
@@ -536,6 +542,24 @@ public enum ActorType
 
     /// <summary>A system outside the model (<c>external-system</c>).</summary>
     [JsonStringEnumMemberName("external-system")] ExternalSystem,
+
+    /// <summary>A set of actors, such as a shift or a board (<c>group</c>; actors-design.md decision 1).</summary>
+    [JsonStringEnumMemberName("group")] Group,
+
+    /// <summary>A unit with a place in a hierarchy, such as a supplier or a plant (<c>organization</c>; actors-design.md decision 1).</summary>
+    [JsonStringEnumMemberName("organization")] Organization,
+
+    /// <summary>The system itself, shown as Automatic (<c>system</c>; actors-design.md decision 2): at most one per project (MQ9605).</summary>
+    [JsonStringEnumMemberName("system")] System,
+}
+
+/// <summary>What the actor types mean for membership (actors-design.md decision 4).</summary>
+internal static class ActorTypes
+{
+    /// <summary>Whether actors of a type may have members: a role, a group or an organization.</summary>
+    /// <param name="type">The type.</param>
+    /// <returns><see langword="true"/> for a type that holds members.</returns>
+    public static bool HoldsMembers(ActorType type) => type is ActorType.Role or ActorType.Group or ActorType.Organization;
 }
 
 /// <summary>

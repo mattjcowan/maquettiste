@@ -74,7 +74,7 @@ processes (or actors), so the entity, model and schema output is unchanged.
 | `dispatch-registry` | model | `dispatch/registry.ts` | overwrite | The typed map from command type to handler, `satisfies Registry` (a mapped type over every command type, so a missing handler fails the build; no reflection), each process's program by id (sub-process invokes run from it) and the stores |
 | `dispatch-behaviours` | model | `dispatch/behaviours.ts` | overwrite | Composed functions in their default order: validation (payload required, length, range, allowed values), authorization (the caller may act as the command's actor), logging (sensitive attributes left out), transaction, outbox hand-off |
 | `interpreter`, `interpreter-companion` | model | `runtime/statechart.gen.ts` + `runtime/process-host.ts` | overwrite + once | The interpreter (below) and the host's clock, timer scheduler and invoke host, with in-memory defaults (`ManualClock`, `InMemoryTimers`, `InMemoryInvokes`) and `InMemoryProcessStore` |
-| `actors` | model | `processes/actors.ts` | overwrite | One constant per actor with its id and type, and each event's allowed actors by command type |
+| `actors` | model | `processes/actors.ts` | overwrite | One constant per actor with its id and type, and each event's allowed actors by command type. When an actor is a member of another, also `memberOf` and the `accepts` and `allows` checks, which the interpreter then calls for events, human tasks, signers and required actors |
 | `scenario-tests` | each scenario | `tests/<p>/<scenario>.test.ts` | overwrite | One `node:test` test per scenario |
 
 `<p>` is the process name in kebab case, `<P>` in PascalCase.

@@ -24,6 +24,24 @@ func actors_ns()
   ret base_ns + ".Processes"
 end
 
+# The C# constant name of an actor in the Actors class: its name in PascalCase, with "Actor" appended only when that name is
+# taken by the class itself or one of its other members (Actors, All, TypeOf, Events, and MemberOf, Accepts and Allows when an
+# actor is a member of another), so other names stay as they were.
+func actor_member(a)
+  $n = pascal a.name
+  if $n == "Actors" || $n == "All" || $n == "TypeOf" || $n == "Events"
+    ret $n + "Actor"
+  end
+  if $n == "MemberOf" || $n == "Accepts" || $n == "Allows"
+    for x in model.actors
+      if x.member_of.size > 0
+        ret $n + "Actor"
+      end
+    end
+  end
+  ret $n
+end
+
 # The C# constant name of a state: its path parts in PascalCase, joined ("Fulfilment.Processing" -> FulfilmentProcessing).
 func state_member(s)
   $out = ""
@@ -227,7 +245,7 @@ end
 func actor_list(actors)
   $out = ""
   for a in actors
-    $out = $out + (for.first ? "" : ", ") + "Actors." + (pascal a.name)
+    $out = $out + (for.first ? "" : ", ") + "Actors." + actor_member(a)
   end
   ret "[" + $out + "]"
 end

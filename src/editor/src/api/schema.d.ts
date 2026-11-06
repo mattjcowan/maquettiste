@@ -2951,10 +2951,15 @@ export interface components {
             /** @description The number of states at every depth, on process rows. */
             stateCount?: number;
             /**
-             * @description The actor's type, on actor rows.
+             * @description The actor's type, on actor rows. `system` is the system itself, shown as Automatic (actors-design.md decision 2).
              * @enum {string}
              */
-            actorType?: "person" | "role" | "external-system";
+            actorType?: "person" | "role" | "group" | "organization" | "external-system" | "system";
+            /**
+             * @description The roles, groups and organizations the actor is a member of, as ids in file order (actors-design.md decision 3), on actor
+             *     rows that name at least one. Left out when the actor names none.
+             */
+            memberOf?: components["schemas"]["Ulid"][];
             /** @description The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows. */
             process?: components["schemas"]["Ulid"];
             /** @description The number of steps, on scenario rows. */
@@ -4083,10 +4088,13 @@ export interface components {
             kind: "actor";
             name: string;
             package: string | null;
+            /** @description person, role, group, organization, external-system or system (the system itself, shown as Automatic). */
             type: string;
             processes: string[];
             events: string[];
             gates: string[];
+            /** @description The ids of the roles, groups and organizations the actor is a member of, in file order, each once; an entry MQ9601 reports is left out (actors-design.md section 6). Left out when there are none. */
+            memberOf?: string[];
         };
         /** @description A resolved scenario. */
         ScenarioRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -6084,6 +6092,12 @@ export interface components {
             diagnostics: components["schemas"]["Diagnostic"][];
             /** @description A guard result was missing or the replay stopped (MQ9305, MQ9306, MQ9507); later inputs did not run. */
             incomplete: boolean;
+            /**
+             * @description The system actor when it made the move (actors-design.md decision 2): for the initial entry, a time step or a finished invoke
+             *     that is not a human task, whose input names no actor, the project's system actor (type `system`, shown as Automatic) when it
+             *     has exactly one. Left out otherwise, without a system actor always: a step's own actor is in its input.
+             */
+            actor?: components["schemas"]["Ulid"];
         };
         MicrostepTrace: {
             transitions: components["schemas"]["Ulid"][];
@@ -6129,7 +6143,11 @@ export interface components {
             event: string | null;
             invoke: string | null;
             transitions: components["schemas"]["Ulid"][];
-            /** @description The actors the input must come from; empty for any. */
+            /**
+             * @description The actors the input must come from; empty for any. Each listed actor is followed by its members at any depth that the list
+             *     does not already hold, by name (actors-design.md decision 5), so the Act-as list offers them; without memberships, the list as
+             *     the model gives it.
+             */
             actors: components["schemas"]["Ulid"][];
             /** @description A candidate's guard has no expression; the input needs `assume`. */
             guardUnknown: boolean;
@@ -6157,6 +6175,7 @@ export interface components {
             gate: components["schemas"]["Ulid"];
             transition: components["schemas"]["Ulid"];
             signatures: components["schemas"]["GateSignature"][];
+            /** @description Whether the gate has enough signatures and each required actor signed, a signature counting for a required actor when its actor is that actor or one of its members at any depth. */
             satisfied: boolean;
         };
         SimulationResult: {
@@ -10209,7 +10228,7 @@ export interface components {
         };
         /**
          * Actor
-         * @description A person, a role or an external system that takes part in processes (model/actors/).
+         * @description A person, a role, a group, an organization, an external system or the system itself that takes part in processes (model/actors/). A role, group or organization may have members, which state it in their memberOf.
          */
         actor: {
             $schema?: components["schemas"]["schemaPath"];
@@ -10221,8 +10240,16 @@ export interface components {
             displayName?: string;
             pluralName?: string;
             package?: components["schemas"]["id"];
-            /** @enum {unknown} */
-            type: "person" | "role" | "external-system";
+            /**
+             * @description What the actor is. A role, a group and an organization may have members. system is the system itself (shown as Automatic): at most one per project (MQ9605).
+             * @enum {unknown}
+             */
+            type: "person" | "role" | "group" | "organization" | "external-system" | "system";
+            /**
+             * @description The roles, groups and organizations this actor is a member of. An actor in a process's list stands for itself and its members at any depth. Each entry names a role, group or organization other than the actor itself, once (MQ9601); memberships form no cycle (MQ9602).
+             * @default []
+             */
+            memberOf?: components["schemas"]["idList"];
             description?: components["schemas"]["description"];
             /** @description Markdown text: why the element is shaped this way. */
             rationale?: string;

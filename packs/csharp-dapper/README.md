@@ -362,7 +362,7 @@ For `PurchaseApproval` in package `Purchasing`:
 | `dispatch-behaviours` | `overwrite`, file block | `model` | `Dispatch/Behaviours.g.cs`: validation, authorization, logging, transaction and outbox behaviours and their hooks |
 | `interpreter` | `overwrite`, file block | `model` | `Runtime/Statechart.g.cs`: the interpreter |
 | `interpreter-companion` | `once`, file block | `model` | `Runtime/ProcessHost.cs` (in the `partialFolder`): in-memory clock, timers and invokes |
-| `actors` | `overwrite`, file block | `model` | `Processes/Actors.cs`: a constant per actor, its type, and each event's allowed actors |
+| `actors` | `overwrite`, file block | `model` | `Processes/Actors.cs`: a constant per actor, its type, and each event's allowed actors. `ActorType` gains `Group`, `Organization` and `System` only for the types the model uses; when an actor is a member of another, `MemberOf`, `Accepts` and `Allows` are written and the interpreter's and dispatcher's actor checks follow membership |
 | `scenario-tests` | file blocks | `each scenario` | `<testsFolder>/PurchaseApproval/HappyPathTests.cs`: one xunit test per scenario; only when `testsFolder` is set |
 
 ### Lifecycle state codes

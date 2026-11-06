@@ -7864,9 +7864,17 @@ components:
           minimum: 0
           description: The number of states at every depth, on process rows.
         actorType:
-          description: The actor's type, on actor rows.
+          description: The actor's type, on actor rows. `system` is the system itself, shown as Automatic (actors-design.md decision 2).
           type: string
-          enum: [person, role, external-system]
+          enum: [person, role, group, organization, external-system, system]
+        memberOf:
+          description: |
+            The roles, groups and organizations the actor is a member of, as ids in file order (actors-design.md decision 3), on actor
+            rows that name at least one. Left out when the actor names none.
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Ulid'
         process:
           description: The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows.
           $ref: '#/components/schemas/Ulid'
@@ -10306,6 +10314,7 @@ components:
           package:
             type: [string, 'null']
           type:
+            description: person, role, group, organization, external-system or system (the system itself, shown as Automatic).
             type: string
           processes:
             type: array
@@ -10317,6 +10326,12 @@ components:
               type: string
           gates:
             type: array
+            items:
+              type: string
+          memberOf:
+            description: The ids of the roles, groups and organizations the actor is a member of, in file order, each once; an entry MQ9601 reports is left out (actors-design.md section 6). Left out when there are none.
+            type: array
+            minItems: 1
             items:
               type: string
     ScenarioRecord:
@@ -14192,6 +14207,12 @@ components:
         incomplete:
           description: A guard result was missing or the replay stopped (MQ9305, MQ9306, MQ9507); later inputs did not run.
           type: boolean
+        actor:
+          description: |
+            The system actor when it made the move (actors-design.md decision 2): for the initial entry, a time step or a finished invoke
+            that is not a human task, whose input names no actor, the project's system actor (type `system`, shown as Automatic) when it
+            has exactly one. Left out otherwise, without a system actor always: a step's own actor is in its input.
+          $ref: '#/components/schemas/Ulid'
     MicrostepTrace:
       x-engine-record: Maquettiste.Engine.Processes.MicrostepTrace
       type: object
@@ -14288,7 +14309,10 @@ components:
           items:
             $ref: '#/components/schemas/Ulid'
         actors:
-          description: The actors the input must come from; empty for any.
+          description: |
+            The actors the input must come from; empty for any. Each listed actor is followed by its members at any depth that the list
+            does not already hold, by name (actors-design.md decision 5), so the Act-as list offers them; without memberships, the list as
+            the model gives it.
           type: array
           items:
             $ref: '#/components/schemas/Ulid'
@@ -14353,6 +14377,7 @@ components:
           items:
             $ref: '#/components/schemas/GateSignature'
         satisfied:
+          description: Whether the gate has enough signatures and each required actor signed, a signature counting for a required actor when its actor is that actor or one of its members at any depth.
           type: boolean
     SimulationResult:
       x-engine-record: Maquettiste.Engine.Processes.SimulationResult

@@ -296,7 +296,7 @@ export function pendingRows(result: SimulationResult, process: ProcessDoc, names
 // ------------------------------------------------------------------ the last step
 
 export interface LastStepLine {
-  kind: "refusal" | "transitions" | "guard" | "action" | "context" | "audit" | "diagnostic" | "incomplete";
+  kind: "actor" | "refusal" | "transitions" | "guard" | "action" | "context" | "audit" | "diagnostic" | "incomplete";
   text: string;
   tone: "neutral" | "danger" | "warning" | "success";
 }
@@ -304,6 +304,8 @@ export interface LastStepLine {
 /** What one trace entry did, line by line, in the order the engine reports it. */
 export function lastStepLines(entry: StepTrace, names: Names): LastStepLine[] {
   const lines: LastStepLine[] = [];
+  // The actor of the move, when the input does not name it (the input's own actor shows in the trace row): the system actor.
+  if (entry.actor && !entry.input?.actor) lines.push({ kind: "actor", text: L.byActor(names.actor(entry.actor)), tone: "neutral" });
   if (entry.refusal) lines.push({ kind: "refusal", text: L.refused(L.refusals[entry.refusal] ?? entry.refusal), tone: "danger" });
   const taken = entry.microsteps.flatMap((m) => m.transitions);
   if (taken.length) lines.push({ kind: "transitions", text: L.transitionLine(taken.map(names.transition).join(", ")), tone: "success" });

@@ -34,6 +34,11 @@ func actor_link(a, up)
   ret "[" + (md_cell a.display_name) + "](" + up + "actors/" + (kebab a.name) + ".md)"
 end
 
+# An actor's type as readers see it: the system itself shows as Automatic (actors-design.md decision 2), never its file value.
+func actor_type(a)
+  ret a.type == "system" ? "Automatic" : a.type
+end
+
 # Links to the pages of a list of actors, separated by commas.
 func actor_links(list, up)
   $text = ""

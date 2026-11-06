@@ -62,7 +62,8 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Subject">The entity a process governs, on process rows with exactly one subject in either form; the entity an operation
 /// acts on, on operation rows that have one.</param>
 /// <param name="StateCount">The number of states at every depth, on process rows.</param>
-/// <param name="ActorType">The actor's type, <c>person</c>, <c>role</c> or <c>external-system</c>, on actor rows.</param>
+/// <param name="ActorType">The actor's type, <c>person</c>, <c>role</c>, <c>group</c>, <c>organization</c>, <c>external-system</c> or
+/// <c>system</c>, on actor rows.</param>
 /// <param name="Process">The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows.</param>
 /// <param name="StepCount">The number of steps, on scenario rows.</param>
 /// <param name="Effect">The operation's effect, <c>read</c> or <c>change</c>, on operation rows (next-phase-2-design.md section 4.1).</param>
@@ -72,6 +73,8 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Actors">The actors a process names anywhere in its document (events, gates, invokes, custom properties), as ids sorted
 /// ordinally, on process rows (libraries too) that name at least one. Only ids whose element is an actor count, so the row can change
 /// when an actor file appears or goes; that file's own row changes with it, so the index tag still follows.</param>
+/// <param name="MemberOf">The roles, groups and organizations an actor is a member of, as ids in file order, on actor rows that name at
+/// least one (actors-design.md decision 3).</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
 /// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
@@ -96,7 +99,8 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Effect = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Type = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Subjects = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Actors = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Actors = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? MemberOf = null)
 {
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>
@@ -128,7 +132,8 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && string.Equals(Type, other.Type, StringComparison.Ordinal)
         && (ReferenceEquals(Ends, other.Ends) || (Ends is not null && other.Ends is not null && Ends.SequenceEqual(other.Ends)))
         && (ReferenceEquals(Subjects, other.Subjects) || (Subjects is not null && other.Subjects is not null && Subjects.SequenceEqual(other.Subjects, StringComparer.Ordinal)))
-        && (ReferenceEquals(Actors, other.Actors) || (Actors is not null && other.Actors is not null && Actors.SequenceEqual(other.Actors, StringComparer.Ordinal)));
+        && (ReferenceEquals(Actors, other.Actors) || (Actors is not null && other.Actors is not null && Actors.SequenceEqual(other.Actors, StringComparer.Ordinal)))
+        && (ReferenceEquals(MemberOf, other.MemberOf) || (MemberOf is not null && other.MemberOf is not null && MemberOf.SequenceEqual(other.MemberOf, StringComparer.Ordinal)));
 
     /// <inheritdoc/>
     public override int GetHashCode() => HashCode.Combine(

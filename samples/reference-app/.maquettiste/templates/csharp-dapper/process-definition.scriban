@@ -114,7 +114,7 @@ public static partial class {{ name }}Definition
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
 {{- for a in p.actors }}
-            [Actors.{{ pascal a.name }}] = {{ json a.id }},
+            [Actors.{{ actor_member a }}] = {{ json a.id }},
 {{- end }}
         });
 {{- end }}

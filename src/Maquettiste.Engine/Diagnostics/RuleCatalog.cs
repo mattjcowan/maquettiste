@@ -398,11 +398,11 @@ public static class RuleCatalog
         new("MQ9022", E, "A process invoke or a scenario names a library, which has no states to run; name a running process."),
 
         new("MQ9101", E, "A gate needs more signatures than its signers can give (only person actors, repeat signing off); lower required, add signers, or allow repeat signers."),
-        new("MQ9102", E, "A gate's required actors are not all among its signers; add them to signers."),
+        new("MQ9102", E, "A gate's required actors are not all among its signers (a required actor that is a member, at any depth, of a signer counts as among them); add them to signers."),
         new("MQ9103", E, "A gate or gate policy on a transition whose trigger is not event, or two of them on one source and event; move the gate to an event transition or keep one gate."),
         new("MQ9104", E, "A gate without meanings; add at least one meaning that says what a signature means."),
-        new("MQ9105", W, "A gate signer that may not raise the gate's event (the event lists its actors and leaves the signer out); add the signer to the event's actors."),
-        new("MQ9106", I, "An actor no process references (event actors, gate signers, human tasks); use it in a process or remove it."),
+        new("MQ9105", W, "A gate signer that may not raise the gate's event (the event lists its actors and leaves the signer out, and the signer is not a member of one of them at any depth); add the signer to the event's actors."),
+        new("MQ9106", I, "An actor no process references (event actors, gate signers, human tasks), directly, through a member at any depth, or through an actor it is a member of at any depth; use it in a process or remove it."),
 
         new("MQ9201", E, "Lifecycle inconsistent: a lifecycle without a subject, an empty subjects list or an entity listed twice, a one-subject form subject whose lifecycle does not name the process, or an entity whose lifecycle names an orchestration or a lifecycle that does not govern it or a base of it; list the entity in the lifecycle's subjects, or set lifecycle on the entity to a lifecycle that governs it."),
         new("MQ9202", E, "A bound attribute that is not a single-valued attribute of the subject (own, inherited or from a stereotype) typed by an enum, a reference type or a plain status (string, text, int16, int32 or int64, directly or through a scalar type), one set on an orchestration, or one attribute that two lifecycles bind for an entity both list; bind another attribute of the subject."),
@@ -433,6 +433,9 @@ public static class RuleCatalog
         new("MQ9505", W, "An action's result names an attribute the context does not declare, or a value that does not fit the attribute's type, and the entry is ignored; return only context attribute names with values of their types."),
         new("MQ9506", W, "Two guarded transitions of one source and trigger were enabled at once, and the first in priority order was taken; make the guards exclusive or reorder the transitions."),
         new("MQ9507", E, "A macrostep ran more than 1,000 microsteps (an eventless loop whose guards keep holding, or internal events that keep raising each other); break the loop with a guard that turns false."),
+        new("MQ9601", E, "A memberOf entry that does not name a role, group or organization, names the actor itself, or is listed twice; remove the entry."),
+        new("MQ9602", E, "Memberships form a cycle (an actor is, through memberOf, a member of itself); the message names the cycle. Remove one of its memberships."),
+        new("MQ9605", E, "Two or more actors of type system: the system itself (shown as Automatic) is one actor per project; change the type of all but one, for example to external-system, or give it roles through memberOf."),
     ];
 
     private static readonly FrozenDictionary<string, RuleInfo> ById = Rules.ToFrozenDictionary(r => r.Id, StringComparer.Ordinal);
@@ -457,6 +460,7 @@ public static class RuleCatalog
         ["MQ93xx"] = "Scenarios",
         ["MQ94xx"] = "Process import and export",
         ["MQ95xx"] = "Process expressions and simulation",
+        ["MQ96xx"] = "Actor types and membership",
     }.ToFrozenDictionary(StringComparer.Ordinal);
 
     /// <summary>The hundreds group of a rule id: <c>MQ7204</c> is in <c>MQ72xx</c>.</summary>

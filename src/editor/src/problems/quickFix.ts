@@ -23,7 +23,7 @@ export type QuickFix =
   | { kind: "update"; id: string; json: ModelJson; label: string };
 
 /** The rules whose fix is built in the editor as a plain update (the derivation table's last row) or needs two findings of MQ9201. */
-const EDITOR_FIXES = new Set(["MQ9013", "MQ9016", "MQ9102", "MQ9105", "MQ9205", "MQ9201", "MQ9209"]);
+const EDITOR_FIXES = new Set(["MQ9013", "MQ9016", "MQ9102", "MQ9105", "MQ9205", "MQ9201", "MQ9209", "MQ9601", "MQ9605"]);
 
 /** True when the diagnostic's rule has a quick fix: a catalog `quickFix` or one the editor builds. */
 export function hasQuickFix(rule: string, catalogFix: string | null | undefined): boolean {
@@ -182,6 +182,19 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
       if (!pointer.endsWith("/element")) return null;
       const json = removeAt(element, parent(pointer));
       return json ? { kind: "update", id, json, label: "Remove the member" } : null;
+    }
+    case "MQ9601": {
+      // A memberOf entry that names the actor itself, a repeat or an actor that holds no members: remove the entry.
+      if (!/^\/memberOf\/\d+$/.test(pointer)) return null;
+      const json = removeAt(element, pointer);
+      return json ? { kind: "update", id, json, label: "Remove the entry" } : null;
+    }
+    case "MQ9605": {
+      // A second system actor: change its type to an external system (the finding is on /type).
+      if (pointer !== "/type" || element.kind !== "actor") return null;
+      const json = clone(element);
+      json.type = "external-system";
+      return { kind: "update", id, json, label: "Make it an external system" };
     }
     case "MQ9102": {
       const gate = parent(parent(pointer));

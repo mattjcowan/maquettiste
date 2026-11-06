@@ -45,6 +45,13 @@ func checks(a, cmd)
   ret $out
 end
 if model.processes.size > 0
+# Whether any actor is a member of another (actors-design.md decision 25): only then do actor checks follow membership.
+has_members = false
+for a in model.actors
+  if a.member_of.size > 0
+    has_members = true
+  end
+end
 -}}
 {{- capture content -}}
 {{ header() }}
@@ -116,7 +123,7 @@ public sealed class AuthorizationBehaviour(Pipeline pipeline) : IPipelineBehavio
         ArgumentNullException.ThrowIfNull(next);
         var envelope = context.Envelope;
         var actors = context.Descriptor.Actors;
-        if (actors.Count > 0 && (envelope.Actor is null || !actors.Contains(envelope.Actor, StringComparer.Ordinal)))
+        if (actors.Count > 0 && (envelope.Actor is null || !{{ has_members ? ("global::" + base_ns + ".Processes.Actors.Allows(actors, envelope.Actor)") : "actors.Contains(envelope.Actor, StringComparer.Ordinal)" }}))
             return await context.RefuseAsync(Refusals.Actor, cancellationToken).ConfigureAwait(false);
         if (!pipeline.CanAct(context))
             return await context.RefuseAsync(Refusals.Actor, cancellationToken).ConfigureAwait(false);

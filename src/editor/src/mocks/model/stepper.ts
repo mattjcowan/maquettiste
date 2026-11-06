@@ -6,6 +6,8 @@
 // `process` invoke waits like a service task), MQ9505 type checks, MQ9506 overlap reports and the sandbox's limits.
 // Guards and actions with an expression run through `new Function` over frozen copies of the context and event.
 
+import { Membership } from "./membership";
+
 type Json = Record<string, unknown>;
 
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -270,6 +272,8 @@ export interface StepTraceJson {
   final: boolean;
   diagnostics: DiagnosticJson[];
   incomplete: boolean;
+  /** The system actor when it made the move: the initial entry, time steps and invoke completions that are not human tasks, naming no actor. */
+  actor?: string;
 }
 
 export interface SimulationJson {
@@ -305,6 +309,8 @@ export interface StepperOptions {
   actorId?: (name: string) => string | undefined;
   /** An actor's name, for the `event.actor` an expression sees. */
   actorName?: (id: string) => string | undefined;
+  /** The actors' memberships and the system actor; without it every actor stands only for itself. */
+  membership?: Membership;
   /** The scenario's cast and the object the process runs for (decision 22); carried in the run, not yet read by guards. */
   objects?: Json[];
   subject?: string;
@@ -366,6 +372,7 @@ interface Signature {
 
 interface Scope {
   input: SimInputJson | null;
+  actor: string | null;
   event: Json;
   refusal: string | null;
   microsteps: StepTraceJson["microsteps"];
@@ -377,7 +384,16 @@ interface Scope {
 class Overflow extends Error {}
 
 const emptyEvent = (): Json => ({ name: null, actor: null, payload: {} });
-const newScope = (input: SimInputJson | null): Scope => ({ input, event: emptyEvent(), refusal: null, microsteps: [], guards: [], audit: [], diagnostics: [] });
+const newScope = (input: SimInputJson | null): Scope => ({
+  input,
+  actor: null,
+  event: emptyEvent(),
+  refusal: null,
+  microsteps: [],
+  guards: [],
+  audit: [],
+  diagnostics: [],
+});
 
 class Interpreter {
   readonly config = new Set<Node>();
@@ -400,6 +416,7 @@ class Interpreter {
   constructor(
     readonly chart: Chart,
     private readonly actorName: (id: string) => string | undefined = () => undefined,
+    readonly membership: Membership = new Membership([]),
   ) {}
 
   leaves(): Node[] {
@@ -411,6 +428,7 @@ class Interpreter {
     for (const a of this.chart.attributes) this.context[String(a.id)] = a.default ?? null;
     for (const [id, v] of Object.entries(context ?? {})) if (this.chart.attributes.some((a) => a.id === id)) this.context[id] = v;
     this.scope = newScope(null);
+    this.scope.actor = this.membership.systemActor;
     const before = { ...this.context };
     this.macrostep(() => {
       this.config.add(this.chart.root);
@@ -440,7 +458,7 @@ class Interpreter {
       return this.refuse("no-transition");
     }
     const actors = ids(ev.actors);
-    if (actors.length && (!input.actor || !actors.includes(input.actor))) return this.refuse("actor");
+    if (actors.length && (!input.actor || !this.membership.allows(actors, input.actor))) return this.refuse("actor");
     this.scope.event = this.eventObject(String(ev.name), input.actor, arr(ev.payload), input.payload);
     this.macrostep(() => {
       const selection = this.select("event", String(ev.id), true);
@@ -457,6 +475,7 @@ class Interpreter {
       return this.refuse("no-transition");
     }
     const end = this.clock + span;
+    if (!input.actor) this.scope.actor = this.membership.systemActor;
     this.scope.event = this.eventObject(null, input.actor, [], {});
     while (!this.done) {
       const next = this.timers.filter((t) => t.due <= end).sort(timerOrder)[0];
@@ -483,7 +502,8 @@ class Interpreter {
       return this.refuse("no-transition");
     }
     const actors = ids(found.invoke.actors);
-    if (found.invoke.type === "human-task" && actors.length && (!input.actor || !actors.includes(input.actor))) return this.refuse("actor");
+    if (found.invoke.type === "human-task" && actors.length && (!input.actor || !this.membership.allows(actors, input.actor))) return this.refuse("actor");
+    if (found.invoke.type !== "human-task" && !input.actor) this.scope.actor = this.membership.systemActor;
     this.scope.event = this.eventObject(null, input.actor, [], {});
     this.macrostep(() => {
       const selection = this.selectAt(found.state, input.input, String(found.invoke.id));
@@ -706,7 +726,7 @@ class Interpreter {
     const input = this.scope.input!;
     const signatures = this.signatures.get(t.id) ?? [];
     let refusal: string | null = null;
-    if (!input.actor || !input.signer || !ids(gate.signers).includes(input.actor)) refusal = "gate-signer";
+    if (!input.actor || !input.signer || !this.membership.allows(ids(gate.signers), input.actor)) refusal = "gate-signer";
     else if (gate.allowRepeatSigner !== true && signatures.some((s) => s.signer === input.signer)) refusal = "gate-repeat";
     else if (gate.reasonRequired === true && !(input.reason ?? "").trim()) refusal = "gate-reason";
     if (refusal) this.audit(gate, t, input.signer, input.actor, meaningOf(input, gate), input.reason, "refused", auditAttributes(input, gate));
@@ -721,7 +741,7 @@ class Interpreter {
     const attributes = auditAttributes(input, gate);
     signatures.push({ signer: input.signer!, actor: input.actor!, meaning, reason: input.reason });
     this.audit(gate, t, input.signer, input.actor, meaning, input.reason, "signed", attributes);
-    const complete = gateSatisfied(gate, signatures);
+    const complete = gateSatisfied(gate, signatures, this.membership);
     if (complete) {
       this.audit(gate, t, input.signer, input.actor, meaning, input.reason, "completed", attributes);
       signatures.length = 0;
@@ -957,6 +977,8 @@ class Interpreter {
       final: this.done,
       diagnostics,
       incomplete: this.scope.guards.some((g) => g.source === "missing") || diagnostics.some((d) => d.rule === "MQ9305" || d.rule === "MQ9507"),
+      // A refused step moved nothing, so it names no actor.
+      ...(this.scope.actor && this.scope.refusal === null ? { actor: this.scope.actor } : {}),
     };
   }
 
@@ -1003,9 +1025,10 @@ function auditAttributes(input: SimInputJson, gate: Json): Json {
   return sorted(out);
 }
 
-function gateSatisfied(gate: Json, signatures: Signature[]): boolean {
+/** A required actor counts as signed when a signature's actor is it or one of its members. */
+function gateSatisfied(gate: Json, signatures: Signature[], membership: Membership): boolean {
   const required = Math.max(1, typeof gate.required === "number" ? gate.required : 1);
-  return signatures.length >= required && ids(gate.requiredActors).every((a) => signatures.some((s) => s.actor === a));
+  return signatures.length >= required && ids(gate.requiredActors).every((a) => signatures.some((s) => membership.accepts(a, s.actor)));
 }
 
 // ------------------------------------------------------------------ the operations
@@ -1021,7 +1044,7 @@ export function readAt(at: unknown): number | null | "invalid" {
 /** Runs a start and inputs through the reduced interpreter and describes where the process stands (the simulate answer). */
 export function simulate(doc: Json, start: { context?: Json; at?: string } | null | undefined, steps: Json[], options: StepperOptions = {}): SimulationJson {
   const chart = new Chart(doc);
-  const run = new Interpreter(chart, options.actorName);
+  const run = new Interpreter(chart, options.actorName, options.membership);
   run.cast = { objects: options.objects ?? [], subject: options.subject ?? null };
   const at = readAt(start?.at);
   const traces = [run.start(start?.context, typeof at === "number" ? at : null)];
@@ -1045,7 +1068,12 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
     .filter((t) => t.gate && t.trigger === "event")
     .map((t) => {
       const signed = run.signatures.get(t.id) ?? [];
-      return { gate: String(t.gate!.id), transition: t.id, signatures: signed.map((s) => ({ ...s })), satisfied: gateSatisfied(t.gate!, signed) };
+      return {
+        gate: String(t.gate!.id),
+        transition: t.id,
+        signatures: signed.map((s) => ({ ...s })),
+        satisfied: gateSatisfied(t.gate!, signed, run.membership),
+      };
     });
   const from = options.from ?? -1;
   return {
@@ -1095,7 +1123,7 @@ function enabledOf(run: Interpreter, active: Edge[]): SimulationJson["enabled"] 
       event: String(ev.id),
       invoke: null,
       transitions: candidates.map((t) => t.id),
-      actors,
+      actors: run.membership.withMembers(actors),
       guardUnknown: candidates.some(unknown),
       gate,
     });
@@ -1108,7 +1136,7 @@ function enabledOf(run: Interpreter, active: Edge[]): SimulationJson["enabled"] 
         event: null,
         invoke: String(p.invoke.id),
         transitions: candidates.map((t) => t.id),
-        actors: p.invoke.type === "human-task" ? ids(p.invoke.actors) : [],
+        actors: p.invoke.type === "human-task" ? run.membership.withMembers(ids(p.invoke.actors)) : [],
         guardUnknown: candidates.some(unknown),
         gate: null,
       });

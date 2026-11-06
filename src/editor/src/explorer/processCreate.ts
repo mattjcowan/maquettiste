@@ -1,7 +1,7 @@
 // The process dialogs' models (phase-3-design.md 6.1): New process, New actor, New scenario and Import XState. Pure:
 // processDialogs.tsx renders them and sends each result as one batch (one change, one undo entry).
 import { IDENTIFIER } from "@/model/model";
-import { PROCESS_LABELS } from "@/model/labels";
+import { ACTOR_TYPES, PROCESS_LABELS, type ActorType } from "@/model/labels";
 
 type Json = Record<string, unknown>;
 
@@ -160,8 +160,7 @@ export function buildProcessBatch(input: NewProcessInput, newId: () => string): 
   return { ops, processId };
 }
 
-export const ACTOR_TYPES = ["person", "role", "external-system"] as const;
-export type ActorType = (typeof ACTOR_TYPES)[number];
+export { ACTOR_TYPES, type ActorType };
 
 export interface NewActorInput {
   name: string;
