@@ -536,4 +536,44 @@ public sealed class ExpressionGuardTests
         var test = await ProcessTests.TestAsync(repo);
         Assert.True(test.ExitCode == 0 && test.Output.Contains("Total: 14, Errors: 0, Failed: 0,", StringComparison.Ordinal), test.Output);
     }
+
+    [Fact]
+    public async Task A_guard_that_reads_the_object_becomes_a_partial_method_and_the_output_builds()
+    {
+        // lifecycle-design.md decision 21: exceedsCreditLimit rewritten as subject.total > 0 or total > creditLimit. The pack does not give
+        // generated code an object to read, so the handler declares a partial method with the condition in its comment, and a person
+        // implements it in the companion. The output builds, and the generated scenario tests pass as before: no scenario has objects, so
+        // subject.total reads null in the engine's replay and the guard answers as total > creditLimit, as the companion does.
+        using var repo = PackRepo.Processes(sources: true);
+        repo.EditJson(".maquettiste/model/processes/sales-order-lifecycle.json", process =>
+        {
+            var guard = process["guards"]!.AsArray().Single(g => (string)g!["name"]! == "exceedsCreditLimit")!.AsObject();
+            guard.Remove("expression");
+            guard["condition"] = JsonNode.Parse("""
+                { "op": "or", "args": [
+                  { "op": "gt", "args": [{ "path": ["01JQATT0000000000000000004"] }, { "value": 0 }] },
+                  { "op": "gt", "args": [{ "path": ["01JQATT0000000000000000101"] }, { "path": ["01JQATT0000000000000000102"] }] } ] }
+                """);
+        });
+        await repo.GenerateCleanlyAsync();
+        var generated = repo.Read(ProcessTests.Generated + "/Processes/SalesOrderLifecycle/SalesOrderLifecycleHandlers.g.cs");
+        Assert.Contains("/// <summary>Guard exceedsCreditLimit: <c>subject.total &gt; 0 or total &gt; creditLimit</c> (implemented in SalesOrderLifecycleHandlers.cs).</summary>",
+            generated, StringComparison.Ordinal);
+        Assert.Contains("private partial bool GuardExceedsCreditLimit(StatechartCall<SalesOrderLifecycleContext> call);", generated, StringComparison.Ordinal);
+
+        const string Companion = "src/Processes.Data/Custom/Processes/SalesOrderLifecycle/SalesOrderLifecycleHandlers.cs";
+        const string Last = "!call.IsActive(SalesOrderLifecycleStates.FulfilmentProcessingShippingShipped);";
+        var companion = repo.Read(Companion);
+        Assert.Contains(Last, companion, StringComparison.Ordinal);
+        repo.Write(Companion, companion.Replace(Last, Last + """
+
+
+                private partial bool GuardExceedsCreditLimit(StatechartCall<SalesOrderLifecycleContext> call) =>
+                    call.Context.Total > call.Context.CreditLimit;
+            """, StringComparison.Ordinal));
+
+        await ProcessTests.BuildOrSkipAsync(repo);
+        var test = await ProcessTests.TestAsync(repo);
+        Assert.True(test.ExitCode == 0 && test.Output.Contains("Total: 14, Errors: 0, Failed: 0,", StringComparison.Ordinal), test.Output);
+    }
 }

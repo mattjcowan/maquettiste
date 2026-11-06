@@ -501,10 +501,11 @@ public sealed class StatechartInterpreter
             return t.Transition.Guard is null; // an undeclared guard (MQ2001) never holds
         if (Session(inst.Chart) is { } session && session.Compiled.Contains(guard.Id))
         {
-            // A condition answers true or false, so MQ9504 cannot occur for it; its now() is the simulated clock.
+            // A condition answers true or false, so MQ9504 cannot occur for it; its now() is the simulated clock, and it reads the instance's
+            // object under subject (none for a sub-process, so its attributes read as their defaults).
             var label = $"Guard '{guard.Name}'";
             var result = session.Conditions.Contains(guard.Id)
-                ? session.EvaluateCondition(guard.Id, label, ContextObject(inst), _scope.Event, ClockText(), Seed(inst), _options.CancellationToken)
+                ? session.EvaluateCondition(guard.Id, label, ContextObject(inst), _scope.Event, SubjectOf(inst), ClockText(), Seed(inst), _options.CancellationToken)
                 : session.Evaluate(guard.Id, label, ContextObject(inst), _scope.Event, Seed(inst), _options.CancellationToken);
             bool value;
             if (result.Diagnostic is { } d)

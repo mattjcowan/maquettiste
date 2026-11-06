@@ -14,6 +14,7 @@ using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Resolution;
 using Maquettiste.Engine.Scripting;
+using Maquettiste.Engine.Validation;
 using JsEngine = Jint.Engine;
 
 namespace Maquettiste.Engine.Processes;
@@ -52,8 +53,9 @@ public sealed class ProcessExpressions
     private const int CacheLimit = 512;
     private static readonly ConcurrentDictionary<string, ProcessExpressions> Cache = new(StringComparer.Ordinal);
 
-    private ProcessExpressions(Process process, IReadOnlyList<LoweredCondition> conditions)
+    private ProcessExpressions(Process process, IReadOnlyList<LoweredCondition> conditions, JsonElement? subjectDefaults)
     {
+        SubjectDefaults = subjectDefaults;
         var code = new StringBuilder();
         var compiled = new HashSet<string>(StringComparer.Ordinal);
         var replaced = conditions.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
@@ -106,6 +108,12 @@ public sealed class ProcessExpressions
     internal string Script { get; }
 
     /// <summary>
+    /// The row a condition that reads the object sees under <c>subject</c> for each attribute the object's row lacks: the defaults of the
+    /// attributes in scope by name (lifecycle-design.md decision 22). <see langword="null"/> when no condition reads the object.
+    /// </summary>
+    internal JsonElement? SubjectDefaults { get; }
+
+    /// <summary>
     /// The scripts a session's engines load, in order (for tests): with conditions, the shared runtime (<see cref="ExprRuntime.Prepared"/>)
     /// and then the process's own; else the process's own, or none when nothing compiled.
     /// </summary>
@@ -120,7 +128,7 @@ public sealed class ProcessExpressions
     public static ProcessExpressions Get(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
-        return ByProcess.GetValue(process, static p => FromContent(p, []));
+        return ByProcess.GetValue(process, static p => FromContent(p, [], null));
     }
 
     /// <summary>
@@ -137,18 +145,41 @@ public sealed class ProcessExpressions
         ArgumentNullException.ThrowIfNull(process);
         if (process.Guards.All(g => g.Condition is null))
             return Get(process);
-        return ByModel.GetOrCreateValue(model).GetValue(process, p => FromContent(p, Lower(model, p)));
+        return ByModel.GetOrCreateValue(model).GetValue(process, p =>
+        {
+            var lowered = Lower(model, p);
+            return FromContent(p, lowered, SubjectDefaultsOf(model, p, lowered));
+        });
     }
 
-    private static ProcessExpressions FromContent(Process process, IReadOnlyList<LoweredCondition> conditions)
+    private static ProcessExpressions FromContent(Process process, IReadOnlyList<LoweredCondition> conditions, JsonElement? subjectDefaults)
     {
-        var key = Key(process, conditions);
+        var key = Key(process, conditions, subjectDefaults);
         if (Cache.TryGetValue(key, out var cached))
             return cached;
         if (Cache.Count >= CacheLimit)
             Cache.Clear();
-        return Cache.GetOrAdd(key, _ => new ProcessExpressions(process, conditions));
+        return Cache.GetOrAdd(key, _ => new ProcessExpressions(process, conditions, subjectDefaults));
     }
+
+    // The values a condition that reads the object sees for an attribute the object's row lacks (lifecycle-design.md decision 22): each
+    // attribute in scope under subject (ExprSites.SubjectMembers) by name, the nearest declaration of a name first, as its default, else
+    // null. Null when no condition reads the object, so the row of such a process is what it was before objects.
+    private static JsonElement? SubjectDefaultsOf(ModelSnapshot model, Process process, IReadOnlyList<LoweredCondition> conditions)
+    {
+        if (!conditions.Any(c => c.ReadsSubject))
+            return null;
+        var defaults = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);
+        foreach (var attribute in ExprSites.SubjectMembers(model, process).Attributes)
+        {
+            if (!defaults.ContainsKey(attribute.Name))
+                defaults[attribute.Name] = attribute.Default is { ValueKind: not JsonValueKind.Undefined } value ? value : NullValue;
+        }
+
+        return JsonSerializer.SerializeToElement(defaults);
+    }
+
+    private static readonly JsonElement NullValue = JsonDocument.Parse("null").RootElement.Clone();
 
     /// <summary>The conditions of a process's guards that type, lowered at a guard site through the API's form of values.</summary>
     private static List<LoweredCondition> Lower(ModelSnapshot model, Process process)
@@ -160,7 +191,7 @@ public sealed class ProcessExpressions
             if (guard.Condition is null || ExprResolution.Type(model, process, guard.Id) is not { } typed)
                 continue;
             var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Guard, ExprResolution.ApiColumns(model, guard.Id, path));
-            lowered.Add(new LoweredCondition(guard.Id, js, ReadsNow(typed.Typed)));
+            lowered.Add(new LoweredCondition(guard.Id, js, ReadsNow(typed.Typed), ExprSites.ReadsSubject(process, typed.Typed)));
         }
 
         return lowered;
@@ -185,7 +216,7 @@ public sealed class ProcessExpressions
     /// <summary>Whether <see cref="Get(Process)"/> holds compiled expressions for the process's current expressions (for tests).</summary>
     /// <param name="process">The process.</param>
     /// <returns><see langword="true"/> when they are cached.</returns>
-    internal static bool IsCached(Process process) => ByProcess.TryGetValue(process, out _) || Cache.ContainsKey(Key(process, []));
+    internal static bool IsCached(Process process) => ByProcess.TryGetValue(process, out _) || Cache.ContainsKey(Key(process, [], null));
 
     /// <summary>
     /// Whether <see cref="Get(ModelSnapshot, Process)"/> holds compiled expressions for the process's current expressions and lowered
@@ -197,7 +228,13 @@ public sealed class ProcessExpressions
     internal static bool IsCached(ModelSnapshot model, Process process) =>
         process.Guards.All(g => g.Condition is null)
             ? IsCached(process)
-            : (ByModel.TryGetValue(model, out var processes) && processes.TryGetValue(process, out _)) || Cache.ContainsKey(Key(process, Lower(model, process)));
+            : (ByModel.TryGetValue(model, out var processes) && processes.TryGetValue(process, out _)) || IsCachedByContent(model, process);
+
+    private static bool IsCachedByContent(ModelSnapshot model, Process process)
+    {
+        var lowered = Lower(model, process);
+        return Cache.ContainsKey(Key(process, lowered, SubjectDefaultsOf(model, process, lowered)));
+    }
 
     // The problems of a process's expressions; the ids that parse go to compiled and, with code, their helper registrations to code. A
     // guard whose condition replaces its expression is still parsed, so the problems are the same with or without the model.
@@ -271,7 +308,7 @@ public sealed class ProcessExpressions
     public ProcessExpressionSession Open(int size, CancellationToken ct, SandboxLimits limits)
     {
         if (Scripts.Count == 0)
-            return new ProcessExpressionSession(null, Compiled, Conditions);
+            return new ProcessExpressionSession(null, Compiled, Conditions) { SubjectDefaults = SubjectDefaults };
         var scripts = Scripts;
         var effective = Conditions.Count > 0 ? limits with { ScriptTimeoutMs = 0 } : limits;
         var first = Compiled.First();
@@ -288,7 +325,7 @@ public sealed class ProcessExpressions
                 pool.Dispose();
                 throw;
             }
-        }), Compiled, Conditions);
+        }), Compiled, Conditions) { SubjectDefaults = SubjectDefaults };
     }
 
     // The first call into a fresh engine pays the runtime's one-time costs (code paths compiled on first use), which
@@ -314,7 +351,7 @@ public sealed class ProcessExpressions
 
     // The content key: a condition's lowered JavaScript names what it reads by current name and holds each enum member's or code's
     // literal, so a rename that changes what it reads changes the key.
-    private static string Key(Process process, IReadOnlyList<LoweredCondition> conditions)
+    private static string Key(Process process, IReadOnlyList<LoweredCondition> conditions, JsonElement? subjectDefaults)
     {
         var text = new StringBuilder(process.Name).Append('\0');
         foreach (var g in process.Guards)
@@ -323,6 +360,8 @@ public sealed class ProcessExpressions
             text.Append('a').Append(a.Id).Append('\0').Append(a.Expression ?? "\u0001").Append('\0');
         foreach (var c in conditions)
             text.Append('c').Append(c.Id).Append('\0').Append(c.JavaScript).Append('\0');
+        if (subjectDefaults is { } defaults) // the defaults a condition reading the object sees are part of what it answers
+            text.Append('d').Append(defaults.GetRawText()).Append('\0');
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
     }
 
@@ -330,7 +369,8 @@ public sealed class ProcessExpressions
     /// <param name="Id">The guard id.</param>
     /// <param name="JavaScript">The function over a row (<see cref="ExprLowering.ToJavaScript"/>).</param>
     /// <param name="ReadsNow">Whether it reads <c>now</c>, so it receives the simulation's clock.</param>
-    private sealed record LoweredCondition(string Id, string JavaScript, bool ReadsNow);
+    /// <param name="ReadsSubject">Whether it reads the object under <c>subject</c> (<see cref="ExprSites.ReadsSubject"/>).</param>
+    private sealed record LoweredCondition(string Id, string JavaScript, bool ReadsNow, bool ReadsSubject);
 }
 
 /// <summary>The result of one expression evaluation.</summary>
@@ -358,8 +398,12 @@ public sealed class ProcessExpressionSession : IDisposable
     public IReadOnlySet<string> Compiled { get; }
 
     /// <summary>The ids of the guards whose conditions compiled (<see cref="ProcessExpressions.Conditions"/>): evaluate them with
-    /// <see cref="EvaluateCondition"/>.</summary>
+    /// <see cref="EvaluateCondition(string, string, JsonElement, JsonElement, JsonElement, string, string, CancellationToken)"/>.</summary>
     public IReadOnlySet<string> Conditions { get; }
+
+    /// <summary>The defaults the object's row falls back on (<see cref="ProcessExpressions.SubjectDefaults"/>); <see langword="null"/> when no
+    /// condition reads the object.</summary>
+    internal JsonElement? SubjectDefaults { get; init; }
 
     /// <summary>Evaluates a compiled guard or action expression.</summary>
     /// <param name="id">The guard or action id.</param>
@@ -402,11 +446,30 @@ public sealed class ProcessExpressionSession : IDisposable
     /// <param name="seed">The seed of <c>Math.random</c>, which no condition reads.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The result: a <see cref="bool"/>, or MQ9502 or MQ9503.</returns>
-    public ExpressionResult EvaluateCondition(string id, string label, JsonElement context, JsonElement @event, string now, string seed, CancellationToken ct)
+    public ExpressionResult EvaluateCondition(string id, string label, JsonElement context, JsonElement @event, string now, string seed, CancellationToken ct) =>
+        EvaluateCondition(id, label, context, @event, NoObject, now, seed, ct);
+
+    /// <summary>
+    /// Evaluates a compiled guard condition over one row that also holds the object the run is for under <c>subject</c>
+    /// (lifecycle-design.md decisions 20 and 22): its attributes by name and its links by navigation name, an attribute the object does not
+    /// give reading as its default, then null; with no object (an empty one) every attribute reads so. A context attribute named
+    /// <c>subject</c> keeps its meaning, and a process none of whose conditions reads the object sees the row it always did.
+    /// </summary>
+    /// <param name="id">The guard id.</param>
+    /// <param name="label">"Guard 'name'", for messages.</param>
+    /// <param name="context">The context object (attribute names to values).</param>
+    /// <param name="event">The event object (<c>name</c>, <c>actor</c>, <c>payload</c>).</param>
+    /// <param name="subject">The object (attribute and navigation names to values); an empty object when there is none.</param>
+    /// <param name="now">The simulation's clock, an ISO 8601 instant in UTC, which <c>now()</c> reads.</param>
+    /// <param name="seed">The seed of <c>Math.random</c>, which no condition reads.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The result: a <see cref="bool"/>, or MQ9502 or MQ9503.</returns>
+    public ExpressionResult EvaluateCondition(string id, string label, JsonElement context, JsonElement @event, JsonElement subject, string now, string seed,
+        CancellationToken ct)
     {
         if (_pool is null)
             throw new InvalidOperationException($"{label} has no compiled condition.");
-        var row = Row(context, @event);
+        var row = Row(context, @event, subject, SubjectDefaults);
         try
         {
             using var lease = _pool.Rent();
@@ -423,9 +486,12 @@ public sealed class ProcessExpressionSession : IDisposable
         }
     }
 
+    private static readonly JsonElement NoObject = JsonDocument.Parse("{}").RootElement.Clone();
+
     // The row a condition reads: the context's members, then the payload as event. A context attribute named event gives way to it; no
-    // condition reads one (MQ3102 leaves such a guard unlowered).
-    private static JsonElement Row(JsonElement context, JsonElement @event)
+    // condition reads one (MQ3102 leaves such a guard unlowered). When a condition of the process reads the object (defaults given), the
+    // object follows as subject, each attribute it lacks as its default; a context attribute named subject keeps its place instead.
+    private static JsonElement Row(JsonElement context, JsonElement @event, JsonElement subject, JsonElement? defaults)
     {
         var buffer = new System.Buffers.ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer))
@@ -445,6 +511,30 @@ public sealed class ProcessExpressionSession : IDisposable
                 payload.WriteTo(writer);
             else
                 writer.WriteNullValue();
+            if (defaults is { ValueKind: JsonValueKind.Object } fallback
+                && !(context.ValueKind == JsonValueKind.Object && context.TryGetProperty(ExprSites.SubjectPrefix, out _)))
+            {
+                writer.WritePropertyName(ExprSites.SubjectPrefix);
+                writer.WriteStartObject();
+                var given = new HashSet<string>(StringComparer.Ordinal);
+                if (subject.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var member in subject.EnumerateObject())
+                    {
+                        if (given.Add(member.Name))
+                            member.WriteTo(writer);
+                    }
+                }
+
+                foreach (var member in fallback.EnumerateObject())
+                {
+                    if (!given.Contains(member.Name))
+                        member.WriteTo(writer);
+                }
+
+                writer.WriteEndObject();
+            }
+
             writer.WriteEndObject();
         }
 

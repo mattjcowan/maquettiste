@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Processes;
+using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Resolution;
 
@@ -322,7 +323,10 @@ internal sealed partial class ResolveRun
 
 
         // A guard's condition (next-phase-3-design.md section 3.1): typed in the process's scope, its paths ending at the context's and
-        // payloads' attributes; what it names beyond the process (an enum, a seed, a constraint) joins the guard's keys.
+        // payloads' attributes; what it names beyond the process (an enum, a seed, a constraint) joins the guard's keys. A condition that
+        // reads the object (lifecycle-design.md decision 20) ends its paths there at the declaring entity's own attribute, a base's for an
+        // inherited one, so the condition has one target whichever subject runs; it depends on every subject's entity and its bases, and,
+        // through Names, on the relations it follows and the entities they lead to.
         void ResolveCondition(RGuard guard, ProcessGuard source)
         {
             if (ExprResolution.Type(Model, process, source.Id) is not { } typed)
@@ -331,10 +335,20 @@ internal sealed partial class ResolveRun
                 .ToDictionary(a => a.Id, StringComparer.Ordinal);
             var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Guard,
                 ExprResolution.ApiColumns(Model, source.Id, Model.GetDocument(process.Id)?.Path));
-            guard.Condition = ExprResolution.Build(root, m => AttributeTarget(readable, m.Id), EnumMemberOf);
+            var readsSubject = ExprSites.ReadsSubject(process, typed.Typed);
+            guard.Condition = ExprResolution.Build(root, m => AttributeTarget(readable, m.Id) ?? (readsSubject ? DeclaredAttribute(m.Id) : null), EnumMemberOf);
             var guardDeps = DepsOf(guard);
             foreach (var name in ExprResolution.Names(Model, typed.Typed))
                 guardDeps.Element(name);
+            if (!readsSubject)
+                return;
+            foreach (var entry in process.Subjects)
+            {
+                if (EntitySource(entry.Entity) is not { } entity)
+                    continue;
+                foreach (var level in Chain(entity))
+                    guardDeps.Element(level.Id);
+            }
         }
 
         var actions = new List<RAction>();

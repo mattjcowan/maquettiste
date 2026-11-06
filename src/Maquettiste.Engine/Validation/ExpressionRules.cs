@@ -43,8 +43,9 @@ internal sealed record ExprSite(string Pointer, Expr? Tree, bool Raw, string Sub
 /// The expression sites of the model and the scope each reads (next-phase-3-design.md section 3.1): a table's columns (with those its
 /// stereotypes contribute, by keyed id, and on the overlay of an entity's table the entity's attributes) or a stereotype's at its
 /// checks; an entity's attributes (its bases' too, value-object members as <c>attribute.member</c>) at its checks and derived values;
-/// an operation's input and its subject's attributes (under <c>subject</c>) at its guards; a process's context and the payloads of the
-/// events that use a guard (under <c>event</c>) at the guard; a constraint's parameters at its condition.
+/// an operation's input and its subject's attributes (under <c>subject</c>) at its guards; a process's context, the payloads of the
+/// events that use a guard (under <c>event</c>) and what its subjects hold (under <c>subject</c>, <see cref="SubjectMembers"/>) at the
+/// guard; a constraint's parameters at its condition.
 /// </summary>
 internal static class ExprSites
 {
@@ -597,9 +598,12 @@ internal static class ExprSites
     /// end names its <c>navigation</c>, held in a path by that end's id, to-one when its maximum is one. What each leads to is filled
     /// when an expression first reads through it.
     /// </summary>
-    private static void AddNavigations(ExprContainer container, ModelSnapshot model, Entity entity, string? prefix)
+    private static void AddNavigations(ExprContainer container, ModelSnapshot model, Entity entity, string? prefix) =>
+        AddNavigations(container, model, NavigationsOf(model, entity).Select(n => n.To), prefix);
+
+    private static void AddNavigations(ExprContainer container, ModelSnapshot model, IEnumerable<RelationEnd> ends, string? prefix)
     {
-        foreach (var (to, _) in NavigationsOf(model, entity))
+        foreach (var to in ends)
         {
             var target = model.Get<Entity>(to.Entity);
             container.Add(new ExprNavigation(to.Id, to.Navigation, new ExprContainer(c =>
@@ -638,6 +642,70 @@ internal static class ExprSites
         AddAttributes(scope.Root, model, process.Context, null);
         foreach (var e in events)
             AddAttributes(scope.Root, model, e.Payload, "event");
+        var (attributes, navigations) = SubjectMembers(model, process);
+        AddAttributes(scope.Root, model, attributes, SubjectPrefix);
+        AddNavigations(scope.Root, model, navigations, SubjectPrefix);
+    }
+
+    /// <summary>The name a process guard reads its object under (lifecycle-design.md decision 20).</summary>
+    internal const string SubjectPrefix = "subject";
+
+    /// <summary>
+    /// What a process guard's condition reads on its object under <c>subject</c> (lifecycle-design.md decision 20): what every subject holds
+    /// under one id. With one subject, its own and inherited attributes and to-one or to-many navigations (the typer refuses a path through a
+    /// to-many one); with several, those of a base entity they all derive from, so attributes that only share a name are not in it. A
+    /// subject whose entity is not in the model is left out, as resolution leaves it out. Kept out: the subjects' bound attributes (the
+    /// chart already knows its state), a stereotype's attributes (not an entity's own), and everything when a context attribute is named
+    /// <c>subject</c>, which keeps its meaning. Attributes nearest first, navigations in model order, each once.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="process">The process.</param>
+    /// <returns>The attributes and the relation ends navigated to.</returns>
+    internal static (IReadOnlyList<ModelAttribute> Attributes, IReadOnlyList<RelationEnd> Navigations) SubjectMembers(ModelSnapshot model, Process process)
+    {
+        if (process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
+            return ([], []);
+        var entities = process.Subjects.Select(s => model.Get<Entity>(s.Entity)).OfType<Entity>().DistinctBy(e => e.Id).ToList();
+        if (entities.Count == 0)
+            return ([], []);
+        var bound = process.Subjects.Select(s => s.BoundAttribute).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        var attributes = AttributesOf(model, entities[0]).Where(a => !bound.Contains(a.Id)).DistinctBy(a => a.Id).ToList();
+        var navigations = NavigationsOf(model, entities[0]).Select(n => n.To).DistinctBy(e => e.Id).ToList();
+        foreach (var other in entities.Skip(1))
+        {
+            var held = AttributesOf(model, other).Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+            attributes.RemoveAll(a => !held.Contains(a.Id));
+            var reached = NavigationsOf(model, other).Select(n => n.To.Id).ToHashSet(StringComparer.Ordinal);
+            navigations.RemoveAll(e => !reached.Contains(e.Id));
+        }
+
+        return (attributes, navigations);
+    }
+
+    /// <summary>
+    /// Whether a process guard's typed condition reads its object (<see cref="SubjectMembers"/>): a path whose first segment is under
+    /// <c>subject</c>. Never when a context attribute is named <c>subject</c>, whose own members print under that name.
+    /// </summary>
+    /// <param name="process">The process.</param>
+    /// <param name="typed">The guard's typed condition.</param>
+    /// <returns>Whether it reads the object.</returns>
+    internal static bool ReadsSubject(Process process, TypedExpr typed)
+    {
+        if (process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
+            return false;
+        var pending = new Stack<TypedExpr>();
+        pending.Push(typed);
+        while (pending.Count > 0)
+        {
+            var t = pending.Pop();
+            if (t.Node.Path is not null && (t.Through.Count > 0 ? t.Through[0].Prefix : t.Member?.Prefix) is { } prefix
+                && (prefix == SubjectPrefix || prefix.StartsWith(SubjectPrefix + ".", StringComparison.Ordinal)))
+                return true;
+            foreach (var arg in t.Args)
+                pending.Push(arg);
+        }
+
+        return false;
     }
 }
 

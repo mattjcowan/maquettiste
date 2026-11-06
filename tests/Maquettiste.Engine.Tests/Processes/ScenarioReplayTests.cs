@@ -276,6 +276,45 @@ public sealed class ScenarioReplayTests
         Assert.Equal("refresh-scenario", RuleCatalog.Get("MQ9302").QuickFix);
     }
 
+    [Theory]
+    [InlineData("5", null, true)] // the object's value passes
+    [InlineData("0", "1", false)] // the object's value fails, whatever the default
+    [InlineData("null", "1", false)] // a null given is not the default: only true passes
+    [InlineData(null, "1", true)] // no objects: the default passes
+    [InlineData(null, null, false)] // no objects and no default: null fails
+    public async Task A_guard_reading_the_object_replays_by_its_values_and_by_defaults(string? total, string? totalDefault, bool passes)
+    {
+        // lifecycle-design.md decisions 20 and 22: Fulfilment's guard reads subject.total > 0, and the scenario expects what the object (or,
+        // without objects, Document.total's default) decides. Each case passes its replay only if the guard reads the object.
+        using var repo = ProcessConditionTests.ObjectRepo(["subject.total > 0"], totalDefault: totalDefault);
+        var objects = total is null ? "" : $$"""
+            "objects": [ { "id": "01K9PSB0000000000000000K01", "name": "order", "entity": "{{ProcessConditionTests.OrderEntity}}",
+                           "values": { "{{ProcessConditionTests.DocumentTotal}}": {{total}} } } ],
+            "subject": "01K9PSB0000000000000000K01",
+            """;
+        var target = passes ? ProcessConditionTests.DoneState : ProcessConditionTests.OpenState;
+        repo.WriteFile(".maquettiste/model/scenarios/fulfilment/order.json", $$"""
+            {
+              "kind": "scenario", "id": "01K9PSB0000000000000000C01", "name": "Order", "process": "{{ProcessConditionTests.Fulfilment}}",
+              {{objects}}
+              "outcome": "{{(passes ? "final" : "active")}}",
+              "steps": [ { "id": "01K9PSB0000000000000000C02", "event": "{{ProcessConditionTests.EventId(1)}}",
+                           "expect": { "accepted": {{(passes ? "true" : "false")}}, "states": ["{{target}}"] } } ]
+            }
+            """);
+        await using var store = new ModelStore(repo.Options);
+        var model = await store.GetSnapshotAsync(Ct);
+        Assert.True(model.Get<Scenario>("01K9PSB0000000000000000C01") is not null, string.Join(" | ", model.LoadDiagnostics.Select(d => d.Rule + " " + d.Message)));
+        var replay = Replay(model, model.Get<Scenario>("01K9PSB0000000000000000C01")!);
+        Assert.True(replay.Passed && replay.Diagnostics.Count == 0, string.Join(" | ", replay.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        Assert.Equal(passes, Assert.Single(replay.Steps).Accepted);
+
+        // verify_scenarios answers the same.
+        var verified = await store.VerifyScenariosAsync(ProcessConditionTests.Fulfilment, null, Ct);
+        Assert.True(verified.Status == ProcessCallStatus.Ok, verified.Detail);
+        Assert.True(Assert.Single(verified.Value!.Results).Passed);
+    }
+
     [Fact]
     public async Task Macrostep_and_expression_budgets_measured_on_the_fixture()
     {
