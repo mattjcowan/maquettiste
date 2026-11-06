@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Maquettiste.Engine.Model;
+using Maquettiste.Testing;
 
 namespace Maquettiste.Engine.Tests.Editor;
 
@@ -103,6 +105,57 @@ public sealed class ElementSummaryTests
         Assert.Equal(2, json["memberCount"]!.GetValue<int>());
         Assert.False(JsonSerializer.SerializeToNode(s.Model.Summaries().First(r => r.Kind == "entity"), web)!.AsObject().ContainsKey("type"));
         Assert.NotEqual(message, message with { Type = "notice" });
-        Assert.Equal("maquettiste-index/e11", Maquettiste.Engine.ModelReads.IndexFormat);
+        Assert.Equal("maquettiste-index/e12", Maquettiste.Engine.ModelReads.IndexFormat);
+    }
+
+    [Fact]
+    public void A_process_row_lists_the_actors_it_names_and_leaves_them_out_when_it_names_none()
+    {
+        // Every field that names an actor counts (event senders, gate signers and required actors), libraries too; an id that is no
+        // actor (a missing one, the subject entity) does not. The list is distinct and sorted ordinally.
+        var b = new ModelBuilder(71);
+        var order = b.Entity("Order").Key("id", "uuid");
+        var clerk = new Actor { Id = b.NewId(), Name = "Clerk", Type = ActorType.Role };
+        var buyer = new Actor { Id = b.NewId(), Name = "Buyer", Type = ActorType.Person };
+        b.Add(clerk);
+        b.Add(buyer);
+        var ghost = b.NewId();
+        var named = new Process
+        {
+            Id = b.NewId(), Name = "OrderFlow", Subject = order.Id,
+            Events = [new ProcessEvent { Id = b.NewId(), Name = "submit", Actors = [buyer.Id, ghost] }],
+            Gates = [new ProcessGate { Id = b.NewId(), Name = "approve", Signers = [clerk.Id, buyer.Id], RequiredActors = [clerk.Id],
+                Meanings = [new GateMeaning { Id = b.NewId(), Name = "approved" }] }],
+        };
+        var library = new Process
+        {
+            Id = b.NewId(), Name = "Shared", Use = ProcessUse.Library,
+            Events = [new ProcessEvent { Id = b.NewId(), Name = "ping", Actors = [clerk.Id] }],
+        };
+        var silent = new Process
+        {
+            Id = b.NewId(), Name = "Quiet", Subject = order.Id,
+            Events = [new ProcessEvent { Id = b.NewId(), Name = "tick" }],
+        };
+        b.Add(named);
+        b.Add(library);
+        b.Add(silent);
+        var documents = b.BuildDocuments().OrderBy(d => d.Path, StringComparer.Ordinal).ToList();
+
+        var rows = ModelSnapshot.Create(documents, new ProjectSettings { FormatVersion = EngineVersion.FormatVersion }, "", [], [], 1).Summaries();
+
+        Assert.Equal(new[] { clerk.Id, buyer.Id }.Order(StringComparer.Ordinal), rows.Single(r => r.Id == named.Id).Actors);
+        Assert.Equal([clerk.Id], rows.Single(r => r.Id == library.Id).Actors);
+        var quiet = rows.Single(r => r.Id == silent.Id);
+        Assert.Null(quiet.Actors);
+        Assert.All(rows.Where(r => r.Kind != "process"), r => Assert.Null(r.Actors));
+        Assert.False(JsonSerializer.SerializeToNode(quiet, Web)!.AsObject().ContainsKey("actors"));
+        var json = JsonSerializer.SerializeToNode(rows.Single(r => r.Id == named.Id), Web)!;
+        Assert.Equal(new[] { clerk.Id, buyer.Id }.Order(StringComparer.Ordinal), json["actors"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.Equal(quiet, quiet with { Actors = null });
+        var row = rows.Single(r => r.Id == named.Id);
+        Assert.Equal(row, row with { Actors = [.. row.Actors!] }); // compared by items
+        Assert.NotEqual(row, row with { Actors = [clerk.Id] });
+        Assert.NotEqual(quiet, quiet with { Actors = [clerk.Id] });
     }
 }

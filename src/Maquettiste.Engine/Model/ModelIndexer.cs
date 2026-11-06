@@ -195,6 +195,7 @@ internal static class ModelIndexer
         var retired = new HashSet<string>(StringComparer.Ordinal);
         var clean = true;
         var suppressionCount = 0;
+        var processRows = new List<(int Row, DocumentWalk Walk)>(); // filled with their actors once every id is known
 
         for (var d = 0; d < documents.Length; d++)
         {
@@ -237,7 +238,15 @@ internal static class ModelIndexer
                 clean &= entries.TryAdd(id, entry);
             retired.UnionWith(walk.Retired);
             references.AddRange(walk.References);
-            summaries.Add(Summarize(element, doc.Hash, doc.Path, schemas));
+            if (element is Process)
+                processRows.Add((summaries.Count, walk));
+            summaries.Add(Summarize(element, doc.Hash, doc.Path, schemas, null));
+        }
+
+        foreach (var (row, walk) in processRows)
+        {
+            if (ActorsOf(walk.References, docsById) is { } actors)
+                summaries[row] = summaries[row] with { Actors = actors };
         }
 
         var referencesTo = Group(references, static r => r.ToId);
@@ -487,6 +496,20 @@ internal static class ModelIndexer
             kindSetHashes[kind] = KindSetHash(list);
         }
 
+        // A process row lists the ids it names whose element is an actor: an id that becomes or stops being an actor recounts the kept
+        // processes that name it. Only an added or removed actor document can do that.
+        HashSet<string>? recount = null;
+        foreach (var id in removed.Select(r => old[r].Element).Concat(added.Select(a => documents[a].Element)).OfType<Actor>().Select(e => e.Id))
+        {
+            var was = previous.DocumentsById.TryGetValue(id, out var before) && before.Element is Actor;
+            var now = docsById.TryGetValue(id, out var after) && after.Element is Actor;
+            if (was != now && referencesTo.TryGetValue(id, out var naming))
+            {
+                foreach (var reference in naming)
+                    (recount ??= new(StringComparer.Ordinal)).Add(reference.FromElementId);
+            }
+        }
+
         // Summaries follow the documents.
         var summaries = ImmutableArray.CreateBuilder<ElementSummary>(documents.Length);
         var previousSummaries = previous.Summaries;
@@ -494,16 +517,20 @@ internal static class ModelIndexer
         var o = 0;
         for (var d = 0; d < documents.Length; d++)
         {
+            var element = documents[d].Element;
             if (addedSet.Contains(d))
             {
-                var element = documents[d].Element;
-                summaries.Add(Summarize(element, documents[d].Hash, documents[d].Path, schemas));
+                summaries.Add(Summarize(element, documents[d].Hash, documents[d].Path, schemas,
+                    element is Process ? ActorsOf(walks[d].References, docsById) : null));
                 continue;
             }
 
             while (!ReferenceEquals(old[o], documents[d]))
                 o++; // skip removed documents; the unchanged one is further on
-            summaries.Add(previousSummaries[o++]);
+            var row = previousSummaries[o++];
+            if (element is Process && recount is not null && recount.Contains(element.Id))
+                row = row with { Actors = ActorsOf(walks[d].References, docsById) };
+            summaries.Add(row);
         }
 
         return previous with
@@ -671,7 +698,7 @@ internal static class ModelIndexer
 
     /// <summary>The index row of an element (E4 and E5 members included; a custom element's type and member count,
     /// next-phase-2-design.md section 4.2).</summary>
-    private static ElementSummary Summarize(Element element, string hash, string path, PropertySchemaSet schemas) =>
+    private static ElementSummary Summarize(Element element, string hash, string path, PropertySchemaSet schemas, IReadOnlyList<string>? actors) =>
         new(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, hash, path, element.Category, element.Stereotypes,
             DisplayName: element.DisplayName,
             Database: element switch
@@ -727,7 +754,27 @@ internal static class ModelIndexer
             StepCount: element is Scenario steps ? steps.Steps.Count : null,
             Effect: element is Operation effect ? (effect.Effect == OperationEffect.Change ? "change" : "read") : null,
             Type: element is Custom typed ? typed.Type : null,
-            Subjects: element is Process { Subjects.Count: > 1 } several ? [.. several.Subjects.Select(s => s.Entity)] : null);
+            Subjects: element is Process { Subjects.Count: > 1 } several ? [.. several.Subjects.Select(s => s.Entity)] : null,
+            Actors: actors);
+
+    /// <summary>
+    /// The actors a process's document names: the targets of its references (every field, custom properties included) whose element is
+    /// an actor, distinct and sorted ordinally; <see langword="null"/> when there are none, so the row leaves the member out.
+    /// </summary>
+    /// <param name="references">The references the document's walk collected.</param>
+    /// <param name="documentsById">The model's top-level documents by id, complete for the snapshot being built.</param>
+    /// <returns>The actor ids, or <see langword="null"/>.</returns>
+    private static string[]? ActorsOf(List<ReferenceInfo> references, IReadOnlyDictionary<string, ElementDocument> documentsById)
+    {
+        SortedSet<string>? actors = null;
+        foreach (var reference in references)
+        {
+            if (documentsById.TryGetValue(reference.ToId, out var target) && target.Element is Actor)
+                (actors ??= new(StringComparer.Ordinal)).Add(reference.ToId);
+        }
+
+        return actors is null ? null : [.. actors];
+    }
 
     /// <summary>
     /// The members of a custom element (next-phase-2-design.md section 4.2), in walk order, through its custom kind's member tree; none

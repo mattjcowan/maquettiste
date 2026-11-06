@@ -171,6 +171,64 @@ public sealed class ModelIndexerPatchTests
         Assert.Single(after.ReferencesTo(draftRow), r => r.Field == "code");
     }
 
+    [Fact]
+    public void A_process_row_keeps_its_actors_right_through_patches()
+    {
+        // A process row lists the ids it names whose element is an actor. A changed event recounts the process; an actor file that goes
+        // or comes back recounts the processes that name it, though their files did not change; a renamed actor changes no process row.
+        var b = new ModelBuilder(43);
+        var clerk = new Actor { Id = b.NewId(), Name = "Clerk", Type = ActorType.Role };
+        var buyer = new Actor { Id = b.NewId(), Name = "Buyer", Type = ActorType.Person };
+        b.Add(clerk);
+        b.Add(buyer);
+        var submit = b.NewId();
+        var flow = new Process { Id = b.NewId(), Name = "Flow", Events = [new ProcessEvent { Id = submit, Name = "submit", Actors = [clerk.Id] }] };
+        var other = new Process { Id = b.NewId(), Name = "Other", Events = [new ProcessEvent { Id = b.NewId(), Name = "ping", Actors = [buyer.Id] }] };
+        b.Add(flow);
+        b.Add(other);
+        var documents = b.BuildDocuments().OrderBy(d => d.Path, StringComparer.Ordinal).ToList();
+        var buyerDocument = documents.Single(d => d.Element.Id == buyer.Id);
+        var both = new[] { clerk.Id, buyer.Id }.Order(StringComparer.Ordinal).ToArray();
+        var snapshot = Full(documents);
+        Assert.Equal([clerk.Id], Row(snapshot, flow.Id).Actors);
+
+        documents = Change(documents, flow.Id, e => (Process)e with { Events = [new ProcessEvent { Id = submit, Name = "submit", Actors = [buyer.Id, clerk.Id] }] });
+        snapshot = Step(snapshot, documents, 2, "event actors added");
+        Assert.Equal(both, Row(snapshot, flow.Id).Actors);
+
+        documents = [.. documents.Where(d => d.Element.Id != buyer.Id)];
+        snapshot = Step(snapshot, documents, 3, "actor removed");
+        Assert.Equal([clerk.Id], Row(snapshot, flow.Id).Actors);
+        Assert.Null(Row(snapshot, other.Id).Actors);
+
+        documents = [.. documents.Append(buyerDocument).OrderBy(d => d.Path, StringComparer.Ordinal)];
+        snapshot = Step(snapshot, documents, 4, "actor back");
+        Assert.Equal(both, Row(snapshot, flow.Id).Actors);
+        Assert.Equal([buyer.Id], Row(snapshot, other.Id).Actors);
+
+        var before = Row(snapshot, flow.Id);
+        documents = Change(documents, buyer.Id, e => e with { Name = "Customer" });
+        snapshot = Step(snapshot, documents, 5, "actor renamed");
+        Assert.Same(before, Row(snapshot, flow.Id));
+
+        documents = Change(documents, flow.Id, e => (Process)e with { Events = [new ProcessEvent { Id = submit, Name = "submit" }] });
+        snapshot = Step(snapshot, documents, 6, "event actors cleared");
+        Assert.Null(Row(snapshot, flow.Id).Actors);
+
+        static ElementSummary Row(ModelSnapshot snapshot, string id) => snapshot.Summaries().Single(r => r.Id == id);
+
+        static List<ElementDocument> Change(List<ElementDocument> documents, string id, Func<Element, Element> edit) =>
+            [.. documents.Select(d => d.Element.Id == id ? d with { Element = edit(d.Element), Hash = d.Hash + "1" } : d)];
+
+        static ModelSnapshot Step(ModelSnapshot previous, List<ElementDocument> documents, long version, string label)
+        {
+            var after = ModelSnapshot.CreateAfter(previous, documents, previous.Settings, "", [], [], version, null, 2, TestContext.Current.CancellationToken);
+            Assert.True(after.Index.Patched, label);
+            AssertSameIndex(Full(documents), after, label);
+            return after;
+        }
+    }
+
     private sealed record TypeSource(string Id) : ITypeSource;
 
     private const string TypedLinks = """{ "partner": { "type": "string", "x-ref": { "kind": "entity" } } }""";
