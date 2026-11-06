@@ -1,0 +1,21 @@
+{
+  "kind": "relation",
+  "id": "01JAC000000000000000000R01",
+  "name": "orderProject",
+  "package": "01JAC000000000000000000P01",
+  "ends": [
+    {
+      "id": "01JAC000000000000000000N01",
+      "entity": "01JAC000000000000000000E01",
+      "role": "orders",
+      "navigation": "orders"
+    },
+    {
+      "id": "01JAC000000000000000000N02",
+      "entity": "01JAC000000000000000000E02",
+      "role": "project",
+      "navigation": "project",
+      "max": 1
+    }
+  ]
+}

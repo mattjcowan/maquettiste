@@ -23,12 +23,19 @@ public interface IHandlerRegistrar
 public sealed partial class HandlerRegistry
 {
     /// <summary>Creates the registry over the processes' command handlers.</summary>
+    /// <param name="orderFlow">The command handler of OrderFlow.</param>
     /// <param name="requestFlow">The command handler of RequestFlow.</param>
-    public HandlerRegistry(RequestFlowCommandHandler requestFlow)
+    public HandlerRegistry(OrderFlowCommandHandler orderFlow, RequestFlowCommandHandler requestFlow)
     {
+        ArgumentNullException.ThrowIfNull(orderFlow);
         ArgumentNullException.ThrowIfNull(requestFlow);
         All =
         [
+            new HandlerRegistration<OrderFlowStartControl>(Commands.OrderFlowStartControl, c => c.Envelope, orderFlow),
+            new HandlerRegistration<OrderFlowSubmitCommand>(Commands.OrderFlowSubmitCommand, c => c.Envelope, orderFlow),
+            new HandlerRegistration<OrderFlowApproveCommand>(Commands.OrderFlowApproveCommand, c => c.Envelope, orderFlow),
+            new HandlerRegistration<OrderFlowInvokeResultControl>(Commands.OrderFlowInvokeResultControl, c => c.Envelope, orderFlow),
+            new HandlerRegistration<OrderFlowTimersDueControl>(Commands.OrderFlowTimersDueControl, c => c.Envelope, orderFlow),
             new HandlerRegistration<RequestFlowStartControl>(Commands.RequestFlowStartControl, c => c.Envelope, requestFlow),
             new HandlerRegistration<RequestFlowSubmitCommand>(Commands.RequestFlowSubmitCommand, c => c.Envelope, requestFlow),
             new HandlerRegistration<RequestFlowApproveCommand>(Commands.RequestFlowApproveCommand, c => c.Envelope, requestFlow),
@@ -49,6 +56,7 @@ public sealed partial class HandlerRegistry
     public static void Register(IHandlerRegistrar registrar)
     {
         ArgumentNullException.ThrowIfNull(registrar);
+        registrar.Add(services => new OrderFlowCommandHandler(Resolve<OrderFlowMachine>(services), Resolve<IOrderFlowStore>(services)));
         registrar.Add(services => new RequestFlowCommandHandler(Resolve<RequestFlowMachine>(services), Resolve<IRequestFlowStore>(services)));
     }
 
@@ -60,6 +68,21 @@ public sealed partial class HandlerRegistry
     /// <summary>The descriptors of the commands.</summary>
     public static class Commands
     {
+        /// <summary>Starts an instance of OrderFlow.</summary>
+        public static CommandDescriptor OrderFlowStartControl { get; } = new("OrderFlow:start", "OrderFlow", ":start", [], false);
+
+        /// <summary>Event submit of OrderFlow.</summary>
+        public static CommandDescriptor OrderFlowSubmitCommand { get; } = new("OrderFlow.submit", "OrderFlow", "submit", Actors.Events.OrderFlowSubmit, false);
+
+        /// <summary>Event approve of OrderFlow.</summary>
+        public static CommandDescriptor OrderFlowApproveCommand { get; } = new("OrderFlow.approve", "OrderFlow", "approve", Actors.Events.OrderFlowApprove, true);
+
+        /// <summary>An invoke result of OrderFlow.</summary>
+        public static CommandDescriptor OrderFlowInvokeResultControl { get; } = new("OrderFlow:invoke-result", "OrderFlow", ":invoke-result", [], false);
+
+        /// <summary>The due timers of an instance of OrderFlow.</summary>
+        public static CommandDescriptor OrderFlowTimersDueControl { get; } = new("OrderFlow:timers-due", "OrderFlow", ":time", [], false);
+
         /// <summary>Starts an instance of RequestFlow.</summary>
         public static CommandDescriptor RequestFlowStartControl { get; } = new("RequestFlow:start", "RequestFlow", ":start", [], false);
 

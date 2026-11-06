@@ -1,0 +1,77 @@
+{
+  "kind": "process",
+  "id": "01JAC000000000000000000Q02",
+  "name": "OrderFlow",
+  "displayName": "Order flow",
+  "package": "01JAC000000000000000000P01",
+  "use": "lifecycle",
+  "description": "An order its owner submits, and its account manager or an approver on its project approves.",
+  "subjects": [
+    {
+      "id": "01JAC000000000000000000J01",
+      "entity": "01JAC000000000000000000E01",
+      "owner": "01JAC000000000000000000A02"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JAC000000000000000000X11",
+      "name": "submit",
+      "actors": [
+        "01JAC000000000000000000K11"
+      ]
+    },
+    {
+      "id": "01JAC000000000000000000X12",
+      "name": "approve"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JAC000000000000000000S11",
+      "name": "Draft"
+    },
+    {
+      "id": "01JAC000000000000000000S12",
+      "name": "Submitted"
+    },
+    {
+      "id": "01JAC000000000000000000S13",
+      "name": "Approved",
+      "type": "final"
+    }
+  ],
+  "initial": "01JAC000000000000000000S11",
+  "transitions": [
+    {
+      "id": "01JAC000000000000000000T11",
+      "source": "01JAC000000000000000000S11",
+      "event": "01JAC000000000000000000X11",
+      "targets": [
+        "01JAC000000000000000000S12"
+      ]
+    },
+    {
+      "id": "01JAC000000000000000000T12",
+      "source": "01JAC000000000000000000S12",
+      "event": "01JAC000000000000000000X12",
+      "targets": [
+        "01JAC000000000000000000S13"
+      ],
+      "gate": {
+        "id": "01JAC000000000000000000G11",
+        "name": "orderApproval",
+        "signers": [
+          "01JAC000000000000000000K12",
+          "01JAC000000000000000000K13"
+        ],
+        "meanings": [
+          {
+            "id": "01JAC000000000000000000M11",
+            "name": "approved"
+          }
+        ]
+      }
+    }
+  ]
+}

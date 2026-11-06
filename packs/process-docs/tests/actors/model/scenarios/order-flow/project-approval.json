@@ -1,0 +1,102 @@
+{
+  "kind": "scenario",
+  "id": "01JAC000000000000000000C01",
+  "name": "ProjectApproval",
+  "displayName": "Project approval",
+  "process": "01JAC000000000000000000Q02",
+  "description": "Bea submits her order; Carl, an approver on another project, is refused; Ann approves as an approver on the order's project.",
+  "objects": [
+    {
+      "id": "01JAC000000000000000000B01",
+      "name": "order",
+      "entity": "01JAC000000000000000000E01",
+      "values": {
+        "01JAC000000000000000000A02": "bea",
+        "01JAC000000000000000000A03": "max"
+      },
+      "links": [
+        {
+          "end": "01JAC000000000000000000N02",
+          "object": "01JAC000000000000000000B02"
+        }
+      ]
+    },
+    {
+      "id": "01JAC000000000000000000B02",
+      "name": "apollo",
+      "entity": "01JAC000000000000000000E02"
+    },
+    {
+      "id": "01JAC000000000000000000B03",
+      "name": "zeus",
+      "entity": "01JAC000000000000000000E02"
+    }
+  ],
+  "subject": "01JAC000000000000000000B01",
+  "participants": [
+    {
+      "id": "01JAC000000000000000000W01",
+      "name": "bea"
+    },
+    {
+      "id": "01JAC000000000000000000W02",
+      "name": "ann",
+      "displayName": "Ann",
+      "identity": 7,
+      "holds": [
+        {
+          "id": "01JAC000000000000000000H01",
+          "actor": "01JAC000000000000000000K03",
+          "within": "01JAC000000000000000000B02"
+        }
+      ]
+    },
+    {
+      "id": "01JAC000000000000000000W03",
+      "name": "carl",
+      "actor": "01JAC000000000000000000K05",
+      "holds": [
+        {
+          "id": "01JAC000000000000000000H02",
+          "actor": "01JAC000000000000000000K03",
+          "within": "01JAC000000000000000000B03"
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "01JAC000000000000000000Y01",
+      "event": "01JAC000000000000000000X11",
+      "participant": "01JAC000000000000000000W01",
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JAC000000000000000000S12"
+        ]
+      }
+    },
+    {
+      "id": "01JAC000000000000000000Y02",
+      "event": "01JAC000000000000000000X12",
+      "participant": "01JAC000000000000000000W03",
+      "meaning": "01JAC000000000000000000M11",
+      "expect": {
+        "accepted": false
+      }
+    },
+    {
+      "id": "01JAC000000000000000000Y03",
+      "event": "01JAC000000000000000000X12",
+      "participant": "01JAC000000000000000000W02",
+      "meaning": "01JAC000000000000000000M11",
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JAC000000000000000000S13"
+        ]
+      }
+    }
+  ],
+  "outcome": "final"
+}

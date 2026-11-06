@@ -12,6 +12,12 @@
 | --- | --- |
 | Name | {{ md_code a.name }} |
 | Type | {{ actor_type(a) }} |
+{{- if a.relative }}
+{{- # The object it is worked out from: the subject entity every process it acts in shares, else "object". }}
+{{- subject = null }}
+{{- for p in a.processes }}{{ for sj in p.subjects }}{{ subject = (subject == null || subject == sj.entity.name) ? sj.entity.name : "" }}{{ end }}{{ end }}
+| Taken from the object | {{ relative_text(a, (subject && subject != "") ? words(subject) : "object") }} |
+{{- end }}
 {{- if a.member_of.size > 0 }}
 | Member of | {{ actor_links(a.member_of, "../") }} |
 {{- end }}

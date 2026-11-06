@@ -7,7 +7,7 @@ namespace Maquettiste.Cli.Tests;
 /// The shipped packs' own tests (next-phase-2-design.md section 5.4): each of <c>packs/sql-ddl</c>, <c>packs/csharp-dapper</c>,
 /// <c>packs/process-docs</c> and <c>packs/seed-data</c> holds one small case, <c>billing-small</c>, and helper tests under its
 /// <c>tests/</c> folder; csharp-dapper also holds <c>lifecycle-codes</c> (lifecycle-design.md section 9), and csharp-dapper and
-/// process-docs hold <c>actors</c> (actors-design.md section 8: actor types, nested membership and the system actor). The test copies the packs,
+/// process-docs hold <c>actors</c> (actors-design.md section 8: actor types, nested membership, the system actor, actors taken from the object, a subject owner and a scenario with participants). The test copies the packs,
 /// <c>tests/</c> included, into a temporary project and runs
 /// <c>maquettiste pack test</c>. With <c>MAQUETTISTE_UPDATE_GOLDEN=1</c> it runs <c>pack test --update</c> and copies each rewritten
 /// <c>expected/</c> back under <c>packs/&lt;pack&gt;/tests/</c>; review the diff before keeping it.

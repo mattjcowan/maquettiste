@@ -1061,8 +1061,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         // the candidate), and, once the model has memberships, MQ9102 and MQ9105 on the processes that name actors and their scenarios'
         // replays (actors-design.md section 14).
         var membershipsMatter = element is Actor && Processes.ActorMembership.Of(model).Any;
-        // A scenario's participants name actors, which MQ9106 counts as used (actors-design.md decision 6).
-        if (element is Process or Actor or Scenario)
+        // A scenario names actors only through its participants, which MQ9106 counts as used (actors-design.md decision 6): a scenario
+        // without them reaches no actor. One that had participants before the change is followed by the store (FormerActorPeers).
+        if (element is Process or Actor || (element is Scenario scenarioSaved && scenarioSaved.Participants.Count > 0))
         {
             foreach (var actor in model.All<Actor>())
             {

@@ -327,6 +327,28 @@ public sealed class ParticipantTests
         Assert.Contains(saved.Diagnostics, d => d.Rule == "MQ9106" && d.ElementId == Clerk);
     }
 
+    [Fact]
+    public async Task A_scenario_without_participants_brings_no_actor_into_its_save()
+    {
+        // Saving a scenario re-checks the actors (MQ9106) only while it has participants; one without them keeps its scope small.
+        const string Unnamed = $$"""[{"id":"01JSTP00000000000000000101","event":"{{R.SubmitEvent}}"}]""";
+        var (h, store) = await OpenAsync(Scenario("[]", Unnamed, outcome: "active"));
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+        var scope = new ValidationScope([Scn], IncludeReferrers: true);
+        Assert.DoesNotContain(Maquettiste.Engine.Validation.ModelValidator.ProcessPeers(model, model.Get<Scenario>(Scn)!), d => d.Element is Actor);
+        Assert.DoesNotContain(Maquettiste.Engine.Validation.ModelValidator.TargetIds(model, scope), id => model.Get<Actor>(id) is not null);
+
+        // With participants it reaches every actor, since any of them may be the one a participant names.
+        var (h2, withPeople) = await OpenAsync();
+        using var ___ = h2;
+        await using var ____ = withPeople;
+        var full = withPeople.Current!;
+        var targets = Maquettiste.Engine.Validation.ModelValidator.TargetIds(full, scope);
+        Assert.All(full.All<Actor>(), a => Assert.Contains(a.Id, targets));
+    }
+
     // ---- parts, references and deletes ----
 
     [Fact]

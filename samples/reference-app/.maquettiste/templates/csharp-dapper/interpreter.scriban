@@ -3,7 +3,9 @@
 # no model data: each process's <P>Definition.cs gives it a ChartDefinition, and its <P>Handlers class gives it the guards and
 # actions. The companion ProcessHost.cs (unit interpreter-companion, written once) implements the extension points (clock, timer
 # scheduler, invoke host). Both are written only when the model has processes. When an actor is a member of another, the actor
-# checks for events, human tasks, signers and required actors go through the generated Actors.Allows and Actors.Accepts.
+# checks for events, human tasks, signers and required actors go through the generated Actors.Allows and Actors.Accepts. When an
+# actor is taken from the object, the interpreter accepts it only when the process's Handlers, as an IActorResolver, says the
+# caller is that actor for the instance (actors-design.md decision 27); without a resolver it refuses.
 include "_csharp.scriban"
 if model.processes.size > 0
 # Whether any actor is a member of another (actors-design.md decision 25): only then do actor checks follow membership.
@@ -14,6 +16,18 @@ for a in model.actors
   end
 end
 actors_type = "global::" + base_ns + ".Processes.Actors"
+# The actors taken from the object (actors-design.md decision 27), by name: only with them does the interpreter ask a resolver.
+relative_names = []
+for a in model.actors
+  if a.relative
+    relative_names[relative_names.size] = a.name
+  end
+end
+has_relative = relative_names.size > 0
+# The check that an acting actor taken from the object is the caller, appended to each actor check.
+func resolves(snapshot, actor, envelope)
+  ret has_relative ? (" || !Resolves(" + snapshot + ", " + actor + ", " + envelope + ")") : ""
+end
 -}}
 {{- capture content -}}
 {{ header() }}
@@ -650,6 +664,26 @@ public interface IStatechartBehaviour<TContext>
     /// <returns>The names, in declaration order.</returns>
     IReadOnlyList<string> Changed(TContext before, TContext after);
 }
+{{- if has_relative }}
+
+/// <summary>
+/// Whether a caller is an actor taken from the object, such as the order's owner or an approver on its project (actors-design.md
+/// decision 27). The generated code can't read the object, so a process's Handlers class implements this when the process names
+/// such an actor, each one a partial method of its companion. The interpreter accepts such an actor only when the behaviour
+/// implements this and answers yes, so nothing is let through by accident.
+/// </summary>
+/// <typeparam name="TContext">The process's context type.</typeparam>
+public interface IActorResolver<TContext>
+    where TContext : class
+{
+    /// <summary>Whether the caller of an envelope is, for this instance, the actor taken from the object.</summary>
+    /// <param name="actor">The actor's name (from Actors).</param>
+    /// <param name="snapshot">The instance before the input.</param>
+    /// <param name="envelope">The envelope: the instance, the actor, and for an event the caller's identity as its Signer.</param>
+    /// <returns>Whether the caller is that actor.</returns>
+    bool IsActor(string actor, ProcessSnapshot<TContext> snapshot, ProcessEnvelope envelope);
+}
+{{- end }}
 
 /// <summary>The clock the interpreter reads (an extension point; ProcessHost implements it).</summary>
 public interface IProcessClock
@@ -816,6 +850,11 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 {
     /// <summary>The chart.</summary>
     public ChartDefinition Chart { get; } = chart ?? throw new ArgumentNullException(nameof(chart));
+{{- if has_relative }}
+
+    // The actors taken from the object, by name: the behaviour must say the caller is one before it may act as one.
+    private static readonly HashSet<string> FromObject = new(StringComparer.Ordinal) { {{ for n in relative_names }}{{ for.first ? "" : ", " }}{{ json n }}{{ end }} };
+{{- end }}
 
     /// <summary>Starts an instance: enters the initial configuration.</summary>
     /// <param name="instance">The instance identity.</param>
@@ -867,7 +906,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         var run = new Run(this, snapshot, name, envelope) { AuditValues = audit ?? new Dictionary<string, object?>() };
         if (run.Done || Chart.Event(name) is not { } ev)
             return run.Refuse(Refusals.NoTransition);
-        if (ev.Actors.Count > 0 && (envelope.Actor is null || !{{ has_members ? (actors_type + ".Allows(ev.Actors, envelope.Actor)") : "ev.Actors.Contains(envelope.Actor, StringComparer.Ordinal)" }}))
+        if (ev.Actors.Count > 0 && (envelope.Actor is null || !{{ has_members ? (actors_type + ".Allows(ev.Actors, envelope.Actor)") : "ev.Actors.Contains(envelope.Actor, StringComparer.Ordinal)" }}{{ resolves("snapshot", "envelope.Actor", "envelope") }}))
             return run.Refuse(Refusals.Actor);
         run.Event = new ProcessEvent(name, envelope.Actor, payload ?? new Dictionary<string, object?>());
         run.Macrostep(() =>
@@ -899,7 +938,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor));
         if (Chart.Invoke(invoke) is not { } found || !run.Pending.Contains(found))
             return run.Refuse(Refusals.NoTransition);
-        if (found.Kind == InvokeKind.HumanTask && found.Actors.Count > 0 && (actor is null || !{{ has_members ? (actors_type + ".Allows(found.Actors, actor)") : "found.Actors.Contains(actor, StringComparer.Ordinal)" }}))
+        if (found.Kind == InvokeKind.HumanTask && found.Actors.Count > 0 && (actor is null || !{{ has_members ? (actors_type + ".Allows(found.Actors, actor)") : "found.Actors.Contains(actor, StringComparer.Ordinal)" }}{{ resolves("snapshot", "actor", "new ProcessEnvelope(snapshot.Instance, actor)") }}))
             return run.Refuse(Refusals.Actor);
         run.Event = new ProcessEvent(null, actor, new Dictionary<string, object?>());
         run.Macrostep(() =>
@@ -1242,7 +1281,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             var actor = _envelope?.Actor;
             var signer = _envelope?.Signer;
             string? refusal = null;
-            if (actor is null || string.IsNullOrEmpty(signer) || !{{ has_members ? (actors_type + ".Allows(gate.Signers, actor)") : "gate.Signers.Contains(actor, StringComparer.Ordinal)" }})
+            if (actor is null || string.IsNullOrEmpty(signer) || !{{ has_members ? (actors_type + ".Allows(gate.Signers, actor)") : "gate.Signers.Contains(actor, StringComparer.Ordinal)" }}{{ resolves("_snapshot", "actor", "_envelope!") | string.replace "!Resolves(" "!_owner.Resolves(" }})
                 refusal = Refusals.GateSigner;
             else if (!gate.AllowRepeatSigner && signatures.Any(s => string.Equals(s.Signer, signer, StringComparison.Ordinal)))
                 refusal = Refusals.GateRepeat;
@@ -1630,6 +1669,13 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
     private readonly IStatechartBehaviour<TContext> _behaviour = behaviour ?? throw new ArgumentNullException(nameof(behaviour));
     private readonly IProcessClock _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly int _maxMicrosteps = maxMicrosteps;
+{{- if has_relative }}
+
+    // Whether an acting actor may act: one that stands for itself may; one taken from the object only when the behaviour, as its
+    // resolver, says the caller is that actor for the instance.
+    private bool Resolves(ProcessSnapshot<TContext> snapshot, string actor, ProcessEnvelope envelope) =>
+        !FromObject.Contains(actor) || (_behaviour is IActorResolver<TContext> resolver && resolver.IsActor(actor, snapshot, envelope));
+{{- end }}
 }
 {{ end -}}
 {{- file (join_path pack.params.generatedFolder "Runtime" "Statechart.g.cs") content -}}

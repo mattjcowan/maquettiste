@@ -3,7 +3,10 @@
   "name": "actors",
   "packs": {
     "csharp-dapper": {
-      "output": "out"
+      "output": "out",
+      "parameters": {
+        "testsFolder": "Tests"
+      }
     }
   }
 }
