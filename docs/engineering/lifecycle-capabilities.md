@@ -159,6 +159,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | A signature withdrawn (`unsign`) | E | **No** |
 | Approvers, observers, acknowledgers | O | **No**: signers only |
 | Reviewers set per lifecycle role, mapped to people | W O | Part: actors, with no mapping |
+| Person, role, group and organization told apart, with membership | E W O N | **No**: planned in the actors design (0.14.0) |
 | Reviewers added or removed at run time | O | No: the system's job |
 | Signing again with a password | S O | **No** |
 | Signing authority handed to someone else | E O N | **No** |
