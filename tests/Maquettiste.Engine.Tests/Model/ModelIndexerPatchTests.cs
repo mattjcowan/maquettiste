@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Testing;
 
@@ -205,13 +206,14 @@ public sealed class ModelIndexerPatchTests
             entities.Add(e);
         }
 
+        var ends = new List<string>();
         for (var i = 0; i < 30; i++)
         {
             var from = entities[i % entities.Count];
             var to = entities[(i * 7 + 3) % entities.Count];
             if (ReferenceEquals(from, to))
                 continue;
-            b.Relation("rel" + i, from, to, fromMax: MaxCardinality.One, toMax: MaxCardinality.Many, fromRole: "r" + i, toNavigation: "n" + i);
+            ends.AddRange(b.Relation("rel" + i, from, to, fromMax: MaxCardinality.One, toMax: MaxCardinality.Many, fromRole: "r" + i, toNavigation: "n" + i).EndIds);
         }
 
         for (var i = 0; i < 6; i++) // operations: on a subject or not, with members, outcomes, errors and links (section 4.1)
@@ -229,14 +231,16 @@ public sealed class ModelIndexerPatchTests
             });
         }
 
+        var lifecycles = new List<string>();
         for (var i = 0; i < 4; i++) // lifecycles: two in the one-subject form, two that list two subjects each (lifecycle-design.md decision 5)
         {
             var first = entities[i * 5];
             var second = entities[i * 5 + 2];
             var state = b.NewId();
+            lifecycles.Add(b.NewId());
             b.Add(new Process
             {
-                Id = b.NewId(), Name = "life" + i, Package = packages[i % 3].Id, Use = ProcessUse.Lifecycle,
+                Id = lifecycles[i], Name = "life" + i, Package = packages[i % 3].Id, Use = ProcessUse.Lifecycle,
                 Subject = i < 2 ? first.Id : null, BoundAttribute = i < 2 ? first.AttrId("status") : null,
                 SubjectList = i < 2 ? null :
                 [
@@ -244,6 +248,29 @@ public sealed class ModelIndexerPatchTests
                     new ProcessSubject { Id = b.NewId(), Entity = second.Id },
                 ],
                 States = [new ProcessState { Id = state, Name = "Draft" }],
+            });
+        }
+
+        foreach (var i in (int[])[0, 2]) // scenario objects, with a value, a link and a subject (lifecycle-design.md decision 22)
+        {
+            var first = entities[i * 5];
+            var second = entities[i * 5 + 2];
+            var subject = b.NewId();
+            var other = b.NewId();
+            b.Add(new Scenario
+            {
+                Id = b.NewId(), Name = "objects" + i, Process = lifecycles[i], Subject = subject,
+                Objects =
+                [
+                    new ScenarioObject
+                    {
+                        Id = subject, Name = "main", Entity = first.Id,
+                        Values = new Dictionary<string, JsonElement> { [first.AttrId("status")] = JsonDocument.Parse("\"Draft\"").RootElement.Clone() },
+                        Links = [new ScenarioLink { End = ends[i * 2 + 1], Object = other }],
+                    },
+                    new ScenarioObject { Id = other, Name = "other", Entity = second.Id },
+                ],
+                Steps = [new ScenarioStep { Id = b.NewId(), Input = StepInput.Time, After = "PT1S" }],
             });
         }
 
@@ -349,6 +376,24 @@ public sealed class ModelIndexerPatchTests
                             SubjectList = [new ProcessSubject { Id = NewId(random), Entity = target }, new ProcessSubject { Id = NewId(random), Entity = process.Subject ?? target }],
                         },
                     Hash = doc.Hash + "s",
+                };
+                break;
+            }
+
+            case 9 when doc.Element is Scenario { Objects.Count: > 0 } scenario: // re-point an object, drop a link, or swap the subject (decision 22)
+            {
+                var targets = list.Where(d => d.Element is Entity).ToList();
+                var target = targets[random.Next(targets.Count)].Element.Id;
+                var objects = scenario.Objects;
+                list[index] = doc with
+                {
+                    Element = random.Next(3) switch
+                    {
+                        0 => scenario with { Objects = [objects[0] with { Entity = target }, .. objects.Skip(1)] },
+                        1 => scenario with { Objects = [.. objects.Select(o => o with { Links = [] })] },
+                        _ => scenario with { Subject = objects[^1].Id, Objects = [.. objects.Select(o => o with { Id = o.Id == objects[^1].Id ? o.Id : NewId(random) })] },
+                    },
+                    Hash = doc.Hash + "o",
                 };
                 break;
             }

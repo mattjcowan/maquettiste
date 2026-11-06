@@ -48,8 +48,8 @@ public sealed record ExpressionPreviewRequest
     /// <summary>
     /// The row the expression reads, a JSON object of members by name: a table's column names (on a synthesized table, the names its
     /// text prints: an overlay's attributes as an entity's), an entity's attribute names (a value object's members nested), a process's
-    /// context attributes with the event's payload under <c>event</c>, an operation's input members with the subject under
-    /// <c>subject</c>. <see langword="null"/> previews no answer.
+    /// context attributes with the event's payload under <c>event</c> and its object under <c>subject</c>, an operation's input members
+    /// with the subject under <c>subject</c>. <see langword="null"/> previews no answer.
     /// </summary>
     public JsonElement? Values { get; init; }
 }

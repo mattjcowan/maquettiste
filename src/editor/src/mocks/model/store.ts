@@ -635,6 +635,7 @@ export class MockModel {
 
   private entryFor(json: Json, existing?: Entry): Entry {
     this.mintSubjectIds(json);
+    this.mintObjectIds(json);
     const path = this.conventionalPath(json, existing);
     const withSchema = this.withSchemaPath(json, path);
     const text = serialize(withSchema);
@@ -646,6 +647,14 @@ export class MockModel {
     if (json.kind !== "process" || !Array.isArray(json.subjects)) return;
     json.subjects = json.subjects.map((e: unknown) =>
       e && typeof e === "object" && typeof (e as Json).id !== "string" ? { id: this.options.newId(), ...(e as Json) } : e,
+    );
+  }
+
+  /** The engine mints the id of every scenario object that has none (lifecycle-design.md decision 22). */
+  private mintObjectIds(json: Json): void {
+    if (json.kind !== "scenario" || !Array.isArray(json.objects)) return;
+    json.objects = json.objects.map((o: unknown) =>
+      o && typeof o === "object" && typeof (o as Json).id !== "string" ? { id: this.options.newId(), ...(o as Json) } : o,
     );
   }
 

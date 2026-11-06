@@ -19,7 +19,7 @@ import { cn } from "@/lib/cn";
 import { indexLookup } from "@/model/index";
 import { SIMULATION_LABELS as L } from "@/model/labels";
 import { summaryFromDocument } from "@/model/model";
-import type { ScenarioDoc } from "@/model/process";
+import type { ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
 import { verifyScenario } from "../api";
 import type { ProcessContext } from "../shared";
 import { recordScenario, simulateProcess, type ScenarioVerification, type SimInput, type SimulationResult } from "./api";
@@ -97,6 +97,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
   const focusEnabled = useRef(false);
 
   const names = useMemo(() => namesOf(process, actorNames), [process, actorNames]);
+  const entityNames = useMemo(() => new Map((index.data ?? []).filter((r) => r.kind === "entity").map((r) => [r.id, r.name])), [index.data]);
   const allActors = useMemo(() => actors.map((a) => ({ id: a.id, name: a.name })), [actors]);
   const scenarios = useMemo(
     () =>
@@ -195,7 +196,10 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
       // Record replays the saved process: a draft that could not be saved would make it record another process.
       if (!(await drafts.flushSaved(id))) return L.unsavedDraft;
       const start = { context: session.start.context, ...(session.start.at ? { at: session.start.at } : {}) };
-      const saved = await recordScenario(id, { name, start, steps: session.inputs, outcome });
+      const cast = session.start.objects?.length
+        ? { objects: session.start.objects, ...(session.start.subject ? { subject: session.start.subject } : {}) }
+        : {};
+      const saved = await recordScenario(id, { name, start, ...cast, steps: session.inputs, outcome });
       // The index and validation follow the new scenario (as a save does); one undo step deletes it.
       const doc = await endpoints.getElement(saved.id);
       qc.setQueryData(keys.element(saved.id), doc);
@@ -320,6 +324,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
               <StartSection
                 pc={pc}
                 session={session}
+                entityNames={entityNames}
                 onStart={(attr, v) => update((s) => setStartValue(s, attr, v))}
                 onAt={(at) => update((s) => restart(s, { ...s.start, at }))}
               />,
@@ -496,17 +501,33 @@ function Messages({ session }: { session: { invalid: { rule: string; message: st
 function StartSection({
   pc,
   session,
+  entityNames,
   onStart,
   onAt,
 }: {
   pc: ProcessContext;
-  session: { start: { context: Record<string, unknown>; at?: string } };
+  session: { start: { context: Record<string, unknown>; at?: string; objects?: ScenarioObjectDoc[]; subject?: string } };
+  entityNames: ReadonlyMap<string, string>;
   onStart: (attribute: string, value: unknown) => void;
   onAt: (at: string | undefined) => void;
 }) {
   const context = pc.process.context ?? [];
   return (
     <div>
+      {session.start.objects?.length ? (
+        <div className={ROW} data-testid="start-objects" title={L.objectsHint}>
+          <span className="w-28 shrink-0 truncate text-secondary">{L.objects}</span>
+          <ul className="flex min-w-0 flex-1 flex-col">
+            {session.start.objects.map((o) => (
+              <li key={o.id} className="flex min-w-0 items-baseline gap-1" data-testid="start-object" data-subject={o.id === session.start.subject}>
+                <span className="truncate font-medium">{o.name}</span>
+                <span className="truncate text-secondary">{entityNames.get(o.entity) ?? o.entity}</span>
+                {o.id === session.start.subject ? <span className="shrink-0 text-secondary">({L.objectSubject})</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {context.length ? null : <Note>{L.noContext}</Note>}
       {context.map((a) => (
         <div key={a.id} className={ROW} data-testid="start-row" data-attribute={a.name}>

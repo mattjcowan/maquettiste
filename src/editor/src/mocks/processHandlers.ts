@@ -79,6 +79,42 @@ export function exportConfig(doc: Json): Json {
   };
 }
 
+/**
+ * The objects a run carries (lifecycle-design.md decision 22): the request's, else the scenario's. Every object needs an
+ * id (none are minted for a run), ids are unique, `subject` is an object id (never a name), and each link names a known
+ * object. Recording mints a fresh id for every object and remaps `subject` and the links' `object`.
+ */
+function castOf(value: Json, scenario: Json | undefined, mint = false): { objects: Json[]; subject: string } | { error: string } | null {
+  const own = value.objects !== undefined && value.objects !== null;
+  if (own && !Array.isArray(value.objects)) return { error: "objects must be an array." };
+  const list = own ? arr(value.objects) : arr(scenario?.objects);
+  if (!list.length) return null;
+  const ids = new Set<string>();
+  const names = new Set<string>();
+  for (const o of list) {
+    if (typeof o.id !== "string" || !o.id) return { error: "each object needs an id." };
+    if (ids.has(o.id)) return { error: `the object id ${o.id} is used twice.` };
+    ids.add(o.id);
+    if (typeof o.name !== "string" || !o.name || typeof o.entity !== "string" || !o.entity) return { error: "each object needs a name and an entity." };
+    if (names.has(o.name)) return { error: `the scenario has two objects named ${o.name}.` };
+    names.add(o.name);
+  }
+  for (const o of list)
+    for (const l of arr(o.links))
+      if (typeof l.object !== "string" || !ids.has(l.object)) return { error: `a link of ${String(o.name)} names an unknown object.` };
+  const wanted = own ? value.subject : scenario?.subject;
+  if (typeof wanted !== "string" || !wanted) return { error: "subject is required with objects." };
+  if (!ids.has(wanted)) return { error: `subject ${wanted} is not the id of one of the objects.` };
+  if (!mint) return { objects: list, subject: wanted };
+  const fresh = new Map(list.map((o) => [o.id as string, newId()]));
+  const objects = list.map((o) => ({
+    ...o,
+    id: fresh.get(o.id as string)!,
+    ...(Array.isArray(o.links) ? { links: arr(o.links).map((l) => ({ ...l, object: fresh.get(l.object as string)! })) } : {}),
+  }));
+  return { objects, subject: fresh.get(wanted)! };
+}
+
 /** A process document from a statechart config: one state per config state, one event per `on` key (import dry run). */
 export function importDocument(config: Json, name: string, pkg: string | null, id: string = newId()): { document: Json; created: string[] } {
   const created: string[] = [];
@@ -182,6 +218,8 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       if (value.steps !== undefined && value.steps !== null && !Array.isArray(value.steps)) return bad("steps must be an array of inputs.");
       const start = value.start && typeof value.start === "object" ? (value.start as Json) : null;
       if (readAt(start?.at) === "invalid") return bad(`start.at is not an ISO 8601 instant: ${String(start?.at)}.`);
+      const cast = castOf(value, scenarioEntry?.json);
+      if (cast && "error" in cast) return bad(cast.error);
       let doc = entry.json;
       if (value.document && typeof value.document === "object") {
         doc = value.document as Json;
@@ -203,7 +241,11 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const scenarioStart = scenarioEntry?.json.start && typeof scenarioEntry.json.start === "object" ? (scenarioEntry.json.start as Json) : null;
       const steps = [...scenarioSteps, ...arr(value.steps)];
       const from = typeof value.from === "number" ? value.from : -1;
-      const result = simulate(doc, (scenarioEntry ? scenarioStart : start) as never, steps, { from, ...actorLookup() });
+      const result = simulate(doc, (scenarioEntry ? scenarioStart : start) as never, steps, {
+        from,
+        ...actorLookup(),
+        ...(cast ? { objects: cast.objects, subject: cast.subject } : {}),
+      });
       return HttpResponse.json({ processHash: value.document ? sha256Hex(JSON.stringify(doc)) : entry.hash, ...result });
     }),
     rawHttp.post(url("/api/processes/:id/scenarios"), async ({ params, request }) => {
@@ -215,6 +257,8 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         return bad("outcome must be 'final' or 'active'.");
       const start = value.start && typeof value.start === "object" ? (value.start as Json) : null;
       if (readAt(start?.at) === "invalid") return bad(`start.at is not an ISO 8601 instant: ${String(start?.at)}.`);
+      const cast = castOf(value, undefined, true);
+      if (cast && "error" in cast) return bad(cast.error);
       const dryRun = new URL(request.url).searchParams.get("dryRun") === "true";
       // The expectations come from a replay of the inputs, as the engine's record fills them (refusals as accepted: false).
       const replayed = replay(entry.json, start as never, value.steps as Json[], actorLookup());
@@ -242,6 +286,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         name: value.name.trim(),
         process: entry.id,
         ...(start && (start.context || start.at) ? { start } : {}),
+        ...(cast ? { objects: cast.objects, subject: cast.subject } : {}),
         steps,
         ...(outcome === "final" ? { outcome } : {}),
       };

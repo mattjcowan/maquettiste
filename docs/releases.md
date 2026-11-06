@@ -15,6 +15,13 @@ one.
   form) are new, and `sync-enum` takes an optional `entity`. The editor gains a Code column and a **Sync codes** fix. New rules are
   MQ9206 to MQ9210. [Lifecycle subjects and state codes](user-guide.md#lifecycle-subjects-and-state-codes) has the details.
   A project that uses none of this keeps its files and its output.
+- **Lifecycles any implementation can follow, second half.** A scenario may name its objects: `objects`, its cast, each with an
+  entity, values by attribute and links by relation end, and `subject`, the object its process runs for. A guard `condition`
+  may read `subject.<attribute>` and to-one navigations. A value not given reads as the default, then null, and only true
+  passes. `simulate_process`, `record_scenario` and the CLI take `objects` and `subject`, and the simulation panel shows a
+  loaded scenario's cast. A bad object value is MQ9305 in replay. `csharp-dapper` leaves such a guard as a partial method for a
+  person to write. [Scenario objects](user-guide.md#lifecycle-subjects-and-state-codes) has the details. A project that
+  uses neither keeps its files and its output.
 - **New lifecycles are written as `subjects`, which an older engine can't read.** A team must upgrade together. Until then a
   teammate on an older engine can't open a lifecycle created on the new one.
 - **The one-subject form is deprecated.** `subject` and `boundAttribute` on a process still work, and warn with MQ9209. You can

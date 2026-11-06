@@ -22,10 +22,12 @@ internal sealed partial class ModelTools
     /// <param name="scenario">A scenario whose start and steps run first.</param>
     /// <param name="document">An unsaved draft of the process document.</param>
     /// <param name="from">The first trace index returned.</param>
+    /// <param name="objects">The run's objects.</param>
+    /// <param name="subject">The id of the object the process runs for.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The simulation.</returns>
     [McpServerTool(Name = "simulate_process", Title = "Simulate process", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Runs a process through the engine interpreter from its initial state: start, then each input (a scenario step without expect: { input: event|time|invoke-done|invoke-error, event, actor, signer, meaning, reason, payload, assume, invoke, after }). Returns the trace of every input (transitions, exited and entered states, actions, guards, gate audit records, refusals), then the configuration, context, the triggers enabled now, pending invokes, timers, gates, final and clock. No state is kept: send the whole input list each time. document simulates an unsaved draft (invalid: 422 with diagnostics).")]
+    [Description("Runs a process through the engine interpreter from its initial state: start, then each input (a scenario step without expect: { input: event|time|invoke-done|invoke-error, event, actor, signer, meaning, reason, payload, assume, invoke, after }). Returns the trace of every input (transitions, exited and entered states, actions, guards, gate audit records, refusals), then the configuration, context, the triggers enabled now, pending invokes, timers, gates, final and clock. No state is kept: send the whole input list each time. document simulates an unsaved draft (invalid: 422 with diagnostics). objects and subject give the run its cast, as a scenario's: the process runs for the subject; with scenario and no objects, the scenario's cast.")]
     public Task<CallToolResult> SimulateProcess(
         [Description("The process id, name or model path; required.")] string? process = null,
         [Description("The inputs, in order (scenario steps without expect; ids are optional).")] JsonElement? steps = null,
@@ -33,14 +35,20 @@ internal sealed partial class ModelTools
         [Description("A scenario id of the process: its start and steps run first, then steps.")] string? scenario = null,
         [Description("An unsaved draft of the whole process document to simulate instead of the saved one.")] JsonElement? document = null,
         [Description("The first trace index returned; -1 (default) includes the initial entry.")] int? from = null,
+        [Description("The run's objects, as a scenario's: [{ id, name, entity: <entity id>, values: { <attribute id>: value }, links: [{ end: <relation end id>, object: <object id> }] }]; requires subject. With scenario, its objects when absent.")] JsonElement? objects = null,
+        [Description("The id of the object in objects the process runs for.")] string? subject = null,
         CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (await ProcessIdAsync(process, ct).ConfigureAwait(false) is not { } id)
             return ProcessArgument(process);
         if (StepsOf(steps) is not { } inputs)
             return BadRequest("steps must be an array of scenario steps.");
-        var call = await _store.SimulateProcessAsync(id, new SimulateRequest { Steps = inputs, Start = start, Scenario = scenario, Document = document, From = from }, ct)
-            .ConfigureAwait(false);
+        if (StepsOf(objects) is not { } cast)
+            return BadRequest("objects must be an array of scenario objects.");
+        var call = await _store.SimulateProcessAsync(id, new SimulateRequest
+        {
+            Steps = inputs, Start = start, Scenario = scenario, Document = document, From = from, Objects = cast, Subject = subject,
+        }, ct).ConfigureAwait(false);
         return FromCall(call);
     }, ct);
 
@@ -51,10 +59,12 @@ internal sealed partial class ModelTools
     /// <param name="start">The start.</param>
     /// <param name="outcome">The expected outcome.</param>
     /// <param name="dryRun">Returns the scenario without writing it.</param>
+    /// <param name="objects">The scenario's objects.</param>
+    /// <param name="subject">The id of the object the process runs for.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The scenario.</returns>
     [McpServerTool(Name = "record_scenario", Title = "Record scenario", Destructive = false, OpenWorld = false)]
-    [Description("Records a scenario of a process: the engine replays start and steps and fills each step's expect (accepted, states, changed context; refusals as accepted false) and the outcome from the replay, gives new ids and saves the scenario under model/scenarios/<process>/. dryRun true returns the scenario without writing it. Inputs that cannot be replayed to the last step are refused with diagnostics.")]
+    [Description("Records a scenario of a process: the engine replays start and steps and fills each step's expect (accepted, states, changed context; refusals as accepted false) and the outcome from the replay, gives new ids and saves the scenario under model/scenarios/<process>/. dryRun true returns the scenario without writing it. Inputs that cannot be replayed to the last step are refused with diagnostics. objects and subject are written as the scenario's cast, each object under a new id that subject and the links follow.")]
     public Task<CallToolResult> RecordScenario(
         [Description("The process id, name or model path; required.")] string? process = null,
         [Description("The scenario name (an identifier); required.")] string? name = null,
@@ -62,14 +72,20 @@ internal sealed partial class ModelTools
         [Description("The start: { context, at }.")] JsonElement? start = null,
         [Description("final or active; the replay's outcome when absent.")] string? outcome = null,
         [Description("true returns the scenario without writing it.")] bool dryRun = false,
+        [Description("The scenario's objects: [{ id, name, entity: <entity id>, values: { <attribute id>: value }, links: [{ end: <relation end id>, object: <object id> }] }]; requires subject.")] JsonElement? objects = null,
+        [Description("The id of the object in objects the process runs for.")] string? subject = null,
         CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (await ProcessIdAsync(process, ct).ConfigureAwait(false) is not { } id)
             return ProcessArgument(process);
         if (StepsOf(steps) is not { } inputs)
             return BadRequest("steps must be an array of scenario steps.");
-        var call = await _store.RecordScenarioAsync(id, new RecordScenarioRequest { Name = name, Steps = inputs, Start = start, Outcome = outcome }, dryRun, ChangeSource.Cli, ct)
-            .ConfigureAwait(false);
+        if (StepsOf(objects) is not { } cast)
+            return BadRequest("objects must be an array of scenario objects.");
+        var call = await _store.RecordScenarioAsync(id, new RecordScenarioRequest
+        {
+            Name = name, Steps = inputs, Start = start, Outcome = outcome, Objects = cast, Subject = subject,
+        }, dryRun, ChangeSource.Cli, ct).ConfigureAwait(false);
         return FromCall(call);
     }, ct);
 

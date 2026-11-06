@@ -305,6 +305,9 @@ export interface StepperOptions {
   actorId?: (name: string) => string | undefined;
   /** An actor's name, for the `event.actor` an expression sees. */
   actorName?: (id: string) => string | undefined;
+  /** The scenario's cast and the object the process runs for (decision 22); carried in the run, not yet read by guards. */
+  objects?: Json[];
+  subject?: string;
 }
 
 const WARNINGS = new Set(["MQ9502", "MQ9503", "MQ9504", "MQ9505"]);
@@ -386,6 +389,8 @@ class Interpreter {
   queue: { kind: string; id: string }[] = [];
   done = false;
   clock = Date.parse(DEFAULT_START);
+  /** The cast of the run (decision 22); the mock does not evaluate guard conditions, so nothing reads it yet. */
+  cast: { objects: Json[]; subject: string | null } = { objects: [], subject: null };
   private auditSeq = 0;
   private timerSeq = 0;
   private index = -1;
@@ -1017,6 +1022,7 @@ export function readAt(at: unknown): number | null | "invalid" {
 export function simulate(doc: Json, start: { context?: Json; at?: string } | null | undefined, steps: Json[], options: StepperOptions = {}): SimulationJson {
   const chart = new Chart(doc);
   const run = new Interpreter(chart, options.actorName);
+  run.cast = { objects: options.objects ?? [], subject: options.subject ?? null };
   const at = readAt(start?.at);
   const traces = [run.start(start?.context, typeof at === "number" ? at : null)];
   let complete = !traces[0].incomplete;

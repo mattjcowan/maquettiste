@@ -227,6 +227,39 @@ internal sealed partial class ChangePlanner
             }
         }
 
+        // A scenario's objects (lifecycle-design.md decision 22): in either resolution an object whose entity goes is dropped with its
+        // links, and so is each link to an object that goes. A subject left naming no object refuses remove-references (unless the
+        // scenario goes too, FinishCascade); delete-dependents deletes the scenario.
+        if (referrer.Element is Scenario && reference.JsonPointer == "/subject")
+        {
+            if (mode != DeleteResolution.DeleteDependents)
+            {
+                _cascadeRefused.Add((index, referrerId, reference,
+                    $"{Label(target)} is the object it runs for (subject), and remove-references does not leave a scenario with objects but no subject; delete the scenario too, or delete with delete-dependents."));
+                return;
+            }
+
+            MarkCascadeDeleted(index, referrerId, "runs for " + Label(target), mode);
+            return;
+        }
+
+        if (referrer.Element is Scenario && ScenarioObjectPart(reference.JsonPointer) is { } objectPart)
+        {
+            var drop = new CascadeOp(objectPart, true, reference, index);
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != objectPart && !IsUnder(o.Pointer, objectPart)), drop];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
+                {
+                    if (pointer.Length > 0 && (pointer == objectPart || IsUnder(pointer, objectPart)))
+                        _cascadeQueue.Enqueue((index, subId, mode));
+                }
+
+                return;
+            }
+        }
+
         // An operation member's `type` or `keyOf` is its one form (MQ3024), as a returns' `entity` is (MQ3025), and the schema cannot
         // say so: clearing it would leave a part with neither. So the member or the returns goes with delete-dependents, and
         // remove-references refuses.
@@ -290,6 +323,14 @@ internal sealed partial class ChangePlanner
     }
 
     private void Commit(string referrerId, List<CascadeOp> ops) => _cascadeOps[referrerId] = ops;
+
+    /// <summary>
+    /// The refused references that still stand: a scenario's subject refuses only while the scenario stays, and a later delete of the
+    /// change may delete it (its process going, lifecycle-design.md decision 22).
+    /// </summary>
+    private IEnumerable<(int Index, string ElementId, ReferenceInfo Reference, string Why)> Refusals() =>
+        _cascadeRefused.Where(r => !(r.Reference.JsonPointer == "/subject" && _cascadeDeleted.ContainsKey(r.ElementId)
+            && _snapshot.GetDocument(r.ElementId)?.Element is Scenario));
 
     private void ResolveXRef(int index, string referrerId, Working referrer, ReferenceInfo reference, List<CascadeOp> ops, DeleteResolution mode)
     {
@@ -710,6 +751,23 @@ internal sealed partial class ChangePlanner
             ? JsonPointer.Build(segments[..2])
             : null;
 
+    /// <summary>
+    /// The part of a scenario a reference's loss drops (lifecycle-design.md decision 22): the object (<c>/objects/2</c>) whose
+    /// <c>entity</c> a pointer is, or the link (<c>/objects/2/links/0</c>) whose <c>object</c> or <c>end</c> (its relation going) it is;
+    /// <see langword="null"/> for any other pointer.
+    /// </summary>
+    private static string? ScenarioObjectPart(string pointer)
+    {
+        if (!pointer.StartsWith("/objects/", StringComparison.Ordinal) || !JsonPointer.TryParse(pointer, out var segments)
+            || !JsonPointer.TryIndex(segments[1], out _))
+            return null;
+        if (segments.Length == 3 && segments[2] == "entity")
+            return JsonPointer.Build(segments[..2]);
+        if (segments.Length == 5 && segments[2] == "links" && JsonPointer.TryIndex(segments[3], out _) && segments[4] is "object" or "end")
+            return JsonPointer.Build(segments[..4]);
+        return null;
+    }
+
     private bool Readable(string id, Working current)
     {
         if (_cascadeReadable.TryGetValue(id, out var readable))
@@ -811,7 +869,7 @@ internal sealed partial class ChangePlanner
             return;
         PlanCascadePackValues(outcomes);
         CascadeReport = BuildReport();
-        foreach (var group in _cascadeRefused.GroupBy(r => (r.Index, r.ElementId)).OrderBy(g => g.Key.Index).ThenBy(g => g.Key.ElementId, StringComparer.Ordinal))
+        foreach (var group in Refusals().GroupBy(r => (r.Index, r.ElementId)).OrderBy(g => g.Key.Index).ThenBy(g => g.Key.ElementId, StringComparer.Ordinal))
         {
             var referrer = _snapshot.GetDocument(group.Key.ElementId)!;
             var pointers = group.Select(r => r.Reference.JsonPointer).Distinct(StringComparer.Ordinal).ToList();
@@ -975,7 +1033,7 @@ internal sealed partial class ChangePlanner
 
         removes.AddRange(SeedColumnsOfMembers());
         removes.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id) is var c and not 0 ? c : PointerOrder.Instance.Compare(a.Pointer, b.Pointer));
-        var refused = _cascadeRefused
+        var refused = Refusals()
             .Select(r =>
             {
                 var document = _snapshot.GetDocument(r.ElementId)!;
@@ -1110,6 +1168,8 @@ internal sealed partial class ChangePlanner
         "states" => "state",
         "transitions" => "transition",
         "values" => "value",
+        "objects" => "object",
+        "links" => "link",
         _ => property,
     };
 }

@@ -1097,9 +1097,10 @@ export interface paths {
         /**
          * Record a scenario from a list of inputs
          * @description phase-3-design.md section 4.4. The engine replays `start` and `steps` and fills each step's `expect` (refusals recorded as
-         *     `accepted: false`) and the `outcome` (unless the request gives one) from the replay, gives the scenario and its steps new ids,
-         *     and saves it as one change under `model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing
-         *     it. Inputs that cannot be replayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.
+         *     `accepted: false`) and the `outcome` (unless the request gives one) from the replay, gives the scenario, its steps and its
+         *     objects new ids (`subject` and each link follow their objects), and saves it as one change under
+         *     `model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing it. Inputs that cannot be
+         *     replayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.
          */
         post: operations["recordScenario"];
         delete?: never;
@@ -4089,9 +4090,33 @@ export interface components {
             name: string;
             package: string | null;
             process: string;
+            /** @description The scenario's objects in file order (lifecycle-design.md decision 22); absent for a scenario with no objects. */
+            objects?: components["schemas"]["ScenarioObjectRecord"][];
+            /** @description The id of the object the process runs for; absent for a scenario with no objects. */
+            subject?: string;
             start: components["schemas"]["ScenarioStartRecord"];
             steps: components["schemas"]["StepRecord"][];
             outcome: string;
+        };
+        /** @description An object of a scenario (lifecycle-design.md decision 22). */
+        ScenarioObjectRecord: {
+            /** @description The object's id. */
+            id: string;
+            name: string;
+            /** @description The entity's id. */
+            entity: string;
+            /** @description The values given, by attribute name (by id when the entity has no such attribute), as written; a value not given reads as the attribute's default. */
+            values: {
+                [key: string]: unknown;
+            };
+            links: components["schemas"]["ScenarioLinkRecord"][];
+        };
+        /** @description A link from a scenario object to another object of the scenario. */
+        ScenarioLinkRecord: {
+            /** @description The relation end's id. */
+            end: string;
+            /** @description The linked object's id. */
+            object: string;
         };
         /** @description Where a scenario's run starts. */
         ScenarioStartRecord: {
@@ -5989,6 +6014,10 @@ export interface components {
             /** @description An unsaved draft of the process document (`schemas/v1/process.json`). */
             document?: Record<string, never> | null;
             start?: components["schemas"]["SimStart"];
+            /** @description The run's objects, as a scenario's `objects` (lifecycle-design.md decision 22); with `scenario`, that scenario's objects when absent. Requires `subject`. */
+            objects?: components["schemas"]["ScenarioObject"][] | null;
+            /** @description The id of the object in `objects` the process runs for; required with `objects`. */
+            subject?: string | null;
             /** @description A scenario of the process whose start and steps run first. */
             scenario?: string | null;
             steps?: components["schemas"]["SimInput"][] | null;
@@ -6007,6 +6036,26 @@ export interface components {
             /** @description The clock's start (ISO 8601); 2000-01-01T00:00:00Z when absent. */
             at?: string;
         } | null;
+        /** @description An object of a scenario or a simulation (`schemas/v1/scenario.json` `$defs/object`, lifecycle-design.md decision 22). */
+        ScenarioObject: {
+            id: components["schemas"]["Ulid"];
+            /** @description The name, unique in the scenario (letters, digits and underscores, not starting with a digit). */
+            name: string;
+            /** @description The id of the entity the object is an instance of. */
+            entity: string;
+            /** @description Values by attribute id; a value not given reads as the attribute's default, then null. */
+            values?: {
+                [key: string]: unknown;
+            };
+            links?: components["schemas"]["ScenarioLink"][];
+        };
+        /** @description A link from a scenario object to another object of the scenario, through a relation end. */
+        ScenarioLink: {
+            /** @description The id of the relation end navigated from the object. */
+            end: string;
+            /** @description The id of the linked object. */
+            object: string;
+        };
         StepTrace: {
             /** @description The input's index; -1 for the initial entry. */
             index: number;
@@ -6122,6 +6171,10 @@ export interface components {
         RecordScenarioRequest: {
             name: string;
             start?: components["schemas"]["SimStart"];
+            /** @description The scenario's objects (lifecycle-design.md decision 22), written to its `objects`. Requires `subject`. */
+            objects?: components["schemas"]["ScenarioObject"][] | null;
+            /** @description The id of the object in `objects` the process runs for; required with `objects`. */
+            subject?: string | null;
             steps?: components["schemas"]["SimInput"][] | null;
             /**
              * @description The expected outcome; the replay's when absent.
@@ -10186,6 +10239,38 @@ export interface components {
             source?: components["schemas"]["source"];
         };
         /**
+         * Link
+         * @description A link from an object to another object of the scenario through a relation end.
+         */
+        link: {
+            /** @description The id of the relation end navigated from the object. */
+            end: components["schemas"]["id"];
+            /** @description The id of the linked object. */
+            object: components["schemas"]["id"];
+        };
+        /**
+         * Object
+         * @description An object of the scenario: an instance of an entity with its values and its links to other objects.
+         */
+        object: {
+            id: components["schemas"]["id"];
+            name: components["schemas"]["identifier"];
+            /** @description The entity the object is an instance of. */
+            entity: components["schemas"]["id"];
+            /**
+             * @description Values by attribute id; a value not given reads as the attribute's default, then null.
+             * @default {}
+             */
+            values?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description The objects this object links to, each through a relation end.
+             * @default []
+             */
+            links?: components["schemas"]["link"][];
+        };
+        /**
          * Step
          * @description One input to the process and what is expected after it.
          */
@@ -10257,6 +10342,13 @@ export interface components {
             package?: components["schemas"]["id"];
             /** @description The process; the scenario belongs to it. */
             process: components["schemas"]["id"];
+            /**
+             * @description The scenario's cast: the objects its process runs for and the objects they link to. Requires subject.
+             * @default []
+             */
+            objects?: components["schemas"]["object"][];
+            /** @description The id of the object the process runs for; required once there are objects. */
+            subject?: components["schemas"]["id"];
             description?: components["schemas"]["description"];
             /** @description Markdown text: why the element is shaped this way. */
             rationale?: string;
@@ -10301,6 +10393,38 @@ export interface components {
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
             $defs: {
+                /**
+                 * Object
+                 * @description An object of the scenario: an instance of an entity with its values and its links to other objects.
+                 */
+                object: {
+                    id: components["schemas"]["id"];
+                    name: components["schemas"]["identifier"];
+                    /** @description The entity the object is an instance of. */
+                    entity: components["schemas"]["id"];
+                    /**
+                     * @description Values by attribute id; a value not given reads as the attribute's default, then null.
+                     * @default {}
+                     */
+                    values?: {
+                        [key: string]: unknown;
+                    };
+                    /**
+                     * @description The objects this object links to, each through a relation end.
+                     * @default []
+                     */
+                    links?: components["schemas"]["link"][];
+                };
+                /**
+                 * Link
+                 * @description A link from an object to another object of the scenario through a relation end.
+                 */
+                link: {
+                    /** @description The id of the relation end navigated from the object. */
+                    end: components["schemas"]["id"];
+                    /** @description The id of the linked object. */
+                    object: components["schemas"]["id"];
+                };
                 /**
                  * Step
                  * @description One input to the process and what is expected after it.

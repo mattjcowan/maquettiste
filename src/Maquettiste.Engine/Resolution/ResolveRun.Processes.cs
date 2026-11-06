@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Processes;
+using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Resolution;
 
@@ -322,7 +323,10 @@ internal sealed partial class ResolveRun
 
 
         // A guard's condition (next-phase-3-design.md section 3.1): typed in the process's scope, its paths ending at the context's and
-        // payloads' attributes; what it names beyond the process (an enum, a seed, a constraint) joins the guard's keys.
+        // payloads' attributes; what it names beyond the process (an enum, a seed, a constraint) joins the guard's keys. A condition that
+        // reads the object (lifecycle-design.md decision 20) ends its paths there at the declaring entity's own attribute, a base's for an
+        // inherited one, so the condition has one target whichever subject runs; it depends on every subject's entity and its bases, and,
+        // through Names, on the relations it follows and the entities they lead to.
         void ResolveCondition(RGuard guard, ProcessGuard source)
         {
             if (ExprResolution.Type(Model, process, source.Id) is not { } typed)
@@ -331,10 +335,20 @@ internal sealed partial class ResolveRun
                 .ToDictionary(a => a.Id, StringComparer.Ordinal);
             var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Guard,
                 ExprResolution.ApiColumns(Model, source.Id, Model.GetDocument(process.Id)?.Path));
-            guard.Condition = ExprResolution.Build(root, m => AttributeTarget(readable, m.Id), EnumMemberOf);
+            var readsSubject = ExprSites.ReadsSubject(process, typed.Typed);
+            guard.Condition = ExprResolution.Build(root, m => AttributeTarget(readable, m.Id) ?? (readsSubject ? DeclaredAttribute(m.Id) : null), EnumMemberOf);
             var guardDeps = DepsOf(guard);
             foreach (var name in ExprResolution.Names(Model, typed.Typed))
                 guardDeps.Element(name);
+            if (!readsSubject)
+                return;
+            foreach (var entry in process.Subjects)
+            {
+                if (EntitySource(entry.Entity) is not { } entity)
+                    continue;
+                foreach (var level in Chain(entity))
+                    guardDeps.Element(level.Id);
+            }
         }
 
         var actions = new List<RAction>();
@@ -681,6 +695,8 @@ internal sealed partial class ResolveRun
                 At = scenario.Start?.At ?? ScenarioStart.DefaultStart,
             };
             var keys = deps.ToList();
+            ResolveScenarioObjects(s, scenario, keys);
+            var traced = TraceInputs(scenario);
             var steps = new List<RStep>();
             for (var i = 0; i < scenario.Steps.Count; i++)
             {
@@ -706,6 +722,8 @@ internal sealed partial class ResolveRun
                 var stepDeps = DepsOf(r).AddRange(keys);
                 if (step.Actor is { } actor)
                     stepDeps.Element(actor);
+                foreach (var id in traced)
+                    stepDeps.Element(id);
                 if (step.Expect is { } expect)
                 {
                     var expected = expect.States.Select(id => lookup.States.GetValueOrDefault(id)).OfType<RState>().ToList();
@@ -741,6 +759,88 @@ internal sealed partial class ResolveRun
             process.Scenarios = new RList<RScenario>(_scenarioOrder.Where(s => ReferenceEquals(s.Process, process)),
                 [ScenarioKind, Keys.Referrers(process.Id)]);
         }
+    }
+
+    /// <summary>
+    /// A scenario's objects and subject (lifecycle-design.md decision 22). An object whose entity does not resolve is left out, and so is a
+    /// link whose end or object does not resolve. An object's values are keyed by the names of its entity's attributes, so it also reads
+    /// its entity and that entity's bases.
+    /// </summary>
+    private void ResolveScenarioObjects(RScenario s, Scenario scenario, IReadOnlyList<string> keys)
+    {
+        if (scenario.Objects.Count == 0)
+            return;
+        var objects = new List<RScenarioObject>();
+        var byId = new Dictionary<string, RScenarioObject>(StringComparer.Ordinal);
+        var listKeys = new DependencySet(Keys).AddRange(keys);
+        foreach (var obj in scenario.Objects)
+        {
+            listKeys.Element(obj.Entity);
+            if (!_entities.TryGetValue(obj.Entity, out var entity) || entity.Id.Length == 0)
+                continue;
+            var r = new RScenarioObject { Id = obj.Id, Name = obj.Name, Entity = entity };
+            var deps = DepsOf(r).AddRange(keys);
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var e = entity; e is not null && seen.Add(e.Id); e = e.Base)
+                deps.Element(e.Id);
+            foreach (var attribute in entity.Attributes)
+                names.TryAdd(attribute.Id, attribute.Name);
+            r.Values = ByName(obj.Values, names);
+            objects.Add(r);
+            byId.TryAdd(obj.Id, r);
+            Register(r);
+        }
+
+        foreach (var obj in scenario.Objects)
+        {
+            if (!byId.TryGetValue(obj.Id, out var r))
+                continue;
+            var links = new List<RScenarioLink>();
+            foreach (var link in obj.Links)
+            {
+                // Whether the end resolves is its relation's file.
+                if (Model.TryGetEntry(link.End, out var entry))
+                    DepsOf(r).Element(entry.OwnerId);
+                if (_byId.GetValueOrDefault(link.End) is REnd end && byId.TryGetValue(link.Object, out var target))
+                    links.Add(new RScenarioLink { End = end, Object = target });
+            }
+
+            r.Links = links;
+        }
+
+        s.Objects = new RList<RScenarioObject>(objects, listKeys.ToList());
+        s.Subject = scenario.Subject is { } subject ? byId.GetValueOrDefault(subject) : null;
+    }
+
+    /// <summary>
+    /// What a step's replay (<c>step.trace</c>) reads beyond the scenario and its process (lifecycle-design.md decision 22): the subjects'
+    /// entities of the process and of each process it invokes whose guard conditions read <c>subject</c> (their defaults are what such a
+    /// condition sees for a value the object lacks), the entities of the scenario's objects, all with their bases, which declare the
+    /// attributes and their defaults, and the relations the objects' links go through. In first-seen order, each once; none for a scenario
+    /// without objects whose processes' conditions do not read the object.
+    /// </summary>
+    private List<string> TraceInputs(Scenario scenario)
+    {
+        var ids = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var subjects = Model.Get<Process>(scenario.Process) is { } process
+            ? ExprSites.InvokedProcesses(Model, process).Prepend(process).Where(p => ExprSites.SubjectDepth(Model, p) is not null).SelectMany(p => p.Subjects)
+            : [];
+        var entities = subjects.Select(x => x.Entity).Concat(scenario.Objects.Select(o => o.Entity));
+        foreach (var start in entities)
+        {
+            for (var id = start; id is not null && seen.Add(id); id = Model.Get<Entity>(id)?.Base)
+                ids.Add(id);
+        }
+
+        foreach (var link in scenario.Objects.SelectMany(o => o.Links))
+        {
+            if (Model.TryGetEntry(link.End, out var entry) && seen.Add(entry.OwnerId))
+                ids.Add(entry.OwnerId);
+        }
+
+        return ids;
     }
 
     /// <summary>The engine interpreter's result of each step of a scenario that ran (empty when the replay could not start).</summary>

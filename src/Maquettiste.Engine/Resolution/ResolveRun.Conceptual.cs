@@ -590,6 +590,22 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>
+    /// The attribute an id names as its declaring entity resolves it (a base's own for an inherited one), or for <c>attributeId.memberId</c>
+    /// the value object member; <see langword="null"/> when no entity declares it. A process guard that reads its object ends its paths here.
+    /// </summary>
+    private RAttribute? DeclaredAttribute(string id)
+    {
+        var dot = id.IndexOf('.', StringComparison.Ordinal);
+        var own = dot > 0 ? id[..dot] : id;
+        if (!Model.TryGetEntry(own, out var entry) || !_entities.TryGetValue(entry.OwnerId, out var entity))
+            return null;
+        var attribute = entity.OwnAttributes.FirstOrDefault(a => string.Equals(a.Id, own, StringComparison.Ordinal));
+        return attribute is null || dot <= 0
+            ? attribute
+            : attribute.Type.ValueObject?.Attributes.FirstOrDefault(m => string.Equals(m.Id, id[(dot + 1)..], StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// The named constraints (next-phase-3-design.md section 3.1), by (package qualified name, name, id): each with its typed parameters
     /// and its condition typed against them. A constraint depends on its file and on what its condition names (another constraint it
     /// cites, an enum, a seed); a parameter on its constraint's file and its type.

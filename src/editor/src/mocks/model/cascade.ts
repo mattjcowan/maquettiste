@@ -42,9 +42,12 @@ const NOUNS: Record<string, string> = {
   schemas: "schema",
   categories: "category",
   alternateKeys: "key",
+  objects: "object",
+  links: "link",
 };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
 
 function comparePointers(a: string, b: string): number {
   return a.localeCompare(b, undefined, { numeric: true });
@@ -98,6 +101,44 @@ function idsUnder(json: Json, pointer: string): string[] {
   };
   walk(at(json, pointer));
   return out;
+}
+
+/**
+ * Scenario objects dropped for a deleted entity (decision 22): the links to them go too, and a subject left pointing at
+ * nothing refuses the delete (the scenario cannot run without it).
+ */
+function dropObjects(docs: ReadonlyMap<string, CascadeDoc>, ops: Map<string, Op[]>, plan: DeletePlan): void {
+  for (const [id, list] of ops) {
+    const doc = docs.get(id);
+    if (doc?.json.kind !== "scenario") continue;
+    const dropped = new Map<string, number>();
+    for (const o of list) {
+      const m = /^\/objects\/(\d+)$/.exec(o.pointer);
+      if (o.remove && m) dropped.set(String((at(doc.json, o.pointer) as Json).id), Number(m[1]));
+    }
+    if (!dropped.size) continue;
+    const subject = str(doc.json.subject);
+    if (subject && dropped.has(subject))
+      plan.refused.push({
+        id,
+        kind: "scenario",
+        name: str(doc.json.name),
+        pointer: "/subject",
+        why: "its subject object would be dropped with the entity it is an instance of, and the subject is required.",
+        rule: "MQ2001",
+      });
+    const gone = new Set(dropped.values());
+    arr(doc.json.objects).forEach((o, i) => {
+      if (gone.has(i)) return;
+      arr(o.links).forEach((l, j) => {
+        const to = str(l.object);
+        if (!to || !dropped.has(to)) return;
+        const pointer = `/objects/${i}/links/${j}`;
+        const ref: Ref = { fromId: String(o.id), pointer: `${pointer}/object`, field: "object", toId: to, required: false };
+        if (!list.some((x) => x.pointer === pointer)) list.push({ pointer, item: true, remove: true, ref });
+      });
+    });
+  }
 }
 
 /**
@@ -194,8 +235,8 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
       const mine = ops.get(doc.id) ?? [];
       if (mine.some((o) => o.remove && (ref.pointer === o.pointer || ref.pointer.startsWith(`${o.pointer}/`)))) continue;
       if (mine.some((o) => !o.remove && o.ref.pointer === ref.pointer)) continue;
-      if (!ref.required) {
-        mine.push({ pointer: ref.removeItem ?? ref.pointer, item: ref.removeItem !== undefined, remove: false, ref });
+      if (!ref.required || ref.drops) {
+        mine.push({ pointer: ref.removeItem ?? ref.pointer, item: ref.removeItem !== undefined, remove: !!ref.drops, ref });
         ops.set(doc.id, mine);
         continue;
       }
@@ -222,6 +263,7 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
     }
   }
 
+  dropObjects(docs, ops, plan);
   const edited = new Map<string, Json>();
   for (const [id, list] of [...ops].sort(([a], [b]) => a.localeCompare(b))) {
     const doc = docs.get(id)!;

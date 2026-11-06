@@ -114,7 +114,7 @@ internal static class ProcessCommand
         }
 
         var from = context.Line.Int("--from", 0);
-        var call = await store.SimulateProcessAsync(process.Id, new SimulateRequest { Start = inputs.Start, Steps = inputs.Steps, Scenario = scenario, From = from }, ct)
+        var call = await store.SimulateProcessAsync(process.Id, new SimulateRequest { Start = inputs.Start, Steps = inputs.Steps, Scenario = scenario, From = from, Objects = inputs.Objects, Subject = inputs.Subject }, ct)
             .ConfigureAwait(false);
         if (await FailedAsync(context, call).ConfigureAwait(false) is { } failed)
             return failed;
@@ -158,7 +158,7 @@ internal static class ProcessCommand
         if (inputs is null)
             return Program.ExitCodes.Invalid;
         var apply = context.Line.Has("--apply");
-        var call = await store.RecordScenarioAsync(process.Id, new RecordScenarioRequest { Name = name, Start = inputs.Start, Steps = inputs.Steps, Outcome = inputs.Outcome },
+        var call = await store.RecordScenarioAsync(process.Id, new RecordScenarioRequest { Name = name, Start = inputs.Start, Steps = inputs.Steps, Outcome = inputs.Outcome, Objects = inputs.Objects, Subject = inputs.Subject },
             !apply, ChangeSource.Cli, ct).ConfigureAwait(false);
         if (await FailedAsync(context, call).ConfigureAwait(false) is { } failed)
             return failed;
@@ -417,12 +417,12 @@ internal static class ProcessCommand
         return Program.ExitCodes.Success;
     }
 
-    /// <summary>The inputs file (<c>--inputs</c>, <c>-</c> for standard input): an array of steps, or <c>{ start, steps, scenario, outcome }</c>.</summary>
+    /// <summary>The inputs file (<c>--inputs</c>, <c>-</c> for standard input): an array of steps, or <c>{ start, steps, scenario, outcome, objects, subject }</c>.</summary>
     private static async Task<InputsFile?> InputsAsync(GlobalContext context, CancellationToken ct)
     {
         var file = context.Line.Value("--inputs");
         if (file is null)
-            return context.Line.Positionals[1] == "simulate" ? new InputsFile(null, [], null, null) : throw new UsageException("--inputs <file> is required.");
+            return context.Line.Positionals[1] == "simulate" ? new InputsFile(null, [], null, null, [], null) : throw new UsageException("--inputs <file> is required.");
         string? text;
         if (file == "-")
         {
@@ -441,13 +441,15 @@ internal static class ProcessCommand
         {
             var root = JsonDocument.Parse(text).RootElement.Clone();
             if (root.ValueKind == JsonValueKind.Array)
-                return new InputsFile(null, [.. root.EnumerateArray()], null, null);
+                return new InputsFile(null, [.. root.EnumerateArray()], null, null, [], null);
             if (root.ValueKind == JsonValueKind.Object)
             {
                 JsonElement? start = root.TryGetProperty("start", out var s) ? s : null;
                 IReadOnlyList<JsonElement> steps = root.TryGetProperty("steps", out var st) && st.ValueKind == JsonValueKind.Array ? [.. st.EnumerateArray()] : [];
+                IReadOnlyList<JsonElement> objects = root.TryGetProperty("objects", out var ob) && ob.ValueKind == JsonValueKind.Array ? [.. ob.EnumerateArray()] : [];
                 return new InputsFile(start, steps, root.TryGetProperty("scenario", out var sc) ? sc.GetString() : null,
-                    root.TryGetProperty("outcome", out var o) ? o.GetString() : null);
+                    root.TryGetProperty("outcome", out var o) ? o.GetString() : null, objects,
+                    root.TryGetProperty("subject", out var su) ? su.GetString() : null);
             }
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException)
@@ -492,5 +494,5 @@ internal static class ProcessCommand
     private static string Paths(StatechartModel chart, IReadOnlyList<string> states) =>
         states.Count == 0 ? "(none)" : string.Join(", ", states.Select(s => chart.ById.TryGetValue(s, out var state) ? state.Path : s));
 
-    private sealed record InputsFile(JsonElement? Start, IReadOnlyList<JsonElement> Steps, string? Scenario, string? Outcome);
+    private sealed record InputsFile(JsonElement? Start, IReadOnlyList<JsonElement> Steps, string? Scenario, string? Outcome, IReadOnlyList<JsonElement> Objects, string? Subject);
 }

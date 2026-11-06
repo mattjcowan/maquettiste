@@ -489,6 +489,242 @@ public sealed class ProcessConditionTests
         Assert.Contains(guard.Diagnostics, d => d.Rule == "MQ9503" && d.Message.Contains("statement limit", StringComparison.Ordinal));
     }
 
+    // ---- guards that read the object (lifecycle-design.md decisions 20 to 22) ----
+
+    internal const string Fulfilment = "01K9PSB0000000000000000P01";
+    internal const string DocumentEntity = "01K9PSB0000000000000000E01";
+    internal const string OrderEntity = "01K9PSB0000000000000000E02";
+    internal const string CustomerEntity = "01K9PSB0000000000000000E03";
+    internal const string ReturnNoteEntity = "01K9PSB0000000000000000E04";
+    internal const string DocumentTotal = "01K9PSB0000000000000000A12";
+    internal const string OrderStatus = "01K9PSB0000000000000000A21";
+    internal const string OrderRush = "01K9PSB0000000000000000A22";
+    internal const string CustomerVip = "01K9PSB0000000000000000A32";
+    internal const string NoteRush = "01K9PSB0000000000000000A42";
+    internal const string TrackedAt = "01K9PSB0000000000000000A91";
+    internal const string DocumentCustomer = "01K9PSB0000000000000000R01";
+    internal const string CustomerEnd = "01K9PSB0000000000000000R03";
+    internal const string SubjectContext = "01K9PSB0000000000000000A52";
+    internal const string OpenState = "01K9PSB0000000000000000S01";
+    internal const string DoneState = "01K9PSB0000000000000000S02";
+    internal const string ObjectProcessFile = ".maquettiste/model/processes/fulfilment.json";
+
+    /// <summary>The id of the i-th guard of <see cref="ObjectRepo"/>, counted from 1.</summary>
+    internal static string GuardId(int i) => "01K9PSB0000000000000000G" + i.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The id of the event the i-th guard of <see cref="ObjectRepo"/> guards, counted from 1.</summary>
+    internal static string EventId(int i) => "01K9PSB0000000000000000V" + i.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The bindings fixture with an invented lifecycle Fulfilment over Order (bound to its plain string status) and, with
+    /// <paramref name="returnNotes"/>, ReturnNote too. Both derive from Document (<c>total</c>, of default <paramref name="totalDefault"/>
+    /// when given, and a to-one navigation <c>customer</c> to Customer, whose <c>vip</c> defaults to false); each has its own <c>rush</c>,
+    /// two attributes that only share a name. Order applies the stereotype Tracked (<c>trackedAt</c>). The context holds <c>limit</c> and,
+    /// with <paramref name="subjectContext"/>, a string named <c>subject</c>. Guard i, a condition written as text, guards event i from
+    /// open to done.
+    /// </summary>
+    internal static TempRepo ObjectRepo(IReadOnlyList<string> guards, bool returnNotes = false, string? totalDefault = null, bool subjectContext = false)
+    {
+        var repo = Repo();
+        const string Shop = "01K6BFX0000000000000000001";
+        repo.WriteFile(".maquettiste/model/vocabularies/stereotypes/tracked.json", $$"""
+            { "kind": "stereotype", "id": "01K9PSB0000000000000000T91", "key": "tracked", "name": "Tracked", "appliesTo": ["entity"],
+              "attributes": [ { "id": "{{TrackedAt}}", "name": "trackedAt", "type": "datetimeoffset" } ] }
+            """);
+        var total = totalDefault is null ? "" : $$""", "default": {{totalDefault}}""";
+        repo.WriteFile(".maquettiste/model/entities/document.json", $$"""
+            { "kind": "entity", "id": "{{DocumentEntity}}", "name": "Document", "package": "{{Shop}}", "key": { "attributes": ["01K9PSB0000000000000000A11"] },
+              "attributes": [ { "id": "01K9PSB0000000000000000A11", "name": "id", "type": "uuid", "required": true },
+                              { "id": "{{DocumentTotal}}", "name": "total", "type": "decimal"{{total}} } ] }
+            """);
+        repo.WriteFile(".maquettiste/model/entities/order.json", $$"""
+            { "kind": "entity", "id": "{{OrderEntity}}", "name": "Order", "package": "{{Shop}}", "base": "{{DocumentEntity}}", "stereotypes": ["tracked"],
+              "attributes": [ { "id": "{{OrderStatus}}", "name": "status", "type": "string", "length": 20 },
+                              { "id": "{{OrderRush}}", "name": "rush", "type": "bool", "default": false } ] }
+            """);
+        repo.WriteFile(".maquettiste/model/entities/return-note.json", $$"""
+            { "kind": "entity", "id": "{{ReturnNoteEntity}}", "name": "ReturnNote", "package": "{{Shop}}", "base": "{{DocumentEntity}}",
+              "attributes": [ { "id": "{{NoteRush}}", "name": "rush", "type": "bool" } ] }
+            """);
+        repo.WriteFile(".maquettiste/model/entities/customer.json", $$"""
+            { "kind": "entity", "id": "{{CustomerEntity}}", "name": "Customer", "package": "{{Shop}}", "key": { "attributes": ["01K9PSB0000000000000000A31"] },
+              "attributes": [ { "id": "01K9PSB0000000000000000A31", "name": "id", "type": "uuid", "required": true },
+                              { "id": "{{CustomerVip}}", "name": "vip", "type": "bool", "default": false } ] }
+            """);
+        repo.WriteFile(".maquettiste/model/relations/document-customer.json", $$"""
+            { "kind": "relation", "id": "{{DocumentCustomer}}", "name": "DocumentCustomer",
+              "ends": [ { "id": "01K9PSB0000000000000000R02", "entity": "{{DocumentEntity}}", "role": "documents" },
+                        { "id": "{{CustomerEnd}}", "entity": "{{CustomerEntity}}", "role": "customer", "navigation": "customer", "max": 1 } ] }
+            """);
+        var subjects = $$"""{ "id": "01K9PSB0000000000000000B01", "entity": "{{OrderEntity}}", "boundAttribute": "{{OrderStatus}}" }"""
+            + (returnNotes ? $$""", { "id": "01K9PSB0000000000000000B02", "entity": "{{ReturnNoteEntity}}" }""" : "");
+        var context = """{ "id": "01K9PSB0000000000000000A51", "name": "limit", "type": "decimal", "default": 0 }"""
+            + (subjectContext ? $$""", { "id": "{{SubjectContext}}", "name": "subject", "type": "string" }""" : "");
+        var events = guards.Select((_, i) => $$"""{ "id": "{{EventId(i + 1)}}", "name": "e{{i + 1}}" }""");
+        var guardJson = guards.Select((g, i) => $$"""{ "id": "{{GuardId(i + 1)}}", "name": "g{{i + 1}}", "condition": { "text": {{JsonSerializer.Serialize(g)}} } }""");
+        var transitions = guards.Select((_, i) =>
+            $$"""{ "id": "01K9PSB0000000000000000X{{i + 1:D2}}", "source": "{{OpenState}}", "event": "{{EventId(i + 1)}}", "guard": "{{GuardId(i + 1)}}", "targets": ["{{DoneState}}"] }""");
+        repo.WriteFile(ObjectProcessFile, $$"""
+            {
+              "kind": "process", "id": "{{Fulfilment}}", "name": "Fulfilment", "package": "{{Shop}}", "use": "lifecycle",
+              "subjects": [ {{subjects}} ],
+              "context": [ {{context}} ],
+              "events": [ {{string.Join(", ", events)}} ],
+              "guards": [ {{string.Join(", ", guardJson)}} ],
+              "states": [ { "id": "{{OpenState}}", "name": "open" }, { "id": "{{DoneState}}", "name": "done", "type": "final" } ],
+              "initial": "{{OpenState}}",
+              "transitions": [ {{string.Join(", ", transitions)}} ]
+            }
+            """);
+        return repo;
+    }
+
+    /// <summary>The findings of a model that matter here: errors and the expression rules', but MQ3108 (the guards are written as text).</summary>
+    private static async Task<List<Diagnostic>> FindingsAsync(ModelStore store) =>
+        [.. (await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics
+            .Where(d => d.Rule != "MQ3108" && (d.Severity == DiagnosticSeverity.Error || d.Rule.StartsWith("MQ31", StringComparison.Ordinal)))];
+
+    private static string Describe(IEnumerable<Diagnostic> diagnostics) => string.Join("\n", diagnostics.Select(d => $"{d.Rule} {d.JsonPointer} {d.Message}"));
+
+    /// <summary>Simulates guard i's event with some objects (a JSON array whose first object is the subject), or none; whether it was accepted.</summary>
+    internal static async Task<bool> AcceptsAsync(ModelStore store, int guard, string? objects, string? context = null)
+    {
+        var list = objects is null ? null : JsonDocument.Parse(objects).RootElement.EnumerateArray().Select(o => o.Clone()).ToList();
+        var request = new SimulateRequest
+        {
+            Start = context is null ? null : JsonDocument.Parse($$"""{ "context": {{context}} }""").RootElement.Clone(),
+            Objects = list,
+            Subject = list?[0].GetProperty("id").GetString(),
+            Steps = [JsonDocument.Parse($$"""{ "input": "event", "event": "{{EventId(guard)}}" }""").RootElement.Clone()],
+        };
+        var call = await store.SimulateProcessAsync(Fulfilment, request, Ct);
+        Assert.True(call.Status == ProcessCallStatus.Ok, call.Detail);
+        return call.Value!.Trace[^1].Accepted;
+    }
+
+    /// <summary>An order, with some values and links, and a VIP customer, as a run's objects.</summary>
+    internal static string OrderAndCustomer(string values = "", string links = "") =>
+        $$"""[ { "id": "01K9PSB0000000000000000K01", "name": "order", "entity": "{{OrderEntity}}", "values": { {{values}} }, "links": [ {{links}} ] },"""
+        + $$"""  { "id": "01K9PSB0000000000000000K02", "name": "customer", "entity": "{{CustomerEntity}}", "values": { "{{CustomerVip}}": true } } ]""";
+
+    /// <summary>One value of an object, an attribute id and its JSON.</summary>
+    internal static string Given(string attribute, string json) => "\"" + attribute + "\": " + json;
+
+    /// <summary>The link from the order to the customer of <see cref="OrderAndCustomer"/>.</summary>
+    internal static string CustomerLink => $$"""{ "end": "{{CustomerEnd}}", "object": "01K9PSB0000000000000000K02" }""";
+
+    [Fact]
+    public async Task A_guard_reads_the_objects_own_and_inherited_attributes_and_a_to_one_navigation()
+    {
+        using var repo = ObjectRepo(["subject.rush", "subject.total > 0", "subject.customer.vip", "limit > 0"]);
+        await using var store = new ModelStore(repo.Options);
+        var findings = await FindingsAsync(store);
+        Assert.True(findings.Count == 0, Describe(findings));
+
+        var model = await new ModelResolver(repo.Options).ResolveAsync(await store.GetSnapshotAsync(Ct), null, Ct);
+        var process = model.Processes.Single(p => p.Id == Fulfilment);
+        RGuard Guard(int i) => process.Guards.Single(g => g.Id == GuardId(i));
+        REntity Entity(string id) => model.Entities.Single(e => e.Id == id);
+
+        // Each path ends at the declaring entity's own attribute: Order's rush, Document's total (not Order's copy), Customer's vip.
+        Assert.Equal("subject.rush", Guard(1).Condition!.Text);
+        Assert.Same(Entity(OrderEntity).OwnAttributes.Single(a => a.Id == OrderRush), Guard(1).Condition!.Target);
+        var positive = Guard(2).Condition!;
+        Assert.Equal(("subject.total > 0", "bool"), (positive.Text, positive.Type.Kind));
+        Assert.Same(Entity(DocumentEntity).OwnAttributes.Single(a => a.Id == DocumentTotal), positive.Args[0].Target);
+        Assert.Contains("mq.at(row, \"subject\", \"total\")", positive.JavaScript, StringComparison.Ordinal);
+        Assert.Equal("subject.customer.vip", Guard(3).Condition!.Text);
+        Assert.Same(Entity(CustomerEntity).OwnAttributes.Single(a => a.Id == CustomerVip), Guard(3).Condition!.Target);
+
+        // A guard that reads the object depends on the subject's entity and its bases, and on the relation it follows and its far end; one
+        // that does not keeps the keys it had.
+        Assert.Contains("e:" + OrderEntity, Guard(2).Dependencies);
+        Assert.Contains("e:" + DocumentEntity, Guard(2).Dependencies);
+        Assert.Contains("e:" + DocumentCustomer, Guard(3).Dependencies);
+        Assert.Contains("e:" + CustomerEntity, Guard(3).Dependencies);
+        Assert.DoesNotContain("e:" + DocumentEntity, Guard(4).Dependencies);
+        Assert.DoesNotContain("e:" + CustomerEntity, Guard(4).Dependencies);
+    }
+
+    [Fact]
+    public async Task With_several_subjects_a_guard_reads_what_their_shared_base_holds()
+    {
+        using var repo = ObjectRepo(["subject.total > 0", "subject.customer.vip", "subject.rush"], returnNotes: true);
+        await using var store = new ModelStore(repo.Options);
+
+        // Order's rush and ReturnNote's rush only share a name: neither is what every subject holds under one id.
+        var refused = Assert.Single(await FindingsAsync(store));
+        Assert.Equal(("MQ3102", "/guards/2/condition"), (refused.Rule, refused.JsonPointer));
+
+        var model = await new ModelResolver(repo.Options).ResolveAsync(await store.GetSnapshotAsync(Ct), null, Ct);
+        var process = model.Processes.Single(p => p.Id == Fulfilment);
+        var positive = process.Guards.Single(g => g.Id == GuardId(1));
+        Assert.Same(model.Entities.Single(e => e.Id == DocumentEntity).OwnAttributes.Single(a => a.Id == DocumentTotal), positive.Condition!.Args[0].Target);
+        Assert.Contains("e:" + OrderEntity, positive.Dependencies);
+        Assert.Contains("e:" + ReturnNoteEntity, positive.Dependencies);
+        Assert.Contains("e:" + DocumentEntity, positive.Dependencies);
+        Assert.NotNull(process.Guards.Single(g => g.Id == GuardId(2)).Condition);
+        Assert.True(process.Guards.Single(g => g.Id == GuardId(3)).IsStub);
+
+        // A return note runs the same guard, reading the base's attribute.
+        var note = $$"""[ { "id": "01K9PSB0000000000000000K03", "name": "note", "entity": "{{ReturnNoteEntity}}", "values": { "{{DocumentTotal}}": 3 } } ]""";
+        Assert.True(await AcceptsAsync(store, 1, note));
+        Assert.False(await AcceptsAsync(store, 1, note.Replace(": 3 }", ": 0 }", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_stereotypes_attributes_and_the_bound_attribute_are_out_of_scope()
+    {
+        using var repo = ObjectRepo(["subject.trackedAt is not null", "subject.status = 'open'", "subject.rush"]);
+        // The bound attribute read by id, as a tree: the typer refuses it as the parser refuses its name.
+        repo.WriteFile(ObjectProcessFile, repo.ReadFile(ObjectProcessFile).Replace("""{ "text": "subject.rush" }""",
+            $$"""{ "op": "isNotNull", "args": [{ "path": ["{{OrderStatus}}"] }] }""", StringComparison.Ordinal));
+        await using var store = new ModelStore(repo.Options);
+        var findings = await FindingsAsync(store);
+        Assert.True(findings.Count == 3 && findings.All(d => d.Rule == "MQ3102"), Describe(findings));
+        Assert.Equal(["/guards/0/condition", "/guards/1/condition", "/guards/2/condition/args/0"], findings.Select(d => d.JsonPointer).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_context_attribute_named_subject_keeps_its_meaning()
+    {
+        using var repo = ObjectRepo(["subject = 'go'", "subject.total > 0"], subjectContext: true);
+        await using var store = new ModelStore(repo.Options);
+        var refused = Assert.Single(await FindingsAsync(store));
+        Assert.Equal(("MQ3102", "/guards/1/condition"), (refused.Rule, refused.JsonPointer));
+
+        var model = await new ModelResolver(repo.Options).ResolveAsync(await store.GetSnapshotAsync(Ct), null, Ct);
+        var process = model.Processes.Single(p => p.Id == Fulfilment);
+        var reads = process.Guards.Single(g => g.Id == GuardId(1));
+        Assert.Same(process.Context.Single(a => a.Id == SubjectContext), reads.Condition!.Args[0].Target);
+        Assert.DoesNotContain("e:" + DocumentEntity, reads.Dependencies);
+
+        // The guard reads the context's value, with or without an object.
+        Assert.True(await AcceptsAsync(store, 1, null, $$"""{ "{{SubjectContext}}": "go" }"""));
+        Assert.False(await AcceptsAsync(store, 1, null, $$"""{ "{{SubjectContext}}": "stay" }"""));
+        Assert.True(await AcceptsAsync(store, 1, OrderAndCustomer(Given(DocumentTotal, "5")), $$"""{ "{{SubjectContext}}": "go" }"""));
+    }
+
+    [Fact]
+    public async Task Simulation_reads_the_object_its_defaults_and_its_link()
+    {
+        using var repo = ObjectRepo(["subject.total > 0", "subject.customer.vip", "subject.rush = false"], totalDefault: "1");
+        await using var store = new ModelStore(repo.Options);
+
+        // By the object's values; a null fails, since only true passes.
+        Assert.True(await AcceptsAsync(store, 1, OrderAndCustomer(Given(DocumentTotal, "2.5"))));
+        Assert.False(await AcceptsAsync(store, 1, OrderAndCustomer(Given(DocumentTotal, "0"))));
+        Assert.False(await AcceptsAsync(store, 1, OrderAndCustomer(Given(DocumentTotal, "null"))));
+        // By defaults: a value not given, and no objects at all, read Document.total's default (1) and Order.rush's (false).
+        Assert.True(await AcceptsAsync(store, 1, OrderAndCustomer()));
+        Assert.True(await AcceptsAsync(store, 1, null));
+        Assert.True(await AcceptsAsync(store, 3, null));
+        // Through the link: with no linked customer the path reads null.
+        Assert.True(await AcceptsAsync(store, 2, OrderAndCustomer(links: CustomerLink)));
+        Assert.False(await AcceptsAsync(store, 2, OrderAndCustomer()));
+        Assert.False(await AcceptsAsync(store, 2, null));
+    }
+
     /// <summary>Saves an edit of one element through the store; the new snapshot.</summary>
     private static async Task<ModelSnapshot> SaveAsync(ModelStore store, string id, string path, TempRepo repo, Action<JsonObject> edit)
     {

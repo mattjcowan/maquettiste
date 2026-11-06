@@ -156,7 +156,7 @@ The halves can ship separately. The first is what teams asked for: codes, and li
     - **Sub-processes:** an invoked sub-process sees no object.
     - **`process`:** stays required for now. It becomes optional when steps name the object they act on, and `subject` then sets the default.
     - **Simulating and recording:** `simulate_process`, `record_scenario` and the editor's simulation panel take the same `objects` and `subject`.
-    - **Replay:** a scenario's replay also depends on its process's subjects, its objects' entities, and their base entities, so a changed default replays it.
+    - **Replay:** a scenario's replay also depends on its objects' entities and their bases, and, when a guard condition of its process or of a process it invokes reads `subject`, on those processes' subjects and their bases. So a changed default replays it, and a scenario that reads no object keeps today's keys.
     - **Literal uses:** `sync-enum`'s check counts object values. Renaming a code doesn't rewrite them, as for scenario values today.
 23. **The index row** of a process keeps `subject` when it has exactly one subject, in either form, and gains `subjects` when it has two or more.
 

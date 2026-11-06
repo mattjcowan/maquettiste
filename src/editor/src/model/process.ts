@@ -150,6 +150,17 @@ export interface ScenarioDoc {
   start?: { context?: Json; at?: string };
   steps: StepDoc[];
   outcome?: "final" | "active";
+  /** The objects the run is about (lifecycle-design.md decision 22); `subject` names the one the process runs for. */
+  objects?: ScenarioObjectDoc[];
+  subject?: string;
+}
+
+export interface ScenarioObjectDoc {
+  id: string;
+  name: string;
+  entity: string;
+  values?: Record<string, unknown>;
+  links?: { end: string; object: string }[];
 }
 
 // ------------------------------------------------------------------ the state tree

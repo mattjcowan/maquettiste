@@ -91,6 +91,10 @@ internal static partial class BuiltinRules
             case Diagram diagram:
                 CheckDiagram(diagram, report);
                 break;
+            case Scenario scenario:
+                // Objects are named <scenario>.<object> (lifecycle-design.md decision 22), so a name is one object's.
+                CheckDuplicates(scenario.Objects, o => o.Name, "/objects", "/name", "Object name", o => o.Id, report);
+                break;
         }
     }
 

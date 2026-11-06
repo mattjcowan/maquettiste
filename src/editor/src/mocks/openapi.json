@@ -5278,7 +5278,7 @@
         ],
         "operationId": "recordScenario",
         "summary": "Record a scenario from a list of inputs",
-        "description": "phase-3-design.md section 4.4. The engine replays `start` and `steps` and fills each step's `expect` (refusals recorded as\n`accepted: false`) and the `outcome` (unless the request gives one) from the replay, gives the scenario and its steps new ids,\nand saves it as one change under `model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing\nit. Inputs that cannot be replayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.\n",
+        "description": "phase-3-design.md section 4.4. The engine replays `start` and `steps` and fills each step's `expect` (refusals recorded as\n`accepted: false`) and the `outcome` (unless the request gives one) from the replay, gives the scenario, its steps and its\nobjects new ids (`subject` and each link follow their objects), and saves it as one change under\n`model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing it. Inputs that cannot be\nreplayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.\n",
         "x-maquettiste-role": "editor",
         "parameters": [
           {
@@ -16290,6 +16290,17 @@
               "process": {
                 "type": "string"
               },
+              "objects": {
+                "type": "array",
+                "description": "The scenario's objects in file order (lifecycle-design.md decision 22); absent for a scenario with no objects.",
+                "items": {
+                  "$ref": "#/components/schemas/ScenarioObjectRecord"
+                }
+              },
+              "subject": {
+                "type": "string",
+                "description": "The id of the object the process runs for; absent for a scenario with no objects."
+              },
               "start": {
                 "$ref": "#/components/schemas/ScenarioStartRecord"
               },
@@ -16305,6 +16316,61 @@
             }
           }
         ]
+      },
+      "ScenarioObjectRecord": {
+        "x-engine-record": "Maquettiste.Engine.ScenarioObjectRecord",
+        "description": "An object of a scenario (lifecycle-design.md decision 22).",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "entity",
+          "values",
+          "links"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The object's id."
+          },
+          "name": {
+            "type": "string"
+          },
+          "entity": {
+            "type": "string",
+            "description": "The entity's id."
+          },
+          "values": {
+            "type": "object",
+            "description": "The values given, by attribute name (by id when the entity has no such attribute), as written; a value not given reads as the attribute's default.",
+            "additionalProperties": true
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScenarioLinkRecord"
+            }
+          }
+        }
+      },
+      "ScenarioLinkRecord": {
+        "x-engine-record": "Maquettiste.Engine.ScenarioLinkRecord",
+        "description": "A link from a scenario object to another object of the scenario.",
+        "type": "object",
+        "required": [
+          "end",
+          "object"
+        ],
+        "properties": {
+          "end": {
+            "type": "string",
+            "description": "The relation end's id."
+          },
+          "object": {
+            "type": "string",
+            "description": "The linked object's id."
+          }
+        }
       },
       "ScenarioStartRecord": {
         "x-engine-record": "Maquettiste.Engine.ScenarioStartRecord",
@@ -23703,6 +23769,23 @@
           "start": {
             "$ref": "#/components/schemas/SimStart"
           },
+          "objects": {
+            "description": "The run's objects, as a scenario's `objects` (lifecycle-design.md decision 22); with `scenario`, that scenario's objects when absent. Requires `subject`.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ScenarioObject"
+            }
+          },
+          "subject": {
+            "description": "The id of the object in `objects` the process runs for; required with `objects`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "scenario": {
             "description": "A scenario of the process whose start and steps run first.",
             "type": [
@@ -23747,6 +23830,60 @@
             "type": "string"
           }
         }
+      },
+      "ScenarioObject": {
+        "description": "An object of a scenario or a simulation (`schemas/v1/scenario.json` `$defs/object`, lifecycle-design.md decision 22).",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "entity"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "name": {
+            "description": "The name, unique in the scenario (letters, digits and underscores, not starting with a digit).",
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "entity": {
+            "description": "The id of the entity the object is an instance of.",
+            "type": "string"
+          },
+          "values": {
+            "description": "Values by attribute id; a value not given reads as the attribute's default, then null.",
+            "type": "object",
+            "additionalProperties": true
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScenarioLink"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScenarioLink": {
+        "description": "A link from a scenario object to another object of the scenario, through a relation end.",
+        "type": "object",
+        "required": [
+          "end",
+          "object"
+        ],
+        "properties": {
+          "end": {
+            "description": "The id of the relation end navigated from the object.",
+            "type": "string"
+          },
+          "object": {
+            "description": "The id of the linked object.",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "StepTrace": {
         "x-engine-record": "Maquettiste.Engine.Processes.StepTrace",
@@ -24273,6 +24410,23 @@
           },
           "start": {
             "$ref": "#/components/schemas/SimStart"
+          },
+          "objects": {
+            "description": "The scenario's objects (lifecycle-design.md decision 22), written to its `objects`. Requires `subject`.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ScenarioObject"
+            }
+          },
+          "subject": {
+            "description": "The id of the object in `objects` the process runs for; required with `objects`.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "steps": {
             "type": [
@@ -37101,6 +37255,79 @@
         ],
         "additionalProperties": false
       },
+      "link": {
+        "title": "Link",
+        "description": "A link from an object to another object of the scenario through a relation end.",
+        "type": "object",
+        "x-order": [
+          "end",
+          "object"
+        ],
+        "properties": {
+          "end": {
+            "description": "The id of the relation end navigated from the object.",
+            "$ref": "#/components/schemas/id"
+          },
+          "object": {
+            "description": "The id of the linked object.",
+            "$ref": "#/components/schemas/id"
+          }
+        },
+        "required": [
+          "end",
+          "object"
+        ],
+        "additionalProperties": false
+      },
+      "object": {
+        "title": "Object",
+        "description": "An object of the scenario: an instance of an entity with its values and its links to other objects.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "entity",
+          "values",
+          "links"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "entity": {
+            "description": "The entity the object is an instance of.",
+            "$ref": "#/components/schemas/id"
+          },
+          "values": {
+            "description": "Values by attribute id; a value not given reads as the attribute's default, then null.",
+            "type": "object",
+            "propertyNames": {
+              "$ref": "#/components/schemas/id"
+            },
+            "additionalProperties": {
+              "description": "A value of the attribute's type."
+            },
+            "default": {}
+          },
+          "links": {
+            "description": "The objects this object links to, each through a relation end.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/link"
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "entity"
+        ],
+        "additionalProperties": false
+      },
       "step": {
         "title": "Step",
         "description": "One input to the process and what is expected after it.",
@@ -37235,6 +37462,8 @@
           "pluralName",
           "package",
           "process",
+          "objects",
+          "subject",
           "description",
           "rationale",
           "decision",
@@ -37276,6 +37505,19 @@
           },
           "process": {
             "description": "The process; the scenario belongs to it.",
+            "$ref": "#/components/schemas/id"
+          },
+          "objects": {
+            "description": "The scenario's cast: the objects its process runs for and the objects they link to. Requires subject.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/object"
+            },
+            "minItems": 1,
+            "default": []
+          },
+          "subject": {
+            "description": "The id of the object the process runs for; required once there are objects.",
             "$ref": "#/components/schemas/id"
           },
           "description": {
@@ -37377,8 +37619,86 @@
           "process",
           "steps"
         ],
+        "dependentRequired": {
+          "objects": [
+            "subject"
+          ]
+        },
         "additionalProperties": false,
         "$defs": {
+          "object": {
+            "title": "Object",
+            "description": "An object of the scenario: an instance of an entity with its values and its links to other objects.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "entity",
+              "values",
+              "links"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "entity": {
+                "description": "The entity the object is an instance of.",
+                "$ref": "#/components/schemas/id"
+              },
+              "values": {
+                "description": "Values by attribute id; a value not given reads as the attribute's default, then null.",
+                "type": "object",
+                "propertyNames": {
+                  "$ref": "#/components/schemas/id"
+                },
+                "additionalProperties": {
+                  "description": "A value of the attribute's type."
+                },
+                "default": {}
+              },
+              "links": {
+                "description": "The objects this object links to, each through a relation end.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/link"
+                },
+                "default": []
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "entity"
+            ],
+            "additionalProperties": false
+          },
+          "link": {
+            "title": "Link",
+            "description": "A link from an object to another object of the scenario through a relation end.",
+            "type": "object",
+            "x-order": [
+              "end",
+              "object"
+            ],
+            "properties": {
+              "end": {
+                "description": "The id of the relation end navigated from the object.",
+                "$ref": "#/components/schemas/id"
+              },
+              "object": {
+                "description": "The id of the linked object.",
+                "$ref": "#/components/schemas/id"
+              }
+            },
+            "required": [
+              "end",
+              "object"
+            ],
+            "additionalProperties": false
+          },
           "step": {
             "title": "Step",
             "description": "One input to the process and what is expected after it.",

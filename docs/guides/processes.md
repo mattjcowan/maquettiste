@@ -77,6 +77,30 @@ Spoke & Chain, a `Rental` could have many `Accessory` lines, such as a helmet or
 A rental with three accessory lines then has three instances of that lifecycle, and one of the rental's own. The model needs
 nothing else.
 
+### Guards that read the object
+
+A guard may read the object the lifecycle follows. On `Rental`, a guard `subject.customer.since < date_of(now())` reads the rental's
+customer. Use `subject.<attribute>` for the subject's own attributes and for to-one navigations. The bound attribute is out of scope.
+With several subjects, only what they all hold under one id is in scope. A value that is missing reads as the default, then null.
+Only true passes. `csharp-dapper` leaves such a guard as a partial method for a person to write.
+
+### Scenario objects
+
+A scenario can name its objects, so a guard like that has something to read. Add a `customer` object and a `rental` object, link
+them by the rental's relation end, and set `subject` to the rental. In JSON:
+
+```json
+"objects": [
+  { "id": "…c", "name": "customer", "entity": "…Customer", "values": { "…Customer.since": "2024-03-01" } },
+  { "id": "…r", "name": "rental", "entity": "…Rental",
+    "links": [ { "end": "…Rental.customer", "object": "…c" } ] }
+],
+"subject": "…r"
+```
+
+A value you leave out reads as the default, then null. `simulate_process` and `record_scenario` take `objects` and `subject`,
+and the simulation panel shows a loaded scenario's cast, read-only. Recording keeps it.
+
 ## 5. Create the Repair orchestration
 
 1. In the Domain model explorer, create a domain `Workshop` (**+**, then **New domain**).

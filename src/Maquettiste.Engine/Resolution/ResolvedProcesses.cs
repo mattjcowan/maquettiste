@@ -460,6 +460,12 @@ public sealed class RScenario : RElement
     /// <summary>The process the scenario runs.</summary>
     public RProcess Process { get; internal set; } = null!;
 
+    /// <summary>The scenario's objects in file order (lifecycle-design.md decision 22); an object whose entity does not resolve is left out.</summary>
+    public RList<RScenarioObject> Objects { get; internal set; } = RList<RScenarioObject>.Empty;
+
+    /// <summary>The object the process runs for, or <see langword="null"/> when the scenario has no objects (or names none of them).</summary>
+    public RScenarioObject? Subject { get; internal set; }
+
     /// <summary>The starting point.</summary>
     public RScenarioStart Start { get; internal set; } = new();
 
@@ -468,6 +474,36 @@ public sealed class RScenario : RElement
 
     /// <summary><c>final</c> or <c>active</c>: whether the root is final after the last step.</summary>
     public string Outcome { get; internal set; } = "active";
+}
+
+/// <summary>An object of a scenario (lifecycle-design.md decision 22): an instance of an entity, with the values it is given and its links.</summary>
+public sealed class RScenarioObject : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "object";
+
+    /// <summary>The name, unique in the scenario.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The entity the object is an instance of.</summary>
+    public REntity Entity { get; internal set; } = null!;
+
+    /// <summary>The values given, by attribute name (by id when the entity has no such attribute), as plain values; a value not given reads
+    /// as the attribute's default.</summary>
+    public IReadOnlyDictionary<string, object?> Values { get; internal set; } = FrozenDictionary<string, object?>.Empty;
+
+    /// <summary>The links to other objects of the scenario, in file order; a link whose end or object does not resolve is left out.</summary>
+    public IReadOnlyList<RScenarioLink> Links { get; internal set; } = [];
+}
+
+/// <summary>A link from a scenario object to another object of the scenario, through a relation end.</summary>
+public sealed class RScenarioLink
+{
+    /// <summary>The relation end navigated from the object.</summary>
+    public REnd End { get; internal set; } = null!;
+
+    /// <summary>The linked object.</summary>
+    public RScenarioObject Object { get; internal set; } = null!;
 }
 
 /// <summary>A scenario's starting point.</summary>
