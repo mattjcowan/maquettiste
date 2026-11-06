@@ -1797,8 +1797,8 @@ none. Generation treats a domain-only entity as stored nowhere: the C# pack writ
 
 ## Processes, actors and scenarios
 
-A **process** is a statechart: a **lifecycle** describes the states of one entity (its subject), usually bound to an
-enum attribute of that entity whose members are the lifecycle's root-level states; an **orchestration** coordinates work
+A **process** is a statechart: a **lifecycle** describes the states of one or more entities (its subjects), each usually
+bound to the attribute that holds its state; an **orchestration** coordinates work
 and needs no subject. **Actors** are the people, roles and external systems that raise events and sign gates.
 **Scenarios** are recorded runs of a process, step by step, with what each step is expected to lead to; the engine
 replays them to check the process still behaves as written. A process is drawn on its **chart** (a statechart canvas)
@@ -1838,6 +1838,7 @@ sentence is the tooltip of **Use** in the process editor.
   or **New status attribute and enum**, created in the same change (its default is `Initial`, the first state). With
   an existing enum, the lifecycle starts with one root state per member, so the enum and the states agree. When the
   subject already has a lifecycle, the dialog says so, and that process becomes an orchestration in the same change.
+  The new lifecycle is written with `subjects` (see [Lifecycle subjects and state codes](#lifecycle-subjects-and-state-codes)).
 - **Orchestration**: the subject entity is optional (None).
 
 The line under the fields says what the process starts with: one state per member, or one state, `Initial`. The new
@@ -1854,6 +1855,70 @@ its **Goals** field (one per line).
 the simulation panel recording under that name, and **Record to scenario…** in the panel saves what you raise.
 **Empty** creates the scenario with one step to fill in.
 
+### Lifecycle subjects and state codes
+
+**State codes.** Any state may carry a **code**: a string or a whole number that is the state's stable stored value. A code is
+optional and needs no binding. Codes are unique within a lifecycle, and all strings or all whole numbers (`1` and `"1"` are
+the same code). A history or choice state has none, since nothing rests in it. A code is a plain value, not a row id, so it
+works where there are no rows. A state has one code for every subject. A type that needs another encoding gets its own lifecycle.
+
+The codes **form a map** when no two coded states sit on one path from the root and no coded state sits inside a parallel
+region. Then any configuration has at most one code. Output that turns states into codes needs a map. A state with no coded state
+on its path just has no code. Codes that do not form a map are allowed while nothing is bound, and the code packs write
+constants only. Once an attribute is bound they are an error (MQ9206).
+
+**Subjects.** A lifecycle lists what it governs in `subjects`. Each entry has its own id, an `entity` and an optional
+`boundAttribute`:
+
+```json
+"subjects": [
+  { "id": "…", "entity": "…Order", "boundAttribute": "…Order.status" },
+  { "id": "…", "entity": "…Quote", "boundAttribute": "…Quote.state" }
+]
+```
+
+- One lifecycle may cover several entities, and an entity may follow several lifecycles at once. Its objects follow all of them.
+- An entry covers its entity and the entities derived from it.
+- An orchestration may list subjects for what its flow is about. It binds nothing.
+- Deleting a listed entity removes its entry. A lifecycle left with no subject gets MQ9201.
+- Two lifecycles may not bind the same attribute of an entity that both list by name (MQ9202).
+
+**The deprecated one-subject form.** `subject` and `boundAttribute` on the process itself still work, with the same rules, and
+every process that uses them gets the warning MQ9209. You can turn that warning off. Nothing converts a file on its own, and a
+file keeps its form through every edit and re-import. To convert, use the quick fix on MQ9209, or the batch operation
+`use-subjects` with `elementIds`. The one-subject form and `subjects` may not appear in one file. New lifecycles are always
+written as `subjects`. An engine from before 0.13.0 cannot read them, so a team upgrades together.
+
+With `subjects`, an entity need not name the lifecycle back. `entity.lifecycle` still names one of its lifecycles, and MQ9201
+checks that back-link only in the one-subject form.
+
+**The state attribute of a subject.** Each subject may bind the attribute that holds its state. It is a single-valued attribute
+of the subject, and may be typed by:
+
+- an **enum**, as before: its root-level states match the members (MQ9203). A state's code, when it has one, must equal its
+  member's key, whole-number value or name (MQ9207);
+- a **reference type**: each code must be a live code of the type (MQ9207). A code under this binding counts as a use of the
+  type's row. So a rename, merge or retire of that code rewrites it, and deleting the row is refused while a state uses it;
+- a **plain status**: a `string`, `text`, `int16`, `int32` or `int64` attribute, directly or through a scalar type. Each code
+  must fit its type, length, pattern and `allowedValues` (MQ9207).
+
+Under any binding the codes must form a map (MQ9206). Under a binding that stores codes, a state with no code is a warning
+(MQ9210), so adding a state before its code is never refused. Values the attribute can hold that no state's code covers are a
+warning too (MQ9208), once per binding. Subjects of one lifecycle may share an enum without MQ9204 warning about each other.
+
+**Several instances of one lifecycle per object.** A lifecycle follows one object at a time. When one parent has many things that
+each go through their own states, model each thing as a detail entity and make that entity the subject. A project that
+staffs people has `ProjectAssignment`, a detail of `Project` and `Person`. Each assignment goes from `Proposed` to `Confirmed` to
+`Ended` on its own, while the project has its own lifecycle. So `AssignmentLifecycle` lists `ProjectAssignment` as its subject, and
+binds `ProjectAssignment.status`. A project with five assignments has five instances of that lifecycle, and one of the
+project's. Nothing in the file format is needed beyond the detail entity.
+
+**Sync codes.** The batch operation `sync-codes` proposes codes and binds them: it takes the lifecycle (`id`), the subject
+(`entity`), the attribute and, for states it cannot match, `stateCodes` keyed by state id. A state keeps a code it already has.
+Otherwise it takes a code equal to its name (ignoring case, `_` and `-`), then the row whose label equals its display name or name. An
+ambiguous match is left unmatched and listed. It creates no rows. **Sync enum** takes an optional `entity` too, the subject whose enum to sync. Without it, it
+uses the lifecycle's one enum binding. A dry run lists the states that found no code.
+
 ### The process editor
 
 A process opens in a document tab with its top controls: name and domain, **Use**, **Subject**, **Bound attribute**
@@ -1861,7 +1926,10 @@ A process opens in a document tab with its top controls: name and domain, **Use*
 chips. **Use** and **Subject** change both sides of a lifecycle at once: making a process a lifecycle (it needs a
 subject first), moving it to another entity, or turning it back into an orchestration also updates the entity's
 lifecycle and releases the entity's previous lifecycle, as one change. **Lifecycle** can be chosen only once a subject
-is set; until then the option reads "Lifecycle (choose a subject first)". The display names, the description and the
+is set; until then the option reads "Lifecycle (choose a subject first)". With one subject, in either form, the two controls
+edit the form the file has. With two or more subjects they show them read-only, and the JSON view edits them. The **Bound attribute**
+picker lists enum, reference type and plain status attributes. The **States** tab has a **Code** column: type a code per state, and
+the cell writes a string or a number as the bound type needs. Its quick fixes are listed below. The display names, the description and the
 top controls start folded away so the chart has the room (the inspector shows the same fields); the chevron at the
 right of the title row shows them. It opens on **Chart**. The tabs:
 
@@ -1994,7 +2062,9 @@ its process, outcome, steps and status.
 
 When a lifecycle's bound enum and its root-level states differ (MQ9203), **Sync enum** (beside Bound attribute, or the
 fix in Problems) first shows the plan (members added, removed, reordered, and the removals it keeps because something
-still uses them), then **Apply** makes the enum follow the states.
+still uses them), then **Apply** makes the enum follow the states. With several subjects, pick the subject whose enum to sync. For a lifecycle whose
+states have no codes yet, **Sync codes** (the fix for MQ9210) shows the codes it would write and the states left unmatched, then
+**Apply** writes and binds them.
 
 The **Problems** panel is live: every save re-validates the model and the panel shows the result, so a finding leaves
 as soon as its cause does, and nothing in it is stale. Its header has one chip per severity (**Errors**, **Warnings**,
@@ -2017,6 +2087,8 @@ step, and the panel re-validates after it:
 | MQ9105 | **Add the signer to the event's actors** |
 | MQ9205 | **Set default to** the initial state's name, on the subject's bound attribute |
 | MQ9201 | **Set lifecycle on the subject** (the subject names another lifecycle), or **Make it this entity's lifecycle** (an entity names an orchestration) |
+| MQ9209 | **Use subjects**: lists the one subject in `subjects` and clears the one-subject keys |
+| MQ9210 | **Sync codes**: proposes codes from the bound attribute and binds them |
 | MQ1003, MQ1010 | **Rewrite in canonical form**: rewrites that file (an element file, a locale file or `maquettiste.json`) the way the editor writes it, as `maquettiste format` does; `maquettiste.json` also loses the retired `commit` flags |
 | MQ3108 | **Convert expressions to trees**: stores the element's expressions written as text as trees of ids (`text-to-trees`), so renames follow them |
 
@@ -2103,7 +2175,7 @@ name a library's actions the same way, and `transition.gatePolicy` names a libra
 ### The rules for processes (MQ9xxx)
 
 Every rule below has a row in **Settings › Validation**, where its severity can be changed. The structural rules (MQ9001
-to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9205 and MQ9501) run on every save and every `validate`; MQ9019 is the answer
+to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9210 and MQ9501) run on every save and every `validate`; MQ9019 is the answer
 to a refused batch operation. The scenario rules (MQ93xx) and MQ9502 to MQ9507 come from replaying
 scenarios: `validate` replays every scenario of the processes it checks, **Verify scenarios** and `maquettiste process
 verify` replay on request, and the simulation panel shows them for its own run. A replay finding is reported on a save but
@@ -2142,10 +2214,15 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9105 | warning | A gate signer the event does not allow to raise it | **Add the signer to the event's actors** |
 | MQ9106 | info | An actor no process uses | |
 | MQ9201 | error | A lifecycle and its subject that do not name each other: no subject, a subject whose lifecycle is another process, or an entity whose lifecycle is an orchestration or another entity's lifecycle | **Set lifecycle on the subject**, or **Make it this entity's lifecycle** |
-| MQ9202 | error | A bound attribute that is not a single-valued enum attribute of the subject, or one set on an orchestration | |
+| MQ9202 | error | A bound attribute that is not a single-valued attribute of the subject typed by an enum, a reference type or a plain status, one set on an orchestration, or one attribute bound by two lifecycles that both list the entity | |
 | MQ9203 | error | Enum drift: the bound enum's members differ from the lifecycle's root-level states (missing, extra or out of order) | **Sync enum** |
 | MQ9204 | warning | The bound enum is used elsewhere too, so syncing it changes those uses | |
 | MQ9205 | warning | The bound attribute's default is not the lifecycle's initial root-level state | **Set default to** that state |
+| MQ9206 | error | State codes clash: two states share a code, codes mix strings and whole numbers, a history or choice state has a code, or, under a binding, the codes do not form a map | |
+| MQ9207 | error | A state code does not fit its binding: not its enum member's key, value or name, not a live code of the reference type, or not valid for the plain status attribute | |
+| MQ9208 | warning | Values the bound attribute can hold that no state's code covers | |
+| MQ9209 | warning | The deprecated one-subject form (`subject` and `boundAttribute` on the process); list it in `subjects`. Can be turned off | **Use subjects** |
+| MQ9210 | warning | Under a binding that stores codes, a state a configuration rests in has no code | **Sync codes** |
 | MQ9301 | error | A scenario step accepted while it expects a refusal, or refused while it expects to be accepted | |
 | MQ9302 | error | The active states after a step differ from what the step expects | **Update expectations from replay** |
 | MQ9303 | error | The context attributes a step changed differ from what the step expects | **Update expectations from replay** |
@@ -2179,7 +2256,7 @@ stereotypes, categories and packages). The example packs use them as follows; th
 
 | Files | What they hold | Who changes them |
 | --- | --- | --- |
-| `<P>States.cs` | A constant per state path; for a lifecycle, the mapping from the active states to the bound enum | Generated, overwritten on every run |
+| `<P>States.cs` | A constant per state path; for a lifecycle, the mapping from the active states to the bound enum (`To<Entity>Status` per enum binding when several subjects bind one). When states have codes: a constant per code, and, when the codes form a map, `ToCode`, `FromCode` and `Moves` (see the pack's README) | Generated, overwritten on every run |
 | `<P>Definition.cs` | The chart as static data: states, transitions in priority order, timers, gates and their meanings | Generated |
 | `<P>Contracts.cs` | The context record, one command per event (the typed payload and an envelope with the instance, actor, signer, meaning and reason), the start, invoke-result and timers-due commands, the transition record and one audit record per gate | Generated |
 | `<P>Handlers.g.cs` and `<P>Handlers.cs` | The guards and actions: the generated half implements the expressions it can translate and declares the others; the companion holds the code for those | A pair: the companion is written once, then it is the team's |
@@ -3733,7 +3810,8 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | `maquettiste process verify [<process>...]` | Replays the scenarios of the processes named (all processes when none is) and prints `pass` or `FAIL` per scenario with the first failing step and rule; exits 1 when one fails. `--format json` for scripts. |
 | `maquettiste process export <process>` | The process as an XState machine config (`--format xstate`, the only format), on stdout or into `--out <file>`. What has no XState home travels under `meta.maquettiste`, so importing the file back over the process gives the same file. |
 | `maquettiste process import <file>` | Previews importing an XState config: `--domain <package>` (with `--name`, `--use lifecycle\|orchestration`, `--subject <entity>`) for a new process, or `--into <process>` to re-import over one, keeping the ids of what matches. Prints the diagnostics and how many ids are created and removed; `--apply` writes it as one change, refused (exit 3) when the process changed while the command ran and exit 1 when the import has errors. `--format json` prints the document. |
-| `maquettiste process sync-enum <process>` | Previews making a lifecycle's bound enum follow its root-level states (members added, removed, reordered, and removals refused because a default, allowed values, a seed cell or a scenario still uses the member); `--apply` writes it; `--check` exits 2 when the enum is out of sync. A refused removal exits 1: change the uses first. |
+| `maquettiste process sync-codes <process> <entity> <attribute>` | Previews giving the states codes from the attribute's type (a reference type's codes, enum members or `allowedValues`) and binding the attribute, and lists the states left unmatched; `--apply` writes it; `--check` exits 2 when something would be written. |
+| `maquettiste process sync-enum <process>` | Previews making a lifecycle's bound enum follow its root-level states (members added, removed, reordered, and removals refused because a default, allowed values, a seed cell or a scenario still uses the member); `--apply` writes it; `--check` exits 2 when the enum is out of sync. A refused removal exits 1: change the uses first. `--entity <id\|name>` picks the subject whose enum to sync, else the lifecycle's one enum binding. |
 | `maquettiste model export` | Writes the model as data for another system: the canonical document of every element, or of the ones `--kind`, `--package` (id or name), `--tag`, `--category`, `--stereotype`, `--query` (name contains) and `--ids a,b,...` select, as one JSON array (`--format json`, the default) or one document per line (`--format ndjson`, for a pipeline); `--fields name,attributes` keeps only those members of each document (`id` and `kind` always), `--out <file>` writes a file. With `--resolved` it writes the resolved model instead, what templates read, as flat records: `--scope entities` (attributes resolved, inherited ones marked, keys, relations and mappings by id), `databases` (each database's tables, views, sequences, routines, database types, SQL objects and queries), `tables`, `routines`, `database-types`, `sql-objects`, `queries`, `migrations` (open migration facts by database, in applied order), `processes`, `operations` (each operation's input members, outcomes with what they return, errors with their codes, and the events it fires and what it requires, by id) and the other kinds, `all` by default; `--database <id or name>` keeps what is mapped to that database. A model with errors cannot be resolved: the errors go to stderr and the command exits 1. |
 | `maquettiste model stats` | The kinds of element the model holds and how many of each; `--by package` adds the counts per package, `--format json` for scripts. |
 | `maquettiste model calculated` | The calculated values (see "Calculated values") of the elements `--element <id>` names (repeat it; an attribute id gives one line per entity that holds the attribute), evaluated for them only: one line per object and value, such as `entity Invoice 01J92P0V0FJ23CGSNKM7P1W5V7 publicName = "invoices"`; `--name <name>` (repeatable) keeps only those values, `--format json` prints the answer `get_calculated` gives. A value that fails is reported on stderr and the command exits 1. |

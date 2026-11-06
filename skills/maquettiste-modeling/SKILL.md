@@ -28,7 +28,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | databases/<db>/queries/ | query (`kind: "query"`): `from`, `joins`, `select`, `where`, `groupBy`, `orderBy`, `paging`, `collections` as JSON trees over the database's tables and views, with an `entity` as the row shape or, without one, the select list | column refs are `alias.<column key>` (the key `get_database_view` lists: an attribute id, a designed column's id), names accepted; never SQL text but an `sql` expression per dialect |
 | databases/<db>/migrations/open/ | migration fact (`kind: "migration"`): what a change of the database's shape means for its stored rows (`rename`, `change-type`, `drop`, `backfill`, `raw`, ...) | recorded by the saves themselves; complete a pending one, never delete one by hand |
 | mappings/ | projection overrides of older models, and relation mappings (`foreignKey`, junctions) | new work binds entities in their own file instead |
-| processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (a `subject` entity, optionally a bound enum attribute) or `orchestration` |
+| processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (`subjects`: entries `{ id, entity, boundAttribute? }`; the one-subject `subject`/`boundAttribute` form is deprecated, MQ9209) or `orchestration` |
 | actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; may sit in a domain through `package` |
 | scenarios/<process>/ | scenario: a recorded run of one process, each step with what it expects | owned by its process and deleted with it |
 | operations/<subject>/ | operation: one command over the model (`subject`, `level`, `effect`, `input`, `outcomes`, `errors`, `guards`, `redefines`, `excludes`, `fires`, `requires`) | in `operations/` itself without a subject; the subject is not owning, so deleting the entity is refused while an operation names it |
@@ -176,20 +176,27 @@ id. Guards and actions carry an optional JavaScript `expression` (a guard return
 updates); one without an expression is a named stub that the generated code asks the team to implement. A guard may
 hold a `condition` in the expression language instead (see "Expressions"), never both. A lifecycle's root-level states
 must equal its bound enum's members, in order (MQ9203).
+- Lifecycles are written as `subjects` (one lifecycle on several entities, several lifecycles on one entity); never create the
+  deprecated one-subject form, and never convert a file unasked (`use-subjects` converts, MQ9209). A subject's `boundAttribute`
+  may be an enum, a reference type or a plain string or integer. A state may carry a `code` (string or integer, unique in the
+  lifecycle, none on history or choice states); under a binding the codes must form a map (MQ9206), fit the attribute (MQ9207),
+  and cover every state (MQ9210 warns). `sync-codes` (`id`, `entity`, `attribute`, optional `stateCodes` by state id) proposes
+  codes from the attribute's type and binds it; dry run first. Several instances of one lifecycle per object: model the object
+  as a detail entity and make it the subject.
 
 - Tools: `simulate_process` runs inputs through the engine's interpreter and keeps no state (send the whole input list each
   time; `enabled` says what can happen next); `record_scenario` saves a run as a scenario with every step's expectations
   filled from the replay (`dryRun` to preview); `verify_scenarios` replays scenarios; `export_process` and `import_process`
   (a dry run unless `apply`) move a process to and from an XState machine config; `sync_enum_from_process` (a dry run unless
-  `apply`) makes a lifecycle's bound enum follow its states and never removes a member still in use. `apply_batch` has the
-  process operations `sync-enum`, `set-lifecycle` (binds an entity and a process on both sides), `set-initial` and
+  `apply`) makes a lifecycle's bound enum follow its states (`entity` picks the subject) and never removes a member still in
+  use. `apply_batch` has the process operations `sync-enum`, `sync-codes`, `use-subjects`, `set-lifecycle` (binds an entity and a process on both sides), `set-initial` and
   `refresh-scenario`.
 - Scenarios are the process's tests: `validate` replays every scenario (MQ93xx), and the packs turn each scenario into a
   generated test. When a chart change breaks a scenario on purpose, refresh its expectations (`refresh-scenario`) rather
   than editing `expect` by hand; when it breaks by accident, fix the chart.
 - A scenario's `payload`, `start.context` and `expect.context` maps are keyed by attribute id; `assume` gives the result of a
   guard without an expression.
-- From a terminal: `maquettiste process simulate|record|verify|export|import|sync-enum` (record, import and sync-enum only
+- From a terminal: `maquettiste process simulate|record|verify|export|import|sync-enum|sync-codes` (record, import, sync-enum and sync-codes only
   preview until `--apply`; `verify` exits 1 on a failing scenario).
 - The engine creates no table and runs no process in the application: where instances, history and audit records live is
   the project's mapping or a pack parameter (`processTables` in sql-ddl). Never add entities or databases for them unasked.

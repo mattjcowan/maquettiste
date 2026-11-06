@@ -348,7 +348,7 @@ For `PurchaseApproval` in package `Purchasing`:
 
 | Unit | Mode | For | Writes |
 | --- | --- | --- | --- |
-| `process-states` | `overwrite` | `each process` | `Processes/PurchaseApproval/PurchaseApprovalStates.cs`: a constant per state path; an enum with one member per path for an orchestration, `ToStatus` (active states to the bound enum) for a lifecycle |
+| `process-states` | `overwrite` | `each process` | `Processes/PurchaseApproval/PurchaseApprovalStates.cs`: a constant per state path; an enum with one member per path for an orchestration, `ToStatus` (active states to the bound enum) for a lifecycle with one enum binding, and `To<Entity>Status` per enum binding for a lifecycle with several subjects (qualified by package where two subjects share a name); with state codes, also the `<Process>StateCodes` class (see Lifecycle state codes) |
 | `process-definition` | `overwrite` | `each process` | `PurchaseApprovalDefinition.cs`: the chart as static data (states with parents, initial children and history; transitions in priority order with triggers, guards, actions, delays and gates; events with their actors; invokes; gates and meanings) |
 | `process-contracts` | `overwrite` | `each process` | `PurchaseApprovalContracts.cs`: the context record, one command per event (`PurchaseApproval<Event>Command`: the envelope plus the typed payload, and the gate's audit attributes for a gated event), the built-in `PurchaseApprovalStartControl`, `PurchaseApprovalInvokeResultControl` and `PurchaseApprovalTimersDueControl` (their names end in `Control`, every event command's in `Command`, so no event name collides with them; all implement `IProcessCommand`), `PurchaseApprovalTransitioned` and one audit record per gate (the fields of `gate.audit`) |
 | `process-handlers` | `pair` | `each process` | `PurchaseApprovalHandlers.g.cs` (guards and actions as `Guard<Name>` and `Action<Name>`, so a guard and an action may share a name: translated ones implemented, the others declared as partial methods; the command handler that loads, runs the machine, saves over the version it loaded and returns the outbox events) and `PurchaseApprovalHandlers.cs` once, with a stub per untranslated guard or action |
@@ -364,6 +364,23 @@ For `PurchaseApproval` in package `Purchasing`:
 | `interpreter-companion` | `once`, file block | `model` | `Runtime/ProcessHost.cs` (in the `partialFolder`): in-memory clock, timers and invokes |
 | `actors` | `overwrite`, file block | `model` | `Processes/Actors.cs`: a constant per actor, its type, and each event's allowed actors |
 | `scenario-tests` | file blocks | `each scenario` | `<testsFolder>/PurchaseApproval/HappyPathTests.cs`: one xunit test per scenario; only when `testsFolder` is set |
+
+### Lifecycle state codes
+
+A state with a `code` gets a constant in `<Process>StateCodes`, in the same file as the state paths. It is named by the state, or
+by its path where two coded states share a name. Its type is `string` or `long`, by the kind of the codes. A model with no codes
+gets none of this, and the files are the same as before.
+
+When the codes form a map (no two coded states on one path, none inside a parallel region), the class also has:
+
+- `ToCode(IReadOnlyList<string> states)`: the code of a configuration, or `null` for a state with no code.
+- `FromCode(code)`: the path of the coded state. Restoring into a compound state enters its default, as the chart does.
+- `Moves`: every transition as (from code, to code, trigger, event). A move into a history or choice state has no fixed "to" code,
+  since it is decided when the move runs. A timer, a completion or an eventless move has no event. A move inside one coded state
+  has the same code at both ends.
+
+A lifecycle with several subjects keeps the per-state enum and `Parse`, and gets `To<Entity>Status` for each enum binding. A
+lifecycle with one subject, in either form, writes the same `ToStatus` as before.
 
 ### The pair and regions shapes
 
