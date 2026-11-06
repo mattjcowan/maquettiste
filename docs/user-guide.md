@@ -1799,7 +1799,7 @@ none. Generation treats a domain-only entity as stored nowhere: the C# pack writ
 
 A **process** is a statechart: a **lifecycle** describes the states of one or more entities (its subjects), each usually
 bound to the attribute that holds its state; an **orchestration** coordinates work
-and needs no subject. **Actors** are the people, roles and external systems that raise events and sign gates.
+and needs no subject. **Actors** are the people, roles, groups, organizations and systems that raise events and sign gates.
 **Scenarios** are recorded runs of a process, step by step, with what each step is expected to lead to; the engine
 replays them to check the process still behaves as written. A process is drawn on its **chart** (a statechart canvas)
 and tried out in the **simulation panel** under it; its grids edit the same document.
@@ -1816,8 +1816,11 @@ Under a process come its **States** (the state tree, nested), **Events**, **Guar
 state, event or scenario row opens the process editor on that tab with the row selected. A guard or a gate opens the first
 transition that uses it. A library's parts open in the inspector.
 
-The **Actors** folder follows the domains, with **People**, **Roles** and **Systems** folders (the actor type stays
-external system; "Systems" is only the folder's label). An actor's row says where it acts, as "acts in N processes".
+The **Actors** folder follows the domains, with **People**, **Roles**, **Groups**, **Organizations** and **Systems** folders
+(the actor type stays external system; "Systems" is only the folder's label). A folder shows only when it has actors. The
+project's own system actor, if it has one, sits in **Automatic**. Actors taken from the object sit in **From the object**.
+Under a role, group or organization, its members are listed, nested at any depth. An actor's row says where it acts, as
+"acts in N processes". A scenario's participants sit under the scenario.
 
 Search, the selection that follows you, related highlighting, favorites and Problems all reveal a process or an actor in
 this explorer. They no longer switch to the Domain model. In the Domain model explorer, an entity has a **Lifecycles**
@@ -1858,14 +1861,128 @@ process opens in its editor, and Undo removes it.
 
 ### New actor…
 
-**Name**, **Type** (person, role, external system) and the project's actor **Stereotypes**; a persona stereotype shows
-its **Goals** field (one per line).
+**Name**, **Type** (person, role, group, organization, external system, or Automatic) and the project's actor
+**Stereotypes**; a persona stereotype shows its **Goals** field (one per line). See
+[Actors](#actors-types-membership-and-the-object).
 
 ### New scenario…
 
 **Process**, **Name** and **Start**: **Record from simulation** creates nothing yet: it opens the process's chart with
 the simulation panel recording under that name, and **Record to scenario…** in the panel saves what you raise.
 **Empty** creates the scenario with one step to fill in.
+
+### Actors: types, membership and the object
+
+An actor has one of six **types**:
+
+| Type | Use it for |
+| --- | --- |
+| person | One person, such as a clerk |
+| role | A job someone does, such as Reviewer |
+| group | A set of actors, such as a night shift |
+| organization | A unit with a place in a hierarchy, such as a supplier or a plant |
+| external system | Another system that acts in a process |
+| **Automatic** | The system itself, for moves nobody makes |
+
+The engine treats a role, a group and an organization alike. The type tells readers and packs which one it is.
+
+**Automatic** is optional, and a project may have only one (MQ9605). In a simulation, it makes a move when the step names
+no actor, such as a timer, an eventless move or a finished invoke. It never completes a human task. A step's trace names
+the actor only when Automatic made the move. Other automated agents are external systems.
+
+**Membership.** An actor may be a **member of** a role, group or organization. Open the actor and use **Member of**. On a
+role, group or organization, **Add members…** lists the actors that can join, and **Members** shows who is in, how many
+directly and how many in all. Roles, groups and organizations nest, so a department can be a member of its division. A
+person, an external system and Automatic have no members. The file keeps the link on the member, as `memberOf`, so a
+role's members are never stored twice:
+
+```json
+{ "kind": "actor", "name": "SeniorReviewer", "type": "role", "memberOf": ["…Reviewer"] }
+```
+
+An actor in a list stands for itself and all its members, at any depth. This holds for an event's actors, a gate's
+signers and required actors, and a human task's actors. If Reviewer may raise an event, so may a SeniorReviewer. A
+required actor counts as signed when a signature's actor is it or one of its members. Memberships may not form a cycle
+(MQ9602). With no `memberOf` anywhere, every actor stands only for itself and nothing changes.
+
+**Taken from the object.** Some actors are not one fixed actor. They depend on the object the process runs for, such as
+the order's account manager. The actor editor's **Taken from the object** section sets this with **Worked out as**. There
+are three forms, and an actor has exactly one:
+
+- **The object's owner.** Where it is held is set on the subject (see the next part).
+- **A field of the object.** The actor that a field names, through to-one ends if needed. For example `requestedBy`, or
+  the requester's manager, through `requester` then `manager`. The picker lists the fields of the subjects of the
+  processes that use the actor.
+- **Members of a role within a context.** The members of a role, group or organization within a context object reached by
+  a to-one path, such as "Reviewer on the item's project". Leave **Within** empty for the object itself.
+
+Such an actor can be named in any list that takes an actor, with no other change. Its type says what it yields: person for
+an owner, role for "reviewer on this project". It can't be a member and has no members. Where a role is held matters. A
+role held with no context satisfies a plain `Reviewer` and nothing that asks for a reviewer on a project. A role held within
+a project counts only within that project. A list that should accept both names both. A path must resolve on every
+subject of each process that uses the actor, and end at a single-valued attribute or a to-one end (MQ9604).
+
+In the Processes explorer these actors sit in **From the object**. The file keeps the form under `relative`:
+
+```json
+{ "kind": "actor", "name": "Owner", "type": "person", "relative": { "owner": true } }
+{ "kind": "actor", "name": "ProjectReviewer", "type": "role",
+  "relative": { "membersOf": "…Reviewer", "within": ["…Item.project"] } }
+```
+
+**The subject's Owner.** In a lifecycle's subject entry, the **Owner** picker names the single-valued attribute or to-one
+end that holds the object's owner. Each subject names its own, so one Owner actor serves a lifecycle over several types
+that hold their owner differently. It is optional. Without it, the owner is held by the team's system, and no finding
+asks for it (MQ9606 checks a name that is given). It is allowed on an orchestration's subjects too.
+
+```json
+"subjects": [ { "id": "…", "entity": "…Item", "owner": "…Item.ownerLogin" } ]
+```
+
+### Scenario participants
+
+A scenario names who takes part in its run. A **participant** is a person in the story, not an actor of the model, so
+participants never reach generated production code. Open the scenario and use its **Participants** tab. A participant has:
+
+- a **Name**, and optionally a display name;
+- an **Identity**, the value the team's system would hold for them, such as a login (the name when left empty);
+- **Stands for**, the person, external system or Automatic actor they are, with that actor's memberships;
+- **Holds**, the roles, groups and organizations they hold, each optionally followed by "in" and an object of the scenario:
+  `Reviewer in Project1, Admin`;
+- **Record object**, the scenario object that is their own record, such as an employee.
+
+On the **Objects** tab, an object may also name its **Owner** participant. It may do so only when the process names no
+owner field for that object. Otherwise the owner comes from the object's own values and links, and naming both is MQ9305.
+
+A step names its **Participant**. The engine then works out the step's actor from the model alone: the participant acts as
+the first actor that both lists accept. The first list is the gate's signers for a gated move, else the event's or the
+task's actors. The second is the actors the participant satisfies. The step shows it as "acts as" that actor. If the step
+names an actor too, the participant must satisfy it (MQ9305). The signer defaults to the participant's identity. A step
+with no participant works as before.
+
+A participant satisfies:
+
+- a plain actor, when their actor is it or one of its members, or they hold it, or one of its members, with no context;
+- the owner, when the subject's owner field holds their identity or links to their record object;
+- an actor from a field, when the path ends at their identity or record object;
+- members of a role within a context, when they hold the role, or one of its members, within the object the path reaches.
+
+In the simulation panel, **Enabled** has a **Participant** picker beside the actor. Pick one, and the panel shows the actor
+it acts as, or says the participant satisfies none of the actors the move needs. A recorded step keeps the participant.
+`simulate_process` and `record_scenario` take `participants` and a step's `participant`. When the participant satisfies
+none of the list, the step is refused, and MQ9301 names the participant and the list. "Participants" is a working name,
+and the owner will confirm it before release.
+
+```json
+"participants": [
+  { "id": "…ann", "name": "ann", "holds": [ { "id": "…", "actor": "…Reviewer", "within": "…apollo" } ] },
+  { "id": "…bea", "name": "bea", "actor": "…Clerk" }
+],
+"steps": [ { "id": "…", "event": "…Submit", "participant": "…bea" },
+           { "id": "…", "event": "…Approve", "participant": "…ann" } ]
+```
+
+Here Bea may submit as the item's owner, and Ann may approve as a reviewer on project Apollo.
 
 ### Lifecycle subjects and state codes
 
@@ -2227,7 +2344,7 @@ name a library's actions the same way, and `transition.gatePolicy` names a libra
 ### The rules for processes (MQ9xxx)
 
 Every rule below has a row in **Settings › Validation**, where its severity can be changed. The structural rules (MQ9001
-to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9210 and MQ9501) run on every save and every `validate`; MQ9019 is the answer
+to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9210, MQ9501 and MQ9601 to MQ9606) run on every save and every `validate`; MQ9019 is the answer
 to a refused batch operation. The scenario rules (MQ93xx) and MQ9502 to MQ9507 come from replaying
 scenarios: `validate` replays every scenario of the processes it checks, **Verify scenarios** and `maquettiste process
 verify` replay on request, and the simulation panel shows them for its own run. A replay finding is reported on a save but
@@ -2260,11 +2377,11 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9021 | error | A transition sets both `gate` and `gatePolicy`, or its `gatePolicy` names a gate that no library holds | Keep one, or point at a library's gate |
 | MQ9022 | error | A process invoke or a scenario names a library, which has no states to run | Name a running process |
 | MQ9101 | error | A gate needs more signatures than its signers can give | |
-| MQ9102 | error | A gate's required actors are not all among its signers | **Add to signers** |
+| MQ9102 | error | A gate's required actors are not all among its signers, counting the members of a signer | **Add to signers** |
 | MQ9103 | error | A gate on a transition whose trigger is not an event, or two gates on one source and event | |
 | MQ9104 | error | A gate without meanings | |
-| MQ9105 | warning | A gate signer the event does not allow to raise it | **Add the signer to the event's actors** |
-| MQ9106 | info | An actor no process uses | |
+| MQ9105 | warning | A gate signer the event does not allow to raise it (a member of one of the event's actors is allowed, and an actor taken from the object is not checked) | **Add the signer to the event's actors** |
+| MQ9106 | info | An actor nothing uses: no process names it, it has no used member, it is not a member of a used actor, no actor taken from the object names it, and no participant names it | |
 | MQ9201 | error | A lifecycle and its subject that do not name each other: no subject, a subject whose lifecycle is another process, or an entity whose lifecycle is an orchestration or another entity's lifecycle | **Set lifecycle on the subject**, or **Make it this entity's lifecycle** |
 | MQ9202 | error | A bound attribute that is not a single-valued attribute of the subject typed by an enum, a reference type or a plain status, one set on an orchestration, or one attribute bound by two lifecycles that both list the entity | |
 | MQ9203 | error | Enum drift: the bound enum's members differ from the lifecycle's root-level states (missing, extra or out of order) | **Sync enum** |
@@ -2275,11 +2392,11 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9208 | warning | Values the bound attribute can hold that no state's code covers | |
 | MQ9209 | warning | The deprecated one-subject form (`subject` and `boundAttribute` on the process); list it in `subjects`. Can be turned off | **Use subjects** |
 | MQ9210 | warning | Under a reference-type or plain binding, states a configuration rests in have no code; one finding per binding names them | **Sync codes** |
-| MQ9301 | error | A scenario step accepted while it expects a refusal, or refused while it expects to be accepted | |
+| MQ9301 | error | A scenario step accepted while it expects a refusal, or refused while it expects to be accepted; a refusal by actor names the participant and the list it did not satisfy | |
 | MQ9302 | error | The active states after a step differ from what the step expects | **Update expectations from replay** |
 | MQ9303 | error | The context attributes a step changed differ from what the step expects | **Update expectations from replay** |
 | MQ9304 | error | Whether the process is final after the last step differs from the scenario's outcome | **Update expectations from replay** |
-| MQ9305 | error | A step whose fields do not fit: an unknown event, a time step without a duration, an invoke that is not pending, a payload value of the wrong type | |
+| MQ9305 | error | A step whose fields do not fit: an unknown event, a time step without a duration, an invoke that is not pending, a payload value of the wrong type. With participants: a holding that is not a role, group or organization; a `within` or `object` that is not one of the scenario's objects; a participant's actor that is a role, group, organization or actor from the object; a step's participant that is not the scenario's; a step's actor its participant does not satisfy; an object's owner beside an owner field | |
 | MQ9306 | warning | A guard without an expression is evaluated and the step has no assumption for it, so the replay stops there | |
 | MQ9401 | warning | Imported configuration with no place in the model, kept as opaque data and written back on export | |
 | MQ9402 | warning | An inline function in an imported configuration became a named stub (its text kept in the description, never run) | |
@@ -2294,6 +2411,12 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9505 | warning | An action returned an attribute the context does not declare, or a value of the wrong type (ignored) | |
 | MQ9506 | warning | Two guarded transitions of one source and trigger were enabled at once; the first in priority order was taken | |
 | MQ9507 | error | One input ran more than 1,000 microsteps (an eventless loop, or events that keep raising each other) | |
+| MQ9601 | error | A `memberOf` entry that is not a role, group or organization, is an actor taken from the object, names the actor itself, or is listed twice | **Remove the entry** |
+| MQ9602 | error | Memberships form a cycle; the message names it | |
+| MQ9603 | error | An actor taken from the object with no form or more than one; `within` without `membersOf`; `membersOf` naming something other than a plain role, group or organization; `memberOf` on such an actor; or an Automatic actor taken from the object | |
+| MQ9604 | error | An actor taken from the object used where it can't be worked out: in a process with no subjects, or with a path that does not resolve on every subject, or that ends at a many-valued attribute, a value object or a to-many end. Reported at the use | |
+| MQ9605 | error | Two or more Automatic actors | **Change the type** |
+| MQ9606 | error | A subject's owner that is not a single-valued attribute or to-one end of its entity | **Clear the owner** |
 
 `GET /api/validation/rules` returns the full descriptions. The MCP tool `list_validation_rules` returns a summary by
 family, and full entries by family, id or text, in pages.

@@ -5,6 +5,28 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.14.0 (unreleased)
+
+- **Actors: more types, membership, and actors taken from the object.** An actor may now be a group, an organization, or
+  Automatic (the system itself, at most one per project). Any role, group or organization may have members, and a list that
+  names it also accepts its members, at any depth. In the editor, use **Member of** and **Add members…**. The Processes
+  explorer gains Groups, Organizations, Automatic and From the object folders.
+- **Actors taken from the object.** An actor may be the object's owner, the actor a field names, or the members of a role
+  within a context such as the item's project. A lifecycle's subject has an optional **Owner** picker.
+- **Scenario participants.** A scenario lists its participants, each standing for an actor and holding roles, in a context if
+  you like. A step names its participant, and the engine works out the actor it acts as. The simulation panel has a
+  participant picker, and `simulate_process` and `record_scenario` take `participants`. "Participants" is a working name, and
+  the owner will confirm it before release.
+- **New rules MQ9601 to MQ9606**, and MQ9102, MQ9105, MQ9106, MQ9301 and MQ9305 now follow membership and participants.
+- **Generated output.** `csharp-dapper` adds the new actor types only when a model uses them, and checks membership when the
+  model has memberships. Actors taken from the object go through a resolver the host supplies. `process-docs` lists members,
+  participants and Automatic.
+- **Teams upgrade together.** New files use shapes an older engine cannot read: the new actor types, `memberOf`,
+  `relative`, a subject's `owner` and participants. The file format version stays 1. A project that uses none of this
+  keeps its files, output, findings and tool answers.
+- **The schema copies and the modeling skill change.** Update the copies of the schemas and the `maquettiste-modeling` skill
+  that your repository holds.
+
 ## 0.13.2 (unreleased)
 
 - **`sql-ddl` no longer writes `bigint` on Oracle.** Oracle has no such type. The lifecycle history table's `sequence` column,

@@ -174,7 +174,23 @@ Scenarios are tests of the model.
 When you change the chart on purpose, a scenario may fail with MQ9302 (the active states differ). Its fix, **Update
 expectations from replay**, rewrites the expectations from a fresh replay.
 
-## 10. Share a guard between processes
+## 10. Who may act: roles, members and the object
+
+Say a `Review` lifecycle governs an `Item`, and each item belongs to a project and has an account manager.
+
+1. Add an actor `Reviewer` of type **role**. Add an actor `Clerk` of type **person**, and in its editor set **Member of**
+   to `Reviewer`. Or open `Reviewer` and use **Add members…**. An event that lists `Reviewer` now accepts `Clerk`.
+2. Add an actor `AccountManager`. In **Taken from the object**, set **Worked out as** to **A field of the object** and pick
+   the item's `accountManager` field. Name it in a gate's signers like any other actor.
+3. On the lifecycle's **Subject**, set **Owner** to the item's `ownerLogin` field if the model holds it there. This is optional.
+4. In a scenario, open **Participants**. Add `ann`, who holds `Reviewer in Apollo` (a project in the scenario's objects), and
+   `bea`, who stands for `Clerk`. On each step, pick the participant. The engine shows the actor it acts as.
+
+If Ann tries a step that only a reviewer on another project may take, the replay refuses it and says which participant
+failed and which list it did not satisfy. See [Actors](../user-guide.md#actors-types-membership-and-the-object) and
+[Scenario participants](../user-guide.md#scenario-participants).
+
+## 11. Share a guard between processes
 
 When two processes need the same check, hold it once. Create a process with `"use": "library"` and move the guard into its `guards`. It has
 no states of its own. A transition of any process then names the guard by its id in `guard`, as it did before. The expression runs in the
@@ -187,6 +203,7 @@ has the rest, with actions and gate policies.
   [The process editor](../user-guide.md#the-process-editor), [The chart](../user-guide.md#the-chart) and
   [The simulation panel](../user-guide.md#the-simulation-panel).
 - [Lifecycle subjects and state codes](../user-guide.md#lifecycle-subjects-and-state-codes).
+- [Actors: types, membership and the object](../user-guide.md#actors-types-membership-and-the-object).
 - [Sync enum and the quick fixes](../user-guide.md#sync-enum-and-the-quick-fixes) and
   [The rules for processes (MQ9xxx)](../user-guide.md#the-rules-for-processes-mq9xxx).
 - [Verify scenarios, Export XState and Import XState](../user-guide.md#verify-scenarios-export-xstate-and-import-xstate).
