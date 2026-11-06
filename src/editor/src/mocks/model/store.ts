@@ -1458,10 +1458,13 @@ function e5(json: Json): Partial<ElementSummary> {
   if (kind === "process") {
     out.use = json.use === "lifecycle" || json.use === "library" ? json.use : "orchestration";
     // One subject, in either form, is `subject`; two or more are `subjects` (lifecycle-design.md decision 23).
-    // A stereotype entry is no entity: `subject` is left out whenever one exists, and `subjects` counts entity entries only.
+    // A stereotype entry is no entity: `subject` is left out whenever one exists, and `subjects` lists the entity entries (when there is one or more).
     const subjects = subjectsOf(json);
     const entities = subjects.flatMap((s) => s.entity ?? []);
-    if (subjects.length === 1 && entities.length === 1) out.subject = entities[0];
+    const hasStereotype = subjects.some((s) => s.stereotype !== undefined);
+    if (hasStereotype) {
+      if (entities.length) out.subjects = entities;
+    } else if (subjects.length === 1 && entities.length === 1) out.subject = entities[0];
     else if (entities.length > 1) out.subjects = entities;
     const count = (states: unknown): number => (Array.isArray(states) ? (states as Json[]).reduce((n, s) => n + 1 + count(s.states), 0) : 0);
     out.stateCount = count(json.states);

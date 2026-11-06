@@ -211,10 +211,18 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
     if (!left) return;
     await qc.refetchQueries({ queryKey: keys.index });
     const rows = qc.getQueryData<ElementSummary[]>(keys.index) ?? [];
+    // Only this process's stereotype entries count, and only those that cover the entity: the entity's own stereotypes
+    // (or a base's) when they name one; a default from a package carries no mark in the index, so then all of its entries.
+    const mine = rows.find((r) => r.id === id);
     const names = new Set<string>();
-    for (const r of rows)
-      if (r.kind === "process" && r.covers?.includes(left))
-        for (const s of r.subjectStereotypes ?? []) names.add(rows.find((x) => x.id === s)?.displayName || rows.find((x) => x.id === s)?.name || s);
+    if (mine?.covers?.includes(left)) {
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const own = new Set<string>();
+      for (let e = byId.get(left), hops = 0; e && hops < 32; e = e.base ? byId.get(e.base) : undefined, hops++) for (const k of e.stereotypes ?? []) own.add(k);
+      const entries = mine.subjectStereotypes ?? [];
+      const matching = entries.filter((s) => own.has(byId.get(s)?.name ?? ""));
+      for (const s of matching.length ? matching : entries) names.add(byId.get(s)?.displayName || byId.get(s)?.name || s);
+    }
     setStill(names.size ? `Still covered through stereotype ${[...names].join(", ")}` : null);
   };
   const setSubject = (choice: string | undefined) => {

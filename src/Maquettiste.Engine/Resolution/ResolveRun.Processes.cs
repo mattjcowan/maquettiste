@@ -214,7 +214,8 @@ internal sealed partial class ResolveRun
     /// <summary>
     /// <c>entity.lifecycles</c> (lifecycle-design.md section 7): the lifecycles that list the entity or a base of it, in either form, by
     /// name then id. The list is keyed on the process kind and on the referrers of the entity and of each base, since a lifecycle may
-    /// list a base; only a template that reads it pays for those keys.
+    /// list a base; only a template that reads it pays for those keys. While some entry names a stereotype it also keys on which
+    /// stereotypes the processes name and on the carrier set of each named stereotype (stereotype-sets-design.md section 6).
     /// </summary>
     private void ResolveEntityLifecycles(Dictionary<string, Process> sources)
     {
@@ -237,17 +238,11 @@ internal sealed partial class ResolveRun
         List<(RProcess Resolved, Process Source)> through = coverage.Any
             ? [.. _processOrder.Where(p => p.Use == "lifecycle" && SubjectCoverage.NamesStereotype(sources[p.Id])).Select(p => (p, sources[p.Id]))]
             : [];
-        var throughKeys = new List<string>();
-        if (through.Count > 0)
-        {
-            throughKeys.Add("k:stereotype");
-            throughKeys.Add("k:package");
-            foreach (var key in coverage.Keys)
-            {
-                if (Model.GetStereotype(key) is { } stereotype)
-                    throughKeys.Add(Keys.Referrers(stereotype.Id)); // a process that starts or stops naming it
-            }
-        }
+        // A process that starts or stops naming a stereotype, or names another, changes the naming key; an entity (or a base) that starts
+        // or stops carrying a named stereotype changes that stereotype's carrier-set key. The naming key is kept even in a model with no
+        // stereotype entry: its hash counts only processes that name one, so it never changes there, and the model's first stereotype
+        // entry still reaches every entity's lifecycles.
+        List<string> throughKeys = coverage.Any ? [SubjectCoverage.NamingKey, .. coverage.Keys.Select(SubjectCoverage.CarrierSetKey)] : [SubjectCoverage.NamingKey];
 
         foreach (var id in _entitySources.Keys)
         {
@@ -263,41 +258,46 @@ internal sealed partial class ResolveRun
                     found.AddRange(list);
             }
 
-            if (through.Count > 0 && _entitySources.TryGetValue(id, out var source))
+            if (throughKeys.Count > 0)
             {
-                foreach (var (resolved, process) in through)
+                if (_entitySources.TryGetValue(id, out var source))
                 {
-                    if (SubjectCoverage.EntryOf(Model, process, source) is { Stereotype: not null })
-                        found.Add(resolved);
+                    foreach (var (resolved, process) in through)
+                    {
+                        if (SubjectCoverage.EntryOf(Model, process, source) is { Stereotype: not null })
+                            found.Add(resolved);
+                    }
                 }
 
-                keys = [.. new DependencySet(Keys).AddRange(keys).AddRange(throughKeys)
-                    .AddRange(Chain(source).SelectMany(level => CarryingKeys(level).Prepend(Keys.Element(level.Id)))).ToList()];
+                keys = [.. new DependencySet(Keys).AddRange(keys).AddRange(throughKeys).ToList()];
             }
 
             r.Lifecycles = new RList<RProcess>(found.Distinct().OrderBy(p => p.Name, StringComparer.Ordinal).ThenBy(p => p.Id, StringComparer.Ordinal), keys);
         }
     }
 
-    private IReadOnlyList<string>? _carrierKeys;
-
     /// <summary>
-    /// What decides which entities carry a stereotype (stereotype-sets-design.md section 6): which entities, packages and stereotypes exist
-    /// and every one of their files (an entity's own list, a package's defaults, a stereotype's implies and appliesTo). Built once per run,
-    /// only when a process names a stereotype.
+    /// What decides the carriers a process's stereotype entries govern (stereotype-sets-design.md section 6): the carrier set of each
+    /// stereotype it names (which entities carry it, in which order, and whether the key names a stereotype), and the file of each carrier
+    /// and of its bases, since an entry naming a carrier or a base wins over the stereotype entry.
     /// </summary>
-    private IReadOnlyList<string> CarrierKeys()
+    private IReadOnlyList<string> CarrierKeys(Process process)
     {
-        if (_carrierKeys is not null)
-            return _carrierKeys;
-        var keys = new DependencySet(Keys).Add("k:entity").Add("k:package").Add("k:stereotype");
-        foreach (var entity in Model.All<Entity>())
-            keys.Element(entity.Id);
-        foreach (var package in Model.All<Package>())
-            keys.Element(package.Id);
-        foreach (var stereotype in Model.All<Stereotype>())
-            keys.Element(stereotype.Id);
-        return _carrierKeys = keys.ToList();
+        var keys = new DependencySet(Keys);
+        var coverage = SubjectCoverage.Of(Model);
+        foreach (var entry in process.Subjects)
+        {
+            if (entry.Stereotype is not { } key)
+                continue;
+            keys.Add(SubjectCoverage.CarrierSetKey(key));
+            foreach (var carrier in coverage.CarriersOf(key))
+            {
+                foreach (var id in SubjectCoverage.Chain(Model, carrier))
+                    keys.Element(id);
+            }
+        }
+
+        return keys.ToList();
     }
 
     /// <summary>
@@ -451,10 +451,10 @@ internal sealed partial class ResolveRun
         var subjectKeys = nodeKeys;
         if (stereotypeSubjects.Count > 0)
         {
-            // Which entities carry a stereotype changes with any entity, package or stereotype (stereotype-sets-design.md section 6), and
-            // with it the subjects and the one-subject fields.
-            subjectKeys = new DependencySet(Keys).AddRange(nodeKeys).AddRange(CarrierKeys()).ToList();
-            deps.AddRange(CarrierKeys());
+            // Which entities carry a named stereotype (stereotype-sets-design.md section 6) decides the subjects and the one-subject fields.
+            var carrierKeys = CarrierKeys(process);
+            subjectKeys = new DependencySet(Keys).AddRange(nodeKeys).AddRange(carrierKeys).ToList();
+            deps.AddRange(carrierKeys);
             foreach (var entry in stereotypeSubjects)
             {
                 DepsOf(entry).AddRange(subjectKeys);
@@ -1166,9 +1166,24 @@ internal sealed partial class ResolveRun
         }
 
         // A stereotype entry (stereotype-sets-design.md section 5): the stereotype declares the attributes, its carriers' defaults are what a
-        // condition sees, and which entry governs an object depends on what it carries (its packages, the stereotypes' implies).
-        if (processes.Any(SubjectCoverage.NamesStereotype) || (Model.Get<Process>(scenario.Process) is { } runs && SubjectCoverage.NamesStereotype(runs)))
+        // condition sees, and which entry governs an object depends on what it carries (its packages, the stereotypes' implies). A guard
+        // that reads a stereotype's attribute on the object reads the same, with entity entries only.
+        var readsStereotype = processes.Any(p => ExprSites.StereotypeAttributesRead(Model, p).Count > 0);
+        if (readsStereotype || processes.Any(SubjectCoverage.NamesStereotype)
+            || (Model.Get<Process>(scenario.Process) is { } runs && SubjectCoverage.NamesStereotype(runs)))
         {
+            if (readsStereotype)
+            {
+                foreach (var entity in processes.SelectMany(p => p.Subjects).Select(x => x.Entity).OfType<string>().Select(Model.Get<Entity>).OfType<Entity>())
+                {
+                    foreach (var id in Chain(entity).SelectMany(CarryingIds))
+                    {
+                        if (seen.Add(id))
+                            ids.Add(id);
+                    }
+                }
+            }
+
             foreach (var p in processes.Append(Model.Get<Process>(scenario.Process)).OfType<Process>())
             {
                 foreach (var entry in p.Subjects)

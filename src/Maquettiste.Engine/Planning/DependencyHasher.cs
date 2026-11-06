@@ -221,6 +221,9 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             // The rule view's index and reference reads (rows scripts, next-phase-2-design.md section 3.4) hash as the rule cache hashes
             // them, so a unit that read scripted rows renders again exactly when one of those reads changes.
             "ix" or "rt" => Validation.RuleKeyHasher.Of(model).CurrentHash(key),
+            // Which entities carry a stereotype, and which stereotypes the processes' subjects name (stereotype-sets-design.md section 6).
+            "cs" => Processes.SubjectCoverage.CarrierSetHash(model, rest),
+            "sn" => string.Equals(key, Processes.SubjectCoverage.NamingKey, StringComparison.Ordinal) ? Processes.SubjectCoverage.NamingHash(model) : Absent,
             _ => Absent,
         };
     }

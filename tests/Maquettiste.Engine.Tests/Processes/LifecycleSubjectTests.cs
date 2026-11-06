@@ -148,7 +148,10 @@ public sealed class LifecycleSubjectTests
         Assert.Equal(["Billing", "OrderLifecycle", "Shipping"], rush.Lifecycles.Select(l => l.Name)); // derived entities are covered
         Assert.Null(rush.Lifecycle);
         Assert.Equal(["Billing"], resolved.Entity("Invoice").Lifecycles.Select(l => l.Name));
-        Assert.Equal(["k:process", "r:" + RushOrder, "r:" + Order], rush.Lifecycles.MembershipKeys);
+        // The naming key (stereotype-sets-design.md section 6) never changes in a model that names no stereotype.
+        Assert.Equal(
+            new[] { "k:process", "r:" + RushOrder, "r:" + Order, "sn:subjects" }.Order(StringComparer.Ordinal),
+            rush.Lifecycles.MembershipKeys.Order(StringComparer.Ordinal));
 
         var record = Record(resolved, Order);
         Assert.Equal([Q, P, S], record["lifecycles"]!.AsArray().Select(x => x!.GetValue<string>()));

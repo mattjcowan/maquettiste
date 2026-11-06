@@ -2946,7 +2946,7 @@ export interface components {
             use?: "lifecycle" | "orchestration" | "library";
             /** @description The entity a process governs, on process rows with exactly one subject in either form (`subject`, or one `subjects` entry; lifecycle-design.md decision 23) and no entry naming a stereotype (stereotype-sets-design.md section 8); the entity an operation acts on, on operation rows that have one. */
             subject?: components["schemas"]["Ulid"];
-            /** @description The entities a process's entity entries name in entry order, on process rows with two or more entity entries (lifecycle-design.md decision 23); such a row has no `subject`. Stereotype entries are not counted (`subjectStereotypes`). */
+            /** @description The entities a process's entity entries name in entry order, on process rows with two or more entity entries (lifecycle-design.md decision 23), or with one or more while any entry names a stereotype (stereotype-sets-design.md); such a row has no `subject`. Stereotype entries are not counted (`subjectStereotypes`). */
             subjects?: components["schemas"]["Ulid"][];
             /** @description The ids of the stereotypes a process's subject entries name, in entry order (stereotype-sets-design.md section 8), on process rows that have such an entry; an unknown key is left out. Absent when empty. */
             subjectStereotypes?: components["schemas"]["Ulid"][];

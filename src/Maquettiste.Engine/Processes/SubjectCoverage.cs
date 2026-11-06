@@ -212,6 +212,98 @@ internal sealed class SubjectCoverage
     /// <returns>Whether an entry covers it.</returns>
     public static bool Governs(ModelSnapshot model, Process process, Entity entity) => EntryOf(model, process, entity) is not null;
 
+    /// <summary>The prefix of a stereotype's carrier-set dependency key, <c>cs:&lt;stereotype key&gt;</c> (stereotype-sets-design.md section 6).</summary>
+    public const string CarrierSetPrefix = "cs:";
+
+    /// <summary>The dependency key of which stereotypes the processes' subject entries name (stereotype-sets-design.md section 6).</summary>
+    public const string NamingKey = "sn:subjects";
+
+    private static readonly ConditionalWeakTable<ModelSnapshot, System.Collections.Concurrent.ConcurrentDictionary<string, string>> CarrierSetHashes = new();
+
+    private static readonly ConditionalWeakTable<ModelSnapshot, string> NamingHashes = new();
+
+    /// <summary>The carrier-set key of a stereotype key.</summary>
+    /// <param name="key">The stereotype key.</param>
+    /// <returns><c>cs:&lt;key&gt;</c>.</returns>
+    public static string CarrierSetKey(string key) => CarrierSetPrefix + key;
+
+    /// <summary>
+    /// The current hash of <c>cs:&lt;stereotype key&gt;</c>: the id of the stereotype that has the key (if any), the entities that carry it
+    /// in carrier order (qualified name, then id), then every entity it covers (carriers and the entities derived from them), ordinal. It
+    /// changes when an entity starts or stops carrying the stereotype, by its own list, a package default or an implied stereotype; when a
+    /// base change brings an entity under a carrier or out from under one; when a carrier's qualified name moves it in the order; and when
+    /// the key starts or stops naming a stereotype. Computed for any key, named or not, once per snapshot.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="key">The stereotype key.</param>
+    /// <returns>The hash.</returns>
+    public static string CarrierSetHash(ModelSnapshot model, string key)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(key);
+        return CarrierSetHashes.GetValue(model, static _ => new(StringComparer.Ordinal)).GetOrAdd(key, static (k, m) => ComputeCarrierSetHash(m, k), model);
+    }
+
+    private static string ComputeCarrierSetHash(ModelSnapshot model, string key)
+    {
+        var coverage = Of(model);
+        ImmutableArray<Entity> carriers;
+        IEnumerable<string> covered;
+        if (coverage._covered.TryGetValue(key, out var known))
+        {
+            carriers = coverage.CarriersOf(key);
+            covered = known;
+        }
+        else
+        {
+            // A key no entry names now (a stored read key from an earlier run): worked out the same way, for this key alone.
+            var entities = model.All<Entity>().ToList();
+            var direct = entities.Where(e => model.EffectiveStereotypes(e).Any(a => string.Equals(a.Stereotype.Key, key, StringComparison.Ordinal))).ToList();
+            var ids = direct.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
+            carriers = Ordered(model, direct);
+            covered = ids.Count == 0 ? [] : entities.Where(e => Chain(model, e).Any(ids.Contains)).Select(e => e.Id);
+        }
+
+        using var hash = new Hashing.HashBuilder();
+        hash.Add("cs").Add(key).Add(model.GetStereotype(key)?.Id ?? "");
+        foreach (var carrier in carriers)
+            hash.Add(carrier.Id);
+        hash.Add("covered");
+        foreach (var id in covered.Order(StringComparer.Ordinal))
+            hash.Add(id);
+        return hash.Finish();
+    }
+
+    /// <summary>
+    /// The current hash of <see cref="NamingKey"/>: for each process with a stereotype entry, by id, its id, its use and the stereotype keys
+    /// its entries name, in entry order. It changes when a process starts or stops naming a stereotype, names another one, or changes its
+    /// use; not when an entity entry changes (those reach the entity's referrers).
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <returns>The hash.</returns>
+    public static string NamingHash(ModelSnapshot model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        return NamingHashes.GetValue(model, static m =>
+        {
+            using var hash = new Hashing.HashBuilder();
+            hash.Add("sn");
+            foreach (var process in m.All<Process>().Where(NamesStereotype).OrderBy(p => p.Id, StringComparer.Ordinal))
+            {
+                hash.Add(process.Id).Add(process.Use.ToString());
+                foreach (var entry in process.Subjects)
+                {
+                    if (entry.Stereotype is { } key)
+                        hash.Add(key);
+                }
+
+                hash.Add("/");
+            }
+
+            return hash.Finish();
+        });
+    }
+
     /// <summary>The ids of an entity and its bases, nearest first; a base cycle stops at its first repeat.</summary>
     /// <param name="model">The model.</param>
     /// <param name="entity">The entity.</param>

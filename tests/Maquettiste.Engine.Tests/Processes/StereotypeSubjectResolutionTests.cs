@@ -38,16 +38,22 @@ public sealed class StereotypeSubjectResolutionTests
     private static string InvoiceJson(bool carries) =>
         $$"""{"$schema":"../../.schema/v1/entity.json","kind":"entity","id":"{{Invoice}}","name":"Invoice","package":"{{Package}}"{{(carries ? ",\"stereotypes\":[\"approvable\"]" : "")}},"key":{"attributes":["01JATT00000000000000000091"]},"attributes":[{"id":"01JATT00000000000000000091","name":"id","type":"uuid"}]}""";
 
-    private static string ApprovalJson(bool orderEntry) => $$"""
+    // The Approval entry: the stereotype, or (for a model without a stereotype entry) Invoice by name.
+    private static string ApprovalEntry(bool stereotypeEntry) => stereotypeEntry
+        ? $$"""{"id":"{{Entry}}","stereotype":"approvable","boundAttribute":"{{ApprovalStatus}}","owner":"{{RequestedBy}}"}"""
+        : $$"""{"id":"{{Entry}}","entity":"{{Invoice}}"}""";
+
+    private static string ApprovalJson(bool orderEntry, bool stereotypeEntry = true) => $$"""
         {"$schema":"../../.schema/v1/process.json","kind":"process","id":"{{Approval}}","name":"Approval","package":"{{Package}}","use":"lifecycle",
-         "subjects":[{{(orderEntry ? $"{{\"id\":\"{OrderEntry}\",\"entity\":\"{Order}\"}}," : "")}}{"id":"{{Entry}}","stereotype":"approvable","boundAttribute":"{{ApprovalStatus}}","owner":"{{RequestedBy}}"}],
+         "subjects":[{{(orderEntry ? $"{{\"id\":\"{OrderEntry}\",\"entity\":\"{Order}\"}}," : "")}}{{ApprovalEntry(stereotypeEntry)}}],
          "states":[{"id":"01JSTA00000000000000000091","name":"Open"},{"id":"01JSTA00000000000000000092","name":"Done","type":"final"}],
          "events":[{"id":"01JSTA00000000000000000093","name":"finish"}],
          "transitions":[{"id":"01JSTA00000000000000000094","source":"01JSTA00000000000000000091","event":"01JSTA00000000000000000093","targets":["01JSTA00000000000000000092"]}]}
         """;
 
     /// <summary>The model with <paramref name="carriers"/> of Invoice and Order carrying <c>approvable</c> (Invoice first).</summary>
-    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(int carriers, bool orderEntry = false, bool rushCarries = false)
+    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(int carriers, bool orderEntry = false, bool rushCarries = false,
+        bool stereotypeEntry = true)
     {
         var harness = new LoaderHarness();
         harness.CopyFixture("models", "process-basics");
@@ -65,7 +71,7 @@ public sealed class StereotypeSubjectResolutionTests
             harness.Write("model/entities/order.json", order.ToJsonString());
         }
 
-        harness.Write("model/processes/approval.json", ApprovalJson(orderEntry));
+        harness.Write("model/processes/approval.json", ApprovalJson(orderEntry, stereotypeEntry));
         var store = new ModelStore(harness.Options, harness.Services() with { Validator = EngineServices.Create(harness.Options).Validator });
         await store.LoadAsync(Ct);
         Assert.DoesNotContain(store.Current!.LoadDiagnostics, d => d.Severity == DiagnosticSeverity.Error);
@@ -93,11 +99,12 @@ public sealed class StereotypeSubjectResolutionTests
         Assert.Equal((Entry, "approvable", "approvalStatus", "requestedBy"), (entry.Id, entry.Stereotype!.Key, entry.BoundAttribute!.Name, entry.OwnerAttribute!.Name));
         Assert.Empty(entry.Entities);
 
-        // Any entity gaining the stereotype changes the subjects: the list keys on every entity's file and on which entities exist.
-        Assert.Contains("e:" + Invoice, p.Subjects.MembershipKeys);
-        Assert.Contains("k:entity", p.Subjects.MembershipKeys);
-        Assert.Contains("e:" + Package, p.Subjects.MembershipKeys);
+        // Any entity gaining the stereotype changes the subjects: the list keys on the stereotype's carrier set, not on every entity's file.
+        Assert.Contains("cs:approvable", p.Subjects.MembershipKeys);
         Assert.Contains("e:" + Approvable, p.Subjects.MembershipKeys);
+        Assert.DoesNotContain("e:" + Invoice, p.Subjects.MembershipKeys);
+        Assert.DoesNotContain("k:entity", p.Subjects.MembershipKeys);
+        Assert.DoesNotContain("e:" + Package, p.Subjects.MembershipKeys);
 
         var record = Record(resolved, Approval);
         Assert.Empty(record["subjects"]!.AsArray());
@@ -136,8 +143,7 @@ public sealed class StereotypeSubjectResolutionTests
 
         var invoice = resolved.Entities.Single(e => e.Id == Invoice);
         Assert.Equal(["Approval"], invoice.Lifecycles.Select(l => l.Name));
-        Assert.Contains("k:stereotype", invoice.Lifecycles.MembershipKeys);
-        Assert.Contains("k:package", invoice.Lifecycles.MembershipKeys);
+        Assert.Equal(["cs:approvable", "k:process", "r:" + Invoice, "sn:subjects"], invoice.Lifecycles.MembershipKeys.Order(StringComparer.Ordinal));
         Assert.DoesNotContain(resolved.Entities.Single(e => e.Id == Order).Lifecycles, l => l.Name == "Approval");
 
         var record = Record(resolved, Approval);
@@ -206,16 +212,69 @@ public sealed class StereotypeSubjectResolutionTests
     [Fact]
     public async Task A_model_without_a_stereotype_entry_keeps_its_rows_and_keys()
     {
-        var (h, store) = await OpenAsync(carriers: 1);
+        // Invoice and Order carry approvable, but Approval lists Invoice by name: no entry names a stereotype.
+        var (h, store) = await OpenAsync(carriers: 2, stereotypeEntry: false);
+        using var _ = h;
+        await using var __ = store;
+        Assert.False(Maquettiste.Engine.Processes.SubjectCoverage.Of(store.Current!).Any);
+        var resolved = ResolutionKit.Resolve(store.Current!);
+        foreach (var process in resolved.Processes)
+        {
+            Assert.Empty(process.StereotypeSubjects);
+            Assert.DoesNotContain("k:entity", process.Subjects.MembershipKeys);
+            Assert.False(Record(resolved, process.Id).ContainsKey("stereotypeSubjects"));
+        }
+
+        var rows = await store.GetIndexAsync(Ct);
+        var order = resolved.Processes.Single(x => x.Name == "OrderLifecycle");
+        Assert.Equal(Order, rows.Single(r => r.Id == order.Id).Subject);
+        Assert.Equal(Invoice, rows.Single(r => r.Id == Approval).Subject);
+        foreach (var row in rows.Where(r => r.Kind == "process"))
+        {
+            var json = JsonSerializer.SerializeToNode(row, Web)!.AsObject();
+            Assert.False(json.ContainsKey("covers") || json.ContainsKey("subjectStereotypes") || json.ContainsKey("subjects"), row.Id);
+        }
+    }
+
+    [Fact]
+    public async Task A_model_without_a_stereotype_entry_keeps_the_keys_of_entity_lifecycles_and_processes()
+    {
+        var (h, store) = await OpenAsync(carriers: 2, stereotypeEntry: false);
         using var _ = h;
         await using var __ = store;
         var resolved = ResolutionKit.Resolve(store.Current!);
-        var order = resolved.Processes.Single(x => x.Name == "OrderLifecycle");
-        Assert.Empty(order.StereotypeSubjects);
-        Assert.DoesNotContain("k:entity", order.Subjects.MembershipKeys);
-        Assert.False(Record(resolved, order.Id).ContainsKey("stereotypeSubjects"));
-        var row = (await store.GetIndexAsync(Ct)).Single(r => r.Id == order.Id);
-        Assert.Equal(Order, row.Subject);
-        Assert.False(JsonSerializer.SerializeToNode(row, Web)!.AsObject().ContainsKey("covers"));
+
+        // Today's keys (the process kind and the referrers of the entity and each base) plus the naming key, whose hash counts only
+        // processes that name a stereotype, so it never changes here; it lets the model's first stereotype entry reach these lists.
+        Assert.Equal(["k:process", "r:" + Invoice, "sn:subjects"], resolved.Entities.Single(e => e.Id == Invoice).Lifecycles.MembershipKeys);
+        Assert.Equal(["k:process", "r:" + Order, "sn:subjects"], resolved.Entities.Single(e => e.Id == Order).Lifecycles.MembershipKeys);
+        Assert.Equal(
+            new[] { "k:process", "r:" + RushOrder, "r:" + Order, "sn:subjects" }.Order(StringComparer.Ordinal),
+            resolved.Entities.Single(e => e.Id == RushOrder).Lifecycles.MembershipKeys.Order(StringComparer.Ordinal));
+        Assert.Equal(["Approval"], resolved.Entities.Single(e => e.Id == Invoice).Lifecycles.Select(l => l.Name));
+
+        // A process lists its own file and its subjects' entities.
+        var approval = resolved.Processes.Single(x => x.Id == Approval);
+        Assert.Equal(["e:" + Invoice, "e:" + Approval], approval.Subjects.MembershipKeys.Order(StringComparer.Ordinal));
+        static bool Stereotypes(string key) => key.StartsWith("cs:", StringComparison.Ordinal) || key.StartsWith("sn:", StringComparison.Ordinal);
+        foreach (var process in resolved.Processes)
+        {
+            Assert.DoesNotContain(process.Subjects.MembershipKeys, Stereotypes);
+            Assert.DoesNotContain(process.Dependencies, Stereotypes);
+        }
+
+        Assert.All(resolved.Entities, e => Assert.DoesNotContain(e.Lifecycles.MembershipKeys, k => k.StartsWith("cs:", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_row_with_a_stereotype_entry_lists_even_one_entity_entry()
+    {
+        var (h, store) = await OpenAsync(carriers: 1, orderEntry: true);
+        using var _ = h;
+        await using var __ = store;
+        var row = (await store.GetIndexAsync(Ct)).Single(r => r.Id == Approval);
+        Assert.Null(row.Subject);
+        Assert.Equal([Order], row.Subjects!);
+        Assert.Equal([Approvable], row.SubjectStereotypes!);
     }
 }

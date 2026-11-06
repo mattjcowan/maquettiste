@@ -266,8 +266,17 @@ internal static class PlanExplainer
         "exports" => ExportsOf(key) is (var pack, { } id)
             ? "The exports of " + (Label(id, nameOf) ?? "element " + id) + " from " + pack
             : "The model exports of " + key[3..],
-        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? "Input " + key,
+        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? StereotypeCoverage(key) ?? "Input " + key,
     };
+
+    /// <summary>
+    /// A <c>cs:&lt;stereotype key&gt;</c> or <c>sn:subjects</c> key's words (stereotype-sets-design.md section 6): "The entities that carry
+    /// stereotype approvable", "The stereotypes the processes' subjects name". Their cause kind stays <c>inputs</c>.
+    /// </summary>
+    private static string? StereotypeCoverage(string key) =>
+        key.StartsWith(Processes.SubjectCoverage.CarrierSetPrefix, StringComparison.Ordinal) && key.Length > 3 ? "The entities that carry stereotype " + key[3..]
+        : string.Equals(key, Processes.SubjectCoverage.NamingKey, StringComparison.Ordinal) ? "The stereotypes the processes' subjects name"
+        : null;
 
     /// <summary>
     /// An <c>x:&lt;path under extensions&gt;</c> key's words (next-phase-2-design.md section 3.4): "The extension file seeds/audited-records.js".

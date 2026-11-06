@@ -1874,16 +1874,21 @@ function elementChildren(forest: Forest, node: TreeNode): TreeNode[] {
       seen.add(e);
       for (const p of related.lifecyclesOf.get(e) ?? []) if (!governing.some((g) => g.id === p)) governing.push({ id: p, via: e === r.id ? undefined : e });
     }
-    // Coverage through a stereotype entry, after the entity's own and its bases' (stereotype-sets-design.md decision 4).
-    for (const c of related.stereotypeLifecyclesOf.get(r.id) ?? [])
-      if (!governing.some((g) => g.id === c.id)) governing.push({ id: c.id, stereotypes: c.stereotypes });
+    // Coverage through a stereotype entry, after the entity's own and its bases' (stereotype-sets-design.md decision 4):
+    // `covers` lists the carriers, so a derived entity is covered through the nearest base the process covers.
+    seen.clear();
+    for (let e: string | undefined = r.id, guard = 0; e && !seen.has(e) && guard < 64; e = related.baseOf.get(e), guard++) {
+      seen.add(e);
+      for (const c of related.stereotypeLifecyclesOf.get(e) ?? [])
+        if (!governing.some((g) => g.id === c.id)) governing.push({ id: c.id, via: e === r.id ? undefined : e, stereotypes: c.stereotypes });
+    }
     if (governing.length) {
       const members = governing.map((g) => {
         const process = forest.byId.get(g.id);
         const base = g.via ? forest.byId.get(g.via) : undefined;
         const through = g.stereotypes?.map((s) => forest.byId.get(s)).flatMap((s) => (s ? [s.displayName || s.name] : []));
         const text = through
-          ? PROCESS_LABELS.throughStereotype(through.join(", "))
+          ? PROCESS_LABELS.throughStereotype(through.join(", ")) + (base ? PROCESS_LABELS.viaBase(base.displayName || base.name) : "")
           : base
             ? PROCESS_LABELS.throughBase(base.displayName || base.name)
             : plural(process?.stateCount ?? 0, "state", "states");

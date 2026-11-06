@@ -105,9 +105,17 @@ internal sealed class ImpactKeys
             // The rule view's keys (scripted rows, section 3.4) count as touched.
             "ix" or "rt" => true,
             "px" => Exports?.Invoke(rest) ?? true,
+            "cs" => Changes(e => e is Entity or Package or Stereotype)
+                && !string.Equals(Processes.SubjectCoverage.CarrierSetHash(_before, rest), Processes.SubjectCoverage.CarrierSetHash(_candidate, rest), StringComparison.Ordinal),
+            "sn" => Changes(e => e is Process)
+                && !string.Equals(Processes.SubjectCoverage.NamingHash(_before), Processes.SubjectCoverage.NamingHash(_candidate), StringComparison.Ordinal),
             _ => true,
         };
     }
+
+    /// <summary>Whether the change creates, updates or deletes an element that matches, in either model.</summary>
+    private bool Changes(Func<Element, bool> matches) =>
+        _changed.Any(id => (_before.Get<Element>(id) is { } then && matches(then)) || (_candidate.Get<Element>(id) is { } now && matches(now)));
 
     /// <summary><c>e:&lt;id&gt;</c>: the document holding the id (in either model) is written or deleted and its dependency hash differs,
     /// absent counting; a fact the save would record is written.</summary>

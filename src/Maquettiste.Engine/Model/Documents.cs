@@ -69,7 +69,8 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Effect">The operation's effect, <c>read</c> or <c>change</c>, on operation rows (next-phase-2-design.md section 4.1).</param>
 /// <param name="Type">The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2).</param>
 /// <param name="Subjects">The entities a process's entity entries name, in entry order, on process rows with two or more entity entries; such a
-/// row has no <paramref name="Subject"/> (lifecycle-design.md decision 23). Stereotype entries are not counted.</param>
+/// row has no <paramref name="Subject"/> (lifecycle-design.md decision 23). Stereotype entries are not counted, but a row with one lists
+/// its entity entries from one on (stereotype-sets-design.md section 8).</param>
 /// <param name="Actors">The actors a process names anywhere in its document (events, gates, invokes, custom properties), as ids sorted
 /// ordinally, on process rows (libraries too) that name at least one. Only ids whose element is an actor count, so the row can change
 /// when an actor file appears or goes; that file's own row changes with it, so the index tag still follows.</param>

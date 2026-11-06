@@ -770,7 +770,8 @@ internal static class ModelIndexer
 
     /// <summary>
     /// The index rows of a snapshot with each process row that has a stereotype entry completed (stereotype-sets-design.md section 8): its
-    /// <see cref="ElementSummary.SubjectStereotypes"/> and <see cref="ElementSummary.Covers"/>, and no <see cref="ElementSummary.Subject"/>.
+    /// <see cref="ElementSummary.SubjectStereotypes"/> and <see cref="ElementSummary.Covers"/>, its <see cref="ElementSummary.Subjects"/>
+    /// from one entity entry on, and no <see cref="ElementSummary.Subject"/>.
     /// Carriers follow package defaults, implied stereotypes and bases, which other files decide, so this runs per snapshot, and only while
     /// some entry names a stereotype: otherwise the rows are returned as they are.
     /// </summary>
@@ -802,9 +803,12 @@ internal static class ModelIndexer
                 }
             }
 
+            // The entity entries, even one: beside a stereotype entry the row has no one subject to name (section 8).
+            var named = EntityEntries(process);
             result[i] = row with
             {
                 Subject = null,
+                Subjects = named.Count > 0 ? named : null,
                 SubjectStereotypes = stereotypes.Count > 0 ? stereotypes : null,
                 Covers = covers.Count > 0 ? covers : null,
             };

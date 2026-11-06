@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Diagnostic } from "@/api/types";
 import { MockBackend } from "@/mocks/backend";
 import { subjectsOf, soleSubject, stereotypeAppliesToEntities } from "@/model/process";
+import { buildForest, childKeys, nodeOf } from "@/explorer/tree";
 import { stereotypeFields } from "@/model/objectFields";
 
 type Json = Record<string, unknown>;
@@ -122,7 +123,7 @@ describe("coverage and the index row", () => {
     expect(r.subjects).toBeUndefined();
   });
 
-  it("an entry naming the entity wins and the carrier leaves covers; subjects counts entity entries only", () => {
+  it("an entry naming the entity wins and the carrier leaves covers; subjects lists the entity entries", () => {
     const backend = model();
     const doc = json(backend, PROCESS);
     doc.subjects = [
@@ -133,7 +134,7 @@ describe("coverage and the index row", () => {
     const r = row(backend, PROCESS);
     expect(r.covers).toEqual([QUOTE]);
     expect(r.subject).toBeUndefined();
-    expect(r.subjects).toBeUndefined();
+    expect(r.subjects).toEqual([ORDER]);
     expect(rules(backend, "MQ9201")).toEqual([]);
   });
 
@@ -285,5 +286,46 @@ describe("sync-enum and sync-codes by stereotype", () => {
     expect(run(backend, [{ op: "set-lifecycle", id: QUOTE, target: PROCESS }]).outcome).toBe("saved");
     expect(subjectsOf(json(backend, PROCESS))).toHaveLength(1);
     expect(json(backend, QUOTE).lifecycle).toBe(PROCESS);
+  });
+
+  describe("in the explorer", () => {
+    const secondaryOf = (backend: MockBackend, id: string) => nodeOf(buildForest({ rows: backend.model.index() }), id)!.secondary;
+    /** The rows in an entity's Lifecycles folder: [process id, text]. */
+    const lifecycles = (backend: MockBackend, entity: string) => {
+      const f = buildForest({ rows: backend.model.index() });
+      const folder = childKeys(f, entity).find((k) => k.endsWith("/lifecycles"));
+      return folder ? childKeys(f, folder).map((k) => [nodeOf(f, k)!.id, nodeOf(f, k)!.secondary]) : [];
+    };
+
+    it("a lifecycle row names 'every Approvable', and an entity beside it", () => {
+      const backend = model();
+      expect(secondaryOf(backend, PROCESS)).toMatch(/^lifecycle · every Approvable · /);
+      const doc = json(backend, PROCESS);
+      doc.subjects = [
+        { id: ENTRY, stereotype: "approvable" },
+        { id: "01JQST00000000000000000022", entity: ORDER },
+      ];
+      run(backend, [{ op: "update", id: PROCESS, expectedHash: backend.model.get(PROCESS)!.hash, element: doc }]);
+      expect(secondaryOf(backend, PROCESS)).toMatch(/^lifecycle · Order, every Approvable · /);
+    });
+
+    it("an entity's Lifecycles folder lists the process through the stereotype, and for a derived entity through its base", () => {
+      const backend = model();
+      expect(lifecycles(backend, QUOTE)).toEqual([[PROCESS, "through Approvable"]]);
+      expect(lifecycles(backend, DERIVED)).toEqual([[PROCESS, "through Approvable, via Order"]]);
+      expect(lifecycles(backend, OTHER)).toEqual([]);
+    });
+
+    it("an entity entry puts the process in that entity's folder by the entity itself", () => {
+      const backend = model();
+      const doc = json(backend, PROCESS);
+      doc.subjects = [
+        { id: ENTRY, stereotype: "approvable" },
+        { id: "01JQST00000000000000000022", entity: ORDER },
+      ];
+      run(backend, [{ op: "update", id: PROCESS, expectedHash: backend.model.get(PROCESS)!.hash, element: doc }]);
+      expect(lifecycles(backend, ORDER).map((r) => r[0])).toEqual([PROCESS]);
+      expect(lifecycles(backend, QUOTE).map((r) => r[0])).toEqual([PROCESS]);
+    });
   });
 });

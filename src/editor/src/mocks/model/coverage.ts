@@ -33,7 +33,14 @@ export class Coverage {
 
   /** An entity's effective stereotype keys: package defaults (outermost first), then its own, each with what it implies. */
   effective(entity: Json): Set<string> {
-    const withImplied = (key: string) => [key, ...keys(this.byKey.get(key)?.implies)];
+    // An implied stereotype that does not apply to entities is dropped, as the engine does.
+    const withImplied = (key: string) => [
+      key,
+      ...keys(this.byKey.get(key)?.implies).filter((k) => {
+        const st = this.byKey.get(k);
+        return !st || appliesToEntities(st);
+      }),
+    ];
     const chain: Json[] = [];
     for (let id = entity.package, hops = 0; typeof id === "string" && hops < 32; hops++) {
       const p = this.docs.get(id);
@@ -60,14 +67,27 @@ export class Coverage {
     return ids;
   }
 
+  /** The qualified name: the package names from the outermost, then the entity's own. */
+  private qualified(entity: Json): string {
+    const names: string[] = [String(entity.name)];
+    for (let id = entity.package, hops = 0; typeof id === "string" && hops < 32; hops++) {
+      const p = this.docs.get(id);
+      if (!p) break;
+      names.unshift(String(p.name));
+      id = p.parent;
+    }
+    return names.join(".");
+  }
+
   /** The entities that carry the stereotype themselves, by name then id. */
   carriers(key: string): string[] {
     let list = this.carriersMemo.get(key);
     if (!list) {
       list = this.entities
         .filter((e) => this.effective(e).has(key))
-        .sort((a, b) => String(a.name).localeCompare(String(b.name)) || String(a.id).localeCompare(String(b.id)))
-        .map((e) => String(e.id));
+        .map((e) => ({ id: String(e.id), q: this.qualified(e) }))
+        .sort((a, b) => (a.q < b.q ? -1 : a.q > b.q ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        .map((e) => e.id);
       this.carriersMemo.set(key, list);
     }
     return list;
