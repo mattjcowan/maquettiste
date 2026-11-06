@@ -1,0 +1,128 @@
+{{-
+# Checks of the columns that hold a lifecycle's state as a plain status (lifecycle-design.md section 9), for seed.sql when the
+# lifecycleChecks parameter is true. Needs _sql.scriban. Prints nothing.
+#
+# A subject that binds a plain status (a string, text or integer attribute; not an enum or a reference type) of a lifecycle whose
+# codes form a map gets a check on the attribute's column in each database where its entity keeps it, through the entity's mapping
+# or its binding: ck_<table>_<column>_states, listing the states' codes. Like a reference type's check, it is not in the schema
+# snapshot, so seed.sql reconciles it on every run: the check is dropped by name, then added with the current codes. SQLite cannot
+# add a constraint to a table it has, so there the check is two triggers with the same name plus _i (insert) and _u (update); MySQL
+# has no IF EXISTS for it, so there the drop is guarded. Lifecycles that bind one column share its check, which lists the codes of
+# all of them. A column whose table also holds rows of other entities (a derived subject's column in a single-table hierarchy or in
+# a base's table, or a binding with constant columns) gets no check, since the codes of one lifecycle need not cover their rows.
+
+# The column of a table that holds attribute a of entity e in database db: through e's mapping, or through its binding (the column
+# the binding writes, else its source table's). [column, shared], where shared says the column's table also holds rows of other
+# entities; null when e keeps a in no table of db.
+func lifecycle_column(e, a, db)
+  $m = e.mappings[db.name]
+  if $m
+    for cm in $m.columns
+      if cm.attribute_path == a.id
+        ret [cm.column, e.base != null && ($m.inheritance == "tph" || cm.column.table.key != $m.table.key)]
+      end
+    end
+  end
+  $b = e.bindings[db.name]
+  if $b
+    for f in $b.fields
+      if f.attribute && f.attribute.id == a.id
+        $c = f.write_column ?? f.source_column
+        if $c
+          ret [$c, $b.constants.size > 0]
+        end
+      end
+    end
+  end
+  ret null
+end
+
+# The SQL literal of a state's code in column c: a number in an integer column, a string otherwise.
+func lifecycle_code_sql(code, c, db)
+  $text = (object.typeof code) == "string"
+  if c.type == "int16" || c.type == "int32" || c.type == "int64"
+    ret lit($text ? (code | string.to_long) : code, db)
+  end
+  ret lit($text ? code : "" + code, db)
+end
+
+# The statements that drop a column's lifecycle check by name (on SQLite, its triggers).
+func lifecycle_check_drop_sql(t, ck, db)
+  $d = db.dialect
+  if $d == "sqlite"
+    ret "DROP TRIGGER IF EXISTS " + q(ck + "_i", db) + ";\nDROP TRIGGER IF EXISTS " + q(ck + "_u", db) + ";"
+  end
+  $drop = "ALTER TABLE " + qt(t) + " DROP CONSTRAINT " + q(ck, db) + ";"
+  if $d == "sqlserver"
+    ret "IF OBJECT_ID(" + lit(qn(t.schema ?? "dbo", ck, db), db) + ", N'C') IS NOT NULL " + $drop
+  else if $d == "mysql"
+    ret my_guard(db, my_exists_constraint(t, ck, null), $drop)
+  end
+  ret "ALTER TABLE " + qt(t) + " DROP CONSTRAINT IF EXISTS " + q(ck, db) + ";"
+end
+
+# The statements that add a column's lifecycle check listing the codes (on SQLite, the insert and update triggers).
+func lifecycle_check_add_sql(t, c, ck, codes, owners, db)
+  $col = q(c.name, db)
+  $list = ""
+  for code in codes
+    $list = $list + (for.first ? "" : ", ") + lifecycle_code_sql(code, c, db)
+  end
+  if db.dialect == "sqlite"
+    $when = "NEW." + $col + " IS NOT NULL AND NEW." + $col + " NOT IN (" + $list + ")"
+    $raise = lit(ck + ": " + t.name + "." + c.name + " must be a state code of " + owners, db)
+    ret "CREATE TRIGGER " + q(ck + "_i", db) + " BEFORE INSERT ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;\n" + "CREATE TRIGGER " + q(ck + "_u", db) + " BEFORE UPDATE OF " + $col + " ON " + qt(t) + " WHEN " + $when + " BEGIN SELECT RAISE(ABORT, " + $raise + "); END;"
+  end
+  ret "ALTER TABLE " + qt(t) + " ADD CONSTRAINT " + q(ck, db) + " CHECK (" + $col + " IN (" + $list + "));"
+end
+
+# The lifecycle checks of a database for seed.sql, one statement group per column, in the order of the processes and their subjects.
+func lifecycle_check_statements(db, out)
+  $names = []
+  $checks = {}
+  for p in model.processes
+    if !p.codes_map
+      continue
+    end
+    for s in p.subjects
+      if !s.bound_attribute || s.bound_enum || s.bound_reference_type
+        continue
+      end
+      $found = lifecycle_column(s.entity, s.bound_attribute, db)
+      if !$found
+        continue
+      end
+      $c = $found[0]
+      $ck = "ck_" + $c.table.name + "_" + $c.name + "_states"
+      $k = $checks[$ck]
+      if !$k
+        $k = { table: $c.table, column: $c, codes: [], seen: {}, owners: [], shared: false }
+        $checks[$ck] = $k
+        $names[$names.size] = $ck
+      end
+      if $found[1]
+        $k.shared = true
+      end
+      if !($k.owners | array.contains p.name)
+        $k.owners[$k.owners.size] = p.name
+      end
+      for st in p.all_states
+        if st.code != null && !$k.seen["" + st.code]
+          $k.seen["" + st.code] = true
+          $k.codes[$k.codes.size] = st.code
+        end
+      end
+    end
+  end
+  for $ck in $names
+    $k = $checks[$ck]
+    $owners = $k.owners | array.join ", "
+    $what = "-- " + $k.table.name + "." + $k.column.name + " (states of " + $owners + ")"
+    if $k.shared
+      out[out.size] = $what + ": its table also holds rows of other entities, so it gets no check.\n" + lifecycle_check_drop_sql($k.table, $ck, db)
+    else
+      out[out.size] = $what + ".\n" + lifecycle_check_drop_sql($k.table, $ck, db) + "\n" + lifecycle_check_add_sql($k.table, $k.column, $ck, $k.codes, $owners, db)
+    end
+  end
+end
+-}}

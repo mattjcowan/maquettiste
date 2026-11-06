@@ -237,6 +237,83 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Lifecycle_codes_compile_and_map_configurations_to_codes_and_back()
+    {
+        // lifecycle-design.md section 9: the lifecycle-codes case's whole output builds with warnings as errors, and a program maps
+        // configurations to string and integer codes and back, reads the moves and each subject's status.
+        using var repo = PackRepo.LifecycleCodes();
+        await repo.GenerateCleanlyAsync();
+        var project = Path.Combine(repo.Repo.Root, "codes");
+        WriteProject(project, repo.PathOf("out"), LifecycleCodesProgram, web: true);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll")], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("codes ok", StringComparison.Ordinal), run.Output);
+    }
+
+    private const string LifecycleCodesProgram = """
+        using System;
+        using App.Model.Orders;
+        using App.Model.Sales;
+
+        // String codes: a coded state, nested states taking their coded ancestor's code, a state without one, and every code back.
+        Check(OrderFlowStateCodes.ToCode([OrderFlowStates.Draft]) == "DRF", "Draft");
+        Check(OrderFlowStateCodes.ToCode([OrderFlowStates.ReviewApproving]) == OrderFlowStateCodes.Review, "Review.Approving takes Review's code");
+        Check(OrderFlowStateCodes.ToCode([OrderFlowStates.OnHold]) is null, "OnHold has no code");
+        Check(OrderFlowStateCodes.ToCode([]) is null, "no active state");
+        Check(OrderFlowStateCodes.FromCode("REV") == OrderFlowStates.Review, "REV");
+        foreach (var code in new[] { OrderFlowStateCodes.Draft, OrderFlowStateCodes.Review, OrderFlowStateCodes.Done })
+            Check(OrderFlowStateCodes.ToCode([OrderFlowStateCodes.FromCode(code)]) == code, "round trip " + code);
+        foreach (var state in OrderFlowStates.All)
+        {
+            if (OrderFlowStateCodes.ToCode([state]) is { } code)
+                Check(OrderFlowStateCodes.ToCode([OrderFlowStateCodes.FromCode(code)]) == code, "round trip from " + state);
+        }
+
+        try
+        {
+            OrderFlowStateCodes.FromCode("XYZ");
+            Check(false, "XYZ is no state's code");
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+        }
+
+        // Integer codes on nested states under a compound state without one.
+        Check(TicketFlowStateCodes.Assigned == 20L, "Assigned");
+        Check(TicketFlowStateCodes.ToCode([TicketFlowStates.OpenAssigned]) == 20L, "Open.Assigned");
+        Check(TicketFlowStateCodes.ToCode([TicketFlowStates.Open]) is null, "Open has no code");
+        Check(TicketFlowStateCodes.FromCode(10) == TicketFlowStates.OpenNew, "10");
+        foreach (var code in new[] { TicketFlowStateCodes.New, TicketFlowStateCodes.Assigned, TicketFlowStateCodes.Resolved, TicketFlowStateCodes.Closed })
+            Check(TicketFlowStateCodes.ToCode([TicketFlowStateCodes.FromCode(code)]) == code, "round trip " + code);
+
+        // The moves: within one coded state, into a state without a code, into history, a timer; into a choice, into a compound
+        // state whose default has a code, eventless, targetless.
+        Check(OrderFlowStateCodes.Moves.Count == 6, "six moves");
+        Check(OrderFlowStateCodes.Moves[1] == ("REV", "REV", "event", "check"), "within Review");
+        Check(OrderFlowStateCodes.Moves[3] == ("REV", null, "event", "hold"), "into OnHold");
+        Check(OrderFlowStateCodes.Moves[4] == (null, null, "event", "resume"), "into history");
+        Check(OrderFlowStateCodes.Moves[5] == (null, "DON", "after", null), "a timer");
+        Check(TicketFlowStateCodes.Moves[1] == (20L, null, "event", "resolve"), "into a choice");
+        Check(TicketFlowStateCodes.Moves[2] == (null, 10L, "always", null), "into Open, entering New");
+        Check(TicketFlowStateCodes.Moves[6] == (30L, 30L, "event", "note"), "targetless");
+
+        // Each subject's status; the two entities named Item are qualified by package.
+        Check(OrderFlowStates.ToOrderStatus([OrderFlowStates.ReviewChecking]) == OrderStatus.Review, "Order");
+        Check(OrderFlowStates.ToOrdersItemStatus([OrderFlowStates.Done]) == OrderStatus.Done, "Orders.Item");
+        Check(OrderFlowStates.ToSalesItemStatus([OrderFlowStates.OnHold]) == ItemPhase.OnHold, "Sales.Item");
+        Check(OrderFlowStates.Parse(OrderFlowStates.ReviewResume) == OrderFlowState.ReviewResume, "Parse");
+        Console.WriteLine("codes ok");
+
+        static void Check(bool ok, string what)
+        {
+            if (!ok)
+                throw new InvalidOperationException("Failed: " + what);
+        }
+
+        """;
+
+    [Fact]
     public async Task The_seed_data_loader_applies_the_seed_data_files_to_sqlite_once_and_converging()
     {
         // The seed-data pack's CSVs for the SQLite database, loaded by csharp-dapper's SeedDataLoader (seedLoader on).

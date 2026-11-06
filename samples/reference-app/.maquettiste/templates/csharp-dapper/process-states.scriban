@@ -1,14 +1,108 @@
 {{-
 # The state enum and path constants of a process. A lifecycle's state enum is its bound enum (the enum unit writes it), so
 # this file adds the mapping from active states to it; an orchestration gets an enum with one member per state path.
+# A lifecycle with several subjects gets the per-state enum too, with one To<Entity>Status per enum binding. States with a
+# code get a constants class, and when the codes form a map (lifecycle-design.md decision 4) ToCode, FromCode and the moves.
 include "_csharp.scriban"
 include "_process.scriban"
 p = process
 name = p_name(p)
+
+# Whether a state can hold a code: history and choice states can't, since nothing rests in them.
+func can_rest(s)
+  ret s.type != "history" && s.type != "choice"
+end
+
+# The states that have a code, in document order.
+coded = []
+for s in p.all_states
+  if s.code != null && can_rest(s)
+    coded[coded.size] = s
+  end
+end
+code_type = coded.size > 0 && (object.typeof coded[0].code) == "number" ? "long" : "string"
+
+# The coded state that gives a state its code: itself or its nearest coded ancestor; null when no state on its path has one.
+func coded_of(s)
+  $c = s
+  while $c != null
+    if $c.code != null && can_rest($c)
+      ret $c
+    end
+    $c = $c.parent
+  end
+  ret null
+end
+
+# The coded state a move into a state rests in: the state's own, else the one its compound states' defaults enter.
+func entered_of(s)
+  $c = coded_of(s)
+  $d = s
+  while $c == null && $d != null && $d.type == "compound"
+    $d = $d.initial
+    if $d != null
+      $c = coded_of($d)
+    end
+  end
+  ret $c
+end
+
+# The constant of a coded state: its name in PascalCase, or its path's where two coded states share a name ("Value" appended
+# when that would meet a member of the class).
+func code_member(s)
+  $n = pascal s.name
+  for $o in coded
+    if $o.id != s.id && (pascal $o.name) == $n
+      $n = state_member(s)
+      break
+    end
+  end
+  if $n == "ToCode" || $n == "FromCode" || $n == "Moves" || $n == name + "StateCodes"
+    $n = $n + "Value"
+  end
+  ret $n
+end
+
+# The code of a move's end: a coded state's constant, or null.
+func code_ref(s)
+  ret s == null ? "null" : code_member(s)
+end
+
+# The method name part of a subject: its entity's name in PascalCase, qualified by package where two subjects share a name.
+func subject_name(sub)
+  $n = pascal sub.entity.name
+  for $o in p.subjects
+    if $o.id != sub.id && (pascal $o.entity.name) == $n
+      $q = ""
+      if sub.entity.package
+        for $part in (sub.entity.package.qualified_name | string.split ".")
+          $q = $q + (pascal $part)
+        end
+      end
+      ret $q + $n
+    end
+  end
+  ret $n
+end
+
+# A lifecycle with several subjects gets one To<Entity>Status per enum binding, so it reads the bound enums' namespaces.
+several = p.use == "lifecycle" && p.subjects.size > 1
+status_usings = []
+if several
+  for sub in p.subjects
+    if sub.bound_enum && ns(sub.bound_enum) != ns(p) && !(status_usings | array.contains ns(sub.bound_enum))
+      status_usings[status_usings.size] = ns(sub.bound_enum)
+    end
+  end
+  status_usings = status_usings | array.sort
+end
 -}}
 {{ header() }}
 using System;
 using System.Collections.Generic;
+{{- for u in status_usings }}
+using {{ u }};
+{{- end }}
 
 namespace {{ ns(p) }};
 
@@ -57,6 +151,32 @@ public static partial class {{ name }}States
 {{- end }}
         _ => throw new ArgumentOutOfRangeException(nameof(path), path, "Not a state of {{ p.name }}."),
     };
+{{- if several }}
+{{- for sub in p.subjects }}
+{{- if sub.bound_enum }}
+{{- status = type_of sub.bound_attribute.type "csharp" }}
+
+    /// <summary>The {{ sub.bound_enum.name }} value of {{ sub.entity.name }}.{{ sub.bound_attribute.name }} for a configuration: the root-level state of its first active state.</summary>
+    /// <param name="states">The active leaf states' paths.</param>
+    /// <returns>The value.</returns>
+    public static {{ status }} To{{ subject_name(sub) }}Status(IReadOnlyList<string> states)
+    {
+        ArgumentNullException.ThrowIfNull(states);
+        var root = states.Count == 0 ? "" : states[0].Split('.')[0];
+        return root switch
+        {
+{{- for s in p.bound_states }}
+{{- member = by_name(sub.bound_enum.members, s.name) }}
+{{- if member }}
+            {{ json s.name }} => {{ status }}.{{ cs_ident (pascal member.name) }},
+{{- end }}
+{{- end }}
+            _ => throw new ArgumentOutOfRangeException(nameof(states), root, "No {{ sub.bound_enum.name }} member for this state."),
+        };
+    }
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}
 }
 {{- if !p.bound_enum }}
@@ -67,6 +187,90 @@ public enum {{ name }}State
 {{- for s in p.all_states }}
     /// <summary>{{ s.path }}</summary>
     {{ state_member(s) }},
+{{- end }}
+}
+{{- end }}
+{{- if coded.size > 0 }}
+
+/// <summary>The state codes of process {{ p.name }}: one constant per state that has a code.</summary>
+public static partial class {{ name }}StateCodes
+{
+{{- for s in coded }}
+{{ if !for.first }}
+{{ end }}    /// <summary>The code of state {{ s.path }}.</summary>
+    public const {{ code_type }} {{ code_member(s) }} = {{ json s.code }};
+{{- end }}
+{{- if p.codes_map }}
+
+    /// <summary>
+    /// The code of a configuration: the code of the coded state that holds its active states, its own or its nearest coded ancestor's;
+    /// null when no state on their paths has a code.
+    /// </summary>
+    /// <param name="states">The active leaf states' paths.</param>
+    /// <returns>The code, or null.</returns>
+    public static {{ code_type }}? ToCode(IReadOnlyList<string> states)
+    {
+        ArgumentNullException.ThrowIfNull(states);
+        foreach (var state in states)
+        {
+            {{ code_type }}? code = state switch
+            {
+{{- for s in p.all_states }}
+{{- if can_rest(s) }}
+{{- c = coded_of(s) }}
+{{- if c }}
+                {{ name }}States.{{ state_member(s) }} => {{ code_member(c) }},
+{{- end }}
+{{- end }}
+{{- end }}
+                _ => null,
+            };
+            if (code is not null)
+                return code;
+        }
+
+        return null;
+    }
+
+    /// <summary>The path of the state that has a code. Restoring into a compound state enters its default, as the chart does.</summary>
+    /// <param name="code">The code.</param>
+    /// <returns>The state's path.</returns>
+    public static string FromCode({{ code_type }} code) => code switch
+    {
+{{- for s in coded }}
+        {{ code_member(s) }} => {{ name }}States.{{ state_member(s) }},
+{{- end }}
+        _ => throw new ArgumentOutOfRangeException(nameof(code), code, "No state of {{ p.name }} has this code."),
+    };
+
+    /// <summary>
+    /// Every transition as a move, in document order: the source's code, the code the target rests in, the trigger and the event. A
+    /// code is null for a state without one. The target's is null for a move into a history or choice state too, since the move decides
+    /// it when it runs. The event is null for timers, completions and eventless moves.
+    /// </summary>
+    public static IReadOnlyList<({{ code_type }}? From, {{ code_type }}? To, string Trigger, string? Event)> Moves { get; } =
+    [
+{{- for t in p.transitions }}
+{{- from = coded_of(t.source) }}
+{{- to = from }}
+{{- if !t.is_targetless }}
+{{- to = null }}
+{{- restless = false }}
+{{- for target in t.targets }}
+{{- if for.first }}
+{{- to = entered_of(target) }}
+{{- end }}
+{{- if !can_rest(target) }}
+{{- restless = true }}
+{{- end }}
+{{- end }}
+{{- if restless }}
+{{- to = null }}
+{{- end }}
+{{- end }}
+        ({{ code_ref(from) }}, {{ code_ref(to) }}, {{ json t.trigger }}, {{ t.event ? (json t.event.name) : "null" }}),
+{{- end }}
+    ];
 {{- end }}
 }
 {{- end }}

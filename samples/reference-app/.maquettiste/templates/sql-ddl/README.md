@@ -564,6 +564,25 @@ them, `"processTables": true` writes one script per process and database with th
 The audit table is left out for a process without gates. The scripts are not part of `schema.sql`, the schema snapshot or the
 migrations: they are plain `CREATE TABLE` scripts for a first deployment, owned by the template choice, not by the model.
 
+With `"lifecycleColumns": true` as well, the instances table of each lifecycle (a process whose `use` is `lifecycle`) ends with
+three nullable columns: `subject_type` (the subject entity's name), `subject_id` (its key as text) and `state_code` (the code of
+the current state). `state_code` is there only when the states' codes form a map; it is a string column for string codes and a
+`bigint` (SQLite `INTEGER`) for integer codes. Being a parameter, it never changes a table that exists: a team that turns it on
+for tables it already has adds the columns by hand, at the end, as the script lists them.
+
+## Lifecycle checks
+
+With `"lifecycleChecks": true`, a lifecycle whose codes form a map and whose subject binds a plain status (a `string`, `text` or
+integer attribute, not an enum or a reference type) gets a check on the attribute's column in each database where the entity
+keeps it, through its mapping or its binding (the column the binding writes, else its source table's). `seed.sql` reconciles
+it on every run, after the reference data, the way it reconciles a reference type's check: the check `ck_<table>_<column>_states`
+is dropped by name, then added with the current codes (numbers in an integer column, strings otherwise). SQLite cannot add a
+constraint to a table it has, so there the check is two triggers, `ck_<table>_<column>_states_i` and `_u`; on MySQL and MariaDB
+the drop is guarded by an `information_schema` test. Lifecycles that bind one column share its check, which lists all their
+codes. A column whose table also holds rows of other entities (a derived subject in a single-table hierarchy or in its base's
+table, or a binding with constant columns) gets no check, only the drop, since one lifecycle's codes need not cover those rows.
+The check is not in the schema snapshot, so a migration does not see it.
+
 ## Parameters
 
 Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
@@ -573,6 +592,8 @@ Set them in `maquettiste.json` under `packs.sql-ddl.parameters`.
 | `comments` | `true` | Emit table and column comments: explicit comments, and descriptions under the project's `comments` convention (see Comments above). |
 | `environments` | `[]` | The environments to write a seed script for (`seed.<environment>.sql`, unit `seed-environments`): the rows of the seeds whose `environments` name it. `seed.sql` holds the rows of the seeds of every environment (`environments` empty). Also the environments to write a SQL object script for (`objects.<environment>.sql`, unit `object-environments`): the SQL objects whose `environments` name it. |
 | `idempotent` | `false` | Write DDL that can run again on a database that has its objects: `IF NOT EXISTS` / `IF EXISTS` and the dialect's guards (see Idempotent scripts). Off keeps the scripts plain DDL. |
+| `lifecycleChecks` | `false` | Reconcile in `seed.sql` a check of the state codes on every column that holds a lifecycle's state as a plain status (see Lifecycle checks). |
+| `lifecycleColumns` | `false` | With `processTables`, end each lifecycle's instances table with `subject_type`, `subject_id` and, when the codes form a map, `state_code` (see Process tables). |
 | `objectScripts` | `false` | Write one script per view, sequence, routine, database type and SQL object under `<db>/[<schema>/]views/`, `sequences/`, `routines/`, `types/` and `objects/` (see Object scripts). |
 | `referenceStrategy` | `"lookup-table"` | The strategy key for reference types whose storage the project leaves to the template (see Reference data). |
 | `quoting` | `""` | `always`, `reserved` or `never` to override every database's `quoting` setting; empty keeps the database's. |

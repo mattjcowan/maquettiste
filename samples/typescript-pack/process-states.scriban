@@ -1,11 +1,70 @@
 {{-
 # process-states: the state union type and the path constants of one process; for a lifecycle, the bound enum's value of each
-# bound state and a function that reads it off the active states.
+# bound state and a function that reads it off the active states. States with a code get their constants, and when the codes
+# form a map (lifecycle-design.md decision 4) the mapping between configurations and codes and the moves between codes.
 include "_process.scriban"
 P = pascal process.name
 p = camel process.name
 self = pmod(process, "states.ts")
 bound = process.use == "lifecycle" && process.bound_enum != null
+
+# Whether a state can hold a code: history and choice states can't, since nothing rests in them.
+func can_rest(s)
+  ret s.type != "history" && s.type != "choice"
+end
+
+# The states that have a code, in document order, and the TypeScript type of their codes.
+coded = []
+for s in process.all_states
+  if s.code != null && can_rest(s)
+    coded[coded.size] = s
+  end
+end
+code_ts = coded.size > 0 && (object.typeof coded[0].code) == "number" ? "number" : "string"
+
+# A code as a TypeScript literal: an integer unquoted, a string single-quoted; null for no code.
+func code_lit(s)
+  if s == null
+    ret "null"
+  end
+  ret (object.typeof s.code) == "number" ? (json s.code) : (ts_string s.code)
+end
+
+# The coded state that gives a state its code: itself or its nearest coded ancestor; null when no state on its path has one.
+func coded_of(s)
+  $c = s
+  while $c != null
+    if $c.code != null && can_rest($c)
+      ret $c
+    end
+    $c = $c.parent
+  end
+  ret null
+end
+
+# The coded state a move into a state rests in: the state's own, else the one its compound states' defaults enter.
+func entered_of(s)
+  $c = coded_of(s)
+  $d = s
+  while $c == null && $d != null && $d.type == "compound"
+    $d = $d.initial
+    if $d != null
+      $c = coded_of($d)
+    end
+  end
+  ret $c
+end
+
+# The key of a coded state's constant: its name in PascalCase, or its path's where two coded states share a name.
+func code_key(s)
+  $n = pascal s.name
+  for $o in coded
+    if $o.id != s.id && (pascal $o.name) == $n
+      ret path_key(s.path)
+    end
+  end
+  ret $n
+end
 -}}
 {{ banner "//" }}
 {{ if bound }}
@@ -46,4 +105,76 @@ export function {{ p }}StatusOf(states: readonly string[]): {{ E }} | undefined 
   const root = states[0]?.split('.')[0];
   return root !== undefined && Object.hasOwn({{ p }}Status, root) ? {{ p }}Status[root as keyof typeof {{ p }}Status] : undefined;
 }
+{{- end }}
+{{- if coded.size > 0 }}
+
+/** The code of each state that has one, named after the state (or after its path where two coded states share a name). */
+export const {{ p }}StateCodes = {
+{{- for s in coded }}
+  {{ code_key(s) }}: {{ code_lit(s) }},
+{{- end }}
+} as const;
+{{- if process.codes_map }}
+
+/** The code of each state that rests in a coded state, its own or its nearest coded ancestor's, by path. */
+const {{ p }}CodeOfState = new Map<string, {{ code_ts }}>([
+{{- for s in process.all_states }}
+{{- if can_rest(s) }}
+{{- c = coded_of(s) }}
+{{- if c }}
+  [{{ ts_string s.path }}, {{ code_lit(c) }}],
+{{- end }}
+{{- end }}
+{{- end }}
+]);
+
+/** The path of each coded state, by code. */
+const {{ p }}StateOfCode = new Map<{{ code_ts }}, {{ P }}State>([
+{{- for s in coded }}
+  [{{ code_lit(s) }}, {{ ts_string s.path }}],
+{{- end }}
+]);
+
+/** The code of a configuration: the code of the coded state that holds its active states, or undefined when no state on their paths has one. */
+export function {{ p }}ToCode(states: readonly string[]): {{ code_ts }} | undefined {
+  for (const state of states) {
+    const code = {{ p }}CodeOfState.get(state);
+    if (code !== undefined) return code;
+  }
+  return undefined;
+}
+
+/** The path of the state that has a code, or undefined for no state's code. Restoring into a compound state enters its default, as the chart does. */
+export function {{ p }}FromCode(code: {{ code_ts }}): {{ P }}State | undefined {
+  return {{ p }}StateOfCode.get(code);
+}
+
+/**
+ * Every transition as a move, in document order: the source's code, the code the target rests in, the trigger and the event. A code is
+ * null for a state without one. The target's is null for a move into a history or choice state too, since the move decides it when it
+ * runs. The event is null for timers, completions and eventless moves.
+ */
+export const {{ p }}Moves: readonly { readonly from: {{ code_ts }} | null; readonly to: {{ code_ts }} | null; readonly trigger: string; readonly event: string | null }[] = [
+{{- for t in process.transitions }}
+{{- from = coded_of(t.source) }}
+{{- to = from }}
+{{- if !t.is_targetless }}
+{{- to = null }}
+{{- restless = false }}
+{{- for target in t.targets }}
+{{- if for.first }}
+{{- to = entered_of(target) }}
+{{- end }}
+{{- if !can_rest(target) }}
+{{- restless = true }}
+{{- end }}
+{{- end }}
+{{- if restless }}
+{{- to = null }}
+{{- end }}
+{{- end }}
+  { from: {{ code_lit(from) }}, to: {{ code_lit(to) }}, trigger: {{ ts_string t.trigger }}, event: {{ t.event ? (ts_string t.event.name) : "null" }} },
+{{- end }}
+];
+{{- end }}
 {{- end }}

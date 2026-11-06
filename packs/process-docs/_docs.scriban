@@ -48,6 +48,15 @@ func process_link(p, up)
   ret "[" + (md_cell p.display_name) + "](" + up + "processes/" + (kebab p.name) + ".md)"
 end
 
+# The entities of a process's subjects as code, in one line: the one subject of either form, or every entry of subjects.
+func subject_names(p)
+  $text = ""
+  for $sj in p.subjects
+    $text = $text + (for.first ? "" : ", ") + (md_code $sj.entity.name)
+  end
+  ret $text
+end
+
 # An attribute's type as the model writes it: the type name, a length in parentheses, "[]" for a collection.
 func attr_type(a)
   $t = a.type.name

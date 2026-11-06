@@ -2,7 +2,9 @@
 # Instance, history and gate audit tables of a process, one script per database: <db>/processes/<process>.sql. Off unless the
 # parameter processTables is true: a template choice for projects that do not model these tables (the engine creates none).
 # The instance row holds the generated interpreter's snapshot as JSON; the audit table has the gate audit record's fields
-# (phase-3-design.md 2.3) plus every audit attribute of the process's gates.
+# (phase-3-design.md 2.3) plus every audit attribute of the process's gates. With the lifecycleColumns parameter, a lifecycle's
+# instance table also holds its subject's type, its id as text and, when the states' codes form a map, the current state's code
+# (lifecycle-design.md section 9). They are nullable and come last, where a team adding them to a table it has puts them.
 include "_sql.scriban"
 p = process
 func col_type(kind, db)
@@ -34,12 +36,27 @@ if pack.params.processTables
       end
     end
   end
+  # The lifecycleColumns columns: a lifecycle's only, read only when the parameter is on. The code column's type follows the codes'
+  # kind (all strings or all integers).
+  lc = pack.params.lifecycleColumns && p.use == "lifecycle"
+  code_kind = null
+  if lc && p.codes_map
+    for coded in p.all_states
+      if coded.code != null
+        code_kind = (object.typeof coded.code) == "string" ? "string" : "int64"
+        break
+      end
+    end
+  end
   for db in model.databases
 -}}
 {{- capture content -}}
 {{ banner "--" }}
 -- Tables of process {{ p.name }} ({{ p.use }}) for database {{ db.name }} ({{ dialect_title(db) }}): its instances, their history
 -- and {{ if p.gates.size > 0 }}the audit records of its gates{{ else }}(no gate) no audit records{{ end }}. Written because the processTables parameter is true.
+{{- if lc }}
+-- The instances table also holds the subject's type and id{{ if code_kind }} and the current state's code{{ end }}, because the lifecycleColumns parameter is true.
+{{- end }}
 
 CREATE TABLE {{ q(base + "_instances", db) }} (
 {{ col("instance", col_type("string", db), true, db) }},
@@ -47,6 +64,13 @@ CREATE TABLE {{ q(base + "_instances", db) }} (
 {{ col("snapshot", col_type("text", db), true, db) }},
 {{ col("final", col_type("bool", db), true, db) }},
 {{ col("updated_at", col_type("datetimeoffset", db), true, db) }},
+{{- if lc }}
+{{ col("subject_type", col_type("string", db), false, db) }},
+{{ col("subject_id", col_type("string", db), false, db) }},
+{{- if code_kind }}
+{{ col("state_code", col_type(code_kind, db), false, db) }},
+{{- end }}
+{{- end }}
     CONSTRAINT {{ q("pk_" + base + "_instances", db) }} PRIMARY KEY ({{ q("instance", db) }})
 );
 

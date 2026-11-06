@@ -1,0 +1,28 @@
+{
+  "kind": "entity",
+  "id": "01JMC000000000000000ENT002",
+  "name": "Item",
+  "package": "01JMC000000000000000PKG001",
+  "key": {
+    "attributes": [
+      "01JMC000000000000000AT0021"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JMC000000000000000AT0021",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JMC000000000000000ATT022",
+      "name": "status",
+      "type": {
+        "ref": "01JMC000000000000000ENM001"
+      },
+      "required": true,
+      "default": "Draft"
+    }
+  ]
+}

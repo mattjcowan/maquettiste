@@ -3,6 +3,12 @@
 {{- numbers = transition_numbers(p) -}}
 {{- own_states = {} -}}
 {{- for s in p.all_states }}{{ own_states[s.id] = true }}{{ end -}}
+{{- # The states with a code, and whether the lifecycle section lists subjects, bindings and codes (several subjects, a code, or a
+    # binding to a reference type or a plain status); otherwise it reads as before codes and subjects. -}}
+{{- coded = [] -}}
+{{- for s in p.all_states }}{{ if s.code != null }}{{ coded[coded.size] = s }}{{ end }}{{ end -}}
+{{- listed = p.subjects.size > 1 || coded.size > 0 -}}
+{{- for sj in p.subjects }}{{ if sj.bound_attribute && !sj.bound_enum }}{{ listed = true }}{{ end }}{{ end -}}
 {{ banner "<!--" }} -->
 
 # {{ md_cell p.display_name }}
@@ -20,6 +26,8 @@
 | Use | {{ p.use }} |
 {{- if p.subject }}
 | Subject | {{ md_code p.subject.name }} |
+{{- else if p.subjects.size > 1 }}
+| Subjects | {{ subject_names(p) }} |
 {{- end }}
 {{- if p.initial }}
 | Initial state | {{ md_code p.initial.path }} |
@@ -30,7 +38,7 @@
 {{- if p.stereotypes.size > 0 }}
 | Stereotypes | {{ for st in p.stereotypes }}{{ for.first ? "" : ", " }}{{ md_code st.key }}{{ end }} |
 {{- end }}
-{{- if p.use == "lifecycle" && p.bound_attribute }}
+{{- if !listed && p.use == "lifecycle" && p.bound_attribute }}
 
 ## Lifecycle
 
@@ -40,6 +48,37 @@ The attribute {{ md_code (p.subject.name + "." + p.bound_attribute.name) }} of {
 | --- | --- |
 {{- for s in p.bound_states }}
 | {{ md_code s.path }} | {{ s.bound_member ? (md_code s.bound_member.name) : "none" }} |
+{{- end }}
+{{- else if listed }}
+
+## Lifecycle
+{{- if p.subjects.size > 0 }}
+
+| Subject | Attribute | Type |
+| --- | --- | --- |
+{{- for sj in p.subjects }}
+| {{ md_code sj.entity.name }} | {{ sj.bound_attribute ? (md_code (sj.entity.name + "." + sj.bound_attribute.name)) : "none" }} | {{ if !sj.bound_attribute }}{{ else if sj.bound_enum }}enum {{ md_code sj.bound_enum.name }}{{ else if sj.bound_reference_type }}reference type {{ md_code sj.bound_reference_type.name }}{{ else }}{{ md_code attr_type(sj.bound_attribute) }}{{ end }} |
+{{- end }}
+{{- end }}
+{{- if coded.size > 0 }}
+
+{{ if p.codes_map }}The codes form a map: an attribute bound to a reference type or a plain status holds the code of the state's nearest coded ancestor, and a state with none has no code.{{ else }}The codes do not form a map, since two coded states share a path or one sits inside a parallel region: they are constants only, and no attribute can hold them.{{ end }}
+
+| State | Code |
+| --- | --- |
+{{- for s in coded }}
+| {{ md_code s.path }} | {{ md_code (json s.code) }} |
+{{- end }}
+{{- end }}
+{{- if p.bound_enum }}
+
+The attribute {{ md_code (p.subject.name + "." + p.bound_attribute.name) }} holds the top-level state as a member of the enum {{ md_code p.bound_enum.name }}.
+
+| State | Enum member |
+| --- | --- |
+{{- for s in p.bound_states }}
+| {{ md_code s.path }} | {{ s.bound_member ? (md_code s.bound_member.name) : "none" }} |
+{{- end }}
 {{- end }}
 {{- end }}
 {{- if pack.params.diagrams && p.all_states.size > 0 }}
