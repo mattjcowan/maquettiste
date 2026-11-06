@@ -71,6 +71,9 @@ public sealed class ExprTyperTests
         {
             var problem = Assert.Single(Problems("createdAt <= now()", Invoice(site, ExprType.Bool)));
             Assert.Equal(("MQ3104", "/checks/0/condition/args/1"), (problem.Rule, problem.JsonPointer));
+
+            // The text is the one these sites gave before sets could read now() (object-effects-design.md section 11).
+            Assert.Equal("now() reads the clock; only a guard may read it.", problem.Message);
         }
     }
 
@@ -192,7 +195,8 @@ public sealed class ExprTyperTests
     [InlineData("""{ "value": 1.5 }""", "an integer of at most 64 bits")]
     [InlineData("""{ "value": "2026-02-30", "type": "date" }""", "not a date literal")]
     [InlineData("""{ "value": 7, "type": "decimal" }""", "written as text")]
-    [InlineData("""{ "value": 1, "null": true }""", "more than one")]
+    [InlineData("""{ "value": 1, "null": true }""", "The node holds more than one of value, null, path, ref, member, now, op, call, case, satisfies and text.")]
+    [InlineData("""{ "now": true, "actor": true }""", "The node holds more than one of value, null, path, ref, member, now, actor, inState, op, call, case, satisfies and text.")]
     [InlineData("""{ }""", "empty")]
     [InlineData("""{ "path": [] }""", "at least one id")]
     [InlineData("""{ "case": [] }""", "at least one branch")]

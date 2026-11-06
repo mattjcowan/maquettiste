@@ -186,8 +186,8 @@ internal static class ObjectStates
     }
 
     /// <summary>
-    /// The state a bound attribute's value maps to (4.1 decisions 4 and 14): under an enum binding, the state named as the member the value
-    /// names (by its code, else its name); under a code binding whose codes form a map, the state with that code. <see langword="null"/>
+    /// The state a bound attribute's value maps to (4.1 decisions 4 and 14): under an enum binding, the root-level state named as the member
+    /// the value names (by its code, else its name); under a code binding whose codes form a map, the state with that code. <see langword="null"/>
     /// when it maps to none.
     /// </summary>
     /// <param name="model">The model.</param>
@@ -207,7 +207,10 @@ internal static class ObjectStates
                 JsonValueKind.Number when value.TryGetInt64(out var n) => enumType.Members.FirstOrDefault(m => m.Value == n),
                 _ => null,
             };
-            return member is null ? null : Named(lifecycle.States, member.Name);
+            // An enum holds a root-level state, as the resolved in-state codes and the packs read it: a nested state of the same name is
+            // never the member's.
+            return member is null ? null : lifecycle.States.FirstOrDefault(s => string.Equals(s.Name, member.Name, StringComparison.Ordinal)
+                && s.Type is not (StateType.History or StateType.Choice));
         }
 
         if (!binding.NeedsCodes || ReferenceDataIndex.CodeKey(value) is not { } key)
@@ -216,19 +219,6 @@ internal static class ObjectStates
         return codes.IsMap
             ? codes.Coded.FirstOrDefault(c => string.Equals(c.Key, key, StringComparison.Ordinal) && c.State.Type is not (StateType.History or StateType.Choice))?.State
             : null;
-
-        static ProcessState? Named(IReadOnlyList<ProcessState> states, string name)
-        {
-            foreach (var state in states)
-            {
-                if (string.Equals(state.Name, name, StringComparison.Ordinal) && state.Type is not (StateType.History or StateType.Choice))
-                    return state;
-                if (Named(state.States, name) is { } below)
-                    return below;
-            }
-
-            return null;
-        }
     }
 
     // The atomic states of a configuration by path, for notes.

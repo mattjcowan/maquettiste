@@ -934,6 +934,15 @@ public sealed partial class ModelStore
                 node["context"] = context;
             }
 
+            // The object's values the step set, by attribute id, only when it set one (object-effects-design.md decision 4).
+            if (expect.Values.Count > 0)
+            {
+                var values = new JsonObject();
+                foreach (var (id, value) in expect.Values.OrderBy(p => p.Key, StringComparer.Ordinal))
+                    values[id] = JsonNode.Parse(value.GetRawText());
+                node["values"] = values;
+            }
+
             return node;
         }
 

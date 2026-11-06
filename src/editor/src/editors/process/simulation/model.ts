@@ -315,7 +315,7 @@ export interface LastStepLine {
 export function lastStepLines(entry: StepTrace, names: Names, subjectAttribute: (id: string) => string = (id) => id): LastStepLine[] {
   const subjectText = (map: Record<string, unknown>) =>
     Object.entries(map)
-      .map(([k, v]) => `${subjectAttribute(k)}=${valueText(v)}`)
+      .map(([k, v]) => `${subjectAttribute(k)} = ${valueText(v)}`)
       .join(", ");
   const lines: LastStepLine[] = [];
   // The actor of the move, when the input does not name it (the input's own actor shows in the trace row): the system actor.

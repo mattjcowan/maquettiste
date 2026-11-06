@@ -13,7 +13,7 @@ import {
   settableAttributes,
   setsText,
   stateChoices,
-  statesOfLabels,
+  statesOfIds,
   treeText,
   type TreeNames,
 } from "@/model/effects";
@@ -101,10 +101,10 @@ describe("the states of a scenario object", () => {
     ],
   } as unknown as ProcessDoc;
   const groups = stateChoices([employment, { ...employment, id: "RUN", name: "Run" }], "RUN");
-  it("offers the resting states of the lifecycles but the one the scenario runs, and reads labels back as ids", () => {
+  it("offers the resting states of the lifecycles but the one the scenario runs, and keeps only offered ids from the picker", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].states.map((s) => s.label)).toEqual(["Employment.Active", "Employment.Left"]);
-    expect(statesOfLabels("employment.active, Employment.Left, nope, Employment.Active", groups)).toEqual(["Act", "L"]);
+    expect(statesOfIds("Act,L,nope,Act", groups)).toEqual(["Act", "L"]);
     expect(objectStatesText(["L", "zzz"], groups)).toBe("Employment.Left, ?");
   });
 });
@@ -355,8 +355,8 @@ describe("the simulation panel's lines", () => {
     const p = run() as unknown as ProcessDoc;
     const trace = simulate(run(), null, [{ event: "go", signer: "bob" }], options()).trace[1];
     const lines = lastStepLines({ ...trace, notes: ["a note", "a note"] } as never, namesOf(p, new Map()), (id) => ({ n: "count" })[id as "n"] ?? id);
-    expect(lines.filter((l) => l.kind === "sets").map((l) => l.text)).toEqual(["Sets: by=bob, m=1, count=2"]);
-    expect(lines.filter((l) => l.kind === "values").map((l) => l.text)).toEqual(["Values: by=bob, m=1, count=2"]);
+    expect(lines.filter((l) => l.kind === "sets").map((l) => l.text)).toEqual(["Sets: by = bob, m = 1, count = 2"]);
+    expect(lines.filter((l) => l.kind === "values").map((l) => l.text)).toEqual(["Values: by = bob, m = 1, count = 2"]);
     expect(lines.filter((l) => l.kind === "note").map((l) => l.text)).toEqual(["Note: a note"]);
     expect(lines.find((l) => l.kind === "action")?.text).toContain("(sets)");
   });

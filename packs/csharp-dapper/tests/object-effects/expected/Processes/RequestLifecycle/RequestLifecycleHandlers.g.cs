@@ -25,9 +25,10 @@ public sealed partial class RequestLifecycleHandlers : IStatechartBehaviour<Requ
     /// <inheritdoc/>
     public RequestLifecycleContext Action(string action, StatechartCall<RequestLifecycleContext> call) => action switch
     {
-        "recordSubmission" => ActionRecordSubmission(call),
+        "recordSubmission" => RunRecordSubmission(call),
         "bump" => ActionBump(call),
         "notify" => ActionNotify(call),
+        "stamp" => RunStamp(call),
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Not an action of RequestLifecycle."),
     };
 
@@ -40,11 +41,14 @@ public sealed partial class RequestLifecycleHandlers : IStatechartBehaviour<Requ
     /// <summary>Guard employeeActive: <c>in_state(subject.employee, Employment.Active)</c> (implemented in RequestLifecycleHandlers.cs).</summary>
     private partial bool GuardEmployeeActive(StatechartCall<RequestLifecycleContext> call);
 
-    /// <summary>Action recordSubmission setting <c>submittedBy = actor(), submittedOn = now()</c>.</summary>
-    private RequestLifecycleContext ActionRecordSubmission(StatechartCall<RequestLifecycleContext> call)
+    /// <summary>Action recordSubmission setting <c>submittedBy = actor(), submittedOn = now()</c> (implemented in RequestLifecycleHandlers.cs).</summary>
+    private partial RequestLifecycleContext ActionRecordSubmission(StatechartCall<RequestLifecycleContext> call);
+
+    /// <summary>Records what action recordSubmission sets on the object, then runs it.</summary>
+    private RequestLifecycleContext RunRecordSubmission(StatechartCall<RequestLifecycleContext> call)
     {
         RecordRecordSubmission(call);
-        return call.Context;
+        return ActionRecordSubmission(call);
     }
 
     /// <summary>Records on the object what action recordSubmission sets, each value from the object and the context before the action: <c>submittedBy = actor(), submittedOn = now()</c> (implemented in RequestLifecycleHandlers.cs).</summary>
@@ -62,6 +66,19 @@ public sealed partial class RequestLifecycleHandlers : IStatechartBehaviour<Requ
 
     /// <summary>Action notify (implemented in RequestLifecycleHandlers.cs).</summary>
     private partial RequestLifecycleContext ActionNotify(StatechartCall<RequestLifecycleContext> call);
+
+    /// <summary>Action stamp: <c>({ count: [context.count, 1].length })</c>, setting <c>note = &apos;stamped&apos;</c> (implemented in RequestLifecycleHandlers.cs).</summary>
+    private partial RequestLifecycleContext ActionStamp(StatechartCall<RequestLifecycleContext> call);
+
+    /// <summary>Records what action stamp sets on the object, then runs it.</summary>
+    private RequestLifecycleContext RunStamp(StatechartCall<RequestLifecycleContext> call)
+    {
+        RecordStamp(call);
+        return ActionStamp(call);
+    }
+
+    /// <summary>Records on the object what action stamp sets, each value from the object and the context before the action: <c>note = &apos;stamped&apos;</c> (implemented in RequestLifecycleHandlers.cs).</summary>
+    private partial void RecordStamp(StatechartCall<RequestLifecycleContext> call);
 }
 
 /// <summary>Handles the commands of process RequestLifecycle: loads the instance through the store, runs the machine and saves.</summary>

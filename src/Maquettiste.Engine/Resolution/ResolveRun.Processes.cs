@@ -23,6 +23,7 @@ internal sealed partial class ResolveRun
     private readonly Dictionary<string, RProcess> _processes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RActor> _actors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ProcessLookup> _processLookups = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, IReadOnlyList<TypedExpr>> _conditionTrees = new(StringComparer.Ordinal);
     private List<RProcess> _processOrder = [];
 
     /// <summary>The library processes, by (package qualified name, name, id); <see cref="_processOrder"/> holds those that run.</summary>
@@ -1467,22 +1468,46 @@ internal sealed partial class ResolveRun
         return ids;
     }
 
-    /// <summary>The trees of a process's guard conditions and set values, in document order: what reads <c>actor()</c> and <c>in_state</c>.</summary>
-    private static IEnumerable<Expr> ConditionTrees(Process process) =>
-        process.Guards.Select(g => g.Condition).OfType<Expr>().Concat(process.Actions.SelectMany(a => a.Sets).Select(s => s.Value));
+    /// <summary>
+    /// The nodes of the typed trees of a process's guard conditions and set values, in document order: what reads <c>actor()</c> and
+    /// <c>in_state</c>. A tree stored as text holds its nodes only once parsed, so the typed form is walked, as the run reads it
+    /// (<see cref="ObjectStates.Reads"/>); a tree that does not type reads nothing. Typed once per process and run.
+    /// </summary>
+    private IReadOnlyList<TypedExpr> ConditionNodes(Process process)
+    {
+        if (_conditionTrees.TryGetValue(process.Id, out var known))
+            return known;
+        var nodes = new List<TypedExpr>();
+        foreach (var id in ExprSites.ConditionIds(process))
+        {
+            if (ExprResolution.Type(Model, process, id) is { } typed)
+                Walk(typed.Typed);
+        }
+
+        _conditionTrees[process.Id] = nodes;
+        return nodes;
+
+        void Walk(TypedExpr t)
+        {
+            nodes.Add(t);
+            if (t.Body is { } body)
+                Walk(body);
+            foreach (var arg in t.Args)
+                Walk(arg);
+        }
+    }
 
     /// <summary>Whether a guard condition or set value of the process, or of a process it invokes, reads <c>actor()</c>.</summary>
     private bool ReadsActor(Process process) =>
-        ExprSites.InvokedProcesses(Model, process).Prepend(process).SelectMany(ConditionTrees).SelectMany(ExprSites.Nodes).Any(n => n.Actor == true);
+        ExprSites.InvokedProcesses(Model, process).Prepend(process).SelectMany(ConditionNodes).Any(n => n.Node.Actor == true);
 
     /// <summary>The lifecycles the <c>in_state</c> calls of a process's guard conditions and set values name, each once, in document order.</summary>
     private IEnumerable<Process> InStateLifecycles(Process process)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var node in ConditionTrees(process).SelectMany(ExprSites.Nodes))
+        foreach (var node in ConditionNodes(process))
         {
-            if (node.InState is { Count: > 0 } states && Model.TryGetEntry(states[0], out var entry) && seen.Add(entry.OwnerId)
-                && Model.Get<Process>(entry.OwnerId) is { } lifecycle)
+            if (node.Node.InState is not null && node.Lifecycle is { } id && seen.Add(id) && Model.Get<Process>(id) is { } lifecycle)
                 yield return lifecycle;
         }
     }

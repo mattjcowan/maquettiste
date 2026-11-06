@@ -55,6 +55,7 @@ import { consumeSimulationRequest, useSimulationRequest } from "./requests";
 import { addInput, atEnd, castOf, loadScenario, loadScenarioStart, removeFrom, resetSession, restart, selectEntry, setStartValue, shownEntry } from "./session";
 import { useSimulation } from "./useSimulation";
 import { setSimulationView } from "./view";
+import { useSetContext } from "../SetsEditor";
 
 const ROW = "flex h-[var(--mq-row-h)] min-w-0 items-center gap-1.5 border-b border-default px-1.5 text-12";
 const FIELD = "h-5 min-w-0 rounded-[4px] border border-input bg-surface px-1 text-12 text-primary";
@@ -128,7 +129,10 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
   const [castLabels, setCastLabels] = useState<ReadonlyMap<string, ReadonlyMap<string, string>>>(new Map());
   const castEntities = [...new Set(cast.objects.map((o) => o.entity))].sort().join(",");
   const stateGroups = useLifecycleStates(cast.objects.some((o) => o.states?.length) ? castEntities.split(",").filter(Boolean) : [], id);
-  const subjectAttribute = (attribute: string) => [...castLabels.values()].find((m) => m.has(attribute))?.get(attribute) ?? attribute;
+  // The process's own subjects name the attributes its actions set, with or without objects in the cast.
+  const setContext = useSetContext(process);
+  const subjectAttribute = (attribute: string) =>
+    [...castLabels.values()].find((m) => m.has(attribute))?.get(attribute) ?? setContext.names.name(attribute) ?? attribute;
   useEffect(() => {
     let active = true;
     const wanted = castEntities ? castEntities.split(",") : [];
@@ -1055,12 +1059,24 @@ function LastStepSection({ entry, names, subjectAttribute }: { entry: ReturnType
       {lines.map((line, i) => (
         <li
           key={i}
-          className={cn(ROW, line.tone === "danger" && "text-danger", line.tone === "warning" && "text-warning", line.tone === "success" && "text-success")}
+          className={cn(
+            ROW,
+            (line.kind === "sets" || line.kind === "values") && "h-auto min-h-[var(--mq-row-h)] items-start py-0.5",
+            line.tone === "danger" && "text-danger",
+            line.tone === "warning" && "text-warning",
+            line.tone === "success" && "text-success",
+          )}
           data-testid="last-step-row"
           data-kind={line.kind}
           title={line.text}
         >
-          <span className="truncate">{line.text}</span>
+          {line.kind === "sets" || line.kind === "values" ? (
+            <span className="min-w-0 whitespace-normal break-words" data-testid="last-step-wrapped">
+              {line.text}
+            </span>
+          ) : (
+            <span className="truncate">{line.text}</span>
+          )}
         </li>
       ))}
     </ul>

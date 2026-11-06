@@ -37,8 +37,8 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | One object is in several different lifecycles at once (an employee's HR and project lifecycles) | Own | **No**: an entity names one |
 | One object is in several instances of one lifecycle (often better as a detail entity such as a project assignment) | Own | **No** |
 | An object's owner, stated explicitly | E N | **No** |
-| A move or action records data on the object (who submitted, when released) | N | **No**: actions change the context only |
-| A condition reads the object's state in another lifecycle, however it is stored | Own N | **No** |
+| A move or action records data on the object (who submitted, when released) | N | Yes: an action's `sets`, with `actor()` and `now()` (built for 0.14.0, #52). Simulation runs them; generated code leaves the write to the team through a `Record<Action>` hook |
+| A condition reads the object's state in another lifecycle, however it is stored | Own N | Yes: `in_state(object, state, …)` for the object or a to-one link, with scenario objects giving the states (built for 0.14.0, #52) |
 | Several statuses active at once on one object | P | Part: parallel states, inside one lifecycle |
 | An object moves to another lifecycle, with a right and a trigger for it | E | **No** |
 | A type opts out of lifecycles | V | Yes: no lifecycle is the default |
@@ -102,7 +102,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Moves on by itself once every check and signature passes, running its actions as always (`promote true`) | E O S V Own | Yes: `always`, `done`, `after`, and a gate's transition fires on the signature that completes it |
 | When several next states are possible, the person promoting picks one, or a trigger picks one from the object's data | E Own | Part: guards and choice states pick from data; a person picks by sending a different event |
 | Conditions on the object's data | O S V | Part: guards read the context and the event, **not the object**. 4.1 |
-| Conditions on related objects (all affected items, a BOM audit) | O | **No** |
+| Conditions on related objects (all affected items, a BOM audit) | O | Part: a guard reads to-one links and their state with `in_state`; to-many ("every affected item") is still **No** |
 | A condition that hides a transition, apart from one that refuses it | F | No: one guard does both |
 | Where a rejection goes | E O | Part: as another transition |
 | Which state comes next depends on which signature was met (`branch`) | E | Part: as separate transitions, but a source and event can carry only one gate |

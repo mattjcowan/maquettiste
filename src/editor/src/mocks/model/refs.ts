@@ -223,6 +223,20 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
         // The owner field is optional: a delete clears the key (decision 10).
         push(`/subjects/${i}/owner`, "owner", e.owner, false);
       });
+      // An action's sets (object-effects-design.md section 8): the attribute and every id in the value mean something to the set,
+      // so a delete drops the whole set and the action keeps its other sets.
+      arr(doc.actions).forEach((a, i) =>
+        arr(a.sets).forEach((set, j) => {
+          const at = `/actions/${i}/sets/${j}`;
+          const holder = str(set.id) ?? str(a.id) ?? id;
+          const drop = (pointer: string, field: string, to: unknown) => {
+            const t = str(to);
+            if (t) out.push({ fromId: holder, pointer, field, toId: t, required: false, removeItem: at, drops: true });
+          };
+          drop(`${at}/attribute`, "attribute", set.attribute);
+          treeIds(set.value, `${at}/value`, drop);
+        }),
+      );
       arr(doc.events).forEach((e, i) =>
         arr(e.actors).forEach((_, j) => push(`/events/${i}/actors/${j}`, "actors", (e.actors as unknown[])[j], false, `/events/${i}/actors/${j}`)),
       );
@@ -277,9 +291,21 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
             });
         });
       });
+      // A step's expected values are keyed by attribute id: a delete clears the key.
+      arr(doc.steps).forEach((st, i) => {
+        const values = (st.expect as Json | undefined)?.values;
+        if (values && typeof values === "object")
+          for (const key of Object.keys(values as Json))
+            out.push({ fromId: str(st.id) ?? id, pointer: `/steps/${i}/expect/values/${key}`, field: "values", toId: key, required: false });
+      });
       arr(doc.objects).forEach((o, i) => {
         const at = `/objects/${i}`;
         const holder = str(o.id) ?? id;
+        // The states an object is in: a state or its lifecycle going takes the entry with it.
+        arr(o.states as unknown).forEach((_, j) => {
+          const to = str((o.states as unknown[])[j]);
+          if (to) out.push({ fromId: holder, pointer: `${at}/states/${j}`, field: "states", toId: to, required: false, removeItem: `${at}/states/${j}` });
+        });
         const add = (pointer: string, field: string, to: unknown, required: boolean, removeItem?: string, drops?: boolean) => {
           const t = str(to);
           if (t) out.push({ fromId: holder, pointer, field, toId: t, required, removeItem, ...(drops ? { drops } : {}) });
@@ -336,6 +362,17 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
   return out;
 }
 
+/** The ids a value tree names: path ids, a ref, the states of `inState` and the path `of`. */
+function treeIds(node: unknown, pointer: string, found: (pointer: string, field: string, id: string) => void): void {
+  if (Array.isArray(node)) return node.forEach((x, i) => treeIds(x, `${pointer}/${i}`, found));
+  if (!node || typeof node !== "object") return;
+  const t = node as Json;
+  for (const key of ["path", "inState", "of"])
+    arr(t[key] as unknown).forEach((_, i) => found(`${pointer}/${key}/${i}`, key, (t[key] as unknown[])[i] as string));
+  if (typeof t.ref === "string") found(`${pointer}/ref`, "ref", t.ref);
+  for (const key of ["args", "case", "when", "then", "else"]) if (t[key]) treeIds(t[key], `${pointer}/${key}`, found);
+}
+
 const ULID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 
 /** Ids of the sub-elements a document holds (attributes, ends, keys, members, columns…). */
@@ -359,6 +396,7 @@ export function subElementIds(doc: Json): string[] {
     collect(doc.events);
     collect(doc.guards);
     collect(doc.actions);
+    arr(doc.actions).forEach((a) => collect(a.sets));
     const states = (list: unknown) =>
       arr(list).forEach((st) => {
         if (str(st.id)) ids.push(st.id as string);

@@ -30,7 +30,7 @@ public static partial class RequestLifecycleDefinition
         ],
         [
             new("01JFX000000000000000000T11", 1, TriggerKind.Event, "submit", [2], actions: ["recordSubmission", "bump", "notify"]), // submit / recordSubmission, bump, notify
-            new("01JFX000000000000000000T12", 2, TriggerKind.Event, "approve", [3], guard: "notTheSubmitter"), // approve [notTheSubmitter]
+            new("01JFX000000000000000000T12", 2, TriggerKind.Event, "approve", [3], guard: "notTheSubmitter", actions: ["stamp"]), // approve [notTheSubmitter] / stamp
             new("01JFX000000000000000000T13", 3, TriggerKind.Event, "start", [4], guard: "employeeActive"), // start [employeeActive]
         ],
         [
@@ -42,6 +42,7 @@ public static partial class RequestLifecycleDefinition
             new("recordSubmission", []),
             new("bump", []),
             new("notify", []),
+            new("stamp", []),
         ],
         [],
         [],

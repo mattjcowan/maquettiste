@@ -24,6 +24,12 @@ one.
   fixed meaning. A project may hide built-ins and add its own in Settings › Verbs. `rename-verb` and `remove-verb` follow every
   use. New rules MQ9701 to MQ9707. `csharp-dapper` writes a `Verb` enum, and `process-docs` a Verb column and a page of verbs. The
   built-in verb names are a working set. The owner will confirm them before release.
+- **Setting the object's data, and reading another lifecycle's state.** An action may list sets: an attribute of the object and a
+  value in the expression language. Expressions gain `actor()`, the identity of whoever acts, and `in_state(object, state, …)`,
+  which asks whether an object is in a state of any lifecycle. A scenario object may list its `states`, and a step may expect the
+  `values` it changed. Simulation, replay, `csharp-dapper` (a `Record<Action>` hook beside the action's stub) and `process-docs`
+  follow. New rules MQ9801 to MQ9803, MQ3116 and MQ9307. The new names (`sets`, `actor()`, `in_state`, `states`, `expect.values`)
+  are a working set. The owner will confirm them before release.
 - **New rules MQ9601 to MQ9606**, and MQ9102, MQ9105, MQ9106, MQ9301 and MQ9305 now follow membership and participants.
 - **Generated output.** `csharp-dapper` adds the new actor types only when a model uses them, and checks membership when the
   model has memberships. Actors taken from the object go through a resolver the host supplies. `process-docs` lists members,

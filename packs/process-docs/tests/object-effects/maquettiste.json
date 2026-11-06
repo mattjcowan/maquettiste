@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "name": "object-effects",
+  "packs": {
+    "process-docs": {
+      "output": "out"
+    }
+  }
+}

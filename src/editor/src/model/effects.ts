@@ -145,17 +145,10 @@ export function stateChoices(lifecycles: readonly ProcessDoc[], run?: string): S
     .filter((g) => g.states.length);
 }
 
-/** Ids from a list of `Lifecycle.Path` labels (the Grid's multi cell gives labels back); unknown labels are dropped. */
-export function statesOfLabels(raw: string, groups: readonly StateChoiceGroup[]): string[] {
-  const byLabel = new Map(groups.flatMap((g) => g.states.map((s) => [s.label.toLowerCase(), s.id] as const)));
-  return [
-    ...new Set(
-      raw
-        .split(",")
-        .map((x) => byLabel.get(x.trim().toLowerCase()))
-        .filter((x): x is string => !!x),
-    ),
-  ];
+/** The ids of a comma-separated list the picker gives back; an id no group offers is dropped. */
+export function statesOfIds(raw: string, groups: readonly StateChoiceGroup[]): string[] {
+  const offered = new Set(groups.flatMap((g) => g.states.map((s) => s.id)));
+  return [...new Set(raw.split(",").filter((id) => offered.has(id)))];
 }
 
 /** The states of an object as the cell shows them, in file order. */
@@ -169,4 +162,37 @@ export function expectedValuesText(values: Json | undefined): string {
   return Object.entries(values ?? {})
     .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
     .join(", ");
+}
+
+// ------------------------------------------------------------------ values by attribute
+
+/** A map keyed by attribute id as `name=value, ...` (names on screen, ids in the file). */
+export function valuesText(values: Json | undefined, names: ReadonlyMap<string, string>): string {
+  return Object.entries(values ?? {})
+    .map(([id, v]) => `${names.get(id) ?? "?"}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+    .join(", ");
+}
+
+/** Parses `name=value, ...` into a map keyed by attribute id (a value is JSON when it parses, else text). Names no attribute has come back in `unknown`, so none is dropped silently. */
+export function parseValuesText(raw: string, names: ReadonlyMap<string, string>): { values: Json; unknown: string[] } {
+  const ids = new Map([...names].map(([id, name]) => [name.toLowerCase(), id]));
+  const values: Json = {};
+  const unknown: string[] = [];
+  for (const part of raw.split(",")) {
+    if (!part.trim()) continue;
+    const at = part.indexOf("=");
+    const key = (at < 0 ? part : part.slice(0, at)).trim();
+    const id = at > 0 ? ids.get(key.toLowerCase()) : undefined;
+    if (!id) {
+      unknown.push(key);
+      continue;
+    }
+    const text = part.slice(at + 1).trim();
+    try {
+      values[id] = JSON.parse(text);
+    } catch {
+      values[id] = text;
+    }
+  }
+  return { values, unknown };
 }

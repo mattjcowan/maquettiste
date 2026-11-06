@@ -85,9 +85,20 @@ public static class ExprTyper
         }
         else if (scope.ValueType is { } wanted)
         {
-            // actor() takes the type of the attribute it is set to (object-effects-design.md decision 5).
+            // actor() takes the type of the attribute it is set to (object-effects-design.md decision 5): an identity is a string, an integer
+            // or a uuid, so any other type is MQ3103.
             if (scope.Site == ExprSiteKind.Set && typed.Node.Actor == true && wanted.IsAvailable)
+            {
+                if (!Run.ActorFits(wanted))
+                {
+                    run.Report("MQ3103", typed.Pointer, "actor() is the identity of whoever acts, a string, an integer or a uuid; the set's value must be "
+                        + wanted + ", which an identity can't be.");
+                    return null;
+                }
+
                 typed = typed with { Type = wanted };
+            }
+
             if (!Fits(wanted, typed.Type))
             {
                 run.Report("MQ3103", typed.Pointer, "The expression is " + typed.Type + "; the " + (scope.Site == ExprSiteKind.Set ? "set's value" : "derived value")
@@ -198,7 +209,9 @@ public static class ExprTyper
                 + (e.InState is not null ? 1 : 0);
             if (shapes != 1)
             {
+                // A node with neither actor nor inState keeps the message it had before them (object-effects-design.md section 11).
                 return Malformed(pointer, shapes == 0 ? "The node is empty."
+                    : e.Actor is null && e.InState is null ? "The node holds more than one of value, null, path, ref, member, now, op, call, case, satisfies and text."
                     : "The node holds more than one of value, null, path, ref, member, now, actor, inState, op, call, case, satisfies and text.");
             }
 
@@ -235,7 +248,8 @@ public static class ExprTyper
                     return Malformed(pointer, "'now' must be true.");
                 if (!scope.AllowsNow)
                 {
-                    Report("MQ3104", pointer, "now() reads the clock; only a guard or a value an action sets may read it.");
+                    // The sites that refuse now() are the ones that refused it before sets could read it, so the text stays as it was.
+                    Report("MQ3104", pointer, "now() reads the clock; only a guard may read it.");
                     return null;
                 }
 
@@ -808,6 +822,9 @@ public static class ExprTyper
             return WithinSize(tree, pointer) ? Node(tree, pointer, flat: true) : null;
         }
 
+        /// <summary>Whether <c>actor()</c> can take a type: an identity is a string, an integer or a uuid (object-effects-design.md decision 5).</summary>
+        internal static bool ActorFits(ExprType type) => type.Kind is "string" or "int" or "uuid";
+
         /// <summary>
         /// Gives each <c>actor()</c> among the operands at <paramref name="indices"/> the type the others share (object-effects-design.md
         /// decision 5), as a null literal fits any type; it stays a string when none has a type it can take.
@@ -824,7 +841,8 @@ public static class ExprTyper
                     common = common is null ? typed[i].Type : Unify(common, typed[i].Type) ?? common;
             }
 
-            if (common is null || common.Kind == "null" || !common.IsAvailable)
+            // An identity is a string, an integer or a uuid: beside any other type actor() stays a string, which doesn't fit it (MQ3103).
+            if (common is null || common.Kind == "null" || !common.IsAvailable || !ActorFits(common))
                 return;
             foreach (var i in at)
             {

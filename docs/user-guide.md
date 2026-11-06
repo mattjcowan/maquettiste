@@ -2115,6 +2115,8 @@ is required once there are objects. Here an order and its customer, linked by th
 - A value you do not give reads as the attribute's default, then null. A value that does not fit its attribute is a replay
   finding (MQ9305), not a refused save.
 - An invoked sub-process sees no object.
+- An object may list **States**: the states it is in, in lifecycles other than the one the scenario runs. See "Object states and
+  expected values" below.
 - Changing an object's entity, its base entities or a link's relation replays the scenario.
 
 **Guards that read the object.** A guard `condition` may read `subject.<attribute>` and to-one navigations such as
@@ -2129,6 +2131,34 @@ is required once there are objects. Here an order and its customer, linked by th
 A path ends at the attribute that declares it. In simulation and replay a missing value reads as the default, then null, and
 only true passes. With no objects, a guard that reads the object sees defaults, then null. `csharp-dapper` cannot translate such
 a guard. It writes a partial method and puts the condition in a comment for a person to write.
+
+**Object states and expected values.** `in_state` asks about an object's state in a lifecycle, and the simulator cannot know
+the state of a linked object. So a scenario object may list `states`. In the editor, use the **States** column of the Objects
+tab. The simulator reads an object's state in a lifecycle from, in this order:
+
+1. The object's `states`: state ids, one active configuration for each lifecycle. A compound state enters its default states, and a
+   parallel state with no region named enters each region's initial state.
+2. Else the value of the attribute that the lifecycle binds on that object's entity, mapped to its state by the state codes.
+3. Else the lifecycle's initial state. The bound attribute's default comes first, when it maps to a state. The trace notes each
+   state it assumed.
+
+`states` that disagree with a bound value the object gives is MQ9305, as is a state of a lifecycle that cannot govern the object,
+or two states of one lifecycle that cannot be active together. Giving the state of the process the scenario runs, on its own
+subject, is MQ9305 too: that state comes from the run. Other objects keep their states for the whole run.
+
+A step may expect the values its actions set. `expect.values` is keyed by attribute name, like `expect.context`, and lists
+exactly the attributes the step changed (MQ9307). **Update expectations from replay** fills it in, and recording writes it
+only for a step that changed a value. In the editor it is the **Expected values** field of the step.
+
+```json
+"objects": [
+  { "id": "…", "name": "ann", "entity": "…Employee", "states": ["…Employment.Active"] }
+],
+"steps": [
+  { "id": "…", "event": "…Submit", "participant": "…bob",
+    "expect": { "states": ["…Review"], "values": { "submittedBy": "bob" } } }
+]
+```
 
 **Simulating and recording with objects.** `simulate_process`, `record_scenario` and the CLI take `objects` and `subject`.
 Simulating a saved scenario uses its objects. The simulation panel shows a loaded scenario's cast as a read-only list, and
@@ -2247,7 +2277,9 @@ its room; expand it with the chevron on that row (the choice is remembered in th
 - **Pending**: the service and human tasks waiting for a result, with **Done** and **Error**.
 - **Configuration**: the active states by path; the chart highlights them, and the edges just taken flash once.
 - **Last step**: the guards evaluated (with their result and where it came from: an expression, an assumption, or
-  missing), the actions run and what they changed in the context, the gate's signatures and audit records, or the
+  missing), the actions run and what they changed in the context, the sets each action ran and the values the step changed
+  on the object, any notes (a state the run assumed, an identity that did not fit the type `actor()` met, sets an invoked
+  sub-process could not apply), the gate's signatures and audit records, or the
   refusal and its reason.
 - **Trace**: the inputs so far. Selecting one shows the state after it (the chart follows); Delete removes it and every
   input after it. The title row's restart button (**Restart from the start**) clears them.
@@ -2260,6 +2292,10 @@ process ended, active otherwise), with each step's expected states and context f
 it. While New scenario… is recording, the title row shows **Recording <name>** with a button that stops it. **Replay
 scenario…** steps through a scenario: the engine verifies it, each step shows passed or failed, and the replay stops at the first failure with the expected and actual
 states side by side; the chart follows the selected step.
+
+A step's trace holds three members that appear only when they apply. Each action run lists its `sets` (the values it gave the
+object, by attribute id). The step has `valuesChanged` (the object's attributes it changed, by id) and `notes` (what the run
+assumed or could not do, in order). An action run's `source` is `sets` for an action with sets and no expression.
 
 ### The inspector for processes
 
@@ -2351,6 +2387,52 @@ and for JavaScript's loose rules, so a person decides each one. To rewrite one b
    for a boolean `x` that may be null, or `dueOn is null or …`, where the old guard relied on those rules.
 4. Save `condition` and remove `expression` in one write (a guard with both is MQ3107), then run **Verify scenarios**
    (`verify_scenarios`, or `maquettiste process verify`).
+
+### Actions that set the object's data
+
+An action may list **sets**. A set names one attribute of the object and gives it a value, written in the
+[expression language](#expressions). Use it to record what a move did: who submitted a request, and when. Actions
+without sets work as before.
+
+```json
+"actions": [
+  { "id": "…", "name": "RecordSubmission",
+    "sets": [
+      { "id": "…", "attribute": "…PurchaseRequest.submittedBy", "value": { "actor": true } },
+      { "id": "…", "attribute": "…PurchaseRequest.submittedOn", "value": { "now": true } }
+    ] }
+]
+```
+
+- **What can be set.** An attribute that every subject of the process holds under one id: the same attributes a guard reads as
+  `subject.<attribute>`. A process with no subjects has nothing to set (MQ9801). A value object's member, a collection, a to-one end
+  and an attribute of a linked object cannot be set (MQ9801). A derived attribute cannot be set, nor can an attribute that holds a
+  lifecycle's state (MQ9802). The chart owns the state. One action sets an attribute once (MQ9803).
+- **What the value reads.** What a guard reads: the context, the object as `subject.<attribute>` (to-one paths too), the
+  payload of the events whose moves list the action, `now()`, `actor()` and `in_state`. An entry or exit action reads no payload,
+  since several events may enter or leave a state. The value must fit the attribute (MQ3103). Null is allowed, and clears the
+  attribute.
+- **When sets run.** Where actions run: on a move (the transition's `actions`), when a state is entered (`entry`) and when it is
+  left (`exit`). The order is exit actions, then the move's actions, then entry actions. A guard that picks the move sees the
+  values from before it.
+- **What values read.** The object as it was when the action started, not as the action's own earlier sets left it. So setting
+  `a` to `b` and `b` to `a` in one action swaps them. The next action sees the new values.
+- **A library's action** cannot have sets (MQ9020).
+- **An invoked sub-process** sees no object, so its sets change nothing. The trace says so.
+- **An action's JavaScript** still reads only the context and the event. It never reads the object.
+
+Simulation and replay run sets. A later guard sees the new values, and a later step's actor taken from the object sees them too.
+Without scenario objects, sets write into the object's row, which starts at each attribute's defaults.
+
+**In the editor.** The **Transitions** tab's Actions grid has a **Sets** column. Its button opens a small form: one row per
+set, an **Attribute** picker that offers only what can be set, and a **Value** box with a live preview.
+
+**Generated code.** Maquettiste is a modeling tool. A pack writes the output. `csharp-dapper` keeps an action with only sets as
+the team's stub, as it keeps any action without an expression. Beside it the generated code adds a `Record<Action>` hook, a
+partial method that the team's half fills in, with each set printed in the comment. The generated action calls the hook before
+it returns the context. A new hook fails the build until the team writes it. An action that also has an expression keeps its
+generated code. A guard that uses `actor()` or `in_state` is left to a person. `process-docs` adds a **Sets** column. Templates
+read `action.sets`, `set.attribute` and `set.value`, so a pack with an object to write to can write the assignments itself.
 
 ### Libraries: shared guards, actions and gate policies
 
@@ -2495,8 +2577,8 @@ about verbs yet. A project that uses no verbs keeps its output. An older engine 
 ### The rules for processes (MQ9xxx)
 
 Every rule below has a row in **Settings › Validation**, where its severity can be changed. The structural rules (MQ9001
-to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9211, MQ9501, MQ9601 to MQ9606 and MQ9701 to MQ9707) run on every save and every `validate`; MQ9019 is the answer
-to a refused batch operation. The scenario rules (MQ93xx) and MQ9502 to MQ9507 come from replaying
+to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9211, MQ9501, MQ9601 to MQ9606, MQ9701 to MQ9707 and MQ9801 to MQ9803) run on every save and every `validate`; MQ9019 is the answer
+to a refused batch operation. The scenario rules (MQ93xx, MQ9307 among them) and MQ9502 to MQ9507 come from replaying
 scenarios: `validate` replays every scenario of the processes it checks, **Verify scenarios** and `maquettiste process
 verify` replay on request, and the simulation panel shows them for its own run. A replay finding is reported on a save but
 does not refuse it, so a chart edit is saved and its scenarios can be refreshed afterwards. The import and export rules
@@ -2524,7 +2606,7 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9017 | warning | A parallel state with one region | |
 | MQ9018 | warning | A `done` transition whose source can never reach a final state, so it never fires | |
 | MQ9019 | error | A process operation (Sync enum, set lifecycle, set initial, refresh a scenario) was refused: it names the wrong element, would remove an enum member still in use, cannot replay the scenario to its end, or shares a batch with a change to the same process, enum or scenario | |
-| MQ9020 | error | A library holds what only a running process has (states, an initial state, transitions, context, events, a subject, a bound attribute, an action that raises events, or a guard with a condition), or a process that is not a library has no states or lists gates of its own | Move the item, or change `use` |
+| MQ9020 | error | A library holds what only a running process has (states, an initial state, transitions, context, events, a subject, a bound attribute, an action that raises events or sets data, or a guard with a condition), or a process that is not a library has no states or lists gates of its own | Move the item, or change `use` |
 | MQ9021 | error | A transition sets both `gate` and `gatePolicy`, or its `gatePolicy` names a gate that no library holds | Keep one, or point at a library's gate |
 | MQ9022 | error | A process invoke or a scenario names a library, which has no states to run | Name a running process |
 | MQ9101 | error | A gate needs more signatures than its signers can give | |
@@ -2548,8 +2630,9 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9302 | error | The active states after a step differ from what the step expects | **Update expectations from replay** |
 | MQ9303 | error | The context attributes a step changed differ from what the step expects | **Update expectations from replay** |
 | MQ9304 | error | Whether the process is final after the last step differs from the scenario's outcome | **Update expectations from replay** |
-| MQ9305 | error | A step whose fields do not fit: an unknown event, a time step without a duration, an invoke that is not pending, a payload value of the wrong type. With participants: a holding that is not a role, group or organization; a `within` or `object` that is not one of the scenario's objects; a participant's actor that is a role, group, organization or actor from the object; a step's participant that is not the scenario's; a step's actor its participant does not satisfy; an object's owner beside an owner field | |
+| MQ9305 | error | A step whose fields do not fit: an unknown event, a time step without a duration, an invoke that is not pending, a payload value of the wrong type. With participants: a holding that is not a role, group or organization; a `within` or `object` that is not one of the scenario's objects; a participant's actor that is a role, group, organization or actor from the object; a step's participant that is not the scenario's; a step's actor its participant does not satisfy; an object's owner beside an owner field. With object states: an object's `states` that name a state of a lifecycle that cannot govern it, two states of one lifecycle that cannot be active together, the state of the process the scenario runs on its subject, or a state that disagrees with the bound value the object gives | |
 | MQ9306 | warning | A guard without an expression is evaluated and the step has no assumption for it, so the replay stops there | |
+| MQ9307 | error | The values a step changed on the object differ from its `expect.values`, keyed by attribute name | **Update expectations from replay** |
 | MQ9401 | warning | Imported configuration with no place in the model, kept as opaque data and written back on export | |
 | MQ9402 | warning | An inline function in an imported configuration became a named stub (its text kept in the description, never run) | |
 | MQ9403 | error | The import input is not a statechart configuration the importer accepts | |
@@ -2570,6 +2653,9 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9605 | error | Two or more Automatic actors | **Change the type** |
 | MQ9606 | error | A subject's owner that is not a single-valued attribute or to-one end of its entity, or, on a stereotype entry, not one of the stereotype's own attributes | **Clear the owner** |
 
+| MQ9801 | error | A set's attribute is not one every subject of the process holds under one id: an unknown id, another entity's attribute, a to-one end, a collection or a value object's member; or the process has no subjects; or a context attribute named `subject` hides the object | **Remove the set** |
+| MQ9802 | error | A set's attribute is derived, or holds a lifecycle's state | **Remove the set** |
+| MQ9803 | error | One action sets one attribute twice | **Remove the second set** |
 | MQ9701 | error | A `verb` that is neither a built-in verb nor one of the project's own. Reported at the event, transition or operation | **Add the verb**, or **Clear the verb** |
 | MQ9702 | error | An own verb whose key is a built-in verb's, or two own verbs with one key | **Use the built-in verb** |
 | MQ9703 | error | The hidden list names a key that is not a built-in verb | **Remove the entry** |
@@ -2966,8 +3052,9 @@ attribute's `required`, never the expression's concern.
   take the path syntax of the other conditions (`{ "member": "properties.retentionDays" }`), typed from the resolved
   record of the selected kind. Lists and objects are not values: `count` and `has` stay for them.
 
-Check sites and value sites read one row: they take no navigation (MQ3102) and no `now()` (MQ3104), since a CHECK must
-not depend on the clock and a derived value must be the same wherever it is computed. Paths through to-many
+Check sites and value sites read one row: they take no navigation (MQ3102), no `now()`, no `actor()` and no `in_state` (MQ3104),
+since a CHECK must not depend on the clock and a derived value must be the same wherever it is computed. An action's set
+is a site too: its value reads like a guard, and types like a value site (MQ3103). Paths through to-many
 navigations, aggregates and subqueries are not in the language.
 
 ### Nulls
@@ -3011,6 +3098,43 @@ one change.
 
 `/` on integers and decimals gives a decimal with 16 digits after the point, rounded as PostgreSQL rounds it; on a
 `double` it gives a `double`. Either is null when the divisor is zero.
+
+### Who acts, and another lifecycle's state
+
+Two names read the run rather than a row. They work at process guards, operation guards and sets (MQ3104 anywhere else), since
+a check or a derived value must hold however the object moves.
+
+**`actor()`** is whoever acts now. In a run it is the step's signer if given, else its participant's identity, else the
+participant's name, else the name of the actor the step acts as. An automatic move acts as the system actor when the project has
+one. Otherwise it is null. So one guard says "the approver is not the submitter": `subject.submittedBy <> actor()`.
+
+- Next to a comparison, `in`, `coalesce` or a `case` branch, or as a set's value, `actor()` takes the other side's type. So a team
+  that knows people by number or uuid is not blocked. When the identity does not convert, the value is null and the trace notes it.
+- Anywhere else it is a string.
+- `event.actor` in an action's JavaScript is the name of the actor element, not the person.
+
+**`in_state(object, state, …)`** is true when the object is in any of the states named. The object is `subject`, or a to-one
+path from it such as `subject.employee`. A state is written by its lifecycle, then its path: `Employment.Employed.Active`.
+
+```text
+in_state(subject.employee, Employment.Active, Employment.OnLeave)
+not in_state(subject.employee, Employment.Left)
+```
+
+- **One lifecycle per call** (MQ3116). For "Active in one lifecycle or Assigned in another", join two calls with `or`.
+- **Which lifecycle.** It must be able to govern the object reached: that entity, a base of it or a stereotype it carries is a
+  subject of the lifecycle (MQ3116). History and choice states are not states to name (MQ3116). The path must be to-one ends
+  that every subject holds under one id (MQ3116). To-many paths are not in the language.
+- **The rule for another lifecycle.** What it reads for a linked object, or for the subject in another lifecycle, comes from the
+  scenario: see "Object states and expected values". The process's own lifecycle on the subject reads the running chart. That is
+  how one parallel region waits for another.
+- **A compound state** counts when any state inside it is active.
+- **No object** at the end of the path (a link not given) reads null, so the guard fails.
+- **In SQL.** There is none, and `preview_expression` gives none. These names appear only where no database check reads them.
+
+`csharp-dapper` leaves a guard that uses either name to a person. The resolved model carries both as nodes, with the
+state's codes and the bound attribute when the state is held in a column, so a pack can write
+`employee.Status in (…)`, a call to a lifecycle system, or leave it to a person.
 
 ### Portable rules
 
@@ -3117,8 +3241,8 @@ reports one MQ5003 or MQ5002 instead of a finding on every object. MQ3112 is not
 | --- | --- | --- |
 | MQ3101 | error | An expression does not parse, or a node is malformed: an unknown operator or function, a wrong number of operands. A save whose text does not parse is refused |
 | MQ3102 | error | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, a payload attribute that an event using the guard lacks, a context attribute named `event`, under which a guard's condition reads the payload, or an overlay's column named like an attribute of its entity, which text reads as the attribute |
-| MQ3103 | error | The types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, `+` on a date, `date_part` of `hour` or `minute` on a date, a site's answer that is not a boolean, a derived value of another type than its attribute, a type the language does not have (`float` among them), an enum member or code against a value of no enum or reference type, or a code the column it is compared with cannot store |
-| MQ3104 | error | `now()` at a check, a value or a rule condition, directly or through a constraint; only guards read the clock |
+| MQ3103 | error | The types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, `+` on a date, `date_part` of `hour` or `minute` on a date, a site's answer that is not a boolean, a derived value of another type than its attribute, a type the language does not have (`float` among them), an enum member or code against a value of no enum or reference type, a code the column it is compared with cannot store, or a set's value that does not fit its attribute |
+| MQ3104 | error | `now()`, `actor()` or `in_state` at a check, a value or a rule condition, directly or through a constraint; guards and sets read the clock, and guards, operation guards and sets read the other two |
 | MQ3105 | error | A regular expression outside the portable subset |
 | MQ3106 | error | An argument that must be a literal is not (a pattern, a `date_part` part, the digits of `round`, an `in` list item), or an `in` list holds null |
 | MQ3107 | error | A site holds both its raw form and a tree, or neither; a process guard with neither is a stub and is not reported |
@@ -3129,6 +3253,7 @@ reports one MQ5003 or MQ5002 instead of a finding on every object. MQ3112 is not
 | MQ3113 | error | An expression has more than 512 nodes or nests deeper than 64; split it into constraints |
 | MQ3114 | warning | A column check does not read its column, or an entity check does not read its `attribute` |
 | MQ3115 | warning | An entity check is listed by no binding with a write table, though one of them maps every attribute it reads, so no database enforces it |
+| MQ3116 | error | An `in_state` that names states of two lifecycles, a state that is not a state (a history or choice state), or a lifecycle that cannot govern the object reached; or whose path is not a to-one path every subject holds | **Remove the call** |
 
 MQ4056 also reports a check written in the expression language on a database that is not PostgreSQL; the DDL leaves
 it out.
@@ -4124,7 +4249,7 @@ the editor reads one: `zh_cn` is `zh-CN` and `fr_ca` is `fr-CA`; a tag that cann
 | Command | What it does |
 | --- | --- |
 | `maquettiste init` | Creates `.maquettiste/` (`maquettiste.json`, the JSON schemas for editor completion, the `sql-ddl` starter pack) with the output entries `db` and `src/Generated`. It never reads or writes the repository's ignore file (the `--gitignore` option of earlier releases is gone; a pack's managed block can keep lines there, see "Managed blocks"). A block an earlier version wrote stays as it is: it is yours to keep, edit or remove. `--hooks` installs git hooks that run `generate` after a checkout or merge. `--pack csharp-dapper` or `--pack none` picks another starter; `--mcp`, `--skill` and `--agent-setup` register the agent server, and `--mcp --docker <image>` registers it as a `docker run` of the image (`--runtime podman` for `podman run`; docs/mcp.md). `--skill` writes the modeling skill, `.claude/skills/maquettiste-modeling/SKILL.md`, which belongs to Maquettiste: put your own modeling conventions in `CONVENTIONS.md` in the same folder, which `init` never touches and which agents read after the skill (the MCP conventions resource and prompt end with it). A skill nobody changed is refreshed to the installed version; one edited by hand is left alone, the new version goes to `SKILL.md.new` beside it with a one-line message, and `--force` overwrites it. `init --skill --check` writes nothing and exits 2 when the skill is missing, stale or edited, for CI. The project is named by `--name <name>`, else the `name` of `package.json`, else the git remote's repository name, else the folder name (so a repository mounted at `/repo` in the image keeps its real name). Running `init` again, starting the editor or starting `maquettiste mcp` refreshes the JSON schemas when a new version ships different ones; until then `validate` and `generate` warn MQ1008 and name the files that differ. Running it again keeps what is there. |
-| `maquettiste validate` | Validates the model and the packs, and replays every scenario of every process (MQ9301 to MQ9306 and MQ9502 to MQ9507); `--format sarif` for code-scanning tools. `--against <snapshot id or folder>` also compares the model with a baseline (a model snapshot, or a folder holding another copy of the project): a change since it that a migration must follow and no migration fact explains is MQ4102 (see "Migration facts"); a value that names nothing exits 4. |
+| `maquettiste validate` | Validates the model and the packs, and replays every scenario of every process (MQ9301 to MQ9307 and MQ9502 to MQ9507); `--format sarif` for code-scanning tools. `--against <snapshot id or folder>` also compares the model with a baseline (a model snapshot, or a folder holding another copy of the project): a change since it that a migration must follow and no migration fact explains is MQ4102 (see "Migration facts"); a value that names nothing exits 4. |
 | `maquettiste generate` | Renders the packs into the output roots of `maquettiste.json`, incrementally: only units whose inputs changed re-render. Prints one line per file (`A` added, `M` modified, `D` deleted, `K` kept). A generated file edited by hand stops the run (exit 3); `--hand-edits overwrite` replaces it. `--against <snapshot id or folder>` diffs the schema (migrations) from a baseline model for this run instead of the committed physical snapshots, and leaves those alone; a value that names nothing exits 4. `--unit <pack/unit or unit>` and `--element <id>` (both repeatable) run only those units and leave every other file as it is (see "Regenerate one element or one unit"); MQ6032 or MQ6033 exits 1, a filter that selects nothing warns (MQ6034) and exits 0. |
 | `maquettiste migration list` | The open migration facts in applied order, one line each (database, order, id, fact, state and the intent a pending fact lacks, `stale`, summary; a value map's summary names its type, codes and columns, or a type rename's two names); `--database <name or id>`, `--format json` for scripts. An unknown database exits 1. |
 | `maquettiste migration fold` | Removes stale facts and joins consecutive facts on one object into the last one (see the schema changes guide); `--against <snapshot id or folder>` (its facts stay; default: the facts the committed snapshot lists as rendered, else pending facts only), `--database`, `--dry-run`, `--format json`. Exit 3 when a fact file changed meanwhile, 1 when the model has errors outside the migration rules or for an unknown database, 4 when `--against` names nothing. |

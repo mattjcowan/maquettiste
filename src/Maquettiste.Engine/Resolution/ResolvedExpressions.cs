@@ -18,6 +18,7 @@ public sealed class RExpression
 {
     private string? _text;
     private string? _javaScript;
+    private bool? _engineOnly;
 
     /// <summary>
     /// The node's shape: <c>value</c> (a literal), <c>null</c>, <c>path</c>, <c>ref</c> (an enum member or a reference-type code),
@@ -108,7 +109,7 @@ public sealed class RExpression
     /// read (<see cref="ExprLowering.ToJavaScript"/>); <see langword="null"/> on an operand, and for a tree that reads <c>actor()</c> or
     /// <c>in_state</c>, whose JavaScript calls helpers only the engine has (<see cref="ExprLowering.IsEngineOnly"/>).
     /// </summary>
-    public string? JavaScript => Root is { } root && !ExprLowering.IsEngineOnly(root.Typed)
+    public string? JavaScript => Root is { } root && !(_engineOnly ??= ExprLowering.IsEngineOnly(root.Typed))
         ? _javaScript ??= ExprLowering.ToJavaScript(root.Typed, root.Site, root.Columns)
         : null;
 

@@ -27,6 +27,7 @@ public sealed class ExprActorInStateTests
     private const string Token = "01JATT00000000000000000033";
     private const string Label = "01JATT00000000000000000034"; // derived
     private const string Tags = "01JATT00000000000000000035"; // a collection
+    private const string Amount = "01JATT00000000000000000036"; // a decimal
     private const string CustomerEnd = "01JEND00000000000000000002";
     private const string Good = "01JSTA00000000000000000101";
     private const string Blocked = "01JSTA00000000000000000102";
@@ -52,7 +53,8 @@ public sealed class ExprActorInStateTests
         {"id":"{{OwnerNo}}","name":"ownerNo","type":"int64"},
         {"id":"{{Token}}","name":"token","type":"uuid"},
         {"id":"{{Label}}","name":"label","type":"string","derived":{"value":{"value":"x"} } },
-        {"id":"{{Tags}}","name":"tags","type":"string","collection":true}
+        {"id":"{{Tags}}","name":"tags","type":"string","collection":true},
+        {"id":"{{Amount}}","name":"amount","type":"decimal","precision":12,"scale":2}
         """;
 
     private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(Action<LoaderHarness>? prepare = null)
@@ -265,6 +267,13 @@ public sealed class ExprActorInStateTests
         var clock = await PreviewAsync(store, "now()", "set", Record, SubmittedBy);
         Assert.Contains(clock.Diagnostics, d => d.Rule == "MQ3103");
         Assert.DoesNotContain(clock.Diagnostics, d => d.Rule == "MQ3104");
+
+        // actor() is an identity: a string, an integer or a uuid. Set to a decimal it is MQ3103, which the preview shows; beside a decimal in a
+        // comparison it stays a string, which doesn't fit.
+        var money = await PreviewAsync(store, "actor()", "set", Record, Amount);
+        Assert.Contains(money.Diagnostics, d => d.Rule == "MQ3103" && d.Message.Contains("identity", StringComparison.Ordinal));
+        Assert.DoesNotContain((await PreviewAsync(store, "actor()", "set", Record, OwnerNo)).Diagnostics, d => d.Rule == "MQ3103");
+        Assert.Contains((await PreviewAsync(store, "actor() = subject.amount")).Diagnostics, d => d.Rule == "MQ3103");
     }
 
     [Fact]

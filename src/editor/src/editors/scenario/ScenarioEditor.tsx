@@ -2,16 +2,18 @@
 // actor, signer, meaning, reason, payload, assumptions, expected states and context) and, after Replay, each step's
 // status (passed, failed, not run) from the verify result.
 import { useState } from "react";
-import { Play } from "lucide-react";
+import { Play, Plus } from "lucide-react";
 import { useElement, useElements, useIndex } from "@/api/queries";
 import { Button } from "@/components/ui/button";
-import { Field, Select } from "@/components/ui/input";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Field, Input, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
 import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { useScenarioStatuses } from "@/explorer/processApi";
 import { TextField } from "@/inspector/fields";
 import { newId } from "@/lib/ids";
+import { parseValuesText } from "@/model/effects";
 import { indexLookup } from "@/model/index";
 import {
   idsOfNames,
@@ -128,6 +130,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const replay = useScenarioReplay(scenario);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [expecting, setExpecting] = useState<string | null>(null);
   // The expected values name the subject's attributes (the file keys them by id): the subject entity and the entities it is based on.
   const lookup = indexLookup(useIndex().data);
   const subjectEntity = scenario.objects?.find((o) => o.id === scenario.subject)?.entity;
@@ -204,19 +207,15 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       options: () => states.map((s) => ({ value: s.id, label: s.name })),
     },
     { key: "context", label: "Expected context", kind: "text", width: "min-w-28", mono: true, value: (r) => r.context },
-    ...(rows.some((r) => r.values)
-      ? [
-          {
-            key: "values",
-            label: EL.expectedValues,
-            tooltip: EL.expectedValuesHint,
-            kind: "readonly" as const,
-            width: "min-w-28",
-            mono: true,
-            value: (r: StepRow) => r.values,
-          },
-        ]
-      : []),
+    {
+      key: "values",
+      label: EL.expectedValues,
+      tooltip: EL.expectedValuesHint,
+      kind: "readonly",
+      width: "min-w-28",
+      mono: true,
+      value: (r) => r.values,
+    },
     {
       key: "status",
       label: "Replay",
@@ -312,6 +311,18 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         rowName={(r) => `step ${r.index + 1}`}
         problems={(r) => rowProblems(problems, r.pointer)}
         onCommit={commit}
+        actions={(row) => (
+          <Button
+            variant="ghost"
+            size="icon-row"
+            tabIndex={-1}
+            label={EL.addExpected}
+            onClick={() => setExpecting(row.id)}
+            data-testid={`add-expected-${row.index + 1}`}
+          >
+            <Plus />
+          </Button>
+        )}
         onAdd={(after) => {
           ctx.edit((j) => {
             const steps = (j as unknown as ScenarioDoc).steps;
@@ -331,6 +342,76 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
             : undefined
         }
       />
+      {expecting ? (
+        <AddExpectedDialog
+          names={valueNames}
+          taken={new Set(Object.keys(scenario.steps.find((s) => s.id === expecting)?.expect?.values ?? {}))}
+          onClose={() => setExpecting(null)}
+          onAdd={(attribute, text) => {
+            ctx.edit((j) => {
+              const s = (j as unknown as ScenarioDoc).steps.find((x) => x.id === expecting);
+              if (!s) return;
+              const added = parseValuesText(`x=${text}`, new Map([[attribute, "x"]])).values;
+              setOpt(s, "expect", { ...(s.expect ?? {}), values: { ...(s.expect?.values ?? {}), ...added } });
+            });
+            ctx.flush();
+            setExpecting(null);
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/** Add expected value: one attribute of the subject object (by name) and the value the object should hold after the step. */
+function AddExpectedDialog({
+  names,
+  taken,
+  onAdd,
+  onClose,
+}: {
+  names: ReadonlyMap<string, string>;
+  taken: ReadonlySet<string>;
+  onAdd: (attribute: string, text: string) => void;
+  onClose: () => void;
+}) {
+  const choices = [...names].filter(([id]) => !taken.has(id)).sort((a, b) => a[1].localeCompare(b[1]));
+  const [attribute, setAttribute] = useState(choices[0]?.[0] ?? "");
+  const [text, setText] = useState("");
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title={EL.addExpected}>
+        <form
+          className="flex flex-col gap-2"
+          data-testid="add-expected-dialog"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (attribute && text.trim()) onAdd(attribute, text.trim());
+          }}
+        >
+          {!choices.length ? <p className="text-12 text-warning">{EL.noExpectable}</p> : null}
+          <Field label={EL.expectedAttribute} htmlFor="expected-attribute">
+            <Select id="expected-attribute" value={attribute} onChange={(e) => setAttribute(e.target.value)} disabled={!choices.length}>
+              {choices.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={EL.expectedValue} htmlFor="expected-value">
+            <Input id="expected-value" autoFocus value={text} onChange={(e) => setText(e.target.value)} />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={!attribute || !text.trim()} data-testid="add-expected-apply">
+              Add
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

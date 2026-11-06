@@ -361,5 +361,13 @@ public sealed class ObjectEffectsReplayTests
         var failure = Assert.Single(failed.Value!.Results).Failure!;
         Assert.Equal("MQ9307", failure.Rule);
         Assert.Contains("sets trail = \"xte\", submittedBy = \"bob\" on the object, but expect.values lists trail = \"xte\", submittedBy = \"carol\"", failure.Message, StringComparison.Ordinal);
+
+        // Updating the expectations from a replay (refresh-scenario) rewrites expect.values by attribute id, as it does the context and states.
+        var refreshed = await store.ApplyBatchAsync(new ModelBatch([new BatchOperation(BatchOp.RefreshScenario, saved.Id, null, null)]), ChangeSource.Editor, Ct);
+        Assert.True(refreshed.Outcome == SaveOutcome.Saved, string.Join(" | ", refreshed.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        var values = JsonNode.Parse((await store.GetElementAsync(saved.Id, Ct))!.Json.GetRawText())!["steps"]![0]!["expect"]!["values"]!.AsObject();
+        Assert.Equal([Trail, SubmittedBy], values.Select(p => p.Key));
+        Assert.Equal("bob", (string)values[SubmittedBy]!);
+        Assert.True((await store.VerifyScenariosAsync(Purchase, [saved.Id], Ct)).Value!.Passed);
     }
 }

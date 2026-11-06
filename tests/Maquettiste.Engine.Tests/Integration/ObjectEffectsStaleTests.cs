@@ -10,7 +10,8 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// Stale replays with object effects (object-effects-design.md section 7, "Replay keys"), through the planner: generate, edit, plan, and the
 /// scenario whose replay reads what changed renders again. Over the <c>process-basics</c> fixture with an invented model: Order gains
 /// approvedBy; Sign's guard reads <c>actor()</c>; Audit's guard reads OrderLifecycle's state on the object, which OrderLifecycle binds to the
-/// enum OrderStatus; Stamp sets approvedBy on a move its scenario never takes. A pack writes each scenario's replay.
+/// enum OrderStatus; Stamp sets approvedBy on a move its scenario never takes; SignText and AuditText hold the same guards as text, which
+/// the keys read through their typed form. A pack writes each scenario's replay.
 /// </summary>
 [Collection(IntegrationCollection.Name)]
 public sealed class ObjectEffectsStaleTests
@@ -29,6 +30,10 @@ public sealed class ObjectEffectsStaleTests
     private const string SignPlain = "01JSCN00000000000000000601";
     private const string AuditPlain = "01JSCN00000000000000000602";
     private const string StampPlain = "01JSCN00000000000000000603";
+    private const string SignText = "01JPRC00000000000000000604";
+    private const string AuditText = "01JPRC00000000000000000605";
+    private const string SignTextPlain = "01JSCN00000000000000000604";
+    private const string AuditTextPlain = "01JSCN00000000000000000605";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -102,6 +107,38 @@ public sealed class ObjectEffectsStaleTests
     }
 
     [Fact]
+    public async Task A_guard_stored_as_text_that_reads_actor_replays_again_when_an_actor_changes()
+    {
+        // The file holds the guard as text (MQ3108, a warning): what it reads is known only once parsed, so the keys walk its typed form.
+        await using var repo = await EffectsRepo.CreateAsync();
+        await repo.EditAsync(Finance, n => n["description"] = "Pays the bills.");
+        var rendered = await repo.RenderedAsync();
+        Assert.Contains(Unit(SignTextPlain), rendered);
+        Assert.DoesNotContain(Unit(AuditTextPlain), rendered);
+        await repo.ApplyAsync();
+        await repo.AssertIncrementalEqualsForcedAsync();
+    }
+
+    [Fact]
+    public async Task A_guard_stored_as_text_that_reads_another_lifecycle_replays_again_when_that_lifecycle_or_its_enum_changes()
+    {
+        await using var repo = await EffectsRepo.CreateAsync();
+        await repo.EditAsync(OrderLifecycle, n => n["description"] = "From draft to closed, read by Audit.");
+        var rendered = await repo.RenderedAsync();
+        Assert.Contains(Unit(AuditTextPlain), rendered);
+        Assert.DoesNotContain(Unit(SignTextPlain), rendered);
+        await repo.ApplyAsync();
+        await repo.AssertIncrementalEqualsForcedAsync();
+
+        await repo.EditAsync(OrderStatus, n => n["members"]![1]!["description"] = "Being reviewed.");
+        rendered = await repo.RenderedAsync();
+        Assert.Contains(Unit(AuditTextPlain), rendered);
+        Assert.DoesNotContain(Unit(SignTextPlain), rendered);
+        await repo.ApplyAsync();
+        await repo.AssertIncrementalEqualsForcedAsync();
+    }
+
+    [Fact]
     public async Task A_process_that_sets_data_replays_again_when_the_entity_of_the_attribute_it_sets_changes()
     {
         await using var repo = await EffectsRepo.CreateAsync();
@@ -130,6 +167,10 @@ public sealed class ObjectEffectsStaleTests
             Repo.WriteFile(".maquettiste/model/scenarios/sign/sign-plain.json", Scenario(SignPlain, "SignPlain", Sign));
             Repo.WriteFile(".maquettiste/model/scenarios/audit/audit-plain.json", Scenario(AuditPlain, "AuditPlain", Audit));
             Repo.WriteFile(".maquettiste/model/scenarios/stamp/stamp-plain.json", Scenario(StampPlain, "StampPlain", Stamp));
+            Repo.WriteFile(".maquettiste/model/processes/sign-text.json", Process(SignText, "SignText", guard: """{"text":"subject.approvedBy <> actor()"}"""));
+            Repo.WriteFile(".maquettiste/model/processes/audit-text.json", Process(AuditText, "AuditText", guard: """{"text":"in_state(subject, OrderLifecycle.Review)"}"""));
+            Repo.WriteFile(".maquettiste/model/scenarios/sign-text/sign-text-plain.json", Scenario(SignTextPlain, "SignTextPlain", SignText));
+            Repo.WriteFile(".maquettiste/model/scenarios/audit-text/audit-text-plain.json", Scenario(AuditTextPlain, "AuditTextPlain", AuditText));
 
             var pack = Path.Combine(Repo.ModelRoot, "templates", Pack);
             Directory.CreateDirectory(pack);

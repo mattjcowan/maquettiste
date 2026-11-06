@@ -42,8 +42,8 @@ Who acts: the value the team's system holds for them, the actor they stand for, 
 
 ## Object states
 
-The states objects are in, in lifecycles other than the one the scenario runs (object-effects-design.md decision 10). A lifecycle not
-given takes the state the object's bound value maps to, else its initial state.
+The states objects are in, in lifecycles other than the one the scenario runs. A lifecycle not given takes the state the object's
+bound value maps to, else its initial state.
 
 | Object | Entity | States |
 | --- | --- | --- |
