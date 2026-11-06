@@ -14,9 +14,18 @@ export async function freshQuickFix(drafts: DraftManager, d: Diagnostic, catalog
   await drafts.flush(d.elementId);
   const element = (await endpoints.getElement(d.elementId)).json as ModelJson;
   const docs = new Map<string, ModelJson>([[d.elementId, element]]);
-  for (const id of fixDocuments(d, element).slice(1)) {
-    await drafts.flush(id);
-    docs.set(id, (await endpoints.getElement(id)).json as ModelJson);
+  // The documents it names may name more once read (MQ9205's attribute type), so read until nothing new is named.
+  for (
+    let more = fixDocuments(d, element, (id) => docs.get(id))
+      .slice(1)
+      .filter((id) => !docs.has(id));
+    more.length;
+  ) {
+    for (const id of more) {
+      await drafts.flush(id);
+      docs.set(id, (await endpoints.getElement(id)).json as ModelJson);
+    }
+    more = fixDocuments(d, element, (id) => docs.get(id)).filter((id) => !docs.has(id));
   }
   return deriveQuickFix(d, catalogFix, (id) => docs.get(id));
 }
@@ -25,7 +34,7 @@ export async function freshQuickFix(drafts: DraftManager, d: Diagnostic, catalog
 export async function applyQuickFix(
   qc: QueryClient,
   store: EditorStore,
-  fix: Exclude<QuickFix, { kind: "sync-enum" }>,
+  fix: Exclude<QuickFix, { kind: "sync-enum" | "sync-codes" }>,
   target?: string,
 ): Promise<string | null> {
   const ids = fix.kind === "update" ? [fix.id] : fix.ids;

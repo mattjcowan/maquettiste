@@ -162,6 +162,20 @@ public sealed class ProcessCommandTests
         Assert.Equal(0, (await repo.RunAsync("process", "sync-enum", "SalesOrderLifecycle", "--apply")).ExitCode);
         Assert.Equal(0, (await repo.RunAsync("process", "sync-enum", "SalesOrderLifecycle", "--check")).ExitCode);
         Assert.Equal(1, (await repo.RunAsync("process", "sync-enum", "PurchaseApproval")).ExitCode);
+        Assert.Equal(0, (await repo.RunAsync("process", "sync-enum", "SalesOrderLifecycle", "--entity", "SalesOrder", "--check")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("process", "sync-enum", "SalesOrderLifecycle", "--entity", "Nobody")).ExitCode);
+
+        // sync-codes (lifecycle-design.md decision 19): the enum's member names match the root states, so each takes its member's name.
+        var codes = await repo.RunAsync("process", "sync-codes", "SalesOrderLifecycle", "SalesOrder", "status", "--check");
+        Assert.Equal(2, codes.ExitCode);
+        Assert.Contains("(name)", codes.Out, StringComparison.Ordinal);
+        Assert.Contains("to write", codes.Error, StringComparison.Ordinal);
+        Assert.Equal(0, (await repo.RunAsync("process", "sync-codes", "SalesOrderLifecycle", "SalesOrder", "status", "--apply")).ExitCode);
+        var kept = await repo.RunAsync("process", "sync-codes", "SalesOrderLifecycle", "SalesOrder", "status", "--check", "--format", "json");
+        Assert.Equal(0, kept.ExitCode);
+        Assert.All(JsonNode.Parse(kept.Out)!["codes"]!.AsArray(), c => Assert.Equal("kept", c!["source"]!.GetValue<string>()));
+        Assert.Equal(1, (await repo.RunAsync("process", "sync-codes", "PurchaseApproval", "SalesOrder", "status")).ExitCode);
+        Assert.Equal(4, (await repo.RunAsync("process", "sync-codes", "SalesOrderLifecycle", "SalesOrder", "nothing")).ExitCode);
     }
 
     /// <summary>Swaps the last two members of the bound enum.</summary>

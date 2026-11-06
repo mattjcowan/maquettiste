@@ -171,7 +171,7 @@ internal static class ReferenceDataRules
     }
 
     /// <summary>The code a stored row of a reference type's seed holds, as text, or <see langword="null"/>.</summary>
-    private static string? CodeOfRow(ValidationContext context, string rowId)
+    internal static string? CodeOfRow(ValidationContext context, string rowId)
     {
         if (context.SeedOfRow(rowId) is not { } seed)
             return null;

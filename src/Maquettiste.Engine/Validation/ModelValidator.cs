@@ -1053,7 +1053,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     }
 
     // The process rules that read other files: MQ9106 on actors depends on every process, MQ9015 on the sub-processes a process
-    // reaches, and MQ9203 to MQ9205 on the bound enum, the subject's attributes and every other use of the enum.
+    // reaches, MQ9202 to MQ9208 and MQ9210 on the subject's attributes, the bound enum and every other use of it, the other lifecycles that
+    // bind one attribute, and the bound reference or scalar type with its seeds.
     private static IEnumerable<ElementDocument> ProcessPeers(ModelSnapshot model, Element element)
     {
         if (element is Process process)
@@ -1084,6 +1085,17 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             foreach (var bound in model.All<Process>())
             {
                 if (bound.Subjects.Any(s => s.BoundAttribute is not null) && model.GetDocument(bound.Id) is { } peer) // either form
+                    yield return peer;
+            }
+        }
+        else if (element is ReferenceType or ScalarType or Seed)
+        {
+            // MQ9205, MQ9207 and MQ9208 under a reference or plain binding read the type's codes, rows and facets (lifecycle-design.md
+            // decision 18): only the lifecycles that bind an attribute of that type, none when nothing binds.
+            var typeId = element is Seed seed ? seed.Target : element.Id;
+            foreach (var id in Processes.LifecycleBindings.Of(model).ByType.GetValueOrDefault(typeId, []))
+            {
+                if (model.GetDocument(id) is { } peer)
                     yield return peer;
             }
         }

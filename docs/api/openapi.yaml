@@ -4028,7 +4028,9 @@ paths:
         phase-3-design.md sections 3 and 4.4, the `sync-enum` batch operation. The bound enum's members become the root-level states in
         document order (ids, codes and descriptions kept). `dryRun: true` returns the plan. A member still used by a default,
         `allowedValues`, a seed cell or a scenario value is listed in `refused` and not removed: there is no force flag, change the uses
-        first (applying such a plan is 422 with MQ9019). 409 when the process changed since `expectedHash`.
+        first (applying such a plan is 422 with MQ9019). 409 when the process changed since `expectedHash`. `entity` picks the subject
+        whose bound enum is synced (lifecycle-design.md decision 15); without it the lifecycle must have exactly one enum binding, in
+        either subject form.
       x-maquettiste-role: editor
       requestBody:
         required: false
@@ -4069,6 +4071,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SyncEnumResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/processes/{id}/sync-codes:
+    parameters:
+      - $ref: '#/components/parameters/ProcessId'
+    post:
+      tags: [processes]
+      operationId: syncCodesFromRows
+      summary: Propose state codes from a bound attribute's type, and bind it
+      description: |
+        lifecycle-design.md decision 19, the `sync-codes` batch operation. `entity` and `attribute` name the subject and the attribute
+        that holds its state (an enum, a reference type or a plain status). The states that need a code are those a binding maps: a
+        state with no code and no coded state below it, walking down from the root while a state has coded descendants (history and
+        choice states never). Each keeps the code it has; else it takes the one code of the attribute's type equal to its name (case,
+        `_` and `-` ignored: a reference type's live codes, an enum member's key, value or name, a plain status's `allowedValues`),
+        else the one reference row or enum member whose label (display name) equals its display name or name. An ambiguous match, or
+        a code another state keeps or takes, takes none and is listed in
+        `unmatched` with its candidates; `stateCodes` (state id to code) gives the rest, or replaces a code. It writes the codes and the
+        binding in the form the file has (a process with no subject gets `subjects`; on the one-subject form, `entity` must be its
+        subject) and creates no rows. `dryRun: true` returns the plan. 409 when the process changed since `expectedHash`; 422 with
+        MQ9019 when the operation is refused, or with the findings that refuse the save (for example MQ9207 for a code that does not
+        fit the attribute).
+      x-maquettiste-role: editor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncCodesRequest'
+            example:
+              entity: 01JQENT0000000000000000001
+              attribute: 01JQATT0000000000000000002
+              dryRun: true
+      responses:
+        '200':
+          description: The plan, applied unless `dryRun`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncCodesResult'
+              example:
+                process: 01JQPRC0000000000000000001
+                entity: 01JQENT0000000000000000001
+                attribute: 01JQATT0000000000000000002
+                binds: true
+                codes:
+                  - state: 01JQSTA0000000000000000001
+                    path: Draft
+                    code: DRF
+                    source: name
+                unmatched:
+                  - state: 01JQSTA0000000000000000002
+                    path: Review
+                    candidates: []
+                applied: false
+                diagnostics: []
+        '409':
+          description: The process changed since `expectedHash`; nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncCodesResult'
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: The operation is refused (MQ9019 in `diagnostics`), or the save would add an error; nothing was written.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncCodesResult'
         '404':
           $ref: '#/components/responses/NotFound'
         '400':
@@ -8349,10 +8427,17 @@ components:
         default unless `default` names the new default) and `set-default-schema` (`schema`). Each expands into updates of the
         database and of the tables, views, sequences and mappings it moves; `items` then holds the other operations' results
         followed by one per element the schema operations changed. The process operations (phase-3-design.md sections 3 and
-        4.4): `sync-enum` (`id` a lifecycle process; its bound enum's members become the bound states in document order,
+        4.4): `sync-enum` (`id` a lifecycle process, optional `entity` the subject whose enum binding it syncs, else the
+        lifecycle's one enum binding; its bound enum's members become the bound states in document order,
         keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a
         default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or
-        the enum), `set-lifecycle` (`id` an entity, `target` a
+        the enum), `sync-codes` (lifecycle-design.md decision 19: `id` a lifecycle process, `entity` a subject, `attribute` the
+        subject's attribute that holds the state, optional `stateCodes` keyed by state id; it gives each state a binding maps a
+        code, keeping the codes states have, matching the attribute type's codes by name and rows by label, and binds the
+        attribute in the form the file has; see `POST /api/processes/{id}/sync-codes` for the matching and the plan. Refused with
+        MQ9019 when `id` is not a lifecycle, `entity` is not its one-subject form's subject, `attribute` is not an attribute
+        that can hold a state, a `stateCodes` key is not a state that rests, or another operation of the batch writes the
+        process), `set-lifecycle` (`id` an entity, `target` a
         process: it becomes the entity's named lifecycle (lifecycle-design.md decision 9). A target in the one-subject form, or
         with no subject, takes the entity as its one subject (a target with no subject gets `subjects` with one entry) and the
         entity's previous lifecycle in the one-subject form becomes an orchestration, as before; a target that uses `subjects`
@@ -8413,7 +8498,8 @@ components:
         every binding named in step) is MQ4089 at `/operations/<n>`. The reference-type refactors (next-phase-2-design.md
         section 3.5) read the model as it was before the batch and find every use through the index: `rename-code` (`id` a
         reference type, `code`, `to`) gives the row the new code and rewrites every default, `allowedValues` entry, seed cell,
-        typed column default, table seed cell and binding constant that named the old one; `retire-code` (`id`, `code`, `to`
+        typed column default, table seed cell, binding constant and state code under a lifecycle's binding (lifecycle-design.md
+        decision 18) that named the old one; `retire-code` (`id`, `code`, `to`
         another live code) removes the code's row with its translations, rewrites its uses to `to` and the ids that named the row
         (`x-ref` values, former codes) to the row of `to`; `merge-reference-types` (`id` the type merged away, `target` the type
         merged into, optional `codes`) maps each code the target holds to it, `codes` maps others to live target codes, moves every
@@ -8424,7 +8510,10 @@ components:
         `expectedHashes`, refactor a type once per batch, and a refusal (an unknown or scripted code, a code taken or former, a
         code that does not fit, mismatched code types, a binding or scripted rows on the merged type, a field the target lacks,
         seeds of one name that differ in environments or apply, a second refactor of a type) is MQ7020 at `/operations/<n>`.
-      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, materialize-attributes, materialize-columns, sync-enum, set-lifecycle, set-initial, refresh-scenario, use-subjects, retag, tags-to-property, names-to-ids, fold-into-stereotype, map-by-name, resync-binding, rename-code, retire-code, merge-reference-types, rename-reference-type, upsert]
+        When the batch's refactors are planned, a state code they rewrite must be a live code of every other reference type its
+        lifecycle binds that held the old code, so a code two bound types share is renamed in both in one batch; and no
+        lifecycle may be left with two states of one code. Either is MQ7020 at the operation that rewrote the code.
+      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, materialize-attributes, materialize-columns, sync-enum, sync-codes, set-lifecycle, set-initial, refresh-scenario, use-subjects, retag, tags-to-property, names-to-ids, fold-into-stereotype, map-by-name, resync-binding, rename-code, retire-code, merge-reference-types, rename-reference-type, upsert]
     BatchOperation:
       x-engine-record: Maquettiste.Engine.BatchOperation
       description: |
@@ -8484,6 +8573,30 @@ components:
           type: [object, 'null']
           additionalProperties:
             type: string
+        entity:
+          description: >-
+            The subject whose binding the operation acts on. `sync-enum`: the subject whose bound enum is synced; absent means the
+            lifecycle's one enum binding, in either subject form. `sync-codes`: the subject whose attribute holds the state; on a
+            lifecycle in the one-subject form it must be that subject, on one that lists subjects an entity not listed gets an
+            entry, and a lifecycle with no subject gets `subjects` with one entry. An id, a qualified name or a placeholder, except
+            for `sync-codes`, which reads the model as it was before the batch: there it must name an existing entity (an id or a
+            qualified name, not a placeholder).
+          type: [string, 'null']
+        attribute:
+          description: >-
+            `sync-codes`: the attribute of `entity` (own, inherited or from a stereotype) that holds the state, single-valued and
+            typed by an enum, a reference type or a plain status (`string`, `text`, `int16`, `int32` or `int64`, directly or
+            through a scalar type); the operation binds it in the form the file has. It must name an existing attribute (an id or a
+            qualified name, not a placeholder): `sync-codes` reads the model as it was before the batch.
+          type: [string, 'null']
+        stateCodes:
+          description: >-
+            `sync-codes`: codes keyed by state id (or a state's qualified name), each a string or an integer; a listed state takes
+            its code, replacing one it has. Every other state that needs a code keeps its own or is matched (see
+            `POST /api/processes/{id}/sync-codes`). The operation creates no rows.
+          type: [object, 'null']
+          additionalProperties:
+            type: [string, integer]
         target:
           description: The schema that what lives in the removed schema moves to (`remove-schema`); the process (`set-lifecycle`); the child state (`set-initial`); the reference type merged into (`merge-reference-types`). An id, a qualified name or a placeholder.
           type: [string, 'null']
@@ -8666,7 +8779,7 @@ components:
           description: Whether validation.rules may set the rule to off (false for MQ1xxx).
         quickFix:
           type: string
-          enum: [sync-enum, set-lifecycle, set-initial, refresh-scenario, text-to-trees, use-subjects]
+          enum: [sync-enum, sync-codes, set-lifecycle, set-initial, refresh-scenario, text-to-trees, use-subjects]
           description: The batch operation that fixes a finding of the rule, applied to the finding's element (phase-3-design.md section 3); absent when the rule has none.
     Diagnostic:
       x-engine-record: Maquettiste.Engine.Diagnostics.Diagnostic
@@ -9886,6 +9999,9 @@ components:
         boundEnum:
           type: [string, 'null']
           description: The bound attribute's enum's id.
+        boundReferenceType:
+          type: string
+          description: The bound attribute's reference type's id (lifecycle-design.md decision 11); absent for any other binding.
     StateRecord:
       x-engine-record: Maquettiste.Engine.StateRecord
       description: A state.
@@ -14332,6 +14448,9 @@ components:
           default: false
         expectedHash:
           type: [string, 'null']
+        entity:
+          description: The subject whose bound enum is synced; absent means the lifecycle's one enum binding (lifecycle-design.md decision 15).
+          type: [string, 'null']
     SyncEnumRefusal:
       x-engine-record: Maquettiste.Engine.SyncEnumRefusal
       type: object
@@ -14366,6 +14485,90 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SyncEnumRefusal'
+        applied:
+          type: boolean
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Diagnostic'
+    SyncCodesRequest:
+      type: object
+      required: [entity, attribute]
+      properties:
+        entity:
+          description: The subject whose attribute holds the state.
+          $ref: '#/components/schemas/Ulid'
+        attribute:
+          description: The subject's attribute that holds the state (own, inherited or from a stereotype).
+          $ref: '#/components/schemas/Ulid'
+        stateCodes:
+          description: Codes keyed by state id, each a string or an integer; a listed state takes its code, replacing one it has.
+          type: [object, 'null']
+          additionalProperties:
+            type: [string, integer]
+        dryRun:
+          type: [boolean, 'null']
+          default: false
+        expectedHash:
+          type: [string, 'null']
+    SyncCodesState:
+      x-engine-record: Maquettiste.Engine.Processes.SyncCodesState
+      type: object
+      required: [state, path, code, source]
+      properties:
+        state:
+          $ref: '#/components/schemas/Ulid'
+        path:
+          type: string
+          description: The state's dotted name path from the root.
+        code:
+          type: [string, integer]
+          description: The code the state has after the sync.
+        source:
+          type: string
+          enum: [kept, given, name, label]
+          description: >-
+            Where the code comes from: `kept` the state had it, `given` from `stateCodes`, `name` a code of the attribute's type
+            equal to the state's name (case, `_` and `-` ignored), `label` a row or member whose label equals the state's display
+            name or name.
+    SyncCodesUnmatched:
+      x-engine-record: Maquettiste.Engine.Processes.SyncCodesUnmatched
+      type: object
+      required: [state, path, candidates]
+      properties:
+        state:
+          $ref: '#/components/schemas/Ulid'
+        path:
+          type: string
+        candidates:
+          description: The codes it matched more than one of, or that another state keeps or takes; empty when nothing matched.
+          type: array
+          items:
+            type: [string, integer]
+    SyncCodesResult:
+      x-engine-record: Maquettiste.Engine.Processes.SyncCodesResult
+      type: object
+      required: [process, entity, attribute, binds, codes, unmatched, applied, diagnostics]
+      properties:
+        process:
+          $ref: '#/components/schemas/Ulid'
+        entity:
+          type: string
+        attribute:
+          type: string
+        binds:
+          type: boolean
+          description: Whether the sync writes the binding (a new entry, a new binding, or another attribute than the one bound).
+        codes:
+          description: Every state that needs a code and has one after the sync, in document order; `source` other than `kept` is written.
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncCodesState'
+        unmatched:
+          description: Every state that needs a code and gets none, in document order; `stateCodes` gives them one.
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncCodesUnmatched'
         applied:
           type: boolean
         diagnostics:

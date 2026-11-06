@@ -71,7 +71,12 @@ describe("findings about a subjects entry", () => {
     });
     // A fetch by the entry's id answers the process, as the engine does.
     const docs = (id: string) => (id === "X1" || id === "P" ? process : id === "E" ? subject : undefined);
-    expect(deriveQuickFix(finding("MQ9203", "/subjects/0/boundAttribute"), "sync-enum", docs)).toEqual({ kind: "sync-enum", process: "P", label: "Sync enum" });
+    expect(deriveQuickFix(finding("MQ9203", "/subjects/0/boundAttribute"), "sync-enum", docs)).toEqual({
+      kind: "sync-enum",
+      process: "P",
+      label: "Sync enum",
+      entity: "E",
+    });
     expect(deriveQuickFix(finding("MQ9201", "/subjects/0/entity"), null, docs)).toMatchObject({ op: "set-lifecycle", id: "E", target: "P" });
   });
 });
@@ -82,7 +87,12 @@ describe("the Sync enum fix against the mock", () => {
   it("derives from the entry-id finding with the process's id", async () => {
     const d = rule(api.backend, "MQ9203")[0];
     expect(d.elementId).not.toBe(PAYMENT_LIFECYCLE);
-    expect(await freshQuickFix(api.services.drafts, d, "sync-enum")).toEqual({ kind: "sync-enum", process: PAYMENT_LIFECYCLE, label: "Sync enum" });
+    expect(await freshQuickFix(api.services.drafts, d, "sync-enum")).toEqual({
+      kind: "sync-enum",
+      process: PAYMENT_LIFECYCLE,
+      label: "Sync enum",
+      entity: subjectsOf(json(api.backend, PAYMENT_LIFECYCLE))[0].entity,
+    });
   });
 });
 

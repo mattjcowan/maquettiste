@@ -7,6 +7,7 @@ import type { components } from "@/api/schema";
 import * as endpoints from "@/api/endpoints";
 import { applyBatchResult, applySaveResult, indexQuery, keys } from "@/api/queries";
 import type { ModelJson } from "@/api/types";
+import { bindableAttributes } from "@/model/binding";
 import { subjectsOf } from "@/model/process";
 import { recordVerify, type VerifyResult } from "@/explorer/processApi";
 import { applyQuickFix } from "@/problems/applyQuickFix";
@@ -14,12 +15,77 @@ import type { EditorStore } from "@/state/store";
 
 export type SyncEnumResult = components["schemas"]["SyncEnumResult"];
 
-/** The sync-enum plan (dry run) or its application; a 422 refusal answers with the result and its diagnostics. */
-export async function syncEnum(process: string, dryRun: boolean): Promise<SyncEnumResult> {
-  const { data, error, response } = await api().POST("/api/processes/{id}/sync-enum", { params: { path: { id: process } }, body: { dryRun } });
+export type SyncCodesResult = components["schemas"]["SyncCodesResult"];
+
+/**
+ * The sync-enum plan (dry run) or its application; a 422 refusal answers with the result and its diagnostics. `entity`
+ * names the subject whose enum is synced; absent, the lifecycle's one enum binding (decision 15).
+ */
+export async function syncEnum(process: string, dryRun: boolean, entity?: string): Promise<SyncEnumResult> {
+  const { data, error, response } = await api().POST("/api/processes/{id}/sync-enum", {
+    params: { path: { id: process } },
+    body: { dryRun, ...(entity ? { entity } : {}) },
+  });
   if (data) return data;
   if (error && typeof error === "object" && "added" in error) return error as SyncEnumResult;
   throw new ApiProblem(response.status, null, `HTTP ${response.status}`);
+}
+
+export interface SyncCodesInput {
+  entity: string;
+  attribute: string;
+  stateCodes?: Record<string, string | number>;
+}
+
+/** The sync-codes plan (dry run) or its application; a 422 refusal answers with the result and its diagnostics. */
+export async function syncCodes(process: string, request: SyncCodesInput & { dryRun: boolean }): Promise<SyncCodesResult> {
+  const { data, error, response } = await api().POST("/api/processes/{id}/sync-codes", { params: { path: { id: process } }, body: request });
+  if (data) return data;
+  if (error && typeof error === "object" && "codes" in error) return error as SyncCodesResult;
+  throw new ApiProblem(response.status, null, `HTTP ${response.status}`);
+}
+
+/** Applies sync-codes and records it as one undo step on the process (the binding it writes is in the process file). */
+export async function applySyncCodes(qc: QueryClient, store: EditorStore, process: string, request: SyncCodesInput): Promise<SyncCodesResult> {
+  const before = await endpoints.getElement(process);
+  const result = await syncCodes(process, { ...request, dryRun: false });
+  if (!result.applied) return result;
+  const after = await refetch(qc, process);
+  store
+    .getState()
+    .pushUndo({ label: "Sync codes", ids: [process], before: [before.json as ModelJson], after: [after.json as ModelJson], afterHashes: [after.hash] });
+  void qc.invalidateQueries({ queryKey: keys.index });
+  void qc.invalidateQueries({ queryKey: keys.validation });
+  return result;
+}
+
+/**
+ * The binding the sync-codes quick fix acts on, since a state finding names no binding: the first subject, in order,
+ * whose bound attribute is not enum-typed, else the first bound subject. Null when no subject is bound.
+ */
+export async function pickCodesBinding(qc: QueryClient, process: Record<string, unknown>): Promise<{ entity: string; attribute: string } | null> {
+  const bound = subjectsOf(process).filter((e) => e.boundAttribute);
+  if (!bound.length) return null;
+  const docs = new Map<string, Record<string, unknown>>();
+  const read = async (id: string) => {
+    if (!docs.has(id)) docs.set(id, (await endpoints.getElement(id)).json as Record<string, unknown>);
+    return docs.get(id)!;
+  };
+  const stereotypes = new Map<string, Record<string, unknown>>();
+  for (const row of await qc.ensureQueryData(indexQuery)) if (row.kind === "stereotype") stereotypes.set(String((await read(row.id)).key), await read(row.id));
+  for (const entry of bound) {
+    // The entity and its bases, then the attribute among them (own, inherited or from a stereotype).
+    for (let at = await read(entry.entity); typeof at.base === "string" && !docs.has(at.base);) at = await read(at.base);
+    const attribute = bindableAttributes(
+      docs.get(entry.entity),
+      (id) => docs.get(id),
+      (key) => stereotypes.get(key),
+    ).find((a) => a.id === entry.boundAttribute);
+    const type = attribute?.type;
+    const ref = typeof type === "object" && type ? (type as { ref?: string }).ref : undefined;
+    if (!ref || (await read(ref)).kind !== "enum") return { entity: entry.entity, attribute: entry.boundAttribute! };
+  }
+  return { entity: bound[0].entity, attribute: bound[0].boundAttribute! };
 }
 
 /** Verifies one scenario (Replay); the explorer's statuses follow. */
@@ -37,9 +103,9 @@ async function refetch(qc: QueryClient, id: string) {
 }
 
 /** Applies the Sync enum plan and records it as one undo step on the enum. */
-export async function applySyncEnum(qc: QueryClient, store: EditorStore, process: string, enumId: string): Promise<SyncEnumResult> {
+export async function applySyncEnum(qc: QueryClient, store: EditorStore, process: string, enumId: string, entity?: string): Promise<SyncEnumResult> {
   const before = await endpoints.getElement(enumId);
-  const result = await syncEnum(process, false);
+  const result = await syncEnum(process, false, entity);
   if (!result.applied) return result;
   const after = await refetch(qc, enumId);
   store

@@ -2612,7 +2612,7 @@
   {
     "id": "MQ9019",
     "defaultSeverity": "error",
-    "description": "A process operation (sync-enum, set-lifecycle, set-initial, refresh-scenario, use-subjects) was refused: its element is not what the operation needs, the target is not a direct child or a process, the enum sync would remove members still in use, a scenario cannot be replayed to its last step, or another operation of the batch writes the process, enum or scenario it changes; fix the operation or the step, change the uses to a remaining member, or run it in a batch of its own.",
+    "description": "A process operation (sync-enum, sync-codes, set-lifecycle, set-initial, refresh-scenario, use-subjects) was refused: its element is not what the operation needs, the target is not a direct child or a process, the entity is not the subject it needs, the attribute cannot hold a state, a state code names no state that rests, the enum sync would remove members still in use, a scenario cannot be replayed to its last step, or another operation of the batch writes the process, enum or scenario it changes; fix the operation or the step, change the uses to a remaining member, or run it in a batch of its own.",
     "family": "MQ90xx",
     "familyLabel": "Processes",
     "canBeOff": true
@@ -2700,7 +2700,7 @@
   {
     "id": "MQ9202",
     "defaultSeverity": "error",
-    "description": "A bound attribute that is not a single-valued enum attribute of the subject (own, inherited or from a stereotype), or one set on an orchestration; bind a single-valued enum attribute of the subject.",
+    "description": "A bound attribute that is not a single-valued attribute of the subject (own, inherited or from a stereotype) typed by an enum, a reference type or a plain status (string, text, int16, int32 or int64, directly or through a scalar type), one set on an orchestration, or one attribute that two lifecycles bind for an entity both list; bind another attribute of the subject.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true
@@ -2717,7 +2717,7 @@
   {
     "id": "MQ9204",
     "defaultSeverity": "warning",
-    "description": "The bound enum is used by other attributes or processes, so syncing it from the process changes them too; give the lifecycle its own enum if they should not follow.",
+    "description": "The bound enum is used by other attributes or processes than the lifecycle's own subjects, so syncing it from the process changes them too; give the lifecycle its own enum if they should not follow.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true
@@ -2725,7 +2725,7 @@
   {
     "id": "MQ9205",
     "defaultSeverity": "warning",
-    "description": "The bound attribute's default is not the lifecycle's initial root-level state; set the default to that state's name.",
+    "description": "The bound attribute's default is not where the lifecycle starts: for an enum binding the initial root-level state's name, for any other binding the initial state's code; set the default to it.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true
@@ -2733,7 +2733,23 @@
   {
     "id": "MQ9206",
     "defaultSeverity": "error",
-    "description": "State codes clash: two states share a code (1 and \"1\" are one code), codes mix strings and integers, or a history or choice state has a code; give each state that rests its own code, all strings or all integers.",
+    "description": "State codes clash: two states share a code (1 and \"1\" are one code), codes mix strings and integers, a history or choice state has a code, or, under a binding, two coded states sit on one path or a coded state sits in a parallel region; give each state that rests its own code, all strings or all integers, at most one per configuration.",
+    "family": "MQ92xx",
+    "familyLabel": "Lifecycles",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9207",
+    "defaultSeverity": "error",
+    "description": "A state code does not fit its binding: under an enum binding it is not its member's key, integer value or name (or the state is not at the root); under a reference type it is not a live code of the type; under a plain status it does not fit the attribute's type, length, pattern or allowedValues; write a code that fits.",
+    "family": "MQ92xx",
+    "familyLabel": "Lifecycles",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9208",
+    "defaultSeverity": "warning",
+    "description": "Once the lifecycle has codes, values a binding can hold that no state's code covers: the bound attribute's allowedValues, else the reference type's rows; add a state with each code, or narrow allowedValues.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true
@@ -2746,6 +2762,15 @@
     "familyLabel": "Lifecycles",
     "canBeOff": true,
     "quickFix": "use-subjects"
+  },
+  {
+    "id": "MQ9210",
+    "defaultSeverity": "warning",
+    "description": "Under a binding by code, or an enum binding once the lifecycle has codes, a reachable state that a configuration rests in has no code, so the bound attribute has no value for it; give the state a code.",
+    "family": "MQ92xx",
+    "familyLabel": "Lifecycles",
+    "canBeOff": true,
+    "quickFix": "sync-codes"
   },
   {
     "id": "MQ9301",

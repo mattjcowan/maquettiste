@@ -32,7 +32,8 @@ import type {
 import { sha256Hex } from "@/lib/sha256";
 import { clone, jsonEqual } from "@/lib/json";
 import { schemaValidator, describeErrors } from "../contract";
-import { referencesOf, subElementIds, type Ref } from "./refs";
+import { referencesOf, rowResolverOf, subElementIds, type Ref } from "./refs";
+import { syncCodesOf } from "./syncCodes";
 import { planDelete } from "./cascade";
 import { typedElement } from "./typed";
 import { applyRules, diagnosticKey, validateModel, type ModelEntry } from "./validate";
@@ -281,12 +282,13 @@ export class MockModel {
     if (!target) return null;
     const ids = new Set(target.id !== id ? [id] : [target.id, ...subElementIds(target.json)]);
     const out: ReferenceInfo[] = [];
+    const rows = rowResolverOf(() => [...this.entries.values()].map((e) => e.json));
     const from = [...this.derived().referrersOf(ids)]
       .flatMap((r) => this.entries.get(r) ?? [])
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
     for (const entry of from) {
       if (entry.id === target.id) continue;
-      for (const ref of referencesOf(entry.json))
+      for (const ref of referencesOf(entry.json, rows))
         if (ids.has(ref.toId)) out.push({ fromElementId: entry.id, fromId: ref.fromId, jsonPointer: ref.pointer, field: ref.field, toId: ref.toId });
     }
     return out;
@@ -724,9 +726,10 @@ export class MockModel {
   private referrers(target: Entry, from: Iterable<Entry>, excluding: Set<string>): { entry: Entry; ref: Ref }[] {
     const ids = new Set([target.id, ...subElementIds(target.json)]);
     const out: { entry: Entry; ref: Ref }[] = [];
+    const rows = rowResolverOf(() => [...this.entries.values()].map((e) => e.json));
     for (const entry of from) {
       if (entry.id === target.id || excluding.has(entry.id)) continue;
-      for (const ref of referencesOf(entry.json)) if (ids.has(ref.toId)) out.push({ entry, ref });
+      for (const ref of referencesOf(entry.json, rows)) if (ids.has(ref.toId)) out.push({ entry, ref });
     }
     return out;
   }
@@ -990,6 +993,37 @@ export class MockModel {
           candidate.set(entry.id, entry);
           items.push({ outcome: "saved", id: entry.id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
         }
+        continue;
+      }
+      if (op.op === "sync-codes") {
+        // Lifecycle-design.md decision 19: the plan's codes and binding written to the process, in the form the file has.
+        const { entity, attribute, stateCodes } = op as { entity?: string; attribute?: string; stateCodes?: Json };
+        const existing = candidate.get(op.id ?? "");
+        if (!existing || existing.json.kind !== "process") {
+          fail(this.notFound(op.id ?? ""));
+          continue;
+        }
+        const outcome = syncCodesOf({ entries: candidate }, existing.json, entity, attribute, stateCodes, this.options.newId);
+        if ("problem" in outcome) {
+          fail(
+            this.invalid(op.id ?? null, [
+              {
+                rule: "MQ9019",
+                severity: "error",
+                message: outcome.problem,
+                elementId: op.id ?? null,
+                filePath: null,
+                jsonPointer: "",
+                line: null,
+                column: null,
+              },
+            ]),
+          );
+          continue;
+        }
+        const entry = this.entryFor(outcome.next, existing);
+        candidate.set(entry.id, entry);
+        items.push({ outcome: "saved", id: entry.id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
         continue;
       }
       if (op.op === "set-initial" || op.op === "set-lifecycle") {

@@ -513,7 +513,10 @@ public sealed record ProcessRecord(string Id, string Kind, string Name, string? 
 /// <param name="Entity">The entity's id.</param>
 /// <param name="BoundAttribute">The bound attribute's id.</param>
 /// <param name="BoundEnum">The bound attribute's enum's id.</param>
-public sealed record SubjectRecord(string Id, string Entity, string? BoundAttribute, string? BoundEnum);
+/// <param name="BoundReferenceType">The bound attribute's reference type's id (lifecycle-design.md decision 11); <see langword="null"/>, and left
+/// out of the JSON, for any other binding.</param>
+public sealed record SubjectRecord(string Id, string Entity, string? BoundAttribute, string? BoundEnum,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? BoundReferenceType = null);
 
 /// <summary>A state of a process.</summary>
 /// <param name="Id">The state id.</param>
@@ -1351,7 +1354,7 @@ public static class ResolvedRecords
             [.. p.Invokes.Select(i => new InvokeRecord(i.Id, i.Name, i.Type, i.Process?.Id, Ids(i.Actors), i.State.Id, i.DisplayName, i.Description, Keys(i.Stereotypes), Plain(i.Properties)))],
             Ids(p.Actors), Ids(p.Scenarios),
             p.DisplayName!, p.PluralName!, p.Description, p.Tags, p.Category?.Id, Keys(p.Stereotypes), Plain(p.Properties), p.Generation,
-            p.ListsSubjects ? [.. p.Subjects.Select(s => new SubjectRecord(s.Id, s.Entity.Id, s.BoundAttribute?.Id, s.BoundEnum?.Id))] : null,
+            p.ListsSubjects ? [.. p.Subjects.Select(s => new SubjectRecord(s.Id, s.Entity.Id, s.BoundAttribute?.Id, s.BoundEnum?.Id, s.BoundReferenceType?.Id))] : null,
             p.HasCodes ? p.CodesMap : null);
 
         public ActorRecord Actor(RActor a) => new(a.Id, "actor", a.Name, a.Package?.Id, a.Type, Ids(a.Processes), Ids(a.Events), Ids(a.Gates),

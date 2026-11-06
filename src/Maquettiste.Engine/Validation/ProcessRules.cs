@@ -70,13 +70,14 @@ internal static partial class ProcessRules
             report.Add("MQ9020", $"Process '{process.Name}' lists gates of its own, which only a library does; put each gate on its transition, or set use to library.", "/gates");
         var analysis = new ProcessAnalysis(process);
         var locals = Locals.Of(process);
+        var codes = ProcessCodes.Of(process);
         CheckStates(context, analysis, locals, report);
-        CheckCodes(process, report);
+        CheckCodes(process, codes, report);
         CheckTransitions(context, analysis, locals, report);
         CheckReachability(analysis, report);
         CheckUnused(process, locals, report);
         CheckInvokes(context, process, analysis, report);
-        CheckLifecycle(context, process, analysis, report);
+        CheckLifecycle(context, process, analysis, codes, report);
         CheckNodeNames(context, process, report);
         CheckNodeStereotypes(context, process, report);
     }
@@ -747,8 +748,8 @@ internal static partial class ProcessRules
         }
     }
 
-    // MQ9209, MQ9201 (process side), MQ9202, MQ9203, MQ9204, MQ9205.
-    private static void CheckLifecycle(ValidationContext context, Process process, ProcessAnalysis analysis, Report report)
+    // MQ9209, MQ9201 (process side), MQ9202 to MQ9208, MQ9210, and MQ9206's clause under a binding.
+    private static void CheckLifecycle(ValidationContext context, Process process, ProcessAnalysis analysis, ProcessCodes codes, Report report)
     {
         var model = context.Model;
         // The one-subject form is deprecated on lifecycles and orchestrations alike (lifecycle-design.md decision 6). It warns only where
@@ -776,33 +777,37 @@ internal static partial class ProcessRules
             return;
         }
 
+        var bindings = new List<(BindingType Type, Entity Subject, ModelAttribute Attribute)>();
         if (entries is not null)
         {
-            CheckSubjects(context, process, analysis, entries, report);
-            return;
+            CheckSubjects(context, process, analysis, codes, entries, bindings, report);
         }
-
-        if (process.Subject is null)
+        else if (process.Subject is null)
         {
             report.Add("MQ9201", $"Process '{process.Name}' is a lifecycle without a subject; set subject to the entity it describes.", "/use");
             return;
         }
-
-        if (model.Get<Entity>(process.Subject) is not { } subject)
-            return; // MQ2001 or MQ2002
-        if (!string.Equals(subject.Lifecycle, process.Id, StringComparison.Ordinal))
+        else
         {
-            var current = subject.Lifecycle is not null && model.Get<Process>(subject.Lifecycle) is { } other ? $"names process '{other.Name}'" : "is not set";
-            report.Add("MQ9201", $"Process '{process.Name}' is the lifecycle of entity '{subject.Name}', but the entity's lifecycle {current}; set the entity's lifecycle to this process.", "/subject");
+            if (model.Get<Entity>(process.Subject) is not { } subject)
+                return; // MQ2001 or MQ2002
+            if (!string.Equals(subject.Lifecycle, process.Id, StringComparison.Ordinal))
+            {
+                var current = subject.Lifecycle is not null && model.Get<Process>(subject.Lifecycle) is { } other ? $"names process '{other.Name}'" : "is not set";
+                report.Add("MQ9201", $"Process '{process.Name}' is the lifecycle of entity '{subject.Name}', but the entity's lifecycle {current}; set the entity's lifecycle to this process.", "/subject");
+            }
+
+            if (process.BoundAttribute is not null)
+                CheckBinding(context, process, analysis, codes, subject, process.BoundAttribute, "/boundAttribute", null, bindings, report);
         }
 
-        if (process.BoundAttribute is not null)
-            CheckBinding(context, process, analysis, subject, process.BoundAttribute, "/boundAttribute", null, report);
+        CheckBoundCodes(process, analysis, codes, bindings, report);
     }
 
     // The subjects form (lifecycle-design.md decisions 5 and 8): a lifecycle lists at least one entity, each once. An entity need not name
     // the lifecycle back, since several may govern it. Each entry's binding is judged as the one-subject form's is.
-    private static void CheckSubjects(ValidationContext context, Process process, ProcessAnalysis analysis, IReadOnlyList<ProcessSubject> entries, Report report)
+    private static void CheckSubjects(ValidationContext context, Process process, ProcessAnalysis analysis, ProcessCodes codes, IReadOnlyList<ProcessSubject> entries,
+        List<(BindingType Type, Entity Subject, ModelAttribute Attribute)> bindings, Report report)
     {
         var model = context.Model;
         if (entries.Count == 0)
@@ -823,34 +828,117 @@ internal static partial class ProcessRules
             }
 
             if (entry.BoundAttribute is not null && model.Get<Entity>(entry.Entity) is { } entity) // else MQ2001 or MQ2002
-                CheckBinding(context, process, analysis, entity, entry.BoundAttribute, "/subjects/" + N(i) + "/boundAttribute", entry.Id, report);
+                CheckBinding(context, process, analysis, codes, entity, entry.BoundAttribute, "/subjects/" + N(i) + "/boundAttribute", entry.Id, bindings, report);
         }
     }
+
+    // What every binding of a lifecycle asks of its codes together (lifecycle-design.md decisions 4, 12 and 13): under any binding the codes
+    // form a map (MQ9206), and under a binding that stores codes, or an enum binding once the lifecycle has codes, each state a configuration
+    // rests in has one (MQ9210, a warning, so an edit that adds a state before its code is never refused). A process with no binding, or
+    // with only enum bindings and no codes, as every lifecycle had before codes, is judged by neither.
+    private static void CheckBoundCodes(Process process, ProcessAnalysis analysis, ProcessCodes codes, List<(BindingType Type, Entity Subject, ModelAttribute Attribute)> bindings,
+        Report report)
+    {
+        if (bindings.Count == 0)
+            return;
+        var settled = codes.Coded.Where(c => c.State.Type is not (StateType.History or StateType.Choice)).ToList();
+        if (settled.Count > 0 && !codes.IsMap)
+        {
+            foreach (var coded in settled)
+            {
+                if (coded.CodedAncestor is { } ancestor)
+                {
+                    report.Add("MQ9206", $"State '{PathOf(analysis, coded.State.Id)}' of process '{process.Name}' has a code, and so does '{PathOf(analysis, ancestor.Id)}' above it, but the process binds an attribute, which holds one code per configuration; remove one of the two codes.",
+                        coded.Pointer + "/code", coded.State.Id);
+                }
+                else if (coded.UnderParallel)
+                {
+                    report.Add("MQ9206", $"State '{PathOf(analysis, coded.State.Id)}' of process '{process.Name}' has a code inside a region of a parallel state, but the process binds an attribute, which holds one code per configuration; give the parallel state, or a state above it, the code instead.",
+                        coded.Pointer + "/code", coded.State.Id);
+                }
+            }
+        }
+
+        var needing = bindings.FirstOrDefault(b => b.Type.NeedsCodes);
+        if (needing.Attribute is null && settled.Count == 0)
+            return;
+        if (needing.Attribute is null)
+            needing = bindings[0];
+        foreach (var node in LifecycleBindings.Uncoded(analysis, codes))
+        {
+            if (!analysis.Reachable.Contains(node.Id))
+                continue; // MQ9003
+            // Under enum bindings only, the member holds the value: what the state lacks is the code the other states have.
+            report.Add("MQ9210", needing.Type.NeedsCodes
+                    ? $"State '{node.Path}' of process '{process.Name}' has no code, so attribute '{needing.Attribute.Name}' of entity '{needing.Subject.Name}', which the process binds, has no value for it; give the state a code."
+                    : $"State '{node.Path}' has no code, though other states of process '{process.Name}' have one; give it the code its member stands for, or remove the others.",
+                node.Pointer, node.Id);
+        }
+    }
+
+    private static string PathOf(ProcessAnalysis analysis, string stateId) => analysis.Find(stateId)?.Path ?? stateId;
 
     private static string SubjectLabel(ModelSnapshot model, ProcessSubject entry) =>
         model.Get<Entity>(entry.Entity) is { } entity ? "entity '" + entity.Name + "'" : "'" + entry.Entity + "'";
 
-    // MQ9202 to MQ9205 for one subject's binding, at its pointer (and, for a subjects entry, under the entry's id).
-    private static void CheckBinding(ValidationContext context, Process process, ProcessAnalysis analysis, Entity subject, string boundAttribute, string pointer,
-        string? entryId, Report report)
+    // MQ9202 to MQ9205, MQ9207 and MQ9208 for one subject's binding, at its pointer (and, for a subjects entry, under the entry's id); MQ9207 at
+    // each code that does not fit. A binding that can hold a state joins bindings, for what the lifecycle's bindings ask together.
+    private static void CheckBinding(ValidationContext context, Process process, ProcessAnalysis analysis, ProcessCodes codes, Entity subject, string boundAttribute,
+        string pointer, string? entryId, List<(BindingType Type, Entity Subject, ModelAttribute Attribute)> bindings, Report report)
     {
         var model = context.Model;
         var flat = context.Flatten(subject).FirstOrDefault(f => string.Equals(f.Attribute.Id, boundAttribute, StringComparison.Ordinal));
         if (flat is null)
         {
-            report.Add("MQ9202", $"The bound attribute of process '{process.Name}' is not an attribute of entity '{subject.Name}' (own, inherited or from a stereotype); bind one of the subject's enum attributes.", pointer, entryId);
+            report.Add("MQ9202", $"The bound attribute of process '{process.Name}' is not an attribute of entity '{subject.Name}' (own, inherited or from a stereotype); bind one of the subject's attributes that can hold the state.", pointer, entryId);
             return;
         }
 
         var attribute = flat.Attribute;
-        var enumType = attribute.Type.Ref is { } typeId ? model.Get<EnumType>(typeId) : null;
-        if (enumType is null || attribute.Collection || enumType.Flags)
+        var type = LifecycleBindings.Classify(model, attribute);
+        if (type.Kind == BindingKind.Unsupported)
         {
-            var why = enumType is null ? "is not enum-typed" : attribute.Collection ? "is a collection" : $"is typed by the flags enum '{enumType.Name}', which holds several members at once";
-            report.Add("MQ9202", $"The bound attribute '{attribute.Name}' of process '{process.Name}' {why}; bind a single-valued enum attribute of '{subject.Name}'.", pointer, entryId);
+            report.Add("MQ9202", $"The bound attribute '{attribute.Name}' of process '{process.Name}' {type.Why}; bind a single-valued attribute of '{subject.Name}' typed by an enum, a reference type, or a string or integer type.", pointer, entryId);
             return;
         }
 
+        // Two lifecycles may not bind one attribute for an entity both list by name (decision 11); a base or derived entity does not count.
+        // Two lifecycles in the one-subject form already disagree on the entity's one lifecycle (MQ9201), and stay as they were.
+        foreach (var other in LifecycleBindings.Of(model).ByAttribute.GetValueOrDefault(attribute.Id, []))
+        {
+            if (ReferenceEquals(other.Process, process) || string.Equals(other.Process.Id, process.Id, StringComparison.Ordinal)
+                || !string.Equals(other.Entity, subject.Id, StringComparison.Ordinal) || (process.UsesOneSubjectForm && other.Process.UsesOneSubjectForm))
+            {
+                continue;
+            }
+
+            report.Add("MQ9202", $"Processes '{process.Name}' and '{other.Process.Name}' both bind attribute '{attribute.Name}' for entity '{subject.Name}', which both list, and one attribute holds one lifecycle's state; bind another attribute in one of them.", pointer, entryId);
+        }
+
+        bindings.Add((type, subject, attribute));
+        switch (type.Kind)
+        {
+            case BindingKind.Enum:
+                CheckEnumBinding(context, process, analysis, codes, subject, attribute, type.Enum!, pointer, entryId, report);
+                return;
+            case BindingKind.Reference:
+                CheckReferenceCodes(context, process, codes, subject, attribute, type.Reference!, report);
+                break;
+            default:
+                CheckPlainCodes(process, codes, subject, attribute, type.Plain!, report);
+                break;
+        }
+
+        CheckInitialCode(process, analysis, codes, attribute, pointer, entryId, report);
+        CheckUncoveredValues(context, process, codes, subject, attribute, type, pointer, entryId, report);
+    }
+
+    // MQ9203 to MQ9205 and MQ9207 for an enum binding (decision 14): states match the enum's members by name, as before codes, and a root
+    // state's code names its member by one of the member's own identifiers.
+    private static void CheckEnumBinding(ValidationContext context, Process process, ProcessAnalysis analysis, ProcessCodes codes, Entity subject, ModelAttribute attribute,
+        EnumType enumType, string pointer, string? entryId, Report report)
+    {
+        var model = context.Model;
         var states = BoundStates(process).ToList();
         var members = enumType.Members.Select(m => m.Name).ToList();
         if (!states.SequenceEqual(members, StringComparer.Ordinal))
@@ -867,8 +955,10 @@ internal static partial class ProcessRules
             report.Add("MQ9203", $"The members of enum '{enumType.Name}' differ from the states of process '{process.Name}' ({Names(states)}): {string.Join("; ", parts)}. Sync the enum from the process.", pointer, entryId);
         }
 
+        // Subjects of one lifecycle may share the enum without warning about each other (decision 15).
+        var own = process.Subjects.Select(s => s.BoundAttribute).OfType<string>().ToHashSet(StringComparer.Ordinal);
         var others = model.ReferencesTo(enumType.Id)
-            .Where(r => r.JsonPointer.EndsWith("/type/ref", StringComparison.Ordinal) && !string.Equals(r.FromId, attribute.Id, StringComparison.Ordinal))
+            .Where(r => r.JsonPointer.EndsWith("/type/ref", StringComparison.Ordinal) && !own.Contains(r.FromId))
             .Select(r => AttributeLabel(model, r)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         if (others.Count > 0)
             report.Add("MQ9204", $"Enum '{enumType.Name}', bound by process '{process.Name}', is also used by {Names(others.Select(o => "'" + o + "'"))}: syncing it from the process changes them too. Give the lifecycle its own enum if they should not follow.", pointer, entryId);
@@ -879,13 +969,138 @@ internal static partial class ProcessRules
             var current = attribute.Default is { } d ? $"is {d.GetRawText()}" : "is not set";
             report.Add("MQ9205", $"The default of bound attribute '{attribute.Name}' {current}, but process '{process.Name}' starts in '{initial.State.Name}'; set the default to '{initial.State.Name}'.", pointer, entryId);
         }
+
+        // A code names the same member as the state's name: the member's key, its integer value or its name, compared as codes are. The
+        // enum maps root states only, so a nested state's code has no member to name.
+        foreach (var coded in codes.Coded)
+        {
+            if (coded.State.Type is StateType.History or StateType.Choice || analysis.Find(coded.State.Id) is not { } node)
+                continue; // MQ9206
+            var code = ProcessCodes.Text(coded.State.Code!.Value);
+            if (node.Parent is not null)
+            {
+                report.Add("MQ9207", $"State '{node.Path}' of process '{process.Name}' has code {code}, but enum '{enumType.Name}', which attribute '{attribute.Name}' of entity '{subject.Name}' binds, holds root states only, by name; move the code to root state '{node.Path.Split('.')[0]}', or remove it.",
+                    coded.Pointer + "/code", coded.State.Id);
+                continue;
+            }
+
+            if (enumType.Members.FirstOrDefault(m => string.Equals(m.Name, coded.State.Name, StringComparison.Ordinal)) is not { } member)
+                continue; // MQ9203
+            if (string.Equals(member.Code, coded.Key, StringComparison.Ordinal) || string.Equals(member.Name, coded.Key, StringComparison.Ordinal)
+                || (member.Value is { } number && string.Equals(number.ToString(CultureInfo.InvariantCulture), coded.Key, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            var identifiers = new List<string>();
+            if (member.Code is { } key)
+                identifiers.Add("'" + key + "'");
+            if (member.Value is { } v)
+                identifiers.Add(v.ToString(CultureInfo.InvariantCulture));
+            identifiers.Add("'" + member.Name + "'");
+            report.Add("MQ9207", $"State '{node.Path}' of process '{process.Name}' has code {code}, but member '{member.Name}' of enum '{enumType.Name}', which attribute '{attribute.Name}' of entity '{subject.Name}' binds, is {Names(identifiers)}; write one of those as the code.",
+                coded.Pointer + "/code", coded.State.Id);
+        }
+    }
+
+    // MQ9207 for a reference binding (decision 16): every code is a live code of the type; a former code is reported with its replacement.
+    private static void CheckReferenceCodes(ValidationContext context, Process process, ProcessCodes codes, Entity subject, ModelAttribute attribute, ReferenceType type,
+        Report report)
+    {
+        foreach (var coded in codes.Coded)
+        {
+            if (coded.State.Type is StateType.History or StateType.Choice)
+                continue; // MQ9206
+            var value = coded.State.Code!.Value;
+            if (!context.CodeMissing(type.Id, value))
+                continue;
+            var where = $"State '{coded.State.Name}' of process '{process.Name}' has code {ProcessCodes.Text(value)}";
+            var binding = $"reference type '{type.Name}', which attribute '{attribute.Name}' of entity '{subject.Name}' binds";
+            if (context.ReferenceData.ReplacedByOf(type.Id, value) is { } rowId)
+            {
+                var current = ReferenceDataRules.CodeOfRow(context, rowId);
+                report.Add("MQ9207", current is not null
+                        ? $"{where}, a former code of {binding}; write '{current}', the code of the row that replaced it."
+                        : $"{where}, a former code of {binding}; write the code of row {rowId}, which replaced it.",
+                    coded.Pointer + "/code", coded.State.Id);
+            }
+            else
+            {
+                report.Add("MQ9207", $"{where}, which is not a code of {binding}; write one of its codes, or add a row with it.", coded.Pointer + "/code", coded.State.Id);
+            }
+        }
+    }
+
+    // MQ9207 for a plain status (decision 16): every code fits the attribute's type, length, pattern and allowedValues, as a default would.
+    private static void CheckPlainCodes(Process process, ProcessCodes codes, Entity subject, ModelAttribute attribute, EffectiveType type,
+        Report report)
+    {
+        foreach (var coded in codes.Coded)
+        {
+            if (coded.State.Type is StateType.History or StateType.Choice)
+                continue; // MQ9206
+            var value = coded.State.Code!.Value;
+            if (AttributeRules.DefaultMismatch(type, attribute, value) is not { } reason)
+                continue;
+            report.Add("MQ9207", $"State '{coded.State.Name}' of process '{process.Name}' has code {ProcessCodes.Text(value)}, which does not fit attribute '{attribute.Name}' of entity '{subject.Name}' ({type.Describe()}), which the process binds: {reason}; write a code that fits it.",
+                coded.Pointer + "/code", coded.State.Id);
+        }
+    }
+
+    // MQ9205 for a binding by code: the bound attribute's default is the code of the configuration the process starts in, when it has one
+    // (MQ9210 reports a missing one).
+    private static void CheckInitialCode(Process process, ProcessAnalysis analysis, ProcessCodes codes, ModelAttribute attribute, string pointer, string? entryId, Report report)
+    {
+        var node = analysis.InitialOf(null);
+        while (node is { Type: StateType.Compound } && codes.Find(node.Id) is null)
+            node = analysis.InitialOf(node);
+        if (node is null or { Type: StateType.History or StateType.Choice } || codes.CodedStateOf(node.Id) is not { Code: { } code } coded)
+            return;
+        if (attribute.Default is { } d && string.Equals(ReferenceDataIndex.CodeKey(d), ReferenceDataIndex.CodeKey(code), StringComparison.Ordinal))
+            return;
+        var current = attribute.Default is { } given ? $"is {given.GetRawText()}" : "is not set";
+        report.Add("MQ9205", $"The default of bound attribute '{attribute.Name}' {current}, but process '{process.Name}' starts in '{PathOf(analysis, coded.Id)}', whose code is {ProcessCodes.Text(code)}; set the default to {ProcessCodes.Text(code)}.",
+            pointer, entryId);
+    }
+
+    // MQ9208 (decision 17): the values a binding can hold that no state's code covers, once per binding: the attribute's allowedValues when
+    // it has them (else a scalar type's), else a reference type's stored rows. Rows a script fills are not judged, and a lifecycle with no
+    // codes yet is left to MQ9210.
+    private static void CheckUncoveredValues(ValidationContext context, Process process, ProcessCodes codes, Entity subject, ModelAttribute attribute, BindingType type,
+        string pointer, string? entryId, Report report)
+    {
+        // While the lifecycle has no codes, MQ9210 already asks one of each state it rests in; listing every value as well adds nothing.
+        var covered = codes.Coded.Where(c => c.State.Type is not (StateType.History or StateType.Choice)).Select(c => c.Key).ToHashSet(StringComparer.Ordinal);
+        if (covered.Count == 0)
+            return;
+        var values = new List<string>();
+        var allowed = attribute.Validation?.AllowedValues is { Count: > 0 } own ? own : type.Plain?.Scalar?.Validation?.AllowedValues ?? [];
+        if (allowed.Count > 0)
+        {
+            foreach (var value in allowed)
+            {
+                if (ReferenceDataIndex.CodeKey(value) is { } key && !values.Contains(key, StringComparer.Ordinal))
+                    values.Add(key);
+            }
+        }
+        else if (type.Reference is { } reference && context.ReferenceData.Codes.TryGetValue(reference.Id, out var rows))
+        {
+            values.AddRange(rows.Keys.Order(StringComparer.Ordinal));
+        }
+
+        var uncovered = values.Where(v => !covered.Contains(v)).ToList();
+        if (uncovered.Count == 0)
+            return;
+        var shown = Names(uncovered.Take(10).Select(v => "'" + v + "'")) + (uncovered.Count > 10 ? $" and {N(uncovered.Count - 10)} more" : "");
+        var from = allowed.Count > 0 ? "allowedValues of attribute '" + attribute.Name + "'" : "the rows of reference type '" + type.Reference!.Name + "'";
+        report.Add("MQ9208", $"No state of process '{process.Name}' has {(uncovered.Count == 1 ? "the value" : "the values")} {shown} from {from} of entity '{subject.Name}', which the process binds; add a state with each code, or narrow the attribute's allowedValues.",
+            pointer, entryId);
     }
 
     // MQ9206 (lifecycle-design.md decision 1): codes unique within the process, of one kind, and none on a history or choice state. Codes
     // need no binding, so every process that runs is judged.
-    private static void CheckCodes(Process process, Report report)
+    private static void CheckCodes(Process process, ProcessCodes codes, Report report)
     {
-        var codes = ProcessCodes.Of(process);
         if (codes.Coded.Count == 0)
             return;
         foreach (var coded in codes.OnHistoryOrChoice)

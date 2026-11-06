@@ -131,6 +131,47 @@ public sealed class ModelIndexerPatchTests
             ModelSnapshot.CreateAfter(previous, documents, previous.Settings, "", [], [], version, null, 2, TestContext.Current.CancellationToken);
     }
 
+    [Fact]
+    public void A_bound_attribute_that_comes_back_builds_the_index_in_full()
+    {
+        // lifecycle-design.md decision 18: a lifecycle that binds an attribute the model does not have yet indexes no code uses; a later
+        // save that adds the attribute, typed by a reference type, turns each state code into a use of its row. The patch keeps the
+        // attribute types it had, so it must build in full, and the result equals a full build.
+        var b = new ModelBuilder(41);
+        var stateType = new ReferenceType
+        {
+            Id = b.NewId(), Name = "OrderState",
+            Code = new ReferenceCode { Id = b.NewId(), Length = 8 }, Label = new ReferenceLabel { Id = b.NewId(), Length = 40 },
+        };
+        b.Add(stateType);
+        var draftRow = b.NewId();
+        b.Add(new Seed
+        {
+            Id = b.NewId(), Name = "orderStates", Target = stateType.Id, Columns = ["code", "label"],
+            Rows = [new SeedRow { Id = draftRow, Values = [System.Text.Json.JsonSerializer.SerializeToElement("draft"), System.Text.Json.JsonSerializer.SerializeToElement("Draft")] }],
+        });
+        string? bound = null;
+        var order = b.Entity("Order").Key("id", "uuid").Attr("state", new TypeSource(stateType.Id), a => bound = a.Id);
+        b.Add(new Process
+        {
+            Id = b.NewId(), Name = "OrderLife", Use = ProcessUse.Lifecycle, Subject = order.Id, BoundAttribute = bound,
+            States = [new ProcessState { Id = b.NewId(), Name = "Draft", Code = System.Text.Json.JsonSerializer.SerializeToElement("draft") }],
+        });
+        var documents = b.BuildDocuments().OrderBy(d => d.Path, StringComparer.Ordinal).ToList();
+        var before = documents.Select(d => d.Element.Id == order.Id
+            ? d with { Element = (Entity)d.Element with { Attributes = [.. ((Entity)d.Element).Attributes.Where(a => a.Id != bound)] }, Hash = d.Hash + "0" }
+            : d).ToList();
+        var previous = Full(before);
+        Assert.DoesNotContain(previous.ReferencesTo(draftRow), r => r.Field == "code");
+
+        var after = ModelSnapshot.CreateAfter(previous, documents, previous.Settings, "", [], [], 2, null, 2, TestContext.Current.CancellationToken);
+        Assert.False(after.Index.Patched);
+        AssertSameIndex(Full(documents), after, "attribute added");
+        Assert.Single(after.ReferencesTo(draftRow), r => r.Field == "code");
+    }
+
+    private sealed record TypeSource(string Id) : ITypeSource;
+
     private const string TypedLinks = """{ "partner": { "type": "string", "x-ref": { "kind": "entity" } } }""";
 
     private const string OptionalLinks = """{ "partner": { "type": "string", "x-ref": { "kind": "entity", "optional": true } } }""";

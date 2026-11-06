@@ -9,7 +9,7 @@ using Maquettiste.Engine.Processes;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste process simulate|record|verify|export|import|sync-enum</c> (phase-3-design.md section 4.4): the process operations of
+/// <c>maquettiste process simulate|record|verify|export|import|sync-enum|sync-codes</c> (phase-3-design.md section 4.4; sync-codes, lifecycle-design.md decision 19): the process operations of
 /// the editor API from the command line. A process is named by id, name or model path; writes preview unless <c>--apply</c>.
 /// </summary>
 /// <remarks>
@@ -18,7 +18,7 @@ namespace Maquettiste.Cli.Commands;
 /// </remarks>
 internal static class ProcessCommand
 {
-    private const string Verbs = "simulate, record, verify, export, import or sync-enum";
+    private const string Verbs = "simulate, record, verify, export, import, sync-enum or sync-codes";
 
     // The API's bodies (every member written, nulls included), indented with \n line ends.
     private static readonly JsonSerializerOptions Output = new(JsonSerializerDefaults.Web)
@@ -54,7 +54,10 @@ internal static class ProcessCommand
                 line.Expect("process import", 3, "--domain", "--name", "--use", "--subject", "--into", "--apply", "--format");
                 break;
             case "sync-enum":
-                line.Expect("process sync-enum", 3, "--apply", "--check", "--format");
+                line.Expect("process sync-enum", 3, "--apply", "--check", "--format", "--entity");
+                break;
+            case "sync-codes":
+                line.Expect("process sync-codes", 5, "--apply", "--check", "--format");
                 break;
             default:
                 throw new UsageException($"Unknown process verb '{verb}': use {Verbs}.");
@@ -80,7 +83,8 @@ internal static class ProcessCommand
                 "verify" => await VerifyAsync(context, store, snapshot, [.. line.Positionals.Skip(2)], json, ct).ConfigureAwait(false),
                 "export" => await ExportAsync(context, store, Resolve(snapshot, line.Positionals[2]), ct).ConfigureAwait(false),
                 "import" => await ImportAsync(context, store, snapshot, line.Positionals[2], json, ct).ConfigureAwait(false),
-                _ => await SyncEnumAsync(context, store, Resolve(snapshot, line.Positionals[2]), json, ct).ConfigureAwait(false),
+                "sync-codes" => await SyncCodesAsync(context, store, snapshot, Resolve(snapshot, line.Positionals[2]), json, ct).ConfigureAwait(false),
+                _ => await SyncEnumAsync(context, store, snapshot, Resolve(snapshot, line.Positionals[2]), json, ct).ConfigureAwait(false),
             };
         }
     }
@@ -265,10 +269,105 @@ internal static class ProcessCommand
         return Program.ExitCodes.Success;
     }
 
-    private static async Task<int> SyncEnumAsync(GlobalContext context, ModelStore store, Process process, bool json, CancellationToken ct)
+    /// <summary>An entity by id or name; an argument that names none or several is a usage error (exit 4).</summary>
+    private static Entity ResolveEntity(ModelSnapshot snapshot, string key)
+    {
+        if (snapshot.Get<Entity>(key) is { } byId)
+            return byId;
+        var matches = snapshot.All<Entity>().Where(e => string.Equals(e.Name, key, StringComparison.Ordinal)).ToList();
+        return matches.Count == 1
+            ? matches[0]
+            : throw new UsageException(matches.Count == 0
+                ? $"no entity has the id or name '{key}'."
+                : $"'{key}' names {matches.Count} entities; pass one id: {string.Join(", ", matches.Select(m => m.Id))}.");
+    }
+
+    /// <summary>An attribute of an entity, own or of a base, by id or name; another id passes through, for the engine to refuse.</summary>
+    private static string ResolveAttribute(ModelSnapshot snapshot, Entity entity, string key)
+    {
+        if (snapshot.TryGetEntry(key, out _))
+            return key;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var current = entity; current is not null && seen.Add(current.Id); current = current.Base is { } b ? snapshot.Get<Entity>(b) : null)
+        {
+            if (current.Attributes.FirstOrDefault(a => string.Equals(a.Name, key, StringComparison.Ordinal)) is { } attribute)
+                return attribute.Id;
+        }
+
+        foreach (var stereotype in snapshot.EffectiveStereotypes(entity))
+        {
+            if (stereotype.Stereotype.Attributes.FirstOrDefault(a => string.Equals(a.Name, key, StringComparison.Ordinal)) is { } attribute)
+                return attribute.Id;
+        }
+
+        throw new UsageException($"entity '{entity.Name}' has no attribute with the id or name '{key}'.");
+    }
+
+    private static async Task<int> SyncCodesAsync(GlobalContext context, ModelStore store, ModelSnapshot snapshot, Process process, bool json, CancellationToken ct)
     {
         var apply = context.Line.Has("--apply");
-        var call = await store.SyncEnumAsync(process.Id, !apply, null, ChangeSource.Cli, ct).ConfigureAwait(false);
+        var entity = ResolveEntity(snapshot, context.Line.Positionals[3]);
+        var attribute = ResolveAttribute(snapshot, entity, context.Line.Positionals[4]);
+        var call = await store.SyncCodesAsync(process.Id, entity.Id, attribute, null, !apply, null, ChangeSource.Cli, ct).ConfigureAwait(false);
+        if (call.Value is null && await FailedAsync(context, call).ConfigureAwait(false) is { } failed)
+            return failed;
+        var result = call.Value!;
+        if (json)
+        {
+            await context.Out.WriteLineAsync(JsonSerializer.Serialize(result, Output)).ConfigureAwait(false);
+        }
+        else
+        {
+            var text = new StringBuilder();
+            if (result.Binds)
+                text.Append("binds     ").Append(entity.Name).Append('.').Append(LifecycleBindings.Find(snapshot, result.Attribute)?.Name ?? result.Attribute).Append('\n');
+            foreach (var c in result.Codes)
+                text.Append(c.Source == "kept" ? "kept      " : "code      ").Append(c.Path).Append(" = ").Append(c.Code.GetRawText()).Append(c.Source == "kept" ? "" : " (" + c.Source + ")").Append('\n');
+            foreach (var u in result.Unmatched)
+            {
+                text.Append("unmatched ").Append(u.Path);
+                if (u.Candidates.Count > 0)
+                    text.Append(" (candidates: ").Append(string.Join(", ", u.Candidates.Select(c => c.GetRawText()))).Append(')');
+                text.Append('\n');
+            }
+
+            foreach (var d in result.Diagnostics)
+                text.Append(DiagnosticOutput.Line(d)).Append('\n');
+            await context.Out.WriteAsync(text.ToString()).ConfigureAwait(false);
+        }
+
+        var written = result.Codes.Count(c => c.Source != "kept");
+        var pending = written + (result.Binds ? 1 : 0);
+        var summary = string.Create(CultureInfo.InvariantCulture,
+            $"sync-codes {process.Name}: {written} to write, {result.Codes.Count - written} kept, {result.Unmatched.Count} unmatched{(result.Binds ? ", binds the attribute" : "")}");
+        if (call.Status == ProcessCallStatus.Conflict)
+        {
+            await context.Error.WriteLineAsync($"maquettiste: {summary}; {call.Detail}").ConfigureAwait(false);
+            return Program.ExitCodes.Conflicts;
+        }
+
+        if (call.Status == ProcessCallStatus.Invalid)
+        {
+            await context.Error.WriteLineAsync($"maquettiste: {summary}; {call.Detail}").ConfigureAwait(false);
+            return Program.ExitCodes.Invalid;
+        }
+
+        if (!apply && context.Line.Has("--check") && pending > 0)
+        {
+            await context.Error.WriteLineAsync($"maquettiste: {summary}; the codes are out of step.").ConfigureAwait(false);
+            return Program.ExitCodes.Drift;
+        }
+
+        await context.Error.WriteLineAsync($"maquettiste: {summary}{(apply ? (result.Applied ? " (written)." : " (nothing to write).") : pending > 0 ? "; run with --apply to write it." : ".")}")
+            .ConfigureAwait(false);
+        return Program.ExitCodes.Success;
+    }
+
+    private static async Task<int> SyncEnumAsync(GlobalContext context, ModelStore store, ModelSnapshot snapshot, Process process, bool json, CancellationToken ct)
+    {
+        var apply = context.Line.Has("--apply");
+        var entity = context.Line.Value("--entity") is { } key ? ResolveEntity(snapshot, key).Id : null;
+        var call = await store.SyncEnumAsync(process.Id, entity, !apply, null, ChangeSource.Cli, ct).ConfigureAwait(false);
         if (call.Value is null && await FailedAsync(context, call).ConfigureAwait(false) is { } failed)
             return failed;
         var result = call.Value!;

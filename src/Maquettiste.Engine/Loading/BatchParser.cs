@@ -56,6 +56,7 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     "remove-schema" => BatchOp.RemoveSchema,
                     "set-default-schema" => BatchOp.SetDefaultSchema,
                     "sync-enum" => BatchOp.SyncEnum,
+                    "sync-codes" => BatchOp.SyncCodes,
                     "set-lifecycle" => BatchOp.SetLifecycle,
                     "set-initial" => BatchOp.SetInitial,
                     "refresh-scenario" => BatchOp.RefreshScenario,
@@ -110,7 +111,10 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     KeepNames: Flag(item, "keepNames"),
                     Code: Text(item, "code"),
                     To: Text(item, "to"),
-                    Codes: Map(item, "codes")));
+                    Codes: Map(item, "codes"),
+                    Entity: Text(item, "entity"),
+                    Attribute: Text(item, "attribute"),
+                    StateCodes: Values(item, "stateCodes")));
             }
 
             return new BatchParseResult(new ModelBatch(operations), []);
@@ -125,6 +129,11 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
     private static Dictionary<string, string>? Map(JsonElement item, string name) =>
         item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object
             ? value.EnumerateObject().Where(p => p.Value.ValueKind == JsonValueKind.String).ToDictionary(p => p.Name, p => p.Value.GetString()!, StringComparer.Ordinal)
+            : null;
+
+    private static Dictionary<string, JsonElement>? Values(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Object
+            ? value.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone(), StringComparer.Ordinal)
             : null;
 
     private static bool? Flag(JsonElement item, string name) =>

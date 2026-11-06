@@ -1655,9 +1655,20 @@ public enum BatchOp
     /// <c>sync-enum</c>: makes the members of the enum bound by lifecycle process <c>id</c> its bound states in document order, keeping
     /// the ids, codes and descriptions of the members it keeps (phase-3-design.md section 2.3). A removal of a member a default,
     /// allowed values, a seed cell or a scenario value uses refuses the operation (MQ9019), as does another operation of the batch
-    /// that writes the process or the enum.
+    /// that writes the process or the enum. <c>entity</c> picks the subject whose enum binding is synced; without it the lifecycle's
+    /// one enum binding, in either subject form (lifecycle-design.md decision 15).
     /// </summary>
     [JsonStringEnumMemberName("sync-enum")] SyncEnum,
+
+    /// <summary>
+    /// <c>sync-codes</c> (lifecycle-design.md decision 19): binds <c>attribute</c> of subject <c>entity</c> in lifecycle process <c>id</c>, in
+    /// the form the file has (<c>subjects</c> for a process with no subject), and gives each state the binding maps a code: the one it
+    /// has, else the one <c>stateCodes</c> gives, else the one code of the attribute's type equal to its name, else the one row or member
+    /// whose label equals its display name or name. It creates no rows. Refused (MQ9019) for a process that is not a lifecycle, an entity
+    /// other than a one-subject form's subject, an attribute that cannot hold a state, a <c>stateCodes</c> key that names no state that
+    /// rests, or another operation of the batch that writes the process.
+    /// </summary>
+    [JsonStringEnumMemberName("sync-codes")] SyncCodes,
 
     /// <summary>
     /// <c>set-lifecycle</c>: makes process <c>target</c> the lifecycle of entity <c>id</c> and the entity its subject in one change, or,
@@ -1827,13 +1838,17 @@ public enum BatchOp
 /// <param name="To">The new code (rename-code); the live code that replaces the retired one (retire-code).</param>
 /// <param name="Codes">merge-reference-types: codes of the merged-away type mapped to live codes of the target, for codes the target does
 /// not hold itself; absent maps none.</param>
+/// <param name="Entity">The subject whose binding the operation acts on (sync-enum, optional; sync-codes).</param>
+/// <param name="Attribute">The subject's attribute that holds the state (sync-codes).</param>
+/// <param name="StateCodes">sync-codes: codes keyed by state id, each a string or an integer; absent gives none.</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
     string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null,
     string? Database = null, IReadOnlyList<string>? Entities = null, IReadOnlyList<string>? Tables = null, string? Package = null,
     IReadOnlyDictionary<string, string>? ExpectedHashes = null, IReadOnlyList<string>? Columns = null, IReadOnlyList<string>? Attributes = null,
     IReadOnlyList<string>? Tags = null, string? As = null, IReadOnlyList<string>? ElementIds = null, string? Prefix = null, bool? Redefine = null,
-    bool? ExcludeMissing = null, bool? KeepNames = null, string? Code = null, string? To = null, IReadOnlyDictionary<string, string>? Codes = null);
+    bool? ExcludeMissing = null, bool? KeepNames = null, string? Code = null, string? To = null, IReadOnlyDictionary<string, string>? Codes = null,
+    string? Entity = null, string? Attribute = null, IReadOnlyDictionary<string, JsonElement>? StateCodes = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

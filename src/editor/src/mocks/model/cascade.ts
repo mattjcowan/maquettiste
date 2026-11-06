@@ -5,7 +5,7 @@
 // referrer with its own dependents, recursively. The engine decides by validating each step against the schema;
 // the mock follows the `required` flags of refs.ts instead.
 import type { DeletePlan, DeleteResolution, ElementKind } from "@/api/types";
-import { referencesOf, subElementIds, type Ref } from "./refs";
+import { referencesOf, rowResolverOf, subElementIds, type Ref } from "./refs";
 
 type Json = Record<string, unknown>;
 
@@ -107,9 +107,10 @@ function idsUnder(json: Json, pointer: string): string[] {
 export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[], resolution: DeleteResolution, skip: ReadonlySet<string> = new Set()): Cascade {
   const refsTo = new Map<string, { doc: CascadeDoc; ref: Ref }[]>();
   const owners = new Map<string, CascadeDoc>();
+  const rows = rowResolverOf(() => [...docs.values()].map((d) => d.json));
   for (const doc of docs.values()) {
     for (const sub of subElementIds(doc.json)) owners.set(sub, doc);
-    for (const ref of referencesOf(doc.json)) {
+    for (const ref of referencesOf(doc.json, rows)) {
       const list = refsTo.get(ref.toId) ?? [];
       list.push({ doc, ref });
       refsTo.set(ref.toId, list);

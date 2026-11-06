@@ -337,6 +337,12 @@ internal static class ModelIndexer
             return null;
         }
 
+        // A state code under a reference binding becomes a reference to its row through the bound attribute's type, which may sit in another
+        // file and which only a full build refreshes (lifecycle-design.md decision 18): a process that adds, removes or changes a binding,
+        // and a document that retypes, removes or adds a bound attribute, need the full build. Neither happens in a model that binds nothing.
+        if (MovesBindings([.. removed.Select(r => old[r].Element)], [.. added.Select(a => documents[a].Element)], referenceData))
+            return null;
+
         var metadata = new MetadataCache();
         foreach (var a in added)
         {
@@ -536,6 +542,84 @@ internal static class ModelIndexer
         }
 
         return element is Relation relation && relation.Ends.Any(e => referenceData.SeedColumns.Contains(e.Id));
+    }
+
+    /// <summary>
+    /// Whether a patch's change moves what a lifecycle's state codes are indexed through (lifecycle-design.md decision 18): a process whose
+    /// bindings (or, with bindings, its use) differ before and after, or a bound attribute retyped, gone from the documents that held it, or
+    /// new in a changed document.
+    /// </summary>
+    /// <param name="removed">The elements of the removed documents (the versions before).</param>
+    /// <param name="added">The elements of the added documents (the versions after).</param>
+    /// <param name="referenceData">The model-wide facts the patch keeps.</param>
+    /// <returns><see langword="true"/> when the patch must build in full.</returns>
+    private static bool MovesBindings(IReadOnlyList<Element> removed, IReadOnlyList<Element> added, ReferenceDataIndex referenceData)
+    {
+        static string Bindings(Process process)
+        {
+            var bound = process.Subjects.Where(s => s.BoundAttribute is not null).Select(s => s.Entity + "|" + s.BoundAttribute).ToList();
+            return bound.Count == 0 ? "" : process.Use + ";" + string.Join(";", bound);
+        }
+
+        var before = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var element in removed)
+        {
+            if (element is Process process)
+                before.TryAdd(process.Id, Bindings(process));
+        }
+
+        var after = new Dictionary<string, Element>(StringComparer.Ordinal);
+        foreach (var element in added)
+        {
+            after.TryAdd(element.Id, element);
+            if (element is Process process && !string.Equals(Bindings(process), before.GetValueOrDefault(process.Id, ""), StringComparison.Ordinal))
+                return true;
+        }
+
+        foreach (var (id, bindings) in before)
+        {
+            if (bindings.Length > 0 && after.GetValueOrDefault(id) is not Process)
+                return true; // a bound process removed
+        }
+
+        if (referenceData.BoundAttributes.Count == 0)
+            return false;
+
+        // Both ways: a bound attribute retyped or gone, and one that comes back (or arrives) in a changed document, since the kept
+        // attribute types know only the attributes the full build saw.
+        var was = new Dictionary<string, TypeRef>(StringComparer.Ordinal);
+        foreach (var element in removed)
+        {
+            foreach (var attribute in ReferenceDataIndex.AttributesOf(element))
+            {
+                if (referenceData.BoundAttributes.Contains(attribute.Id))
+                    was.TryAdd(attribute.Id, attribute.Type);
+            }
+        }
+
+        var @is = new Dictionary<string, TypeRef>(StringComparer.Ordinal);
+        foreach (var element in added)
+        {
+            foreach (var attribute in ReferenceDataIndex.AttributesOf(element))
+            {
+                if (referenceData.BoundAttributes.Contains(attribute.Id))
+                    @is.TryAdd(attribute.Id, attribute.Type);
+            }
+        }
+
+        foreach (var (id, type) in was)
+        {
+            if (!@is.TryGetValue(id, out var now) || !Equals(now, type))
+                return true;
+        }
+
+        foreach (var (id, type) in @is)
+        {
+            if (!was.TryGetValue(id, out var then) || !Equals(then, type))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -797,6 +881,8 @@ internal static class ModelIndexer
                 }
             }
 
+            if (element is Process { Use: ProcessUse.Lifecycle } lifecycle)
+                WalkStateCodes(lifecycle);
             if (element is not Seed seed)
                 return;
             for (var k = 0; k < seed.Columns.Count; k++)
@@ -911,6 +997,43 @@ internal static class ModelIndexer
             var i = 0;
             foreach (var item in value.EnumerateArray())
                 AddCode(ownerId, fromId, pointer + "/" + (i++).ToString(System.Globalization.CultureInfo.InvariantCulture), field, typeId, item);
+        }
+
+        /// <summary>
+        /// A lifecycle's state codes under its reference bindings (lifecycle-design.md decision 18): each code is a use of the row of each
+        /// bound reference type that holds it, field <c>code</c>, from the state, so <c>get_references</c> sees it, deleting the row is
+        /// refused, and the code refactors rewrite it. A lifecycle with no reference binding adds nothing.
+        /// </summary>
+        private void WalkStateCodes(Process process)
+        {
+            List<string>? types = null;
+            foreach (var entry in process.Subjects)
+            {
+                if (entry.BoundAttribute is { } bound && referenceData.AttributeTypes.TryGetValue(bound, out var typeId) && !(types ??= []).Contains(typeId, StringComparer.Ordinal))
+                    types.Add(typeId);
+            }
+
+            if (types is not null)
+                WalkStates(process.Id, process.States, "", types);
+        }
+
+        private void WalkStates(string processId, IReadOnlyList<ProcessState> states, string pointer, List<string> types)
+        {
+            for (var i = 0; i < states.Count; i++)
+            {
+                var state = states[i];
+                var at = pointer + "/states/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (state.Code is { } code)
+                {
+                    foreach (var typeId in types)
+                    {
+                        if (referenceData.RowOf(typeId, code) is { } rowId) // each type at most once, and rows of two types never share an id
+                            References.Add(new ReferenceInfo(processId, state.Id, at + "/code", "code", rowId));
+                    }
+                }
+
+                WalkStates(processId, state.States, at, types);
+            }
         }
 
         private void AddCode(string ownerId, string fromId, string pointer, string field, string typeId, System.Text.Json.JsonElement code)

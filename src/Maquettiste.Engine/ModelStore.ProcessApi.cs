@@ -276,7 +276,22 @@ public sealed partial class ModelStore
     /// <param name="source">Who changes the model.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The plan and whether it was applied.</returns>
-    public async Task<ProcessCall<SyncEnumResult>> SyncEnumAsync(string processId, bool dryRun, string? expectedHash, ChangeSource source, CancellationToken ct)
+    public Task<ProcessCall<SyncEnumResult>> SyncEnumAsync(string processId, bool dryRun, string? expectedHash, ChangeSource source, CancellationToken ct) =>
+        SyncEnumAsync(processId, null, dryRun, expectedHash, source, ct);
+
+    /// <summary>
+    /// Syncs one subject's bound enum with the lifecycle's root-level states (lifecycle-design.md decision 15): the plan (a dry run), or
+    /// the plan applied as one batch.
+    /// </summary>
+    /// <param name="processId">The process id.</param>
+    /// <param name="entity">The subject whose enum binding to sync; <see langword="null"/> means the lifecycle's one enum binding.</param>
+    /// <param name="dryRun">Returns the plan without writing.</param>
+    /// <param name="expectedHash">The process hash as the caller read it (409 when it changed).</param>
+    /// <param name="source">Who changes the model.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The plan and whether it was applied.</returns>
+    public async Task<ProcessCall<SyncEnumResult>> SyncEnumAsync(string processId, string? entity, bool dryRun, string? expectedHash, ChangeSource source,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(processId);
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
@@ -284,7 +299,7 @@ public sealed partial class ModelStore
             return ProcessCall<SyncEnumResult>.Fail(ProcessCallStatus.NotFound, $"No process has the id {processId}.");
         if (expectedHash is { Length: > 0 } && !string.Equals(expectedHash, snapshot.GetDocument(processId)!.Hash, StringComparison.Ordinal))
             return ProcessCall<SyncEnumResult>.Fail(ProcessCallStatus.Conflict, $"Process '{process.Name}' changed since it was read; reload it and sync again.");
-        var plan = await PlanSyncEnumAsync(processId, ct).ConfigureAwait(false);
+        var plan = await PlanSyncEnumAsync(processId, entity, ct).ConfigureAwait(false);
         var result = new SyncEnumResult(processId, plan.Enum, plan.Added, plan.Removed, plan.Reordered, plan.Refused, false, []);
         if (plan.Problem is not null)
         {
@@ -294,12 +309,57 @@ public sealed partial class ModelStore
 
         if (dryRun || (plan.Added.Count == 0 && plan.Removed.Count == 0 && !plan.Reordered))
             return ProcessCall<SyncEnumResult>.Ok(result);
-        var batch = await ApplyBatchAsync(new ModelBatch([new BatchOperation(BatchOp.SyncEnum, processId, expectedHash is { Length: > 0 } ? expectedHash : null, null)]), source, ct)
+        var batch = await ApplyBatchAsync(new ModelBatch([new BatchOperation(BatchOp.SyncEnum, processId, expectedHash is { Length: > 0 } ? expectedHash : null, null,
+                Entity: entity)]), source, ct)
             .ConfigureAwait(false);
         var diagnostics = batch.Items.SelectMany(i => i.Diagnostics).ToList();
         return batch.Outcome switch
         {
             SaveOutcome.Saved => ProcessCall<SyncEnumResult>.Ok(result with { Applied = true, Diagnostics = diagnostics }),
+            SaveOutcome.Conflict => new(ProcessCallStatus.Conflict, result with { Diagnostics = diagnostics }, "The model changed while the sync ran; nothing was written.", diagnostics),
+            _ => new(ProcessCallStatus.Invalid, result with { Diagnostics = diagnostics }, "The sync was refused; nothing was written.", diagnostics),
+        };
+    }
+
+    /// <summary>
+    /// Proposes state codes from a bound attribute's type and binds it (lifecycle-design.md decision 19): the plan (a dry run, listing what
+    /// it would write and what is unmatched), or the plan applied as one batch. It creates no rows.
+    /// </summary>
+    /// <param name="processId">The process id.</param>
+    /// <param name="entity">The subject.</param>
+    /// <param name="attribute">The subject's attribute that holds the state.</param>
+    /// <param name="stateCodes">Codes keyed by state id, or <see langword="null"/>.</param>
+    /// <param name="dryRun">Returns the plan without writing.</param>
+    /// <param name="expectedHash">The process hash as the caller read it (409 when it changed).</param>
+    /// <param name="source">Who changes the model.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The plan and whether it was applied.</returns>
+    public async Task<ProcessCall<SyncCodesResult>> SyncCodesAsync(string processId, string entity, string attribute, IReadOnlyDictionary<string, JsonElement>? stateCodes,
+        bool dryRun, string? expectedHash, ChangeSource source, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(processId);
+        var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
+        if (snapshot.Get<Process>(processId) is not { } process)
+            return ProcessCall<SyncCodesResult>.Fail(ProcessCallStatus.NotFound, $"No process has the id {processId}.");
+        if (expectedHash is { Length: > 0 } && !string.Equals(expectedHash, snapshot.GetDocument(processId)!.Hash, StringComparison.Ordinal))
+            return ProcessCall<SyncCodesResult>.Fail(ProcessCallStatus.Conflict, $"Process '{process.Name}' changed since it was read; reload it and sync again.");
+        var plan = await PlanSyncCodesAsync(processId, entity, attribute, stateCodes, ct).ConfigureAwait(false);
+        var result = new SyncCodesResult(processId, plan.Entity, plan.Attribute, plan.Binds, plan.Codes, plan.Unmatched, false, []);
+        if (plan.Problem is not null)
+        {
+            var refusal = RuleCatalog.Create("MQ9019", plan.Problem, processId);
+            return new(ProcessCallStatus.Invalid, result with { Diagnostics = [refusal] }, plan.Problem, [refusal]);
+        }
+
+        if (dryRun || (!plan.Binds && plan.Codes.All(c => c.Source == "kept")))
+            return ProcessCall<SyncCodesResult>.Ok(result);
+        var batch = await ApplyBatchAsync(new ModelBatch([new BatchOperation(BatchOp.SyncCodes, processId, expectedHash is { Length: > 0 } ? expectedHash : null, null,
+                Entity: entity, Attribute: attribute, StateCodes: stateCodes)]), source, ct)
+            .ConfigureAwait(false);
+        var diagnostics = batch.Items.SelectMany(i => i.Diagnostics).ToList();
+        return batch.Outcome switch
+        {
+            SaveOutcome.Saved => ProcessCall<SyncCodesResult>.Ok(result with { Applied = true, Diagnostics = diagnostics }),
             SaveOutcome.Conflict => new(ProcessCallStatus.Conflict, result with { Diagnostics = diagnostics }, "The model changed while the sync ran; nothing was written.", diagnostics),
             _ => new(ProcessCallStatus.Invalid, result with { Diagnostics = diagnostics }, "The sync was refused; nothing was written.", diagnostics),
         };

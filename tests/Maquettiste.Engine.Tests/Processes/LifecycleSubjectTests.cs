@@ -229,7 +229,7 @@ public sealed class LifecycleSubjectTests
     public async Task A_suppression_per_subject_accepts_the_findings_of_that_entry_only()
     {
         var (h, store) = await OpenAsync(x => x.Write(QFile, ProcessJson(Q, "Billing", "lifecycle",
-            Entries((QInvoice, Invoice, InvoiceNumber), (QOrder, Order, "01JATT00000000000000000001")), "01JSTA0000000000000000020")));
+            Entries((QInvoice, Invoice, "01JATT00000000000000000091"), (QOrder, Order, "01JATT00000000000000000001")), "01JSTA0000000000000000020")));
         using var _ = h;
         await using var __ = store;
 
