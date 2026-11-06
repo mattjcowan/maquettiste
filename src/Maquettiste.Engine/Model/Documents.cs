@@ -146,8 +146,11 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [JsonIgnore]
     internal IReadOnlyList<string>? RightUses { get; init; }
 
-    /// <summary>Whether the row is a process that writes <c>rights</c> or <c>rightsDefault</c>, so the project uses rights (rights-design.md decision 28).</summary>
-    internal bool UsesRights => Rights is > 0 || RightsDefault is not null;
+    /// <summary>
+    /// Whether the row is a lifecycle that writes <c>rights</c> or <c>rightsDefault</c>, so the project uses rights (rights-design.md decision
+    /// 28). An orchestration that still writes them (MQ9901) uses none, so demoting a lifecycle changes the rights naming key.
+    /// </summary>
+    internal bool UsesRights => string.Equals(Use, "lifecycle", StringComparison.Ordinal) && (Rights is > 0 || RightsDefault is not null);
 
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>

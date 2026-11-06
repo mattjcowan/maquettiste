@@ -679,7 +679,7 @@ public interface IActorResolver<TContext>
 public interface ILifecycleStates<TContext>
     where TContext : class
 {
-    /// <summary>The object's active state paths, by lifecycle name.</summary>
+    /// <summary>The object's active state paths, by lifecycle name; a lifecycle left out that doesn't govern the object isn't asked.</summary>
     /// <param name="call">The current call.</param>
     /// <returns>The states.</returns>
     IReadOnlyDictionary<string, IReadOnlyList<string>> StatesIn(StatechartCall<TContext> call);

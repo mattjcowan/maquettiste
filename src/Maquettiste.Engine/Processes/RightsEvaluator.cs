@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
@@ -237,6 +238,8 @@ internal sealed class RightsEvaluator
     private readonly FrozenDictionary<string, IReadOnlyList<RightRule>> _rules;
     // The lifecycles that state rights or a default, by name then id: the others that may answer for object, link and own verbs.
     private readonly IReadOnlyList<Process> _stating;
+    // The lifecycles of _stating that govern an entity, by entity id, worked out once per entity.
+    private readonly ConcurrentDictionary<string, IReadOnlyList<Process>> _governing = new(StringComparer.Ordinal);
 
     private RightsEvaluator(ModelSnapshot model)
     {
@@ -245,11 +248,11 @@ internal sealed class RightsEvaluator
         var stating = new List<Process>();
         foreach (var process in model.All<Process>())
         {
-            if (process.Rights.Count == 0 && process.RightsDefault is null)
+            // Only lifecycles hold rights (decision 2): an orchestration that still writes them is MQ9901 and uses nothing, so a project whose
+            // only rights sit on one writes no refusedBy and pays for no rights path, as generated code (model.rights_lifecycles) agrees.
+            if (process.Use != ProcessUse.Lifecycle || (process.Rights.Count == 0 && process.RightsDefault is null))
                 continue;
             Uses = true;
-            if (process.Use != ProcessUse.Lifecycle)
-                continue; // only lifecycles hold rights (decision 2, MQ9901)
             stating.Add(process);
             var list = new List<RightRule>(process.Rights.Count);
             foreach (var entry in process.Rights)
@@ -273,7 +276,7 @@ internal sealed class RightsEvaluator
         _stating = stating;
     }
 
-    /// <summary>Whether the project uses rights (decision 28): a process writes <c>rights</c> or <c>rightsDefault</c>.</summary>
+    /// <summary>Whether the project uses rights (decision 28): a lifecycle writes <c>rights</c> or <c>rightsDefault</c>.</summary>
     public bool Uses { get; }
 
     /// <summary>The evaluator of a snapshot, built on first use and kept as long as the snapshot.</summary>
@@ -337,17 +340,21 @@ internal sealed class RightsEvaluator
                 return (answering, []);
         }
 
+        if (query.Entity is { } entity)
+        {
+            foreach (var other in Governing(entity))
+            {
+                if (acting is null || !string.Equals(other.Id, acting.Id, StringComparison.Ordinal))
+                    answering.Add(other);
+            }
+
+            return (answering, notes);
+        }
+
         foreach (var other in _stating)
         {
             if (acting is not null && string.Equals(other.Id, acting.Id, StringComparison.Ordinal))
                 continue;
-            if (query.Entity is { } entity)
-            {
-                if (SubjectCoverage.Governs(_model, other, entity))
-                    answering.Add(other);
-                continue;
-            }
-
             var governed = subjects!.Count(s => SubjectCoverage.Governs(_model, other, s));
             if (governed == subjects!.Count)
             {
@@ -362,6 +369,36 @@ internal sealed class RightsEvaluator
         }
 
         return (answering, notes);
+    }
+
+    /// <summary>
+    /// The lifecycles that state rights or a default and govern an entity, by name then id: those that answer for its object, link and own
+    /// verbs. Worked out once per entity and snapshot.
+    /// </summary>
+    /// <param name="entity">The entity.</param>
+    /// <returns>The lifecycles.</returns>
+    public IReadOnlyList<Process> Governing(Entity entity)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        return _governing.GetOrAdd(entity.Id, _ => [.. _stating.Where(l => SubjectCoverage.Governs(_model, l, entity))]);
+    }
+
+    /// <summary>
+    /// One lifecycle's own answer to a check (decision 11), as <see cref="Check"/> gives it among its lifecycles, without asking any other:
+    /// its denies, then its allows (a closed list the caller passes counts when it is the acting lifecycle), then its default.
+    /// <see langword="null"/> when it states no rights and no default, and so always says yes.
+    /// </summary>
+    /// <param name="query">The check.</param>
+    /// <param name="lifecycle">The lifecycle.</param>
+    /// <returns>Its answer, or <see langword="null"/>.</returns>
+    public LifecycleAnswer? AnswerOf(RightsQuery query, Process lifecycle)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(lifecycle);
+        if (!_rules.ContainsKey(lifecycle.Id))
+            return null;
+        var acting = query.Process is { Use: ProcessUse.Lifecycle } p && string.Equals(p.Id, lifecycle.Id, StringComparison.Ordinal);
+        return Answer(query, lifecycle, acting, out _);
     }
 
     /// <summary>Checks a verb (decisions 10 to 12): the closed lists, then every answering lifecycle's denies, then their defaults.</summary>
@@ -510,12 +547,14 @@ internal sealed class RightsEvaluator
 
     /// <summary>
     /// Whether a right speaks of what the verb acts on (decision 20): with <c>ends</c>, only links through one of them; without, the object,
-    /// and for a link verb (<c>connect</c>, <c>disconnect</c>) every link too.
+    /// and for a link verb (<c>connect</c>, <c>disconnect</c>) every link too. A link verb with no end known (an event that names
+    /// <c>connect</c>, a cell of who can do what) fails closed: a deny with <c>ends</c> holds, since it might be one of its links, and an allow
+    /// with <c>ends</c> grants nothing.
     /// </summary>
     private static bool SpeaksOf(RightRule rule, string verb, string? end)
     {
         if (rule.Ends.Count > 0)
-            return end is not null && rule.Ends.Contains(end, StringComparer.Ordinal);
+            return end is null ? rule.Access == RightAccess.Deny && GroupOf(verb) == "link" : rule.Ends.Contains(end, StringComparer.Ordinal);
         return end is null || GroupOf(verb) == "link";
     }
 

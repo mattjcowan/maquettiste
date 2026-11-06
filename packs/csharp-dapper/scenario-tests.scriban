@@ -54,6 +54,24 @@ func held(step)
   end
   ret "[" + ($out | array.join ", ") + "]"
 end
+# Whether a step depends on a held actor (rights-design.md decision 24): its participant holds, with no context, an actor besides the one
+# the step acts as, which only ScenarioHoldings hands to the command handlers. Only such a step asserts that they asked.
+func depends_on_holdings(step)
+  $acting = step.acts_as
+  if step.participant.actor && (!$acting || step.participant.actor.id != $acting.id)
+    ret true
+  end
+  for h in step.participant.holds
+    if !h.within && (!$acting || h.actor.id != $acting.id)
+      ret true
+    end
+  end
+  ret false
+end
+# The actors from the object a verb step's participant satisfied in the engine's replay: the request's resolver answers yes for these.
+func object_actors(step)
+  ret step.trace ? step.trace.object_actors : []
+end
 # The scenario subject's states in the other lifecycles that could say no (process.may_refuse), by lifecycle name, for verb steps.
 other_states = {}
 other_names = []
@@ -203,6 +221,10 @@ public sealed class {{ test }}
 {{- if step.end }}
             End = {{ json step.end.name }},
 {{- end }}
+{{- $from = object_actors(step) }}
+{{- if $from.size > 0 }}
+            Resolves = actor => actor is {{ for a in $from }}{{ for.first ? "" : " or " }}Actors.{{ actor_member a }}{{ end }},
+{{- end }}
         });
 {{- if step.expect }}
 {{- if step.expect.accepted }}
@@ -230,10 +252,12 @@ public sealed class {{ test }}
 {{- end }}
         result = await host.Dispatcher.SendAsync({{ command(step) }}, cancellationToken);
 {{- if $holds }}
+{{- if depends_on_holdings(step) && refusal_of(step) != "actor" && refusal_of(step) != "validation" && refusal_of(step) != "instance" }}
         var asked{{ step.index + 1 }} = ScenarioHoldings.Asked;
         ScenarioHoldings.Current = null;
-{{- if refusal_of(step) != "actor" && refusal_of(step) != "validation" && refusal_of(step) != "instance" }}
         Assert.True(asked{{ step.index + 1 }}, "The command handlers did not ask ScenarioHoldings for the participant's held actors: register it in ScenarioHost in place of the CallerHoldings stub.");
+{{- else }}
+        ScenarioHoldings.Current = null;
 {{- end }}
 {{- end }}
 {{- if step.expect }}

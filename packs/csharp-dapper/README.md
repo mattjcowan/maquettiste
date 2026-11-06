@@ -522,7 +522,8 @@ writes nothing new.
   it, and neither does an allow. The registry passes the container's `ICallerHoldings` to each handler, else the stub.
 - **Other lifecycles' states:** when another lifecycle could say no to a verb an event names (`process.may_refuse`), the process's
   handlers implement `ILifecycleStates` and declare `StatesIn<Lifecycle>(call)` in the team's half: the object's active states there, none
-  for its initial state. It throws until written. A process whose events reach no such lifecycle gets none.
+  for its initial state, and null when that lifecycle doesn't govern the object (a process with several subjects), so it isn't asked. It
+  throws until written. A process whose events reach no such lifecycle gets none.
 - **The interpreter** checks events, human tasks (as `complete`) and signatures the way the engine does: the closed list (`actor`), then
   rights and defaults on the event's verb before any guard (`right`, `default`; a gate's signers count as an allow for the gated event),
   then the guards, then at a gate the signers, the lifecycle's denies on `sign`, a repeat signer and a reason. `Refusals` gains `Right` and
@@ -531,9 +532,10 @@ writes nothing new.
 - **Scenario tests:** `ScenarioHoldings` answers each command with the held actors of the step's participant (its actor and its holdings
   with no context). Each generated test sets `ScenarioHoldings.Current` before a send and clears it after. `ScenarioHost` is your file, so
   register it there once, in place of the stub: pass `new ScenarioHoldings()` as each command handler's last argument (or register it as
-  the container's `ICallerHoldings`). Until then, a step that depends on a held actor fails with a message that says so. A refused step
-  asserts its expected `refusal` and `refusedBy`. A verb step calls `Rights.Check` with the subject object's entity and states, and
-  asserts its answer; without rights it is written as a comment, since nothing in the model can refuse it.
+  the container's `ICallerHoldings`). Until then, a step that depends on a held actor (its participant holds one besides the actor the
+  step acts as) fails with a message that says so; other steps don't ask. A refused step
+  asserts its expected `refusal` and `refusedBy`. A verb step calls `Rights.Check` with the subject object's entity and states, and the
+  actors from the object its participant satisfies in the engine's replay (`step.trace.object_actors`) as the resolver, and asserts its answer; without rights it is written as a comment, since nothing in the model can refuse it.
 
 ### Scenario tests
 

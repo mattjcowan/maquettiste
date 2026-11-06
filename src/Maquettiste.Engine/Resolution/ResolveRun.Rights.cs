@@ -250,13 +250,12 @@ internal sealed partial class ResolveRun
                 named.UnionWith(rule.Verbs.Where(RightsEvaluator.SpeaksOfObject));
             if (entities.Count > 0 && named.Count > 0 && process.Use != ProcessUse.Library)
             {
+                var governing = entities.SelectMany(evaluator.Governing).Select(l => l.Id).ToHashSet(StringComparer.Ordinal);
                 foreach (var other in stating)
                 {
-                    if (ReferenceEquals(other, r))
+                    if (ReferenceEquals(other, r) || !governing.Contains(other.Id))
                         continue;
                     var lifecycle = sources[other.Id];
-                    if (!entities.Any(e => SubjectCoverage.Governs(Model, lifecycle, e)))
-                        continue;
                     var verbs = RightsEvaluator.DefaultOf(lifecycle) == RightAccess.Deny
                         ? [.. named]
                         : named.Where(v => evaluator.RulesOf(lifecycle).Any(rule => rule.Access == RightAccess.Deny && rule.Verbs.Contains(v, StringComparer.Ordinal))).ToList();
@@ -277,18 +276,20 @@ internal sealed partial class ResolveRun
             }
 
             r.MayRefuse = new RList<RMayRefuse>(entries, listKeys);
-            r.AccessGrid = process.Use == ProcessUse.Lifecycle
-                ? BuildAccessGrid(process, r, keys, found.Select(f => f.Lifecycle))
-                : new RList<RAccessCell>([], listKeys);
+            r.AccessGrid = new RList<RAccessCell>([], listKeys);
+            if (process.Use == ProcessUse.Lifecycle)
+                BuildAccessGrid(process, r, keys, found.Select(f => f.Lifecycle));
         }
     }
 
     /// <summary>
     /// A lifecycle's "who can do what" (decision 31), from <see cref="RightsGrid"/>, the rows <c>get_rights</c> answers. Its keys are
     /// <c>may_refuse</c>'s (<paramref name="keys"/>), every actor file (memberships), the libraries the lifecycle uses, the verb vocabulary,
-    /// and each lifecycle that could say no with the named rights it uses: its states and conditions decide a cell that depends on it.
+    /// and each lifecycle that could say no with the named rights it uses: its states and conditions decide a cell that depends on it. The
+    /// keys are known here; the rows are worked out on first read, as a scenario's replay is, so a run whose templates never read the grid
+    /// pays nothing for it.
     /// </summary>
-    private RList<RAccessCell> BuildAccessGrid(Process process, RProcess r, DependencySet keys, IEnumerable<RProcess> mayRefuse)
+    private void BuildAccessGrid(Process process, RProcess r, DependencySet keys, IEnumerable<RProcess> mayRefuse)
     {
         keys = new DependencySet(Keys).AddRange(keys.ToList()).Add(ActorKind);
         foreach (var actor in _actorOrder)
@@ -305,40 +306,46 @@ internal sealed partial class ResolveRun
             }
         }
 
-        var rows = RightsGrid.Rows(Model, process, null, Ct);
-        var states = r.AllStates.ToDictionary(st => st.Id, StringComparer.Ordinal);
-        var cells = new List<RAccessCell>(rows.Count);
-        var listKeys = keys.ToList();
-        foreach (var row in rows)
+        // The verbs a row can name (the rights' and the events' verbs) keep a hidden built-in verb in model.verbs, so they are known now.
+        foreach (var rule in RightsEvaluator.Of(Model).RulesOf(process))
+            _verbKeysNamed.UnionWith(rule.Verbs);
+        foreach (var ev in ProcessLibraries.Chart(Model, process).Events.Values)
         {
-            if (!states.TryGetValue(row.State, out var state))
-                continue;
-            var cell = new RAccessCell
-            {
-                Id = r.Id + "/access/" + row.State + "/" + (row.Actor ?? "*") + "/" + row.Verb + (row.Entity is { } e ? "/" + e : ""),
-                Dependencies = listKeys,
-                State = state,
-                Actor = row.Actor is null ? null : _actors.GetValueOrDefault(row.Actor),
-                Entity = row.Entity is null ? null : _entities.GetValueOrDefault(row.Entity),
-                Answer = row.Answer,
-                ByDefault = row.ByDefault,
-                By = [.. row.By.Select(id => _byId.GetValueOrDefault(id)).OfType<RObject>()],
-                DependsOn = new RList<RProcess>(row.DependsOn.Select(id => _processes.GetValueOrDefault(id)).OfType<RProcess>(), listKeys),
-            };
-            var verb = row.Verb;
-            _verbKeysNamed.Add(verb);
-            _verbFills.Add((verbOf, vocabularyKeys) =>
-            {
-                cell.Verb = verbOf(verb)!;
-                cell.Dependencies = [.. listKeys, .. vocabularyKeys];
-            });
-            cells.Add(cell);
+            if (ev.Verb is { Length: > 0 } key)
+                _verbKeysNamed.Add(key);
         }
 
-        var grid = new RList<RAccessCell>([], listKeys);
-        _verbFills.Add((_, vocabularyKeys) =>
-            r.AccessGrid = new RList<RAccessCell>(cells.Where(c => c.Verb is not null), [.. listKeys, .. vocabularyKeys]));
-        return grid;
+        var listKeys = keys.ToList();
+        var (model, actors, entities, byId, processes) = (Model, _actors, _entities, _byId, _processes);
+        _verbFills.Add((verbOf, vocabularyKeys) =>
+        {
+            IReadOnlyList<string> cellKeys = [.. listKeys, .. vocabularyKeys];
+            r.AccessGridSource = new Lazy<RList<RAccessCell>>(() =>
+            {
+                var states = r.AllStates.ToDictionary(st => st.Id, StringComparer.Ordinal);
+                var cells = new List<RAccessCell>();
+                foreach (var row in RightsGrid.Rows(model, process))
+                {
+                    if (!states.TryGetValue(row.State, out var state) || verbOf(row.Verb) is not { } verb)
+                        continue;
+                    cells.Add(new RAccessCell
+                    {
+                        Id = r.Id + "/access/" + row.State + "/" + (row.Actor ?? "*") + "/" + row.Verb + (row.Entity is { } e ? "/" + e : ""),
+                        Dependencies = cellKeys,
+                        State = state,
+                        Actor = row.Actor is null ? null : actors.GetValueOrDefault(row.Actor),
+                        Verb = verb,
+                        Entity = row.Entity is null ? null : entities.GetValueOrDefault(row.Entity),
+                        Answer = row.Answer,
+                        ByDefault = row.ByDefault,
+                        By = [.. row.By.Select(id => byId.GetValueOrDefault(id)).OfType<RObject>()],
+                        DependsOn = new RList<RProcess>(row.DependsOn.Select(id => processes.GetValueOrDefault(id)).OfType<RProcess>(), listKeys),
+                    });
+                }
+
+                return new RList<RAccessCell>(cells, cellKeys);
+            }, LazyThreadSafetyMode.ExecutionAndPublication);
+        });
     }
 
     /// <summary>
@@ -371,8 +378,9 @@ internal sealed partial class ResolveRun
     /// The keys a scenario's replay adds for rights (section 7): the named rights its process uses; and when a step checks an object, link
     /// or own verb (a verb step, or an event that names one), the rights naming key, and in a project that uses rights the governing keys of
     /// the subject's entity (of every subject entity of the process when the scenario has no subject) and each other lifecycle that governs
-    /// it and could say no to a verb a step checks, with that lifecycle's file and the named rights it uses. Empty for a process with no
-    /// rights whose scenario checks none of those verbs.
+    /// it and could say no to a verb a step checks, with that lifecycle's file and the named rights it uses. And what the conditions of the
+    /// rights of those lifecycles read (<see cref="RightConditionKeys"/>), as a guard's are traced. Empty for a process with no rights whose
+    /// scenario checks none of those verbs.
     /// </summary>
     private IReadOnlyList<string> RightsReplayKeys(Scenario scenario)
     {
@@ -384,6 +392,11 @@ internal sealed partial class ResolveRun
             if (entry.Right is { } named)
                 keys.Element(named);
         }
+
+        // The running lifecycle answers for every input a step makes, so its rights' conditions are read whatever the steps check.
+        var subjectObject = scenario.Objects.FirstOrDefault(o => string.Equals(o.Id, scenario.Subject, StringComparison.Ordinal));
+        if (running.Use == ProcessUse.Lifecycle)
+            RightConditionKeys(keys, running, scenario, running);
 
         var checkedVerbs = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var step in scenario.Steps)
@@ -400,9 +413,8 @@ internal sealed partial class ResolveRun
         if (!evaluator.Uses)
             return keys.ToList();
 
-        var subject = scenario.Objects.FirstOrDefault(o => string.Equals(o.Id, scenario.Subject, StringComparison.Ordinal));
-        IReadOnlyList<Entity> entities = subject is not null
-            ? Model.Get<Entity>(subject.Entity) is { } subjectEntity ? [subjectEntity] : []
+        IReadOnlyList<Entity> entities = subjectObject is not null
+            ? Model.Get<Entity>(subjectObject.Entity) is { } subjectEntity ? [subjectEntity] : []
             : RightsGrid.Subjects(Model, running);
         var coverage = SubjectCoverage.Of(Model);
         keys.Add(ProcessKind).Add(SubjectCoverage.NamingKey);
@@ -429,9 +441,59 @@ internal sealed partial class ResolveRun
                 if (entry.Right is { } named)
                     keys.Element(named);
             }
+
+            RightConditionKeys(keys, other, scenario, running);
         }
 
         return keys.ToList();
+    }
+
+    /// <summary>
+    /// What the conditions of a lifecycle's rights read in a replay: the lifecycles an <c>in_state</c> reads, each with its binding (the holder
+    /// of the bound attribute, whose default stands in for a state not given, and the enum of an enum binding); and the object's row: the
+    /// entities of the scenario's objects and of the running process's subjects with their bases, whose defaults a row holds, with what
+    /// decides the stereotypes they carry when a condition reads a stereotype's attribute. Nothing for a lifecycle whose rights have no condition.
+    /// </summary>
+    private void RightConditionKeys(DependencySet keys, Process lifecycle, Scenario scenario, Process running)
+    {
+        var readsObject = false;
+        var readsStereotype = false;
+        foreach (var rule in RightsEvaluator.Of(Model).RulesOf(lifecycle))
+        {
+            if (rule.Condition is null || ExprResolution.Type(Model, lifecycle, rule.Entry.Id) is not { } typed)
+                continue;
+            readsObject = true;
+            readsStereotype |= ExprResolution.Paths(typed.Typed).Any(id => ExprSites.IsStereotypeAttribute(Model, id));
+            foreach (var read in Processes.ObjectStates.ReadsOf(typed.Typed))
+            {
+                if (Model.Get<Process>(read.Lifecycle) is not { } reads)
+                    continue;
+                keys.Element(reads.Id);
+                foreach (var bound in reads.Subjects.Select(s => s.BoundAttribute).OfType<string>())
+                {
+                    if (Model.TryGetEntry(bound, out var holder))
+                        keys.Element(holder.OwnerId);
+                    if (DeclaredAttribute(bound)?.Type.Enum is { } enumType)
+                        keys.Element(enumType.Id);
+                }
+            }
+        }
+
+        if (!readsObject)
+            return;
+        var entities = scenario.Objects.Select(o => o.Entity).Concat(running.Subjects.Select(x => x.Entity).OfType<string>()).Select(Model.Get<Entity>).OfType<Entity>();
+        foreach (var entity in entities)
+        {
+            foreach (var id in SubjectCoverage.Chain(Model, entity))
+            {
+                keys.Element(id);
+                if (readsStereotype && Model.Get<Entity>(id) is { } level)
+                {
+                    foreach (var carrying in CarryingIds(level))
+                        keys.Element(carrying);
+                }
+            }
+        }
     }
 
     /// <summary>The element keys of each subject entity of a process and of its bases.</summary>

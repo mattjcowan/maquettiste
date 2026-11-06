@@ -26,7 +26,55 @@ end
 func action_names(actions)
   ret name_list(actions)
 end
+rights = uses_rights()
+verb_type = "global::" + base_ns + ".Verb"
+func type_of_entity(e)
+  ret "typeof(global::" + ns(e) + "." + type_name(e) + ")"
+end
+governs = []
+governed = {}
+for sub in p.subjects
+  if !governed[sub.entity.id]
+    governed[sub.entity.id] = true
+    governs[governs.size] = type_of_entity(sub.entity)
+  end
+end
+for sub in p.stereotype_subjects
+  for e in sub.entities
+    if !governed[e.id]
+      governed[e.id] = true
+      governs[governs.size] = type_of_entity(e)
+    end
+  end
+end
 -}}
+{{- capture rights_arg }}
+        new ProcessRights({{ p.use == "lifecycle" ? "true" : "false" }}, RightAccess.{{ p.rights_default == "deny" ? "Deny" : "Allow" }},
+            [
+{{- for u in p.rights }}
+{{- r = u.right }}
+                new(new({{ json r.id }}, {{ json r.name }}, RightAccess.{{ r.access == "deny" ? "Deny" : "Allow" }}, {{ actor_list(r.actors) }}, {{ actor_list(r.except) }},
+                    [{{ for v in r.verbs }}{{ for.first ? "" : ", " }}{{ verb_type }}.{{ pascal v.key }}{{ end }}], [{{ for e in r.ends }}{{ for.first ? "" : ", " }}{{ json e.name }}{{ end }}]
+{{- if r.condition_text != null }}, Condition: global::{{ r.named ? (ns(r) + ".RightConditions") : (ns(p) + "." + name + "RightConditions") }}.{{ pascal r.name }}{{ end }}
+{{- if r.description }}, Description: {{ json (r.description | string.strip) }}{{ end }}),
+                    [{{ for s in u.states }}{{ for.first ? "" : ", " }}{{ json s.path }}{{ end }}]),
+{{- end }}
+            ],
+            [{{ governs | array.join ", " }}],
+            {{ p.subjects.size == 1 && p.stereotype_subjects.size == 0 ? type_of_entity(p.subjects[0].entity) : "null" }},
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+{{- for e in p.events }}
+                [{{ json ("event:" + e.name) }}] = {{ json e.id }},
+{{- end }}
+{{- for i in p.invokes }}
+                [{{ json ("invoke:" + i.name) }}] = {{ json i.id }},
+{{- end }}
+{{- for g in p.guards }}
+                [{{ json ("guard:" + g.name) }}] = {{ json g.id }},
+{{- end }}
+            })
+{{- end -}}
 {{ header() }}
 using System;
 using System.Collections.Generic;
@@ -110,14 +158,14 @@ public static partial class {{ name }}Definition
         ]
 {{- end }},
 {{- if p.actors.size == 0 }}
-        null);
+        null{{ if rights }},{{ rights_arg }}{{ end }});
 {{- else }}
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
 {{- for a in p.actors }}
             [Actors.{{ actor_member a }}] = {{ json a.id }},
 {{- end }}
-        });
+        }{{ if rights }},{{ rights_arg }}{{ end }});
 {{- end }}
 
     /// <summary>The event names.</summary>

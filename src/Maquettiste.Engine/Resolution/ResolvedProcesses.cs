@@ -121,9 +121,18 @@ public sealed class RProcess : RElement
     /// one cell per entity where answers differ by entity. Filled for lifecycles only in a project that uses rights; empty otherwise. It keys
     /// on the process's file and the rights naming key, and in a project that uses rights also on the named rights it uses, every actor
     /// file, the verb vocabulary, what decides which lifecycles govern each subject's entity, and each lifecycle of <see cref="MayRefuse"/>
-    /// with the named rights it uses.
+    /// with the named rights it uses. Its rows are worked out on first read, once.
     /// </summary>
-    public RList<RAccessCell> AccessGrid { get; internal set; } = RList<RAccessCell>.Empty;
+    public RList<RAccessCell> AccessGrid
+    {
+        get => AccessGridSource?.Value ?? _accessGrid;
+        internal set => _accessGrid = value;
+    }
+
+    private RList<RAccessCell> _accessGrid = RList<RAccessCell>.Empty;
+
+    /// <summary>The grid's rows, worked out on first read (<see cref="AccessGrid"/>); <see langword="null"/> when there are none to work out.</summary>
+    internal Lazy<RList<RAccessCell>>? AccessGridSource { get; set; }
 }
 
 /// <summary>The members common to the nodes of a process: states, transitions, events, guards, actions, invokes, gates, meanings.</summary>
@@ -836,6 +845,13 @@ public sealed class RStepTrace
 
     /// <summary>For a step with a participant, the id of the actor it acted as (<see cref="RStep.ActsAs"/>).</summary>
     internal string? ActsAs { get; set; }
+
+    /// <summary>
+    /// For a step with a participant, the actors from the object it satisfied when the step ran (rights-design.md decision 24), by name then
+    /// id: the object's owner, an actor reached by a path, or a member of a context it holds a role in. Empty otherwise. Generated code that
+    /// asks the rights check for a verb step answers its resolver from these.
+    /// </summary>
+    public IReadOnlyList<RActor> ObjectActors { get; internal set; } = [];
 }
 
 /// <summary>What a scenario step expects.</summary>

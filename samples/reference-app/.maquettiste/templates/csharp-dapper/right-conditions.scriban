@@ -1,0 +1,46 @@
+{{-
+# The conditions of the named rights (rights-design.md decision 29), written only when the project uses rights: one static partial
+# class RightConditions per package namespace, with one method per named right that has a condition and a use, however many lifecycles
+# use it. The team's half (unit right-conditions-companion, written once) implements them, so a new one fails the build until written.
+# An inline right's condition is in <Lifecycle>RightConditions, beside its lifecycle's handlers.
+include "_csharp.scriban"
+include "_process.scriban"
+if uses_rights()
+  groups = {}
+  folders = []
+  for r in model.rights
+    if r.condition_text != null && r.uses.size > 0
+      $f = package_folder r
+      if !groups[$f]
+        groups[$f] = []
+        folders[folders.size] = $f
+      end
+      $g = groups[$f]
+      $g[$g.size] = r
+    end
+  end
+  for f in folders
+    rights = groups[f]
+    capture content
+-}}
+{{ header() }}
+namespace {{ ns(rights[0]) }};
+
+/// <summary>The conditions of the named rights of this package: a right holds only when its condition is true (implemented in RightConditions.cs).</summary>
+public static partial class RightConditions
+{
+{{- for r in rights }}
+{{- if !for.first }}
+{{ end }}
+    /// <summary>The condition of named right {{ r.name }}{{ if r.description }} ({{ cs_line r.description | string.strip | escape_xml }}){{ end }}: <c>{{ cs_line r.condition_text | escape_xml }}</c>. Used by {{ for u in r.uses }}{{ for.first ? "" : ", " }}{{ u.process.name }}{{ end }}.</summary>
+    /// <param name="request">The rights check.</param>
+    /// <returns>Whether it holds.</returns>
+    public static partial bool {{ pascal r.name }}(global::{{ actors_ns() }}.RightRequest request);
+{{- end }}
+}
+{{ end -}}
+{{-
+    file (join_path pack.params.generatedFolder f "RightConditions.g.cs") content
+  end
+end
+-}}

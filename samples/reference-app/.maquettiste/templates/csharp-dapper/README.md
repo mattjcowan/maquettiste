@@ -364,6 +364,11 @@ For `PurchaseApproval` in package `Purchasing`:
 | `interpreter` | `overwrite`, file block | `model` | `Runtime/Statechart.g.cs`: the interpreter |
 | `interpreter-companion` | `once`, file block | `model` | `Runtime/ProcessHost.cs` (in the `partialFolder`): in-memory clock, timers and invokes |
 | `actors` | `overwrite`, file block | `model` | `Processes/Actors.cs`: a constant per actor, its type, and each event's allowed actors. `ActorType` gains `Group`, `Organization` and `System` only for the types the model uses; when an actor is a member of another, `MemberOf`, `Accepts` and `Allows` are written and the interpreter's and dispatcher's actor checks follow membership. An actor taken from the object says how it is worked out ("the object's owner") |
+| `rights` | `overwrite`, file block | `model` | `Processes/Rights.cs`, only when a lifecycle states rights or a default: the rights check (see Rights) |
+| `right-conditions` | `overwrite`, file block | `model` | `<Package>/RightConditions.g.cs`: one static partial method per named right with a condition and a use, however many lifecycles use it |
+| `right-conditions-companion` | `once`, file block | `model` | `<Package>/RightConditions.cs` (in the `partialFolder`): a stub per condition, which throws until written |
+| `caller-holdings` | `once`, file block | `model` | `Dispatch/CallerHoldings.cs` (in the `partialFolder`), only when the project uses rights: the team's `ICallerHoldings`, which returns no held actors until written (see Rights) |
+| `scenario-holdings` | `overwrite`, file block | `model` | `<testsFolder>/ScenarioHoldings.cs`, only when the project uses rights and `testsFolder` is set: the held actors of each step's participant |
 | `scenario-tests` | file blocks | `each scenario` | `<testsFolder>/PurchaseApproval/HappyPathTests.cs`: one xunit test per scenario; only when `testsFolder` is set. Each step acts as the actor the engine worked out (`step.acts_as`), and an event step by a participant signs with the participant's identity unless it names a signer |
 
 ### Lifecycle state codes
@@ -486,6 +491,51 @@ ordering strings or mixing kinds (`context.name < "b"`, `"1" == 1`), `decimal` m
 an attribute that cannot be null (always false in JavaScript, a warning in C#). Function calls, `Math`, arrays, template strings,
 `?.`, `??`, assignments and names other than the above are outside the subset too. A guard receives `StatechartCall<TContext>` (`Context`, `Event`, `States`, `IsActive(path)`, `Instance`) and returns a
 boolean; an action returns the new context.
+
+### Rights
+
+A project uses rights when a lifecycle states `rights` or `rightsDefault` (rights-design.md, part 1). Only then does the pack write
+anything below; a project without rights gets the same bytes as before. A scenario that only expects a refusal such as `guard`
+writes nothing new.
+
+- **`Processes/Rights.cs`**: `RightAccess`, `RightDefinition` (id, name, access, actors, except, verbs, ends, condition and description),
+  `RightUse` (a right and the states where it holds), `ProcessRights` (what a process's definition states: whether it is a lifecycle, its
+  default, its rights, the entities it governs, its one subject, and the ids a refusal names), `RightRequest`, `RightDecision` and
+  `Rights.Check`, with a `Can<Verb>` method for each verb a right names. Each answering lifecycle answers on its own: its denies, then its
+  allows (a closed list the caller passed counts as one), then its default; any "no" wins. The first check that fails names the refusal:
+  denies (the acting lifecycle's first, in file order, then the others by name), then defaults. For an object, link or own verb, every
+  other lifecycle that governs `Subject` answers too, in the states `States` gives (a missing lifecycle reads as its initial state, and
+  every lifecycle does for `create`); with no `Subject`, the lifecycles `States` names answer.
+- **`RightRequest`** has init properties, so later versions add members without breaking a call: `Verb`, `Lifecycle` (the acting
+  lifecycle, none outside a move), `Subject` (the entity's type), `Actor` (the actor the caller acts as), `Envelope`, `Held`, `States`,
+  `End` (a relation end, for a link) and `Allowed` (the closed lists the caller passed), and `Resolves` when the model has actors taken
+  from the object. A team's own call, such as from an edit endpoint or an operation's handler, fills it itself; generated operation code
+  doesn't check rights.
+- **Process definitions** pass their `ProcessRights` to `ChartDefinition` through an optional parameter.
+- **Conditions** are static partial methods that take the request, which the team writes: a named right's in `RightConditions` in its
+  package's namespace, once however many lifecycles use it; an inline right's in `<Lifecycle>RightConditions`, beside its lifecycle's
+  handlers. A new one fails the build until written. Actors taken from the object, in a right's `actors` or `except`, are answered by the
+  acting process's resolver (`IActorResolver`), which also answers for those another answering lifecycle's rights name.
+- **What the caller holds** comes from `ICallerHoldings` (in `Dispatch.g.cs`), never from the request body or the command. Each command
+  handler asks it once per command and passes the list to the interpreter. The team's stub, `Dispatch/CallerHoldings.cs`, is written once
+  and returns none: the caller is then checked only as the actor it acts as, so a deny on a role it holds but isn't acting as doesn't reach
+  it, and neither does an allow. The registry passes the container's `ICallerHoldings` to each handler, else the stub.
+- **Other lifecycles' states:** when another lifecycle could say no to a verb an event names (`process.may_refuse`), the process's
+  handlers implement `ILifecycleStates` and declare `StatesIn<Lifecycle>(call)` in the team's half: the object's active states there, none
+  for its initial state, and null when that lifecycle doesn't govern the object (a process with several subjects), so it isn't asked. It
+  throws until written. A process whose events reach no such lifecycle gets none.
+- **The interpreter** checks events, human tasks (as `complete`) and signatures the way the engine does: the closed list (`actor`), then
+  rights and defaults on the event's verb before any guard (`right`, `default`; a gate's signers count as an allow for the gated event),
+  then the guards, then at a gate the signers, the lifecycle's denies on `sign`, a repeat signer and a reason. `Refusals` gains `Right` and
+  `Default`, and `StepResult` and `CommandResult` gain `RefusedBy`: the event or invoke, the right, the lifecycle whose default denies, the
+  guard or the gate.
+- **Scenario tests:** `ScenarioHoldings` answers each command with the held actors of the step's participant (its actor and its holdings
+  with no context). Each generated test sets `ScenarioHoldings.Current` before a send and clears it after. `ScenarioHost` is your file, so
+  register it there once, in place of the stub: pass `new ScenarioHoldings()` as each command handler's last argument (or register it as
+  the container's `ICallerHoldings`). Until then, a step that depends on a held actor (its participant holds one besides the actor the
+  step acts as) fails with a message that says so; other steps don't ask. A refused step
+  asserts its expected `refusal` and `refusedBy`. A verb step calls `Rights.Check` with the subject object's entity and states, and the
+  actors from the object its participant satisfies in the engine's replay (`step.trace.object_actors`) as the resolver, and asserts its answer; without rights it is written as a comment, since nothing in the model can refuse it.
 
 ### Scenario tests
 

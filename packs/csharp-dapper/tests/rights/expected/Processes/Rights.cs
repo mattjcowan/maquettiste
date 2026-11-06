@@ -83,7 +83,7 @@ public sealed record RightRequest
     /// <summary>The object's active state paths, by lifecycle name. A lifecycle missing here reads as its initial state, and every lifecycle does for <c>create</c>.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> States { get; init; } = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 
-    /// <summary>The name of the subject's relation end, when the verb acts on a link through it; null for the object.</summary>
+    /// <summary>The name of the subject's relation end, when the verb acts on a link through it; null for the object, or for a link verb whose end isn't known, where a deny with ends holds and an allow with ends grants nothing.</summary>
     public string? End { get; init; }
 
     /// <summary>The closed lists the caller passed (an event's or human task's actors, a gate's signers), by id: each counts as an allow of the acting lifecycle.</summary>
@@ -109,7 +109,7 @@ public static class Rights
     // The verbs that speak of the object, its links or the project's own: every lifecycle that governs the object answers for them.
     private static readonly HashSet<global::App.Model.Verb> ObjectVerbs = [global::App.Model.Verb.Create, global::App.Model.Verb.Read, global::App.Model.Verb.Modify, global::App.Model.Verb.Delete, global::App.Model.Verb.Copy, global::App.Model.Verb.Revise, global::App.Model.Verb.Lock, global::App.Model.Verb.Unlock, global::App.Model.Verb.ChangeOwner, global::App.Model.Verb.ChangeType, global::App.Model.Verb.ChangeLifecycle, global::App.Model.Verb.Freeze, global::App.Model.Verb.Thaw, global::App.Model.Verb.Connect, global::App.Model.Verb.Disconnect, ];
 
-    // The link verbs: without ends, a right on one speaks of every link too.
+    // The link verbs: without ends, a right on one speaks of every link too. With ends and no end known, only a deny speaks of them (fail closed).
     private static readonly HashSet<global::App.Model.Verb> LinkVerbs = [global::App.Model.Verb.Connect, global::App.Model.Verb.Disconnect, ];
 
     // The actors taken from the object, by name: only the request's resolver says the caller is one.
@@ -228,7 +228,9 @@ public static class Rights
             return false;
         if (use.States.Count > 0 && !use.States.Any(states.Contains))
             return false;
-        if (right.Ends.Count > 0 ? request.End is null || !right.Ends.Contains(request.End, StringComparer.Ordinal) : request.End is not null && !LinkVerbs.Contains(verb))
+        if (right.Ends.Count > 0
+                ? request.End is null ? right.Access != RightAccess.Deny || !LinkVerbs.Contains(verb) : !right.Ends.Contains(request.End, StringComparer.Ordinal)
+                : request.End is not null && !LinkVerbs.Contains(verb))
             return false;
         if (right.Actors.Count > 0 && !right.Actors.Any(a => Satisfies(request, a)))
             return false;

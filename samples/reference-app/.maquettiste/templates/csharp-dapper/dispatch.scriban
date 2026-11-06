@@ -29,6 +29,22 @@ public interface IProcessCommandHandler
     Task<CommandResult> RefuseAsync(string instance, string input, string refusal, CancellationToken cancellationToken);
 }
 
+{{ if model.rights_lifecycles.size > 0 -}}
+/// <summary>
+/// What a caller holds with no context, besides the actor it acts as (rights-design.md decision 29): the host reads it from its own
+/// principal, as Pipeline.Authorize does. Each command handler asks it once per command, so every sender is covered; it is never read from
+/// the request body or the command. The team's CallerHoldings (Dispatch/CallerHoldings.cs) is the default.
+/// </summary>
+public interface ICallerHoldings
+{
+    /// <summary>The actors the caller of a command holds with no context, besides the one it acts as.</summary>
+    /// <param name="envelope">The command's envelope.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The held actors' names.</returns>
+    ValueTask<IReadOnlyList<string>> HeldAsync(ProcessEnvelope envelope, CancellationToken cancellationToken);
+}
+
+{{ end -}}
 /// <summary>Handles one command type.</summary>
 /// <typeparam name="TCommand">The command type.</typeparam>
 public interface ICommandHandler<in TCommand> : IProcessCommandHandler
@@ -59,6 +75,12 @@ public sealed record CommandResult(bool Accepted, string? Refusal, IReadOnlyList
 
     /// <summary>Why the input stopped short (a macrostep over the microstep bound), or null; the instance kept the state it reached.</summary>
     public string? Failure { get; init; }
+{{- if model.rights_lifecycles.size > 0 }}
+
+    /// <summary>The id of the element that refused the command (the event or invoke, the right, the lifecycle whose default denies, the
+    /// guard or the gate), or null.</summary>
+    public string? RefusedBy { get; init; }
+{{- end }}
 
     /// <summary>A refusal without an instance.</summary>
     /// <param name="refusal">The reason.</param>

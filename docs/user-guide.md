@@ -2613,7 +2613,8 @@ speaks: **Allowed** (the usual choice, and what a lifecycle without the key does
 - **The verbs say what a right speaks of.** Moves, signatures and tasks are answered by the lifecycle where the move, signature
   or task is. Objects, links and your own verbs are answered by every lifecycle that governs the object, each in the object's
   state there. With **Links**, `connect`, `disconnect`, `read`, `modify`, `freeze` and `thaw` speak of the links through those ends.
-  `ends` beside any other verb is MQ9903. A right's states must be states of its own lifecycle (MQ9902).
+  When a `connect` or `disconnect` names no end, as an event does, a deny with **Links** still holds and an allow with **Links**
+  grants nothing. `ends` beside any other verb is MQ9903. A right's states must be states of its own lifecycle (MQ9902).
 - **When the right holds.** The condition reads the object as `subject.<attribute>` (to-one paths too), `current_actor()`,
   `in_state` and `now()`. It does not read the context or an event's payload, since rights are also asked outside a run. A condition
   that is false or unknown means the right says nothing, so a deny over a missing value does not fire. `create` is asked as if the

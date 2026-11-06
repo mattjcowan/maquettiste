@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Maquettiste.Engine.Model;
 
@@ -54,6 +56,10 @@ public sealed record RightsFilter
 /// </summary>
 internal static class RightsGrid
 {
+    // Another lifecycle's answer across its states, by actor ("" for everyone else), verb and lifecycle id: the same in every grid of a
+    // snapshot, so a project's grids work each one out once.
+    private static readonly ConditionalWeakTable<ModelSnapshot, ConcurrentDictionary<(string Actor, string Verb, string Lifecycle), Cell?>> OthersByModel = new();
+
     /// <summary>The answer of a cell's own lifecycle, or of one cell for one entity.</summary>
     private sealed record Cell(string Answer, bool ByDefault, IReadOnlyList<string> By, IReadOnlyList<string> DependsOn)
     {
@@ -114,13 +120,10 @@ internal static class RightsGrid
 
         // Other lifecycles that could answer: those that state rights or a default and govern a subject, per subject entity.
         var entities = Subjects(model, lifecycle).OrderBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Id, StringComparer.Ordinal).ToList();
-        var stating = model.All<Process>().Where(p => p.Use == ProcessUse.Lifecycle && !string.Equals(p.Id, lifecycle.Id, StringComparison.Ordinal)
-                && (p.Rights.Count > 0 || p.RightsDefault is not null))
-            .OrderBy(p => p.Name, StringComparer.Ordinal).ThenBy(p => p.Id, StringComparer.Ordinal).ToList();
-        var governing = entities.Select(e => stating.Where(o => SubjectCoverage.Governs(model, o, e)).ToList()).ToList();
+        var governing = entities.Select(e => evaluator.Governing(e).Where(o => !string.Equals(o.Id, lifecycle.Id, StringComparison.Ordinal)).ToList()).ToList();
 
         var rows = new List<RightsRow>();
-        var others = new Dictionary<(string? Actor, string Verb, string Lifecycle), Cell?>();
+        var others = OthersByModel.GetValue(model, static _ => new());
         foreach (var state in states)
         {
             ct.ThrowIfCancellationRequested();
@@ -151,13 +154,9 @@ internal static class RightsGrid
                     {
                         for (var i = 0; i < entities.Count; i++)
                         {
-                            var answers = governing[i].Select(o =>
-                            {
-                                var key = (actor, verb, o.Id);
-                                if (!others.TryGetValue(key, out var known))
-                                    others[key] = known = Other(model, evaluator, o, verb, caller);
-                                return (Lifecycle: o, Cell: known);
-                            }).Where(a => a.Cell is not null).ToList();
+                            var answers = governing[i].Select(o => (Lifecycle: o,
+                                    Cell: others.GetOrAdd((actor ?? "", verb, o.Id), _ => Other(model, evaluator, o, verb, caller))))
+                                .Where(a => a.Cell is not null).ToList();
                             cells.Add((entities[i], Combine(own, answers!)));
                         }
 
@@ -251,12 +250,12 @@ internal static class RightsGrid
             return new Cell("denied", false, [.. closed.Select(l => l.Owner)], []);
 
         var passing = closed.Where(l => l.Actors.Count > 0 && l.Actors.Any(caller.Accepts)).ToList();
-        var decision = evaluator.Check(new RightsQuery
-        {
-            Verb = verb, Process = lifecycle, Caller = caller, Closed = passing, Signers = signers,
-            States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { [lifecycle.Id] = [state] },
-        });
-        if (decision.Lifecycles.FirstOrDefault(a => ReferenceEquals(a.Lifecycle, lifecycle)) is { } answer)
+        // Only this lifecycle's own answer: the others that govern the object answer in Other, once per grid.
+        if (evaluator.AnswerOf(new RightsQuery
+            {
+                Verb = verb, Process = lifecycle, Caller = caller, Closed = passing, Signers = signers,
+                States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { [lifecycle.Id] = [state] },
+            }, lifecycle) is { } answer)
             return FromAnswer(answer);
 
         // A lifecycle that states no rights and no default allows; a closed list the caller passes is what lets it through.
@@ -274,12 +273,11 @@ internal static class RightsGrid
         var answers = new List<LifecycleAnswer>();
         foreach (var state in chart.States.Where(s => s.Parent is not null && s.Children.IsEmpty && s.Type is not (StateType.History or StateType.Choice)))
         {
-            var decision = evaluator.Check(new RightsQuery
-            {
-                Verb = verb, Process = other, Caller = caller,
-                States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { [other.Id] = [state.Id] },
-            });
-            if (decision.Lifecycles.FirstOrDefault(a => ReferenceEquals(a.Lifecycle, other)) is { } answer)
+            if (evaluator.AnswerOf(new RightsQuery
+                {
+                    Verb = verb, Process = other, Caller = caller,
+                    States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { [other.Id] = [state.Id] },
+                }, other) is { } answer)
                 answers.Add(answer);
         }
 

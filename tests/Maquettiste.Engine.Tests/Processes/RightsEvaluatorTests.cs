@@ -516,6 +516,46 @@ public sealed class RightsEvaluatorTests
     }
 
     [Fact]
+    public void A_link_verb_with_no_end_fails_closed_for_rights_with_ends()
+    {
+        // An event that names connect names no end. NoBomChangesInReview, a deny with ends, still holds; an allow with ends grants nothing,
+        // so the default answers; a right without ends answers as before.
+        const string ReviewersLink = "01JRVR00000000000000000007";
+        var model = Model(documents: p => p with
+        {
+            Rights =
+            [
+                .. p.Rights,
+                new ProcessRight { Id = ReviewersLink, Name = "ReviewersLink", Access = RightAccess.Allow, Actors = [Reviewer], Verbs = ["connect"], Ends = [Components] },
+            ],
+        });
+        Refused(Check(model, "connect", Author, Documents, Document, Review), Refusals.Right, NoBomChangesInReview);
+        Refused(Check(model, "disconnect", Author, Documents, Document, Review), Refusals.Right, NoBomChangesInReview);
+        Allowed(Check(model, "connect", Reviewer, Documents, Document, Editing, end: Components));
+        Refused(Check(model, "connect", Reviewer, Documents, Document, Editing), Refusals.Default, Documents);
+        Allowed(Check(model, "connect", Author, Documents, Document, Editing)); // AuthorsEditDrafts names no ends
+        Assert.DoesNotContain(Check(model, "modify", Author, Documents, Document, Review).Rights, r => r.Right == NoBomChangesInReview); // not a link verb
+
+        // The grid has no end either: Review's connect cell is denied by the deny with ends; Draft's for Reviewer falls to the default.
+        var rows = RightsGrid.Rows(model, model.Get<Process>(Documents)!, ct: TestContext.Current.CancellationToken);
+        Assert.Contains(rows, r => r is { State: Review, Actor: Author, Verb: "connect", Answer: "denied" } && r.By.SequenceEqual([NoBomChangesInReview]));
+        Assert.Contains(rows, r => r is { State: Editing, Actor: Reviewer, Verb: "connect", Answer: "denied", ByDefault: true });
+    }
+
+    [Fact]
+    public void Rights_on_a_demoted_lifecycle_use_nothing()
+    {
+        // A lifecycle demoted to an orchestration keeps its rights (MQ9901 asks the user), but only lifecycles hold rights: the project uses
+        // none, and the rights naming key hashes as a project without them.
+        static Process Plain(Process p) => p with { Rights = [], RightsDefault = null };
+        var demoted = Model(documents: p => p with { Use = ProcessUse.Orchestration }, hr: Plain, projects: Plain, approval: Plain);
+        var none = Model(documents: Plain, hr: Plain, projects: Plain, approval: Plain);
+        Assert.False(RightsEvaluator.Of(demoted).Uses);
+        Assert.Equal(Maquettiste.Engine.Planning.RightsNaming.Hash(none), Maquettiste.Engine.Planning.RightsNaming.Hash(demoted));
+        Assert.NotEqual(Maquettiste.Engine.Planning.RightsNaming.Hash(none), Maquettiste.Engine.Planning.RightsNaming.Hash(Model(hr: Plain, projects: Plain, approval: Plain)));
+    }
+
+    [Fact]
     public void A_project_without_rights_is_never_asked()
     {
         var model = Model(

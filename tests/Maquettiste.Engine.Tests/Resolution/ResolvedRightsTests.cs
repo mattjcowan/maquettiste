@@ -461,4 +461,131 @@ public sealed class ResolvedRightsTests
         Assert.DoesNotContain("\"rights", json, StringComparison.Ordinal);
         Assert.DoesNotContain(ResolvedRecords.Entries(plain, "all", null), e => e.Kind == "right");
     }
+
+    [Fact]
+    public void A_replay_keys_on_what_a_rights_condition_reads()
+    {
+        // Projects denies promote while HR has the employee suspended, and its scenario sends only an event that names promote, a move verb.
+        // Changing HR's initial state changes the replay, so the step keys on HR's file.
+        const string Ann = "01JRRC00000000000000000013";
+        const string Suspended = "01JRRS00000000000000000012";
+        const string Promote = "01JRRX00000000000000000021";
+        Func<Element, Element> Edit(string hrInitial) => e => e switch
+        {
+            Process { Id: Hr } hr => hr with { States = [.. hr.States, new ProcessState { Id = Suspended, Name = "Suspended" }], Initial = hrInitial },
+            Process { Id: Projects } p => p with
+            {
+                Events = [new ProcessEvent { Id = Promote, Name = "promote", Verb = "promote" }],
+                Transitions = [new ProcessTransition { Id = "01JRRT00000000000000000021", Source = Open, Event = Promote, Targets = [Open] }],
+                Rights =
+                [
+                    .. p.Rights,
+                    new ProcessRight
+                    {
+                        Id = "01JRRR00000000000000000013", Name = "NoPromotionWhileSuspended", Access = RightAccess.Deny, Verbs = ["promote"],
+                        Condition = new Expr { Text = "in_state(subject, HR.Suspended)" },
+                    },
+                ],
+            },
+            Scenario { Id: Scenario } s => s with
+            {
+                Process = Projects, Subject = Ann, Objects = [new ScenarioObject { Id = Ann, Name = "ann", Entity = Employee }], Participants = [],
+                Steps = [new ScenarioStep { Id = Step, Event = Promote }],
+            },
+            _ => e,
+        };
+
+        var before = Model(edit: Edit(Active));
+        var resolved = ResolutionKit.Resolve(before);
+        Assert.True(((RStep)resolved.Find(Step)!).Trace!.Accepted);
+        var keys = Keys(resolved, Step);
+        Assert.Contains("e:" + Hr, keys);
+        var after = Model(edit: Edit(Suspended));
+        Assert.False(((RStep)ResolutionKit.Resolve(after).Find(Step)!).Trace!.Accepted);
+        Assert.NotEqual(HashOf(before, keys), HashOf(after, keys));
+    }
+
+    [Fact]
+    public void A_step_trace_names_the_actors_from_the_object_its_participant_satisfied()
+    {
+        // Carl owns Ann's record, so his step satisfies DocumentOwner (an owner actor); with no owner it satisfies none.
+        const string Ann = "01JRRC00000000000000000013";
+        Func<Element, Element> Edit(string? owner) => e => e is Scenario { Id: Scenario } s ? s with
+        {
+            Process = Projects, Subject = Ann, Objects = [new ScenarioObject { Id = Ann, Name = "ann", Entity = Employee, Owner = owner }],
+            Participants = [new ScenarioParticipant { Id = Carl, Name = "carl", Holds = [new ScenarioHolding { Id = "01JRRC00000000000000000014", Actor = Author }] }],
+            Steps = [s.Steps[0] with { Verb = "read", Values = new Dictionary<string, JsonElement>(), Expect = null }],
+        } : e;
+        var owned = (RStep)ResolutionKit.Resolve(Model(edit: Edit(Carl))).Find(Step)!;
+        Assert.Equal(["DocumentOwner"], owned.Trace!.ObjectActors.Select(a => a.Name));
+        Assert.Empty(((RStep)ResolutionKit.Resolve(Model(edit: Edit(null))).Find(Step)!).Trace!.ObjectActors);
+    }
+
+    [Fact]
+    public void The_access_grid_is_worked_out_on_first_read()
+    {
+        var documents = ProcessOf(ResolutionKit.Resolve(Model()), Documents);
+        Assert.False(documents.AccessGridSource!.IsValueCreated);
+        Assert.NotEmpty(documents.AccessGrid);
+        Assert.True(documents.AccessGridSource.IsValueCreated);
+    }
+
+    [Fact]
+    public void Grids_over_many_lifecycles_on_one_entity_do_not_grow_quadratically()
+    {
+        // Each lifecycle's grid asks the others that govern the entity once per actor and verb, and only the lifecycle in question: twice the
+        // lifecycles costs about twice the time, not four or eight times (finding 1 of the rights review: 30 took 1.1 s and 60 took 8.6 s).
+        static ModelSnapshot Many(int count)
+        {
+            List<Element> elements =
+            [
+                new Entity { Id = Employee, Name = "Employee" },
+                new Actor { Id = HrStaff, Name = "HrStaff", Type = ActorType.Role },
+                new Actor { Id = ProjectManager, Name = "ProjectManager", Type = ActorType.Role },
+            ];
+            for (var i = 0; i < count; i++)
+            {
+                var n = i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture);
+                elements.Add(Lifecycle("01JRRP00000000000000L0" + n, "L" + n, Employee,
+                    [new ProcessState { Id = "01JRRS0000000000000A0" + n, Name = "A" }, new ProcessState { Id = "01JRRS0000000000000B0" + n, Name = "B" },
+                        new ProcessState { Id = "01JRRS0000000000000C0" + n, Name = "C" }]) with
+                {
+                    RightsDefault = RightAccess.Deny,
+                    Events = [new ProcessEvent { Id = "01JRRX0000000000000E0" + n, Name = "edit", Verb = "modify" }],
+                    Rights =
+                    [
+                        new ProcessRight { Id = "01JRRR0000000000000P0" + n, Name = "Edit", Access = RightAccess.Allow, Actors = [HrStaff], Verbs = ["modify", "read"] },
+                        new ProcessRight
+                        {
+                            Id = "01JRRR0000000000000Q0" + n, Name = "NotInB", Access = RightAccess.Deny, Actors = [ProjectManager], Verbs = ["modify"],
+                            States = ["01JRRS0000000000000B0" + n],
+                        },
+                    ],
+                });
+            }
+
+            var docs = elements.Select((e, i) => Doc(e, $"model/x/{i:D4}-{e.Name}.json")).OrderBy(d => d.Path, StringComparer.Ordinal).ToList();
+            return ModelSnapshot.Create(docs, new ProjectSettings { FormatVersion = EngineVersion.FormatVersion }, "", [], [], 1);
+        }
+
+        static TimeSpan Time(int count)
+        {
+            var best = TimeSpan.MaxValue;
+            for (var run = 0; run < 3; run++)
+            {
+                var model = Many(count); // a new snapshot each time: nothing is reused between runs
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                foreach (var lifecycle in model.All<Process>())
+                    Assert.NotEmpty(RightsGrid.Rows(model, lifecycle, ct: TestContext.Current.CancellationToken));
+                best = clock.Elapsed < best ? clock.Elapsed : best;
+            }
+
+            return best;
+        }
+
+        Time(5); // warm up
+        var thirty = Time(30);
+        var sixty = Time(60);
+        Assert.True(sixty < thirty * 3 + TimeSpan.FromMilliseconds(100), $"30 lifecycles took {thirty.TotalMilliseconds:F0} ms, 60 took {sixty.TotalMilliseconds:F0} ms");
+    }
 }

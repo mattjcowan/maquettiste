@@ -61,8 +61,9 @@ public sealed partial class {{ name }}Handlers
 {{ end }}
 {{- stubs = stubs + 1 }}
     // The object's active state paths in lifecycle {{ l.name }}, which could say no to a verb an event names: read them from your
-    // system for the instance's object. None means the initial state. It throws until you write it.
-    private partial global::System.Collections.Generic.IReadOnlyList<string> StatesIn{{ pascal l.name }}({{ call }} call) =>
+    // system for the instance's object. None means the initial state; null means {{ l.name }} doesn't govern the object, so it isn't asked
+    // (a process with several subjects). It throws until you write it.
+    private partial global::System.Collections.Generic.IReadOnlyList<string>? StatesIn{{ pascal l.name }}({{ call }} call) =>
         throw new NotImplementedException("The states of the object in lifecycle {{ l.name }} are not read yet.");
 {{- end }}
 {{- end }}

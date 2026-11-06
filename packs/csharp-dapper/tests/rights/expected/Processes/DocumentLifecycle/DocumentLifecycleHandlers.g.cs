@@ -40,13 +40,16 @@ public sealed partial class DocumentLifecycleHandlers : IStatechartBehaviour<Doc
     private partial bool IsDocumentOwner(ProcessSnapshot<DocumentLifecycleContext> snapshot, ProcessEnvelope envelope);
 
     /// <inheritdoc/>
-    public IReadOnlyDictionary<string, IReadOnlyList<string>> StatesIn(StatechartCall<DocumentLifecycleContext> call) => new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> StatesIn(StatechartCall<DocumentLifecycleContext> call)
     {
-        ["Records"] = StatesInRecords(call),
-    };
+        var states = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        if (StatesInRecords(call) is { } inRecords)
+            states["Records"] = inRecords;
+        return states;
+    }
 
-    /// <summary>The object's active state paths in lifecycle Records, which could say no to a verb an event of DocumentLifecycle names; none means its initial state (implemented in DocumentLifecycleHandlers.cs).</summary>
-    private partial IReadOnlyList<string> StatesInRecords(StatechartCall<DocumentLifecycleContext> call);
+    /// <summary>The object's active state paths in lifecycle Records, which could say no to a verb an event of DocumentLifecycle names; none means its initial state, and null that Records doesn't govern the object, so it isn't asked (implemented in DocumentLifecycleHandlers.cs).</summary>
+    private partial IReadOnlyList<string>? StatesInRecords(StatechartCall<DocumentLifecycleContext> call);
 }
 
 /// <summary>Handles the commands of process DocumentLifecycle: loads the instance through the store, runs the machine and saves.</summary>

@@ -717,6 +717,48 @@ internal sealed class PackRepo : IDisposable
     }
 
     /// <summary>
+    /// A lifecycle with two subjects (rights-design.md decision 10): Filing governs Alpha and Beta, and its event <c>edit</c> names
+    /// <c>modify</c>; Guard governs Alpha only and denies by default, so Filing's handlers ask its states, and only for an Alpha object.
+    /// csharp-dapper writes to <c>out</c>.
+    /// </summary>
+    /// <returns>The repo.</returns>
+    public static PackRepo SeveralSubjects()
+    {
+        var repo = new PackRepo();
+        CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper"), Path.Combine(repo.Repo.ModelRoot, "templates", "csharp-dapper"));
+        repo.Write(".maquettiste/maquettiste.json", """
+            { "formatVersion": 1, "name": "subjects", "outputs": { "allow": [ { "path": "out" } ] }, "packs": { "csharp-dapper": { "output": "out" } } }
+
+            """);
+        repo.Write(".maquettiste/model/packages/docs.json", """{ "kind": "package", "id": "01JRS000000000000000000P01", "name": "Docs" }""");
+        foreach (var (id, name) in new[] { ("01", "Alpha"), ("02", "Beta") })
+        {
+            repo.Write($".maquettiste/model/entities/{name.ToLowerInvariant()}.json", $$"""
+                { "kind": "entity", "id": "01JRS000000000000000000E{{id}}", "name": "{{name}}", "package": "01JRS000000000000000000P01",
+                  "key": { "attributes": [ "01JRS000000000000000000A{{id}}" ] },
+                  "attributes": [ { "id": "01JRS000000000000000000A{{id}}", "name": "id", "type": "uuid", "required": true } ] }
+                """);
+        }
+
+        repo.Write(".maquettiste/model/actors/clerk.json", """{ "kind": "actor", "id": "01JRS000000000000000000K01", "name": "Clerk", "type": "role" }""");
+        repo.Write(".maquettiste/model/processes/filing.json", """
+            { "kind": "process", "id": "01JRS000000000000000000Q01", "name": "Filing", "package": "01JRS000000000000000000P01", "use": "lifecycle",
+              "subjects": [ { "id": "01JRS000000000000000000B01", "entity": "01JRS000000000000000000E01" },
+                            { "id": "01JRS000000000000000000B02", "entity": "01JRS000000000000000000E02" } ],
+              "events": [ { "id": "01JRS000000000000000000V01", "name": "edit", "verb": "modify" } ],
+              "states": [ { "id": "01JRS000000000000000000S01", "name": "Open" } ], "initial": "01JRS000000000000000000S01",
+              "transitions": [ { "id": "01JRS000000000000000000T01", "source": "01JRS000000000000000000S01", "event": "01JRS000000000000000000V01",
+                                 "targets": [ "01JRS000000000000000000S01" ] } ] }
+            """);
+        repo.Write(".maquettiste/model/processes/guard.json", """
+            { "kind": "process", "id": "01JRS000000000000000000Q02", "name": "Guard", "package": "01JRS000000000000000000P01", "use": "lifecycle",
+              "subjects": [ { "id": "01JRS000000000000000000B03", "entity": "01JRS000000000000000000E01" } ], "rightsDefault": "deny",
+              "states": [ { "id": "01JRS000000000000000000S02", "name": "Active" } ], "initial": "01JRS000000000000000000S02" }
+            """);
+        return repo;
+    }
+
+    /// <summary>
     /// The gate 3 fixture (<c>tests/fixtures/models/processes</c>, phase-3-design.md section 8.1) with every example pack its settings
     /// name that exists under <c>packs/</c>. With <paramref name="sources"/> the fixture's C# solution comes along (its isolation files,
     /// projects, the committed companions under <c>src/Processes.Data/Custom</c> and the test host), so the generated code can be built

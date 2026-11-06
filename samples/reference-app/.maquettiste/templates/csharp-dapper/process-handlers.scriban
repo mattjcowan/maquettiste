@@ -17,6 +17,9 @@ name = p_name(p)
 ctx = name + "Context"
 call = "StatechartCall<" + ctx + ">"
 relatives = relative_actors(p)
+rights = uses_rights()
+hooks = rights ? states_hooks(p) : []
+conditions = rights ? inline_conditions(p) : []
 -}}
 {{ header() }}
 using System;
@@ -30,7 +33,7 @@ using {{ runtime_ns() }};
 namespace {{ ns(p) }};
 
 /// <summary>The guards and actions of process {{ p.name }}.</summary>
-public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>{{ if relatives.size > 0 }}, IActorResolver<{{ ctx }}>{{ end }}
+public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>{{ if relatives.size > 0 }}, IActorResolver<{{ ctx }}>{{ end }}{{ if hooks.size > 0 }}, ILifecycleStates<{{ ctx }}>{{ end }}
 {
     /// <inheritdoc/>
     public bool Guard(string guard, {{ call }} call) => guard switch
@@ -113,12 +116,50 @@ public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>
     private partial bool Is{{ pascal a.name }}(ProcessSnapshot<{{ ctx }}> snapshot, ProcessEnvelope envelope);
 {{- end }}
 {{- end }}
+{{- if hooks.size > 0 }}
+
+    /// <inheritdoc/>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> StatesIn({{ call }} call)
+    {
+        var states = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+{{- for l in hooks }}
+        if (StatesIn{{ pascal l.name }}(call) is { } in{{ pascal l.name }})
+            states[{{ json l.name }}] = in{{ pascal l.name }};
+{{- end }}
+        return states;
+    }
+{{- for l in hooks }}
+
+    /// <summary>The object's active state paths in lifecycle {{ l.name }}, which could say no to a verb an event of {{ p.name }} names; none means its initial state, and null that {{ l.name }} doesn't govern the object, so it isn't asked (implemented in {{ name }}Handlers.cs).</summary>
+    private partial IReadOnlyList<string>? StatesIn{{ pascal l.name }}({{ call }} call);
+{{- end }}
+{{- end }}
 }
+{{- if conditions.size > 0 }}
+
+/// <summary>The conditions of the rights of lifecycle {{ p.name }}: a right holds only when its condition is true (implemented in {{ name }}Handlers.cs).</summary>
+public static partial class {{ name }}RightConditions
+{
+{{- for r in conditions }}
+{{- if !for.first }}
+{{ end }}
+    /// <summary>The condition of right {{ r.name }}: <c>{{ cs_line r.condition_text | escape_xml }}</c>.</summary>
+    /// <param name="request">The rights check.</param>
+    /// <returns>Whether it holds.</returns>
+    public static partial bool {{ pascal r.name }}(global::{{ actors_ns() }}.RightRequest request);
+{{- end }}
+}
+{{- end }}
 
 /// <summary>Handles the commands of process {{ p.name }}: loads the instance through the store, runs the machine and saves.</summary>
 /// <param name="machine">The machine.</param>
 /// <param name="store">The store.</param>
+{{- if rights }}
+/// <param name="holdings">What the caller holds besides the actor it acts as; the team's CallerHoldings when null.</param>
+public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, I{{ name }}Store store, ICallerHoldings? holdings = null) :
+{{- else }}
 public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, I{{ name }}Store store) :
+{{- end }}
     ICommandHandler<{{ name }}StartControl>,
 {{- for e in p.events }}
     ICommandHandler<{{ command_type(p, e) }}>,
@@ -136,6 +177,17 @@ public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, 
     }
 {{- for e in p.events }}
 
+{{- if rights }}
+
+    /// <inheritdoc/>
+    public async Task<CommandResult> HandleAsync({{ command_type(p, e) }} command, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var held = await Holdings.HeldAsync(command.Envelope, cancellationToken).ConfigureAwait(false);
+        return await RunAsync(command.Envelope.Instance, {{ json e.name }}, snapshot => machine.{{ pascal e.name }}(snapshot, command, held), cancellationToken).ConfigureAwait(false);
+    }
+{{- else }}
+
     /// <inheritdoc/>
     public Task<CommandResult> HandleAsync({{ command_type(p, e) }} command, CancellationToken cancellationToken)
     {
@@ -143,6 +195,17 @@ public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, 
         return RunAsync(command.Envelope.Instance, {{ json e.name }}, snapshot => machine.{{ pascal e.name }}(snapshot, command), cancellationToken);
     }
 {{- end }}
+{{- end }}
+{{- if rights }}
+
+    /// <inheritdoc/>
+    public async Task<CommandResult> HandleAsync({{ name }}InvokeResultControl command, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var held = await Holdings.HeldAsync(command.Envelope, cancellationToken).ConfigureAwait(false);
+        return await RunAsync(command.Envelope.Instance, command.Invoke, snapshot => machine.Complete(snapshot, command, held), cancellationToken).ConfigureAwait(false);
+    }
+{{- else }}
 
     /// <inheritdoc/>
     public Task<CommandResult> HandleAsync({{ name }}InvokeResultControl command, CancellationToken cancellationToken)
@@ -150,6 +213,7 @@ public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, 
         ArgumentNullException.ThrowIfNull(command);
         return RunAsync(command.Envelope.Instance, command.Invoke, snapshot => machine.Complete(snapshot, command), cancellationToken);
     }
+{{- end }}
 
     /// <inheritdoc/>
     public Task<CommandResult> HandleAsync({{ name }}TimersDueControl command, CancellationToken cancellationToken)
@@ -202,8 +266,14 @@ public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, 
         return Result(step, events);
     }
 
+{{- if rights }}
+
+    // Asked once per command: what the caller holds comes from the host, never from the command (rights-design.md decision 29).
+    private ICallerHoldings Holdings { get; } = holdings ?? new CallerHoldings();
+{{- end }}
+
     private static CommandResult Result(StepResult<{{ ctx }}> step, IReadOnlyList<object> events) =>
-        new(step.Accepted, step.Refusal, step.States, step.Changed, step.Final, step.Context, events) { Audit = step.Audit, Failure = step.Failure };
+        new(step.Accepted, step.Refusal, step.States, step.Changed, step.Final, step.Context, events) { Audit = step.Audit, Failure = step.Failure{{ if rights }}, RefusedBy = step.RefusedBy{{ end }} };
 
     private static object Typed(GateAuditRecord record) => record.Gate switch
     {

@@ -13,7 +13,8 @@ public sealed partial class DocumentLifecycleHandlers
     private partial bool IsDocumentOwner(ProcessSnapshot<DocumentLifecycleContext> snapshot, ProcessEnvelope envelope) => false;
 
     // The object's active state paths in lifecycle Records, which could say no to a verb an event names: read them from your
-    // system for the instance's object. None means the initial state. It throws until you write it.
-    private partial global::System.Collections.Generic.IReadOnlyList<string> StatesInRecords(StatechartCall<DocumentLifecycleContext> call) =>
+    // system for the instance's object. None means the initial state; null means Records doesn't govern the object, so it isn't asked
+    // (a process with several subjects). It throws until you write it.
+    private partial global::System.Collections.Generic.IReadOnlyList<string>? StatesInRecords(StatechartCall<DocumentLifecycleContext> call) =>
         throw new NotImplementedException("The states of the object in lifecycle Records are not read yet.");
 }

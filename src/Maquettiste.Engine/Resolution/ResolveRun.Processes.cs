@@ -1274,7 +1274,8 @@ internal sealed partial class ResolveRun
             // The engine's replay, for templates that assert what the interpreter did (a refusal's reason, the audit outcomes): run
             // once per scenario on first read, so a run whose templates never read it pays nothing.
             var model = Model;
-            var replay = new Lazy<IReadOnlyList<RStepTrace>>(() => Replay(model, scenario, lookup), LazyThreadSafetyMode.ExecutionAndPublication);
+            var actorsById = _actors;
+            var replay = new Lazy<IReadOnlyList<RStepTrace>>(() => Replay(model, scenario, lookup, actorsById), LazyThreadSafetyMode.ExecutionAndPublication);
             foreach (var step in steps)
                 step.Replay = replay;
             scenarios.Add(s);
@@ -1556,20 +1557,44 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>The engine interpreter's result of each step of a scenario that ran (empty when the replay could not start).</summary>
-    private static IReadOnlyList<RStepTrace> Replay(ModelSnapshot model, Scenario scenario, ProcessLookup lookup)
+    private static IReadOnlyList<RStepTrace> Replay(ModelSnapshot model, Scenario scenario, ProcessLookup lookup, Dictionary<string, RActor> actors)
     {
         using var runtime = new ProcessRuntime(model, 1, CancellationToken.None);
         if (ScenarioReplayer.Replay(scenario, runtime) is not { } replay)
             return [];
-        return [.. replay.Steps.Select(t => new RStepTrace
+
+        // The actors from the object each participant's step satisfied, read from the cast as that step saw it: the values the run set
+        // before it (Participants.Current), as the run's actor lookup reads them.
+        var process = model.Get<Process>(scenario.Process);
+        var fromObject = scenario.Participants.Count == 0 || process is null ? []
+            : actors.Values.Where(a => a.Relative is not null).OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.Id, StringComparer.Ordinal).ToList();
+        var cast = ScenarioCast.Of(scenario);
+        var values = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        var traces = new List<RStepTrace>(replay.Steps.Count);
+        foreach (var t in replay.Steps)
         {
-            Accepted = t.Accepted,
-            Refusal = t.Refusal,
-            Audit = [.. t.Audit.Select(a => ResolutionValues.Kebab(a.Outcome))],
-            StatePaths = [.. t.Configuration.Select(id => lookup.States.TryGetValue(id, out var state) ? state.Path : id)],
-            Final = t.Final,
-            ActsAs = t.ActsAs,
-        })];
+            IReadOnlyList<RActor> satisfied = [];
+            if (fromObject.Count > 0 && t.Input?.Participant is { } participantId && cast.Participant(participantId) is { } participant)
+            {
+                var current = Participants.Current(cast, values);
+                satisfied = [.. fromObject.Where(a => Participants.Satisfies(model, process!, current, participant, a.Id))];
+            }
+
+            foreach (var (id, value) in t.ValuesChanged ?? ImmutableDictionary<string, JsonElement>.Empty)
+                values[id] = value;
+            traces.Add(new RStepTrace
+            {
+                Accepted = t.Accepted,
+                Refusal = t.Refusal,
+                Audit = [.. t.Audit.Select(a => ResolutionValues.Kebab(a.Outcome))],
+                StatePaths = [.. t.Configuration.Select(id => lookup.States.TryGetValue(id, out var state) ? state.Path : id)],
+                Final = t.Final,
+                ActsAs = t.ActsAs,
+                ObjectActors = satisfied,
+            });
+        }
+
+        return traces;
     }
 
     /// <summary>Guard results keyed by guard name (the id when no guard has it), ordinal.</summary>

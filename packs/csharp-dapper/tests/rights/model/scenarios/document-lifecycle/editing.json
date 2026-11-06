@@ -67,8 +67,48 @@
       ]
     }
   ],
-  "description": "Carl submits the document; Eve, who is no author, may not submit it; Eve signs its approval.",
+  "description": "Carl may not change the secret document, but Bea, its owner, may; Bea may not delete it, and Eve may read it. Carl submits it; Eve, who is no author, may not submit it; Dan, who holds Intern, may not sign its approval; Eve signs it.",
   "steps": [
+    {
+      "id": "01JRT000000000000000000Y14",
+      "input": "verb",
+      "verb": "modify",
+      "participant": "01JRT000000000000000000W02",
+      "expect": {
+        "accepted": false,
+        "refusal": "right",
+        "refusedBy": "01JRT000000000000000000R01"
+      }
+    },
+    {
+      "id": "01JRT000000000000000000Y15",
+      "input": "verb",
+      "verb": "modify",
+      "participant": "01JRT000000000000000000W01",
+      "expect": {
+        "accepted": true
+      }
+    },
+    {
+      "id": "01JRT000000000000000000Y16",
+      "input": "verb",
+      "verb": "delete",
+      "participant": "01JRT000000000000000000W01",
+      "expect": {
+        "accepted": false,
+        "refusal": "default",
+        "refusedBy": "01JRT000000000000000000Q01"
+      }
+    },
+    {
+      "id": "01JRT000000000000000000Y17",
+      "input": "verb",
+      "verb": "read",
+      "participant": "01JRT000000000000000000W04",
+      "expect": {
+        "accepted": true
+      }
+    },
     {
       "id": "01JRT000000000000000000Y11",
       "event": "01JRT000000000000000000V01",
@@ -87,6 +127,16 @@
         "accepted": false,
         "refusal": "actor",
         "refusedBy": "01JRT000000000000000000V01"
+      }
+    },
+    {
+      "id": "01JRT000000000000000000Y18",
+      "event": "01JRT000000000000000000V02",
+      "participant": "01JRT000000000000000000W03",
+      "expect": {
+        "accepted": false,
+        "refusal": "right",
+        "refusedBy": "01JRT000000000000000000X04"
       }
     },
     {

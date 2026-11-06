@@ -119,16 +119,19 @@ public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>
 {{- if hooks.size > 0 }}
 
     /// <inheritdoc/>
-    public IReadOnlyDictionary<string, IReadOnlyList<string>> StatesIn({{ call }} call) => new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> StatesIn({{ call }} call)
     {
+        var states = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 {{- for l in hooks }}
-        [{{ json l.name }}] = StatesIn{{ pascal l.name }}(call),
+        if (StatesIn{{ pascal l.name }}(call) is { } in{{ pascal l.name }})
+            states[{{ json l.name }}] = in{{ pascal l.name }};
 {{- end }}
-    };
+        return states;
+    }
 {{- for l in hooks }}
 
-    /// <summary>The object's active state paths in lifecycle {{ l.name }}, which could say no to a verb an event of {{ p.name }} names; none means its initial state (implemented in {{ name }}Handlers.cs).</summary>
-    private partial IReadOnlyList<string> StatesIn{{ pascal l.name }}({{ call }} call);
+    /// <summary>The object's active state paths in lifecycle {{ l.name }}, which could say no to a verb an event of {{ p.name }} names; none means its initial state, and null that {{ l.name }} doesn't govern the object, so it isn't asked (implemented in {{ name }}Handlers.cs).</summary>
+    private partial IReadOnlyList<string>? StatesIn{{ pascal l.name }}({{ call }} call);
 {{- end }}
 {{- end }}
 }
