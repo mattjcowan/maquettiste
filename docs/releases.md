@@ -5,9 +5,9 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.13.0 (unreleased)
+## 0.13.0 (2026-11-06)
 
-- **Lifecycles any implementation can follow, first half.** A state may carry a `code`, a string or a whole number that is its
+- **State codes, and lifecycles over several entities.** A state may carry a `code`, a string or a whole number that is its
   stable stored value, unique in the lifecycle. A lifecycle lists what it governs in `subjects`, so one lifecycle can cover
   several entities and an entity can follow several lifecycles. Each subject may bind the attribute that holds its state: an
   enum, a reference type or a plain string or integer. A code under a reference binding is a use of the type's row, so renames
@@ -15,7 +15,7 @@ one.
   form) are new, and `sync-enum` takes an optional `entity`. The editor gains a Code column and a **Sync codes** fix. New rules are
   MQ9206 to MQ9210. [Lifecycle subjects and state codes](user-guide.md#lifecycle-subjects-and-state-codes) has the details.
   A project that uses none of this keeps its files and its output.
-- **Lifecycles any implementation can follow, second half.** A scenario may name its objects: `objects`, its cast, each with an
+- **Scenario objects, and guards that read the object.** A scenario may name its objects: `objects`, its cast, each with an
   entity, values by attribute and links by relation end, and `subject`, the object its process runs for. A guard `condition`
   may read `subject.<attribute>` and to-one navigations. A value not given reads as the default, then null, and only true
   passes. `simulate_process`, `record_scenario` and the CLI take `objects` and `subject`, and the simulation panel shows a
