@@ -7875,6 +7875,14 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/Ulid'
+        relative:
+          description: |
+            How an actor from the object is worked out (actors-design.md decision 9), on actor rows whose file has `relative`: `owner`
+            (the object's owner), `path` (the actor a field of the object names) or `members-of` (members of a role, group or
+            organization within a context object). With several forms (MQ9603), the first in that order. Left out when the file has
+            no `relative`; `none` when it gives no form (MQ9603).
+          type: string
+          enum: [owner, path, members-of, none]
         process:
           description: The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows.
           $ref: '#/components/schemas/Ulid'
@@ -7882,6 +7890,12 @@ components:
           type: integer
           minimum: 0
           description: The number of steps, on scenario rows.
+        participants:
+          type: integer
+          minimum: 1
+          description: |
+            The number of participants, on scenario rows that have at least one (actors-design.md decision 14). Left out when the
+            scenario has none, so rows of projects without participants do not change.
         effect:
           description: The operation's effect, on operation rows (next-phase-2-design.md section 4.1).
           type: string
@@ -10021,6 +10035,11 @@ components:
         boundReferenceType:
           type: string
           description: The bound attribute's reference type's id (lifecycle-design.md decision 11); absent for any other binding.
+        owner:
+          type: string
+          description: |
+            The id of the single-valued attribute or to-one relation end that holds the object's owner (actors-design.md decision 10),
+            as the entry names it; absent when the entry names none or MQ9606 reports it.
     StateRecord:
       x-engine-record: Maquettiste.Engine.StateRecord
       description: A state.
@@ -10334,6 +10353,31 @@ components:
             minItems: 1
             items:
               type: string
+          relative:
+            $ref: '#/components/schemas/RelativeRecord'
+    RelativeRecord:
+      x-engine-record: Maquettiste.Engine.RelativeRecord
+      description: |
+        How an actor from the object is worked out (actors-design.md decisions 8 to 12), on actor records whose file has `relative`; left
+        out otherwise.
+      type: object
+      required: [form, path]
+      properties:
+        form:
+          description: owner, path or members-of; with several forms (MQ9603), the first in that order; none when the file gives no form.
+          type: string
+          enum: [owner, path, members-of, none]
+        path:
+          description: |
+            The ids along the path as the model resolves them (an id it does not hold is left out): for path, the to-one relation ends
+            followed, then the last attribute or end;
+            for members-of, the within ends (empty for the object itself); empty for owner.
+          type: array
+          items:
+            type: string
+        membersOf:
+          description: The id of the role, group or organization whose members it is, for members-of; absent otherwise.
+          type: string
     ScenarioRecord:
       x-engine-record: Maquettiste.Engine.ScenarioRecord
       description: A resolved scenario.
@@ -10361,6 +10405,12 @@ components:
           subject:
             type: string
             description: The id of the object the process runs for; absent for a scenario with no objects.
+          participants:
+            type: array
+            description: Who acts in the scenario, in file order (actors-design.md decision 14); absent for a scenario with none.
+            minItems: 1
+            items:
+              $ref: '#/components/schemas/ParticipantRecord'
           start:
             $ref: '#/components/schemas/ScenarioStartRecord'
           steps:
@@ -10391,6 +10441,49 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ScenarioLinkRecord'
+        owner:
+          type: string
+          description: The id of the participant that owns the object (actors-design.md decision 16); absent when the file names none.
+    ParticipantRecord:
+      x-engine-record: Maquettiste.Engine.ParticipantRecord
+      description: A participant of a scenario (actors-design.md decision 14).
+      type: object
+      required: [id, name, identity, holds]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        displayName:
+          type: string
+          description: Absent when the file gives none.
+        identity:
+          type: [string, integer]
+          description: The value the team's system would hold for them; the name when the file gives none.
+        actor:
+          type: string
+          description: The id of the person, external system or system actor they stand for; absent when the file names none.
+        holds:
+          type: array
+          items:
+            $ref: '#/components/schemas/HoldingRecord'
+        object:
+          type: string
+          description: The id of the scenario object that is their record; absent when the file names none.
+    HoldingRecord:
+      x-engine-record: Maquettiste.Engine.HoldingRecord
+      description: A role, group or organization a participant holds (actors-design.md decision 14).
+      type: object
+      required: [id, actor]
+      properties:
+        id:
+          type: string
+        actor:
+          type: string
+          description: The id of the role, group or organization held.
+        within:
+          type: string
+          description: The id of the scenario object it counts within; absent for a holding with no context.
     ScenarioLinkRecord:
       x-engine-record: Maquettiste.Engine.ScenarioLinkRecord
       description: A link from a scenario object to another object of the scenario.
@@ -10456,6 +10549,18 @@ components:
           - type: 'null'
         description:
           type: [string, 'null']
+        participant:
+          type: string
+          description: The id of the participant that acts (actors-design.md decision 15); absent for a step that names none.
+        actsAs:
+          type: string
+          description: |
+            With participant: the id of the actor the engine's replay ran the step as. It is the step's actor when given; else it is
+            worked out from the moves the step could make when it ran: for a gated move, a required actor of the gate not yet signed,
+            else a signer the event's actors also accept, else the first signer the participant satisfies; otherwise the first of the
+            event's or human task's actors it satisfies, or the participant's actor when that list is empty. Absent for a step that
+            names no participant, when the participant satisfies none (the replay refuses the step by actor), and when the replay did
+            not reach the step.
     ExpectationRecord:
       x-engine-record: Maquettiste.Engine.ExpectationRecord
       description: What a step expects.
@@ -14060,6 +14165,11 @@ components:
         after:
           description: An ISO 8601 duration, for `time`.
           type: [string, 'null']
+        participant:
+          description: |
+            The id of a participant of the run (actors-design.md decision 15); the engine works out the actor it acts as unless `actor` is
+            given, and an event's signer defaults to its identity. A trace's echo gives the actor it acted as and the signer, and the trace's actsAs names that actor; it leaves participant out when absent.
+          type: [string, 'null']
         actor:
           type: [string, 'null']
         signer:
@@ -14098,6 +14208,11 @@ components:
         subject:
           description: The id of the object in `objects` the process runs for; required with `objects`.
           type: [string, 'null']
+        participants:
+          description: The run's participants, as a scenario's `participants` (actors-design.md decision 14); with `scenario`, that scenario's participants when absent.
+          type: [array, 'null']
+          items:
+            $ref: '#/components/schemas/ScenarioParticipant'
         scenario:
           description: A scenario of the process whose start and steps run first.
           type: [string, 'null']
@@ -14143,6 +14258,50 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ScenarioLink'
+        owner:
+          description: The id of the participant that owns the object, for a subject whose process entry names no owner field (actors-design.md decision 16).
+          type: string
+      additionalProperties: false
+    ScenarioParticipant:
+      description: A participant of a scenario or a simulation (`schemas/v1/scenario.json` `$defs/participant`, actors-design.md decision 14).
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        name:
+          description: The name, unique in the scenario (letters, digits and underscores, not starting with a digit).
+          type: string
+          pattern: '^[A-Za-z_][A-Za-z0-9_]*$'
+        displayName:
+          type: string
+        identity:
+          description: The value the team's system would hold for them, such as a login or a number; the name when absent.
+          type: [string, integer]
+        actor:
+          description: The id of the person, external system or system actor they stand for; they then have its memberships.
+          type: string
+        holds:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScenarioHolding'
+        object:
+          description: The id of the scenario object that is their record.
+          type: string
+      additionalProperties: false
+    ScenarioHolding:
+      description: A role, group or organization a participant holds (`schemas/v1/scenario.json` `$defs/holding`).
+      type: object
+      required: [id, actor]
+      properties:
+        id:
+          $ref: '#/components/schemas/Ulid'
+        actor:
+          description: The id of the role, group or organization held.
+          type: string
+        within:
+          description: The id of the scenario object it counts within; without it, it counts only where no context is asked (actors-design.md decision 13).
+          type: string
       additionalProperties: false
     ScenarioLink:
       description: A link from a scenario object to another object of the scenario, through a relation end.
@@ -14212,6 +14371,15 @@ components:
             The system actor when it made the move (actors-design.md decision 2): for the initial entry, a time step or a finished invoke
             that is not a human task, whose input names no actor, the project's system actor (type `system`, shown as Automatic) when it
             has exactly one. Left out otherwise, without a system actor always: a step's own actor is in its input.
+          $ref: '#/components/schemas/Ulid'
+        actsAs:
+          description: |
+            The actor a step with a participant acted as (actors-design.md decision 15), worked out from the moves the step could make
+            when it ran: for a gated move, a required actor of the gate not yet signed, else a signer the event's actors also accept,
+            else the first signer the participant satisfies; otherwise the first of the event's or human task's actors it satisfies, or
+            the participant's actor when that list is empty. The input echoes the filled-in step: its actor is this actor and its
+            signer the participant's identity when the step gave none. Left out for a step that names no participant, and when the
+            participant satisfies none of the actors it could act as. The mock backend fills it and echoes the input the same way.
           $ref: '#/components/schemas/Ulid'
     MicrostepTrace:
       x-engine-record: Maquettiste.Engine.Processes.MicrostepTrace
@@ -14438,6 +14606,11 @@ components:
         subject:
           description: The id of the object in `objects` the process runs for; required with `objects`.
           type: [string, 'null']
+        participants:
+          description: The scenario's participants (actors-design.md decision 14), written to its `participants`; a step keeps the participant it names.
+          type: [array, 'null']
+          items:
+            $ref: '#/components/schemas/ScenarioParticipant'
         steps:
           type: [array, 'null']
           items:

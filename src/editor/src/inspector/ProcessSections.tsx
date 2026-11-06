@@ -34,6 +34,7 @@ import { ScenarioStatusBadge } from "@/editors/process/ScenariosTab";
 import { useScenarioReplay } from "@/editors/scenario/ScenarioEditor";
 import { ActorTypeField, ActorUsesList } from "@/editors/actor/ActorEditor";
 import { MemberOfField } from "@/editors/actor/ActorMembers";
+import { RelativeSummary } from "@/editors/actor/ActorRelative";
 import { useCodeGenerationTab } from "@/editors/EditorFrame";
 import { ChipsEditor, TextField, type FormProps } from "./fields";
 import { applicableExtensions, SchemaForm } from "./SchemaForm";
@@ -330,7 +331,7 @@ export function ActorInspectorSection(props: FormProps) {
     <section className="flex flex-col gap-2" aria-label="Actor" data-testid="inspector-actor">
       <SectionTitle>{KIND_LABELS.actor}</SectionTitle>
       <ActorTypeField ctx={props} dom={`${props.id}-insp`} />
-      <MemberOfField ctx={props} />
+      {(props.json as { relative?: unknown }).relative === undefined ? <MemberOfField ctx={props} /> : <RelativeSummary ctx={props} />}
       <ActorUsesList actor={props.id} />
     </section>
   );

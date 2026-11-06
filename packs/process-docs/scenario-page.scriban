@@ -1,6 +1,7 @@
 {{- include "_docs.scriban" -}}
 {{- sc = scenario -}}
 {{- p = sc.process -}}
+{{- cast = sc.participants.size > 0 -}}
 {{ banner "<!--" }} -->
 
 # {{ md_cell sc.display_name }}
@@ -22,15 +23,30 @@ A scenario of [{{ md_cell p.display_name }}](../{{ kebab p.name }}.md).
 {{- end }}
 | Steps | {{ sc.steps.size }} |
 | Outcome | {{ sc.outcome }} |
+{{- if sc.participants.size > 0 }}
+
+## Participants
+
+Who acts: the value the team's system holds for them, the actor they stand for, what they hold, and the object that is their record.
+
+| Participant | Identity | Stands for | Holds | Object |
+| --- | --- | --- | --- | --- |
+{{- for pt in sc.participants }}
+{{- holds = [] }}
+{{- for h in pt.holds }}{{ holds[holds.size] = actor_link(h.actor, "../../") + (h.within ? " within " + (md_code h.within.name) : "") }}{{ end }}
+| {{ md_code pt.name }}{{ if pt.display_name }} ({{ md_cell pt.display_name }}){{ end }} | {{ md_code ("" + pt.identity) }} | {{ pt.actor ? actor_link(pt.actor, "../../") : "" }} | {{ holds | array.join ", " }} | {{ pt.object ? (md_code pt.object.name) : "" }} |
+{{- end }}
+{{- end }}
 
 ## Walk-through
 
-One row per step: who acts, the input, whether the process accepts it, and the active states after it.
+One row per step: who acts{{ if cast }} and the actor they act as{{ end }}, the input, whether the process accepts it, and the active states after it.
 
-| Step | Actor | Input | Result | States after | Notes |
-| --- | --- | --- | --- | --- | --- |
+| Step |{{ if cast }} Participant |{{ end }} Actor | Input | Result | States after | Notes |
+| --- |{{ if cast }} --- |{{ end }} --- | --- | --- | --- | --- |
 {{- for st in sc.steps }}
 {{- notes = [] }}
+{{- if cast && st.participant && !st.acts_as }}{{ notes[notes.size] = "matches no actor the step accepts" }}{{ end }}
 {{- if st.signer }}{{ notes[notes.size] = "signer " + (md_code st.signer) + (st.meaning ? " as " + (md_code st.meaning.name) : "") }}{{ end }}
 {{- if !st.signer && st.meaning }}{{ notes[notes.size] = "meaning " + (md_code st.meaning.name) }}{{ end }}
 {{- if st.reason }}{{ notes[notes.size] = "reason \"" + (md_cell st.reason) + "\"" }}{{ end }}
@@ -42,7 +58,7 @@ One row per step: who acts, the input, whether the process accepts it, and the a
 {{- else if st.input == "time" }}{{ input = "time passes: " + (md_code st.after) }}
 {{- else if st.input == "invoke-done" }}{{ input = (st.invoke ? (md_code st.invoke.name) : "`?`") + " done" }}
 {{- else if st.input == "invoke-error" }}{{ input = (st.invoke ? (md_code st.invoke.name) : "`?`") + " fails" }}{{ end }}
-| {{ st.index + 1 }} | {{ st.actor ? actor_link(st.actor, "../../") : "" }} | {{ input }} | {{ !st.expect ? "not checked" : (st.expect.accepted ? "accepted" : "**refused**") }} | {{ st.expect ? code_paths(st.expect.states) : "" }} | {{ notes | array.join "; " }}{{ if st.description }}{{ notes.size > 0 ? ". " : "" }}{{ md_inline(st.description) }}{{ end }} |
+| {{ st.index + 1 }} |{{ if cast }} {{ st.participant ? (md_code st.participant.name) : "" }} |{{ end }} {{ (cast ? st.acts_as : st.actor) ? actor_link(cast ? st.acts_as : st.actor, "../../") : "" }} | {{ input }} | {{ !st.expect ? "not checked" : (st.expect.accepted ? "accepted" : "**refused**") }} | {{ st.expect ? code_paths(st.expect.states) : "" }} | {{ notes | array.join "; " }}{{ if st.description }}{{ notes.size > 0 ? ". " : "" }}{{ md_inline(st.description) }}{{ end }} |
 {{- end }}
 
 ## Outcome

@@ -37,12 +37,15 @@ public sealed partial class ModelStore
         var given = request.Objects is { Count: > 0 };
         IReadOnlyList<ScenarioObject> objects = [];
         var subject = request.Subject;
+        var participants = request.Participants is { Count: > 0 } ? request.Participants : null;
         if (request.Scenario is { Length: > 0 } scenarioId)
         {
             if (snapshot.Get<Scenario>(scenarioId) is not { } scenario || scenario.Process != processId)
                 return ProcessCall<SimulationResult>.Fail(ProcessCallStatus.NotFound, $"No scenario of this process has the id {scenarioId}.");
             start = scenario.Start;
             inputs = [.. scenario.Steps.Select(s => s with { Expect = null }), .. inputs];
+            // The scenario's participants unless the request gives its own (actors-design.md decision 14).
+            participants ??= [.. scenario.Participants.Select(p => JsonSerializer.SerializeToElement(p, EngineJson.Options))];
             if (!given)
             {
                 // The scenario's cast, and its subject unless the request picks another of its objects.
@@ -62,6 +65,9 @@ public sealed partial class ModelStore
             return ProcessCall<SimulationResult>.Fail(ProcessCallStatus.BadRequest, $"subject {subject} is not one of the scenario's objects; give the id of one of them.");
         }
 
+        var steps = inputs.ToList();
+        if (ProcessApi.ReadParticipants(participants, objects, steps, out error) is not { } cast)
+            return ProcessCall<SimulationResult>.Fail(ProcessCallStatus.BadRequest, error);
         var model = snapshot;
         if (request.Document is { ValueKind: not JsonValueKind.Null } draft)
         {
@@ -73,7 +79,7 @@ public sealed partial class ModelStore
 
         using var runtime = new ProcessRuntime(model, 1, ct);
         var chart = runtime.Chart(processId)!;
-        return ProcessCall<SimulationResult>.Ok(ProcessApi.Simulate(chart, model.GetDocument(processId)!.Hash, runtime, start, inputs, request.From ?? -1, objects, subject));
+        return ProcessCall<SimulationResult>.Ok(ProcessApi.Simulate(chart, model.GetDocument(processId)!.Hash, runtime, start, steps, request.From ?? -1, objects, subject, cast));
     }
 
     /// <summary>Records a scenario: the inputs replayed by the engine, each step's <c>expect</c> and the outcome filled from the replay.</summary>
@@ -97,27 +103,35 @@ public sealed partial class ModelStore
         if (request.Outcome is not (null or "final" or "active"))
             return ProcessCall<RecordScenarioResult>.Fail(ProcessCallStatus.BadRequest, "outcome must be 'final' or 'active'.");
         _ = ProcessApi.ReadStart(request.Start, out var error);
-        if (error is not null || ProcessApi.ReadInputs(request.Steps, out error) is null || ProcessApi.ReadObjects(request.Objects, request.Subject, out error) is null)
+        if (error is not null || ProcessApi.ReadInputs(request.Steps, out error) is not { } read || ProcessApi.ReadObjects(request.Objects, request.Subject, out error) is not { } readObjects)
+            return ProcessCall<RecordScenarioResult>.Fail(ProcessCallStatus.BadRequest, error);
+        var readSteps = read.ToList();
+        if (ProcessApi.ReadParticipants(request.Participants, readObjects, readSteps, out error) is null)
             return ProcessCall<RecordScenarioResult>.Fail(ProcessCallStatus.BadRequest, error);
 
         var ids = _options.EffectiveIdGenerator;
         var steps = new JsonArray();
+        var stepIndex = 0;
         foreach (var step in request.Steps ?? [])
         {
             var node = JsonNode.Parse(step.GetRawText())!.AsObject();
             node.Remove("expect");
             ProcessApi.ResolveNames(node, process, snapshot);
             node["id"] = ids.NewId();
+            if (readSteps[stepIndex++].Participant is { } participantId)
+                node["participant"] = participantId; // a participant's name given becomes its id
             steps.Add(node);
         }
 
         var document = new JsonObject { ["kind"] = "scenario", ["id"] = ids.NewId(), ["name"] = request.Name, ["process"] = processId };
+        var newIds = new Dictionary<string, string>(StringComparer.Ordinal);
+        JsonObject[] objectNodes = [];
         if (request.Objects is { Count: > 0 } objects)
         {
             // The cast as given (lifecycle-design.md decision 22), each object under a new id so a scenario's objects can be recorded
             // again; the subject and the links follow their objects to the new ids.
             var nodes = objects.Select(o => JsonNode.Parse(o.GetRawText())!.AsObject()).ToArray();
-            var newIds = new Dictionary<string, string>(StringComparer.Ordinal);
+            objectNodes = nodes;
             foreach (var node in nodes)
             {
                 var newId = ids.NewId();
@@ -133,6 +147,31 @@ public sealed partial class ModelStore
 
             document["objects"] = new JsonArray(nodes);
             document["subject"] = request.Subject is { } given && newIds.TryGetValue(given, out var subjectId) ? subjectId : request.Subject;
+        }
+
+        if (request.Participants is { Count: > 0 } participants)
+        {
+            // The participants as given (actors-design.md decision 14), each with its holdings under new ids as the objects are; each
+            // within and object follows its object, and each step's participant and each object's owner follow their participant.
+            var nodes = participants.Select(p => JsonNode.Parse(p.GetRawText())!.AsObject()).ToArray();
+            foreach (var node in nodes)
+            {
+                if (node.TryGetPropertyValue("holds", out var holds) && holds is null)
+                    node.Remove("holds"); // "holds": null reads as no holdings
+                Renew(node);
+                Follow(node, "object");
+                foreach (var holding in (node["holds"] as JsonArray ?? []).OfType<JsonObject>())
+                {
+                    Renew(holding);
+                    Follow(holding, "within");
+                }
+            }
+
+            foreach (var node in objectNodes)
+                Follow(node, "owner");
+            foreach (var node in steps.OfType<JsonObject>())
+                Follow(node, "participant");
+            document["participants"] = new JsonArray(nodes);
         }
 
         if (request.Start is { ValueKind: JsonValueKind.Object } start)
@@ -172,6 +211,19 @@ public sealed partial class ModelStore
             return ProcessCall<RecordScenarioResult>.Fail(saved.Outcome == SaveOutcome.Conflict ? ProcessCallStatus.Conflict : ProcessCallStatus.Invalid, "The scenario was not saved.", saved.Diagnostics);
         _ = process;
         return ProcessCall<RecordScenarioResult>.Ok(new RecordScenarioResult(id, saved.Current?.Json ?? JsonDocument.Parse(bytes).RootElement.Clone(), saved.Hash, true, saved.Diagnostics));
+
+        void Renew(JsonObject node)
+        {
+            var newId = ids.NewId();
+            newIds[node["id"]!.GetValue<string>()] = newId;
+            node["id"] = newId;
+        }
+
+        void Follow(JsonObject node, string key)
+        {
+            if (node[key] is JsonValue value && value.TryGetValue<string>(out var old) && newIds.TryGetValue(old, out var mapped))
+                node[key] = mapped;
+        }
     }
 
     /// <summary>Replays scenarios of a process and reports each one's first failure.</summary>

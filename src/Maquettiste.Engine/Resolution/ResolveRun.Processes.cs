@@ -97,6 +97,47 @@ internal sealed partial class ResolveRun
         }
     }
 
+    /// <summary>
+    /// Actors worked out from the object (actors-design.md section 6): each with <c>relative</c> gets its form, the ids of its path as the
+    /// model resolves them (ends, then the declaring attribute, a base's for an inherited one), and the role, group or organization it is
+    /// the members of. A relative path keys on the actor's file (its own keys) and on the relations and entities it passes through.
+    /// </summary>
+    private void ResolveRelatives()
+    {
+        foreach (var actor in Model.All<Actor>())
+        {
+            if (actor.Relative is not { } relative || !_actors.TryGetValue(actor.Id, out var r))
+                continue;
+            var deps = DepsOf(r);
+            var path = new List<RObject>();
+            foreach (var id in relative.Steps)
+            {
+                if (_byId.GetValueOrDefault(id) is REnd end)
+                {
+                    path.Add(end);
+                    if (Model.TryGetEntry(id, out var entry))
+                        deps.Element(entry.OwnerId);
+                    deps.Element(end.Entity.Id);
+                }
+                else if (DeclaredAttribute(id) is { } attribute)
+                {
+                    path.Add(attribute);
+                    if (Model.TryGetEntry(id, out var entry))
+                        deps.Element(entry.OwnerId);
+                }
+            }
+
+            r.Relative = new RRelative
+            {
+                Form = relative.Form,
+                Path = path,
+                MembersOf = relative.MembersOf is { } holder ? _actors.GetValueOrDefault(holder) : null,
+            };
+            if (relative.MembersOf is { } named)
+                deps.Element(named);
+        }
+    }
+
     /// <summary>Resolves actors, processes and scenarios, the actors' uses and the entities' lifecycles.</summary>
     private void ResolveProcesses()
     {
@@ -113,6 +154,7 @@ internal sealed partial class ResolveRun
 
         _actorOrder = [.. _actors.Values.OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.Id, StringComparer.Ordinal)];
         ResolveMemberships();
+        ResolveRelatives();
 
         // Shells first: an invoke names another process.
         var sources = new Dictionary<string, Process>(StringComparer.Ordinal);
@@ -236,6 +278,21 @@ internal sealed partial class ResolveRun
                 subject.BoundReferenceType = subject.BoundAttribute?.Type.ReferenceType;
                 if (subject.BoundReferenceType is { } referenceType)
                     deps.Element(referenceType.Id);
+            }
+
+            // The owner field (actors-design.md decision 10), only when MQ9606 has nothing to say about it.
+            if (entry.Owner is { } ownerId && Model.Get<Entity>(entry.Entity) is { } modelEntity)
+            {
+                if (entity.Attributes.FirstOrDefault(a => string.Equals(a.Id, ownerId, StringComparison.Ordinal)) is { } owner)
+                {
+                    // Own or inherited only: an attribute from a stereotype is MQ9606.
+                    var declared = ExprSites.AttributesOf(Model, modelEntity).Any(a => string.Equals(a.Id, ownerId, StringComparison.Ordinal));
+                    subject.OwnerAttribute = !declared || owner.Collection || owner.Type.ValueObject is not null ? null : owner;
+                }
+                else if (Processes.RelativeActors.OwnerEnd(Model, modelEntity, ownerId) is { Max: MaxCardinality.One } && _byId.GetValueOrDefault(ownerId) is REnd ownerEnd)
+                    subject.OwnerEnd = ownerEnd;
+                if (subject.OwnerEnd is not null && Model.TryGetEntry(ownerId, out var ownerEntry))
+                    deps.Element(ownerEntry.OwnerId);
             }
 
             subjects.Add(subject);
@@ -723,7 +780,9 @@ internal sealed partial class ResolveRun
             };
             var keys = deps.ToList();
             ResolveScenarioObjects(s, scenario, keys);
+            var participants = ResolveParticipants(s, scenario, keys);
             var traced = TraceInputs(scenario);
+            var runs = scenario.Participants.Count > 0 ? Model.Get<Process>(scenario.Process) : null;
             var steps = new List<RStep>();
             for (var i = 0; i < scenario.Steps.Count; i++)
             {
@@ -749,6 +808,30 @@ internal sealed partial class ResolveRun
                 var stepDeps = DepsOf(r).AddRange(keys);
                 if (step.Actor is { } actor)
                     stepDeps.Element(actor);
+                if (step.Participant is { } participantId && runs is not null)
+                {
+                    // The actor a participant acts as (actors-design.md decision 15) is the one the engine's replay ran the step as. It
+                    // reads the actors' files (memberships and the actors from the object) and which actors exist, the processes it
+                    // invokes, the entities of every subject of the process with their bases (a path must mean the same on each), and the
+                    // scenario's objects (traced below).
+                    r.Participant = participants.GetValueOrDefault(participantId);
+                    var known = r;
+                    var actors = _actors;
+                    r.ReplayedActsAs = new Lazy<RActor?>(() => known.Trace?.ActsAs is { } acting ? actors.GetValueOrDefault(acting) : null,
+                        LazyThreadSafetyMode.ExecutionAndPublication);
+                    stepDeps.Add(ActorKind);
+                    foreach (var listed in _actorOrder)
+                        stepDeps.Element(listed.Id);
+                    foreach (var invoked in ExprSites.InvokedProcesses(Model, runs))
+                        stepDeps.Element(invoked.Id);
+                    foreach (var subject in runs.Subjects)
+                    {
+                        var chain = new HashSet<string>(StringComparer.Ordinal);
+                        for (var id = subject.Entity; id is not null && chain.Add(id); id = Model.Get<Entity>(id)?.Base)
+                            stepDeps.Element(id);
+                    }
+                }
+
                 foreach (var id in traced)
                     stepDeps.Element(id);
                 if (step.Expect is { } expect)
@@ -841,6 +924,60 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>
+    /// A scenario's participants (actors-design.md decision 14), by id: each with its actor, its holdings (a holding whose actor does not
+    /// resolve is left out) and its object; and each object's owner. They are parts of the scenario's own file, and read the actors they
+    /// name.
+    /// </summary>
+    private Dictionary<string, RParticipant> ResolveParticipants(RScenario s, Scenario scenario, IReadOnlyList<string> keys)
+    {
+        var byId = new Dictionary<string, RParticipant>(StringComparer.Ordinal);
+        if (scenario.Participants.Count == 0)
+            return byId;
+        var objects = new Dictionary<string, RScenarioObject>(StringComparer.Ordinal);
+        foreach (var obj in s.Objects)
+            objects.TryAdd(obj.Id, obj);
+        var list = new List<RParticipant>();
+        var listKeys = new DependencySet(Keys).AddRange(keys);
+        foreach (var participant in scenario.Participants)
+        {
+            var r = new RParticipant
+            {
+                Id = participant.Id,
+                Name = participant.Name,
+                DisplayName = participant.DisplayName,
+                Identity = participant.Identity is { ValueKind: JsonValueKind.Number } number && number.TryGetInt64(out var integer) ? integer : participant.IdentityText,
+                Actor = participant.Actor is { } actor ? _actors.GetValueOrDefault(actor) : null,
+                Object = participant.Object is { } record ? objects.GetValueOrDefault(record) : null,
+                Holds = [.. participant.Holds.Where(h => _actors.ContainsKey(h.Actor)).Select(h => new RHolding
+                {
+                    Id = h.Id,
+                    Actor = _actors[h.Actor],
+                    Within = h.Within is { } within ? objects.GetValueOrDefault(within) : null,
+                })],
+            };
+            var deps = DepsOf(r).AddRange(keys);
+            foreach (var named in participant.Holds.Select(h => h.Actor).Prepend(participant.Actor).OfType<string>())
+            {
+                deps.Element(named);
+                listKeys.Element(named);
+            }
+
+            list.Add(r);
+            byId.TryAdd(r.Id, r);
+            Register(r);
+        }
+
+        s.Participants = new RList<RParticipant>(list, listKeys.ToList());
+        foreach (var obj in scenario.Objects)
+        {
+            if (obj.Owner is { } owner && objects.TryGetValue(obj.Id, out var r))
+                r.Owner = byId.GetValueOrDefault(owner);
+        }
+
+        return byId;
+    }
+
+    /// <summary>
     /// What a step's replay (<c>step.trace</c>) reads beyond the scenario and its process (lifecycle-design.md decision 22): the subjects'
     /// entities of the process and of each process it invokes whose guard conditions read <c>subject</c> (their defaults are what such a
     /// condition sees for a value the object lacks), the entities of the scenario's objects, all with their bases, which declare the
@@ -883,6 +1020,7 @@ internal sealed partial class ResolveRun
             Audit = [.. t.Audit.Select(a => ResolutionValues.Kebab(a.Outcome))],
             StatePaths = [.. t.Configuration.Select(id => lookup.States.TryGetValue(id, out var state) ? state.Path : id)],
             Final = t.Final,
+            ActsAs = t.ActsAs,
         })];
     }
 

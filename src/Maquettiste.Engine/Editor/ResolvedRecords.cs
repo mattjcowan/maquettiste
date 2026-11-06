@@ -515,8 +515,11 @@ public sealed record ProcessRecord(string Id, string Kind, string Name, string? 
 /// <param name="BoundEnum">The bound attribute's enum's id.</param>
 /// <param name="BoundReferenceType">The bound attribute's reference type's id (lifecycle-design.md decision 11); <see langword="null"/>, and left
 /// out of the JSON, for any other binding.</param>
+/// <param name="Owner">The id of the attribute or to-one end that holds the object's owner (actors-design.md decision 10); <see langword="null"/>,
+/// and left out of the JSON, when the entry names none or MQ9606 reports it.</param>
 public sealed record SubjectRecord(string Id, string Entity, string? BoundAttribute, string? BoundEnum,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? BoundReferenceType = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? BoundReferenceType = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Owner = null);
 
 /// <summary>A state of a process.</summary>
 /// <param name="Id">The state id.</param>
@@ -688,10 +691,20 @@ public sealed record AuditFieldRecord(string Id, string Name, string Type, bool 
 /// <param name="MemberOf">The ids of the roles, groups and organizations it is a member of, in file order, each once, without the entries
 /// MQ9601 reports; left out when none
 /// (actors-design.md section 6).</param>
+/// <param name="Relative">How it is worked out from the object; left out for an actor that stands for itself (actors-design.md section 6).</param>
 public sealed record ActorRecord(string Id, string Kind, string Name, string? Package, string Type, IReadOnlyList<string> Processes, IReadOnlyList<string> Events,
     IReadOnlyList<string> Gates, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
     IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? MemberOf = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? MemberOf = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RelativeRecord? Relative = null);
+
+/// <summary>How an actor from the object is worked out (actors-design.md decisions 8 to 12).</summary>
+/// <param name="Form"><c>owner</c>, <c>path</c> or <c>members-of</c>; the first with several (MQ9603), <c>none</c> with none.</param>
+/// <param name="Path">The ids along the path as the model resolves them (an id it does not hold is left out): a path's steps, a members-of's
+/// within ends; empty for the owner.</param>
+/// <param name="MembersOf">The id of the role, group or organization whose members it is; <see langword="null"/>, and left out, otherwise.</param>
+public sealed record RelativeRecord(string Form, IReadOnlyList<string> Path,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? MembersOf = null);
 
 /// <summary>A resolved scenario.</summary>
 /// <param name="Id">The scenario id.</param>
@@ -714,11 +727,33 @@ public sealed record ActorRecord(string Id, string Kind, string Name, string? Pa
 /// objects.</param>
 /// <param name="Subject">The id of the object the process runs for; <see langword="null"/>, and left out of the JSON, for a scenario with no
 /// objects.</param>
+/// <param name="Participants">The participants (actors-design.md decision 14); <see langword="null"/>, and left out of the JSON, for a
+/// scenario with none.</param>
 public sealed record ScenarioRecord(string Id, string Kind, string Name, string? Package, string Process, ScenarioStartRecord Start, IReadOnlyList<StepRecord> Steps,
     string Outcome, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category, IReadOnlyList<string> Stereotypes,
     IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ScenarioObjectRecord>? Objects = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Subject = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Subject = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ParticipantRecord>? Participants = null);
+
+/// <summary>A participant of a scenario (actors-design.md decision 14).</summary>
+/// <param name="Id">The participant's id.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Identity">The identity: a string or an integer; the name when the file gives none.</param>
+/// <param name="Holds">The holdings.</param>
+/// <param name="DisplayName">The display name; left out when the file gives none.</param>
+/// <param name="Actor">The id of the actor they stand for; left out when there is none.</param>
+/// <param name="Object">The id of the object that is their record; left out when there is none.</param>
+public sealed record ParticipantRecord(string Id, string Name, object Identity, IReadOnlyList<HoldingRecord> Holds,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DisplayName = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Actor = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Object = null);
+
+/// <summary>A role, group or organization a participant holds (actors-design.md decision 14).</summary>
+/// <param name="Id">The holding's id.</param>
+/// <param name="Actor">The id of the actor held.</param>
+/// <param name="Within">The id of the object it counts within; left out for a holding with no context.</param>
+public sealed record HoldingRecord(string Id, string Actor, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Within = null);
 
 /// <summary>An object of a scenario (lifecycle-design.md decision 22).</summary>
 /// <param name="Id">The object's id.</param>
@@ -726,7 +761,9 @@ public sealed record ScenarioRecord(string Id, string Kind, string Name, string?
 /// <param name="Entity">The entity's id.</param>
 /// <param name="Values">The values given, by attribute name (by id when the entity has no such attribute).</param>
 /// <param name="Links">The links to other objects.</param>
-public sealed record ScenarioObjectRecord(string Id, string Name, string Entity, IReadOnlyDictionary<string, object?> Values, IReadOnlyList<ScenarioLinkRecord> Links);
+/// <param name="Owner">The id of the participant that owns the object (actors-design.md decision 16); left out when there is none.</param>
+public sealed record ScenarioObjectRecord(string Id, string Name, string Entity, IReadOnlyDictionary<string, object?> Values, IReadOnlyList<ScenarioLinkRecord> Links,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Owner = null);
 
 /// <summary>A link from a scenario object to another object of the scenario.</summary>
 /// <param name="End">The relation end's id.</param>
@@ -755,9 +792,14 @@ public sealed record ScenarioStartRecord(IReadOnlyDictionary<string, object?> Co
 /// <param name="Assume">The guard outcomes assumed.</param>
 /// <param name="Expect">What the step expects, or <see langword="null"/>.</param>
 /// <param name="Description">The description.</param>
+/// <param name="Participant">The id of the participant that acts (actors-design.md decision 15); left out for a step with none.</param>
+/// <param name="ActsAs">With a participant, the id of the actor the step acts as; left out without a participant, or when it satisfies
+/// none of the actors the step needs.</param>
 public sealed record StepRecord(string Id, int Index, string Input, string? Event, string? Invoke, string? After, long? AfterMs, long? AfterTicks, string? Actor,
     string? Signer, string? Meaning, string? Reason, IReadOnlyDictionary<string, object?> Payload, IReadOnlyDictionary<string, object?> Assume,
-    ExpectationRecord? Expect, string? Description);
+    ExpectationRecord? Expect, string? Description,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Participant = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ActsAs = null);
 
 /// <summary>What a step expects.</summary>
 /// <param name="Accepted">Whether the input is accepted.</param>
@@ -1377,21 +1419,25 @@ public static class ResolvedRecords
             [.. p.Invokes.Select(i => new InvokeRecord(i.Id, i.Name, i.Type, i.Process?.Id, Ids(i.Actors), i.State.Id, i.DisplayName, i.Description, Keys(i.Stereotypes), Plain(i.Properties)))],
             Ids(p.Actors), Ids(p.Scenarios),
             p.DisplayName!, p.PluralName!, p.Description, p.Tags, p.Category?.Id, Keys(p.Stereotypes), Plain(p.Properties), p.Generation,
-            p.ListsSubjects ? [.. p.Subjects.Select(s => new SubjectRecord(s.Id, s.Entity.Id, s.BoundAttribute?.Id, s.BoundEnum?.Id, s.BoundReferenceType?.Id))] : null,
+            p.ListsSubjects ? [.. p.Subjects.Select(s => new SubjectRecord(s.Id, s.Entity.Id, s.BoundAttribute?.Id, s.BoundEnum?.Id, s.BoundReferenceType?.Id, s.OwnerAttribute?.Id ?? s.OwnerEnd?.Id))] : null,
             p.HasCodes ? p.CodesMap : null);
 
         public ActorRecord Actor(RActor a) => new(a.Id, "actor", a.Name, a.Package?.Id, a.Type, Ids(a.Processes), Ids(a.Events), Ids(a.Gates),
             a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation,
-            a.MemberOf.Count > 0 ? Ids(a.MemberOf) : null);
+            a.MemberOf.Count > 0 ? Ids(a.MemberOf) : null,
+            a.Relative is { } relative ? new RelativeRecord(relative.Form, [.. relative.Path.Select(o => o.Id)], relative.MembersOf?.Id) : null);
 
         public ScenarioRecord Scenario(RScenario s) => new(s.Id, "scenario", s.Name, s.Package?.Id, s.Process.Id, new ScenarioStartRecord(Plain(s.Start.Context), s.Start.At),
             [.. s.Steps.Select(t => new StepRecord(t.Id, t.Index, t.Input, t.Event?.Id, t.Invoke?.Id, t.After, t.AfterMs, t.AfterTicks, t.Actor?.Id, t.Signer, t.Meaning?.Id,
                 t.Reason, Plain(t.Payload), Plain(t.Assume),
-                t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context)) : null, t.Description))],
+                t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context)) : null, t.Description,
+                t.Participant?.Id, t.Participant is null ? null : t.ActsAs?.Id))],
             s.Outcome, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation,
             s.Objects.Count == 0 ? null : [.. s.Objects.Select(o => new ScenarioObjectRecord(o.Id, o.Name, o.Entity.Id, Plain(o.Values),
-                [.. o.Links.Select(l => new ScenarioLinkRecord(l.End.Id, l.Object.Id))]))],
-            s.Objects.Count == 0 ? null : s.Subject?.Id);
+                [.. o.Links.Select(l => new ScenarioLinkRecord(l.End.Id, l.Object.Id))], o.Owner?.Id))],
+            s.Objects.Count == 0 ? null : s.Subject?.Id,
+            s.Participants.Count == 0 ? null : [.. s.Participants.Select(p => new ParticipantRecord(p.Id, p.Name, p.Identity,
+                [.. p.Holds.Select(h => new HoldingRecord(h.Id, h.Actor.Id, h.Within?.Id))], p.DisplayName, p.Actor?.Id, p.Object?.Id))]);
 
         public OperationRecord Operation(ROperation o) => new(o.Id, "operation", o.Name, o.Package?.Id, o.Subject?.Id, o.Level, o.Effect,
             [.. o.Input.Select(OperationMember)],

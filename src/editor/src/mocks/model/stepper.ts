@@ -244,6 +244,8 @@ export interface SimInputJson {
   assume: Record<string, boolean>;
   expect: null;
   description: unknown;
+  /** The participant that acts (actors-design.md decision 15); written only when the input names one. */
+  participant?: string;
 }
 
 export interface DiagnosticJson {
@@ -274,6 +276,8 @@ export interface StepTraceJson {
   incomplete: boolean;
   /** The system actor when it made the move: the initial entry, time steps and invoke completions that are not human tasks, naming no actor. */
   actor?: string;
+  /** With a participant on the input: the actor the step acted as; left out when the participant satisfies none of the list. */
+  actsAs?: string | null;
 }
 
 export interface SimulationJson {
@@ -314,7 +318,31 @@ export interface StepperOptions {
   /** The scenario's cast and the object the process runs for (decision 22); carried in the run, not yet read by guards. */
   objects?: Json[];
   subject?: string;
+  /** The run's participants (a scenario's `participants`, actors-design.md decision 14). */
+  participants?: Json[];
+  /** Actors from the object that carry `owner`: satisfied by the participant the subject object names as its owner. */
+  ownerActors?: ReadonlySet<string>;
+  /** The name of the actor that stands for the members of a role within a context, by the role's id (for MQ9305's advice). */
+  membersActors?: ReadonlyMap<string, string>;
 }
+
+/** The texts of the participant cases of MQ9301 and MQ9305, as RuleCatalog words them (the engine's rule list). */
+export const PARTICIPANT_TEXTS = {
+  unknown: (id: string) => `A step's participant '${id}' is not a participant of the scenario; fix the step, the object or the participant.`,
+  actorNotSatisfied: (participant: string, actor: string) =>
+    `A step's actor '${actor}' is one the participant '${participant}' does not satisfy; fix the step, the object or the participant.`,
+  /** MQ9305: the participant holds the actor's role only within a context, and the step needs it held without one. */
+  heldOnlyWithin: (participant: string, role: string, context: string, actor: string, named: string | undefined) =>
+    `participant '${participant}' holds ${role} only within ${context}; this step needs ${actor} held without a context. Hold it without a context too, or ${
+      named ? `name the actor for ${named} within ${context}` : `name an actor taken from the object for the members of ${role} within ${context}`
+    }.`,
+  /** MQ9301: a refusal by actor names the participant and the list it did not satisfy. */
+  refusedByActor: (step: number, participant: string, list: string[]) =>
+    `Step ${step} is refused while expect.accepted is true: the participant '${participant}' satisfies none of ${list.length ? list.join(", ") : "the actors the step needs"}; fix the step's input or set accepted to what the process does.`,
+} as const;
+
+/** The list a participant's refused step did not satisfy, by trace entry (kept off the answer: the engine's trace has no such member). */
+export const unsatisfiedLists = new WeakMap<object, string[]>();
 
 const WARNINGS = new Set(["MQ9502", "MQ9503", "MQ9504", "MQ9505"]);
 
@@ -352,6 +380,7 @@ export function normalizeInput(step: Json, index: number, chart: { doc: Json }, 
     assume,
     expect: null,
     description: step.description ?? null,
+    ...(str(step.participant) ? { participant: str(step.participant)! } : {}),
   };
 }
 
@@ -372,6 +401,10 @@ interface Signature {
 
 interface Scope {
   input: SimInputJson | null;
+  /** The input as the trace echoes it: with a participant's actor and signer filled in, as the engine echoes it. */
+  echo: SimInputJson | null;
+  actsAs?: string | null;
+  list?: string[];
   actor: string | null;
   event: Json;
   refusal: string | null;
@@ -385,6 +418,7 @@ class Overflow extends Error {}
 
 const emptyEvent = (): Json => ({ name: null, actor: null, payload: {} });
 const newScope = (input: SimInputJson | null): Scope => ({
+  echo: input,
   input,
   actor: null,
   event: emptyEvent(),
@@ -405,6 +439,10 @@ class Interpreter {
   queue: { kind: string; id: string }[] = [];
   done = false;
   clock = Date.parse(DEFAULT_START);
+  /** The run's participants and the actors from the object that stand for the subject's owner. */
+  participants: Json[] = [];
+  ownerActors: ReadonlySet<string> = new Set();
+  membersActors: ReadonlyMap<string, string> = new Map();
   /** The cast of the run (decision 22); the mock does not evaluate guard conditions, so nothing reads it yet. */
   cast: { objects: Json[]; subject: string | null } = { objects: [], subject: null };
   private auditSeq = 0;
@@ -442,10 +480,105 @@ class Interpreter {
     this.index++;
     this.scope = newScope(input);
     const before = { ...this.context };
+    input = this.withParticipant(input);
+    this.scope.input = input;
+    if (this.scope.actsAs) this.scope.echo = input;
     if (input.input === "time") this.handleTime(input);
     else if (input.input === "invoke-done" || input.input === "invoke-error") this.handleInvoke(input);
     else this.handleEvent(input);
     return this.finish(before);
+  }
+
+  // ---- participants ----
+
+  /** Whether the participant satisfies the listed actor (decision 17): it is, or is a member of, the participant's actor or a
+   * context-free holding; an actor from the object that stands for the owner is satisfied by the subject object's owner. */
+  private satisfies(p: Json, listed: string): boolean {
+    if (this.ownerActors.has(listed)) {
+      const subject = this.cast.objects.find((o) => o.id === this.cast.subject);
+      return !!subject && subject.owner === p.id;
+    }
+    const held = [
+      str(p.actor),
+      ...arr(p.holds)
+        .filter((h) => !str(h.within))
+        .map((h) => str(h.actor)),
+    ];
+    return held.some((a) => !!a && this.membership.accepts(listed, a));
+  }
+
+  /** The list a participant's step is checked against when it names no move: the event's or the human task's actors. */
+  private firstList(input: SimInputJson): string[] {
+    if (input.input === "event") {
+      const ev = input.event ? this.chart.events.get(input.event) : undefined;
+      if (!ev) return [];
+      const gated = this.eventMoves(input).find((t) => t.gate && ids(t.gate.signers).length);
+      return gated ? ids(gated.gate!.signers) : ids(ev.actors);
+    }
+    if (input.input === "invoke-done" || input.input === "invoke-error") {
+      const found = this.pending.find((x) => x.invoke.id === input.invoke);
+      return found && found.invoke.type === "human-task" ? ids(found.invoke.actors) : [];
+    }
+    return [];
+  }
+
+  private eventMoves(input: SimInputJson): Edge[] {
+    return input.event ? activeTransitions(this).filter((t) => t.trigger === "event" && t.key === input.event) : [];
+  }
+
+  /** The actor a participant acts as, read from the moves the event can make now (decision 15); null when it satisfies none. */
+  private actingActor(input: SimInputJson, p: Json): string | null {
+    const fallback = str(p.actor) ?? null;
+    const firstOf = (list: string[]) => (list.length ? (list.find((l) => this.satisfies(p, l)) ?? null) : fallback);
+    if (input.input !== "event") return firstOf(this.firstList(input));
+    const ev = input.event ? this.chart.events.get(input.event) : undefined;
+    if (!ev) return fallback;
+    const eventActors = ids(ev.actors);
+    const moves = this.eventMoves(input);
+    if (!moves.length) return firstOf(eventActors);
+    for (const t of moves) {
+      const signers = t.gate ? ids(t.gate.signers) : [];
+      if (!t.gate || !signers.length) return firstOf(eventActors);
+      const signed = this.signatures.get(t.id) ?? [];
+      const required = ids(t.gate.requiredActors).find((a) => !signed.some((s) => this.membership.accepts(a, s.actor)) && this.satisfies(p, a));
+      const mine = signers.filter((x) => this.satisfies(p, x));
+      const found = required ?? mine.find((x) => !eventActors.length || this.membership.allows(eventActors, x)) ?? mine[0];
+      if (found) return found;
+    }
+    return null;
+  }
+
+  /** The input with the actor the participant acts as and its identity as signer (decision 15); the trace carries `actsAs`. */
+  private withParticipant(input: SimInputJson): SimInputJson {
+    if (!input.participant) return input;
+    const p = this.participants.find((x) => x.id === input.participant);
+    if (!p) {
+      this.problem("MQ9305", PARTICIPANT_TEXTS.unknown(input.participant));
+      return input;
+    }
+    const first = this.firstList(input);
+    let actsAs: string | null;
+    if (input.actor) {
+      actsAs = input.actor;
+      if (!this.satisfies(p, input.actor)) {
+        const listed = input.actor;
+        const actor = this.actorName(listed) ?? listed;
+        const within = arr(p.holds).find((h) => !!str(h.within) && !this.ownerActors.has(listed) && this.membership.accepts(listed, str(h.actor) ?? ""));
+        const heldRole = within ? str(within.actor) : undefined;
+        const role = heldRole ? (this.actorName(heldRole) ?? heldRole) : "";
+        const context = within ? String(this.cast.objects.find((o) => o.id === within.within)?.name ?? within.within) : "";
+        this.problem(
+          "MQ9305",
+          within && heldRole
+            ? PARTICIPANT_TEXTS.heldOnlyWithin(String(p.name), role, context, actor, this.membersActors.get(heldRole))
+            : PARTICIPANT_TEXTS.actorNotSatisfied(String(p.name), actor),
+        );
+      }
+    } else actsAs = this.actingActor(input, p);
+    this.scope.actsAs = actsAs;
+    this.scope.list = first;
+    const identity = p.identity !== undefined && p.identity !== null ? String(p.identity) : String(p.name);
+    return { ...input, actor: actsAs, signer: input.signer ?? identity };
   }
 
   // ---- inputs ----
@@ -962,9 +1095,9 @@ class Interpreter {
       seen.add(key);
       return true;
     });
-    return {
+    const trace: StepTraceJson = {
       index: this.index,
-      input: this.scope.input,
+      input: this.scope.echo,
       accepted: this.scope.refusal === null,
       refusal: this.scope.refusal,
       microsteps: this.scope.microsteps,
@@ -979,7 +1112,10 @@ class Interpreter {
       incomplete: this.scope.guards.some((g) => g.source === "missing") || diagnostics.some((d) => d.rule === "MQ9305" || d.rule === "MQ9507"),
       // A refused step moved nothing, so it names no actor.
       ...(this.scope.actor && this.scope.refusal === null ? { actor: this.scope.actor } : {}),
+      ...(this.scope.actsAs ? { actsAs: this.scope.actsAs } : {}),
     };
+    if (this.scope.list) unsatisfiedLists.set(trace, this.scope.list);
+    return trace;
   }
 
   private refuse(reason: string) {
@@ -1046,6 +1182,9 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
   const chart = new Chart(doc);
   const run = new Interpreter(chart, options.actorName, options.membership);
   run.cast = { objects: options.objects ?? [], subject: options.subject ?? null };
+  run.participants = options.participants ?? [];
+  run.ownerActors = options.ownerActors ?? new Set();
+  run.membersActors = options.membersActors ?? new Map();
   const at = readAt(start?.at);
   const traces = [run.start(start?.context, typeof at === "number" ? at : null)];
   let complete = !traces[0].incomplete;

@@ -46,14 +46,14 @@ test({{ ts_string (P + " / " + scenario.name) }}, async (t) => {
   outcome = trace({{ step.index }}, await dispatcher.dispatch({ type: {{ ts_string cmd_tick(proc) }}, instance }));
 {{- else if step.input == "event" }}
 
-  // Step {{ n }}: {{ step.event ? step.event.name : "(an event that does not resolve)" }}{{ if step.actor }} as {{ step.actor.name }}{{ end }}{{ if step.signer }}, signed by {{ ts_comment step.signer }}{{ end }}.{{ if step.description }} {{ ts_comment step.description }}{{ end }}
+  // Step {{ n }}: {{ step.event ? step.event.name : "(an event that does not resolve)" }}{{ if step.participant }} by {{ step.participant.name }}{{ end }}{{ if step.acts_as }} as {{ step.acts_as.name }}{{ end }}{{ if step.signer }}, signed by {{ ts_comment step.signer }}{{ end }}.{{ if step.description }} {{ ts_comment step.description }}{{ end }}
   outcome = trace(
     {{ step.index }},
     await dispatcher.dispatch({
       type: {{ ts_string (step.event ? cmd_event(proc, step.event) : (P + ".?")) }},
       instance,
-      actor: {{ step.actor ? (ts_string step.actor.name) : "null" }},
-      signer: {{ opt_json(step.signer) }},
+      actor: {{ step.acts_as ? (ts_string step.acts_as.name) : "null" }},
+      signer: {{ opt_json(step.signer ?? (step.participant ? ("" + step.participant.identity) : null)) }},
       meaning: {{ step.meaning ? (ts_string step.meaning.name) : "null" }},
       reason: {{ opt_json(step.reason) }},
       payload: {{ json step.payload }},
@@ -61,8 +61,8 @@ test({{ ts_string (P + " / " + scenario.name) }}, async (t) => {
   );
 {{- else }}
 
-  // Step {{ n }}: {{ step.input == "invoke-done" ? "complete" : "fail" }} {{ step.invoke ? step.invoke.name : "(an invoke that does not resolve)" }}{{ if step.actor }} as {{ step.actor.name }}{{ end }}.{{ if step.description }} {{ ts_comment step.description }}{{ end }}
-  outcome = trace({{ step.index }}, await dispatcher.dispatch({ type: {{ ts_string (step.invoke ? cmd_invoke(proc, step.invoke, (step.input == "invoke-done" ? "done" : "error")) : (P + ".?")) }}, instance, actor: {{ step.actor ? (ts_string step.actor.name) : "null" }} }));
+  // Step {{ n }}: {{ step.input == "invoke-done" ? "complete" : "fail" }} {{ step.invoke ? step.invoke.name : "(an invoke that does not resolve)" }}{{ if step.participant }} by {{ step.participant.name }}{{ end }}{{ if step.acts_as }} as {{ step.acts_as.name }}{{ end }}.{{ if step.description }} {{ ts_comment step.description }}{{ end }}
+  outcome = trace({{ step.index }}, await dispatcher.dispatch({ type: {{ ts_string (step.invoke ? cmd_invoke(proc, step.invoke, (step.input == "invoke-done" ? "done" : "error")) : (P + ".?")) }}, instance, actor: {{ step.acts_as ? (ts_string step.acts_as.name) : "null" }} }));
 {{- end }}
 {{- assume = json step.assume }}
 {{- if assume != "{}" }}

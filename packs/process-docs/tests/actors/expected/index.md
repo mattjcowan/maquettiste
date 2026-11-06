@@ -6,16 +6,20 @@
 
 | Process | Domain | Use | Subject | States | Scenarios |
 | --- | --- | --- | --- | --- | --- |
+| [Order flow](processes/order-flow.md) | `Ops` | lifecycle | `Order` | 3 | 1 |
 | [Request flow](processes/request-flow.md) | `Ops` | orchestration |  | 6 | 0 |
 
 ## Actors
 
 | Actor | Type | Processes |
 | --- | --- | --- |
+| [Account manager](actors/account-manager.md) | person | [Order flow](processes/order-flow.md) |
 | [Approver](actors/approver.md) | role | [Request flow](processes/request-flow.md) |
 | [Automatic](actors/automatic.md) | Automatic |  |
 | [Clerk](actors/clerk.md) | person | [Request flow](processes/request-flow.md) |
+| [Owner](actors/owner.md) | person | [Order flow](processes/order-flow.md) |
 | [Pat](actors/pat.md) | person |  |
 | [Plant 3](actors/plant.md) | organization | [Request flow](processes/request-flow.md) |
+| [Project approver](actors/project-approver.md) | role | [Order flow](processes/order-flow.md) |
 | [Scheduler](actors/scheduler.md) | role | [Request flow](processes/request-flow.md) |
 | [Seniors](actors/seniors.md) | group |  |

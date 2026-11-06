@@ -395,7 +395,7 @@ describe("the rows of an answer", () => {
     expect(passed.map((r) => r.verdict)).toEqual(["passed", "passed"]);
     // The summary names the failing step, or the outcome when the outcome failed (step -1).
     const verification = { scenario: QUICK_APPROVAL, name: "QuickApproval", passed: false, steps: 2, failure };
-    expect(replaySummary(verification, 2)).toBe("Step 2 failed (MQ9302): Step 2 expected the states Approval.");
+    expect(replaySummary(verification, 2)).toBe("Step 2 failed (MQ9302): expected the states Approval.");
     expect(replaySummary({ ...verification, failure: { ...failure, step: -1, rule: "MQ9303", message: "The process is still active." } }, 2)).toBe(
       "Outcome failed (MQ9303): The process is still active.",
     );

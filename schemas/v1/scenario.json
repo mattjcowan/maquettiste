@@ -14,6 +14,7 @@
     "process",
     "objects",
     "subject",
+    "participants",
     "description",
     "rationale",
     "decision",
@@ -69,6 +70,14 @@
     "subject": {
       "description": "The id of the object the process runs for; required once there are objects.",
       "$ref": "common.json#/$defs/id"
+    },
+    "participants": {
+      "description": "Who acts in the scenario: each stands for an actor, holds roles, groups or organizations (optionally within one of the scenario's objects), and may have an object as its record. A step names the one that acts.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/participant"
+      },
+      "default": []
     },
     "description": {
       "$ref": "common.json#/$defs/description"
@@ -183,7 +192,8 @@
         "name",
         "entity",
         "values",
-        "links"
+        "links",
+        "owner"
       ],
       "properties": {
         "id": {
@@ -214,6 +224,10 @@
             "$ref": "#/$defs/link"
           },
           "default": []
+        },
+        "owner": {
+          "description": "The id of the scenario's participant that owns the object, for a subject whose process entry names no owner field.",
+          "$ref": "common.json#/$defs/id"
         }
       },
       "required": [
@@ -247,6 +261,87 @@
       ],
       "additionalProperties": false
     },
+    "participant": {
+      "title": "Participant",
+      "description": "Someone or something that acts in the scenario.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "identity",
+        "actor",
+        "holds",
+        "object"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "identity": {
+          "description": "The value the team's system would hold for them, such as a login or a number; the name when absent.",
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "actor": {
+          "description": "The person, external system or system actor they stand for; they then have its memberships.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "holds": {
+          "description": "The roles, groups and organizations they hold.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/holding"
+          },
+          "default": []
+        },
+        "object": {
+          "description": "The id of the scenario object that is their record.",
+          "$ref": "common.json#/$defs/id"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "holding": {
+      "title": "Holding",
+      "description": "A role, group or organization held, with no context or within one of the scenario's objects.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "actor",
+        "within"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "actor": {
+          "description": "The role, group or organization held.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "within": {
+          "description": "The id of the scenario object it counts within; without it, it counts only where no context is asked.",
+          "$ref": "common.json#/$defs/id"
+        }
+      },
+      "required": [
+        "id",
+        "actor"
+      ],
+      "additionalProperties": false
+    },
     "step": {
       "title": "Step",
       "description": "One input to the process and what is expected after it.",
@@ -257,6 +352,7 @@
         "event",
         "invoke",
         "after",
+        "participant",
         "actor",
         "signer",
         "meaning",
@@ -289,11 +385,15 @@
           "description": "An ISO 8601 duration to advance the clock by, for input time.",
           "type": "string"
         },
+        "participant": {
+          "description": "The id of the scenario's participant that acts; the engine works out the actor it acts as unless actor is given.",
+          "$ref": "common.json#/$defs/id"
+        },
         "actor": {
           "$ref": "common.json#/$defs/id"
         },
         "signer": {
-          "description": "The signing person's identity, for gated events.",
+          "description": "The signing person's identity, for gated events; the participant's identity when absent.",
           "type": "string"
         },
         "meaning": {

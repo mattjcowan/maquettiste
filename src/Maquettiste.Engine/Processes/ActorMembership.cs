@@ -82,7 +82,8 @@ internal sealed class ActorMembership
         return ByModel.GetValue(model, static m => new ActorMembership(m));
     }
 
-    /// <summary>Whether a <c>memberOf</c> entry counts: it names an existing role, group or organization other than the actor itself.</summary>
+    /// <summary>Whether a <c>memberOf</c> entry counts: it names an existing role, group or organization other than the actor itself, and
+    /// neither is an actor from the object (actors-design.md decision 12: MQ9601, MQ9603).</summary>
     /// <param name="model">The model.</param>
     /// <param name="member">The actor whose entry it is.</param>
     /// <param name="target">The id the entry names.</param>
@@ -91,7 +92,8 @@ internal sealed class ActorMembership
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(member);
-        return !string.Equals(target, member.Id, StringComparison.Ordinal) && model.Get<Actor>(target) is { } holder && ActorTypes.HoldsMembers(holder.Type);
+        return member.Relative is null && !string.Equals(target, member.Id, StringComparison.Ordinal) && model.Get<Actor>(target) is { Relative: null } holder
+            && ActorTypes.HoldsMembers(holder.Type);
     }
 
     /// <summary>The actors an actor is directly a member of, in file order, each once; only counted entries.</summary>

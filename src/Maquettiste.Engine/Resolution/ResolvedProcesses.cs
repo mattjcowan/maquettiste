@@ -129,6 +129,27 @@ public sealed class RSubject : RObject
 
     /// <summary>The reference type typing the bound attribute (lifecycle-design.md decision 11): its codes are the states' codes.</summary>
     public RReferenceType? BoundReferenceType { get; internal set; }
+
+    /// <summary>The single-valued attribute that holds the object's owner (actors-design.md decision 10), when the entry names one.</summary>
+    public RAttribute? OwnerAttribute { get; internal set; }
+
+    /// <summary>The to-one relation end that leads to the object's owner (actors-design.md decision 10), when the entry names one.</summary>
+    public REnd? OwnerEnd { get; internal set; }
+}
+
+/// <summary>How an actor is worked out from the object (actors-design.md decisions 8 to 12).</summary>
+public sealed class RRelative
+{
+    /// <summary><c>owner</c>, <c>path</c> or <c>members-of</c>; with several forms (MQ9603) the first in that order, <c>none</c> with none.</summary>
+    public string Form { get; internal set; } = "";
+
+    /// <summary>For <c>path</c>, the <see cref="REnd"/> steps, then the last <see cref="RAttribute"/> (the declaring one) or
+    /// <see cref="REnd"/>; for <c>members-of</c>, the <c>within</c> ends (empty for the object itself); empty for <c>owner</c>. An id the
+    /// model does not hold is left out.</summary>
+    public IReadOnlyList<RObject> Path { get; internal set; } = [];
+
+    /// <summary>The role, group or organization whose members it is, for <c>members-of</c>.</summary>
+    public RActor? MembersOf { get; internal set; }
 }
 
 /// <summary>A state of a process.</summary>
@@ -457,6 +478,10 @@ public sealed class RActor : RElement
     /// <summary>The actors members of this one at any depth, by (name, id), each once and never the actor itself.</summary>
     public RList<RActor> AllMembers { get; internal set; } = RList<RActor>.Empty;
 
+    /// <summary>How the actor is worked out from the object (actors-design.md section 6), or <see langword="null"/> for an actor that
+    /// stands for itself.</summary>
+    public RRelative? Relative { get; internal set; }
+
     /// <summary>The processes that reference the actor (event actors, invoke actors, gate signers), in process order.</summary>
     public RList<RProcess> Processes { get; internal set; } = RList<RProcess>.Empty;
 
@@ -481,6 +506,9 @@ public sealed class RScenario : RElement
 
     /// <summary>The object the process runs for, or <see langword="null"/> when the scenario has no objects (or names none of them).</summary>
     public RScenarioObject? Subject { get; internal set; }
+
+    /// <summary>Who acts in the scenario, in file order (actors-design.md decision 14); empty for a scenario with none.</summary>
+    public RList<RParticipant> Participants { get; internal set; } = RList<RParticipant>.Empty;
 
     /// <summary>The starting point.</summary>
     public RScenarioStart Start { get; internal set; } = new();
@@ -510,6 +538,48 @@ public sealed class RScenarioObject : RObject
 
     /// <summary>The links to other objects of the scenario, in file order; a link whose end or object does not resolve is left out.</summary>
     public IReadOnlyList<RScenarioLink> Links { get; internal set; } = [];
+
+    /// <summary>The participant that owns the object (actors-design.md decision 16), when the file names one of the scenario's.</summary>
+    public RParticipant? Owner { get; internal set; }
+}
+
+/// <summary>A participant of a scenario (actors-design.md decision 14): who acts, with the actor it stands for and what it holds.</summary>
+public sealed class RParticipant : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "participant";
+
+    /// <summary>The name, unique in the scenario.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The display name, or <see langword="null"/> when the file gives none.</summary>
+    public string? DisplayName { get; internal set; }
+
+    /// <summary>The value the team's system would hold for them: a <see cref="string"/> or a <see cref="long"/>; the name when the file gives
+    /// none.</summary>
+    public object Identity { get; internal set; } = "";
+
+    /// <summary>The person, external system or system actor they stand for, when the file names one that resolves.</summary>
+    public RActor? Actor { get; internal set; }
+
+    /// <summary>The roles, groups and organizations they hold, in file order; a holding whose actor does not resolve is left out.</summary>
+    public IReadOnlyList<RHolding> Holds { get; internal set; } = [];
+
+    /// <summary>The scenario object that is their record, when the file names one of the scenario's.</summary>
+    public RScenarioObject? Object { get; internal set; }
+}
+
+/// <summary>A role, group or organization a participant holds (actors-design.md decision 14).</summary>
+public sealed class RHolding
+{
+    /// <summary>The holding's id.</summary>
+    public string Id { get; internal set; } = "";
+
+    /// <summary>The role, group or organization held.</summary>
+    public RActor Actor { get; internal set; } = null!;
+
+    /// <summary>The scenario object it counts within, or <see langword="null"/> for a holding with no context.</summary>
+    public RScenarioObject? Within { get; internal set; }
 }
 
 /// <summary>A link from a scenario object to another object of the scenario, through a relation end.</summary>
@@ -560,10 +630,26 @@ public sealed class RStep : RObject
     /// a millisecond.</summary>
     public long? AfterTicks { get; internal set; }
 
+    /// <summary>The participant that acts (actors-design.md decision 15), when the step names one of the scenario's.</summary>
+    public RParticipant? Participant { get; internal set; }
+
     /// <summary>The actor sending the input.</summary>
     public RActor? Actor { get; internal set; }
 
-    /// <summary>The signing person's identity, for a gated event.</summary>
+    /// <summary>
+    /// The actor the step acts as (actors-design.md decision 15). For a step with a participant, the actor the engine's replay ran it as:
+    /// worked out from the moves the step could make when it ran (for a gated move, a required actor of the gate not yet signed, else a
+    /// signer the event's actors also accept, else the first signer the participant satisfies; otherwise the first of the event's or
+    /// human task's actors it satisfies, or the participant's actor when that list is empty), and <see langword="null"/> when it
+    /// satisfies none or the replay did not reach the step. Otherwise <see cref="Actor"/>. Generated tests that use it agree with the
+    /// replay because it is the replay's.
+    /// </summary>
+    public RActor? ActsAs => ReplayedActsAs is { } replayed ? replayed.Value : Actor;
+
+    /// <summary>For a step with a participant, the actor the replay ran it as (read on first use).</summary>
+    internal Lazy<RActor?>? ReplayedActsAs { get; set; }
+
+    /// <summary>The signing person's identity, for a gated event, as the file gives it.</summary>
     public string? Signer { get; internal set; }
 
     /// <summary>The meaning of the signature.</summary>
@@ -612,6 +698,9 @@ public sealed class RStepTrace
 
     /// <summary>Whether the root is final after the step.</summary>
     public bool Final { get; internal set; }
+
+    /// <summary>For a step with a participant, the id of the actor it acted as (<see cref="RStep.ActsAs"/>).</summary>
+    internal string? ActsAs { get; set; }
 }
 
 /// <summary>What a scenario step expects.</summary>

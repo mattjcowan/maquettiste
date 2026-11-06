@@ -1,0 +1,14 @@
+{
+  "kind": "actor",
+  "id": "01JAC000000000000000000K13",
+  "name": "ProjectApprover",
+  "displayName": "Project approver",
+  "type": "role",
+  "relative": {
+    "membersOf": "01JAC000000000000000000K03",
+    "within": [
+      "01JAC000000000000000000N02"
+    ]
+  },
+  "description": "An approver on the order's project."
+}

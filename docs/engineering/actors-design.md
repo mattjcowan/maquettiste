@@ -83,7 +83,7 @@ Each decision gives its confidence: **high**, **medium** or **low**.
 
    Exactly one form per actor. To-many paths ("anyone on the project's team") come later; each would add a form, and an actor without one keeps its meaning.
 10. **A subject entry may name the object's `owner`.** This is the key 4.1 kept for this item. Confidence: medium-high.
-    - It names one single-valued attribute or to-one end of the entry's entity: own, inherited or from a stereotype, as for a binding.
+    - It names one single-valued attribute or to-one end of the entry's entity, own or inherited. An attribute from a stereotype is refused (MQ9606): it waits for the stereotype as a set of types (decision 19), as 4.1 decided for guards.
     - Each subject names its own owner field, so one `Owner` actor serves a lifecycle over several types that hold their owner differently.
     - **It is optional.** Without it, the owner is held by the team's system, as many lifecycle systems hold a built-in owner on every object. No finding asks for it. In a scenario, such an object names its owner participant directly (decision 16).
     - It is allowed on an orchestration's subjects too, since it is about the object, not the state.
@@ -108,8 +108,17 @@ Each decision gives its confidence: **high**, **medium** or **low**.
     - A participant may stand for an actor that carries a persona stereotype, so the two ideas fit together without sharing a word (section 12, question 2).
 15. **A step names its `participant`, and the engine works out which actor it acts as.** Confidence: high.
     - The step's `actor` keeps its meaning: the actor the step acts as.
-    - **A fixed rule, worked out from the model.** The participant acts as the first actor that both lists accept: the first list is, for a gated move, the gate's signers, else the event's or task's actors; the second is the actors the participant satisfies (decision 17). An empty first list falls back to the participant's `actor`.
-    - The result is exposed to packs as `RStep.ActsAs`. `csharp-dapper`'s generated tests use it, so generated tests and engine replays never disagree.
+    - **A fixed rule, read from the moves the step can make now.** Simulation and replay take the transitions the step's event enables in the current configuration (source active, guard true), in the order the interpreter tries them. "Satisfies" is decision 17.
+      - **For a gated move,** the participant acts as:
+        - (a) a required actor of that gate not yet signed, which the participant satisfies;
+        - else (b) a signer the participant satisfies that the event's actors also accept, when the event lists actors;
+        - else (c) the first signer the participant satisfies.
+
+        A gated move whose signers the participant satisfies none of is passed over, as the interpreter passes over a gate the actor can't sign.
+      - **For a move with no gate,** or a human task: the first of the event's or task's actors the participant satisfies.
+      - **An empty list** falls back to the participant's `actor`.
+    - Before this rule, the gate's signers were used whenever any transition of the event was gated, so a valid owner was refused when the move that fired had no gate.
+    - The result is exposed to packs as `RStep.ActsAs`, read from the effective input of the replay the resolver already runs, and to simulation as the trace's `actsAs`. `csharp-dapper`'s generated tests use it, so generated tests and engine replays never disagree.
     - With both a participant and an actor, the actor must be one the participant satisfies, or it is MQ9305.
     - The signer identity defaults to the participant's identity. A step with no participant behaves as today.
 16. **A scenario object may name its `owner` participant,** only when its subject entry names no owner field. Otherwise the owner comes from the object's own values and links, and naming both is MQ9305. Confidence: medium.
@@ -200,12 +209,12 @@ The next free family is MQ96xx.
 | MQ9603 | E | A `relative` with no form or more than one; `within` without `membersOf`; `membersOf` naming something other than a plain role, group or organization; `memberOf` on an actor from the object; or type `system` with `relative` | |
 | MQ9604 | E | An actor from the object used where it can't be worked out: in a process with no subjects, or with a path that doesn't resolve on every subject by decision 11, or that ends at a many-valued attribute, a value object or a to-many end. Reported at the use | |
 | MQ9605 | E | Two or more actors of type `system` | Change the type |
-| MQ9606 | E | A subject entry's `owner` that isn't a single-valued attribute or to-one end of its entity (own, inherited or from a stereotype) | Clear the owner |
+| MQ9606 | E | A subject entry's `owner` that isn't a single-valued attribute or to-one end of its entity (own or inherited); an attribute from a stereotype is refused until decision 19 | Clear the owner |
 
 **Changed:**
 - **MQ9102, MQ9105, MQ9106:** follow membership (decision 6). MQ9105 says nothing when the signer or an event actor is an actor from the object, since that can't be known from the model.
 - **MQ9305:** gains the participant cases: a holding that isn't a role, group or organization; a `within` or `object` that isn't one of the scenario's objects; a participant's `actor` that is a role, group, organization or actor from the object; a step's `participant` that isn't the scenario's; a step's `actor` the participant doesn't satisfy; an object's `owner` beside an owner field.
-- **MQ9301:** a refusal by actor names the participant and the list it didn't satisfy.
+- **MQ9301:** a refusal by actor names the participant and what it failed: the list it satisfies none of (the signers of the gate, or the event's or task's actors), or the list that doesn't accept the actor it acted as (the event's actors for a signer, or the gate's signers for an event actor).
 
 MQ2002 already covers ids of the wrong kind. The mock backend's rule list follows.
 
@@ -239,7 +248,7 @@ public sealed class RHolding { public string Id; public RActor Actor; public RSc
 ```
 
 - **Templates read** `actor.member_of`, `actor.members`, `actor.all_member_of`, `actor.all_members`, `actor.relative`, `subject.owner_attribute`, `subject.owner_end`, `model.system_actor`, `scenario.participants`, `step.participant`, `step.acts_as` and `object.owner`.
-- **Dependency keys:** `members` and `all_members` key on `k:actor`, since any actor file can add a member. `member_of` keys on the actor's own file and `all_member_of` on each file along the chain. A relative path keys on the entities it passes through. Only a template that reads a member pays for its keys.
+- **Dependency keys:** `members` and `all_members` key on `k:actor`, since any actor file can add a member. `member_of` keys on the actor's own file and `all_member_of` on each file along the chain. A relative path keys on the entities it passes through. A step of a scenario with participants keys on every actor file, the processes it invokes, and the entities of all the process's subjects with their bases, since a path must mean the same on each; editing one of those entities re-checks those scenarios. Only a template that reads a member pays for its keys.
 - **Records:** `memberOf`, `relative`, `owner`, `participants` and `participant` appear only where used, so `get_resolved_model` answers don't change for a project without them.
 - **`RActor.Events`, `Gates` and `Processes`:** unchanged, listing direct uses. A template finds uses through membership with `all_member_of`.
 
@@ -252,8 +261,9 @@ public sealed class RHolding { public string Id; public RActor Actor; public RSc
   - A subject's `owner` field: `remove-references` clears the key, since it is optional.
   - An actor named as a participant's `actor`: `remove-references` clears the participant's `actor`.
   - A scenario object named by a holding's `within`: the holding goes with the object. Dropping only `within` would widen it to every context.
-- **`get_model_index`:** actor rows gain `memberOf` and `relative` (the form), each only when set. `actorType` takes the new values.
-- **`simulate_process`, `record_scenario`, `verify_scenarios`:** take `participants`, and a step's or input's `participant`. A recorded step keeps the participant the panel acted as.
+- **`get_model_index`:** actor rows gain `memberOf` and `relative` (the form), each only when set. `actorType` takes the new values. Scenario rows gain `participants`, the count, only when above zero, so the editor shows an expand arrow only for those; projects without participants keep the same rows.
+- **`simulate_process`, `record_scenario`, `verify_scenarios`:** take `participants`, and a step's or input's `participant`. A recorded step keeps the participant the panel acted as. `"holds": null` reads as no holdings.
+- **The simulation trace** gains `actsAs`, the actor a step with a participant acted as (decision 15), only when the step names a participant, so today's answers don't change. Its input echoes the filled-in step (the actor and the signer). The mock backend does the same.
 - **No new batch operation.** Adding members to a role is a batch of patches to the members' files, which `apply_batch` already does all or nothing.
 - **The CLI** follows the same verbs. **The rule list, the schemas and the tool texts** describe all of this.
 

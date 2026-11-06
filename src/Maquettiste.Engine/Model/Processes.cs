@@ -127,6 +127,11 @@ public sealed record ProcessSubject : IProcessNode
     /// <summary>The entity's attribute that holds the lifecycle state, or <see langword="null"/>.</summary>
     [ElementRef(IndexKinds = ["attribute"])]
     public string? BoundAttribute { get; init; }
+
+    /// <summary>Where the object's owner is held (actors-design.md decision 10): a single-valued attribute or a to-one relation end of the
+    /// entity (MQ9606), or <see langword="null"/> when the team's system holds it.</summary>
+    [ElementRef(IndexKinds = ["attribute", "end"])]
+    public string? Owner { get; init; }
 }
 
 /// <summary>A state of a process; recursive through <see cref="States"/>.</summary>
@@ -528,6 +533,47 @@ public sealed record Actor : Element, IPackaged
     /// in a process's list stands for itself and its members at any depth.</summary>
     [ElementRef(ElementKind.Actor)]
     public IReadOnlyList<string> MemberOf { get; init; } = [];
+
+    /// <summary>How the actor is worked out from the object a process runs for (actors-design.md decisions 8 to 12), or
+    /// <see langword="null"/> for an actor that stands for itself. Such an actor is never a member and has no members.</summary>
+    public ActorRelative? Relative { get; init; }
+}
+
+/// <summary>
+/// How an actor is worked out from the object (actors-design.md decision 9): the object's owner, the actor a field of the object names,
+/// or the members of a role, group or organization within a context object. Exactly one form (MQ9603).
+/// </summary>
+public sealed record ActorRelative
+{
+    /// <summary><see langword="true"/> for the object's owner, held where each subject entry's <see cref="ProcessSubject.Owner"/> names;
+    /// <see langword="null"/> when the file has no <c>owner</c>.</summary>
+    public bool? Owner { get; init; }
+
+    /// <summary>The actor a field of the object names: to-one relation ends, then a single-valued attribute or a to-one end;
+    /// <see langword="null"/> when the file has no <c>path</c>.</summary>
+    [ElementRef(IndexKinds = ["attribute", "end"])]
+    public IReadOnlyList<string>? Path { get; init; }
+
+    /// <summary>The role, group or organization whose members within the context object this actor is, or <see langword="null"/>.</summary>
+    [ElementRef(ElementKind.Actor)]
+    public string? MembersOf { get; init; }
+
+    /// <summary>With <see cref="MembersOf"/>: the to-one relation ends that lead from the object to its context; empty for the object.</summary>
+    [ElementRef(IndexKinds = ["end"])]
+    public IReadOnlyList<string> Within { get; init; } = [];
+
+    /// <summary>The forms the file gives, in the order owner, path, members-of; one for a well-formed actor (MQ9603).</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> Forms =>
+        [.. new[] { Owner == true ? "owner" : null, Path is not null ? "path" : null, MembersOf is not null ? "members-of" : null }.OfType<string>()];
+
+    /// <summary>The form: the first of <see cref="Forms"/>, or <c>none</c> when the file gives none.</summary>
+    [JsonIgnore]
+    public string Form => Forms is [var first, ..] ? first : "none";
+
+    /// <summary>The ids along the path: <see cref="Path"/> for a path, <see cref="Within"/> for members-of, empty for the owner.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> Steps => Form switch { "path" => Path ?? [], "members-of" => Within, _ => [] };
 }
 
 /// <summary>What an actor is.</summary>
@@ -588,6 +634,9 @@ public sealed record Scenario : Element, IPackaged
     [ElementRef(IndexKinds = ["object"])]
     public string? Subject { get; init; }
 
+    /// <summary>Who acts in the scenario (actors-design.md decision 14), in file order; parts of the scenario with name forms.</summary>
+    public IReadOnlyList<ScenarioParticipant> Participants { get; init; } = [];
+
     /// <summary>The starting point; <see langword="null"/> means the attribute defaults and the fixed start instant.</summary>
     public ScenarioStart? Start { get; init; }
 
@@ -620,6 +669,65 @@ public sealed record ScenarioObject : IProcessNode
 
     /// <summary>The objects this object links to, each through a relation end.</summary>
     public IReadOnlyList<ScenarioLink> Links { get; init; } = [];
+
+    /// <summary>The participant that owns the object (actors-design.md decision 16), for a subject whose entry names no owner field.</summary>
+    [ElementRef(IndexKinds = ["participant"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Owner { get; init; }
+}
+
+/// <summary>
+/// Someone or something that acts in a scenario (actors-design.md decision 14): it stands for an actor, holds roles, groups and
+/// organizations, optionally within one of the scenario's objects, and may have an object as its record. It lives in the scenario only.
+/// </summary>
+public sealed record ScenarioParticipant : IProcessNode
+{
+    /// <inheritdoc/>
+    public required string Id { get; init; }
+
+    /// <summary>The name, unique in the scenario.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>An optional display name.</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>The value the team's system would hold for them (a string or an integer); the name when absent.</summary>
+    public JsonElement? Identity { get; init; }
+
+    /// <summary>The person, external system or system actor they stand for, whose memberships they then have.</summary>
+    [ElementRef(ElementKind.Actor)]
+    public string? Actor { get; init; }
+
+    /// <summary>The roles, groups and organizations they hold, in file order.</summary>
+    public IReadOnlyList<ScenarioHolding> Holds { get; init; } = [];
+
+    /// <summary>The scenario object that is their record.</summary>
+    [ElementRef(IndexKinds = ["object"])]
+    public string? Object { get; init; }
+
+    /// <summary>The identity's text: a string as written, an integer in invariant digits, else the name.</summary>
+    [JsonIgnore]
+    public string IdentityText => Identity switch
+    {
+        { ValueKind: JsonValueKind.String } text => text.GetString() ?? Name,
+        { ValueKind: JsonValueKind.Number } number => number.GetRawText(),
+        _ => Name,
+    };
+}
+
+/// <summary>A role, group or organization a participant holds, with no context or within one of the scenario's objects.</summary>
+public sealed record ScenarioHolding
+{
+    /// <summary>The holding's ULID.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The role, group or organization held.</summary>
+    [ElementRef(ElementKind.Actor)]
+    public required string Actor { get; init; }
+
+    /// <summary>The scenario object it counts within; without it, it counts only where no context is asked (decision 13).</summary>
+    [ElementRef(IndexKinds = ["object"])]
+    public string? Within { get; init; }
 }
 
 /// <summary>A link from a scenario object to another object of the scenario, through a relation end.</summary>
@@ -678,6 +786,12 @@ public sealed record ScenarioStep : IProcessNode
 
     /// <summary>An ISO 8601 duration to advance the clock by, for <see cref="StepInput.Time"/>.</summary>
     public string? After { get; init; }
+
+    /// <summary>The scenario's participant that acts (actors-design.md decision 15); the engine works out the actor it acts as unless
+    /// <see cref="Actor"/> is given. Left out of a trace's echo when absent.</summary>
+    [ElementRef(IndexKinds = ["participant"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Participant { get; init; }
 
     /// <summary>The actor sending the input.</summary>
     [ElementRef(ElementKind.Actor)]

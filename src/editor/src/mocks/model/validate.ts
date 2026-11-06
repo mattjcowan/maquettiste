@@ -9,6 +9,7 @@ import { bindableAttributes } from "@/model/binding";
 import { subjectsOf } from "@/model/process";
 import { referencesOf, subElementIds } from "./refs";
 import { bindingDiagnostics } from "./lifecycleRules";
+import { relativeUseDiagnostics } from "./relativeRules";
 import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
 
 type Json = Record<string, unknown>;
@@ -319,7 +320,12 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   // MQ9202 to MQ9208, MQ9206 and MQ9210: the lifecycle's bindings and state codes (lifecycleRules.ts)
   if (kind === "process" && ctx.lookup)
     bindingDiagnostics(json, entry, ctx, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
-  // MQ9601, MQ9602 and MQ9605: an actor's memberOf and the one system actor (actorRules.ts)
+  // MQ9604 and MQ9606: actors worked out from the object, and a subject's owner (relativeRules.ts)
+  if (kind === "process" && ctx.all)
+    relativeUseDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) =>
+      out.push(diag(rule, severity as Diagnostic["severity"], message, entry, pointer, elementId)),
+    );
+  // MQ9601, MQ9602, MQ9603 and MQ9605: an actor's memberOf and relative and the one system actor (actorRules.ts)
   if (kind === "actor" && ctx.all) out.push(...actorDiagnostics(json, entry, ctx.all()));
   // MQ9001 initial and MQ9201 (process side), as ProcessRules.cs reports them
   if (kind === "process") out.push(...lifecycleDiagnostics(json, entry, ctx.lookup));

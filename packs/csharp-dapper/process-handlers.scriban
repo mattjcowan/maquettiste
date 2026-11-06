@@ -4,13 +4,16 @@
 # every other one is a partial method the companion
 # <P>Handlers.cs implements, so a new stub fails the build until it is written. Methods are Guard<Name> and Action<Name>, so a
 # guard and an action may share a name. Also the command handler: load the instance
-# through the store, run the machine, save, and return the result with the events for the outbox.
+# through the store, run the machine, save, and return the result with the events for the outbox. A process that names actors
+# taken from the object answers for them as the runtime's IActorResolver, one partial method per actor (actors-design.md
+# decision 27).
 include "_csharp.scriban"
 include "_process.scriban"
 p = process
 name = p_name(p)
 ctx = name + "Context"
 call = "StatechartCall<" + ctx + ">"
+relatives = relative_actors(p)
 -}}
 {{ header() }}
 using System;
@@ -24,7 +27,7 @@ using {{ runtime_ns() }};
 namespace {{ ns(p) }};
 
 /// <summary>The guards and actions of process {{ p.name }}.</summary>
-public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>
+public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>{{ if relatives.size > 0 }}, IActorResolver<{{ ctx }}>{{ end }}
 {
     /// <inheritdoc/>
     public bool Guard(string guard, {{ call }} call) => guard switch
@@ -64,6 +67,22 @@ public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>
     private static {{ ctx }} Action{{ pascal a.name }}({{ call }} call) => {{ cs }};
 {{- else }}
     private partial {{ ctx }} Action{{ pascal a.name }}({{ call }} call);
+{{- end }}
+{{- end }}
+{{- if relatives.size > 0 }}
+
+    /// <inheritdoc/>
+    public bool IsActor(string actor, ProcessSnapshot<{{ ctx }}> snapshot, ProcessEnvelope envelope) => actor switch
+    {
+{{- for a in relatives }}
+        global::{{ actors_ns() }}.Actors.{{ actor_member a }} => Is{{ pascal a.name }}(snapshot, envelope),
+{{- end }}
+        _ => false,
+    };
+{{- for a in relatives }}
+
+    /// <summary>Whether the caller is {{ a.name }}, {{ relative_text(a, subject_words(p)) }}{{ owner_fields(p, a) }} (implemented in {{ name }}Handlers.cs).</summary>
+    private partial bool Is{{ pascal a.name }}(ProcessSnapshot<{{ ctx }}> snapshot, ProcessEnvelope envelope);
 {{- end }}
 {{- end }}
 }

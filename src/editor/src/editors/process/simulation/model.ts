@@ -15,6 +15,8 @@ export interface Names {
   event(id: string | null | undefined): string;
   invoke(id: string | null | undefined): string;
   actor(id: string | null | undefined): string;
+  /** A participant of the run, by id. */
+  participant(id: string | null | undefined): string;
   guard(id: string): string;
   action(id: string): string;
   transition(id: string): string;
@@ -24,7 +26,7 @@ export interface Names {
 }
 
 /** Display names for the ids an answer carries: state paths, event, invoke, actor, guard, action and gate names. */
-export function namesOf(process: ProcessDoc, actorNames: ReadonlyMap<string, string>): Names {
+export function namesOf(process: ProcessDoc, actorNames: ReadonlyMap<string, string>, participants: readonly { id: string; name: string }[] = []): Names {
   const states = new Map([...stateIndex(process)].map(([id, info]) => [id, info.path]));
   const map = (list: { id: string; name: string }[] | undefined) => new Map((list ?? []).map((x) => [x.id, x.name]));
   const events = map(process.events);
@@ -51,6 +53,7 @@ export function namesOf(process: ProcessDoc, actorNames: ReadonlyMap<string, str
     event: of(events),
     invoke: of(invokes),
     actor: (id) => (id ? (actorNames.get(id) ?? id) : ""),
+    participant: (id) => (id ? (participants.find((p) => p.id === id)?.name ?? id) : ""),
     guard: (id) => guards.get(id) ?? id,
     action: (id) => actions.get(id) ?? id,
     transition: (id) => transitions.get(id) ?? id,
@@ -96,6 +99,8 @@ export interface EnabledRow {
 }
 
 export interface RowValue {
+  /** The participant that acts: empty for none, so the actor chosen is the one that acts. */
+  participant: string;
   actor: string;
   payload: Record<string, unknown>;
   signer: string;
@@ -191,6 +196,7 @@ export function coerce(a: AttributeDoc, raw: string | boolean): unknown {
  * gate's first meaning, every stub guard assumed true, and for time the next timer's delay. */
 export function defaultRowValue(row: EnabledRow, result: SimulationResult): RowValue {
   return {
+    participant: "",
     actor: row.anyActor ? "" : (row.actors[0]?.id ?? ""),
     payload: Object.fromEntries(row.payload.map((a) => [a.id, attributeDefault(a)])),
     signer: row.gate ? `signer${row.gate.have + 1}` : "",
@@ -220,6 +226,7 @@ export function inputOf(row: EnabledRow, value: RowValue): SimInput {
   if (row.event) input.event = row.event;
   if (row.invoke) input.invoke = row.invoke;
   if (row.trigger === "time") input.after = value.after.trim();
+  if (value.participant) input.participant = value.participant;
   if (value.actor) input.actor = value.actor;
   if (row.gate) {
     if (value.signer.trim()) input.signer = value.signer.trim();
@@ -306,6 +313,14 @@ export function lastStepLines(entry: StepTrace, names: Names): LastStepLine[] {
   const lines: LastStepLine[] = [];
   // The actor of the move, when the input does not name it (the input's own actor shows in the trace row): the system actor.
   if (entry.actor && !entry.input?.actor) lines.push({ kind: "actor", text: L.byActor(names.actor(entry.actor)), tone: "neutral" });
+  // A step by a participant: the actor the engine worked out for it (`actsAs`), or that it satisfied none of the list.
+  const actsAs = entry.actsAs;
+  if (entry.input?.participant)
+    lines.push({
+      kind: "actor",
+      text: L.actsAsLine(names.participant(entry.input.participant), actsAs ? names.actor(actsAs) : null),
+      tone: actsAs ? "neutral" : "warning",
+    });
   if (entry.refusal) lines.push({ kind: "refusal", text: L.refused(L.refusals[entry.refusal] ?? entry.refusal), tone: "danger" });
   const taken = entry.microsteps.flatMap((m) => m.transitions);
   if (taken.length) lines.push({ kind: "transitions", text: L.transitionLine(taken.map(names.transition).join(", ")), tone: "success" });
@@ -342,7 +357,7 @@ export function lastStepLines(entry: StepTrace, names: Names): LastStepLine[] {
 // ------------------------------------------------------------------ the trace
 
 /** An input in a few words: `submit as BudgetHolder`, `checkBudget done`, `time +P5D`. */
-export function inputLabel(input: SimInput, names: Names): string {
+export function inputLabel(input: SimInput, names: Names, filled?: { actor?: string | null; signer?: string | null }): string {
   const kind = input.input ?? "event";
   const head =
     kind === "time"
@@ -352,9 +367,18 @@ export function inputLabel(input: SimInput, names: Names): string {
         : kind === "invoke-error"
           ? L.invokeError(names.invoke(input.invoke))
           : names.event(input.event);
+  const actor = input.actor || (input.participant ? filled?.actor : undefined);
+  const signer = input.signer || (input.participant ? filled?.signer : undefined);
+  // A participant's step reads "approve by SalesApprover, acting as Approver, signed by erin".
+  if (input.participant) {
+    const parts = [`${head} ${L.asParticipant(names.participant(input.participant))}`];
+    if (actor) parts.push(L.actingAs(names.actor(actor)));
+    if (signer) parts.push(L.bySigner(signer));
+    return parts.join(", ");
+  }
   const parts = [head];
-  if (input.actor) parts.push(L.asActor(names.actor(input.actor)));
-  if (input.signer) parts.push(L.bySigner(input.signer));
+  if (actor) parts.push(L.asActor(names.actor(actor)));
+  if (signer) parts.push(L.bySigner(signer));
   return parts.join(" ");
 }
 
@@ -376,7 +400,12 @@ export function traceRows(inputs: readonly SimInput[], result: SimulationResult 
     const t = byIndex.get(index);
     return { index, label, ran: !!t, accepted: t?.accepted ?? true, refusal: t?.refusal ?? null, states: (t?.configuration ?? []).map(names.state).join(", ") };
   };
-  return [row(-1, L.traceStart), ...inputs.map((input, i) => row(i, inputLabel(input, names)))];
+  // A participant's step also shows the actor the engine worked out for it (`actsAs`) and the signer it filled in.
+  const label = (input: SimInput, i: number) => {
+    const t = byIndex.get(i);
+    return inputLabel(input, names, { actor: t?.actsAs ?? t?.input?.actor, signer: t?.input?.signer ?? undefined });
+  };
+  return [row(-1, L.traceStart), ...inputs.map((input, i) => row(i, label(input, i)))];
 }
 
 /** The active states of an entry, by path. */
@@ -401,7 +430,7 @@ export function replaySummary(verification: ScenarioVerification, steps: number)
   if (verification.passed) return L.replayAllPassed(steps);
   const failure = verification.failure;
   if (!failure) return L.replayFailed;
-  return L.replayFailedAt(failure.step < 0 ? L.replayOutcome : L.replayStep(failure.step + 1), failure.rule, failure.message);
+  return L.replayFailedAt(failure.step < 0 ? L.replayOutcome : L.replayStep(failure.step + 1), failure.rule, failure.message.replace(/^Step \d+:?\s*/i, ""));
 }
 
 /** One row per scenario step: the verdict from verify (the engine's), the states after it from simulate. */
@@ -413,7 +442,7 @@ export function replayRows(scenario: ScenarioDoc, verification: ScenarioVerifica
     const t = byIndex.get(i);
     return {
       index: i,
-      label: inputLabel(step as SimInput, names),
+      label: inputLabel(step as SimInput, names, { actor: t?.actsAs ?? t?.input?.actor, signer: t?.input?.signer ?? undefined }),
       verdict,
       states: t && verdict !== "not-run" ? t.configuration.map(names.state).join(", ") : "",
     };

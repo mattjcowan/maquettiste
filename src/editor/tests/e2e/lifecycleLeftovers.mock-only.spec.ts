@@ -37,6 +37,7 @@ test("a replay loads the scenario's start, and the cast names its attributes", a
       ...source.json,
       id: "01JQSCN0000000000000000999",
       name: "CastDemo",
+      displayName: "Cast demo",
       subject: "01JQ0BJ0000000000000000001",
       steps,
       objects: [{ id: "01JQ0BJ0000000000000000001", name: "inv1", entity: byName("entity", "Invoice").id, values: { [invoice.json.attributes[0].id]: 42 } }],
@@ -55,7 +56,8 @@ test("a replay loads the scenario's start, and the cast names its attributes", a
   if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
   await panel.getByTestId("simulation-replay").click();
   const dialog = page.getByTestId("replay-dialog");
-  await dialog.getByLabel("Scenario").selectOption({ label: "CastDemo" });
+  // The picker shows display names.
+  await dialog.getByLabel("Scenario").selectOption({ label: "Cast demo" });
   await dialog.getByTestId("replay-run").click();
   await expect(dialog).toHaveCount(0);
   // Start shows the scenario's value, not the default.

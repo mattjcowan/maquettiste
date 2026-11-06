@@ -259,6 +259,7 @@ public sealed class CompileTests
         using var repo = PackRepo.Actors();
         await repo.GenerateCleanlyAsync();
         Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "actors", "expected"), repo.PathOf("out"));
+        Directory.Delete(repo.PathOf("out/Tests"), recursive: true); // the scenario tests need a test host; see the next test
         var project = Path.Combine(repo.Repo.Root, "actors");
         WriteProject(project, repo.PathOf("out"), ActorsProgram, web: true);
 
@@ -281,6 +282,7 @@ public sealed class CompileTests
         Assert.Contains("public const string AcceptsActor = \"Accepts\";", actors, StringComparison.Ordinal);
         Assert.Contains("public const string AllActor = \"All\";", actors, StringComparison.Ordinal);
         Assert.Contains("public const string Pat = \"Pat\";", actors, StringComparison.Ordinal);
+        Directory.Delete(repo.PathOf("out/Tests"), recursive: true);
         var project = Path.Combine(repo.Repo.Root, "clash");
         WriteProject(project, repo.PathOf("out"), """
             using System;
@@ -304,6 +306,106 @@ public sealed class CompileTests
         var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll")], project, TimeSpan.FromMinutes(2));
         Assert.True(run.ExitCode == 0 && run.Output.Contains("clash ok", StringComparison.Ordinal), run.Output);
     }
+
+    [Fact]
+    public async Task Actors_taken_from_the_object_ask_the_handlers_and_the_scenario_tests_pass()
+    {
+        // actors-design.md decisions 15 and 27: the generated interpreter accepts an actor taken from the object only when the
+        // process's Handlers says the caller is that actor, and the generated scenario test acts as RStep.ActsAs with the participant's
+        // identity as signer. The team's half here answers as the scenario's objects say: the order's owner is bea, its account manager
+        // max, and Ann (identity 7) an approver on its project. The project builds with warnings as errors, and both tests pass.
+        using var repo = PackRepo.Actors();
+        await repo.GenerateCleanlyAsync();
+        var handlers = repo.Read("out/Processes/OrderFlow/OrderFlowHandlers.cs");
+        foreach (var (actor, who) in new[] { ("AccountManager", "max"), ("Owner", "bea"), ("ProjectApprover", "7") })
+        {
+            var stub = $"private partial bool Is{actor}(ProcessSnapshot<OrderFlowContext> snapshot, ProcessEnvelope envelope) => false;";
+            Assert.Contains(stub, handlers, StringComparison.Ordinal);
+            handlers = handlers.Replace(stub, stub.Replace("=> false;", $"=> envelope.Signer == \"{who}\";", StringComparison.Ordinal), StringComparison.Ordinal);
+        }
+
+        repo.Write("out/Processes/OrderFlow/OrderFlowHandlers.cs", handlers);
+        const string Authorize = "throw new NotImplementedException(\"Map the caller's principal to the envelope's actor in Pipeline.cs (Authorize).\")";
+        var pipeline = repo.Read("out/Dispatch/Pipeline.cs");
+        Assert.Contains(Authorize, pipeline, StringComparison.Ordinal);
+        repo.Write("out/Dispatch/Pipeline.cs", pipeline.Replace(Authorize, "true", StringComparison.Ordinal));
+
+        var project = Path.Combine(repo.Repo.Root, "scenarios");
+        WriteProject(project, repo.PathOf("out"), program: null, web: true);
+        var csproj = Path.Combine(project, "RoundTrip.csproj");
+        File.WriteAllText(csproj, File.ReadAllText(csproj)
+            .Replace("<OutputType>Library</OutputType>", "<OutputType>Exe</OutputType>\n    <IsTestProject>true</IsTestProject>", StringComparison.Ordinal)
+            .Replace("<Compile Include=\"Program.cs\" Condition=\"Exists('Program.cs')\" />",
+                "<Compile Include=\"Host/*.cs\" />\n    <PackageReference Include=\"xunit.v3\" Version=\"3.2.2\" />", StringComparison.Ordinal));
+        Directory.CreateDirectory(Path.Combine(project, "Host"));
+        File.WriteAllText(Path.Combine(project, "Host", "ScenarioHost.cs"), ActorsScenarioHost);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll"), "-noColor"], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("Total: 2, Errors: 0, Failed: 0,", StringComparison.Ordinal), run.Output);
+    }
+
+    // The test host of the actors case's generated scenario tests: the dispatcher over both processes with the in-memory stores the
+    // companions start as, and a check that the owner's actor is refused to anyone else and to a behaviour that resolves no one.
+    private const string ActorsScenarioHost = """
+        using System;
+        using System.Threading;
+        using System.Threading.Tasks;
+        using App.Model.Dispatch;
+        using App.Model.Ops;
+        using App.Model.Processes;
+        using App.Model.Runtime;
+        using Xunit;
+
+        namespace App.Model;
+
+        internal sealed class ScenarioHost : IAsyncDisposable
+        {
+            private ScenarioHost(Dispatcher dispatcher) => Dispatcher = dispatcher;
+
+            public Dispatcher Dispatcher { get; }
+
+            public static Task<ScenarioHost> StartAsync(ManualClock clock, CancellationToken cancellationToken)
+            {
+                var host = new ProcessHost(clock);
+                var orders = new OrderFlowCommandHandler(new OrderFlowMachine(new OrderFlowHandlers(), host, host, host), new OrderFlowStore());
+                var requests = new RequestFlowCommandHandler(new RequestFlowMachine(new RequestFlowHandlers(), host, host, host), new RequestFlowStore());
+                return Task.FromResult(new ScenarioHost(new Dispatcher(new HandlerRegistry(orders, requests), new Pipeline(new InMemoryProcessOutbox()))));
+            }
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+
+        public sealed class ResolverTests
+        {
+            [Fact]
+            public void Only_the_resolver_lets_a_caller_act_as_an_actor_taken_from_the_object()
+            {
+                var clock = new ManualClock(DateTimeOffset.UnixEpoch);
+                var machine = new OrderFlowMachine(new OrderFlowHandlers(), clock);
+                var start = machine.Start("o-1").Snapshot;
+                var refused = machine.Submit(start, new OrderFlowSubmitCommand(new ProcessEnvelope("o-1", Actors.Owner, Signer: "max")));
+                Assert.False(refused.Accepted);
+                Assert.Equal(Refusals.Actor, refused.Refusal);
+                Assert.True(machine.Submit(start, new OrderFlowSubmitCommand(new ProcessEnvelope("o-1", Actors.Owner, Signer: "bea"))).Accepted);
+
+                // A behaviour that is not a resolver resolves no one, so the owner's actor is refused even to bea.
+                var chart = new Statechart<OrderFlowContext>(OrderFlowDefinition.Chart, new Plain(), clock);
+                var plain = chart.Send(chart.Start("o-2", new OrderFlowContext()).Snapshot, "submit", new ProcessEnvelope("o-2", Actors.Owner, Signer: "bea"));
+                Assert.Equal(Refusals.Actor, plain.Refusal);
+            }
+
+            private sealed class Plain : IStatechartBehaviour<OrderFlowContext>
+            {
+                public bool Guard(string guard, StatechartCall<OrderFlowContext> call) => throw new InvalidOperationException(guard);
+
+                public OrderFlowContext Action(string action, StatechartCall<OrderFlowContext> call) => throw new InvalidOperationException(action);
+
+                public System.Collections.Generic.IReadOnlyList<string> Changed(OrderFlowContext before, OrderFlowContext after) => [];
+            }
+        }
+
+        """;
 
     private const string ActorsProgram = """
         using System;

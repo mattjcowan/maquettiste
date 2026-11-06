@@ -31,6 +31,9 @@ public enum ActorType
 /// <summary>The actors of the model: the names envelopes carry, their types, and who may raise each process event.</summary>
 public static partial class Actors
 {
+    /// <summary>Account manager (person, taken from the object: the object's account manager; the process's Handlers tells whether a caller is this actor)</summary>
+    public const string AccountManager = "AccountManager";
+
     /// <summary>Approver (role): Approves requests for the plant.</summary>
     public const string Approver = "Approver";
 
@@ -40,11 +43,17 @@ public static partial class Actors
     /// <summary>Clerk (person): Prepares and submits requests.</summary>
     public const string Clerk = "Clerk";
 
+    /// <summary>Owner (person, taken from the object: the object's owner; the process's Handlers tells whether a caller is this actor)</summary>
+    public const string Owner = "Owner";
+
     /// <summary>Pat (person): A senior engineer.</summary>
     public const string Pat = "Pat";
 
     /// <summary>Plant 3 (organization): The plant that owns the request.</summary>
     public const string Plant = "Plant";
+
+    /// <summary>Project approver (role, taken from the object: members of Approver within the object's project; the process's Handlers tells whether a caller is this actor): An approver on the order&apos;s project.</summary>
+    public const string ProjectApprover = "ProjectApprover";
 
     /// <summary>Scheduler (role): Runs the timed clean-up.</summary>
     public const string Scheduler = "Scheduler";
@@ -55,11 +64,14 @@ public static partial class Actors
     /// <summary>Every actor, by name.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
+        AccountManager,
         Approver,
         Automatic,
         Clerk,
+        Owner,
         Pat,
         Plant,
+        ProjectApprover,
         Scheduler,
         Seniors,
     ];
@@ -69,11 +81,14 @@ public static partial class Actors
     /// <returns>The type.</returns>
     public static ActorType TypeOf(string actor) => actor switch
     {
+        AccountManager => ActorType.Person,
         Approver => ActorType.Role,
         Automatic => ActorType.System,
         Clerk => ActorType.Person,
+        Owner => ActorType.Person,
         Pat => ActorType.Person,
         Plant => ActorType.Organization,
+        ProjectApprover => ActorType.Role,
         Scheduler => ActorType.Role,
         Seniors => ActorType.Group,
         _ => throw new ArgumentOutOfRangeException(nameof(actor), actor, "Not an actor of the model."),
@@ -130,6 +145,12 @@ public static partial class Actors
     /// <summary>The actors that may raise each process event (empty: any actor).</summary>
     public static class Events
     {
+        /// <summary>Event submit of OrderFlow.</summary>
+        public static IReadOnlyList<string> OrderFlowSubmit { get; } = [Actors.Owner];
+
+        /// <summary>Event approve of OrderFlow.</summary>
+        public static IReadOnlyList<string> OrderFlowApprove { get; } = [];
+
         /// <summary>Event submit of RequestFlow.</summary>
         public static IReadOnlyList<string> RequestFlowSubmit { get; } = [Actors.Clerk];
 

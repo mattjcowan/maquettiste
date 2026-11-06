@@ -1061,7 +1061,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         // the candidate), and, once the model has memberships, MQ9102 and MQ9105 on the processes that name actors and their scenarios'
         // replays (actors-design.md section 14).
         var membershipsMatter = element is Actor && Processes.ActorMembership.Of(model).Any;
-        if (element is Process or Actor)
+        // A scenario names actors only through its participants, which MQ9106 counts as used (actors-design.md decision 6): a scenario
+        // without them reaches no actor. One that had participants before the change is followed by the store (FormerActorPeers).
+        if (element is Process or Actor || (element is Scenario scenarioSaved && scenarioSaved.Participants.Count > 0))
         {
             foreach (var actor in model.All<Actor>())
             {
@@ -1075,6 +1077,17 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             foreach (var named in model.All<Process>())
             {
                 if (NamesActor(model, named) && model.GetDocument(named.Id) is { } peer)
+                    yield return peer;
+            }
+        }
+
+        if (element is Actor gateActor)
+        {
+            // MQ9604 on a process that uses the actor only through a library's gate (gatePolicy): the process names the gate, not the
+            // actor, so it is not among the actor's referrers (actors-design.md decision 11).
+            foreach (var user in model.All<Process>())
+            {
+                if (!(membershipsMatter && NamesActor(model, user)) && UsesThroughLibraryGate(model, user, gateActor.Id) && model.GetDocument(user.Id) is { } peer)
                     yield return peer;
             }
         }
@@ -1105,7 +1118,20 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     yield return peer;
             }
         }
-        else if (element is ReferenceType or ScalarType or Seed)
+
+        if (element is Entity or Relation or ValueObject or Stereotype)
+        {
+            // MQ9604 and MQ9606 read the subjects' attributes and navigations (actors-design.md section 5): every process that runs once
+            // the model has an actor from the object, else only those whose subjects name an owner; none without either.
+            var relatives = model.All<Actor>().Any(a => a.Relative is not null);
+            foreach (var owned in model.All<Process>())
+            {
+                if ((relatives ? owned.Use != ProcessUse.Library : owned.Subjects.Any(s => s.Owner is not null)) && model.GetDocument(owned.Id) is { } peer)
+                    yield return peer;
+            }
+        }
+
+        if (element is ReferenceType or ScalarType or Seed)
         {
             // MQ9205, MQ9207 and MQ9208 under a reference or plain binding read the type's codes, rows and facets (lifecycle-design.md
             // decision 18): only the lifecycles that bind an attribute of that type, none when nothing binds.
@@ -1140,15 +1166,25 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
         // A scenario's objects (lifecycle-design.md decision 22) read their entities and the bases that declare their attributes and
         // defaults, the types (reference types too) their values must fit, and the relations whose ends name their links' navigations.
+        // A scenario's participants (actors-design.md decisions 14 to 17) read every actor's type, memberships and relative form: an actor
+        // change re-checks the scenarios that have participants, and none when no scenario has them.
         var objectsReached = element is Entity or Relation or EnumType or ValueObject or ScalarType or ReferenceType;
-        if (replayed.Count == 0 && !objectsReached)
+        var participantsReached = element is Actor;
+        if (replayed.Count == 0 && !objectsReached && !participantsReached)
             yield break;
         foreach (var scenario in model.All<Scenario>())
         {
-            if ((replayed.Contains(scenario.Process) || (objectsReached && ObjectsReach(model, scenario, element))) && model.GetDocument(scenario.Id) is { } peer)
+            if ((replayed.Contains(scenario.Process) || (objectsReached && ObjectsReach(model, scenario, element))
+                    || (participantsReached && scenario.Participants.Count > 0)) && model.GetDocument(scenario.Id) is { } peer)
                 yield return peer;
         }
     }
+
+    // Whether a process's transitions use a library's gate whose signers or required actors name the actor.
+    private static bool UsesThroughLibraryGate(ModelSnapshot model, Process process, string actorId) =>
+        process.Transitions.Any(t => t.GatePolicy is { } policy && Processes.ProcessLibraries.Owner(model, policy, "gate") is { } library
+            && library.Gates.Any(g => string.Equals(g.Id, policy, StringComparison.Ordinal)
+                && (g.Signers.Contains(actorId, StringComparer.Ordinal) || g.RequiredActors.Contains(actorId, StringComparer.Ordinal))));
 
     // Whether a process document names an actor anywhere (the index row's actors).
     private static bool NamesActor(ModelSnapshot model, Process process) =>

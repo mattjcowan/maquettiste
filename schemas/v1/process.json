@@ -220,7 +220,8 @@
       "x-order": [
         "id",
         "entity",
-        "boundAttribute"
+        "boundAttribute",
+        "owner"
       ],
       "properties": {
         "id": {
@@ -232,6 +233,10 @@
         },
         "boundAttribute": {
           "description": "An attribute of the entity that holds the state (lifecycle only).",
+          "$ref": "common.json#/$defs/id"
+        },
+        "owner": {
+          "description": "Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own or inherited; not an attribute from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner.",
           "$ref": "common.json#/$defs/id"
         }
       },

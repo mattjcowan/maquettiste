@@ -1,0 +1,19 @@
+{
+  "kind": "entity",
+  "id": "01JAC000000000000000000E02",
+  "name": "Project",
+  "package": "01JAC000000000000000000P01",
+  "key": {
+    "attributes": [
+      "01JAC000000000000000000A11"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JAC000000000000000000A11",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    }
+  ]
+}

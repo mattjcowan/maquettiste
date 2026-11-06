@@ -603,7 +603,9 @@ internal sealed class PackRepo : IDisposable
     /// The csharp-dapper pack's own <c>actors</c> case (<c>packs/csharp-dapper/tests/actors</c>, actors-design.md section 8): a person,
     /// roles, a group, an organization and the system actor, with membership three levels deep (Pat in Seniors, Seniors in Approver,
     /// Approver in Plant) and the system actor in Scheduler; RequestFlow lists them on events, a human task and a gate with a required
-    /// actor, and has a timer. csharp-dapper writes to <c>out</c>; with <paramref name="typeScript"/> the TypeScript sample pack writes
+    /// actor, and has a timer. OrderFlow, a lifecycle of Order whose subject names its owner field, lists the actors taken from the
+    /// object (Owner, AccountManager, ProjectApprover), and its scenario ProjectApproval has participants; csharp-dapper writes the
+    /// scenario tests under out/Tests. csharp-dapper writes to <c>out</c>; with <paramref name="typeScript"/> the TypeScript sample pack writes
     /// to <c>web</c> instead, set up as in <see cref="TypeScript"/>.
     /// </summary>
     /// <param name="typeScript">Whether to run the TypeScript sample pack instead of csharp-dapper.</param>
@@ -634,7 +636,7 @@ internal sealed class PackRepo : IDisposable
               "formatVersion": 1,
               "name": "actors",
               "outputs": { "allow": [ { "path": "out" } ] },
-              "packs": { "csharp-dapper": { "output": "out" } }
+              "packs": { "csharp-dapper": { "output": "out", "parameters": { "testsFolder": "Tests" } } }
             }
 
             """);

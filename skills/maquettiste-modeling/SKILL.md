@@ -29,7 +29,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | databases/<db>/migrations/open/ | migration fact (`kind: "migration"`): what a change of the database's shape means for its stored rows (`rename`, `change-type`, `drop`, `backfill`, `raw`, ...) | recorded by the saves themselves; complete a pending one, never delete one by hand |
 | mappings/ | projection overrides of older models, and relation mappings (`foreignKey`, junctions) | new work binds entities in their own file instead |
 | processes/ | process: a statechart (states, transitions, events, guards, actions, invokes, gates, context) | `use` is `lifecycle` (`subjects`: entries `{ id, entity, boundAttribute? }`; the one-subject `subject`/`boundAttribute` form is deprecated, MQ9209) or `orchestration` |
-| actors/ | actor: `type` person, role or external system | raises events, signs gates, completes human tasks; may sit in a domain through `package` |
+| actors/ | actor: `type` person, role, group, organization, external system or system (shown as Automatic, at most one); `memberOf`; `relative` | raises events, signs gates, completes human tasks; may sit in a domain through `package` |
 | scenarios/<process>/ | scenario: a recorded run of one process, each step with what it expects | owned by its process and deleted with it |
 | operations/<subject>/ | operation: one command over the model (`subject`, `level`, `effect`, `input`, `outcomes`, `errors`, `guards`, `redefines`, `excludes`, `fires`, `requires`) | in `operations/` itself without a subject; the subject is not owning, so deleting the entity is refused while an operation names it |
 | constraints/ | named constraint (`kind: "constraint"`): one condition in the expression language over typed `parameters`, with a `message` | cited by any check or guard with `satisfies`; see "Expressions" |
@@ -195,6 +195,13 @@ must equal its bound enum's members, in order (MQ9203).
   `apply`) makes a lifecycle's bound enum follow its states (`entity` picks the subject) and never removes a member still in
   use. `apply_batch` has the process operations `sync-enum`, `sync-codes`, `use-subjects`, `set-lifecycle` (binds an entity and a process on both sides), `set-initial` and
   `refresh-scenario`.
+- Actors: `memberOf` (ids of roles, groups or organizations, no cycles) makes a list that names a holder accept its members
+  at any depth. `relative` takes one form: `{ owner: true }`, `{ path: [ids] }` (a field or to-one ends of the subject), or
+  `{ membersOf, within: [ids] }` (a role within a context). Such an actor has no `memberOf` or members, and a role held with
+  no context does not count within one. A subject entry's optional `owner` names the single-valued attribute or to-one end
+  that holds the owner. A scenario's `participants` (`name`, `identity`, `actor`, `holds: [{ id, actor, within }]`, `object`)
+  and a step's `participant` let the engine work out the actor the step acts as (`step.acts_as`). MQ9601 to MQ9606, MQ9301
+  and MQ9305 check them. "Participants" is a working name.
 - Scenarios are the process's tests: `validate` replays every scenario (MQ93xx), and the packs turn each scenario into a
   generated test. When a chart change breaks a scenario on purpose, refresh its expectations (`refresh-scenario`) rather
   than editing `expect` by hand; when it breaks by accident, fix the chart.

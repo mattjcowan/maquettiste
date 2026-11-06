@@ -78,6 +78,8 @@ internal static partial class ProcessRules
         CheckUnused(process, locals, report);
         CheckInvokes(context, process, analysis, report);
         CheckLifecycle(context, process, analysis, codes, report);
+        CheckSubjectOwners(context, process, report);
+        CheckRelativeUses(context, process, analysis, report);
         CheckNodeNames(context, process, report);
         CheckNodeStereotypes(context, process, report);
     }
@@ -584,13 +586,15 @@ internal static partial class ProcessRules
     // MQ9105.
     private static void CheckGateEvent(ValidationContext context, string name, Locals locals, ProcessTransition t, ProcessGate gate, string pointer, Report report)
     {
-        if (t.Trigger == TransitionTrigger.Event && t.Event is not null && locals.Events.TryGetValue(t.Event, out var e) && e.Actors.Count > 0)
+        // An actor from the object among the event's actors or as a signer is decided by the object, never by the model.
+        if (t.Trigger == TransitionTrigger.Event && t.Event is not null && locals.Events.TryGetValue(t.Event, out var e) && e.Actors.Count > 0
+            && !e.Actors.Any(a => IsRelative(context.Model, a)))
         {
             // A signer that is a member of one of the event's actors, at any depth, may raise it (actors-design.md decision 6).
             var membership = ActorMembership.Of(context.Model);
             for (var i = 0; i < gate.Signers.Count; i++)
             {
-                if (!membership.Allows(e.Actors, gate.Signers[i]))
+                if (!membership.Allows(e.Actors, gate.Signers[i]) && !IsRelative(context.Model, gate.Signers[i]))
                     report.Add("MQ9105", $"{name} lists signer {ActorName(context, gate.Signers[i])}, but event '{e.Name}' may only be raised by {Names(e.Actors.Select(a => ActorName(context, a)))}; add the signer to the event's actors.", pointer + "/signers/" + N(i), gate.Id);
             }
         }
@@ -1176,7 +1180,11 @@ internal static partial class ProcessRules
     {
         var model = context.Model;
         var membership = ActorMembership.Of(model);
-        bool Named(string id) => model.ReferencesTo(id).Any(r => model.Get<Process>(r.FromElementId) is not null);
+        // A process names it, an actor from the object is the members of it, or a scenario's participant stands for it or holds it
+        // (actors-design.md decision 6).
+        bool Named(string id) => model.ReferencesTo(id).Any(r => model.Get<Process>(r.FromElementId) is not null
+            || (model.Get<Actor>(r.FromElementId) is { Relative.MembersOf: { } holder } && string.Equals(holder, id, StringComparison.Ordinal))
+            || (model.Get<Scenario>(r.FromElementId) is not null && r.JsonPointer.StartsWith("/participants/", StringComparison.Ordinal)));
         // An actor counts as used when a process names it, one of its members at any depth, or an actor it is a member of at any depth
         // (actors-design.md decision 6). The message is today's unless the actor has memberships or members.
         if (!Named(actor.Id) && !membership.AllMembers(actor.Id).Any(Named) && !membership.AllMemberOf(actor.Id).Any(Named))
@@ -1186,7 +1194,9 @@ internal static partial class ProcessRules
                 : $"Actor '{actor.Name}' is not referenced by any process (event actors, gate signers or human tasks); use it in a process or remove it.", "");
         }
 
-        CheckMemberships(model, membership, actor, report);
+        if (actor.Relative is null)
+            CheckMemberships(model, membership, actor, report);
+        CheckRelative(model, actor, report);
         if (actor.Type == ActorType.System)
         {
             var others = model.All<Actor>().Where(a => a.Type == ActorType.System && !string.Equals(a.Id, actor.Id, StringComparison.Ordinal))
@@ -1219,6 +1229,12 @@ internal static partial class ProcessRules
 
             if (model.Get<Actor>(target) is not { } holder)
                 continue; // MQ2001, MQ2002
+            if (holder.Relative is not null)
+            {
+                report.Add("MQ9601", $"Actor '{actor.Name}' is a member of '{holder.Name}', which is worked out from the object and so has no members; remove the entry, or name a role, group or organization that stands for itself.", pointer);
+                continue;
+            }
+
             if (!ActorTypes.HoldsMembers(holder.Type))
             {
                 report.Add("MQ9601", $"Actor '{actor.Name}' is a member of '{holder.Name}', which is {TypeText(holder.Type)}; only a role, a group or an organization has members. Remove the entry, or name a role, group or organization.", pointer);

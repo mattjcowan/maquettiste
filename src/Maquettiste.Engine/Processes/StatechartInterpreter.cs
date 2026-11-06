@@ -276,6 +276,65 @@ public sealed class StatechartInterpreter
         });
     }
 
+    // ---- the moves an input can make now (actors-design.md decision 15) ----
+
+    /// <summary>
+    /// What a step's participant picks the actor it acts as from (actors-design.md decision 15), read from the moves the input can make in
+    /// the current configuration. For an event: its actors, and the transitions it enables now in the order the next step tries them
+    /// (source active, guard true; the signers are not checked), each with its gate and the gate's required actors not yet signed. For a
+    /// completed or failed human task: its actors. Guards are evaluated as the step will evaluate them; nothing runs and nothing is recorded.
+    /// </summary>
+    /// <param name="input">The step about to run.</param>
+    /// <returns>The choice.</returns>
+    internal ActingChoice Acting(ScenarioStep input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        if (input.Input is StepInput.InvokeDone or StepInput.InvokeError)
+        {
+            var pending = AllInstances().SelectMany(i => i.Pending).Select(p => p.Invoke).FirstOrDefault(p => string.Equals(p.Id, input.Invoke, StringComparison.Ordinal));
+            return pending is { Type: InvokeType.HumanTask }
+                ? new ActingChoice("human task", pending.Name, pending.Actors, [])
+                : new ActingChoice(null, null, [], []);
+        }
+
+        if (input.Input != StepInput.Event || input.Event is null || _root.Done
+            || AllInstances().FirstOrDefault(i => i.Chart.Events.ContainsKey(input.Event)) is not { } target)
+            return new ActingChoice(null, null, [], []);
+        var ev = target.Chart.Events[input.Event];
+        var saved = _scope;
+        _index++; // a guard's seed is the step's
+        _scope = new Scope(input) { Event = EventObject(ev.Name, input.Actor, ev.Payload, input.Payload) };
+        try
+        {
+            var moves = new List<ActingMove>();
+            var seen = new HashSet<ChartTransition>(ReferenceEqualityComparer.Instance);
+            foreach (var leaf in Leaves(target))
+            {
+                foreach (var s in leaf.Ancestors.Insert(0, leaf))
+                {
+                    if (s.IsRoot)
+                        break;
+                    foreach (var t in target.Chart.Candidates(s, TransitionTrigger.Event, ev.Id))
+                    {
+                        if (!seen.Add(t) || Guard(target, t) != true)
+                            continue;
+                        var signed = target.Signatures.TryGetValue(t.Id, out var list) ? list : [];
+                        moves.Add(t.Gate is { } gate
+                            ? new ActingMove(gate, [.. gate.RequiredActors.Where(a => !signed.Any(x => Accepts(a, x.Actor))).Distinct(StringComparer.Ordinal)])
+                            : new ActingMove(null, []));
+                    }
+                }
+            }
+
+            return new ActingChoice("event", ev.Name, ev.Actors, moves);
+        }
+        finally
+        {
+            _index--;
+            _scope = saved;
+        }
+    }
+
     // ---- macrostep ----
 
     private void Macrostep(Func<bool> body)

@@ -4,7 +4,7 @@
 // from the start and nothing is kept on the server. Selecting a trace entry shows the state after it from the trace
 // the last call already returned (no second call). Pure: no React, no I/O.
 import type { Diagnostic } from "@/api/types";
-import type { ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
+import type { ParticipantDoc, ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
 import type { SimInput, SimulateRequest, SimulationResult, StepTrace } from "./api";
 import type { SimulationView } from "./view";
 
@@ -16,6 +16,20 @@ export interface SimStart {
   /** The scenario's objects, and the one the process runs for (read-only in the panel; edited in the JSON view). */
   objects?: ScenarioObjectDoc[];
   subject?: string;
+  /** The scenario's participants (actors-design.md decision 14): an input may name one. */
+  participants?: ParticipantDoc[];
+}
+
+/** The cast, subject and participants of a start or a scenario, as a request or a start carries them (nothing when none). */
+export function castOf(from: {
+  objects?: ScenarioObjectDoc[];
+  subject?: string;
+  participants?: ParticipantDoc[];
+}): Pick<SimStart, "objects" | "subject" | "participants"> {
+  return {
+    ...(from.objects?.length ? { objects: from.objects, ...(from.subject ? { subject: from.subject } : {}) } : {}),
+    ...(from.participants?.length ? { participants: from.participants } : {}),
+  };
 }
 
 export interface Session {
@@ -76,7 +90,7 @@ export function restart(s: Session, start: SimStart): Session {
     start: {
       context: { ...start.context },
       ...(start.at ? { at: start.at } : {}),
-      ...(start.objects?.length ? { objects: start.objects, ...(start.subject ? { subject: start.subject } : {}) } : {}),
+      ...castOf(start),
     },
     inputs: [],
   });
@@ -91,20 +105,20 @@ export function setStartValue(s: Session, attribute: string, value: unknown): Se
 }
 
 /** Takes only a scenario's start (values, clock, objects) as the session's start: a replay shows the steps itself. */
-export function loadScenarioStart(s: Session, scenario: Pick<ScenarioDoc, "start" | "objects" | "subject">): Session {
+export function loadScenarioStart(s: Session, scenario: Pick<ScenarioDoc, "start" | "objects" | "subject" | "participants">): Session {
   return restart(s, {
     context: { ...(scenario.start?.context ?? {}) },
     ...(scenario.start?.at ? { at: scenario.start.at } : {}),
-    ...(scenario.objects?.length ? { objects: scenario.objects, ...(scenario.subject ? { subject: scenario.subject } : {}) } : {}),
+    ...castOf(scenario),
   });
 }
 
 /** Loads a scenario's start and steps as the session's start and inputs (From scenario…). */
-export function loadScenario(s: Session, scenario: Pick<ScenarioDoc, "start" | "steps" | "objects" | "subject">): Session {
+export function loadScenario(s: Session, scenario: Pick<ScenarioDoc, "start" | "steps" | "objects" | "subject" | "participants">): Session {
   const start: SimStart = {
     context: { ...(scenario.start?.context ?? {}) },
     ...(scenario.start?.at ? { at: scenario.start.at } : {}),
-    ...(scenario.objects?.length ? { objects: scenario.objects, ...(scenario.subject ? { subject: scenario.subject } : {}) } : {}),
+    ...castOf(scenario),
   };
   return changed(s, { start, inputs: scenario.steps.map((step) => clean(step as SimInput)) });
 }
@@ -149,8 +163,7 @@ export function clean(input: SimInput & { expect?: unknown }): SimInput {
 /** The simulate request for the session: the whole input list from the start, with the draft when there is one. */
 export function requestOf(s: Session, document?: unknown): SimulateRequest {
   const start = { context: s.start.context, ...(s.start.at ? { at: s.start.at } : {}) };
-  const objects = s.start.objects?.length ? { objects: s.start.objects, ...(s.start.subject ? { subject: s.start.subject } : {}) } : {};
-  return { ...(document ? { document: document as never } : {}), start, ...objects, steps: s.inputs, from: -1 };
+  return { ...(document ? { document: document as never } : {}), start, ...castOf(s.start), steps: s.inputs, from: -1 };
 }
 
 /** The trace entry shown: the selected one, else the last one the engine ran (null before the first answer). */

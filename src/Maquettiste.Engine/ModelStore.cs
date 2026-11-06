@@ -1356,11 +1356,19 @@ public sealed partial class ModelStore : IAsyncDisposable
     /// Every other actor when the change deleted an actor (actors-design.md section 14): an actor's type and memberships decide MQ9106,
     /// MQ9602 and MQ9605 on other actors, and the validator's peers of an actor (<see cref="Validation.ModelValidator.ProcessPeers"/>)
     /// come from its document, which a deleted actor no longer has. A member or a second system actor names no one, so the actors whose
-    /// findings it changed are not its referrers. One pass over the candidate's actors, only when the change deleted an actor.
+    /// findings it changed are not its referrers. Likewise when a changed scenario had participants before the change, since MQ9106
+    /// counts the actors they name. One pass over the candidate's actors, only in those two cases.
     /// </summary>
     private static IEnumerable<string> FormerActorPeers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
     {
-        if (!changedIds.Any(id => before.GetDocument(id)?.Element is Actor && candidate.GetDocument(id) is null))
+        // A deleted actor, or a scenario that had participants before the change (saved without them or deleted), changes MQ9106 on
+        // the actors it named; the validator reaches them from the candidate only while the scenario still has participants.
+        if (!changedIds.Any(id => before.GetDocument(id)?.Element switch
+            {
+                Actor => candidate.GetDocument(id) is null,
+                Scenario scenario => scenario.Participants.Count > 0,
+                _ => false,
+            }))
             yield break;
         foreach (var actor in candidate.All<Actor>())
             yield return actor.Id;

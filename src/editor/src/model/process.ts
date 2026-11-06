@@ -103,6 +103,8 @@ export interface SubjectDoc {
   id: string;
   entity: string;
   boundAttribute?: string;
+  /** Where the object's owner is held (actors-design.md decision 10); the `subjects` form only. */
+  owner?: string;
 }
 
 export interface ProcessDoc {
@@ -132,6 +134,8 @@ export interface StepDoc {
   event?: string;
   invoke?: string;
   after?: string;
+  /** The id of a scenario participant that acts (actors-design.md decision 15). */
+  participant?: string;
   actor?: string;
   signer?: string;
   meaning?: string;
@@ -153,6 +157,28 @@ export interface ScenarioDoc {
   /** The objects the run is about (lifecycle-design.md decision 22); `subject` names the one the process runs for. */
   objects?: ScenarioObjectDoc[];
   subject?: string;
+  /** Who acts in the scenario (actors-design.md decision 14). */
+  participants?: ParticipantDoc[];
+}
+
+export interface HoldingDoc {
+  id: string;
+  /** A role, group or organization. */
+  actor: string;
+  /** A scenario object id: the holding counts only within it. */
+  within?: string;
+}
+
+export interface ParticipantDoc {
+  id: string;
+  name: string;
+  displayName?: string;
+  identity?: string | number;
+  /** A person, external system or system actor. */
+  actor?: string;
+  holds?: HoldingDoc[];
+  /** A scenario object id: their record. */
+  object?: string;
 }
 
 export interface ScenarioObjectDoc {
@@ -161,6 +187,8 @@ export interface ScenarioObjectDoc {
   entity: string;
   values?: Record<string, unknown>;
   links?: { end: string; object: string }[];
+  /** A participant id; only when the subject entry names no owner field (decision 16). */
+  owner?: string;
 }
 
 // ------------------------------------------------------------------ the state tree
@@ -715,6 +743,7 @@ export interface StepRow {
   input: string;
   /** The event's name, the invoke's name or the duration, per input. */
   on: string;
+  participant: string;
   actor: string;
   signer: string;
   meaning: string;
@@ -774,6 +803,7 @@ export function stepNames(process: ProcessDoc | undefined, actorNames: Map<strin
 
 export function stepRows(scenario: ScenarioDoc, process: ProcessDoc | undefined, actorNames: Map<string, string>): StepRow[] {
   const { ids, attrs, guards } = stepNames(process, actorNames);
+  for (const p of scenario.participants ?? []) ids.set(p.id, p.name);
   const name = (id: string | undefined) => (id ? (ids.get(id) ?? "?") : "");
   return scenario.steps.map((s, i) => {
     const input = s.input ?? "event";
@@ -783,6 +813,7 @@ export function stepRows(scenario: ScenarioDoc, process: ProcessDoc | undefined,
       pointer: `/steps/${i}`,
       input,
       on: input === "event" ? name(s.event) : input === "time" ? (s.after ?? "") : name(s.invoke),
+      participant: name(s.participant),
       actor: name(s.actor),
       signer: s.signer ?? "",
       meaning: name(s.meaning),
@@ -850,6 +881,7 @@ export function subjectsOf(doc: { id?: unknown; subjects?: unknown; subject?: un
               id: typeof e.id === "string" ? e.id : "",
               entity: e.entity,
               ...(typeof e.boundAttribute === "string" ? { boundAttribute: e.boundAttribute } : {}),
+              ...(typeof e.owner === "string" ? { owner: e.owner } : {}),
             },
           ]
         : [],

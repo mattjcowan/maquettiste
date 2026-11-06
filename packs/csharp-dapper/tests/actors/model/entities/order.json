@@ -1,0 +1,31 @@
+{
+  "kind": "entity",
+  "id": "01JAC000000000000000000E01",
+  "name": "Order",
+  "package": "01JAC000000000000000000P01",
+  "key": {
+    "attributes": [
+      "01JAC000000000000000000A01"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JAC000000000000000000A01",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JAC000000000000000000A02",
+      "name": "ownerLogin",
+      "type": "string",
+      "length": 40
+    },
+    {
+      "id": "01JAC000000000000000000A03",
+      "name": "accountManager",
+      "type": "string",
+      "length": 40
+    }
+  ]
+}

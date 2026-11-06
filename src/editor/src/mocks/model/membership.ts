@@ -29,11 +29,12 @@ export class Membership {
       this.names.set(a.id, String(a.json.name ?? a.id));
       if (a.json.type === "system") systems.push(a.id);
       const list: string[] = [];
+      if (a.json.relative !== undefined) continue; // an actor from the object is never a member (decision 12)
       const entries = Array.isArray(a.json.memberOf) ? (a.json.memberOf as unknown[]) : [];
       for (const target of entries) {
         if (typeof target !== "string" || target === a.id || list.includes(target)) continue;
         const holder = byId.get(target);
-        if (holder && HOLDERS.has(String(holder.json.type))) list.push(target);
+        if (holder && holder.json.relative === undefined && HOLDERS.has(String(holder.json.type))) list.push(target);
       }
       if (list.length) this.memberOfMap.set(a.id, list);
     }

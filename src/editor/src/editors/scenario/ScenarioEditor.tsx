@@ -32,6 +32,8 @@ import { Grid, type GridColumn, type GridOption } from "../process/Grid";
 import { verifyScenario } from "../process/api";
 import { useActors, useProblems, rowProblems } from "../process/shared";
 import { ScenarioStatusBadge } from "../process/ScenariosTab";
+import { ObjectsGrid, ParticipantsGrid } from "./ParticipantsGrid";
+import { PARTICIPANT_LABELS as PL } from "@/model/labels";
 
 type Rec = Record<string, unknown>;
 
@@ -107,7 +109,12 @@ function ScenarioBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<ty
       ctx={ctx}
       draft={draft}
       controls={<ScenarioHeader ctx={ctx} />}
-      tabs={[{ value: "steps", label: "Steps", content: <StepsGrid ctx={ctx} scenario={scenario} /> }, codeGeneration]}
+      tabs={[
+        { value: "steps", label: "Steps", content: <StepsGrid ctx={ctx} scenario={scenario} /> },
+        { value: "participants", label: PL.tab, content: <ParticipantsGrid ctx={ctx} scenario={scenario} /> },
+        { value: "objects", label: PL.objectsTab, content: <ObjectsGrid ctx={ctx} scenario={scenario} /> },
+        codeGeneration,
+      ]}
     />
   );
 }
@@ -143,6 +150,19 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       editValue: (r) => (r.input === "event" ? (step(r)?.event ?? "") : r.input === "time" ? (step(r)?.after ?? "") : (step(r)?.invoke ?? "")),
       options: (r) => (r.input === "event" ? events : invokes),
     },
+    ...(scenario.participants?.length
+      ? [
+          {
+            key: "participant",
+            label: PL.step,
+            kind: "select" as const,
+            width: "min-w-24",
+            value: (r: StepRow) => r.participant,
+            editValue: (r: StepRow) => step(r)?.participant ?? "",
+            options: () => [none, ...(scenario.participants ?? []).map((p) => ({ value: p.id, label: p.name }))],
+          },
+        ]
+      : []),
     {
       key: "actor",
       label: "Actor",
@@ -209,7 +229,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         if (v !== "time") delete s.after;
         if (v !== "invoke-done" && v !== "invoke-error") delete s.invoke;
       } else if (key === "on") setOpt(s, row.input === "event" ? "event" : row.input === "time" ? "after" : "invoke", v.trim());
-      else if (key === "actor" || key === "meaning" || key === "signer" || key === "reason") setOpt(s, key, v.trim());
+      else if (key === "participant" || key === "actor" || key === "meaning" || key === "signer" || key === "reason") setOpt(s, key, v.trim());
       else if (key === "payload") setOpt(s, "payload", parseMapText(v, names.attrs));
       else if (key === "assume") {
         const map = parseMapText(v, names.guards);
@@ -237,7 +257,9 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
     try {
       const result = await verifyScenario(scenario.process, scenario.id);
       const r = result.results[0];
-      if (r?.failure) setFailure(`Step ${r.failure.step + 1}: ${r.failure.rule} ${r.failure.message}`);
+      // The engine words some findings with their own "Step N"; the step is named once, up front.
+      if (r?.failure)
+        setFailure(`${r.failure.step < 0 ? "Outcome" : `Step ${r.failure.step + 1}`} (${r.failure.rule}): ${r.failure.message.replace(/^Step \d+:?\s*/i, "")}`);
     } catch (e) {
       store.getState().notify(`Replay ${scenario.name}: ${e instanceof Error ? e.message : String(e)}`, "error");
     } finally {
@@ -253,7 +275,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         </Button>
         <ScenarioStatusBadge status={replay.status} failedAt={replay.failedAt} />
         {failure ? (
-          <span className="truncate text-12 text-danger" role="status" data-testid="replay-failure">
+          <span className="min-w-0 flex-1 text-12 text-danger" role="status" title={failure} data-testid="replay-failure">
             {failure}
           </span>
         ) : null}

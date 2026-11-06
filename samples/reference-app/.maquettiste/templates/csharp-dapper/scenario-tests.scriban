@@ -14,13 +14,22 @@ test = (pascal s.name) + "Tests"
 func has(map, key)
   ret map | object.has_key key
 end
+# The signer a step sends: its own, else for an event step by a participant the participant's identity, as the engine's replay
+# does (actors-design.md decision 15).
+func signer(step)
+  if step.signer
+    ret step.signer
+  end
+  ret step.participant && step.input == "event" ? ("" + step.participant.identity) : null
+end
+# The step's actor is the one it acts as (RStep.ActsAs): the step's own actor, or the one the engine worked out for its participant.
 func envelope(step)
   $parts = "Instance"
-  if step.actor
-    $parts = $parts + ", Actor: Actors." + actor_member(step.actor)
+  if step.acts_as
+    $parts = $parts + ", Actor: Actors." + actor_member(step.acts_as)
   end
-  if step.signer
-    $parts = $parts + ", Signer: " + (json step.signer)
+  if signer(step)
+    $parts = $parts + ", Signer: " + (json signer(step))
   end
   if step.meaning
     $parts = $parts + ", Meaning: " + (json step.meaning.name)
@@ -53,12 +62,13 @@ func command(step)
   ret "new " + $cmd + "(" + envelope(step) + ")" + ($init == "" ? "" : " { " + $init + " }")
 end
 func step_text(step)
+  $by = step.participant ? (" by " + step.participant.name + (step.acts_as ? " as " + step.acts_as.name : "")) : (step.actor ? " by " + step.actor.name : "")
   if step.input == "time"
     ret "time +" + step.after
   else if step.input == "invoke-done" || step.input == "invoke-error"
-    ret step.input + " " + step.invoke.name + (step.actor ? " by " + step.actor.name : "")
+    ret step.input + " " + step.invoke.name + $by
   end
-  ret step.event.name + (step.actor ? " by " + step.actor.name : "") + (step.signer ? ", signed by " + step.signer : "")
+  ret step.event.name + $by + (signer(step) ? ", signed by " + signer(step) : "")
 end
 start = ""
 for a in p.context

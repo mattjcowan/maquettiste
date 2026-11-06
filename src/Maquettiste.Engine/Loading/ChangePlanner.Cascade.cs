@@ -228,8 +228,24 @@ internal sealed partial class ChangePlanner
         }
 
         // A scenario's objects (lifecycle-design.md decision 22): in either resolution an object whose entity goes is dropped with its
-        // links, and so is each link to an object that goes. A subject left naming no object refuses remove-references (unless the
-        // scenario goes too, FinishCascade); delete-dependents deletes the scenario.
+        // links, and so is each link to an object that goes, and each participant's holding within it (actors-design.md section 7). A
+        // subject left naming no object refuses remove-references (unless the scenario goes too, FinishCascade); delete-dependents deletes
+        // the scenario. A participant's actor or object, an object's owner and a step's participant are optional and are cleared.
+        // An actor from the object (actors-design.md section 7): an id on its path or within, or its membersOf, is what it means, so
+        // remove-references refuses unless the actor goes too (Refusals), and delete-dependents deletes the actor.
+        if (referrer.Element is Actor && IsRelativePart(reference.JsonPointer))
+        {
+            if (mode != DeleteResolution.DeleteDependents)
+            {
+                _cascadeRefused.Add((index, referrerId, reference,
+                    $"it is worked out from the object through {Label(target)} (relative), and remove-references does not change what such an actor means; delete the actor too, or delete with delete-dependents."));
+                return;
+            }
+
+            MarkCascadeDeleted(index, referrerId, "is worked out through " + Label(target), mode);
+            return;
+        }
+
         if (referrer.Element is Scenario && reference.JsonPointer == "/subject")
         {
             if (mode != DeleteResolution.DeleteDependents)
@@ -330,7 +346,11 @@ internal sealed partial class ChangePlanner
     /// </summary>
     private IEnumerable<(int Index, string ElementId, ReferenceInfo Reference, string Why)> Refusals() =>
         _cascadeRefused.Where(r => !(r.Reference.JsonPointer == "/subject" && _cascadeDeleted.ContainsKey(r.ElementId)
-            && _snapshot.GetDocument(r.ElementId)?.Element is Scenario));
+            && _snapshot.GetDocument(r.ElementId)?.Element is Scenario)
+            && !(IsRelativePart(r.Reference.JsonPointer) && _cascadeDeleted.ContainsKey(r.ElementId) && _snapshot.GetDocument(r.ElementId)?.Element is Actor));
+
+    /// <summary>Whether a pointer is inside an actor's <c>relative</c> (its path, within or membersOf).</summary>
+    private static bool IsRelativePart(string pointer) => pointer.StartsWith("/relative/", StringComparison.Ordinal);
 
     private void ResolveXRef(int index, string referrerId, Working referrer, ReferenceInfo reference, List<CascadeOp> ops, DeleteResolution mode)
     {
@@ -754,10 +774,15 @@ internal sealed partial class ChangePlanner
     /// <summary>
     /// The part of a scenario a reference's loss drops (lifecycle-design.md decision 22): the object (<c>/objects/2</c>) whose
     /// <c>entity</c> a pointer is, or the link (<c>/objects/2/links/0</c>) whose <c>object</c> or <c>end</c> (its relation going) it is;
-    /// <see langword="null"/> for any other pointer.
+    /// or a participant's holding (<c>/participants/0/holds/1</c>) whose <c>actor</c> or <c>within</c> it is (actors-design.md section 7:
+    /// the holding goes as an actor goes from a list, and dropping only within would widen it to every context); <see langword="null"/> for
+    /// any other pointer.
     /// </summary>
     private static string? ScenarioObjectPart(string pointer)
     {
+        if (pointer.StartsWith("/participants/", StringComparison.Ordinal) && JsonPointer.TryParse(pointer, out var at) && at.Length == 5
+            && JsonPointer.TryIndex(at[1], out _) && at[2] == "holds" && JsonPointer.TryIndex(at[3], out _) && at[4] is "actor" or "within")
+            return JsonPointer.Build(at[..4]);
         if (!pointer.StartsWith("/objects/", StringComparison.Ordinal) || !JsonPointer.TryParse(pointer, out var segments)
             || !JsonPointer.TryIndex(segments[1], out _))
             return null;
@@ -1170,6 +1195,8 @@ internal sealed partial class ChangePlanner
         "values" => "value",
         "objects" => "object",
         "links" => "link",
+        "participants" => "participant",
+        "holds" => "holding",
         _ => property,
     };
 }

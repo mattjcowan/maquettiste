@@ -11,6 +11,7 @@ import { systemActorProblem, type ActorRow } from "@/model/actors";
 import { ACTOR_TYPE_OPTION_LABELS, EDITOR_TAB_LABELS } from "@/model/labels";
 import { actorUses, type ProcessDoc } from "@/model/process";
 import { MemberOfField, MembersSection } from "./ActorMembers";
+import { RelativeSection } from "./ActorRelative";
 import { domIdOf, EditorLayout, MarkChips, useCodeGenerationTab, useEditorContext, type EditorContext } from "../EditorFrame";
 
 type Rec = Record<string, unknown>;
@@ -106,7 +107,7 @@ function ActorBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
             />
             <ActorTypeField ctx={ctx} dom={dom} />
           </div>
-          <MemberOfField ctx={ctx} />
+          {rec.relative === undefined ? <MemberOfField ctx={ctx} /> : null}
           <MarkChips {...ctx} />
         </div>
       }
@@ -116,7 +117,8 @@ function ActorBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
           label: "General",
           content: (
             <div className="flex flex-col gap-3">
-              <MembersSection id={ctx.id} type={String(rec.type ?? "")} />
+              <RelativeSection ctx={ctx} />
+              {rec.relative === undefined ? <MembersSection id={ctx.id} type={String(rec.type ?? "")} /> : null}
               <ActorUsesList actor={ctx.id} />
             </div>
           ),

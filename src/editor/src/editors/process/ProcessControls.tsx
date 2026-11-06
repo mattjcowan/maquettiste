@@ -16,7 +16,9 @@ import { bindableAttributes, classifyAttribute, codeKindOf } from "@/model/bindi
 import { indexLookup } from "@/model/index";
 import { subjectsOf, syncPlanLines } from "@/model/process";
 import { MarkChips, NameAndDomain, domIdOf, type EditorContext } from "../EditorFrame";
-import { applySyncEnum, demoteLifecycle, replaceSoleSubject, setLifecycle, syncEnum, type SyncEnumResult } from "./api";
+import { applySyncEnum, demoteLifecycle, replaceSoleSubject, setLifecycle, setSubjectOwner, syncEnum, type SyncEnumResult } from "./api";
+import { useObjectFields } from "../actor/useObjectFields";
+import { canBeOwner } from "@/model/objectFields";
 import { entryIdsOf, useProblems } from "./shared";
 
 type Rec = Record<string, unknown>;
@@ -123,6 +125,7 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
   const bound = sole?.boundAttribute;
   const listForm = Array.isArray(rec.subjects);
   const { attributes, enumId } = useBinding(subject, bound);
+  const ownerFields = useObjectFields(subject ? [subject] : []).fields.filter(canBeOwner);
   const problems = useProblems(id, ctx.diagnostics, entryIdsOf(rec));
   const drift = problems.find((d) => d.rule === "MQ9203");
   const { store, drafts } = useServices();
@@ -222,6 +225,30 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
           </Select>
         )}
       </Field>
+      {sole && !many ? (
+        <Field label="Owner" htmlFor={`${dom}-owner`}>
+          <Select
+            id={`${dom}-owner`}
+            value={sole.owner ?? ""}
+            title="Where the object's owner is held. Without one, the team's system holds it."
+            onChange={(e) =>
+              void setSubjectOwner(qc, store, drafts, { process: id, owner: e.target.value || undefined, label: `Set the owner of ${name}` }).then(
+                (refused) => {
+                  if (refused) store.getState().notify(`Set the owner of ${name}: ${refused}`, "error");
+                },
+              )
+            }
+          >
+            <option value="">(none)</option>
+            {sole.owner && !ownerFields.some((f) => f.id === sole.owner) ? <option value={sole.owner}>{sole.owner}</option> : null}
+            {ownerFields.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.kind === "end" ? `${f.name} (relation)` : f.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
       {use === "lifecycle" && !many ? (
         <Field label="Bound attribute" htmlFor={`${dom}-bound`}>
           <div className="flex items-center gap-1">
@@ -260,6 +287,11 @@ function SubjectList({ subjects }: { subjects: ReturnType<typeof subjectsOf> }) 
           <li key={s.id || n} className="flex items-baseline justify-between gap-2 rounded-control border border-default px-1.5 py-0.5">
             <span className="truncate">{lookup.byId.get(s.entity)?.name ?? s.entity}</span>
             <span className={attribute ? "truncate font-mono text-11" : "text-11 text-secondary"}>{attribute ?? "no attribute"}</span>
+            {s.owner ? (
+              <span className="text-11 text-secondary" data-testid="subject-owner">
+                owner {String(attributes.find((a) => a.id === s.owner)?.name ?? "(relation)")}
+              </span>
+            ) : null}
           </li>
         );
       })}

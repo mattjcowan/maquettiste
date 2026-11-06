@@ -276,4 +276,43 @@ func diagram(p)
   end
   ret "stateDiagram-v2\n" + diagram_body(p, $ids, $where, "", p.states, p.initial, "    ")
 end
+
+# A name in plain lower-case words: "accountManager" -> "account manager".
+func words(name)
+  ret (regex.replace name "([a-z0-9])([A-Z])" "$1 $2") | string.downcase
+end
+
+# How an actor taken from the object is worked out (actors-design.md section 8), in plain words for an object called `subject`
+# ("order", or "object"): "the order's owner", "the order's account manager", "members of Approver within the order's project".
+func relative_text(a, subject)
+  $r = a.relative
+  $steps = ""
+  for $s in $r.path
+    $steps = $steps + "'s " + words($s.kind == "end" ? $s.role : $s.name)
+  end
+  if $r.form == "owner"
+    ret "the " + subject + "'s owner"
+  else if $r.form == "members-of"
+    ret "members of " + ($r.members_of ? $r.members_of.name : "?") + " within the " + subject + $steps
+  end
+  ret "the " + subject + $steps
+end
+
+# The subject of a process in plain words for relative_text: its entity when it has one subject, else "object".
+func subject_words(p)
+  ret p.subjects.size == 1 ? words(p.subjects[0].entity.name) : "object"
+end
+
+# Where each subject of a process holds the object's owner (actors-design.md decision 10), as code: "`Order.ownerLogin`"; "" when
+# no subject names an owner field.
+func owner_fields(p)
+  $out = ""
+  for $sj in p.subjects
+    $f = $sj.owner_attribute ? $sj.owner_attribute.name : ($sj.owner_end ? ($sj.owner_end.navigation ?? $sj.owner_end.role) : null)
+    if $f
+      $out = $out + ($out == "" ? "" : ", ") + (md_code (subject_label(p, $sj) + "." + $f))
+    end
+  end
+  ret $out
+end
 -}}

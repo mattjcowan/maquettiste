@@ -250,6 +250,70 @@ func actor_list(actors)
   ret "[" + $out + "]"
 end
 
+# Whether the model has an actor taken from the object (actors-design.md decision 27): only then does the runtime ask a
+# process's Handlers whether the caller is such an actor.
+func has_relative()
+  for a in model.actors
+    if a.relative
+      ret true
+    end
+  end
+  ret false
+end
+
+# The actors taken from the object that a process names (in its events, human tasks and gates), by name.
+func relative_actors(p)
+  $out = []
+  for a in p.actors
+    if a.relative
+      $out[$out.size] = a
+    end
+  end
+  ret $out
+end
+
+# A name in plain lower-case words: "accountManager" -> "account manager".
+func words(name)
+  ret (regex.replace name "([a-z0-9])([A-Z])" "$1 $2") | string.downcase
+end
+
+# How an actor taken from the object is worked out, in plain words, for an object called `subject` ("order", or "object"): "the
+# order's owner", "the order's account manager", "members of Approver within the order's project".
+func relative_text(a, subject)
+  $r = a.relative
+  $steps = ""
+  for $s in $r.path
+    $steps = $steps + "'s " + words($s.kind == "end" ? $s.role : $s.name)
+  end
+  if $r.form == "owner"
+    ret "the " + subject + "'s owner"
+  else if $r.form == "members-of"
+    ret "members of " + ($r.members_of ? $r.members_of.name : "?") + " within the " + subject + $steps
+  end
+  ret "the " + subject + $steps
+end
+
+# The subject of a process in plain words for relative_text: its entity when it has one subject, else "object".
+func subject_words(p)
+  ret p.subjects.size == 1 ? words(p.subjects[0].entity.name) : "object"
+end
+
+# For an owner actor, where each subject of a process holds the owner (", held in Order.ownerLogin"); "" for other actors, or when no
+# subject names an owner field and the team's system holds it.
+func owner_fields(p, a)
+  if a.relative.form != "owner"
+    ret ""
+  end
+  $out = ""
+  for $sj in p.subjects
+    $f = $sj.owner_attribute ? $sj.owner_attribute.name : ($sj.owner_end ? ($sj.owner_end.navigation ?? $sj.owner_end.role) : null)
+    if $f
+      $out = $out + ($out == "" ? "" : ", ") + $sj.entity.name + "." + $f
+    end
+  end
+  ret $out == "" ? "" : ", held in " + $out
+end
+
 # The C# string array literal of ids.
 func id_list(items)
   $out = ""

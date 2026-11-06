@@ -64,6 +64,10 @@ public sealed record SimulateRequest
     /// scenario's subject when absent.</summary>
     public string? Subject { get; init; }
 
+    /// <summary>The run's participants, as a scenario's <c>participants</c> (actors-design.md decision 14); with <see cref="Scenario"/>,
+    /// that scenario's participants when absent.</summary>
+    public IReadOnlyList<JsonElement>? Participants { get; init; }
+
     /// <summary>A scenario id: its start and steps run first (the request's <see cref="Start"/> is then ignored).</summary>
     public string? Scenario { get; init; }
 
@@ -88,6 +92,9 @@ public sealed record RecordScenarioRequest
 
     /// <summary>The id of the object in <see cref="Objects"/> the process runs for.</summary>
     public string? Subject { get; init; }
+
+    /// <summary>The scenario's participants (actors-design.md decision 14), written to its <c>participants</c>.</summary>
+    public IReadOnlyList<JsonElement>? Participants { get; init; }
 
     /// <summary>The inputs (scenario steps; an <c>expect</c> given is replaced by the replay's).</summary>
     public IReadOnlyList<JsonElement>? Steps { get; init; }
@@ -468,6 +475,92 @@ public static class ProcessApi
         return error is null ? result : null;
     }
 
+    /// <summary>
+    /// Reads the participants of a simulation or a recording (actors-design.md decision 14): each as a scenario's, ids unique among them
+    /// and their holdings, names unique, each <c>within</c> and <c>object</c> one of the objects, each object's <c>owner</c> one of them.
+    /// A step's <c>participant</c> may give a participant's name, which becomes its id; it must then name one of them.
+    /// </summary>
+    /// <param name="participants">The participants.</param>
+    /// <param name="objects">The run's objects.</param>
+    /// <param name="steps">The steps, whose participant names are replaced by ids; or null.</param>
+    /// <param name="error">Why they cannot be read.</param>
+    /// <returns>The participants (empty when none are given), or null.</returns>
+    public static IReadOnlyList<ScenarioParticipant>? ReadParticipants(IReadOnlyList<JsonElement>? participants, IReadOnlyList<ScenarioObject> objects,
+        IList<ScenarioStep>? steps, out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(objects);
+        error = null;
+        var result = new List<ScenarioParticipant>();
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var objectIds = new HashSet<string>(objects.Select(o => o.Id), StringComparer.Ordinal);
+        for (var i = 0; i < (participants?.Count ?? 0); i++)
+        {
+            ScenarioParticipant? participant;
+            try
+            {
+                participant = participants![i].Deserialize<ScenarioParticipant>(EngineJson.Options);
+            }
+            catch (JsonException e)
+            {
+                error = $"participants[{i}] is not a participant: {e.Message}";
+                return null;
+            }
+
+            if (participant is null || string.IsNullOrEmpty(participant.Id) || string.IsNullOrEmpty(participant.Name))
+            {
+                error = $"participants[{i}] needs an id and a name.";
+                return null;
+            }
+
+            // "holds": null reads as no holdings.
+            if (participant.Holds is null)
+                participant = participant with { Holds = [] };
+            if (!ids.Add(participant.Id) || participant.Holds.Any(h => !ids.Add(h.Id)))
+            {
+                error = $"participants[{i}] repeats an id another participant or holding has; give each its own id.";
+                return null;
+            }
+
+            if (!names.Add(participant.Name))
+            {
+                error = $"participants[{i}] has the name {participant.Name}, which another participant has; give each participant its own name.";
+                return null;
+            }
+
+            if (participant.Holds.Select(h => h.Within).Append(participant.Object).OfType<string>().FirstOrDefault(o => !objectIds.Contains(o)) is { } missing)
+            {
+                error = $"Participant {participant.Name} names the object {missing}, which is not one of the objects; name one of them.";
+                return null;
+            }
+
+            result.Add(participant);
+        }
+
+        if (objects.FirstOrDefault(o => o.Owner is { } owner && !ids.Contains(owner)) is { } owned)
+        {
+            error = $"Object {owned.Name} names the owner {owned.Owner}, which is not one of the participants; name one of them.";
+            return null;
+        }
+
+        for (var i = 0; i < (steps?.Count ?? 0); i++)
+        {
+            if (steps![i].Participant is not { } named)
+                continue;
+            var id = result.FirstOrDefault(p => string.Equals(p.Id, named, StringComparison.Ordinal))?.Id
+                ?? result.FirstOrDefault(p => string.Equals(p.Name, named, StringComparison.Ordinal))?.Id;
+            if (id is null)
+            {
+                error = $"steps[{i}] names the participant {named}, which is not one of the participants; name one of them.";
+                return null;
+            }
+
+            steps[i] = steps[i] with { Participant = id };
+        }
+
+        return result;
+    }
+
     /// <summary>Runs a start and inputs through the interpreter and describes where the process stands.</summary>
     /// <param name="chart">The chart.</param>
     /// <param name="processHash">The process document's hash.</param>
@@ -477,9 +570,11 @@ public static class ProcessApi
     /// <param name="from">The first trace index returned.</param>
     /// <param name="objects">The run's objects (lifecycle-design.md decision 22); none when absent.</param>
     /// <param name="subject">The id of the object among them the process runs for.</param>
+    /// <param name="participants">The run's participants (actors-design.md decision 14); none when absent. A step with a participant
+    /// runs as the actor it acts as (the fixed rule of decision 15), and its trace echoes that actor and the signer.</param>
     /// <returns>The result.</returns>
     public static SimulationResult Simulate(StatechartModel chart, string processHash, ProcessRuntime runtime, ScenarioStart? start, IReadOnlyList<ScenarioStep> inputs, int from = -1,
-        IReadOnlyList<ScenarioObject>? objects = null, string? subject = null)
+        IReadOnlyList<ScenarioObject>? objects = null, string? subject = null, IReadOnlyList<ScenarioParticipant>? participants = null)
     {
         ArgumentNullException.ThrowIfNull(chart);
         ArgumentNullException.ThrowIfNull(runtime);
@@ -493,9 +588,10 @@ public static class ProcessApi
             at = parsed;
         var traces = new List<StepTrace> { interpreter.Start(start?.Context, at) };
         var complete = !traces[0].Incomplete;
+        var cast = new ScenarioCast(objects ?? [], subject, participants ?? []);
         for (var i = 0; complete && i < inputs.Count; i++)
         {
-            var trace = interpreter.Step(inputs[i]);
+            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, cast, inputs[i], out _);
             traces.Add(trace);
             complete = !trace.Incomplete;
         }

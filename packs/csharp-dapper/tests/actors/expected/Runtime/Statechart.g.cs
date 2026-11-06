@@ -635,6 +635,24 @@ public interface IStatechartBehaviour<TContext>
     IReadOnlyList<string> Changed(TContext before, TContext after);
 }
 
+/// <summary>
+/// Whether a caller is an actor taken from the object, such as the order's owner or an approver on its project (actors-design.md
+/// decision 27). The generated code can't read the object, so a process's Handlers class implements this when the process names
+/// such an actor, each one a partial method of its companion. The interpreter accepts such an actor only when the behaviour
+/// implements this and answers yes, so nothing is let through by accident.
+/// </summary>
+/// <typeparam name="TContext">The process's context type.</typeparam>
+public interface IActorResolver<TContext>
+    where TContext : class
+{
+    /// <summary>Whether the caller of an envelope is, for this instance, the actor taken from the object.</summary>
+    /// <param name="actor">The actor's name (from Actors).</param>
+    /// <param name="snapshot">The instance before the input.</param>
+    /// <param name="envelope">The envelope: the instance, the actor, and for an event the caller's identity as its Signer.</param>
+    /// <returns>Whether the caller is that actor.</returns>
+    bool IsActor(string actor, ProcessSnapshot<TContext> snapshot, ProcessEnvelope envelope);
+}
+
 /// <summary>The clock the interpreter reads (an extension point; ProcessHost implements it).</summary>
 public interface IProcessClock
 {
@@ -801,6 +819,9 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
     /// <summary>The chart.</summary>
     public ChartDefinition Chart { get; } = chart ?? throw new ArgumentNullException(nameof(chart));
 
+    // The actors taken from the object, by name: the behaviour must say the caller is one before it may act as one.
+    private static readonly HashSet<string> FromObject = new(StringComparer.Ordinal) { "AccountManager", "Owner", "ProjectApprover" };
+
     /// <summary>Starts an instance: enters the initial configuration.</summary>
     /// <param name="instance">The instance identity.</param>
     /// <param name="context">The initial context.</param>
@@ -851,7 +872,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         var run = new Run(this, snapshot, name, envelope) { AuditValues = audit ?? new Dictionary<string, object?>() };
         if (run.Done || Chart.Event(name) is not { } ev)
             return run.Refuse(Refusals.NoTransition);
-        if (ev.Actors.Count > 0 && (envelope.Actor is null || !global::App.Model.Processes.Actors.Allows(ev.Actors, envelope.Actor)))
+        if (ev.Actors.Count > 0 && (envelope.Actor is null || !global::App.Model.Processes.Actors.Allows(ev.Actors, envelope.Actor) || !Resolves(snapshot, envelope.Actor, envelope)))
             return run.Refuse(Refusals.Actor);
         run.Event = new ProcessEvent(name, envelope.Actor, payload ?? new Dictionary<string, object?>());
         run.Macrostep(() =>
@@ -883,7 +904,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor));
         if (Chart.Invoke(invoke) is not { } found || !run.Pending.Contains(found))
             return run.Refuse(Refusals.NoTransition);
-        if (found.Kind == InvokeKind.HumanTask && found.Actors.Count > 0 && (actor is null || !global::App.Model.Processes.Actors.Allows(found.Actors, actor)))
+        if (found.Kind == InvokeKind.HumanTask && found.Actors.Count > 0 && (actor is null || !global::App.Model.Processes.Actors.Allows(found.Actors, actor) || !Resolves(snapshot, actor, new ProcessEnvelope(snapshot.Instance, actor))))
             return run.Refuse(Refusals.Actor);
         run.Event = new ProcessEvent(null, actor, new Dictionary<string, object?>());
         run.Macrostep(() =>
@@ -1226,7 +1247,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             var actor = _envelope?.Actor;
             var signer = _envelope?.Signer;
             string? refusal = null;
-            if (actor is null || string.IsNullOrEmpty(signer) || !global::App.Model.Processes.Actors.Allows(gate.Signers, actor))
+            if (actor is null || string.IsNullOrEmpty(signer) || !global::App.Model.Processes.Actors.Allows(gate.Signers, actor) || !_owner.Resolves(_snapshot, actor, _envelope!))
                 refusal = Refusals.GateSigner;
             else if (!gate.AllowRepeatSigner && signatures.Any(s => string.Equals(s.Signer, signer, StringComparison.Ordinal)))
                 refusal = Refusals.GateRepeat;
@@ -1614,4 +1635,9 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
     private readonly IStatechartBehaviour<TContext> _behaviour = behaviour ?? throw new ArgumentNullException(nameof(behaviour));
     private readonly IProcessClock _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly int _maxMicrosteps = maxMicrosteps;
+
+    // Whether an acting actor may act: one that stands for itself may; one taken from the object only when the behaviour, as its
+    // resolver, says the caller is that actor for the instance.
+    private bool Resolves(ProcessSnapshot<TContext> snapshot, string actor, ProcessEnvelope envelope) =>
+        !FromObject.Contains(actor) || (_behaviour is IActorResolver<TContext> resolver && resolver.IsActor(actor, snapshot, envelope));
 }

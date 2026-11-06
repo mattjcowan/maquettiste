@@ -24,10 +24,11 @@ internal sealed partial class ModelTools
     /// <param name="from">The first trace index returned.</param>
     /// <param name="objects">The run's objects.</param>
     /// <param name="subject">The id of the object the process runs for.</param>
+    /// <param name="participants">The run's participants.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The simulation.</returns>
     [McpServerTool(Name = "simulate_process", Title = "Simulate process", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Runs a process through the engine interpreter from its initial state: start, then each input (a scenario step without expect: { input: event|time|invoke-done|invoke-error, event, actor, signer, meaning, reason, payload, assume, invoke, after }). Returns the trace of every input (transitions, exited and entered states, actions, guards, gate audit records, refusals, and actor, the system actor when it made the move: the initial entry, a timer or a finished invoke that is not a human task, with no actor of its own), then the configuration, context, the triggers enabled now (an actor list holds each listed actor, then its members at any depth), pending invokes, timers, gates, final and clock. No state is kept: send the whole input list each time. document simulates an unsaved draft (invalid: 422 with diagnostics). objects and subject give the run its cast, as a scenario's: the process runs for the subject; with scenario and no objects, the scenario's cast.")]
+    [Description("Runs a process through the engine interpreter from its initial state: start, then each input (a scenario step without expect: { input: event|time|invoke-done|invoke-error, event, participant, actor, signer, meaning, reason, payload, assume, invoke, after }). Returns the trace of every input (transitions, exited and entered states, actions, guards, gate audit records, refusals, and actor, the system actor when it made the move: the initial entry, a timer or a finished invoke that is not a human task, with no actor of its own), then the configuration, context, the triggers enabled now (an actor list holds each listed actor, then its members at any depth), pending invokes, timers, gates, final and clock. No state is kept: send the whole input list each time. document simulates an unsaved draft (invalid: 422 with diagnostics). objects and subject give the run its cast, as a scenario's: the process runs for the subject; with scenario and no objects, the scenario's cast. participants, as a scenario's, are who acts: a step's participant (id or name) acts, unless the step gives actor, as worked out from the moves the step can make now: for a gated move, a required actor of the gate not yet signed, else a signer the event's actors also accept, else the first signer it satisfies; otherwise the first of the event's or human task's actors it satisfies (its actor or a holding with no context, with their members; an actor from the object by the objects), or its actor when that list is empty. An event's signer defaults to its identity; the trace echoes the actor and signer used, and its actsAs names that actor.")]
     public Task<CallToolResult> SimulateProcess(
         [Description("The process id, name or model path; required.")] string? process = null,
         [Description("The inputs, in order (scenario steps without expect; ids are optional).")] JsonElement? steps = null,
@@ -37,6 +38,7 @@ internal sealed partial class ModelTools
         [Description("The first trace index returned; -1 (default) includes the initial entry.")] int? from = null,
         [Description("The run's objects, as a scenario's: [{ id, name, entity: <entity id>, values: { <attribute id>: value }, links: [{ end: <relation end id>, object: <object id> }] }]; requires subject. With scenario, its objects when absent.")] JsonElement? objects = null,
         [Description("The id of the object in objects the process runs for.")] string? subject = null,
+        [Description("The run's participants, as a scenario's: [{ id, name, identity?, actor?: <person, external system or system actor id>, holds?: [{ id, actor: <role, group or organization id>, within?: <object id> }], object?: <object id> }]. With scenario, its participants when absent.")] JsonElement? participants = null,
         CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (await ProcessIdAsync(process, ct).ConfigureAwait(false) is not { } id)
@@ -45,9 +47,12 @@ internal sealed partial class ModelTools
             return BadRequest("steps must be an array of scenario steps.");
         if (StepsOf(objects) is not { } cast)
             return BadRequest("objects must be an array of scenario objects.");
+        if (StepsOf(participants) is not { } people)
+            return BadRequest("participants must be an array of scenario participants.");
         var call = await _store.SimulateProcessAsync(id, new SimulateRequest
         {
             Steps = inputs, Start = start, Scenario = scenario, Document = document, From = from, Objects = cast, Subject = subject,
+            Participants = people.Count > 0 ? people : null,
         }, ct).ConfigureAwait(false);
         return FromCall(call);
     }, ct);
@@ -61,10 +66,11 @@ internal sealed partial class ModelTools
     /// <param name="dryRun">Returns the scenario without writing it.</param>
     /// <param name="objects">The scenario's objects.</param>
     /// <param name="subject">The id of the object the process runs for.</param>
+    /// <param name="participants">The scenario's participants.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The scenario.</returns>
     [McpServerTool(Name = "record_scenario", Title = "Record scenario", Destructive = false, OpenWorld = false)]
-    [Description("Records a scenario of a process: the engine replays start and steps and fills each step's expect (accepted, states, changed context; refusals as accepted false) and the outcome from the replay, gives new ids and saves the scenario under model/scenarios/<process>/. dryRun true returns the scenario without writing it. Inputs that cannot be replayed to the last step are refused with diagnostics. objects and subject are written as the scenario's cast, each object under a new id that subject and the links follow.")]
+    [Description("Records a scenario of a process: the engine replays start and steps and fills each step's expect (accepted, states, changed context; refusals as accepted false) and the outcome from the replay, gives new ids and saves the scenario under model/scenarios/<process>/. dryRun true returns the scenario without writing it. Inputs that cannot be replayed to the last step are refused with diagnostics. objects and subject are written as the scenario's cast, each object under a new id that subject and the links follow; participants likewise, each with its holdings under a new id that the steps' participant and the objects' owner follow (a step may name a participant by name).")]
     public Task<CallToolResult> RecordScenario(
         [Description("The process id, name or model path; required.")] string? process = null,
         [Description("The scenario name (an identifier); required.")] string? name = null,
@@ -74,6 +80,7 @@ internal sealed partial class ModelTools
         [Description("true returns the scenario without writing it.")] bool dryRun = false,
         [Description("The scenario's objects: [{ id, name, entity: <entity id>, values: { <attribute id>: value }, links: [{ end: <relation end id>, object: <object id> }] }]; requires subject.")] JsonElement? objects = null,
         [Description("The id of the object in objects the process runs for.")] string? subject = null,
+        [Description("The scenario's participants: [{ id, name, identity?, actor?: <person, external system or system actor id>, holds?: [{ id, actor: <role, group or organization id>, within?: <object id> }], object?: <object id> }]; a step names one in participant.")] JsonElement? participants = null,
         CancellationToken ct = default) => GuardAsync(async () =>
     {
         if (await ProcessIdAsync(process, ct).ConfigureAwait(false) is not { } id)
@@ -82,9 +89,11 @@ internal sealed partial class ModelTools
             return BadRequest("steps must be an array of scenario steps.");
         if (StepsOf(objects) is not { } cast)
             return BadRequest("objects must be an array of scenario objects.");
+        if (StepsOf(participants) is not { } people)
+            return BadRequest("participants must be an array of scenario participants.");
         var call = await _store.RecordScenarioAsync(id, new RecordScenarioRequest
         {
-            Name = name, Steps = inputs, Start = start, Outcome = outcome, Objects = cast, Subject = subject,
+            Name = name, Steps = inputs, Start = start, Outcome = outcome, Objects = cast, Subject = subject, Participants = people,
         }, dryRun, ChangeSource.Cli, ct).ConfigureAwait(false);
         return FromCall(call);
     }, ct);
@@ -95,7 +104,7 @@ internal sealed partial class ModelTools
     /// <param name="ct">Cancellation.</param>
     /// <returns>The results.</returns>
     [McpServerTool(Name = "verify_scenarios", Title = "Verify scenarios", ReadOnly = true, Idempotent = true, OpenWorld = false)]
-    [Description("Replays the scenarios of a process (all, or the ids or names given) through the engine interpreter. Each result has passed, the step count and the first failure: { step, rule (MQ9301 accepted, MQ9302 states, MQ9303 context, MQ9304 outcome, or the stop MQ9305, MQ9306, MQ9507), message, expected, actual }. passed at the top is true when every scenario passed.")]
+    [Description("Replays the scenarios of a process (all, or the ids or names given) through the engine interpreter. Each result has passed, the step count and the first failure: { step, rule (MQ9301 accepted, MQ9302 states, MQ9303 context, MQ9304 outcome, or the stop MQ9305, MQ9306, MQ9507), message, expected, actual }; a refusal by actor of a step with a participant names the participant and what it failed (the list it satisfies none of, or the list that does not accept the actor it acted as). passed at the top is true when every scenario passed.")]
     public Task<CallToolResult> VerifyScenarios(
         [Description("The process id, name or model path; required.")] string? process = null,
         [Description("Scenario ids or names of the process; all of them when absent.")] string[]? scenarios = null,

@@ -41,7 +41,7 @@ internal sealed class NameIndex
 
     /// <summary>The kinds whose elements and sub-elements have no names: an id or a placeholder reaches them.</summary>
     public static FrozenSet<string> IdOnlyKinds { get; } =
-        new[] { "tag-vocabulary", "category-tree", "migration", "transition", "step" }.ToFrozenSet(StringComparer.Ordinal);
+        new[] { "tag-vocabulary", "category-tree", "migration", "transition", "step", "holding" }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
     /// The kinds with forms: every element kind and index kind not listed by id only. A kind another section adds takes its
@@ -171,6 +171,9 @@ internal sealed class NameIndex
                 // A scenario's objects (lifecycle-design.md decision 22): <scenario form>.<object name>.
                 foreach (var obj in scenario.Objects)
                     Add("object", obj.Id, forms.Then(obj.Name));
+                // Its participants (actors-design.md decision 14): <scenario form>.<participant name>.
+                foreach (var participant in scenario.Participants)
+                    Add("participant", participant.Id, forms.Then(participant.Name));
                 break;
             case Table table when forms is not null:
                 foreach (var column in table.Columns)
@@ -228,7 +231,7 @@ internal sealed class NameIndex
         "parameter" => [ElementKind.Constraint],
         "error" => [ElementKind.Operation, ElementKind.Stereotype],
         "member" => [ElementKind.Custom],
-        "object" => [ElementKind.Scenario],
+        "object" or "participant" => [ElementKind.Scenario],
         _ => KindInfo.TryGet(kind, out var info) ? [info.Kind] : [],
     };
 

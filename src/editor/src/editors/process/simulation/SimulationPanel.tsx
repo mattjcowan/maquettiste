@@ -19,7 +19,7 @@ import { cn } from "@/lib/cn";
 import { indexLookup } from "@/model/index";
 import { SIMULATION_LABELS as L } from "@/model/labels";
 import { summaryFromDocument } from "@/model/model";
-import type { ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
+import type { ParticipantDoc, ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
 import { verifyScenario } from "../api";
 import { attributeLabels, castValues, entityChain } from "./castNames";
 import type { ProcessContext } from "../shared";
@@ -48,13 +48,15 @@ import {
   type RowValue,
 } from "./model";
 import { consumeSimulationRequest, useSimulationRequest } from "./requests";
-import { addInput, atEnd, loadScenario, loadScenarioStart, removeFrom, resetSession, restart, selectEntry, setStartValue, shownEntry } from "./session";
+import { addInput, atEnd, castOf, loadScenario, loadScenarioStart, removeFrom, resetSession, restart, selectEntry, setStartValue, shownEntry } from "./session";
 import { useSimulation } from "./useSimulation";
 import { setSimulationView } from "./view";
 
 const ROW = "flex h-[var(--mq-row-h)] min-w-0 items-center gap-1.5 border-b border-default px-1.5 text-12";
 const FIELD = "h-5 min-w-0 rounded-[4px] border border-input bg-surface px-1 text-12 text-primary";
 const SMALL = "h-5 px-1.5 text-12";
+
+const NO_PARTICIPANTS: readonly ParticipantDoc[] = [];
 
 type SectionId = "start" | "cast" | "enabled" | "time" | "pending" | "configuration" | "lastStep" | "trace" | "replay";
 
@@ -97,7 +99,8 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
   const panelRef = useRef<HTMLElement>(null);
   const focusEnabled = useRef(false);
 
-  const names = useMemo(() => namesOf(process, actorNames), [process, actorNames]);
+  const participants = (replay ? replay.scenario.participants : session.start.participants) ?? NO_PARTICIPANTS;
+  const names = useMemo(() => namesOf(process, actorNames, participants), [process, actorNames, participants]);
   const entityNames = useMemo(() => new Map((index.data ?? []).filter((r) => r.kind === "entity").map((r) => [r.id, r.name])), [index.data]);
   const allActors = useMemo(() => actors.map((a) => ({ id: a.id, name: a.name })), [actors]);
   const scenarios = useMemo(
@@ -169,6 +172,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
     setEdits((e) => {
       const kept: Partial<RowValue> = {};
       if (e[key]?.actor !== undefined) kept.actor = e[key].actor;
+      if (e[key]?.participant !== undefined) kept.participant = e[key].participant;
       if (e[key]?.payload !== undefined) kept.payload = e[key].payload;
       return { ...e, [key]: kept };
     });
@@ -214,10 +218,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
       // Record replays the saved process: a draft that could not be saved would make it record another process.
       if (!(await drafts.flushSaved(id))) return L.unsavedDraft;
       const start = { context: session.start.context, ...(session.start.at ? { at: session.start.at } : {}) };
-      const cast = session.start.objects?.length
-        ? { objects: session.start.objects, ...(session.start.subject ? { subject: session.start.subject } : {}) }
-        : {};
-      const saved = await recordScenario(id, { name, start, ...cast, steps: session.inputs, outcome });
+      const saved = await recordScenario(id, { name, start, ...castOf(session.start), steps: session.inputs, outcome });
       // The index and validation follow the new scenario (as a save does); one undo step deletes it.
       const doc = await endpoints.getElement(saved.id);
       qc.setQueryData(keys.element(saved.id), doc);
@@ -357,7 +358,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
                 <option value="">{L.fromScenarioPlaceholder}</option>
                 {scenarios.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {s.displayName || s.name}
                   </option>
                 ))}
               </Select>,
@@ -366,6 +367,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
               "enabled",
               L.enabled,
               <EnabledSection
+                participants={participants}
                 rows={rows}
                 result={result}
                 live={live}
@@ -409,7 +411,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
             {replay
               ? section(
                   "replay",
-                  L.replayOf(replay.scenario.name),
+                  L.replayOf(scenarios.find((s) => s.name === replay.scenario.name)?.displayName || replay.scenario.name),
                   <ReplaySection replay={replay} names={names} onSelect={(i) => setReplay({ ...replay, selected: i })} />,
                   <Button variant="ghost" size="icon-row" label={L.replayClose} onClick={closeReplay} data-testid="replay-close">
                     <X />
@@ -489,14 +491,30 @@ function Section({
   );
 }
 
-function Note({ children, testid, tone = "secondary" }: { children: ReactNode; testid?: string; tone?: "secondary" | "danger" | "warning" }) {
+function Note({
+  children,
+  testid,
+  tone = "secondary",
+  wrap = false,
+}: {
+  children: ReactNode;
+  testid?: string;
+  tone?: "secondary" | "danger" | "warning";
+  wrap?: boolean;
+}) {
   return (
     <p
-      className={cn(ROW, "truncate", tone === "secondary" && "text-secondary", tone === "danger" && "text-danger", tone === "warning" && "text-warning")}
+      className={cn(
+        ROW,
+        wrap ? "h-auto min-h-[var(--mq-row-h)] items-start whitespace-normal break-words py-0.5" : "truncate",
+        tone === "secondary" && "text-secondary",
+        tone === "danger" && "text-danger",
+        tone === "warning" && "text-warning",
+      )}
       data-testid={testid}
       title={typeof children === "string" ? children : undefined}
     >
-      <span className="truncate">{children}</span>
+      <span className={wrap ? "min-w-0" : "truncate"}>{children}</span>
     </p>
   );
 }
@@ -655,6 +673,7 @@ function ValueField({
 }
 
 function EnabledSection({
+  participants,
   rows,
   result,
   live,
@@ -664,6 +683,7 @@ function EnabledSection({
   onEdit,
   onRaise,
 }: {
+  participants: readonly ParticipantDoc[];
   rows: EnabledRow[];
   result: SimulationResult | null;
   live: boolean;
@@ -687,6 +707,7 @@ function EnabledSection({
           <EnabledRowView
             key={row.key}
             row={row}
+            participants={participants}
             n={i < 9 ? i + 1 : null}
             value={valueOf(row)}
             onEdit={(p) => onEdit(row, p)}
@@ -703,12 +724,14 @@ function EnabledSection({
 
 function EnabledRowView({
   row,
+  participants,
   n,
   value,
   onEdit,
   onRaise,
 }: {
   row: EnabledRow;
+  participants: readonly ParticipantDoc[];
   n: number | null;
   value: RowValue;
   onEdit: (patch: Partial<RowValue>) => void;
@@ -752,6 +775,30 @@ function EnabledRowView({
             onKeyDown={onKey}
           />
         ) : null}
+        {needsActor && participants.length ? (
+          <select
+            aria-label={L.participant}
+            className={cn(FIELD, "w-24 shrink-0")}
+            value={value.participant}
+            onChange={(e) =>
+              onEdit({
+                participant: e.target.value,
+                // A participant's actor and signer are worked out by the engine; with none, the row's defaults return.
+                actor: e.target.value ? "" : row.anyActor ? "" : (row.actors[0]?.id ?? ""),
+                signer: e.target.value || !row.gate ? "" : `signer${row.gate.have + 1}`,
+              })
+            }
+            onKeyDown={onKey}
+            data-testid="enabled-participant"
+          >
+            <option value="">{L.noParticipant}</option>
+            {participants.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         {needsActor ? (
           <select
             aria-label={L.actor}
@@ -761,7 +808,7 @@ function EnabledRowView({
             onKeyDown={onKey}
             data-testid="enabled-actor"
           >
-            {row.anyActor ? <option value="">{L.anyActor}</option> : null}
+            {value.participant ? <option value="">{L.fromParticipant}</option> : row.anyActor ? <option value="">{L.anyActor}</option> : null}
             {row.actors.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name}
@@ -882,10 +929,10 @@ function TimeSection({ result, live, names, onAdvance }: { result: SimulationRes
     <div>
       <Note testid="time-row">{next ? L.nextTimer(names.transition(next.transition), next.dueAt) : L.noTimers}</Note>
       <div className={ROW} data-testid="time-row">
-        <span className="text-secondary" data-testid="simulation-clock">
+        <span className="min-w-0 flex-1 truncate text-secondary" title={L.clock(result.clock)} data-testid="simulation-clock">
           {L.clock(result.clock)}
         </span>
-        <label htmlFor="sim-advance" className="ml-auto text-secondary">
+        <label htmlFor="sim-advance" className="shrink-0 text-secondary">
           {L.advanceBy}
         </label>
         <input
@@ -1049,12 +1096,13 @@ function TraceSection({
             )}
             onClick={() => onSelect(r.index)}
             onKeyDown={(e) => onKey(e, r.index)}
+            title={r.states ? `${r.label} → ${r.states}` : r.label}
             data-testid="trace-row"
             data-index={r.index}
             data-accepted={r.ran ? String(r.accepted) : undefined}
           >
             <span className="w-4 shrink-0 text-right text-11 text-secondary">{r.index >= 0 ? r.index + 1 : ""}</span>
-            <span className="min-w-0 flex-1 truncate" title={r.label}>
+            <span className="min-w-[7rem] flex-[3] basis-auto truncate" title={r.label}>
               {r.label}
             </span>
             {!r.ran ? (
@@ -1103,7 +1151,7 @@ function ReplaySection({ replay, names, onSelect }: { replay: ReplayState; names
   const failure = replay.verification.failure;
   return (
     <div data-testid="replay-panel" data-passed={replay.verification.passed ? "true" : "false"}>
-      <Note testid="replay-summary" tone={replay.verification.passed ? "secondary" : "danger"}>
+      <Note testid="replay-summary" wrap tone={replay.verification.passed ? "secondary" : "danger"}>
         {replaySummary(replay.verification, rows.length)}
       </Note>
       <ul aria-label={L.replay}>
@@ -1124,17 +1172,18 @@ function ReplaySection({ replay, names, onSelect }: { replay: ReplayState; names
                 onSelect(Math.min(rows.length - 1, Math.max(0, r.index + (e.key === "ArrowDown" ? 1 : -1))));
               }
             }}
+            title={`${r.label}: ${r.verdict}${r.states ? ` → ${r.states}` : ""}`}
             data-testid="replay-row"
             data-verdict={r.verdict}
           >
             <span className="w-4 shrink-0 text-right text-11 text-secondary">{r.index + 1}</span>
-            <span className="min-w-0 flex-1 truncate" title={r.label}>
+            <span className="min-w-[7rem] flex-1 truncate" title={r.label}>
               {r.label}
             </span>
             <Badge tone={r.verdict === "passed" ? "success" : r.verdict === "failed" ? "danger" : "neutral"} data-testid="replay-verdict">
               {r.verdict === "passed" ? L.replayPassed : r.verdict === "failed" ? L.replayFailed : L.replayNotRun}
             </Badge>
-            <span className="max-w-[40%] truncate text-11 text-secondary" title={r.states}>
+            <span className="min-w-0 flex-[2] basis-auto truncate text-right text-11 text-secondary" title={r.states}>
               {r.states}
             </span>
           </li>
@@ -1231,7 +1280,7 @@ function ReplayDialog({
   onReplay,
   onClose,
 }: {
-  scenarios: { id: string; name: string }[];
+  scenarios: { id: string; name: string; displayName?: string }[];
   busy: boolean;
   onReplay: (scenario: string) => Promise<string | null>;
   onClose: () => void;
@@ -1255,7 +1304,7 @@ function ReplayDialog({
               <Select id="replay-scenario" autoFocus value={scenario} onChange={(e) => setScenario(e.target.value)}>
                 {scenarios.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {s.displayName || s.name}
                   </option>
                 ))}
               </Select>

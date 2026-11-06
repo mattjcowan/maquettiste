@@ -29,6 +29,10 @@
 {{- else if p.subjects.size > 1 }}
 | Subjects | {{ subject_names(p) }} |
 {{- end }}
+{{- owners = owner_fields(p) }}
+{{- if owners != "" }}
+| Owner held in | {{ owners }} |
+{{- end }}
 {{- if p.initial }}
 | Initial state | {{ md_code p.initial.path }} |
 {{- end }}
@@ -221,7 +225,7 @@ Started when their state is entered and cancelled when it is left.
 {{- for g in p.gates }}{{ if has_actor(g.signers, a) }}{{ signs[signs.size] = (md_code g.name) + (has_actor(g.required_actors, a) ? " (required)" : "") }}{{ end }}{{ end }}
 {{- tasks = [] }}
 {{- for i in p.invokes }}{{ if has_actor(i.actors, a) }}{{ tasks[tasks.size] = md_code i.name }}{{ end }}{{ end }}
-| {{ actor_link(a, "../") }} | {{ a.type }} | {{ raises | array.join ", " }} | {{ signs | array.join ", " }} | {{ tasks | array.join ", " }} |
+| {{ actor_link(a, "../") }} | {{ a.type }}{{ if a.relative }}, {{ relative_text(a, subject_words(p)) }}{{ end }} | {{ raises | array.join ", " }} | {{ signs | array.join ", " }} | {{ tasks | array.join ", " }} |
 {{- end }}
 {{- end }}
 {{- if p.scenarios.size > 0 }}

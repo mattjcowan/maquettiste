@@ -126,7 +126,8 @@ public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOn
 /// Replays a scenario through the engine interpreter and compares each step's acceptance, active states and changed context, and the
 /// outcome (MQ9301 to MQ9306; phase-3-design.md section 3). The interpreter sees the scenario's subject as its object (lifecycle-design.md
 /// decision 22). A step's field problems (MQ9305) and a guard without expression or assume value (MQ9306) stop the replay at that step;
-/// a bad start instant or a bad object value (MQ9305) stops it before the first step. After a failed expectation the remaining steps still run (their traces feed
+/// a bad start instant, a bad object value or a bad participant (MQ9305) stops it before the first step. A step with a participant runs as the
+/// actor it acts as (actors-design.md decision 15). After a failed expectation the remaining steps still run (their traces feed
 /// <c>refresh-scenario</c>) but are not compared: only the first failing step is reported, since later ones would only repeat it.
 /// </summary>
 public static class ScenarioReplayer
@@ -171,25 +172,29 @@ public static class ScenarioReplayer
             Add(RuleCatalog.Create("MQ9305", $"Scenario '{scenario.Name}' starts at '{scenario.Start!.At}', which is not an ISO 8601 date-time; give one such as 2026-01-01T09:00:00Z, or remove start.at.", scenario.Id, null, "/start/at"));
         // A value an object gives that the run cannot use stops the replay before the first step, as a bad start does.
         var objectProblem = ScenarioObjects.Check(runtime.Model, chart.Process, scenario.Objects, scenario.Subject, runtime.Fits);
+        var cast = ScenarioCast.Of(scenario);
+        objectProblem ??= Participants.Check(runtime.Model, chart.Process, cast);
         var badObject = objectProblem is not null;
         if (objectProblem is { } bad)
             Add(RuleCatalog.Create("MQ9305", $"Scenario '{scenario.Name}': {bad.Message}", scenario.Id, null, bad.Pointer));
         var steps = new List<StepTrace>();
+        var choices = new List<ActingChoice?>();
         ScenarioFailure? failure = null;
         var complete = !start.Incomplete && !badAt && !badObject;
         for (var i = 0; complete && i < scenario.Steps.Count; i++)
         {
             var step = scenario.Steps[i];
             var pointer = "/steps/" + N(i);
-            if (CheckFields(chart, step, runtime, i) is { } problem)
+            if (CheckFields(chart, cast, step, runtime, i) is { } problem)
             {
                 Add(RuleCatalog.Create("MQ9305", problem.Message, scenario.Id, null, pointer + problem.Field));
                 complete = false;
                 break;
             }
 
-            var trace = interpreter.Step(step);
+            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, cast, step, out var choice);
             steps.Add(trace);
+            choices.Add(choice);
             Report(trace, pointer);
             if (trace.Incomplete)
             {
@@ -235,7 +240,9 @@ public static class ScenarioReplayer
             {
                 var message = trace.Accepted
                     ? $"{At(i)}{Describe(c, step)} was accepted, but expect.accepted is false; fix the step's input, or set accepted to true."
-                    : $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}), but expect.accepted is true; fix the step's input (event, actor, signer, reason or assume), or set accepted to false.";
+                    : RefusedAs(step) is { } refusedAs
+                        ? $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}): {refusedAs}, but expect.accepted is true; fix the step's participant, or set accepted to false."
+                        : $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}), but expect.accepted is true; fix the step's input (event, actor, signer, reason or assume), or set accepted to false.";
                 first ??= Fail("MQ9301", message, expect.Accepted, trace.Accepted, pointer + "/expect/accepted");
             }
 
@@ -253,6 +260,12 @@ public static class ScenarioReplayer
 
             return first;
 
+            // A refusal by actor of a step with a participant names the participant and what it failed (MQ9301).
+            string? RefusedAs(ScenarioStep step) =>
+                cast.Participant(step.Participant) is { } participant && choices[i] is { } choice
+                    ? Participants.Failed(runtime.Model, participant, choice, trace.Refusal, trace.ActsAs)
+                    : null;
+
             ScenarioFailure Fail(string rule, string message, object expected, object actual, string at)
             {
                 Add(RuleCatalog.Create(rule, message, s.Id, null, at));
@@ -267,8 +280,10 @@ public static class ScenarioReplayer
 
     // MQ9305: fields the interpreter cannot judge without the model (payload keys and values, meanings); the interpreter itself reports
     // unknown events, bad durations and invokes that are not pending.
-    private static (string Message, string Field)? CheckFields(StatechartModel chart, ScenarioStep step, ProcessRuntime runtime, int index)
+    private static (string Message, string Field)? CheckFields(StatechartModel chart, ScenarioCast cast, ScenarioStep step, ProcessRuntime runtime, int index)
     {
+        if (Participants.CheckStep(runtime.Model, chart.Process, cast, step) is { } participant)
+            return (At(index) + participant.Message, participant.Field);
         if (step.Input != StepInput.Event || step.Event is null || !chart.Events.TryGetValue(step.Event, out var ev))
             return null;
         var gates = chart.Transitions.Where(t => t.Trigger == TransitionTrigger.Event && string.Equals(t.Transition.Event, step.Event, StringComparison.Ordinal))

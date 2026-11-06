@@ -9,6 +9,8 @@ export interface ActorRow {
   name: string;
   actorType?: ActorType;
   memberOf?: readonly string[];
+  /** How an actor taken from the object is worked out (the index row's `relative`); such an actor is never a member or a holder. */
+  relative?: string;
 }
 
 export const isMemberHolder = (type: string | undefined): boolean => MEMBER_HOLDER_TYPES.includes(type as ActorType);
@@ -43,7 +45,9 @@ export function memberCount(rows: Iterable<ActorRow>, holder: string): number {
 
 /** The actors that may be picked in a Member of field for `self`: roles, groups and organizations, never itself. */
 export function memberOfChoices<T extends ActorRow>(rows: Iterable<T>, self: string): T[] {
-  return [...rows].filter((r) => r.kind === "actor" && r.id !== self && isMemberHolder(r.actorType)).sort((a, b) => a.name.localeCompare(b.name));
+  return [...rows]
+    .filter((r) => r.kind === "actor" && r.id !== self && !r.relative && isMemberHolder(r.actorType))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** The text after "member of" in an actor's row: the holders' names, in file order, unknown ids skipped. */

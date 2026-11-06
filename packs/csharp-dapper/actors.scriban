@@ -1,7 +1,8 @@
 {{-
 # The actors of the model as constants, with their type, and each process event's allowed actors. The enum gains Group,
 # Organization and System only when an actor has that type, and the memberships and their checks are written only when an actor
-# is a member of another (actors-design.md decisions 25 and 26), so a model without them keeps its file byte for byte.
+# is a member of another (actors-design.md decisions 25 and 26), so a model without them keeps its file byte for byte. An actor
+# taken from the object says how it is worked out (decision 27).
 include "_csharp.scriban"
 include "_process.scriban"
 if model.processes.size > 0
@@ -56,7 +57,7 @@ public enum ActorType
 public static partial class Actors
 {
 {{- for a in model.actors }}
-    /// <summary>{{ cs_line a.display_name | escape_xml }} ({{ a.type }}){{ if a.description }}: {{ cs_line a.description | string.strip | escape_xml }}{{ end }}</summary>
+    /// <summary>{{ cs_line a.display_name | escape_xml }} ({{ a.type }}{{ if a.relative }}, taken from the object: {{ relative_text(a, "object") }}; the process's Handlers tells whether a caller is this actor{{ end }}){{ if a.description }}: {{ cs_line a.description | string.strip | escape_xml }}{{ end }}</summary>
     public const string {{ actor_member a }} = {{ json a.name }};
 {{ end }}
     /// <summary>Every actor, by name.</summary>

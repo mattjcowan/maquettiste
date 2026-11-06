@@ -2960,10 +2960,23 @@ export interface components {
              *     rows that name at least one. Left out when the actor names none.
              */
             memberOf?: components["schemas"]["Ulid"][];
+            /**
+             * @description How an actor from the object is worked out (actors-design.md decision 9), on actor rows whose file has `relative`: `owner`
+             *     (the object's owner), `path` (the actor a field of the object names) or `members-of` (members of a role, group or
+             *     organization within a context object). With several forms (MQ9603), the first in that order. Left out when the file has
+             *     no `relative`; `none` when it gives no form (MQ9603).
+             * @enum {string}
+             */
+            relative?: "owner" | "path" | "members-of" | "none";
             /** @description The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows. */
             process?: components["schemas"]["Ulid"];
             /** @description The number of steps, on scenario rows. */
             stepCount?: number;
+            /**
+             * @description The number of participants, on scenario rows that have at least one (actors-design.md decision 14). Left out when the
+             *     scenario has none, so rows of projects without participants do not change.
+             */
+            participants?: number;
             /**
              * @description The operation's effect, on operation rows (next-phase-2-design.md section 4.1).
              * @enum {string}
@@ -3967,6 +3980,11 @@ export interface components {
             boundEnum: string | null;
             /** @description The bound attribute's reference type's id (lifecycle-design.md decision 11); absent for any other binding. */
             boundReferenceType?: string;
+            /**
+             * @description The id of the single-valued attribute or to-one relation end that holds the object's owner (actors-design.md decision 10),
+             *     as the entry names it; absent when the entry names none or MQ9606 reports it.
+             */
+            owner?: string;
         };
         /** @description A state. */
         StateRecord: components["schemas"]["ProcessNodeAnnotations"] & {
@@ -4095,6 +4113,26 @@ export interface components {
             gates: string[];
             /** @description The ids of the roles, groups and organizations the actor is a member of, in file order, each once; an entry MQ9601 reports is left out (actors-design.md section 6). Left out when there are none. */
             memberOf?: string[];
+            relative?: components["schemas"]["RelativeRecord"];
+        };
+        /**
+         * @description How an actor from the object is worked out (actors-design.md decisions 8 to 12), on actor records whose file has `relative`; left
+         *     out otherwise.
+         */
+        RelativeRecord: {
+            /**
+             * @description owner, path or members-of; with several forms (MQ9603), the first in that order; none when the file gives no form.
+             * @enum {string}
+             */
+            form: "owner" | "path" | "members-of" | "none";
+            /**
+             * @description The ids along the path as the model resolves them (an id it does not hold is left out): for path, the to-one relation ends
+             *     followed, then the last attribute or end;
+             *     for members-of, the within ends (empty for the object itself); empty for owner.
+             */
+            path: string[];
+            /** @description The id of the role, group or organization whose members it is, for members-of; absent otherwise. */
+            membersOf?: string;
         };
         /** @description A resolved scenario. */
         ScenarioRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -4108,6 +4146,8 @@ export interface components {
             objects?: components["schemas"]["ScenarioObjectRecord"][];
             /** @description The id of the object the process runs for; absent for a scenario with no objects. */
             subject?: string;
+            /** @description Who acts in the scenario, in file order (actors-design.md decision 14); absent for a scenario with none. */
+            participants?: components["schemas"]["ParticipantRecord"][];
             start: components["schemas"]["ScenarioStartRecord"];
             steps: components["schemas"]["StepRecord"][];
             outcome: string;
@@ -4124,6 +4164,30 @@ export interface components {
                 [key: string]: unknown;
             };
             links: components["schemas"]["ScenarioLinkRecord"][];
+            /** @description The id of the participant that owns the object (actors-design.md decision 16); absent when the file names none. */
+            owner?: string;
+        };
+        /** @description A participant of a scenario (actors-design.md decision 14). */
+        ParticipantRecord: {
+            id: string;
+            name: string;
+            /** @description Absent when the file gives none. */
+            displayName?: string;
+            /** @description The value the team's system would hold for them; the name when the file gives none. */
+            identity: string | number;
+            /** @description The id of the person, external system or system actor they stand for; absent when the file names none. */
+            actor?: string;
+            holds: components["schemas"]["HoldingRecord"][];
+            /** @description The id of the scenario object that is their record; absent when the file names none. */
+            object?: string;
+        };
+        /** @description A role, group or organization a participant holds (actors-design.md decision 14). */
+        HoldingRecord: {
+            id: string;
+            /** @description The id of the role, group or organization held. */
+            actor: string;
+            /** @description The id of the scenario object it counts within; absent for a holding with no context. */
+            within?: string;
         };
         /** @description A link from a scenario object to another object of the scenario. */
         ScenarioLinkRecord: {
@@ -4161,6 +4225,17 @@ export interface components {
             };
             expect: components["schemas"]["ExpectationRecord"] | null;
             description: string | null;
+            /** @description The id of the participant that acts (actors-design.md decision 15); absent for a step that names none. */
+            participant?: string;
+            /**
+             * @description With participant: the id of the actor the engine's replay ran the step as. It is the step's actor when given; else it is
+             *     worked out from the moves the step could make when it ran: for a gated move, a required actor of the gate not yet signed,
+             *     else a signer the event's actors also accept, else the first signer the participant satisfies; otherwise the first of the
+             *     event's or human task's actors it satisfies, or the participant's actor when that list is empty. Absent for a step that
+             *     names no participant, when the participant satisfies none (the replay refuses the step by actor), and when the replay did
+             *     not reach the step.
+             */
+            actsAs?: string;
         };
         /** @description What a step expects. */
         ExpectationRecord: {
@@ -6009,6 +6084,11 @@ export interface components {
             invoke?: string | null;
             /** @description An ISO 8601 duration, for `time`. */
             after?: string | null;
+            /**
+             * @description The id of a participant of the run (actors-design.md decision 15); the engine works out the actor it acts as unless `actor` is
+             *     given, and an event's signer defaults to its identity. A trace's echo gives the actor it acted as and the signer, and the trace's actsAs names that actor; it leaves participant out when absent.
+             */
+            participant?: string | null;
             actor?: string | null;
             signer?: string | null;
             meaning?: string | null;
@@ -6032,6 +6112,8 @@ export interface components {
             objects?: components["schemas"]["ScenarioObject"][] | null;
             /** @description The id of the object in `objects` the process runs for; required with `objects`. */
             subject?: string | null;
+            /** @description The run's participants, as a scenario's `participants` (actors-design.md decision 14); with `scenario`, that scenario's participants when absent. */
+            participants?: components["schemas"]["ScenarioParticipant"][] | null;
             /** @description A scenario of the process whose start and steps run first. */
             scenario?: string | null;
             steps?: components["schemas"]["SimInput"][] | null;
@@ -6062,6 +6144,30 @@ export interface components {
                 [key: string]: unknown;
             };
             links?: components["schemas"]["ScenarioLink"][];
+            /** @description The id of the participant that owns the object, for a subject whose process entry names no owner field (actors-design.md decision 16). */
+            owner?: string;
+        };
+        /** @description A participant of a scenario or a simulation (`schemas/v1/scenario.json` `$defs/participant`, actors-design.md decision 14). */
+        ScenarioParticipant: {
+            id: components["schemas"]["Ulid"];
+            /** @description The name, unique in the scenario (letters, digits and underscores, not starting with a digit). */
+            name: string;
+            displayName?: string;
+            /** @description The value the team's system would hold for them, such as a login or a number; the name when absent. */
+            identity?: string | number;
+            /** @description The id of the person, external system or system actor they stand for; they then have its memberships. */
+            actor?: string;
+            holds?: components["schemas"]["ScenarioHolding"][];
+            /** @description The id of the scenario object that is their record. */
+            object?: string;
+        };
+        /** @description A role, group or organization a participant holds (`schemas/v1/scenario.json` `$defs/holding`). */
+        ScenarioHolding: {
+            id: components["schemas"]["Ulid"];
+            /** @description The id of the role, group or organization held. */
+            actor: string;
+            /** @description The id of the scenario object it counts within; without it, it counts only where no context is asked (actors-design.md decision 13). */
+            within?: string;
         };
         /** @description A link from a scenario object to another object of the scenario, through a relation end. */
         ScenarioLink: {
@@ -6098,6 +6204,15 @@ export interface components {
              *     has exactly one. Left out otherwise, without a system actor always: a step's own actor is in its input.
              */
             actor?: components["schemas"]["Ulid"];
+            /**
+             * @description The actor a step with a participant acted as (actors-design.md decision 15), worked out from the moves the step could make
+             *     when it ran: for a gated move, a required actor of the gate not yet signed, else a signer the event's actors also accept,
+             *     else the first signer the participant satisfies; otherwise the first of the event's or human task's actors it satisfies, or
+             *     the participant's actor when that list is empty. The input echoes the filled-in step: its actor is this actor and its
+             *     signer the participant's identity when the step gave none. Left out for a step that names no participant, and when the
+             *     participant satisfies none of the actors it could act as. The mock backend fills it and echoes the input the same way.
+             */
+            actsAs?: components["schemas"]["Ulid"];
         };
         MicrostepTrace: {
             transitions: components["schemas"]["Ulid"][];
@@ -6200,6 +6315,8 @@ export interface components {
             objects?: components["schemas"]["ScenarioObject"][] | null;
             /** @description The id of the object in `objects` the process runs for; required with `objects`. */
             subject?: string | null;
+            /** @description The scenario's participants (actors-design.md decision 14), written to its `participants`; a step keeps the participant it names. */
+            participants?: components["schemas"]["ScenarioParticipant"][] | null;
             steps?: components["schemas"]["SimInput"][] | null;
             /**
              * @description The expected outcome; the replay's when absent.
@@ -9792,6 +9909,8 @@ export interface components {
             entity: components["schemas"]["id"];
             /** @description An attribute of the entity that holds the state (lifecycle only). */
             boundAttribute?: components["schemas"]["id"];
+            /** @description Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own or inherited; not an attribute from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner. */
+            owner?: components["schemas"]["id"];
         };
         /**
          * Event
@@ -9987,6 +10106,8 @@ export interface components {
                     entity: components["schemas"]["id"];
                     /** @description An attribute of the entity that holds the state (lifecycle only). */
                     boundAttribute?: components["schemas"]["id"];
+                    /** @description Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own or inherited; not an attribute from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner. */
+                    owner?: components["schemas"]["id"];
                 };
                 /**
                  * State
@@ -10227,6 +10348,26 @@ export interface components {
             };
         };
         /**
+         * Relative
+         * @description How an actor is worked out from the object. Give exactly one of owner, path, or membersOf (with within).
+         */
+        relative: {
+            /**
+             * @description The object's owner, held where each subject entry's owner names (or by the team's system when it names none).
+             * @constant
+             */
+            owner?: true;
+            /** @description The actor a field of the object names: to-one relation ends to follow, then a single-valued attribute or a to-one end. Ids must mean the same thing for every subject of a process that uses the actor (MQ9604). */
+            path?: components["schemas"]["idList"];
+            /** @description The members of this role, group or organization (not itself an actor from the object) within the context object that within reaches. */
+            membersOf?: components["schemas"]["id"];
+            /**
+             * @description With membersOf only: the to-one relation ends that lead from the object to its context object; empty for the object itself.
+             * @default []
+             */
+            within?: components["schemas"]["idList"];
+        };
+        /**
          * Actor
          * @description A person, a role, a group, an organization, an external system or the system itself that takes part in processes (model/actors/). A role, group or organization may have members, which state it in their memberOf.
          */
@@ -10250,6 +10391,8 @@ export interface components {
              * @default []
              */
             memberOf?: components["schemas"]["idList"];
+            /** @description Makes this an actor worked out from the object a process runs for, per object at run time: the object's owner, the actor a field of the object names, or the members of a role, group or organization within a context object. Exactly one form (MQ9603). Such an actor is never a member and has no members, and a process that uses it must be able to work it out on every subject (MQ9604). */
+            relative?: components["schemas"]["relative"];
             description?: components["schemas"]["description"];
             /** @description Markdown text: why the element is shaped this way. */
             rationale?: string;
@@ -10270,6 +10413,28 @@ export interface components {
             /** @default {} */
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
+            $defs: {
+                /**
+                 * Relative
+                 * @description How an actor is worked out from the object. Give exactly one of owner, path, or membersOf (with within).
+                 */
+                relative: {
+                    /**
+                     * @description The object's owner, held where each subject entry's owner names (or by the team's system when it names none).
+                     * @constant
+                     */
+                    owner?: true;
+                    /** @description The actor a field of the object names: to-one relation ends to follow, then a single-valued attribute or a to-one end. Ids must mean the same thing for every subject of a process that uses the actor (MQ9604). */
+                    path?: components["schemas"]["idList"];
+                    /** @description The members of this role, group or organization (not itself an actor from the object) within the context object that within reaches. */
+                    membersOf?: components["schemas"]["id"];
+                    /**
+                     * @description With membersOf only: the to-one relation ends that lead from the object to its context object; empty for the object itself.
+                     * @default []
+                     */
+                    within?: components["schemas"]["idList"];
+                };
+            };
         };
         /**
          * Link
@@ -10280,6 +10445,17 @@ export interface components {
             end: components["schemas"]["id"];
             /** @description The id of the linked object. */
             object: components["schemas"]["id"];
+        };
+        /**
+         * Holding
+         * @description A role, group or organization held, with no context or within one of the scenario's objects.
+         */
+        holding: {
+            id: components["schemas"]["id"];
+            /** @description The role, group or organization held. */
+            actor: components["schemas"]["id"];
+            /** @description The id of the scenario object it counts within; without it, it counts only where no context is asked. */
+            within?: components["schemas"]["id"];
         };
         /**
          * Object
@@ -10302,6 +10478,28 @@ export interface components {
              * @default []
              */
             links?: components["schemas"]["link"][];
+            /** @description The id of the scenario's participant that owns the object, for a subject whose process entry names no owner field. */
+            owner?: components["schemas"]["id"];
+        };
+        /**
+         * Participant
+         * @description Someone or something that acts in the scenario.
+         */
+        participant: {
+            id: components["schemas"]["id"];
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            /** @description The value the team's system would hold for them, such as a login or a number; the name when absent. */
+            identity?: string | number;
+            /** @description The person, external system or system actor they stand for; they then have its memberships. */
+            actor?: components["schemas"]["id"];
+            /**
+             * @description The roles, groups and organizations they hold.
+             * @default []
+             */
+            holds?: components["schemas"]["holding"][];
+            /** @description The id of the scenario object that is their record. */
+            object?: components["schemas"]["id"];
         };
         /**
          * Step
@@ -10318,8 +10516,10 @@ export interface components {
             invoke?: components["schemas"]["id"];
             /** @description An ISO 8601 duration to advance the clock by, for input time. */
             after?: string;
+            /** @description The id of the scenario's participant that acts; the engine works out the actor it acts as unless actor is given. */
+            participant?: components["schemas"]["id"];
             actor?: components["schemas"]["id"];
-            /** @description The signing person's identity, for gated events. */
+            /** @description The signing person's identity, for gated events; the participant's identity when absent. */
             signer?: string;
             meaning?: components["schemas"]["id"];
             reason?: string;
@@ -10382,6 +10582,11 @@ export interface components {
             objects?: components["schemas"]["object"][];
             /** @description The id of the object the process runs for; required once there are objects. */
             subject?: components["schemas"]["id"];
+            /**
+             * @description Who acts in the scenario: each stands for an actor, holds roles, groups or organizations (optionally within one of the scenario's objects), and may have an object as its record. A step names the one that acts.
+             * @default []
+             */
+            participants?: components["schemas"]["participant"][];
             description?: components["schemas"]["description"];
             /** @description Markdown text: why the element is shaped this way. */
             rationale?: string;
@@ -10447,6 +10652,8 @@ export interface components {
                      * @default []
                      */
                     links?: components["schemas"]["link"][];
+                    /** @description The id of the scenario's participant that owns the object, for a subject whose process entry names no owner field. */
+                    owner?: components["schemas"]["id"];
                 };
                 /**
                  * Link
@@ -10457,6 +10664,37 @@ export interface components {
                     end: components["schemas"]["id"];
                     /** @description The id of the linked object. */
                     object: components["schemas"]["id"];
+                };
+                /**
+                 * Participant
+                 * @description Someone or something that acts in the scenario.
+                 */
+                participant: {
+                    id: components["schemas"]["id"];
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    /** @description The value the team's system would hold for them, such as a login or a number; the name when absent. */
+                    identity?: string | number;
+                    /** @description The person, external system or system actor they stand for; they then have its memberships. */
+                    actor?: components["schemas"]["id"];
+                    /**
+                     * @description The roles, groups and organizations they hold.
+                     * @default []
+                     */
+                    holds?: components["schemas"]["holding"][];
+                    /** @description The id of the scenario object that is their record. */
+                    object?: components["schemas"]["id"];
+                };
+                /**
+                 * Holding
+                 * @description A role, group or organization held, with no context or within one of the scenario's objects.
+                 */
+                holding: {
+                    id: components["schemas"]["id"];
+                    /** @description The role, group or organization held. */
+                    actor: components["schemas"]["id"];
+                    /** @description The id of the scenario object it counts within; without it, it counts only where no context is asked. */
+                    within?: components["schemas"]["id"];
                 };
                 /**
                  * Step
@@ -10473,8 +10711,10 @@ export interface components {
                     invoke?: components["schemas"]["id"];
                     /** @description An ISO 8601 duration to advance the clock by, for input time. */
                     after?: string;
+                    /** @description The id of the scenario's participant that acts; the engine works out the actor it acts as unless actor is given. */
+                    participant?: components["schemas"]["id"];
                     actor?: components["schemas"]["id"];
-                    /** @description The signing person's identity, for gated events. */
+                    /** @description The signing person's identity, for gated events; the participant's identity when absent. */
                     signer?: string;
                     meaning?: components["schemas"]["id"];
                     reason?: string;

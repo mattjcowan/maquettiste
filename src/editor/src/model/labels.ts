@@ -342,6 +342,7 @@ export const PROCESS_TIPS = {
   organizations: "Organizations: units with a place in a hierarchy, such as a supplier or a plant",
   automatic: "Automatic: the system itself, which makes the moves nobody does",
   systems: "Systems: outside systems that act in processes",
+  fromObject: "From the object: actors worked out for each object, such as its owner or the reviewers on its project",
   guards: "Conditions transitions check, and effects they run",
   gates: "Signatures a transition waits for",
   entityLifecycles: "Lifecycles that govern this entity, including its base entity's",
@@ -367,6 +368,7 @@ export const PROCESS_LABELS = {
   groups: "Groups",
   organizations: "Organizations",
   automatic: "Automatic",
+  fromObject: "From the object",
   systems: "Systems",
   guard: "guard",
   action: "action",
@@ -568,6 +570,16 @@ export const SIMULATION_LABELS = {
   /** The actor of a move the input names no actor for: the system actor (Automatic) of the initial entry, a time step or an invoke completion. */
   byActor: (actor: string) => `by ${actor}`,
   bySigner: (signer: string) => `signed by ${signer}`,
+  // Participants (actors-design.md decision 15)
+  participant: "Participant",
+  noParticipant: "(no participant)",
+  fromParticipant: "(from the participant)",
+  actsAs: (actor: string) => `acts as ${actor}`,
+  asParticipant: (participant: string) => `by ${participant}`,
+  actingAs: (actor: string) => `acting as ${actor}`,
+  /** A step by a participant: the actor the engine worked out for it, or that it satisfied none of the list. */
+  actsAsLine: (participant: string, actor: string | null) =>
+    actor ? `${participant} acted as ${actor}` : `${participant} satisfies none of the actors the step needs`,
   // Record
   record: "Record to scenario…",
   recordTitle: "Record to scenario",
@@ -617,7 +629,14 @@ export type ActorType = (typeof ACTOR_TYPES)[number];
 /** The types that may have members and be named in another actor's memberOf. */
 export const MEMBER_HOLDER_TYPES: readonly ActorType[] = ["role", "group", "organization"];
 /** The type picker's option text in the actor editor; the system actor is spelled out. */
-export const ACTOR_TYPE_OPTION_LABELS: Record<ActorType, string> = { ...ACTOR_TYPE_LABELS, system: "Automatic (the system itself)" };
+export const ACTOR_TYPE_OPTION_LABELS: Record<ActorType, string> = {
+  person: "Person",
+  role: "Role",
+  group: "Group",
+  organization: "Organization",
+  "external-system": "External system",
+  system: "Automatic (the system itself)",
+};
 
 /** The actor editor's membership text. */
 export const ACTOR_MEMBER_LABELS = {
@@ -632,6 +651,33 @@ export const ACTOR_MEMBER_LABELS = {
   addTitle: (name: string) => `Add members to ${name}`,
   addApply: (n: number) => (n ? `Add ${n}` : "Add"),
   addUndo: (name: string) => `Add members to ${name}`,
+  missingActor: "(missing actor)",
+  removeMember: (name: string) => `Remove ${name} from the members`,
+  removeUndo: (name: string) => `Remove ${name} from the members`,
+  search: "Search actors",
+} as const;
+
+/** The actor editor's "Taken from the object" section (actors-design.md section 9). */
+export const ACTOR_RELATIVE_LABELS = {
+  title: "Taken from the object",
+  form: "Worked out as",
+  forms: {
+    none: "Not taken from the object",
+    owner: "The object's owner",
+    path: "A field of the object",
+    "members-of": "Members of a role within a context",
+  },
+  fieldsOf: "Fields of",
+  noSubjects: "No process that uses this actor has a subject yet. Choose the kind of object whose fields you want to pick from.",
+  pick: "(choose)",
+  pickEntity: "(choose an entity)",
+  then: "(then…)",
+  role: "Role",
+  noRoles: "There is no plain role, group or organization yet.",
+  context: "Within",
+  itself: "(the object itself)",
+  means: (text: string) => `Means ${text}.`,
+  ownerNote: "Held where each lifecycle subject's Owner names it; without one, the team's system holds it.",
 } as const;
 
 /** A library process, which has no chart to open. */
@@ -649,4 +695,45 @@ export const PROCESS_TAB_LABELS = {
   gates: "Gates",
   context: "Context",
   scenarios: "Scenarios",
+} as const;
+
+/** The scenario editor's participants (actors-design.md decision 14). The word is one constant here: the owner has yet to confirm it. */
+export const PARTICIPANT_LABELS = {
+  singular: "participant",
+  plural: "participants",
+  tab: "Participants",
+  objectsTab: "Objects",
+  grid: (scenario: string) => `Participants of ${scenario}`,
+  name: "Name",
+  displayName: "Display name",
+  identity: "Signs as",
+  identityHint: "The name this participant signs with, when a step names no signer.",
+  actor: "Is",
+  actorHint: "The person, external system or automatic actor this participant is.",
+  holds: "Holds roles",
+  editHolds: (name: string) => `Edit the roles ${name} holds`,
+  holdsTitle: (name: string) => `Roles held by ${name}`,
+  holdsRole: "Role, group or organization",
+  holdsPickRole: "(choose a role)",
+  holdsContext: "Within object",
+  holdsAnywhere: "(anywhere)",
+  within: "within",
+  addHolding: "Add role",
+  removeHolding: "Remove this role",
+  noRoles: "The model has no role, group or organization to hold yet.",
+  noObjects: "No objects yet. Add one to give the scenario something to run on, a record to point to or a context to hold roles in.",
+  addObjectTitle: "Add object",
+  objectNameTaken: "The scenario already has an object with this name.",
+  object: "Record object",
+  step: "Participant",
+  owner: "Owner",
+  entity: "Entity",
+  none: "(none)",
+  automatic: "Automatic",
+  holdsHint: "The roles, groups and organizations this participant holds, each optionally within one object of the scenario, such as Reviewer within Project1.",
+  ownerLocked: "The process names where this object's owner is held, so the owner comes from its values and links.",
+  holdsUnknown: (text: string) => `'${text}' is not a role, group or organization, or not an object of the scenario.`,
+  /** Show the row's step text in the simulation panel and the trace. */
+  actsAs: (actor: string) => `acts as ${actor}`,
+  noActsAs: "satisfies none of the actors it needs",
 } as const;

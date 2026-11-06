@@ -49,7 +49,7 @@ The model keeps two keys on a subject entry for the last items, but does not acc
 
 | # | Item | Requested | Status | Notes |
 | --- | --- | --- | --- | --- |
-| | Actors: membership, relative actors starting with the owner, roles within a context, the system, and a stereotype as a set of types | yes (the owner) | Next | [Section 4](lifecycle-actors-scenarios.md#4-who-actors). Also brings the explorer's later steps: a role lists its members, scenario personas sit with their scenarios, and the system actor shows as **Automatic**. |
+| | Actors: membership, relative actors starting with the owner, roles within a context, the system, and participants | yes (the owner) | Built for 0.14.0 (#47 and the next pull request) | [Design](actors-design.md). Also brings the explorer's later steps: a role lists its members, participants sit with their scenarios, and the system actor shows as **Automatic**. A stereotype as a set of types is next, with its own short design. |
 | | Verbs: a built-in set and the project's own, with events and operations naming theirs | yes (the owner) | Later | [Section 5](lifecycle-actors-scenarios.md#5-what-verbs). |
 | | Setting the object's data from a move, and reading another lifecycle's state | yes (the owner) | Later | [Section 6](lifecycle-actors-scenarios.md#6-two-prerequisites-setting-the-objects-data-and-reading-another-lifecycles-state). Rights need both. |
 | | Rights: named rights, defaults, combining, freezing, and refusal reasons in scenarios | yes (the owner) | Later | [Section 7](lifecycle-actors-scenarios.md#7-when-rights-with-rules-and-freezing-folded-in). |

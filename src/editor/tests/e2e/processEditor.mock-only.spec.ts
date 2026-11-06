@@ -178,6 +178,6 @@ test("a scenario opens from the Scenarios tab and replays with each step's statu
   await expect(steps.nth(0).getByTestId("step-status")).toHaveAttribute("data-status", "passed");
   await expect(steps.nth(1).getByTestId("step-status")).toHaveAttribute("data-status", "failed");
   await scenario.getByTestId("scenario-editor-replay").click();
-  await expect(scenario.getByTestId("replay-failure")).toContainText("Step 2: MQ9302");
+  await expect(scenario.getByTestId("replay-failure")).toContainText("Step 2 (MQ9302)");
   await expect(page.getByTestId("inspector-scenario")).toContainText("PurchaseApproval");
 });

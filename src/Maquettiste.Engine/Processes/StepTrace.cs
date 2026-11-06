@@ -133,6 +133,14 @@ public sealed record StepTrace(
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Actor { get; init; }
 
+    /// <summary>
+    /// The actor a step with a participant acted as (actors-design.md decision 15), worked out from the moves the step could make when it
+    /// ran; the <see cref="Input"/> echoes it as its actor, with the signer it signed as. <see langword="null"/>, and left out of the
+    /// JSON, for a step that names no participant, and for one whose participant satisfies none of the actors it could act as.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ActsAs { get; init; }
+
     /// <summary>Whether a guard's result was missing (MQ9306): what followed in this input is not meaningful.</summary>
     public bool Incomplete => Guards.Any(g => g.Source == GuardSource.Missing) || Diagnostics.Any(d => d.Rule is "MQ9305" or "MQ9507");
 }

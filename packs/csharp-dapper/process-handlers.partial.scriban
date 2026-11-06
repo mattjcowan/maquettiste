@@ -6,6 +6,7 @@ name = p_name(p)
 ctx = name + "Context"
 call = "StatechartCall<" + ctx + ">"
 stubs = 0
+relatives = relative_actors(p)
 -}}
 using System;
 using {{ runtime_ns() }};
@@ -36,5 +37,13 @@ public sealed partial class {{ name }}Handlers
 {{ end }}    private partial {{ ctx }} Action{{ pascal a.name }}({{ call }} call) =>
         throw new NotImplementedException("Action {{ a.name }} of process {{ p.name }} is not implemented yet.");
 {{- end }}
+{{- end }}
+{{- for a in relatives }}
+{{- if stubs > 0 }}
+{{ end }}
+{{- stubs = stubs + 1 }}
+    // Whether the caller is {{ a.name }}, {{ relative_text(a, subject_words(p)) }}{{ owner_fields(p, a) }}: read the object for the instance
+    // and compare it with the caller (the envelope's Signer for an event, or the host's principal). It refuses until you write it.
+    private partial bool Is{{ pascal a.name }}(ProcessSnapshot<{{ ctx }}> snapshot, ProcessEnvelope envelope) => false;
 {{- end }}
 }

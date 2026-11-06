@@ -117,6 +117,14 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
     case "actor":
       // A deleted role, group or organization leaves its members' memberOf lists (actors-design.md decision 3).
       arr(doc.memberOf).forEach((_, i) => push(`/memberOf/${i}`, "memberOf", (doc.memberOf as unknown[])[i], false, `/memberOf/${i}`));
+      // An actor from the object needs the fields and the role it names (decision 9): the delete is refused under
+      // remove-references unless the actor goes too, and delete-dependents deletes the actor.
+      if (doc.relative && typeof doc.relative === "object") {
+        const relative = doc.relative as Json;
+        (Array.isArray(relative.path) ? (relative.path as unknown[]) : []).forEach((p, i) => push(`/relative/path/${i}`, "path", p, true));
+        push("/relative/membersOf", "membersOf", relative.membersOf, true);
+        (Array.isArray(relative.within) ? (relative.within as unknown[]) : []).forEach((p, i) => push(`/relative/within/${i}`, "within", p, true));
+      }
       break;
     case "value-object":
     case "stereotype":
@@ -191,6 +199,8 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
       arr(doc.subjects).forEach((e, i) => {
         push(`/subjects/${i}/entity`, "entity", e.entity, false, `/subjects/${i}`);
         push(`/subjects/${i}/boundAttribute`, "boundAttribute", e.boundAttribute, false);
+        // The owner field is optional: a delete clears the key (decision 10).
+        push(`/subjects/${i}/owner`, "owner", e.owner, false);
       });
       arr(doc.events).forEach((e, i) =>
         arr(e.actors).forEach((_, j) => push(`/events/${i}/actors/${j}`, "actors", (e.actors as unknown[])[j], false, `/events/${i}/actors/${j}`)),
@@ -227,6 +237,25 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
       push("/process", "process", doc.process, true);
       // Objects (lifecycle-design.md decision 22): the entity an object is an instance of, the attributes its values name and
       // the relation ends its links navigate. The subject and a link's object name objects of the same file (no reference leaves it).
+      // Participants (actors-design.md decision 14) are parts: the actor one stands for (cleared when it goes) and each holding's actor
+      // (the holding goes with it). Their objects and `within` name objects of the same file, as a link's object does.
+      arr(doc.participants).forEach((p, i) => {
+        const holder = str(p.id) ?? id;
+        const actor = str(p.actor);
+        if (actor) out.push({ fromId: holder, pointer: `/participants/${i}/actor`, field: "actor", toId: actor, required: false });
+        arr(p.holds).forEach((h, j) => {
+          const held = str(h.actor);
+          if (held)
+            out.push({
+              fromId: str(h.id) ?? holder,
+              pointer: `/participants/${i}/holds/${j}/actor`,
+              field: "actor",
+              toId: held,
+              required: false,
+              removeItem: `/participants/${i}/holds/${j}`,
+            });
+        });
+      });
       arr(doc.objects).forEach((o, i) => {
         const at = `/objects/${i}`;
         const holder = str(o.id) ?? id;
@@ -325,6 +354,8 @@ export function subElementIds(doc: Json): string[] {
   if (doc.kind === "scenario") {
     collect(doc.steps);
     collect(doc.objects);
+    collect(doc.participants);
+    arr(doc.participants).forEach((p) => collect(p.holds));
   }
   // A seed's rows hold ids: a lifecycle's state code under a reference binding is a use of its row.
   if (doc.kind === "seed") collect(doc.rows);

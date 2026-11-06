@@ -8,6 +8,7 @@ import { ACTOR_TYPES } from "@/model/labels";
 import { applySchemaOperation, SCHEMA_OPS, type SchemaOp } from "@/model/databaseSchemas";
 import { DATABASE_MEMBER_KINDS } from "@/model/model";
 import { subjectsOf } from "@/model/process";
+import { relativeForms, type RelativeDoc } from "@/model/objectFields";
 import type {
   BatchResult,
   BatchParseResult,
@@ -644,6 +645,7 @@ export class MockModel {
   private entryFor(json: Json, existing?: Entry): Entry {
     this.mintSubjectIds(json);
     this.mintObjectIds(json);
+    this.mintParticipantIds(json);
     const path = this.conventionalPath(json, existing);
     const withSchema = this.withSchemaPath(json, path);
     const text = serialize(withSchema);
@@ -664,6 +666,18 @@ export class MockModel {
     json.objects = json.objects.map((o: unknown) =>
       o && typeof o === "object" && typeof (o as Json).id !== "string" ? { id: this.options.newId(), ...(o as Json) } : o,
     );
+  }
+
+  /** The engine mints the id of every participant and holding that has none (actors-design.md decision 14). */
+  private mintParticipantIds(json: Json): void {
+    if (json.kind !== "scenario" || !Array.isArray(json.participants)) return;
+    const withId = (x: unknown): unknown =>
+      x && typeof x === "object" && typeof (x as Json).id !== "string" ? { id: this.options.newId(), ...(x as Json) } : x;
+    json.participants = json.participants.map((p: unknown) => {
+      const one = withId(p);
+      if (one && typeof one === "object" && Array.isArray((one as Json).holds)) (one as Json).holds = ((one as Json).holds as unknown[]).map(withId);
+      return one;
+    });
   }
 
   create(input: Json): SaveResult {
@@ -1416,10 +1430,14 @@ function e5(json: Json): Partial<ElementSummary> {
     // memberOf only when non-empty, in file order, as the engine's index row has it.
     const memberOf = Array.isArray(json.memberOf) ? json.memberOf.filter((m): m is string => typeof m === "string") : [];
     if (memberOf.length) out.memberOf = memberOf;
+    // A relative actor's form, in the order owner, path, members-of; none when the file gives no form (MQ9603).
+    if (json.relative !== undefined) out.relative = relativeForms(json.relative as RelativeDoc)[0] ?? "none";
   }
   if (kind === "scenario") {
     if (typeof json.process === "string") out.process = json.process;
     out.stepCount = Array.isArray(json.steps) ? json.steps.length : 0;
+    // The participant count only when above zero, so rows of scenarios without participants do not change.
+    if (Array.isArray(json.participants) && json.participants.length) out.participants = json.participants.length;
   }
   // Section 4.1 (maquettiste-index/e10): an operation's subject and effect.
   if (kind === "operation") {

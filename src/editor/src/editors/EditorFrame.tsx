@@ -251,17 +251,19 @@ export function MarkChips({ json, edit, flush }: EditorContext) {
           flush();
         }}
       />
-      <ChipsEditor
-        label="Category"
-        values={category}
-        options={vocab.categories.map((c) => ({ value: c.value, label: c.label }))}
-        allowFree={false}
-        onChange={(values) => {
-          // One category: a pick replaces the current one.
-          edit((j) => setOptional(j as Rec, "category", values.at(-1)));
-          flush();
-        }}
-      />
+      {category.length || vocab.categories.length ? (
+        <ChipsEditor
+          label="Category"
+          values={category}
+          options={vocab.categories.map((c) => ({ value: c.value, label: c.label }))}
+          allowFree={false}
+          onChange={(values) => {
+            // One category: a pick replaces the current one.
+            edit((j) => setOptional(j as Rec, "category", values.at(-1)));
+            flush();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

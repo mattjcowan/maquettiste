@@ -1,0 +1,9 @@
+{
+  "kind": "actor",
+  "id": "01JAC000000000000000000K11",
+  "name": "Owner",
+  "type": "person",
+  "relative": {
+    "owner": true
+  }
+}

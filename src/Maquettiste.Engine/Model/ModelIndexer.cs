@@ -106,6 +106,8 @@ internal static class ModelIndexer
         _ when type == typeof(ProcessSubject) => "subject",
         _ when type == typeof(ScenarioStep) => "step",
         _ when type == typeof(ScenarioObject) => "object",
+        _ when type == typeof(ScenarioParticipant) => "participant",
+        _ when type == typeof(ScenarioHolding) => "holding",
         _ when type == typeof(OperationMember) => "operation-member",
         _ when type == typeof(OperationOutcome) => "outcome",
         _ when type == typeof(OperationError) => "error",
@@ -122,7 +124,7 @@ internal static class ModelIndexer
     {
         "attribute", "enum-member", "end", "column", "category", "schema", "reference-field", "row", "state", "transition", "event",
         "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key", "operation-member", "outcome", "error", "member",
-        "parameter", "subject", "object",
+        "parameter", "subject", "object", "participant", "holding",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
@@ -759,7 +761,9 @@ internal static class ModelIndexer
             Type: element is Custom typed ? typed.Type : null,
             Subjects: element is Process { Subjects.Count: > 1 } several ? [.. several.Subjects.Select(s => s.Entity)] : null,
             Actors: actors,
-            MemberOf: element is Actor { MemberOf.Count: > 0 } member ? [.. member.MemberOf] : null);
+            MemberOf: element is Actor { MemberOf.Count: > 0 } member ? [.. member.MemberOf] : null,
+            Relative: element is Actor { Relative: { } relative } ? relative.Form : null,
+            Participants: element is Scenario { Participants.Count: > 0 } cast ? cast.Participants.Count : null);
 
     /// <summary>
     /// The actors a process's document names: the targets of its references (every field, custom properties included) whose element is
