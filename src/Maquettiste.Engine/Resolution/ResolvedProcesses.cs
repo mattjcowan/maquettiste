@@ -380,11 +380,18 @@ public sealed class RAction : RProcessNode
     /// <summary>The name, unique in the process.</summary>
     public string Name { get; internal set; } = "";
 
-    /// <summary>The JavaScript expression, or <see langword="null"/> for a stub.</summary>
+    /// <summary>The JavaScript expression of its context changes, or <see langword="null"/> when it has none.</summary>
     public string? Expression { get; internal set; }
 
-    /// <summary>Whether the action has no expression (the host implements it).</summary>
+    /// <summary>Whether the action has neither an expression nor sets (the host implements it).</summary>
     public bool IsStub { get; internal set; }
+
+    /// <summary>
+    /// The values the action sets on the object, in file order (object-effects-design.md decision 1); empty when it sets none. A set whose
+    /// attribute does not resolve or whose value does not type is left out (validation says why). The list keys on the process's file and
+    /// on the entities (or stereotypes) that declare the attributes set.
+    /// </summary>
+    public RList<RSet> Sets { get; internal set; } = RList<RSet>.Empty;
 
     /// <summary>The internal events it raises, in list order.</summary>
     public RList<REvent> Raises { get; internal set; } = RList<REvent>.Empty;
@@ -394,6 +401,29 @@ public sealed class RAction : RProcessNode
     /// that for each process in <see cref="ResolvedModel.Processes"/> order.
     /// </summary>
     public RList<RProcessNode> UsedBy { get; internal set; } = RList<RProcessNode>.Empty;
+}
+
+/// <summary>
+/// One attribute of the object an action sets, and its value (object-effects-design.md decisions 1 to 3 and section 6). Every value of an
+/// action is worked out from the object and context as they were when the action started, then all are applied together.
+/// </summary>
+public sealed class RSet : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "set";
+
+    /// <summary>The attribute set, as the entity (or stereotype) that declares it resolves it: a base's own for an inherited one.</summary>
+    public RAttribute Attribute { get; internal set; } = null!;
+
+    /// <summary>
+    /// The value, typed against the attribute's type; its paths end at the context's and payloads' attributes, and at the declaring entity's
+    /// attribute for one of the object's. Its root carries the JavaScript, as a guard's condition does, except for a tree that reads
+    /// <c>actor()</c> or <c>in_state</c>.
+    /// </summary>
+    public RExpression Value { get; internal set; } = null!;
+
+    /// <summary>The action that holds it.</summary>
+    public RAction? Action { get; internal set; }
 }
 
 /// <summary>Work a state starts on entry.</summary>
@@ -586,6 +616,12 @@ public sealed class RScenarioObject : RObject
     /// <summary>The links to other objects of the scenario, in file order; a link whose end or object does not resolve is left out.</summary>
     public IReadOnlyList<RScenarioLink> Links { get; internal set; } = [];
 
+    /// <summary>
+    /// The object's states in lifecycles other than the one the scenario runs, as given, in file order (object-effects-design.md decision 10);
+    /// a state that does not resolve is left out. Empty when the file gives none.
+    /// </summary>
+    public RList<RState> States { get; internal set; } = RList<RState>.Empty;
+
     /// <summary>The participant that owns the object (actors-design.md decision 16), when the file names one of the scenario's.</summary>
     public RParticipant? Owner { get; internal set; }
 }
@@ -764,4 +800,10 @@ public sealed class RExpectation
 
     /// <summary>The attributes the step changes, by attribute name (by id when the attribute does not resolve), as plain values.</summary>
     public IReadOnlyDictionary<string, object?> Context { get; internal set; } = FrozenDictionary<string, object?>.Empty;
+
+    /// <summary>
+    /// The object's attributes the step sets (object-effects-design.md decision 4), by attribute name (by id when the attribute does not
+    /// resolve), as plain values; empty when the file gives none.
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> Values { get; internal set; } = FrozenDictionary<string, object?>.Empty;
 }

@@ -47,6 +47,12 @@ public sealed record InterpreterOptions
     /// sub-process sees an empty object.
     /// </summary>
     public JsonElement? Subject { get; init; }
+
+    /// <summary>
+    /// The notes of the states the subject's row assumed for its objects (object-effects-design.md decision 10), by
+    /// <see cref="StateRead.Key"/>: a guard or set whose <c>in_state</c> reads one puts its note in the step's trace.
+    /// </summary>
+    internal IReadOnlyDictionary<string, string>? StateNotes { get; init; }
 }
 
 /// <summary>
@@ -64,6 +70,10 @@ public sealed class StatechartInterpreter
     private readonly InterpreterOptions _options;
     private readonly Instance _root;
     private readonly JsonElement _subject;
+    // The values the run's sets gave the object, by attribute id, and the object's row with them (object-effects-design.md section 7): the
+    // row is copied only when a set runs, so a run without sets reads the row it was given.
+    private readonly SortedDictionary<string, JsonElement> _values = new(StringComparer.Ordinal);
+    private JsonElement _current;
     private readonly Dictionary<StatechartModel, ProcessExpressionSession?> _sessions = new(ReferenceEqualityComparer.Instance);
     private long _auditSequence;
     private long _timerSequence;
@@ -81,7 +91,11 @@ public sealed class StatechartInterpreter
         _options = options ?? new InterpreterOptions();
         _root = new Instance(chart, null, null, 0);
         _subject = _options.Subject is { ValueKind: JsonValueKind.Object } subject ? subject : NoObject;
+        _current = _subject;
     }
+
+    /// <summary>The values the run's sets gave the object so far, by attribute id (object-effects-design.md decision 4).</summary>
+    internal IReadOnlyDictionary<string, JsonElement> Values => _values;
 
     /// <summary>The chart.</summary>
     public StatechartModel Chart => _root.Chart;
@@ -135,13 +149,19 @@ public sealed class StatechartInterpreter
     /// <summary>Runs one input as a macrostep (a <c>time</c> input runs one macrostep per due timer).</summary>
     /// <param name="input">The input; its <c>expect</c> is ignored.</param>
     /// <returns>The trace.</returns>
-    public StepTrace Step(ScenarioStep input)
+    public StepTrace Step(ScenarioStep input) => Step(input, null);
+
+    /// <summary>Runs one input as a macrostep, for a participant: <c>actor()</c> reads its identity when the step gives no signer.</summary>
+    /// <param name="input">The input; its <c>expect</c> is ignored.</param>
+    /// <param name="identity">The participant's identity as text (its name when it has none), or <see langword="null"/>.</param>
+    /// <returns>The trace.</returns>
+    internal StepTrace Step(ScenarioStep input, string? identity)
     {
         ArgumentNullException.ThrowIfNull(input);
         if (!_started)
             Start();
         _index++;
-        _scope = new Scope(input);
+        _scope = new Scope(input) { Identity = identity };
         var before = Snapshot();
         switch (input.Input)
         {
@@ -285,8 +305,9 @@ public sealed class StatechartInterpreter
     /// completed or failed human task: its actors. Guards are evaluated as the step will evaluate them; nothing runs and nothing is recorded.
     /// </summary>
     /// <param name="input">The step about to run.</param>
+    /// <param name="identity">The identity <c>actor()</c> reads in the guards it evaluates, or <see langword="null"/>.</param>
     /// <returns>The choice.</returns>
-    internal ActingChoice Acting(ScenarioStep input)
+    internal ActingChoice Acting(ScenarioStep input, string? identity = null)
     {
         ArgumentNullException.ThrowIfNull(input);
         if (input.Input is StepInput.InvokeDone or StepInput.InvokeError)
@@ -303,7 +324,7 @@ public sealed class StatechartInterpreter
         var ev = target.Chart.Events[input.Event];
         var saved = _scope;
         _index++; // a guard's seed is the step's
-        _scope = new Scope(input) { Event = EventObject(ev.Name, input.Actor, ev.Payload, input.Payload) };
+        _scope = new Scope(input) { Event = EventObject(ev.Name, input.Actor, ev.Payload, input.Payload), Identity = identity };
         try
         {
             var moves = new List<ActingMove>();
@@ -575,9 +596,12 @@ public sealed class StatechartInterpreter
             // A condition answers true or false, so MQ9504 cannot occur for it; its now() is the simulated clock, and it reads the instance's
             // object under subject (none for a sub-process, so its attributes read as their defaults).
             var label = $"Guard '{guard.Name}'";
-            var result = session.Conditions.Contains(guard.Id)
-                ? session.EvaluateCondition(guard.Id, label, ContextObject(inst), _scope.Event, SubjectOf(inst), ClockText(), Seed(inst), _options.CancellationToken)
-                : session.Evaluate(guard.Id, label, ContextObject(inst), _scope.Event, Seed(inst), _options.CancellationToken);
+            var result = !session.Conditions.Contains(guard.Id)
+                ? session.Evaluate(guard.Id, label, ContextObject(inst), _scope.Event, Seed(inst), _options.CancellationToken)
+                : session.Lowered.TryGetValue(guard.Id, out var lowered) && lowered.EngineOnly
+                    ? session.EvaluateCondition(guard.Id, label, ContextObject(inst), _scope.Event, SubjectOf(inst), lowered.ReadsRunning ? Running(inst) : null,
+                        ClockText(), Reads(inst, lowered), Seed(inst), _options.CancellationToken)
+                    : session.EvaluateCondition(guard.Id, label, ContextObject(inst), _scope.Event, SubjectOf(inst), ClockText(), Seed(inst), _options.CancellationToken);
             bool value;
             if (result.Diagnostic is { } d)
             {
@@ -612,7 +636,10 @@ public sealed class StatechartInterpreter
     private ActionRun RunAction(Instance inst, ProcessAction action)
     {
         var changed = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);
-        var source = ActionSource.Stub;
+        var source = action.Sets.Count > 0 ? ActionSource.Sets : ActionSource.Stub;
+        // Every set's value is worked out from the object and the context as they were when the action started, then all are applied after
+        // its expression ran (object-effects-design.md decision 4).
+        var sets = action.Sets.Count > 0 ? WorkOutSets(inst, action) : null;
         if (action.Expression is not null && Session(inst.Chart) is { } session && session.Compiled.Contains(action.Id))
         {
             source = ActionSource.Expression;
@@ -650,13 +677,144 @@ public sealed class StatechartInterpreter
             }
         }
 
+        if (sets is not null)
+            Apply(sets);
         foreach (var raised in action.Raises)
         {
             if (inst.Chart.Events.ContainsKey(raised))
                 inst.Queue.Enqueue(new Internal(TransitionTrigger.Event, raised));
         }
 
-        return new ActionRun(action.Id, source, changed);
+        return new ActionRun(action.Id, source, changed) { Sets = sets?.ToImmutableSortedDictionary(p => p.Key, p => p.Value.Value, StringComparer.Ordinal) };
+    }
+
+    // The values an action's sets give the object, by attribute id with the attribute's name (decisions 3 and 4); a set that did not compile is
+    // left out (validation says why). An invoked sub-process sees no object, so its sets change nothing, and the trace says so.
+    private SortedDictionary<string, (string Name, JsonElement Value)>? WorkOutSets(Instance inst, ProcessAction action)
+    {
+        if (inst.Parent is not null)
+        {
+            Note($"Action '{action.Name}' of invoked process '{inst.Chart.Process.Name}' sets the object's data, but an invoked process sees no object, so its sets change nothing.");
+            return null;
+        }
+
+        var values = new SortedDictionary<string, (string Name, JsonElement Value)>(StringComparer.Ordinal);
+        if (Session(inst.Chart) is not { } session)
+            return values;
+        var context = ContextObject(inst);
+        var subject = SubjectOf(inst);
+        foreach (var set in action.Sets)
+        {
+            if (!session.Lowered.TryGetValue(set.Id, out var lowered) || lowered.Set is not { } target)
+                continue;
+            var result = session.EvaluateSet(set.Id, $"Action '{action.Name}'", context, _scope.Event, subject, lowered.ReadsRunning ? Running(inst) : null, ClockText(),
+                lowered.EngineOnly ? Reads(inst, lowered) : null, Seed(inst), _options.CancellationToken);
+            if (result.Diagnostic is { } d)
+                _scope.Diagnostics.Add(d);
+            else if (result.Value is JsonElement value)
+                values[target.Attribute] = (target.Name, value);
+        }
+
+        return values;
+    }
+
+    // Applies the values of an action's sets to the object's row, keeping each attribute's value from before the step for valuesChanged.
+    private void Apply(SortedDictionary<string, (string Name, JsonElement Value)> sets)
+    {
+        if (sets.Count == 0)
+            return;
+        var row = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);
+        foreach (var member in _current.EnumerateObject())
+            row[member.Name] = member.Value;
+        var defaults = Session(_root.Chart)?.SubjectDefaults;
+        foreach (var (id, (name, value)) in sets)
+        {
+            if (!_scope.ValuesBefore.ContainsKey(id))
+            {
+                _scope.ValuesBefore[id] = row.TryGetValue(name, out var old) ? old
+                    : defaults is { ValueKind: JsonValueKind.Object } d && d.TryGetProperty(name, out var fallback) ? fallback.Clone()
+                    : Null;
+            }
+
+            row[name] = value;
+            _values[id] = value;
+        }
+
+        _current = JsonSerializer.SerializeToElement(row);
+    }
+
+    // What a lowered condition or set that reads actor() or in_state is given (decisions 5 and 10): the acting identity, with a note when it
+    // does not convert to a type actor() met, and the note of each state its in_state reads that the run assumed.
+    private string? Reads(Instance inst, ProcessExpressions.LoweredCondition lowered)
+    {
+        var identity = Identity();
+        if (identity is not null)
+        {
+            foreach (var kind in lowered.ActorKinds)
+            {
+                if (!Converts(identity, kind))
+                    Note($"The identity '{identity}' is not {Article(kind)}, so actor() reads null where it meets one.");
+            }
+        }
+
+        if (inst.Parent is null && _options.StateNotes is { Count: > 0 } notes)
+        {
+            foreach (var read in lowered.StateReads)
+            {
+                if (notes.TryGetValue(read.Key, out var note))
+                    Note(note);
+            }
+        }
+
+        return identity;
+
+        static string Article(string kind) => kind switch
+        {
+            "int" => "an integer",
+            "decimal" or "double" => "a number",
+            "uuid" => "a uuid",
+            _ => "a " + kind,
+        };
+    }
+
+    // Whether an identity's text converts to a type actor() met, as the runtime's reader of that type reads it.
+    private static bool Converts(string identity, string kind) => kind switch
+    {
+        "int" => System.Numerics.BigInteger.TryParse(identity.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _),
+        "decimal" => decimal.TryParse(identity.Trim(), NumberStyles.Number | NumberStyles.AllowExponent, CultureInfo.InvariantCulture, out _),
+        "double" => double.TryParse(identity.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out _),
+        "uuid" => identity.Where(c => c is not ('{' or '}' or '-')).ToList() is { Count: 32 } hex && hex.All(Uri.IsHexDigit),
+        _ => true,
+    };
+
+    // The identity actor() reads (object-effects-design.md decision 5): the step's signer, else its participant's identity (its name when it
+    // has none), else the name of the actor the step acts as; a move no one sends acts as the system actor when the project has one.
+    private string? Identity()
+    {
+        var input = _scope.Input;
+        if (input?.Signer is { Length: > 0 } signer)
+            return signer;
+        if (_scope.Identity is { } identity)
+            return identity;
+        if (input?.Actor is { } actor)
+            return _options.ActorName?.Invoke(actor) ?? actor;
+        if (_options.SystemActor is { } system
+            && (input is null || input.Input == StepInput.Time || (input.Input is StepInput.InvokeDone or StepInput.InvokeError && !_scope.HumanTask)))
+            return _options.ActorName?.Invoke(system) ?? system;
+        return null;
+    }
+
+    // The running chart's active states, by its process id, which an in_state over it reads.
+    private static JsonElement Running(Instance inst) =>
+        JsonSerializer.SerializeToElement(new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            [inst.Chart.Process.Id] = [.. inst.Config.Where(s => !s.IsRoot).OrderBy(s => s.Order).Select(s => s.Id)],
+        });
+
+    private void Note(string note)
+    {
+        if (!_scope.Notes.Contains(note, StringComparer.Ordinal))
+            _scope.Notes.Add(note);
     }
 
     // ---- gates ----
@@ -1039,9 +1197,22 @@ public sealed class StatechartInterpreter
                 changed[id] = value;
         }
 
+        // The object's attributes the input set to a new value (object-effects-design.md decision 4).
+        SortedDictionary<string, JsonElement>? values = null;
+        foreach (var (id, old) in _scope.ValuesBefore)
+        {
+            if (_values.TryGetValue(id, out var value) && !JsonValues.Same(old, value))
+                (values ??= new(StringComparer.Ordinal))[id] = value;
+        }
+
         var diagnostics = _scope.Diagnostics.Distinct().ToList();
         return new StepTrace(_index, _scope.Input, _scope.Refusal is null, _scope.Refusal, _scope.Microsteps, _scope.Guards, _scope.Audit,
-            Configuration, Snapshot(), changed, ClockText(), _root.Done, diagnostics) { Actor = MoveActor() };
+            Configuration, Snapshot(), changed, ClockText(), _root.Done, diagnostics)
+        {
+            Actor = MoveActor(),
+            ValuesChanged = values,
+            Notes = _scope.Notes.Count > 0 ? [.. _scope.Notes] : null,
+        };
     }
 
     // The actor of the move (actors-design.md decision 2), named only when the system actor made it: a move no one sends (the initial
@@ -1109,7 +1280,7 @@ public sealed class StatechartInterpreter
     internal IReadOnlyList<(string Process, JsonElement Subject)> SubjectsSeen => [.. AllInstances().Select(i => (i.Chart.Process.Id, SubjectOf(i)))];
 
     // The object an instance's guards read (lifecycle-design.md decision 22): the run's subject for the root; an invoked sub-process sees none.
-    private JsonElement SubjectOf(Instance inst) => inst.Parent is null ? _subject : NoObject;
+    private JsonElement SubjectOf(Instance inst) => inst.Parent is null ? _current : NoObject;
 
     private JsonElement ContextObject(Instance inst)
     {
@@ -1182,6 +1353,9 @@ public sealed class StatechartInterpreter
         public JsonElement Event { get; set; } = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["name"] = null, ["actor"] = null, ["payload"] = new Dictionary<string, object?>() });
         public string? Refusal { get; set; }
         public bool HumanTask { get; set; }
+        public string? Identity { get; init; }
+        public Dictionary<string, JsonElement> ValuesBefore { get; } = new(StringComparer.Ordinal);
+        public List<string> Notes { get; } = [];
         public List<MicrostepTrace> Microsteps { get; } = [];
         public List<GuardEvaluation> Guards { get; } = [];
         public List<GateAuditRecord> Audit { get; } = [];

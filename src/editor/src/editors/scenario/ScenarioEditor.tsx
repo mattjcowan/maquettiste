@@ -3,7 +3,7 @@
 // status (passed, failed, not run) from the verify result.
 import { useState } from "react";
 import { Play } from "lucide-react";
-import { useElement, useIndex } from "@/api/queries";
+import { useElement, useElements, useIndex } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
@@ -34,6 +34,7 @@ import { useActors, useProblems, rowProblems } from "../process/shared";
 import { ScenarioStatusBadge } from "../process/ScenariosTab";
 import { ObjectsGrid, ParticipantsGrid } from "./ParticipantsGrid";
 import { PARTICIPANT_LABELS as PL } from "@/model/labels";
+import { EFFECT_LABELS as EL } from "@/model/effectLabels";
 
 type Rec = Record<string, unknown>;
 
@@ -127,7 +128,16 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const replay = useScenarioReplay(scenario);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const rows = stepRows(scenario, processDoc, actorNames);
+  // The expected values name the subject's attributes (the file keys them by id): the subject entity and the entities it is based on.
+  const lookup = indexLookup(useIndex().data);
+  const subjectEntity = scenario.objects?.find((o) => o.id === scenario.subject)?.entity;
+  const chain: string[] = [];
+  for (let id = subjectEntity; id && !chain.includes(id); id = lookup.byId.get(id)?.base) chain.push(id);
+  const chainDocs = useElements(chain).byId;
+  const valueNames = new Map<string, string>();
+  for (const id of chain)
+    for (const a of (chainDocs.get(id)?.json as { attributes?: { id: string; name: string }[] } | undefined)?.attributes ?? []) valueNames.set(a.id, a.name);
+  const rows = stepRows(scenario, processDoc, actorNames, valueNames);
   const names = stepNames(processDoc, actorNames);
   const states = processDoc ? [...stateIndex(processDoc).values()].map((i) => ({ id: i.state.id, name: i.path })) : [];
   const events: GridOption[] = (processDoc?.events ?? []).map((e) => ({ value: e.id, label: e.name }));
@@ -194,6 +204,19 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       options: () => states.map((s) => ({ value: s.id, label: s.name })),
     },
     { key: "context", label: "Expected context", kind: "text", width: "min-w-28", mono: true, value: (r) => r.context },
+    ...(rows.some((r) => r.values)
+      ? [
+          {
+            key: "values",
+            label: EL.expectedValues,
+            tooltip: EL.expectedValuesHint,
+            kind: "readonly" as const,
+            width: "min-w-28",
+            mono: true,
+            value: (r: StepRow) => r.values,
+          },
+        ]
+      : []),
     {
       key: "status",
       label: "Replay",

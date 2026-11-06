@@ -20,6 +20,7 @@ import { bindingSql } from "./model/bindings";
 import { parseDialect } from "./model/querySql";
 import { isUlid, readTag } from "./wire";
 import { processHandlers } from "./processHandlers";
+import { previewExpression } from "./model/expressionPreview";
 import { assistHandlers } from "./assist";
 import { snapshotHandlers } from "./snapshots";
 // Recorded by the functions test of GET /api/validation/rules, which fails when the catalog changes without a new recording.
@@ -596,6 +597,11 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
           ? problem(404, "not-a-database", `${params.id} is not a database.`)
           : problem(404, "not-found", `No element has the id ${params.id}.`);
       return HttpResponse.json(model.previewMaterialize(params.id, body.value as never));
+    }),
+    http.post("/api/model/expressions/preview", async ({ request }) => {
+      const body = await jsonBody(request);
+      if (!body.ok) return body.response;
+      return HttpResponse.json(previewExpression(model.entries.values(), body.value as never) as never);
     }),
     http.get("/api/model/entities/{id}/bindings/{bindingId}/sql", ({ params, request }) => {
       const q = new URL(request.url).searchParams;

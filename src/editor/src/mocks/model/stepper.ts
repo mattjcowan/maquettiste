@@ -7,6 +7,7 @@
 // Guards and actions with an expression run through `new Function` over frozen copies of the context and event.
 
 import { Membership } from "./membership";
+import { evalTree, UNKNOWN, type EvalEnv, type Value } from "./effects";
 
 type Json = Record<string, unknown>;
 
@@ -264,7 +265,12 @@ export interface StepTraceJson {
   input: SimInputJson | null;
   accepted: boolean;
   refusal: string | null;
-  microsteps: { transitions: string[]; exited: string[]; entered: string[]; actions: { action: string; source: "expression" | "stub"; changed: Json }[] }[];
+  microsteps: {
+    transitions: string[];
+    exited: string[];
+    entered: string[];
+    actions: { action: string; source: "expression" | "sets" | "stub"; changed: Json; sets?: Json }[];
+  }[];
   guards: { guard: string; transition: string; result: boolean | null; source: "expression" | "assumed" | "missing" }[];
   audit: Json[];
   configuration: string[];
@@ -278,6 +284,10 @@ export interface StepTraceJson {
   actor?: string;
   /** With a participant on the input: the actor the step acted as; left out when the participant satisfies none of the list. */
   actsAs?: string | null;
+  /** The attributes of the object the step set (by attribute id, to the new value); left out when none changed. */
+  valuesChanged?: Json;
+  /** What a reader should know about the step (assumed states, values the mock could not work out); left out when empty. */
+  notes?: string[];
 }
 
 export interface SimulationJson {
@@ -324,6 +334,12 @@ export interface StepperOptions {
   ownerActors?: ReadonlySet<string>;
   /** The name of the actor that stands for the members of a role within a context, by the role's id (for MQ9305's advice). */
   membersActors?: ReadonlyMap<string, string>;
+  /** The attributes of an entity (its own and inherited), for the subject's row: id and default. */
+  attributesOf?: (entity: string) => { id: string; default?: unknown }[];
+  /** The entity of the process's first subject: the row of a run with no objects. */
+  subjectEntity?: string;
+  /** Every lifecycle process document, for in_state. */
+  lifecycles?: Json[];
 }
 
 /** The texts of the participant cases of MQ9301 and MQ9305, as RuleCatalog words them (the engine's rule list). */
@@ -412,6 +428,7 @@ interface Scope {
   guards: StepTraceJson["guards"];
   audit: Json[];
   diagnostics: DiagnosticJson[];
+  notes: string[];
 }
 
 class Overflow extends Error {}
@@ -427,6 +444,7 @@ const newScope = (input: SimInputJson | null): Scope => ({
   guards: [],
   audit: [],
   diagnostics: [],
+  notes: [],
 });
 
 class Interpreter {
@@ -445,6 +463,11 @@ class Interpreter {
   membersActors: ReadonlyMap<string, string> = new Map();
   /** The cast of the run (decision 22); the mock does not evaluate guard conditions, so nothing reads it yet. */
   cast: { objects: Json[]; subject: string | null } = { objects: [], subject: null };
+  /** The subject's row by attribute id: the attributes' defaults, the object's values, then what the actions set. */
+  row: Json = {};
+  attributesOf: (entity: string) => { id: string; default?: unknown }[] = () => [];
+  subjectEntity: string | undefined;
+  lifecycles: Json[] = [];
   private auditSeq = 0;
   private timerSeq = 0;
   private index = -1;
@@ -468,25 +491,39 @@ class Interpreter {
     this.scope = newScope(null);
     this.scope.actor = this.membership.systemActor;
     const before = { ...this.context };
+    this.initRow();
+    const rowBefore = { ...this.row };
     this.macrostep(() => {
       this.config.add(this.chart.root);
       if (this.chart.root.initialChild) this.microstep([], this.chart.root.initialChild);
       this.runToCompletion();
     });
-    return this.finish(before);
+    return this.finish(before, rowBefore);
+  }
+
+  /** The row of the subject: each attribute's default, then the subject object's values (the engine's row, decision 4). */
+  private initRow() {
+    const object = this.subjectObject();
+    for (const a of this.attributesOf(str(object?.entity) ?? this.subjectEntity ?? "")) this.row[a.id] = a.default ?? null;
+    for (const [k, v] of Object.entries((object?.values as Json | undefined) ?? {})) this.row[k] = v;
+  }
+
+  private subjectObject(): Json | undefined {
+    return this.cast.objects.find((o) => o.id === this.cast.subject);
   }
 
   step(input: SimInputJson): StepTraceJson {
     this.index++;
     this.scope = newScope(input);
     const before = { ...this.context };
+    const rowBefore = { ...this.row };
     input = this.withParticipant(input);
     this.scope.input = input;
     if (this.scope.actsAs) this.scope.echo = input;
     if (input.input === "time") this.handleTime(input);
     else if (input.input === "invoke-done" || input.input === "invoke-error") this.handleInvoke(input);
     else this.handleEvent(input);
-    return this.finish(before);
+    return this.finish(before, rowBefore);
   }
 
   // ---- participants ----
@@ -800,6 +837,15 @@ class Interpreter {
       this.scope.guards.push({ guard: id, transition: t.id, result: value, source: "expression" });
       return value;
     }
+    // A guard written in the expression language: read when the mock can (the engine reads every one).
+    if (g.condition !== undefined && !str(g.expression)) {
+      const result = evalTree(g.condition, this.env());
+      if (result !== UNKNOWN) {
+        const value = result === true;
+        this.scope.guards.push({ guard: id, transition: t.id, result: value, source: "expression" });
+        return value;
+      }
+    }
     const assumed = this.scope.input?.assume[id];
     if (typeof assumed === "boolean") {
       this.scope.guards.push({ guard: id, transition: t.id, result: assumed, source: "assumed" });
@@ -817,7 +863,10 @@ class Interpreter {
   private runAction(action: Json): StepTraceJson["microsteps"][number]["actions"][number] {
     const id = String(action.id);
     const changed: Json = {};
-    let source: "expression" | "stub" = "stub";
+    let source: "expression" | "sets" | "stub" = "stub";
+    // Every set is worked out from the context and the row as they were when the action started; all are applied together.
+    const sets = arr(action.sets);
+    const worked = sets.map((x) => ({ attribute: String(x.attribute), value: this.setValue(action, x) }));
     if (this.chart.compiled.has(id)) {
       source = "expression";
       try {
@@ -849,8 +898,81 @@ class Interpreter {
         this.problem("MQ9502", `Action '${String(action.name)}' threw: ${(e as Error).message}`, id);
       }
     }
+    const setOut: Json = {};
+    for (const w of worked) {
+      if (w.value === UNKNOWN) continue;
+      this.row[w.attribute] = w.value;
+      setOut[w.attribute] = w.value;
+    }
+    if (source === "stub" && sets.length) source = "sets";
     for (const raised of ids(action.raises)) if (this.chart.events.has(raised)) this.queue.push({ kind: "event", id: raised });
-    return { action: id, source, changed: sorted(changed) };
+    return { action: id, source, changed: sorted(changed), ...(Object.keys(setOut).length ? { sets: sorted(setOut) } : {}) };
+  }
+
+  // ---- the object: sets, identity and states ----
+
+  /** A set's value, or UNKNOWN (the mock cannot read it): then nothing is set and a note says so. */
+  private setValue(action: Json, set: Json): Value {
+    const value = evalTree(set.value, this.env());
+    if (value === UNKNOWN)
+      this.scope.notes.push(
+        `The mock backend could not work out the value of a set in action '${String(action.name)}', so the set did nothing; the engine reads every expression.`,
+      );
+    return value;
+  }
+
+  /** The identity of whoever acts (decision 5): the signer, else the name of the actor it acts as, else the system actor's, else null. */
+  private identity(): string | null {
+    const signer = this.scope.input?.signer;
+    if (signer) return signer;
+    const acting = this.scope.input?.actor ?? this.scope.actor;
+    return acting ? (this.actorName(acting) ?? null) : null;
+  }
+
+  private objectOf(end: string[]): Json | undefined {
+    let object = this.subjectObject();
+    for (const e of end) {
+      const link = arr(object?.links).find((l) => l.end === e);
+      object = link ? this.cast.objects.find((o) => o.id === link.object) : undefined;
+      if (!object) return undefined;
+    }
+    return object;
+  }
+
+  private env(): EvalEnv {
+    return {
+      path: (p) => {
+        if (p.length === 1) {
+          if (p[0] in this.row) return this.row[p[0]];
+          return p[0] in this.context ? this.context[p[0]] : UNKNOWN;
+        }
+        const object = this.objectOf(p.slice(0, -1));
+        if (!object) return null;
+        const found = (object.values as Json | undefined)?.[p[p.length - 1]];
+        if (found !== undefined) return found;
+        return this.attributesOf(String(object.entity)).find((a) => a.id === p[p.length - 1]) ? null : UNKNOWN;
+      },
+      now: () => clockText(this.clock),
+      actor: () => this.identity(),
+      inState: (states, of) => this.inState(states, of),
+    };
+  }
+
+  /** In any of the states named (decision 7): the running chart for the process's own lifecycle, else the object's `states`, else the lifecycle's initial configuration. */
+  private inState(states: string[], of: string[] | undefined): boolean | null {
+    const proc = this.lifecycles.find((p) => stateIds(p.states).has(states[0]));
+    if (!proc) return null;
+    if (proc.id === this.chart.doc.id && (!of || of.length === 0)) return states.some((x) => [...this.config].some((n) => n.id === x));
+    const object = this.objectOf(of ?? []);
+    if (!object) return null;
+    const own = ids(object.states).filter((x) => stateIds(proc.states).has(x));
+    const active = new Set<string>();
+    if (own.length) for (const x of own) enterState(proc.states, x, active);
+    else {
+      enterInitial(proc.states, str(proc.initial), active);
+      this.scope.notes.push(`${String(object.name)} gives no state in ${String(proc.name)}, so its initial state is assumed.`);
+    }
+    return states.some((x) => active.has(x));
   }
 
   // ---- gates ----
@@ -1085,8 +1207,10 @@ class Interpreter {
 
   // ---- helpers ----
 
-  private finish(before: Json): StepTraceJson {
+  private finish(before: Json, rowBefore: Json): StepTraceJson {
     const changed: Json = {};
+    const valuesChanged: Json = {};
+    for (const [id, v] of Object.entries(this.row)) if (!(id in rowBefore) || !same(rowBefore[id], v)) valuesChanged[id] = v;
     for (const [id, v] of Object.entries(this.context)) if (!(id in before) || !same(before[id], v)) changed[id] = v;
     const seen = new Set<string>();
     const diagnostics = this.scope.diagnostics.filter((d) => {
@@ -1113,6 +1237,8 @@ class Interpreter {
       // A refused step moved nothing, so it names no actor.
       ...(this.scope.actor && this.scope.refusal === null ? { actor: this.scope.actor } : {}),
       ...(this.scope.actsAs ? { actsAs: this.scope.actsAs } : {}),
+      ...(Object.keys(valuesChanged).length ? { valuesChanged: sorted(valuesChanged) } : {}),
+      ...(this.scope.notes.length ? { notes: [...new Set(this.scope.notes)] } : {}),
     };
     if (this.scope.list) unsatisfiedLists.set(trace, this.scope.list);
     return trace;
@@ -1185,6 +1311,9 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
   run.participants = options.participants ?? [];
   run.ownerActors = options.ownerActors ?? new Set();
   run.membersActors = options.membersActors ?? new Map();
+  run.attributesOf = options.attributesOf ?? (() => []);
+  run.subjectEntity = options.subjectEntity;
+  run.lifecycles = options.lifecycles ?? [];
   const at = readAt(start?.at);
   const traces = [run.start(start?.context, typeof at === "number" ? at : null)];
   let complete = !traces[0].incomplete;
@@ -1293,6 +1422,49 @@ function enabledOf(run: Interpreter, active: Edge[]): SimulationJson["enabled"] 
   return out;
 }
 
+/** Every state id of a state tree (the states, and the states in them). */
+function stateIds(list: unknown, out = new Set<string>()): Set<string> {
+  for (const s of arr(list)) {
+    out.add(String(s.id));
+    stateIds(s.states, out);
+  }
+  return out;
+}
+
+/** Adds the state `target`, its ancestors and the states a compound or parallel state enters by default to `out`. */
+function enterState(list: unknown, target: string, out: Set<string>): boolean {
+  for (const s of arr(list)) {
+    if (s.id === target) {
+      out.add(String(s.id));
+      enterInside(s, out);
+      return true;
+    }
+    if (enterState(s.states, target, out)) {
+      out.add(String(s.id));
+      return true;
+    }
+  }
+  return false;
+}
+
+function enterInside(s: Json, out: Set<string>) {
+  const children = arr(s.states).filter((c) => c.type !== "history" && c.type !== "choice");
+  if (!children.length) return;
+  const regions = s.type === "parallel" ? children : [children.find((c) => c.id === s.initial) ?? children[0]];
+  for (const c of regions) {
+    out.add(String(c.id));
+    enterInside(c, out);
+  }
+}
+
+function enterInitial(list: unknown, initial: string | null, out: Set<string>) {
+  const states = arr(list).filter((c) => c.type !== "history" && c.type !== "choice");
+  const first = states.find((c) => c.id === initial) ?? states[0];
+  if (!first) return;
+  out.add(String(first.id));
+  enterInside(first, out);
+}
+
 export interface Replay {
   /** Every input ran and none stopped the replay (MQ9305, MQ9306, MQ9507). */
   complete: boolean;
@@ -1312,6 +1484,7 @@ export function replay(doc: Json, start: { context?: Json; at?: string } | null 
     if (!t.accepted) expect.accepted = false;
     expect.states = t.configuration;
     if (Object.keys(t.changed).length) expect.context = t.changed;
+    if (t.valuesChanged && Object.keys(t.valuesChanged).length) expect.values = t.valuesChanged;
     return expect;
   });
   return { complete, expects, outcome: result.final ? "final" : "active", diagnostics: result.diagnostics };

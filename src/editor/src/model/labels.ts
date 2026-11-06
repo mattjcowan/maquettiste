@@ -506,6 +506,7 @@ export const SIMULATION_LABELS = {
   objects: "Objects",
   cast: "Cast",
   objectSubject: "subject",
+  objectStates: "states",
   objectsHint: "The scenario's objects; edit them in the JSON view of the scenario.",
   // Enabled
   raise: "Raise",
@@ -561,7 +562,10 @@ export const SIMULATION_LABELS = {
   guardSources: { expression: "expression", assumed: "assumed", missing: "missing: add an assumption" } as Record<string, string>,
   unknownResult: "unknown",
   actionLine: (action: string, source: string, changes: string) => `${action} (${source})${changes ? `: ${changes}` : ""}`,
-  actionSources: { expression: "expression", stub: "stub, changes nothing" } as Record<string, string>,
+  actionSources: { expression: "expression", sets: "sets", stub: "stub, changes nothing" } as Record<string, string>,
+  setsLine: (sets: string) => `Sets: ${sets}`,
+  valuesLine: (values: string) => `Values: ${values}`,
+  noteLine: (note: string) => `Note: ${note}`,
   transitionLine: (transitions: string) => `Took ${transitions}`,
   auditLine: (gate: string, outcome: string, signer: string, actor: string, meaning: string) =>
     `${gate}: ${outcome}${signer ? ` by ${signer}` : ""}${actor ? ` as ${actor}` : ""}${meaning ? ` (${meaning})` : ""}`,

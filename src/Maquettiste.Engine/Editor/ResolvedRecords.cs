@@ -634,16 +634,25 @@ public sealed record GuardRecord(string Id, string Name, string? Expression, boo
 /// <summary>An action of a process.</summary>
 /// <param name="Id">The action id.</param>
 /// <param name="Name">The name.</param>
-/// <param name="Expression">The expression, or <see langword="null"/> for a stub.</param>
-/// <param name="IsStub">Whether the action has no expression.</param>
+/// <param name="Expression">The JavaScript expression of its context changes, or <see langword="null"/> when it has none.</param>
+/// <param name="IsStub">Whether the action has neither an expression nor sets.</param>
 /// <param name="Raises">The ids of the events it raises.</param>
 /// <param name="UsedBy">The ids of the states and transitions that run it.</param>
 /// <param name="DisplayName">The display name.</param>
 /// <param name="Description">The description.</param>
 /// <param name="Stereotypes">The stereotype keys.</param>
 /// <param name="Properties">The custom properties.</param>
+/// <param name="Sets">The values the action sets on the object, in file order (object-effects-design.md decision 1); <see langword="null"/>,
+/// and left out of the JSON, when it sets none.</param>
 public sealed record ActionRecord(string Id, string Name, string? Expression, bool IsStub, IReadOnlyList<string> Raises, IReadOnlyList<string> UsedBy,
-    string DisplayName, string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
+    string DisplayName, string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SetRecord>? Sets = null);
+
+/// <summary>One attribute of the object an action sets, and its value (object-effects-design.md decisions 1 to 3).</summary>
+/// <param name="Id">The set's id.</param>
+/// <param name="Attribute">The id of the attribute set (an attribute every subject of the process holds).</param>
+/// <param name="Value">The value: its text printed from current names, its type and its tree.</param>
+public sealed record SetRecord(string Id, string Attribute, ExpressionRecord Value);
 
 /// <summary>An invocation of a service or another process.</summary>
 /// <param name="Id">The invocation id.</param>
@@ -787,8 +796,11 @@ public sealed record HoldingRecord(string Id, string Actor, [property: JsonIgnor
 /// <param name="Values">The values given, by attribute name (by id when the entity has no such attribute).</param>
 /// <param name="Links">The links to other objects.</param>
 /// <param name="Owner">The id of the participant that owns the object (actors-design.md decision 16); left out when there is none.</param>
+/// <param name="States">The ids of the object's states in other lifecycles, as given (object-effects-design.md decision 10); left out when
+/// the file gives none.</param>
 public sealed record ScenarioObjectRecord(string Id, string Name, string Entity, IReadOnlyDictionary<string, object?> Values, IReadOnlyList<ScenarioLinkRecord> Links,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Owner = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Owner = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? States = null);
 
 /// <summary>A link from a scenario object to another object of the scenario.</summary>
 /// <param name="End">The relation end's id.</param>
@@ -831,7 +843,10 @@ public sealed record StepRecord(string Id, int Index, string Input, string? Even
 /// <param name="States">The active states' ids.</param>
 /// <param name="StatePaths">The active states' paths.</param>
 /// <param name="Context">The expected context values.</param>
-public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> States, IReadOnlyList<string> StatePaths, IReadOnlyDictionary<string, object?> Context);
+/// <param name="Values">The object's values the step expects it set, by attribute name (object-effects-design.md decision 4); left out when
+/// the file gives none.</param>
+public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> States, IReadOnlyList<string> StatePaths, IReadOnlyDictionary<string, object?> Context,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, object?>? Values = null);
 
 /// <summary>A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors, with the events it fires and
 /// what it requires by id.</summary>
@@ -1465,7 +1480,8 @@ public static class ResolvedRecords
                 e.DisplayName, e.Description, Keys(e.Stereotypes), Plain(e.Properties), e.Verb?.Key))],
             [.. p.Guards.Select(g => new GuardRecord(g.Id, g.Name, g.Expression, g.IsStub, Ids(g.UsedBy), g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties),
                 Expression(g.Condition)))],
-            [.. p.Actions.Select(a => new ActionRecord(a.Id, a.Name, a.Expression, a.IsStub, Ids(a.Raises), Ids(a.UsedBy), a.DisplayName, a.Description, Keys(a.Stereotypes), Plain(a.Properties)))],
+            [.. p.Actions.Select(a => new ActionRecord(a.Id, a.Name, a.Expression, a.IsStub, Ids(a.Raises), Ids(a.UsedBy), a.DisplayName, a.Description, Keys(a.Stereotypes), Plain(a.Properties),
+                a.Sets.Count == 0 ? null : [.. a.Sets.Select(x => new SetRecord(x.Id, x.Attribute.Id, Expression(x.Value)!))]))],
             [.. p.Gates.Select(g => new GateRecord(g.Id, g.Name, g.Transition?.Id, Ids(g.UsedBy), g.Required, Ids(g.Signers), Ids(g.RequiredActors), g.AllowRepeatSigner, g.ReasonRequired,
                 [.. g.Meanings.Select(m => new MeaningRecord(m.Id, m.Name, m.DisplayName, m.Description))],
                 [.. g.Audit.Select(f => new AuditFieldRecord(f.Id, f.Name, f.Type, f.Required, f.Description, f.Values, f.Attribute?.Id))],
@@ -1487,11 +1503,11 @@ public static class ResolvedRecords
         public ScenarioRecord Scenario(RScenario s) => new(s.Id, "scenario", s.Name, s.Package?.Id, s.Process.Id, new ScenarioStartRecord(Plain(s.Start.Context), s.Start.At),
             [.. s.Steps.Select(t => new StepRecord(t.Id, t.Index, t.Input, t.Event?.Id, t.Invoke?.Id, t.After, t.AfterMs, t.AfterTicks, t.Actor?.Id, t.Signer, t.Meaning?.Id,
                 t.Reason, Plain(t.Payload), Plain(t.Assume),
-                t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context)) : null, t.Description,
+                t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context), x.Values.Count == 0 ? null : Plain(x.Values)) : null, t.Description,
                 t.Participant?.Id, t.Participant is null ? null : t.ActsAs?.Id))],
             s.Outcome, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation,
             s.Objects.Count == 0 ? null : [.. s.Objects.Select(o => new ScenarioObjectRecord(o.Id, o.Name, o.Entity.Id, Plain(o.Values),
-                [.. o.Links.Select(l => new ScenarioLinkRecord(l.End.Id, l.Object.Id))], o.Owner?.Id))],
+                [.. o.Links.Select(l => new ScenarioLinkRecord(l.End.Id, l.Object.Id))], o.Owner?.Id, o.States.Count == 0 ? null : Ids(o.States)))],
             s.Objects.Count == 0 ? null : s.Subject?.Id,
             s.Participants.Count == 0 ? null : [.. s.Participants.Select(p => new ParticipantRecord(p.Id, p.Name, p.Identity,
                 [.. p.Holds.Select(h => new HoldingRecord(h.Id, h.Actor.Id, h.Within?.Id))], p.DisplayName, p.Actor?.Id, p.Object?.Id))]);

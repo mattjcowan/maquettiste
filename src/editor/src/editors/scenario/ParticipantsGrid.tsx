@@ -2,10 +2,13 @@
 // name, identity, the actor they stand for, what they hold, their record object), and each object's owner participant.
 import { useMemo, useState } from "react";
 import { Pencil, Plus, X } from "lucide-react";
-import { useElement, useIndex } from "@/api/queries";
+import { useElement, useElements, useIndex } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
+import { EFFECT_LABELS as EL } from "@/model/effectLabels";
+import { objectStatesText, stateChoices, statesOfLabels, type StateChoiceGroup } from "@/model/effects";
+import { indexLookup } from "@/model/index";
 import { newId } from "@/lib/ids";
 import { PARTICIPANT_LABELS as L } from "@/model/labels";
 import {
@@ -245,6 +248,34 @@ function HoldsDialog({
   );
 }
 
+/** The lifecycles that can govern an entity (it, a base of it, or a stereotype it carries is a subject), with their states, but the one the scenario runs. */
+export function useLifecycleStates(entities: readonly string[], run: string): Map<string, StateChoiceGroup[]> {
+  const index = useIndex();
+  const lookup = indexLookup(index.data);
+  const lifecycles = lookup.ofKind("process").filter((p) => p.use === "lifecycle" && p.id !== run);
+  const docs = useElements(entities.length ? lifecycles.map((p) => p.id) : []).byId;
+  return useMemo(() => {
+    const out = new Map<string, StateChoiceGroup[]>();
+    for (const entity of entities) {
+      const chain: string[] = [];
+      for (let id: string | undefined = entity; id && !chain.includes(id); id = lookup.byId.get(id)?.base) chain.push(id);
+      const governing = lifecycles.filter((p) => {
+        const subjects = [...(p.subject ? [p.subject] : []), ...(p.subjects ?? []), ...(p.covers ?? [])];
+        return chain.some((c) => subjects.includes(c));
+      });
+      out.set(
+        entity,
+        stateChoices(
+          governing.flatMap((p) => (docs.get(p.id)?.json ? [docs.get(p.id)!.json as unknown as ProcessDoc] : [])),
+          run,
+        ),
+      );
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docs, index.data, entities.join(","), run]);
+}
+
 interface ObjectRow {
   id: string;
   index: number;
@@ -252,6 +283,7 @@ interface ObjectRow {
   name: string;
   entity: string;
   owner: string;
+  states: string;
   locked: boolean;
 }
 
@@ -274,6 +306,7 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
   ]);
   const participants = scenario.participants ?? [];
   const [adding, setAdding] = useState(false);
+  const stateGroups = useLifecycleStates([...new Set((scenario.objects ?? []).map((o) => o.entity))], scenario.process);
   const rows: ObjectRow[] = (scenario.objects ?? []).map((o, i) => ({
     id: o.id,
     index: i,
@@ -281,6 +314,7 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
     name: o.name,
     entity: entities.get(o.entity) ?? "?",
     owner: participants.find((p) => p.id === o.owner)?.name ?? "",
+    states: objectStatesText(o.states, stateGroups.get(o.entity) ?? []),
     locked: withOwnerField.has(o.entity),
   }));
   const columns: GridColumn<ObjectRow>[] = [
@@ -296,6 +330,15 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
       editValue: (r) => scenario.objects?.[r.index]?.owner ?? "",
       options: () => [{ value: "", label: L.none }, ...participants.map((p) => ({ value: p.id, label: p.name }))],
       locked: (r) => r.locked,
+    },
+    {
+      key: "states",
+      label: EL.statesColumn,
+      tooltip: EL.statesHint,
+      kind: "multi",
+      width: "min-w-40",
+      value: (r) => r.states,
+      options: (r) => (stateGroups.get(scenario.objects?.[r.index]?.entity ?? "") ?? []).flatMap((g) => g.states.map((x) => ({ value: x.id, label: x.label }))),
     },
   ];
   const addObject = (name: string, entity: string) => {
@@ -323,11 +366,15 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
         onAdd={() => setAdding(true)}
         problems={(r) => rowProblems(problems, r.pointer)}
         onCommit={(row, key, value) => {
-          if (key !== "owner") return;
+          if (key !== "owner" && key !== "states") return;
           ctx.edit((j) => {
             const o = (j as unknown as ScenarioDoc).objects?.find((x) => x.id === row.id);
             if (!o) return;
-            if (value) o.owner = String(value);
+            if (key === "states") {
+              const ids = statesOfLabels(String(value), stateGroups.get(o.entity) ?? []);
+              if (ids.length) o.states = ids;
+              else delete o.states;
+            } else if (value) o.owner = String(value);
             else delete o.owner;
           });
           ctx.flush();

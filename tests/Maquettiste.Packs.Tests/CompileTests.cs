@@ -284,6 +284,35 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Object_effects_compile_with_the_rest_of_the_output()
+    {
+        // object-effects-design.md section 9: an action that sets data calls Record<Action>, which the companion implements; one with only
+        // sets is generated whole, one with a translated expression becomes an instance method; guards that read actor() or in_state are
+        // left to a person. The output matches its expected files and builds with warnings as errors. process-docs shows the sets and the
+        // guards' conditions.
+        using var repo = PackRepo.ObjectEffects();
+        await repo.GenerateCleanlyAsync();
+        Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "object-effects", "expected"), repo.PathOf("out"));
+        var handlers = File.ReadAllText(Path.Combine(repo.PathOf("out"), "Processes", "RequestLifecycle", "RequestLifecycleHandlers.g.cs"));
+        Assert.Contains("private partial void RecordRecordSubmission(", handlers, StringComparison.Ordinal);
+        Assert.Contains("private partial bool GuardNotTheSubmitter(", handlers, StringComparison.Ordinal);
+        Assert.Contains("private partial bool GuardEmployeeActive(", handlers, StringComparison.Ordinal);
+        Assert.DoesNotContain("private partial RequestLifecycleContext ActionRecordSubmission(", handlers, StringComparison.Ordinal);
+
+        var page = File.ReadAllText(Path.Combine(repo.PathOf("docs"), "processes", "request-lifecycle.md"));
+        Assert.Contains("| Action | Expression | Sets | Raises | Used by | Description |", page, StringComparison.Ordinal);
+        Assert.Contains("`submittedBy ← actor()`, `submittedOn ← now()`", page, StringComparison.Ordinal);
+        Assert.Contains("`in_state(subject.employee, Employment.Active)`", page, StringComparison.Ordinal);
+        Assert.Contains("`subject.submittedBy <> actor()`", page, StringComparison.Ordinal);
+        var employment = File.ReadAllText(Path.Combine(repo.PathOf("docs"), "processes", "employment.md"));
+        Assert.DoesNotContain("Sets", employment, StringComparison.Ordinal);
+
+        var project = Path.Combine(repo.Repo.Root, "effects");
+        WriteProject(project, repo.PathOf("out"), program: null, web: true);
+        await BuildOrSkipAsync(project);
+    }
+
+    [Fact]
     public async Task Actors_named_like_the_members_of_the_actors_class_compile()
     {
         // An actor named Accepts or All would clash with the class's own members: only those constants get "Actor" appended, the

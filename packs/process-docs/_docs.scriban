@@ -20,6 +20,31 @@ func code_names(list)
   ret $text
 end
 
+# An action's sets as code spans, "attribute ← value" each, separated by commas (object-effects-design.md section 9).
+func sets_cell(a)
+  $text = ""
+  for $s in a.sets
+    $text = $text + (for.first ? "" : ", ") + (md_code ($s.attribute.name + " ← " + $s.value.text))
+  end
+  ret $text
+end
+
+# Whether an expression reads actor() or in_state (object-effects-design.md section 9): such a guard shows its condition's text.
+func reads_effects(e)
+  if !e
+    ret false
+  end
+  if e.node == "actor" || e.node == "in-state"
+    ret true
+  end
+  for $arg in e.args
+    if reads_effects($arg)
+      ret true
+    end
+  end
+  ret false
+end
+
 # Code spans of the paths of a list of states, separated by commas.
 func code_paths(list)
   $text = ""

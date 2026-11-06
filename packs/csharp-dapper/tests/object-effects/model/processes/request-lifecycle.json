@@ -1,0 +1,159 @@
+{
+  "kind": "process",
+  "id": "01JFX000000000000000000C02",
+  "name": "RequestLifecycle",
+  "package": "01JFX000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JFX000000000000000000B02",
+      "entity": "01JFX000000000000000000E02"
+    }
+  ],
+  "context": [
+    {
+      "id": "01JFX000000000000000000A06",
+      "name": "count",
+      "type": "int32",
+      "default": 0
+    }
+  ],
+  "events": [
+    {
+      "id": "01JFX000000000000000000V02",
+      "name": "submit"
+    },
+    {
+      "id": "01JFX000000000000000000V03",
+      "name": "approve"
+    },
+    {
+      "id": "01JFX000000000000000000V04",
+      "name": "start"
+    }
+  ],
+  "guards": [
+    {
+      "id": "01JFX000000000000000000G01",
+      "name": "notTheSubmitter",
+      "condition": {
+        "op": "ne",
+        "args": [
+          {
+            "path": [
+              "01JFX000000000000000000A03"
+            ]
+          },
+          {
+            "actor": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JFX000000000000000000G02",
+      "name": "employeeActive",
+      "condition": {
+        "inState": [
+          "01JFX000000000000000000S01"
+        ],
+        "of": [
+          "01JFX000000000000000000N02"
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "01JFX000000000000000000X01",
+      "name": "recordSubmission",
+      "sets": [
+        {
+          "id": "01JFX000000000000000000Y01",
+          "attribute": "01JFX000000000000000000A03",
+          "value": {
+            "actor": true
+          }
+        },
+        {
+          "id": "01JFX000000000000000000Y02",
+          "attribute": "01JFX000000000000000000A04",
+          "value": {
+            "now": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "01JFX000000000000000000X02",
+      "name": "bump",
+      "expression": "({ count: context.count + 1 })",
+      "sets": [
+        {
+          "id": "01JFX000000000000000000Y03",
+          "attribute": "01JFX000000000000000000A05",
+          "value": {
+            "value": "bumped"
+          }
+        }
+      ]
+    },
+    {
+      "id": "01JFX000000000000000000X03",
+      "name": "notify"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JFX000000000000000000S11",
+      "name": "Draft"
+    },
+    {
+      "id": "01JFX000000000000000000S12",
+      "name": "Submitted"
+    },
+    {
+      "id": "01JFX000000000000000000S13",
+      "name": "Approved"
+    },
+    {
+      "id": "01JFX000000000000000000S14",
+      "name": "Started",
+      "type": "final"
+    }
+  ],
+  "initial": "01JFX000000000000000000S11",
+  "transitions": [
+    {
+      "id": "01JFX000000000000000000T11",
+      "source": "01JFX000000000000000000S11",
+      "event": "01JFX000000000000000000V02",
+      "targets": [
+        "01JFX000000000000000000S12"
+      ],
+      "actions": [
+        "01JFX000000000000000000X01",
+        "01JFX000000000000000000X02",
+        "01JFX000000000000000000X03"
+      ]
+    },
+    {
+      "id": "01JFX000000000000000000T12",
+      "source": "01JFX000000000000000000S12",
+      "event": "01JFX000000000000000000V03",
+      "targets": [
+        "01JFX000000000000000000S13"
+      ],
+      "guard": "01JFX000000000000000000G01"
+    },
+    {
+      "id": "01JFX000000000000000000T13",
+      "source": "01JFX000000000000000000S13",
+      "event": "01JFX000000000000000000V04",
+      "targets": [
+        "01JFX000000000000000000S14"
+      ],
+      "guard": "01JFX000000000000000000G02"
+    }
+  ]
+}

@@ -306,13 +306,17 @@ export function pendingRows(result: SimulationResult, process: ProcessDoc, names
 // ------------------------------------------------------------------ the last step
 
 export interface LastStepLine {
-  kind: "actor" | "refusal" | "transitions" | "guard" | "action" | "context" | "audit" | "diagnostic" | "incomplete";
+  kind: "actor" | "refusal" | "transitions" | "guard" | "action" | "sets" | "values" | "note" | "context" | "audit" | "diagnostic" | "incomplete";
   text: string;
   tone: "neutral" | "danger" | "warning" | "success";
 }
 
 /** What one trace entry did, line by line, in the order the engine reports it. */
-export function lastStepLines(entry: StepTrace, names: Names): LastStepLine[] {
+export function lastStepLines(entry: StepTrace, names: Names, subjectAttribute: (id: string) => string = (id) => id): LastStepLine[] {
+  const subjectText = (map: Record<string, unknown>) =>
+    Object.entries(map)
+      .map(([k, v]) => `${subjectAttribute(k)}=${valueText(v)}`)
+      .join(", ");
   const lines: LastStepLine[] = [];
   // The actor of the move, when the input does not name it (the input's own actor shows in the trace row): the system actor.
   if (entry.actor && !entry.input?.actor) lines.push({ kind: "actor", text: L.byActor(names.actor(entry.actor)), tone: "neutral" });
@@ -339,13 +343,18 @@ export function lastStepLines(entry: StepTrace, names: Names): LastStepLine[] {
       tone: g.source === "missing" ? "warning" : "neutral",
     });
   for (const m of entry.microsteps)
-    for (const a of m.actions)
+    for (const a of m.actions) {
       lines.push({
         kind: "action",
         text: L.actionLine(names.action(a.action), L.actionSources[a.source] ?? a.source, changesText(a.changed, names)),
         tone: "neutral",
       });
+      if (a.sets && Object.keys(a.sets).length) lines.push({ kind: "sets", text: L.setsLine(subjectText(a.sets)), tone: "neutral" });
+    }
   if (Object.keys(entry.changed).length) lines.push({ kind: "context", text: L.changedLine(changesText(entry.changed, names)), tone: "neutral" });
+  if (entry.valuesChanged && Object.keys(entry.valuesChanged).length)
+    lines.push({ kind: "values", text: L.valuesLine(subjectText(entry.valuesChanged)), tone: "neutral" });
+  for (const note of new Set(entry.notes ?? [])) lines.push({ kind: "note", text: L.noteLine(note), tone: "neutral" });
   for (const r of entry.audit)
     lines.push({
       kind: "audit",

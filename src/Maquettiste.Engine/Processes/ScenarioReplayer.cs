@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
@@ -118,7 +119,11 @@ public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOn
     /// <summary>The expectations the replay gives: one per step that ran, and the outcome.</summary>
     /// <returns>The step expectations and the outcome.</returns>
     public (IReadOnlyList<StepExpectation> Steps, ScenarioOutcome Outcome) Observed() =>
-        ([.. Steps.Select(t => new StepExpectation { Accepted = t.Accepted, States = t.Configuration, Context = t.Changed })],
+        ([.. Steps.Select(t => new StepExpectation
+            {
+                Accepted = t.Accepted, States = t.Configuration, Context = t.Changed,
+                Values = t.ValuesChanged ?? ImmutableDictionary<string, JsonElement>.Empty,
+            })],
             Final ? ScenarioOutcome.Final : ScenarioOutcome.Active);
 }
 
@@ -192,7 +197,7 @@ public static class ScenarioReplayer
                 break;
             }
 
-            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, cast, step, out var choice);
+            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, Participants.Current(cast, interpreter.Values), step, out var choice);
             steps.Add(trace);
             choices.Add(choice);
             Report(trace, pointer);
@@ -258,6 +263,14 @@ public static class ScenarioReplayer
                 first ??= Fail("MQ9303", message, expect.Context, trace.Changed, pointer + "/expect/context");
             }
 
+            // The object's values the step set (object-effects-design.md decision 4): exactly those it changed.
+            var valuesChanged = trace.ValuesChanged ?? NoValues;
+            if (!SameMap(expect.Values, valuesChanged))
+            {
+                var message = $"{At(i)}{Describe(c, step)} sets {ObjectValues(runtime.Model, valuesChanged)} on the object, but expect.values lists {ObjectValues(runtime.Model, expect.Values)}; fix the actions' sets or the step, or update the expectations from a replay.";
+                first ??= Fail("MQ9307", message, expect.Values, valuesChanged, pointer + "/expect/values");
+            }
+
             return first;
 
             // A refusal by actor of a step with a participant names the participant and what it failed (MQ9301).
@@ -275,8 +288,11 @@ public static class ScenarioReplayer
     }
 
     /// <summary>The interpreter a replay runs: the scenario's subject is the object it sees (lifecycle-design.md decision 22).</summary>
-    internal static StatechartInterpreter Interpreter(Scenario scenario, StatechartModel chart, ProcessRuntime runtime) =>
-        new(chart, runtime.Options(scenario.Id) with { Subject = ScenarioObjects.Row(runtime.Model, chart.Process, scenario.Objects, scenario.Subject) });
+    internal static StatechartInterpreter Interpreter(Scenario scenario, StatechartModel chart, ProcessRuntime runtime)
+    {
+        var row = ScenarioObjects.Row(runtime.Model, chart.Process, scenario.Objects, scenario.Subject, out var notes);
+        return new(chart, runtime.Options(scenario.Id) with { Subject = row, StateNotes = notes.Count > 0 ? notes : null });
+    }
 
     // MQ9305: fields the interpreter cannot judge without the model (payload keys and values, meanings); the interpreter itself reports
     // unknown events, bad durations and invokes that are not pending.
@@ -325,6 +341,14 @@ public static class ScenarioReplayer
         values.Count == 0 ? "nothing"
             : string.Join(", ", values.OrderBy(p => p.Key, StringComparer.Ordinal)
                 .Select(p => (chart.Attributes.TryGetValue(p.Key, out var a) ? a.Name : p.Key) + " = " + p.Value.GetRawText()));
+
+    private static readonly IReadOnlyDictionary<string, JsonElement> NoValues = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+
+    // The object's values by attribute name, for messages.
+    private static string ObjectValues(ModelSnapshot model, IReadOnlyDictionary<string, JsonElement> values) =>
+        values.Count == 0 ? "nothing"
+            : string.Join(", ", values.OrderBy(p => p.Key, StringComparer.Ordinal)
+                .Select(p => (LifecycleBindings.Find(model, p.Key)?.Name ?? p.Key) + " = " + p.Value.GetRawText()));
 
     private static bool SameMap(IReadOnlyDictionary<string, JsonElement> a, IReadOnlyDictionary<string, JsonElement> b) =>
         a.Count == b.Count && a.All(p => b.TryGetValue(p.Key, out var v) && JsonValues.Same(p.Value, v));

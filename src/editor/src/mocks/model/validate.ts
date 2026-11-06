@@ -2,6 +2,7 @@
 // enough for the editor's problems panel, inline save diagnostics and the invalid-save path. The
 // rule ids, severities and messages follow RuleCatalog; line and column are left null.
 import { actorDiagnostics } from "./actorRules";
+import { setDiagnostics } from "./effectRules";
 import type { Diagnostic } from "@/api/types";
 import Ajv2020 from "ajv/dist/2020";
 import { schemaValidator } from "../contract";
@@ -358,6 +359,17 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   if (kind === "actor" && ctx.all) out.push(...actorDiagnostics(json, entry, ctx.all()));
   // MQ9001 initial and MQ9201 (process side), as ProcessRules.cs reports them
   if (kind === "process") out.push(...lifecycleDiagnostics(json, entry, ctx.lookup, stereotypes));
+  // MQ9801 to MQ9803: an action's sets (effectRules.ts); the rules that read a value need the expression engine, which the mock lacks
+  if (kind === "process" && ctx.lookup) {
+    const lookup = ctx.lookup;
+    for (const f of setDiagnostics(
+      json,
+      (id) => lookup(id)?.json,
+      (key) => stereotypes.get(key),
+      [...(ctx.all?.() ?? [])].map((e) => e.json),
+    ))
+      out.push(diag(f.rule, "error", f.message, entry, f.pointer));
+  }
   // MQ9501 guard and action expressions: one JavaScript expression each (parsed, never run)
   if (kind === "process")
     for (const field of ["guards", "actions"] as const)

@@ -180,6 +180,9 @@ internal sealed partial class ResolveRun
             BuildProcess(sources[r.Id], r, uses);
         }
 
+        // An in_state names another process's states, which exist once every process is built.
+        DrainInStateFills();
+
         // Which transitions and states use a library's member changes when another process starts or stops naming it.
         foreach (var guard in _libraryGuards.Values)
             guard.UsedBy = new RList<RTransition>(LibraryUsers(guard).OfType<RTransition>(), [Keys.Referrers(guard.Id)]);
@@ -362,6 +365,156 @@ internal sealed partial class ResolveRun
 
     private IReadOnlyList<RProcessNode> LibraryUsers(RProcessNode member) => _libraryUsers.TryGetValue(member, out var users) ? users : [];
 
+    /// <summary>The <c>in-state</c> nodes waiting for every process to be built, each with the work that fills it.</summary>
+    private readonly List<Action> _inStateFills = [];
+
+    /// <summary>
+    /// What fills an <c>in-state</c> node of a process's guard or set, or of an operation's guard (object-effects-design.md section 6):
+    /// queued, since the node may name the states of a process not built yet. <paramref name="holderDeps"/> takes the binding's keys.
+    /// </summary>
+    private Action<TypedExpr, RExpression> InStateFill(Process? process, Operation? operation, DependencySet holderDeps) =>
+        (typed, node) => _inStateFills.Add(() => FillInState(typed, node, process, operation, holderDeps));
+
+    /// <summary>Fills the queued <c>in-state</c> nodes.</summary>
+    private void DrainInStateFills()
+    {
+        foreach (var fill in _inStateFills)
+            fill();
+        _inStateFills.Clear();
+    }
+
+    /// <summary>
+    /// An <c>in-state</c> node (object-effects-design.md decision 11): its lifecycle, the states it names and the ends of its path, each list
+    /// keyed on the file that decides it; and, when the lifecycle binds one attribute for every entity the node reaches, that attribute
+    /// as its declaring entity (or stereotype) resolves it, its enum, and the stored values for which the node holds. The holder then also
+    /// keys on that entity and that enum.
+    /// </summary>
+    private void FillInState(TypedExpr typed, RExpression node, Process? process, Operation? operation, DependencySet holderDeps)
+    {
+        if (typed.Lifecycle is not { } lifecycleId || Model.Get<Process>(lifecycleId) is not { } lifecycle)
+            return;
+        node.Process = _processes.GetValueOrDefault(lifecycleId);
+        var states = _processLookups.GetValueOrDefault(lifecycleId)?.States;
+        node.States = new RList<RState>(typed.States.Select(s => states?.GetValueOrDefault(s.Id)).OfType<RState>(), [Keys.Element(lifecycleId)]);
+        var endKeys = new DependencySet(Keys);
+        var ends = new List<REnd>();
+        foreach (var navigation in typed.Through)
+        {
+            if (Model.TryGetEntry(navigation.Id, out var relation))
+                endKeys.Element(relation.OwnerId);
+            if (_byId.GetValueOrDefault(navigation.Id) is REnd end)
+                ends.Add(end);
+        }
+
+        node.Through = new RList<REnd>(ends, endKeys.ToList());
+
+        // One binding for every entity the node can reach: the entity at the end of the path, else each subject the site reads.
+        string? boundId = null;
+        foreach (var entity in ReachedEntities(typed, process, operation))
+        {
+            var id = SubjectCoverage.EntryOf(Model, lifecycle, entity)?.BoundAttribute;
+            if (id is null || (boundId is not null && !string.Equals(boundId, id, StringComparison.Ordinal)))
+                return;
+            boundId = id;
+        }
+
+        if (boundId is null || DeclaredAttribute(boundId) is not { } bound)
+            return;
+        if (Model.TryGetEntry(boundId, out var holder))
+            holderDeps.Element(holder.OwnerId);
+        node.BoundAttribute = bound;
+        node.Enum = bound.Type.Enum;
+        if (node.Enum is { } enumType)
+            holderDeps.Element(enumType.Id);
+        node.Codes = InStateCodes(lifecycle, typed, node.Enum);
+    }
+
+    /// <summary>
+    /// The entities an <c>in_state</c> can reach: the one at the end of its path; else the operation's subject; else each subject of the
+    /// process, a stereotype entry's carriers included.
+    /// </summary>
+    private List<Entity> ReachedEntities(TypedExpr typed, Process? process, Operation? operation)
+    {
+        if (typed.Through.Count > 0)
+            return typed.Through[^1].Entity is { } id && Model.Get<Entity>(id) is { } reached ? [reached] : [];
+        if (operation is not null)
+            return operation.Subject is { } subject && Model.Get<Entity>(subject) is { } entity ? [entity] : [];
+        var entities = new List<Entity>();
+        foreach (var entry in process?.Subjects ?? [])
+        {
+            if (entry.Entity is { } id)
+            {
+                if (Model.Get<Entity>(id) is { } entity)
+                    entities.Add(entity);
+            }
+            else
+            {
+                entities.AddRange(SubjectCoverage.Governed(Model, process!, entry));
+            }
+        }
+
+        return entities;
+    }
+
+    /// <summary>
+    /// The stored values for which an <c>in_state</c> holds (object-effects-design.md decision 11), when the stored value decides it: under an
+    /// enum binding, the members of the root-level states named, by name (an enum holds a root-level state); under a code binding whose
+    /// codes form a map, each named state's code, or the codes of the coded states inside it when it has none and every state inside it is
+    /// covered by one, in document order. Empty when a named state's presence cannot be read from the stored value.
+    /// </summary>
+    private static IReadOnlyList<object> InStateCodes(Process lifecycle, TypedExpr typed, REnum? enumType)
+    {
+        var values = new List<object>();
+        if (enumType is not null)
+        {
+            foreach (var state in typed.States)
+            {
+                if (state.Path.Count != 1 || enumType.Members.FirstOrDefault(m => string.Equals(m.Name, state.Path[0], StringComparison.Ordinal)) is not { } member)
+                    return [];
+                if (!values.Contains(member))
+                    values.Add(member);
+            }
+
+            return values;
+        }
+
+        var codes = ProcessCodes.Of(lifecycle);
+        if (!codes.IsMap || !codes.IsSound)
+            return [];
+        var byId = new Dictionary<string, ProcessState>(StringComparer.Ordinal);
+        Index(lifecycle.States);
+        foreach (var state in typed.States)
+        {
+            // A coded state decides itself (a map has no coded state above it); one with no code needs no coded state above it and a code
+            // on every path down from it.
+            if (codes.Find(state.Id) is null && (codes.CodedStateOf(state.Id) is not null || !byId.TryGetValue(state.Id, out var source) || !Covered(source)))
+                return [];
+        }
+
+        foreach (var id in typed.Inside)
+        {
+            if (codes.Find(id) is { } coded && ProcessCodes.Value(coded.State.Code) is { } value && !values.Contains(value))
+                values.Add(value);
+        }
+
+        return values;
+
+        void Index(IReadOnlyList<ProcessState> level)
+        {
+            foreach (var state in level)
+            {
+                byId[state.Id] = state;
+                Index(state.States);
+            }
+        }
+
+        bool Covered(ProcessState state)
+        {
+            var inside = state.States.Where(s => s.Type is not (StateType.History or StateType.Choice)).ToList();
+            return inside.Count > 0 && inside.All(s => codes.Find(s.Id) is not null || Covered(s));
+        }
+    }
+
     private void BuildProcess(Process process, RProcess r, Dictionary<string, ActorUses> uses)
     {
         var chart = StatechartModel.Get(process, null);
@@ -524,7 +677,7 @@ internal sealed partial class ResolveRun
             var guard = Node(new RGuard { Name = source.Name, Expression = source.Expression }, source.Id);
             FillNode(guard, source.DisplayName ?? source.Name, source.Description, source.Stereotypes, source.Properties);
             if (source.Condition is not null)
-                ResolveCondition(guard, source);
+                guard.Condition = BuildCondition(source.Id, ExprSiteKind.Guard, DepsOf(guard));
 
             // A condition that does not type runs no more than a missing one does (simulation asks for an assume value, MQ9306).
             guard.IsStub = guard.Expression is null && guard.Condition is null;
@@ -548,34 +701,35 @@ internal sealed partial class ResolveRun
         }
 
 
-        // A guard's condition (next-phase-3-design.md section 3.1): typed in the process's scope, its paths ending at the context's and
-        // payloads' attributes; what it names beyond the process (an enum, a seed, a constraint) joins the guard's keys. A condition that
-        // reads the object (lifecycle-design.md decision 20) ends its paths there at the declaring entity's own attribute, a base's for an
-        // inherited one, so the condition has one target whichever subject runs; it depends on every subject's entity and its bases, and,
-        // through Names, on the relations it follows and the entities they lead to.
-        void ResolveCondition(RGuard guard, ProcessGuard source)
+        // A guard's condition or a set's value (next-phase-3-design.md section 3.1, object-effects-design.md section 6): typed in the
+        // process's scope, its paths ending at the context's and payloads' attributes; what it names beyond the process (an enum, a seed, a
+        // constraint, an in_state's lifecycle) joins the holder's keys. A tree that reads the object (lifecycle-design.md decision 20) ends
+        // its paths there at the declaring entity's own attribute, a base's for an inherited one, so it has one target whichever subject
+        // runs; it depends on every subject's entity and its bases, and, through Names, on the relations it follows and the entities they
+        // lead to. An in_state node is filled once every process is built, and keys its holder on its binding.
+        RExpression? BuildCondition(string siteId, ExprSiteKind kind, DependencySet holderDeps)
         {
-            if (ExprResolution.Type(Model, process, source.Id) is not { } typed)
-                return;
+            if (ExprResolution.Type(Model, process, siteId) is not { } typed)
+                return null;
             readable ??= r.Context.Concat(events.SelectMany(ev => ev.Payload)).DistinctBy(a => a.Id, StringComparer.Ordinal)
                 .ToDictionary(a => a.Id, StringComparer.Ordinal);
-            var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Guard,
-                ExprResolution.ApiColumns(Model, source.Id, Model.GetDocument(process.Id)?.Path));
+            var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, kind,
+                ExprResolution.ApiColumns(Model, siteId, Model.GetDocument(process.Id)?.Path));
             var readsSubject = ExprSites.ReadsSubject(process, typed.Typed);
             var readsStereotype = false;
-            guard.Condition = ExprResolution.Build(root, m =>
+            var built = ExprResolution.Build(root, m =>
             {
                 if (AttributeTarget(readable, m.Id) is { } target)
                     return target;
                 var declared = readsSubject ? DeclaredAttribute(m.Id) : null;
                 readsStereotype |= declared?.Owner is RStereotypeDefinition;
                 return declared;
-            }, EnumMemberOf);
-            var guardDeps = DepsOf(guard);
+            }, EnumMemberOf, InStateFill(process, null, holderDeps));
+            var guardDeps = holderDeps;
             foreach (var name in ExprResolution.Names(Model, typed.Typed))
                 guardDeps.Element(name);
             if (!readsSubject)
-                return;
+                return built;
             foreach (var entry in process.Subjects)
             {
                 if (entry.Stereotype is { } key && Model.GetStereotype(key) is { } stereotype)
@@ -591,15 +745,46 @@ internal sealed partial class ResolveRun
                         guardDeps.AddRange(CarryingKeys(level));
                 }
             }
+
+            return built;
+        }
+
+        // An action's sets (object-effects-design.md section 6): each attribute as its declaring entity resolves it and each value typed at a
+        // set site. The list keys on the process's file and on the holders of the attributes set, whose names a template prints.
+        RList<RSet> SetsOf(RAction action, ProcessAction source)
+        {
+            var sets = new List<RSet>(source.Sets.Count);
+            var listKeys = new DependencySet(Keys).AddRange(nodeKeys);
+            foreach (var entry in source.Sets)
+            {
+                var holderId = Model.TryGetEntry(entry.Attribute, out var holder) ? holder.OwnerId : null;
+                var set = new RSet { Id = entry.Id, Action = action };
+                var setDeps = DepsOf(set).AddRange(nodeKeys);
+                if (holderId is not null)
+                {
+                    listKeys.Element(holderId);
+                    setDeps.Element(holderId);
+                }
+                if (DeclaredAttribute(entry.Attribute) is not { } attribute || BuildCondition(entry.Id, ExprSiteKind.Set, setDeps) is not { } value)
+                    continue;
+                set.Attribute = attribute;
+                set.Value = value;
+                sets.Add(set);
+                Register(set);
+            }
+
+            return new RList<RSet>(sets, listKeys.ToList());
         }
 
         var actions = new List<RAction>();
         var actionsById = new Dictionary<string, RAction>(StringComparer.Ordinal);
         foreach (var source in process.Actions)
         {
-            var action = Node(new RAction { Name = source.Name, Expression = source.Expression, IsStub = source.Expression is null }, source.Id);
+            var action = Node(new RAction { Name = source.Name, Expression = source.Expression, IsStub = source.Expression is null && source.Sets.Count == 0 }, source.Id);
             FillNode(action, source.DisplayName ?? source.Name, source.Description, source.Stereotypes, source.Properties);
             action.Raises = new RList<REvent>(source.Raises.Select(id => lookup.Events.GetValueOrDefault(id)).OfType<REvent>(), nodeKeys);
+            if (source.Sets.Count > 0)
+                action.Sets = SetsOf(action, source);
             if (actionsById.TryAdd(source.Id, action))
                 actions.Add(action);
             if (process.Use == ProcessUse.Library)
@@ -941,6 +1126,10 @@ internal sealed partial class ResolveRun
             var participants = ResolveParticipants(s, scenario, keys);
             var traced = TraceInputs(scenario);
             var runs = scenario.Participants.Count > 0 ? Model.Get<Process>(scenario.Process) : null;
+            // A process that reads actor() (object-effects-design.md section 7): the identity comes from each step's signer, participant and
+            // actor, and an automatic move's from the system actor, so every step reads the actors as a participant's step does.
+            var readsActor = Model.Get<Process>(scenario.Process) is { } running && ReadsActor(running);
+            Dictionary<string, string>? valueNames = null;
             var steps = new List<RStep>();
             for (var i = 0; i < scenario.Steps.Count; i++)
             {
@@ -999,6 +1188,13 @@ internal sealed partial class ResolveRun
                     }
                 }
 
+                if (readsActor)
+                {
+                    stepDeps.Add(ActorKind);
+                    foreach (var listed in _actorOrder)
+                        stepDeps.Element(listed.Id);
+                }
+
                 foreach (var id in traced)
                     stepDeps.Element(id);
                 if (step.Expect is { } expect)
@@ -1011,6 +1207,18 @@ internal sealed partial class ResolveRun
                         StatePaths = [.. expected.Select(st => st.Path)],
                         Context = ByName(expect.Context, lookup.Context),
                     };
+                    if (expect.Values.Count > 0)
+                    {
+                        // The object's values by name (object-effects-design.md decision 4): the names its attributes' holders give.
+                        valueNames ??= ExprSites.HeldAttributes(Model, Model.Get<Process>(scenario.Process)!).Values
+                            .ToDictionary(a => a.Id, a => a.Name, StringComparer.Ordinal);
+                        r.Expect.Values = ByName(expect.Values, valueNames);
+                        foreach (var id in expect.Values.Keys)
+                        {
+                            if (Model.TryGetEntry(id, out var holder))
+                                stepDeps.Element(holder.OwnerId);
+                        }
+                    }
                 }
 
                 steps.Add(r);
@@ -1064,6 +1272,8 @@ internal sealed partial class ResolveRun
             foreach (var attribute in entity.Attributes)
                 names.TryAdd(attribute.Id, attribute.Name);
             r.Values = ByName(obj.Values, names);
+            if (obj.States.Count > 0)
+                r.States = ObjectStates(obj.States, keys);
             objects.Add(r);
             byId.TryAdd(obj.Id, r);
             Register(r);
@@ -1088,6 +1298,26 @@ internal sealed partial class ResolveRun
 
         s.Objects = new RList<RScenarioObject>(objects, listKeys.ToList());
         s.Subject = scenario.Subject is { } subject ? byId.GetValueOrDefault(subject) : null;
+    }
+
+    /// <summary>
+    /// A scenario object's states in other lifecycles, as given (object-effects-design.md decision 10): a state that does not resolve is left
+    /// out, so the list also keys on each lifecycle a state id names.
+    /// </summary>
+    private RList<RState> ObjectStates(IReadOnlyList<string> ids, IReadOnlyList<string> keys)
+    {
+        var listKeys = new DependencySet(Keys).AddRange(keys);
+        var states = new List<RState>(ids.Count);
+        foreach (var id in ids)
+        {
+            if (!Model.TryGetEntry(id, out var entry))
+                continue;
+            listKeys.Element(entry.OwnerId);
+            if (_processLookups.GetValueOrDefault(entry.OwnerId)?.States.GetValueOrDefault(id) is { } state && !states.Contains(state))
+                states.Add(state);
+        }
+
+        return new RList<RState>(states, listKeys.ToList());
     }
 
     /// <summary>
@@ -1148,15 +1378,18 @@ internal sealed partial class ResolveRun
     /// What a step's replay (<c>step.trace</c>) reads beyond the scenario and its process (lifecycle-design.md decision 22): the subjects'
     /// entities of the process and of each process it invokes whose guard conditions read <c>subject</c> (their defaults are what such a
     /// condition sees for a value the object lacks), the entities of the scenario's objects, all with their bases, which declare the
-    /// attributes and their defaults, and the relations the objects' links go through. In first-seen order, each once; none for a scenario
-    /// without objects whose processes' conditions do not read the object.
+    /// attributes and their defaults, and the relations the objects' links go through. A process that sets the object's data counts as one
+    /// that reads it (object-effects-design.md section 7). Then the lifecycles an <c>in_state</c> of these processes reads, with each one's
+    /// binding: the holder of the bound attribute, whose default stands in for a state not given, and the enum of an enum binding. In
+    /// first-seen order, each once; none for a scenario without objects whose processes neither read nor set the object nor read a lifecycle.
     /// </summary>
     private List<string> TraceInputs(Scenario scenario)
     {
         var ids = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var processes = Model.Get<Process>(scenario.Process) is { } process
-            ? ExprSites.InvokedProcesses(Model, process).Prepend(process).Where(p => ExprSites.SubjectDepth(Model, p) is not null).ToList()
+        var running = Model.Get<Process>(scenario.Process);
+        var processes = running is not null
+            ? ExprSites.InvokedProcesses(Model, running).Prepend(running).Where(p => ExprSites.SubjectDepth(Model, p) is not null || ExprSites.SetsData(p)).ToList()
             : [];
         var entities = processes.SelectMany(p => p.Subjects.Select(x => x.Entity)).Concat(scenario.Objects.Select(o => o.Entity));
         foreach (var start in entities)
@@ -1218,7 +1451,40 @@ internal sealed partial class ResolveRun
                 ids.Add(entry.OwnerId);
         }
 
+        foreach (var lifecycle in running is null ? Enumerable.Empty<Process>() : ExprSites.InvokedProcesses(Model, running).Prepend(running).SelectMany(InStateLifecycles))
+        {
+            if (seen.Add(lifecycle.Id))
+                ids.Add(lifecycle.Id);
+            foreach (var bound in lifecycle.Subjects.Select(s => s.BoundAttribute).OfType<string>())
+            {
+                if (Model.TryGetEntry(bound, out var holder) && seen.Add(holder.OwnerId))
+                    ids.Add(holder.OwnerId);
+                if (DeclaredAttribute(bound)?.Type.Enum is { } enumType && seen.Add(enumType.Id))
+                    ids.Add(enumType.Id);
+            }
+        }
+
         return ids;
+    }
+
+    /// <summary>The trees of a process's guard conditions and set values, in document order: what reads <c>actor()</c> and <c>in_state</c>.</summary>
+    private static IEnumerable<Expr> ConditionTrees(Process process) =>
+        process.Guards.Select(g => g.Condition).OfType<Expr>().Concat(process.Actions.SelectMany(a => a.Sets).Select(s => s.Value));
+
+    /// <summary>Whether a guard condition or set value of the process, or of a process it invokes, reads <c>actor()</c>.</summary>
+    private bool ReadsActor(Process process) =>
+        ExprSites.InvokedProcesses(Model, process).Prepend(process).SelectMany(ConditionTrees).SelectMany(ExprSites.Nodes).Any(n => n.Actor == true);
+
+    /// <summary>The lifecycles the <c>in_state</c> calls of a process's guard conditions and set values name, each once, in document order.</summary>
+    private IEnumerable<Process> InStateLifecycles(Process process)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var node in ConditionTrees(process).SelectMany(ExprSites.Nodes))
+        {
+            if (node.InState is { Count: > 0 } states && Model.TryGetEntry(states[0], out var entry) && seen.Add(entry.OwnerId)
+                && Model.Get<Process>(entry.OwnerId) is { } lifecycle)
+                yield return lifecycle;
+        }
     }
 
     /// <summary>The engine interpreter's result of each step of a scenario that ran (empty when the replay could not start).</summary>

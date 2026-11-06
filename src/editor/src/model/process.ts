@@ -93,11 +93,22 @@ export interface EventDoc {
   description?: unknown;
 }
 
+/** One value an action sets on the object (object-effects-design.md decision 1): an attribute id and a value in the expression language. */
+export interface SetDoc {
+  id: string;
+  /** The id of an attribute every subject of the process holds. */
+  attribute: string;
+  /** A tree as stored, or `{ text }` as written (the server stores text as a tree). */
+  value: Json;
+}
+
 export interface ExpressionDoc {
   id: string;
   name: string;
   displayName?: string;
   expression?: string;
+  /** What an action sets on the object; actions only. */
+  sets?: SetDoc[];
   raises?: string[];
   description?: unknown;
 }
@@ -149,7 +160,7 @@ export interface StepDoc {
   reason?: string;
   payload?: Json;
   assume?: Record<string, boolean>;
-  expect?: { accepted?: boolean; states?: string[]; context?: Json };
+  expect?: { accepted?: boolean; states?: string[]; context?: Json; values?: Json };
   description?: unknown;
 }
 
@@ -193,6 +204,8 @@ export interface ScenarioObjectDoc {
   name: string;
   entity: string;
   values?: Record<string, unknown>;
+  /** The states the object is in, in lifecycles other than the one the scenario runs (object-effects-design.md decision 10). */
+  states?: string[];
   links?: { end: string; object: string }[];
   /** A participant id; only when the subject entry names no owner field (decision 16). */
   owner?: string;
@@ -759,6 +772,8 @@ export interface StepRow {
   assume: string;
   states: string;
   context: string;
+  /** The expected values of the object, by attribute name (read-only: filled by Update from replay). */
+  values: string;
   accepted: boolean;
 }
 
@@ -808,7 +823,12 @@ export function stepNames(process: ProcessDoc | undefined, actorNames: Map<strin
   return { ids, attrs, guards };
 }
 
-export function stepRows(scenario: ScenarioDoc, process: ProcessDoc | undefined, actorNames: Map<string, string>): StepRow[] {
+export function stepRows(
+  scenario: ScenarioDoc,
+  process: ProcessDoc | undefined,
+  actorNames: Map<string, string>,
+  valueNames: Map<string, string> = new Map(),
+): StepRow[] {
   const { ids, attrs, guards } = stepNames(process, actorNames);
   for (const p of scenario.participants ?? []) ids.set(p.id, p.name);
   const name = (id: string | undefined) => (id ? (ids.get(id) ?? "?") : "");
@@ -829,6 +849,7 @@ export function stepRows(scenario: ScenarioDoc, process: ProcessDoc | undefined,
       assume: mapText(s.assume as Json | undefined, guards),
       states: (s.expect?.states ?? []).map(name).join(", "),
       context: mapText(s.expect?.context, attrs),
+      values: mapText(s.expect?.values, valueNames),
       accepted: s.expect?.accepted !== false,
     };
   });

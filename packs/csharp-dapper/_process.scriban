@@ -1,6 +1,15 @@
 {{-
 # Shared functions of the process units. Include after _csharp.scriban; it prints nothing.
 
+# An action's sets in text form, "attribute = value" each, joined by ", " (object-effects-design.md section 9).
+func sets_text(a)
+  $parts = []
+  for $s in a.sets
+    $parts[$parts.size] = $s.attribute.name + " = " + $s.value.text
+  end
+  ret $parts | array.join ", "
+end
+
 # The C# name of a process (and the prefix of its types).
 func p_name(p)
   ret pascal p.name

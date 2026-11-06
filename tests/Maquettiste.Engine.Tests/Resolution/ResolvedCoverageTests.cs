@@ -86,6 +86,7 @@ public sealed class ResolvedCoverageTests
         new("event", "process.json", "$defs/event", typeof(REvent)),
         new("guard", "process.json", "$defs/guard", typeof(RGuard)),
         new("action", "process.json", "$defs/action", typeof(RAction)),
+        new("set", "process.json", "$defs/set", typeof(RSet)),
         new("invoke", "process.json", "$defs/invoke", typeof(RInvoke)),
         new("gate", "process.json", "$defs/gate", typeof(RGate)),
         new("meaning", "process.json", "$defs/meaning", typeof(RMeaning)),

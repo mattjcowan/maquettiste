@@ -1,0 +1,22 @@
+// What an action sets on the object, and the states a scenario object is in (object-effects-design.md section 10).
+export const EFFECT_LABELS = {
+  setsColumn: "Sets",
+  setsHint: "The values this action sets on the object, each worked out from the object and the context as they were when the action started.",
+  none: "(none)",
+  editSets: (action: string) => `Edit what ${action} sets`,
+  title: (action: string) => `Sets of ${action}`,
+  attribute: "Attribute",
+  value: "Value",
+  pickAttribute: "Pick an attribute",
+  addSet: "Add set",
+  removeSet: "Remove set",
+  noSubjects: "The process has no subject, so there is nothing to set.",
+  noAttributes: "No attribute is held by every subject, so there is nothing to set.",
+  valueHint: "An expression: it may read the context, the object under subject, now(), actor() and in_state(...).",
+  valuePlaceholder: "for example actor() or now()",
+  previewType: (type: string, nullable: boolean) => `Type ${type}${nullable ? ", may be null" : ""}`,
+  statesColumn: "States",
+  statesHint: "The states this object is in, in the lifecycles that can govern it. One configuration per lifecycle.",
+  expectedValues: "Expected values",
+  expectedValuesHint: "The values of the object this step changes. Filled by Update from replay.",
+} as const;

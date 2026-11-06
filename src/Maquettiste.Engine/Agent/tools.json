@@ -783,12 +783,12 @@
     {
       "name": "preview_expression",
       "title": "Preview expression",
-      "description": "One expression of the expression language (a check, an entity check, a derived value, a process or operation guard, a constraint's condition), read from one element and never the whole model: {preview: {text, type, nullable, javascript, sql, sqlNote, answer}, diagnostics}. text is printed from current names; type is bool, int16, int32, int64, decimal, double, string, date, time, datetime, datetimeoffset, uuid, json, enum <id> or code <id>; javascript is the function over a row that calls the expression runtime as mq; sql is the PostgreSQL text through the one table the site reads (a table's own columns; for an entity's check or value, its binding's field map onto the binding's table), else null with sqlNote saying why (a guard or a constraint reads no table, another dialect is MQ4056). Preview a stored expression with element (the element, or the check, guard or attribute that holds it) and at (its pointer, /checks/0/condition; optional when the element holds one), or text that is not saved with element, text and site: check, value or guard, or the pointer of a site, whose scope and mode the text takes (a JavaScript guard's /guards/0/condition reads the payloads of the events that use it; use it to rewrite a guard by hand and compare with simulate_process). values (a JSON object of the row by member name: a table's column names, an entity's attribute names, a process's context with the event's payload under event, an operation's input with the subject under subject) adds answer under the site's mode: a check passes on true or unknown, a guard holds on true only, a value answers itself (a decimal as exact text); now() reads the sandbox's fixed clock, 2000-01-01T00:00:00Z. Send numbers with many digits as strings. preview is null when the text does not parse or the expression does not type (MQ3101 to MQ3113 in diagnostics). An unknown element is not-found; a request without element, with both at and text, an unknown site or database, is bad-request. Nothing is written.",
+      "description": "One expression of the expression language (a check, an entity check, a derived value, a process or operation guard, a value an action sets, a constraint's condition), read from one element and never the whole model: {preview: {text, type, nullable, javascript, sql, sqlNote, answer}, diagnostics}. text is printed from current names; type is bool, int16, int32, int64, decimal, double, string, date, time, datetime, datetimeoffset, uuid, json, enum <id> or code <id>; javascript is the function over a row that calls the expression runtime as mq; sql is the PostgreSQL text through the one table the site reads (a table's own columns; for an entity's check or value, its binding's field map onto the binding's table), else null with sqlNote saying why (a guard or a constraint reads no table, another dialect is MQ4056). Preview a stored expression with element (the element, or the check, guard, attribute or set that holds it) and at (its pointer, /checks/0/condition, /actions/0/sets/0/value; optional when the element holds one), or text that is not saved with element, text and site: check, value or guard, or set with element the action and attribute the id of the attribute the value is for (its type must fit, MQ3103), or the pointer of a site, whose scope and mode the text takes (a JavaScript guard's /guards/0/condition reads the payloads of the events that use it; use it to rewrite a guard by hand and compare with simulate_process). values (a JSON object of the row by member name: a table's column names, an entity's attribute names, a process's context with the event's payload under event, an operation's input with the subject under subject) adds answer under the site's mode: a check passes on true or unknown, a guard holds on true only, a value answers itself (a decimal as exact text); now() reads the sandbox's fixed clock, 2000-01-01T00:00:00Z. actor() (who acts) and in_state(object, states) (whether an object is in a state of a lifecycle) preview at guard and set sites only, with no sql and no answer: only a simulation knows who acts and the states of a run. Send numbers with many digits as strings. preview is null when the text does not parse or the expression does not type (MQ3101 to MQ3113 in diagnostics). An unknown element is not-found; a request without element, with both at and text, an unknown site or database, is bad-request. Nothing is written.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "element": {
-            "description": "The id of the element, or of the check, guard or derived attribute, that holds the expression, or on which text is written; required.",
+            "description": "The id of the element, or of the check, guard, derived attribute or set, that holds the expression, or on which text is written; for text at site set, the id of the action; required.",
             "type": [
               "string",
               "null"
@@ -812,7 +812,15 @@
             "default": null
           },
           "site": {
-            "description": "With text: check (a table, stereotype, entity or constraint), value (an entity's derived value) or guard (a process or operation), or the pointer of one of the element's sites.",
+            "description": "With text: check (a table, stereotype, entity or constraint), value (an entity's derived value), guard (a process or operation) or set (a value the action element names sets, with attribute), or the pointer of one of the element's sites.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "attribute": {
+            "description": "With site set: the id of the attribute the value is for, whose type the value must fit (MQ3103).",
             "type": [
               "string",
               "null"

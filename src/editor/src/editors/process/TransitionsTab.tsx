@@ -2,9 +2,11 @@
 // duration, guard, targets, actions, external, gate badge), then the Guards and Actions grids (name, the expression
 // as a one-line code field with its MQ9501 marker, description, used by).
 import { useState } from "react";
-import { ShieldCheck, ShieldOff } from "lucide-react";
+import { Pencil, ShieldCheck, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, SectionTitle } from "@/components/ui/misc";
+import { EFFECT_LABELS as EL } from "@/model/effectLabels";
+import { setsText } from "@/model/effects";
 import {
   addNamed,
   addTransition,
@@ -25,6 +27,7 @@ import {
   type Trigger,
 } from "@/model/process";
 import { Grid, type GridColumn } from "./Grid";
+import { SetsDialog, useSetContext } from "./SetsEditor";
 import { rowProblems, useGridTargets, type ProcessContext } from "./shared";
 import { selectProcessNode, useProcessSelection } from "./selection";
 import { describeVerb, verbGroups } from "@/model/verbList";
@@ -263,6 +266,34 @@ function ExpressionGrid({ pc, field }: { pc: ProcessContext; field: "guards" | "
   const { process, change } = pc;
   const rows = namedRows(process, field);
   const noun = field === "guards" ? "guard" : "action";
+  const setContext = useSetContext(process);
+  const [setsFor, setSetsFor] = useState<string | null>(null);
+  const setsColumn: GridColumn<NamedRow>[] =
+    field === "actions"
+      ? [
+          {
+            key: "sets",
+            label: EL.setsColumn,
+            tooltip: EL.setsHint,
+            kind: "readonly",
+            width: "min-w-48",
+            value: (r) => setsText(process.actions?.find((a) => a.id === r.id)?.sets, setContext.attributeName, setContext.names),
+            render: (r) => {
+              const text = setsText(process.actions?.find((a) => a.id === r.id)?.sets, setContext.attributeName, setContext.names);
+              return (
+                <span className="flex min-w-0 items-center gap-1">
+                  <span className="min-w-0 flex-1 truncate font-mono" title={text}>
+                    {text || EL.none}
+                  </span>
+                  <Button variant="ghost" size="icon-row" label={EL.editSets(r.name)} onClick={() => setSetsFor(r.id)} data-testid={`edit-sets-${r.name}`}>
+                    <Pencil />
+                  </Button>
+                </span>
+              );
+            },
+          },
+        ]
+      : [];
   const columns: GridColumn<NamedRow>[] = [
     { key: "name", label: "Name", kind: "text", width: "min-w-28", value: (r) => r.name },
     {
@@ -279,6 +310,7 @@ function ExpressionGrid({ pc, field }: { pc: ProcessContext; field: "guards" | "
         return found ? { rule: found.rule, message: found.message } : null;
       },
     },
+    ...setsColumn,
     { key: "description", label: "Description", kind: "text", width: "min-w-32", value: (r) => r.description },
     { key: "usedBy", label: "Used by", kind: "readonly", width: "min-w-32", value: (r) => r.usedBy },
   ];
@@ -311,6 +343,24 @@ function ExpressionGrid({ pc, field }: { pc: ProcessContext; field: "guards" | "
         onAdd={(after) => change((p) => void addNamed(p, field, after?.id))}
         onRemove={(row) => change((p) => removeNamed(p, field, row.id))}
       />
+      {setsFor ? (
+        <SetsDialog
+          process={process}
+          action={setsFor}
+          context={setContext}
+          onClose={() => setSetsFor(null)}
+          onApply={(sets) => {
+            const target = setsFor;
+            change((p) => {
+              const a = p.actions?.find((x) => x.id === target);
+              if (!a) return;
+              if (sets.length) a.sets = sets;
+              else delete a.sets;
+            });
+            setSetsFor(null);
+          }}
+        />
+      ) : null}
     </section>
   );
 }

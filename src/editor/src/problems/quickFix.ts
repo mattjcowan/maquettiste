@@ -44,6 +44,10 @@ const EDITOR_FIXES = new Set([
   "MQ9704",
   "MQ9705",
   "MQ9706",
+  "MQ9801",
+  "MQ9802",
+  "MQ9803",
+  "MQ3116",
 ]);
 
 /** True when the diagnostic's rule has a quick fix: a catalog `quickFix` or one the editor builds. */
@@ -132,6 +136,44 @@ function removeAt(json: ModelJson, pointer: string): ModelJson | null {
     return next;
   }
   return null;
+}
+
+/** The pointer of the set a finding sits on or under (`/actions/<n>/sets/<m>`), or null. */
+export const setPointerOf = (pointer: string): string | null => /^(\/actions\/\d+\/sets\/\d+)(\/|$)/.exec(pointer)?.[1] ?? null;
+
+/** Removes the set at `pointer`; an action left with no sets loses the key. */
+function removeSetAt(json: ModelJson, pointer: string): ModelJson | null {
+  const next = removeAt(json, pointer);
+  const list = next ? (atPointer(next, parent(pointer)) as unknown[] | undefined) : undefined;
+  if (next && Array.isArray(list) && !list.length) delete (atPointer(next, parent(parent(pointer))) as Json)[last(parent(pointer))];
+  return next;
+}
+
+/**
+ * Removes the `in_state` call a finding names (MQ3116): the whole condition or value when it is the root (a set goes with
+ * its value), else the argument of an `and` or `or` it sits in, which collapses to its one remaining argument. A call inside
+ * another operator has no safe removal: null.
+ */
+export function removeCall(json: ModelJson, pointer: string): ModelJson | null {
+  const next = clone(json);
+  const at = pointer.replace(/\/$/, "");
+  const node = atPointer(next, at) as Json | undefined;
+  if (!node || typeof node !== "object" || !("inState" in node)) return null;
+  const set = /^(\/actions\/\d+\/sets\/\d+)\/value$/.exec(at);
+  if (set) return removeSetAt(json, set[1]);
+  if (/^\/guards\/\d+\/condition$/.test(at)) return removeAt(json, at);
+  const m = /^(.*)\/args\/(\d+)$/.exec(at);
+  if (!m) return null;
+  const owner = atPointer(next, m[1]) as Json | undefined;
+  if (!owner || (owner.op !== "and" && owner.op !== "or") || !Array.isArray(owner.args)) return null;
+  (owner.args as unknown[]).splice(Number(m[2]), 1);
+  if ((owner.args as unknown[]).length === 1) {
+    // Replace the operator by its one argument.
+    const only = (owner.args as Json[])[0];
+    for (const k of Object.keys(owner)) delete owner[k];
+    Object.assign(owner, only);
+  } else if (!(owner.args as unknown[]).length) return removeAt(json, m[1]);
+  return next;
 }
 
 /** Adds `value` to the string list at `pointer` (created when absent); null when it is already there. */
@@ -255,6 +297,20 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
       const json = removeAt(element, pointer);
       const name = str((atPointer(element, pointer) as Json | undefined)?.name);
       return json ? { kind: "update", id, json, label: name ? `Remove ${name}` : "Remove it" } : null;
+    }
+    case "MQ9801":
+    case "MQ9802":
+    case "MQ9803": {
+      // A finding of a set names it: the second set of one attribute, or the set whose attribute cannot be set. Remove the set.
+      const at = setPointerOf(pointer);
+      if (!at || element.kind !== "process") return null;
+      const json = removeSetAt(element, at);
+      return json ? { kind: "update", id, json, label: "Remove the set" } : null;
+    }
+    case "MQ3116": {
+      if (element.kind !== "process") return null;
+      const json = removeCall(element, pointer);
+      return json ? { kind: "update", id, json, label: "Remove the in_state call" } : null;
     }
     case "MQ9016": {
       if (!pointer.endsWith("/element")) return null;
