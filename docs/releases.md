@@ -27,7 +27,7 @@ one.
 - **The schema copies and the modeling skill change.** Update the copies of the schemas and the `maquettiste-modeling` skill
   that your repository holds.
 
-## 0.13.2 (unreleased)
+## 0.13.2 (2026-11-06)
 
 - **`sql-ddl` no longer writes `bigint` on Oracle.** Oracle has no such type. The lifecycle history table's `sequence` column,
   the optional `state_code` column and a reference type's 64-bit integer codes now use `NUMBER(19)` there. Other databases

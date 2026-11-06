@@ -302,6 +302,12 @@ public sealed class ParticipantTests
         Assert.Equal("/objects/0/owner", Problem(People, Flow, $$""","owner":"{{OApollo}}" """));
         Assert.Equal("/steps/0/participant", Problem(People, $$"""[{"id":"01JSTP00000000000000000101","event":"{{R.SubmitEvent}}","participant":"{{OPat}}"}]"""));
         Assert.Equal("/steps/0/actor", Problem(People, $$"""[{"id":"01JSTP00000000000000000101","event":"{{R.SubmitEvent}}","participant":"{{PDan}}","actor":"{{R.Owner}}"}]"""));
+        // A role held only within a context, where the step needs it held without one, is said plainly.
+        var within = Replay(model, Scenario(One($$"""{"id":"{{PBea}}","name":"bea","holds":[{"id":"{{HAnn}}","actor":"{{R.Reviewer}}","within":"{{OApollo}}"}]}"""),
+            $$"""[{"id":"01JSTP00000000000000000101","event":"{{R.SubmitEvent}}","participant":"{{PBea}}","actor":"{{R.Reviewer}}"}]"""));
+        var plain = Assert.Single(within.Diagnostics, d => d.Rule == "MQ9305" && d.JsonPointer == "/steps/0/actor");
+        Assert.Contains("participant 'bea' holds Reviewer only within ", plain.Message, StringComparison.Ordinal);
+        Assert.Contains("this step needs Reviewer held without a context. Hold it without a context too, or ", plain.Message, StringComparison.Ordinal);
         // With a participant, an actor the participant satisfies is accepted.
         Assert.Equal("", Problem(People, $$"""[{"id":"01JSTP00000000000000000101","event":"{{R.SubmitEvent}}","participant":"{{PBea}}","actor":"{{R.Owner}}"}]"""));
     }

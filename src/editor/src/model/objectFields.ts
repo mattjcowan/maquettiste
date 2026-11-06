@@ -103,9 +103,9 @@ export function commonFields(lists: readonly (readonly ObjectField[])[]): Object
 /** Whether a field can be where one actor is named: single-valued, and an attribute that is no value object, or a to-one end. */
 export const holdsOneActor = (f: ObjectField): boolean => !f.many && !f.valueObject;
 
-const PERSON_TYPES = new Set(["string", "text", "guid", "int16", "int32", "int64"]);
+const PERSON_TYPES = new Set(["string", "text", "guid", "uuid", "int16", "int32", "int64"]);
 
-/** Whether a field can name a person: a to-one end, or a single-valued attribute typed string, text, guid or a whole number. Guidance only. */
+/** Whether a field can name a person: a to-one end, or a single-valued attribute typed string, text, guid, uuid or a whole number. Guidance only. */
 export const canNamePerson = (f: ObjectField): boolean => holdsOneActor(f) && (f.kind === "end" || (!!f.scalar && PERSON_TYPES.has(f.scalar.toLowerCase())));
 
 /** The fields an Owner picker offers: those that can name a person, and no attribute of a stereotype (MQ9606). */

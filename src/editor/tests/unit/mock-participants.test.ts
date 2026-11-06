@@ -84,6 +84,13 @@ describe("the stepper's participants", () => {
   it("checks a given actor against the participant and an unknown participant (MQ9305)", () => {
     const wrong = run([{ event: "submit", participant: "pBob", actor: "Ann" }]).trace[1];
     expect(wrong.diagnostics[0]).toMatchObject({ rule: "MQ9305", message: PARTICIPANT_TEXTS.actorNotSatisfied("bob", "Ann") });
+    // A role held only within a context, named where the step needs it held without one: say so plainly.
+    const only = run([{ event: "submit", participant: "pWithin", actor: "Reviewer" }], { objects: [{ id: "o1", name: "request1", entity: "E" }] }).trace[1];
+    expect(only.diagnostics[0]).toMatchObject({
+      rule: "MQ9305",
+      message:
+        "participant 'within' holds Reviewer only within request1; this step needs Reviewer held without a context. Hold it without a context too, or name an actor taken from the object for the members of Reviewer within request1.",
+    });
     const unknown = run([{ event: "submit", participant: "nope" }]).trace[1];
     expect(unknown.diagnostics[0]).toMatchObject({ rule: "MQ9305", message: PARTICIPANT_TEXTS.unknown("nope") });
     expect(unknown.incomplete).toBe(true);

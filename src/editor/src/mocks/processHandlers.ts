@@ -236,6 +236,12 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       actorName: (id: string) => actors.find((a) => a.id === id)?.json.name as string | undefined,
       membership: new Membership(actors),
       ownerActors: new Set(actors.filter((a) => (a.json.relative as Json | undefined)?.owner === true).map((a) => a.id)),
+      membersActors: new Map(
+        actors.flatMap((a) => {
+          const rel = a.json.relative as Json | undefined;
+          return typeof rel?.membersOf === "string" ? [[rel.membersOf, String(a.json.name ?? a.id)] as [string, string]] : [];
+        }),
+      ),
     };
   };
   // A scenario with participants is replayed for real: a step refused while it expects to be accepted (or the reverse) fails
