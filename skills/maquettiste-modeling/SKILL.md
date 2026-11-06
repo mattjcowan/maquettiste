@@ -183,6 +183,10 @@ must equal its bound enum's members, in order (MQ9203).
   and cover every state (MQ9210 warns). `sync-codes` (`id`, `entity`, `attribute`, optional `stateCodes` by state id) proposes
   codes from the attribute's type and binds it; dry run first. Several instances of one lifecycle per object: model the object
   as a detail entity and make it the subject.
+- A guard `condition` may read `subject.<attribute>` and to-one navigations (not the bound attribute or a stereotype's; MQ3102);
+  a missing value reads as default, then null, and only true passes. A scenario's `objects` (`id`, `name`, `entity`, `values`
+  by attribute id, `links` of `{ end, object }`) and `subject` (required with objects) give it something to read; `simulate_process`
+  and `record_scenario` take both. `csharp-dapper` leaves such a guard as a partial method.
 
 - Tools: `simulate_process` runs inputs through the engine's interpreter and keeps no state (send the whole input list each
   time; `enabled` says what can happen next); `record_scenario` saves a run as a scenario with every step's expectations

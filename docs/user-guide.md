@@ -1919,6 +1919,44 @@ Otherwise it takes a code equal to its name (ignoring case, `_` and `-`), then t
 ambiguous match is left unmatched and listed. It creates no rows. **Sync enum** takes an optional `entity` too, the subject whose enum to sync. Without it, it
 uses the lifecycle's one enum binding. A dry run lists the states that found no code.
 
+**Scenario objects.** A scenario may name the objects its run is about. `objects` is its cast. Each object has an `id`, a `name`,
+an `entity`, `values` keyed by attribute id and `links` by relation end. `subject` names the object the process runs for, and
+is required once there are objects. Here an order and its customer, linked by the order's relation end:
+
+```json
+"objects": [
+  { "id": "…cust", "name": "customer", "entity": "…Customer", "values": { "…Customer.since": "2024-03-01" } },
+  { "id": "…ord", "name": "order", "entity": "…Order", "values": { "…Order.total": 120 },
+    "links": [ { "end": "…Order.customer", "object": "…cust" } ] }
+],
+"subject": "…ord"
+```
+
+- Objects are parts of the scenario. Delete and **Find usages** see them, and a scenario's name forms reach them as
+  `<scenario>.<object>`.
+- Deleting an object's entity removes the object and its links. If that leaves `subject` pointing at nothing, the delete is
+  refused, unless the scenario goes too.
+- A value you do not give reads as the attribute's default, then null. A value that does not fit its attribute is a replay
+  finding (MQ9305), not a refused save.
+- An invoked sub-process sees no object.
+- Changing an object's entity, its base entities or a link's relation replays the scenario.
+
+**Guards that read the object.** A guard `condition` may read `subject.<attribute>` and to-one navigations such as
+`subject.customer.since`. Which attributes are in scope depends on the subjects:
+
+- With one subject, its own and inherited attributes.
+- With several subjects, what every subject holds under one id: the attributes of a base entity they all derive from.
+- Out of scope: the bound attribute, since the chart already knows the state, and a stereotype's attributes. Naming one is
+  MQ3102. If a context attribute is named `subject`, that attribute keeps its meaning and the object is not read.
+
+A path ends at the attribute that declares it. In simulation and replay a missing value reads as the default, then null, and
+only true passes. With no objects, a guard that reads the object sees defaults, then null. `csharp-dapper` cannot translate such
+a guard. It writes a partial method and puts the condition in a comment for a person to write.
+
+**Simulating and recording with objects.** `simulate_process`, `record_scenario` and the CLI take `objects` and `subject`.
+Simulating a saved scenario uses its objects. The simulation panel shows a loaded scenario's cast as a read-only list, and
+recording saves it back into the new scenario.
+
 ### The process editor
 
 A process opens in a document tab with its top controls: name and domain, **Use**, **Subject**, **Bound attribute**
@@ -2107,7 +2145,8 @@ language](#expressions), never both (MQ3107); a guard with neither stays a stub.
 attributes by name and a payload attribute as `event.amount`, which every event whose transitions use the guard must
 have (MQ3102). `now()` reads the simulation's clock, so replays stay the same. Only true passes: an unknown answer
 fails the guard, and MQ9504 never occurs for it. The simulation panel, scenario replay and **Verify scenarios**
-evaluate it the same way, and the C# example pack renders it in the handlers.
+evaluate it the same way, and the C# example pack renders it in the handlers. A lifecycle's guard may also read the object
+as `subject.<attribute>`: see [Lifecycle subjects and state codes](#lifecycle-subjects-and-state-codes).
 
 Nothing converts the JavaScript guards a model already holds: a rewrite changes what a guard answers for null values
 and for JavaScript's loose rules, so a person decides each one. To rewrite one by hand:
