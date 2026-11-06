@@ -282,10 +282,6 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 - **The store rescans every file per request.** Reading the model snapshot stats every model file each time (about
   150 ms on 40,000 files); a file watcher or a cheaper change check would remove most of a warm preview's time.
 - **Oracle DDL against a server.** Every other dialect ran against a real server in 0.6.0; Oracle did not.
-- **`sql-ddl` writes `bigint` on Oracle for 64-bit integers.** Oracle has no `bigint`; the lifecycle history table's `sequence`
-  column has it, and so does the optional `state_code` column of 4.1. Found by the review of the 4.1 output; older than 4.1.
-- **"Acts in N processes" can read low right after a save.** The Processes explorer counts an actor's processes from the
-  model index, so the number can lag until the index refreshes. Found when the explorer was built (0.13.1).
 - **Other lifecycle capabilities that may come after the items above.** Per-state access, required fields on entry and
   exit (partly 4.4), a reject path, observers and acknowledgers. Listed as directions to confirm in
   [lifecycle-capabilities.md](lifecycle-capabilities.md#what-this-changes-for-item-41).

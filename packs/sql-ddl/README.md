@@ -567,7 +567,7 @@ migrations: they are plain `CREATE TABLE` scripts for a first deployment, owned 
 With `"lifecycleColumns": true` as well, the instances table of each lifecycle (a process whose `use` is `lifecycle`) ends with
 three nullable columns: `subject_type` (the subject entity's name), `subject_id` (its key as text) and `state_code` (the code of
 the current state). `state_code` is there only when the states' codes form a map; it is a string column for string codes and a
-`bigint` (SQLite `INTEGER`) for integer codes. Being a parameter, it never changes a table that exists: a team that turns it on
+`bigint` (SQLite `INTEGER`, Oracle `NUMBER(19)`) for integer codes. Being a parameter, it never changes a table that exists: a team that turns it on
 for tables it already has adds the columns by hand, at the end, as the script lists them.
 
 ## Lifecycle checks
