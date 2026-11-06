@@ -263,6 +263,8 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 - **The store rescans every file per request.** Reading the model snapshot stats every model file each time (about
   150 ms on 40,000 files); a file watcher or a cheaper change check would remove most of a warm preview's time.
 - **Oracle DDL against a server.** Every other dialect ran against a real server in 0.6.0; Oracle did not.
+- **`sql-ddl` writes `bigint` on Oracle for 64-bit integers.** Oracle has no `bigint`; the lifecycle history table's `sequence`
+  column has it, and so does the optional `state_code` column of 4.1. Found by the review of the 4.1 output; older than 4.1.
 - **Lock files.** The project-reference ranges in `packages.lock.json` still read `1.0.0-alpha.1` (harmless metadata
   from the first restore). Refreshing them would mean a release script that re-evaluates the locks at every version
   bump.
