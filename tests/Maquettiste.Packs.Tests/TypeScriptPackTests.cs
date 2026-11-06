@@ -309,6 +309,62 @@ public sealed class TypeScriptPackTests
         Assert.True(run.ExitCode == 0 && run.Output.Contains("# pass 1", StringComparison.Ordinal), "node --test failed:\n" + run.Output);
     }
 
+    [Fact]
+    public async Task Actor_types_and_membership_reach_the_actors_module_and_the_interpreter_checks()
+    {
+        // actors-design.md section 8, over csharp-dapper's actors case: the new type values, each actor's memberships at any depth, and
+        // the interpreter's actor checks calling allows and accepts; then, where node and the compiler are available, it type-checks
+        // and members act for their holders.
+        using var repo = PackRepo.Actors(typeScript: true);
+        await repo.GenerateCleanlyAsync();
+        var actors = repo.Read("web/processes/actors.ts");
+        Assert.Contains("  Plant: { id: '01JAC000000000000000000K02', type: 'organization' },\n", actors, StringComparison.Ordinal);
+        Assert.Contains("  Automatic: { id: '01JAC000000000000000000K06', type: 'system' },\n", actors, StringComparison.Ordinal);
+        Assert.Contains("  Pat: ['Approver', 'Plant', 'Seniors'],\n", actors, StringComparison.Ordinal);
+        Assert.Contains("export function allows(list: readonly string[], actor: string): boolean {", actors, StringComparison.Ordinal);
+        var interpreter = repo.Read("web/runtime/statechart.gen.ts");
+        Assert.Contains("import { accepts, allows } from '../processes/actors.ts';\n", interpreter, StringComparison.Ordinal);
+        Assert.Contains("!allows(ev.actors, actor)", interpreter, StringComparison.Ordinal);
+        Assert.Contains("!allows(def.actors, actor)", interpreter, StringComparison.Ordinal);
+        Assert.Contains("!allows(gate.signers, actor)", interpreter, StringComparison.Ordinal);
+        Assert.Contains("all.some((s) => accepts(a, s.actor))", interpreter, StringComparison.Ordinal);
+        Assert.DoesNotContain(".includes(actor)", interpreter, StringComparison.Ordinal);
+
+        // Without memberships both files are as before.
+        using (var plain = PackRepo.Actors(typeScript: true))
+        {
+            foreach (var name in new[] { "approver", "seniors", "pat", "automatic" })
+                plain.EditJson($".maquettiste/model/actors/{name}.json", a => a.AsObject().Remove("memberOf"));
+            plain.EditJson(".maquettiste/model/processes/request-flow.json", p => p["transitions"]![2]!["gate"]!.AsObject().Remove("requiredActors"));
+            await plain.GenerateCleanlyAsync();
+            Assert.DoesNotContain("memberOf", plain.Read("web/processes/actors.ts"), StringComparison.Ordinal);
+            Assert.Contains("!ev.actors.includes(actor)", plain.Read("web/runtime/statechart.gen.ts"), StringComparison.Ordinal);
+            Assert.DoesNotContain("allows", plain.Read("web/runtime/statechart.gen.ts"), StringComparison.Ordinal);
+        }
+
+        var tools = await ToolsOrSkipAsync();
+        WriteProject(repo, tools);
+        repo.Write("web/actors.test.ts", """
+            import { test } from 'node:test';
+            import assert from 'node:assert/strict';
+            import { accepts, allows } from './processes/actors.ts';
+
+            test('members act for their holders at any depth', () => {
+              assert.equal(allows(['Plant'], 'Pat'), true);
+              assert.equal(accepts('Approver', 'Seniors'), true);
+              assert.equal(allows(['Seniors'], 'Approver'), false);
+              assert.equal(allows(['Plant', 'Scheduler'], 'Clerk'), false);
+              assert.equal(accepts('Scheduler', 'Automatic'), true);
+              assert.equal(accepts('Plant', 'constructor'), false);
+            });
+
+            """);
+        var tsc = await ProcessRunner.RunAsync(tools.Node, [tools.Tsc, "--noEmit", "-p", "tsconfig.json"], repo.Repo.RepoRoot, TimeSpan.FromMinutes(3));
+        Assert.True(tsc.ExitCode == 0, "tsc --noEmit failed:\n" + tsc.Output);
+        var run = await RunScenarioTestsAsync(repo, tools, "web/actors.test.ts");
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("# pass 1", StringComparison.Ordinal), "node --test failed:\n" + run.Output);
+    }
+
     private sealed record Tools(string Node, string Tsc, string TypeRoots, bool StripFlag);
 
     private static List<string> Listing(PackRepo repo)

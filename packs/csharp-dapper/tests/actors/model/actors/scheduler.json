@@ -1,0 +1,7 @@
+{
+  "kind": "actor",
+  "id": "01JAC000000000000000000K07",
+  "name": "Scheduler",
+  "type": "role",
+  "description": "Runs the timed clean-up."
+}

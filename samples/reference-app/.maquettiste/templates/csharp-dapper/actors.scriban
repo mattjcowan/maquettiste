@@ -1,8 +1,21 @@
 {{-
-# The actors of the model as constants, with their type, and each process event's allowed actors.
+# The actors of the model as constants, with their type, and each process event's allowed actors. The enum gains Group,
+# Organization and System only when an actor has that type, and the memberships and their checks are written only when an actor
+# is a member of another (actors-design.md decisions 25 and 26), so a model without them keeps its file byte for byte.
 include "_csharp.scriban"
 include "_process.scriban"
 if model.processes.size > 0
+used_types = {}
+for a in model.actors
+  used_types[a.type] = true
+end
+# Whether any actor is a member of another (actors-design.md decision 25): only then do actor checks follow membership.
+has_members = false
+for a in model.actors
+  if a.member_of.size > 0
+    has_members = true
+  end
+end
 -}}
 {{- capture content -}}
 {{ header() }}
@@ -22,6 +35,21 @@ public enum ActorType
 
     /// <summary>Another system.</summary>
     ExternalSystem,
+{{- if used_types["group"] }}
+
+    /// <summary>A set of actors, such as a team or a shift.</summary>
+    Group,
+{{- end }}
+{{- if used_types["organization"] }}
+
+    /// <summary>A unit with a place in a hierarchy, such as a department or a supplier.</summary>
+    Organization,
+{{- end }}
+{{- if used_types["system"] }}
+
+    /// <summary>The system itself, for what it does automatically.</summary>
+    System,
+{{- end }}
 }
 
 /// <summary>The actors of the model: the names envelopes carry, their types, and who may raise each process event.</summary>
@@ -49,6 +77,57 @@ public static partial class Actors
 {{- end }}
         _ => throw new ArgumentOutOfRangeException(nameof(actor), actor, "Not an actor of the model."),
     };
+{{- if has_members }}
+
+    /// <summary>
+    /// The roles, groups and organizations each actor is a member of, at any depth, by name; an actor that is a member of none is left
+    /// out. An actor in a list stands for itself and all its members.
+    /// </summary>
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>> MemberOf { get; } = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+    {
+{{- for a in model.actors }}
+{{- if a.all_member_of.size > 0 }}
+        [{{ pascal a.name }}] = [{{ for m in a.all_member_of }}{{ for.first ? "" : ", " }}{{ pascal m.name }}{{ end }}],
+{{- end }}
+{{- end }}
+    };
+
+    /// <summary>Whether an acting actor satisfies a listed one: it is that actor or one of its members at any depth.</summary>
+    /// <param name="listed">The listed actor's name.</param>
+    /// <param name="actor">The acting actor's name.</param>
+    /// <returns>Whether it does.</returns>
+    public static bool Accepts(string listed, string actor)
+    {
+        if (string.Equals(listed, actor, StringComparison.Ordinal))
+            return true;
+        if (MemberOf.TryGetValue(actor, out var holders))
+        {
+            foreach (var holder in holders)
+            {
+                if (string.Equals(holder, listed, StringComparison.Ordinal))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Whether an acting actor satisfies a list of actors: one of them is it or holds it as a member at any depth.</summary>
+    /// <param name="list">The listed actors' names.</param>
+    /// <param name="actor">The acting actor's name.</param>
+    /// <returns>Whether it does.</returns>
+    public static bool Allows(IReadOnlyList<string> list, string actor)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        foreach (var listed in list)
+        {
+            if (Accepts(listed, actor))
+                return true;
+        }
+
+        return false;
+    }
+{{- end }}
 
     /// <summary>The actors that may raise each process event (empty: any actor).</summary>
     public static class Events

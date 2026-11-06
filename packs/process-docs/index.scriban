@@ -24,7 +24,7 @@ if model.processes.size > 0 || model.actors.size > 0
 | Actor | Type | Processes |
 | --- | --- | --- |
 {{- for a in model.actors }}
-| {{ actor_link(a, "") }} | {{ a.type }} | {{ for p in a.processes }}{{ for.first ? "" : ", " }}{{ process_link(p, "") }}{{ end }} |
+| {{ actor_link(a, "") }} | {{ actor_type(a) }} | {{ for p in a.processes }}{{ for.first ? "" : ", " }}{{ process_link(p, "") }}{{ end }} |
 {{- end }}
 {{- end }}
 {{ end -}}

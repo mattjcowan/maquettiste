@@ -1,8 +1,16 @@
 {{-
 # actors: <processFolder>/actors.ts, one constant per actor with its type, and each event's allowed actors by command type.
-# Written only when the model has actors.
+# Written only when the model has actors. When an actor is a member of another, it also holds each actor's memberships and the
+# accepts and allows checks the interpreter calls (actors-design.md section 8); without memberships the file is as before.
 include "_process.scriban"
 if model.actors.size > 0
+# Whether any actor is a member of another (actors-design.md decision 25): only then do actor checks follow membership.
+has_members = false
+for a in model.actors
+  if a.member_of.size > 0
+    has_members = true
+  end
+end
 -}}
 {{- capture content -}}
 {{ banner "//" }}
@@ -27,6 +35,29 @@ export const eventActors = {
 {{- end }}
 {{- end }}
 } as const satisfies Readonly<Record<string, readonly ActorName[]>>;
+{{- if has_members }}
+
+/** The roles, groups and organizations each actor is a member of, at any depth (an actor that is a member of none is left out). */
+export const memberOf: Readonly<Partial<Record<ActorName, readonly ActorName[]>>> = {
+{{- for a in model.actors }}
+{{- if a.all_member_of.size > 0 }}
+  {{ a.name }}: {{ str_list(names(a.all_member_of)) }},
+{{- end }}
+{{- end }}
+};
+
+/** Whether an acting actor satisfies a listed one: it is that actor or one of its members at any depth. */
+export function accepts(listed: string, actor: string): boolean {
+  if (listed === actor) return true;
+  const holders: readonly string[] = Object.hasOwn(memberOf, actor) ? (memberOf[actor as ActorName] ?? []) : [];
+  return holders.includes(listed);
+}
+
+/** Whether an acting actor satisfies a list of actors: one of them is it or holds it as a member at any depth. */
+export function allows(list: readonly string[], actor: string): boolean {
+  return list.some((listed) => accepts(listed, actor));
+}
+{{- end }}
 {{ end -}}
 {{- file (pack.params.processFolder + "/actors.ts") content -}}
 {{- end -}}

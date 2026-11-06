@@ -1,0 +1,10 @@
+{
+  "kind": "actor",
+  "id": "01JAC000000000000000000K03",
+  "name": "Approver",
+  "type": "role",
+  "memberOf": [
+    "01JAC000000000000000000K02"
+  ],
+  "description": "Approves requests for the plant."
+}

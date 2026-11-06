@@ -985,14 +985,13 @@ public sealed class StatechartInterpreter
             Configuration, Snapshot(), changed, ClockText(), _root.Done, diagnostics) { Actor = MoveActor() };
     }
 
-    // The actor of the move (actors-design.md decision 2): the input's own; else the system actor for a move no one sends (the initial
-    // entry, a time step, a finished invoke that is not a human task); else none, as for an event or a human task without an actor.
+    // The actor of the move (actors-design.md decision 2), named only when the system actor made it: a move no one sends (the initial
+    // entry, a time step, a finished invoke that is not a human task) whose input names no actor, in a project with exactly one system
+    // actor. A step's own actor is already in its input, so the trace leaves it out and answers stay as they were without a system actor.
     private string? MoveActor()
     {
         var input = _scope.Input;
-        if (input?.Actor is { } actor)
-            return actor;
-        if (_options.SystemActor is not { } system)
+        if (_options.SystemActor is not { } system || input?.Actor is not null)
             return null;
         return input is null || input.Input == StepInput.Time || (input.Input is StepInput.InvokeDone or StepInput.InvokeError && !_scope.HumanTask)
             ? system

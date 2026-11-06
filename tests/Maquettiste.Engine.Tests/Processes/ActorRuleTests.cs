@@ -193,12 +193,16 @@ public sealed class ActorRuleTests
         Assert.DoesNotContain("memberOf", records, StringComparison.Ordinal);
         Assert.Contains("\"type\":\"external-system\"", records, StringComparison.Ordinal);
 
-        // A step that names no actor has none in its trace, and the trace's JSON has no actor member of its own.
-        var traces = ActorKit.Run(model, ActorKit.Step(ActorKit.Ship), ActorKit.Step(ActorKit.Submit, ActorKit.Clerk), ActorKit.Step(input: StepInput.Time, after: "P2D"));
-        Assert.All(traces.Where(t => t.Input?.Actor is null), t => Assert.Null(t.Actor));
-        using var start = JsonDocument.Parse(JsonSerializer.Serialize(traces[0], EngineJson.Options));
-        Assert.False(start.RootElement.TryGetProperty("actor", out var none), none.ToString());
-        Assert.Equal(ActorKit.Clerk, traces[2].Actor);
+        // Without a system actor no trace names an actor, not even a step that names its own, so simulate answers keep their shape.
+        var traces = ActorKit.Run(model, ActorKit.Step(ActorKit.Ship), ActorKit.Step(ActorKit.Submit, ActorKit.Clerk), ActorKit.Step(input: StepInput.Time, after: "P2D"),
+            ActorKit.Step(input: StepInput.InvokeDone, invoke: ActorKit.ManagerReview, actor: ActorKit.Manager));
+        Assert.True(traces[2].Accepted);
+        Assert.All(traces, t => Assert.Null(t.Actor));
+        foreach (var trace in traces)
+        {
+            using var json = JsonDocument.Parse(JsonSerializer.Serialize(trace, EngineJson.Options));
+            Assert.False(json.RootElement.TryGetProperty("actor", out var none), none.ToString());
+        }
     }
 }
 
@@ -221,12 +225,13 @@ public sealed class SystemActorTests
 
         Assert.Equal(ActorKit.Auto, traces[0].Actor); // the initial entry
         Assert.Null(traces[1].Actor); // an event no actor sent
-        Assert.Equal(ActorKit.Clerk, traces[2].Actor);
+        Assert.Null(traces[2].Actor); // the step's own actor is in its input, not repeated
         Assert.Equal(ActorKit.Auto, traces[3].Actor); // the timer
         Assert.Equal([ActorKit.Escalated], traces[3].Configuration);
         Assert.Null(traces[4].Actor); // a human task is never completed by the system
         Assert.Equal(Refusals.Actor, traces[4].Refusal);
-        Assert.Equal(ActorKit.Manager, traces[5].Actor);
+        Assert.True(traces[5].Accepted);
+        Assert.Null(traces[5].Actor);
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(traces[3], EngineJson.Options));
         Assert.Equal(ActorKit.Auto, json.RootElement.GetProperty("actor").GetString());
     }

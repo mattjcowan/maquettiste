@@ -192,14 +192,14 @@ describe("the mock's membership in the stepper", () => {
     expect(simulate(doc, null, steps).trace[2].refusal).toBe("actor");
   });
 
-  it("puts the actor on each trace entry: the input's, else the system actor for the initial entry and time steps", () => {
+  it("names the system actor on the trace entries it moved: the initial entry and time steps, never an input's own actor", () => {
     const steps = [
       { event: "go", actor: "Zed" },
       { event: "go", actor: "Ann", signer: "ann" },
       { input: "time", after: "PT2H" },
     ];
     const result = simulate(doc, null, steps, { membership: members });
-    expect(result.trace.map((t) => t.actor)).toEqual(["Auto", "Zed", "Ann", "Auto"]);
+    expect(result.trace.map((t) => t.actor)).toEqual(["Auto", undefined, undefined, "Auto"]);
     // An event with no actor has none, and a project without exactly one system actor has none for the others.
     expect(simulate(doc, null, [{ event: "go" }], { membership: members }).trace[1].actor).toBeUndefined();
     expect(simulate(doc, null, [{ input: "time", after: "PT2H" }]).trace.map((t) => t.actor)).toEqual([undefined, undefined]);

@@ -1,0 +1,135 @@
+{
+  "kind": "process",
+  "id": "01JAC000000000000000000Q01",
+  "name": "RequestFlow",
+  "displayName": "Request flow",
+  "package": "01JAC000000000000000000P01",
+  "description": "A request reviewed and approved by the plant's approvers.",
+  "events": [
+    {
+      "id": "01JAC000000000000000000X01",
+      "name": "submit",
+      "displayName": "Submit",
+      "actors": [
+        "01JAC000000000000000000K01"
+      ]
+    },
+    {
+      "id": "01JAC000000000000000000X02",
+      "name": "approve",
+      "displayName": "Approve",
+      "actors": [
+        "01JAC000000000000000000K02"
+      ]
+    },
+    {
+      "id": "01JAC000000000000000000X03",
+      "name": "cancel",
+      "displayName": "Cancel",
+      "actors": [
+        "01JAC000000000000000000K07"
+      ]
+    }
+  ],
+  "states": [
+    {
+      "id": "01JAC000000000000000000S01",
+      "name": "Draft"
+    },
+    {
+      "id": "01JAC000000000000000000S02",
+      "name": "Reviewing",
+      "invoke": [
+        {
+          "id": "01JAC000000000000000000V01",
+          "name": "review",
+          "type": "human-task",
+          "actors": [
+            "01JAC000000000000000000K03"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "01JAC000000000000000000S03",
+      "name": "Pending"
+    },
+    {
+      "id": "01JAC000000000000000000S04",
+      "name": "Escalated"
+    },
+    {
+      "id": "01JAC000000000000000000S05",
+      "name": "Approved",
+      "type": "final"
+    },
+    {
+      "id": "01JAC000000000000000000S06",
+      "name": "Cancelled",
+      "type": "final"
+    }
+  ],
+  "initial": "01JAC000000000000000000S01",
+  "transitions": [
+    {
+      "id": "01JAC000000000000000000T01",
+      "source": "01JAC000000000000000000S01",
+      "event": "01JAC000000000000000000X01",
+      "targets": [
+        "01JAC000000000000000000S02"
+      ]
+    },
+    {
+      "id": "01JAC000000000000000000T02",
+      "source": "01JAC000000000000000000S02",
+      "trigger": "invoke-done",
+      "invoke": "01JAC000000000000000000V01",
+      "targets": [
+        "01JAC000000000000000000S03"
+      ]
+    },
+    {
+      "id": "01JAC000000000000000000T03",
+      "source": "01JAC000000000000000000S03",
+      "event": "01JAC000000000000000000X02",
+      "targets": [
+        "01JAC000000000000000000S05"
+      ],
+      "gate": {
+        "id": "01JAC000000000000000000G01",
+        "name": "plantApproval",
+        "displayName": "Plant approval",
+        "signers": [
+          "01JAC000000000000000000K02"
+        ],
+        "requiredActors": [
+          "01JAC000000000000000000K03"
+        ],
+        "meanings": [
+          {
+            "id": "01JAC000000000000000000M01",
+            "name": "approved",
+            "displayName": "Approved"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JAC000000000000000000T04",
+      "source": "01JAC000000000000000000S03",
+      "trigger": "after",
+      "after": "P2D",
+      "targets": [
+        "01JAC000000000000000000S04"
+      ]
+    },
+    {
+      "id": "01JAC000000000000000000T05",
+      "source": "01JAC000000000000000000S04",
+      "event": "01JAC000000000000000000X03",
+      "targets": [
+        "01JAC000000000000000000S06"
+      ]
+    }
+  ]
+}

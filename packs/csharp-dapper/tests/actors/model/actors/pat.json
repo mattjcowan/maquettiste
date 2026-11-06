@@ -1,0 +1,10 @@
+{
+  "kind": "actor",
+  "id": "01JAC000000000000000000K05",
+  "name": "Pat",
+  "type": "person",
+  "memberOf": [
+    "01JAC000000000000000000K04"
+  ],
+  "description": "A senior engineer."
+}

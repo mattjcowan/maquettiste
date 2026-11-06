@@ -126,9 +126,9 @@ public sealed record StepTrace(
     IReadOnlyDictionary<string, JsonElement> Changed, string Clock, bool Final, IReadOnlyList<Diagnostic> Diagnostics)
 {
     /// <summary>
-    /// The actor of the move (actors-design.md decision 2): the input's actor when it names one; else, for the initial entry, a time step
-    /// or a finished invoke that is not a human task, the project's system actor when it has exactly one; else <see langword="null"/>,
-    /// and the member is left out of the JSON.
+    /// The system actor when it made the move (actors-design.md decision 2): for the initial entry, a time step or a finished invoke that
+    /// is not a human task, whose input names no actor, the project's system actor when it has exactly one. Otherwise <see langword="null"/>
+    /// and the member is left out of the JSON; a step's own actor is in its <see cref="Input"/>.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Actor { get; init; }

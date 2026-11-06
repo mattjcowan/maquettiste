@@ -272,7 +272,7 @@ export interface StepTraceJson {
   final: boolean;
   diagnostics: DiagnosticJson[];
   incomplete: boolean;
-  /** The actor of the move: the input's, else the system actor for the initial entry, time steps and invoke completions that are not human tasks. */
+  /** The system actor when it made the move: the initial entry, time steps and invoke completions that are not human tasks, naming no actor. */
   actor?: string;
 }
 
@@ -441,7 +441,6 @@ class Interpreter {
   step(input: SimInputJson): StepTraceJson {
     this.index++;
     this.scope = newScope(input);
-    this.scope.actor = input.actor;
     const before = { ...this.context };
     if (input.input === "time") this.handleTime(input);
     else if (input.input === "invoke-done" || input.input === "invoke-error") this.handleInvoke(input);
@@ -476,7 +475,7 @@ class Interpreter {
       return this.refuse("no-transition");
     }
     const end = this.clock + span;
-    this.scope.actor ??= this.membership.systemActor;
+    if (!input.actor) this.scope.actor = this.membership.systemActor;
     this.scope.event = this.eventObject(null, input.actor, [], {});
     while (!this.done) {
       const next = this.timers.filter((t) => t.due <= end).sort(timerOrder)[0];
@@ -504,7 +503,7 @@ class Interpreter {
     }
     const actors = ids(found.invoke.actors);
     if (found.invoke.type === "human-task" && actors.length && (!input.actor || !this.membership.allows(actors, input.actor))) return this.refuse("actor");
-    if (found.invoke.type !== "human-task") this.scope.actor ??= this.membership.systemActor;
+    if (found.invoke.type !== "human-task" && !input.actor) this.scope.actor = this.membership.systemActor;
     this.scope.event = this.eventObject(null, input.actor, [], {});
     this.macrostep(() => {
       const selection = this.selectAt(found.state, input.input, String(found.invoke.id));

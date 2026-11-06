@@ -6093,9 +6093,9 @@ export interface components {
             /** @description A guard result was missing or the replay stopped (MQ9305, MQ9306, MQ9507); later inputs did not run. */
             incomplete: boolean;
             /**
-             * @description The actor of the move (actors-design.md decision 2): the input's actor when it names one; else, for the initial entry, a
-             *     time step or a finished invoke that is not a human task, the project's system actor (type `system`, shown as Automatic) when it
-             *     has exactly one. Left out when there is none, as for an event or a human task's completion that names no actor.
+             * @description The system actor when it made the move (actors-design.md decision 2): for the initial entry, a time step or a finished invoke
+             *     that is not a human task, whose input names no actor, the project's system actor (type `system`, shown as Automatic) when it
+             *     has exactly one. Left out otherwise, without a system actor always: a step's own actor is in its input.
              */
             actor?: components["schemas"]["Ulid"];
         };

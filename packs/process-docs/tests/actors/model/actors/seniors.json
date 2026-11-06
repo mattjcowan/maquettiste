@@ -1,0 +1,10 @@
+{
+  "kind": "actor",
+  "id": "01JAC000000000000000000K04",
+  "name": "Seniors",
+  "type": "group",
+  "memberOf": [
+    "01JAC000000000000000000K03"
+  ],
+  "description": "Senior staff, each of whom may approve."
+}

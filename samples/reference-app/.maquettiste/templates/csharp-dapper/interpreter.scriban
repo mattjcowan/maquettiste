@@ -2,9 +2,18 @@
 # The generated statechart interpreter (phase-3-design.md section 4.1): one runtime for every process of the model. It holds
 # no model data: each process's <P>Definition.cs gives it a ChartDefinition, and its <P>Handlers class gives it the guards and
 # actions. The companion ProcessHost.cs (unit interpreter-companion, written once) implements the extension points (clock, timer
-# scheduler, invoke host). Both are written only when the model has processes.
+# scheduler, invoke host). Both are written only when the model has processes. When an actor is a member of another, the actor
+# checks for events, human tasks, signers and required actors go through the generated Actors.Allows and Actors.Accepts.
 include "_csharp.scriban"
 if model.processes.size > 0
+# Whether any actor is a member of another (actors-design.md decision 25): only then do actor checks follow membership.
+has_members = false
+for a in model.actors
+  if a.member_of.size > 0
+    has_members = true
+  end
+end
+actors_type = "global::" + base_ns + ".Processes.Actors"
 -}}
 {{- capture content -}}
 {{ header() }}
@@ -858,7 +867,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         var run = new Run(this, snapshot, name, envelope) { AuditValues = audit ?? new Dictionary<string, object?>() };
         if (run.Done || Chart.Event(name) is not { } ev)
             return run.Refuse(Refusals.NoTransition);
-        if (ev.Actors.Count > 0 && (envelope.Actor is null || !ev.Actors.Contains(envelope.Actor, StringComparer.Ordinal)))
+        if (ev.Actors.Count > 0 && (envelope.Actor is null || !{{ has_members ? (actors_type + ".Allows(ev.Actors, envelope.Actor)") : "ev.Actors.Contains(envelope.Actor, StringComparer.Ordinal)" }}))
             return run.Refuse(Refusals.Actor);
         run.Event = new ProcessEvent(name, envelope.Actor, payload ?? new Dictionary<string, object?>());
         run.Macrostep(() =>
@@ -890,7 +899,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor));
         if (Chart.Invoke(invoke) is not { } found || !run.Pending.Contains(found))
             return run.Refuse(Refusals.NoTransition);
-        if (found.Kind == InvokeKind.HumanTask && found.Actors.Count > 0 && (actor is null || !found.Actors.Contains(actor, StringComparer.Ordinal)))
+        if (found.Kind == InvokeKind.HumanTask && found.Actors.Count > 0 && (actor is null || !{{ has_members ? (actors_type + ".Allows(found.Actors, actor)") : "found.Actors.Contains(actor, StringComparer.Ordinal)" }}))
             return run.Refuse(Refusals.Actor);
         run.Event = new ProcessEvent(null, actor, new Dictionary<string, object?>());
         run.Macrostep(() =>
@@ -1233,7 +1242,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             var actor = _envelope?.Actor;
             var signer = _envelope?.Signer;
             string? refusal = null;
-            if (actor is null || string.IsNullOrEmpty(signer) || !gate.Signers.Contains(actor, StringComparer.Ordinal))
+            if (actor is null || string.IsNullOrEmpty(signer) || !{{ has_members ? (actors_type + ".Allows(gate.Signers, actor)") : "gate.Signers.Contains(actor, StringComparer.Ordinal)" }})
                 refusal = Refusals.GateSigner;
             else if (!gate.AllowRepeatSigner && signatures.Any(s => string.Equals(s.Signer, signer, StringComparison.Ordinal)))
                 refusal = Refusals.GateRepeat;
@@ -1254,7 +1263,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             signatures.Add(new SignatureEntry(_envelope!.Signer!, _envelope.Actor!, meaning, _envelope.Reason));
             Audit(gate, t, _envelope.Signer, _envelope.Actor, meaning, _envelope.Reason, GateOutcome.Signed, AuditValues);
             var complete = signatures.Count >= Math.Max(1, gate.Required)
-                && gate.RequiredActors.All(a => signatures.Any(s => string.Equals(s.Actor, a, StringComparison.Ordinal)));
+                && gate.RequiredActors.All(a => signatures.Any(s => {{ has_members ? (actors_type + ".Accepts(a, s.Actor)") : "string.Equals(s.Actor, a, StringComparison.Ordinal)" }}));
             if (complete)
             {
                 Audit(gate, t, _envelope.Signer, _envelope.Actor, meaning, _envelope.Reason, GateOutcome.Completed, AuditValues);

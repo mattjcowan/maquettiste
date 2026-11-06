@@ -1,0 +1,10 @@
+{
+  "kind": "actor",
+  "id": "01JAC000000000000000000K06",
+  "name": "Automatic",
+  "type": "system",
+  "memberOf": [
+    "01JAC000000000000000000K07"
+  ],
+  "description": "What the system does by itself."
+}
