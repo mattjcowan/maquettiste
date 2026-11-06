@@ -35,7 +35,7 @@ an id, never a name. The schemas are in `.maquettiste/.schema/v1/` and each file
 | constraints/ | named constraint (`kind: "constraint"`): one condition in the expression language over typed `parameters`, with a `message` | cited by any check or guard with `satisfies`; see "Expressions" |
 | custom/<type>/ | custom element (`kind: "custom"`): an element of a kind the project declares in `extensions/kinds/<type>.json`, its fields under `content` | see Custom kinds below |
 | diagrams/ | canvas membership and positions only (a process's diagram holds its chart's places) | never own elements |
-| vocabularies/ | tags, categories, stereotypes | |
+| vocabularies/ | tags, categories, stereotypes, verbs (`verbs.json`, kind `verb-vocabulary`: `hidden` built-in keys, own `verbs` of `{ id, key, displayName?, description? }`) | one verb file per project (MQ1009) |
 
 Templates live in `.maquettiste/templates/<pack>/` (pack.json, *.scriban, helpers.js). Project settings, output
 roots and conventions are in `.maquettiste/maquettiste.json`.
@@ -183,7 +183,15 @@ must equal its bound enum's members, in order (MQ9203).
   and cover every state (MQ9210 warns). `sync-codes` (`id`, `entity`, `attribute`, optional `stateCodes` by state id) proposes
   codes from the attribute's type and binds it; dry run first. Several instances of one lifecycle per object: model the object
   as a detail entity and make it the subject.
-- A guard `condition` may read `subject.<attribute>` and to-one navigations (not the bound attribute or a stereotype's; MQ3102);
+- A subject entry may hold `stereotype` (a key, never an id) instead of `entity`, exactly one of the two: it covers every entity
+  carrying the stereotype and its derived entities (MQ9211 if it does not apply to entities). An entry naming the entity or a base
+  wins over a stereotype entry. `boundAttribute` and `owner` there are the stereotype's own attributes. `sync-enum` and `sync-codes`
+  take `stereotype` for `entity`. Never write one unasked.
+- Verbs: `verb` (a key) on an event, on a transition with no event (MQ9705 with one) and on an operation (optional, not tied to
+  `effect`). 27 built-ins in five groups (moves, signatures, tasks, objects, links; the list with meanings is in `get_schema` `common`
+  `builtInVerb`); add own ones in `verbs.json`. An undeclared verb is MQ9701; an own key equal to a built-in is MQ9702. Hide built-ins with
+  `hidden`. `rename-verb` (`verb`, `to`) and `remove-verb` (`verb`) follow every use; a plain key change in use is MQ9707. Verbs do nothing yet.
+- A guard `condition` may read `subject.<attribute>` and to-one navigations (not the bound attribute; a stereotype's attributes are readable; MQ3102);
   a missing value reads as default, then null, and only true passes. A scenario's `objects` (`id`, `name`, `entity`, `values`
   by attribute id, `links` of `{ end, object }`) and `subject` (required with objects) give it something to read; `simulate_process`
   and `record_scenario` take both. `csharp-dapper` leaves such a guard as a partial method.
@@ -193,7 +201,7 @@ must equal its bound enum's members, in order (MQ9203).
   filled from the replay (`dryRun` to preview); `verify_scenarios` replays scenarios; `export_process` and `import_process`
   (a dry run unless `apply`) move a process to and from an XState machine config; `sync_enum_from_process` (a dry run unless
   `apply`) makes a lifecycle's bound enum follow its states (`entity` picks the subject) and never removes a member still in
-  use. `apply_batch` has the process operations `sync-enum`, `sync-codes`, `use-subjects`, `set-lifecycle` (binds an entity and a process on both sides), `set-initial` and
+  use. `apply_batch` has the process operations `sync-enum`, `sync-codes`, `use-subjects`, `set-lifecycle` (binds an entity and a process on both sides), `set-initial`, `rename-verb`, `remove-verb` and
   `refresh-scenario`.
 - Actors: `memberOf` (ids of roles, groups or organizations, no cycles) makes a list that names a holder accept its members
   at any depth. `relative` takes one form: `{ owner: true }`, `{ path: [ids] }` (a field or to-one ends of the subject), or

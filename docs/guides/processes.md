@@ -197,12 +197,46 @@ no states of its own. A transition of any process then names the guard by its id
 process that uses it, so it reads that process's `context`. [Libraries](../user-guide.md#libraries-shared-guards-actions-and-gate-policies)
 has the rest, with actions and gate policies.
 
+## 12. One lifecycle for every type that carries a stereotype
+
+Spoke & Chain wants every approvable record, such as a `PartsOrder` and a `FleetPurchase`, to follow one `Approval` lifecycle. Listing
+each type is easy to forget when a new one arrives. Name the stereotype instead.
+
+1. Create a stereotype `approvable` that applies to entities. Give it two attributes: an enum `approvalStatus` and a reference
+   `requestedBy`. Apply it to `PartsOrder` and `FleetPurchase`.
+2. Create a lifecycle `Approval`. On its **Subject**, pick **Approvable** from the **Stereotypes** group.
+3. Set **Bound attribute** to `approvalStatus` and **Owner** to `requestedBy`. Both are the stereotype's own attributes, so every
+   type that carries it reads the same fields.
+
+Both types now follow `Approval`. Mark a third type `approvable` later, and it follows it too. Open `PartsOrder` in the explorer:
+its **Lifecycles** folder lists `Approval` "through Approvable".
+
+Say `FleetPurchase` keeps its state in its own `status` attribute. Add a second subject that names `FleetPurchase` and binds
+`status`. The entry that names the entity wins over the stereotype, so no error appears. In a guard, `subject.requestedBy` now reads
+for every approvable type. See [A stereotype as a subject](../user-guide.md#lifecycle-subjects-and-state-codes).
+
+## 13. Say what an event does: verbs
+
+An event name is free text. A verb says what the event does, so a later rule or a pack knows. Verbs are optional.
+
+1. Open **Rental** lifecycle's **Events** tab. In the **Verb** cell of `PickUp`, pick **Promote**. For a `Cancel` event that moves a
+   rental back, pick **Demote**.
+2. Open **Settings › Verbs**. Under **Your verbs**, click **Add**, then pick the suggestion `cancel`. Add a description such as
+   "Stop the rental before pick-up." The verb `cancel` is now yours.
+3. Back on the `Cancel` event, change its verb to `cancel`.
+4. On an operation `AssignMechanic`, open its **Verb** and pick **Connect**.
+5. In **Settings › Verbs**, tick **Hide** on `lock` and `unlock`. The shop never uses them, so the pickers stop offering them.
+
+Typing a verb nobody declared, such as `cancle`, is MQ9701. Its quick fix adds the verb or clears it. To rename `cancel` to
+`call-off`, use **Rename…**. It shows every event that will change, and runs as one step. See [Verbs](../user-guide.md#verbs).
+
 ## See also
 
 - [Processes, actors and scenarios](../user-guide.md#processes-actors-and-scenarios), including
   [The process editor](../user-guide.md#the-process-editor), [The chart](../user-guide.md#the-chart) and
   [The simulation panel](../user-guide.md#the-simulation-panel).
-- [Lifecycle subjects and state codes](../user-guide.md#lifecycle-subjects-and-state-codes).
+- [Lifecycle subjects and state codes](../user-guide.md#lifecycle-subjects-and-state-codes), including a stereotype as a subject.
+- [Verbs](../user-guide.md#verbs).
 - [Actors: types, membership and the object](../user-guide.md#actors-types-membership-and-the-object).
 - [Sync enum and the quick fixes](../user-guide.md#sync-enum-and-the-quick-fixes) and
   [The rules for processes (MQ9xxx)](../user-guide.md#the-rules-for-processes-mq9xxx).

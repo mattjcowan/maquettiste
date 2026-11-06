@@ -1,0 +1,53 @@
+{{-
+# The verbs of the model (verbs-design.md section 8), written only when model.verbs is not empty, so a project that uses no verbs
+# gets no file: an enum Verb with one member per verb (its Pascal key, documented with its meaning) and a map between members and
+# keys, since the key is what to store. Generated code does not act on verbs yet.
+include "_csharp.scriban"
+if model.verbs.size > 0
+  capture content
+-}}
+{{ header() }}
+using System;
+
+namespace {{ base_ns }};
+
+/// <summary>The verbs of the model: what an event, an automatic move or an operation does. Store a verb by its key (<see cref="Verbs.Key"/>), not by its number.</summary>
+public enum Verb
+{
+{{- for v in model.verbs }}
+{{- if !for.first }}
+{{ end }}
+{{ doc(v.display_name + ": " + (v.description != "" ? v.description : "a verb of the project."), "    ") }}    {{ pascal v.key }},
+{{- end }}
+}
+
+/// <summary>Maps each verb to its key, which is what to store, and back.</summary>
+public static class Verbs
+{
+    /// <summary>The key of a verb.</summary>
+    /// <param name="verb">The verb.</param>
+    /// <returns>Its key.</returns>
+    public static string Key(Verb verb) => verb switch
+    {
+{{- for v in model.verbs }}
+        Verb.{{ pascal v.key }} => {{ json v.key }},
+{{- end }}
+        _ => throw new ArgumentOutOfRangeException(nameof(verb), verb, null),
+    };
+
+    /// <summary>The verb of a key, or null when no verb has it.</summary>
+    /// <param name="key">The key.</param>
+    /// <returns>The verb, or null.</returns>
+    public static Verb? FromKey(string? key) => key switch
+    {
+{{- for v in model.verbs }}
+        {{ json v.key }} => Verb.{{ pascal v.key }},
+{{- end }}
+        _ => null,
+    };
+}
+{{ end -}}
+{{-
+  file (join_path pack.params.generatedFolder "Verbs.cs") content
+end
+-}}

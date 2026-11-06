@@ -264,9 +264,18 @@ public sealed class StateDefinition(string id, string name, StateKind kind, int 
 /// <param name="external">Whether the source is exited and entered again when a target is its descendant.</param>
 /// <param name="gate">The gate's index, or -1.</param>
 /// <param name="guardMissing">Whether the transition names a guard the process does not declare: it never holds, as in the engine.</param>
+{{- if model.verbs.size > 0 }}
+/// <param name="verb">The verb of an automatic move, or null; a move on an event has its event's.</param>
+public sealed class TransitionDefinition(string id, int source, TriggerKind trigger, string key, int[] targets, string? guard = null, string[]? actions = null,
+    long? afterTicks = null, bool external = false, int gate = -1, bool guardMissing = false, Verb? verb = null)
+{
+    /// <summary>The verb of an automatic move, or null; a move on an event has its event's.</summary>
+    public Verb? Verb { get; } = verb;
+{{ else }}
 public sealed class TransitionDefinition(string id, int source, TriggerKind trigger, string key, int[] targets, string? guard = null, string[]? actions = null,
     long? afterTicks = null, bool external = false, int gate = -1, bool guardMissing = false)
 {
+{{- end }}
     /// <summary>The model id.</summary>
     public string Id { get; } = id;
 
@@ -313,7 +322,12 @@ public sealed class TransitionDefinition(string id, int source, TriggerKind trig
 /// <summary>An event of a process.</summary>
 /// <param name="Name">The event name.</param>
 /// <param name="Actors">The actors that may raise it; empty means any.</param>
+{{- if model.verbs.size > 0 }}
+/// <param name="Verb">The verb the event names, or null.</param>
+public sealed record EventDefinition(string Name, IReadOnlyList<string> Actors, Verb? Verb = null);
+{{- else }}
 public sealed record EventDefinition(string Name, IReadOnlyList<string> Actors);
+{{- end }}
 
 /// <summary>An action of a process.</summary>
 /// <param name="Name">The action name.</param>

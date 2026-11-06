@@ -592,9 +592,12 @@ public sealed record StateRecord(string Id, string Name, string Path, string Typ
 /// <param name="Description">The description.</param>
 /// <param name="Stereotypes">The stereotype keys.</param>
 /// <param name="Properties">The custom properties.</param>
+/// <param name="Verb">The key of the verb of the move (verbs-design.md section 6): the transition's own, else its event's; <see langword="null"/>,
+/// and left out of the JSON, when neither names one.</param>
 public sealed record TransitionRecord(string Id, string Source, IReadOnlyList<string> Targets, string Trigger, string? Event, string? After, long? AfterMs,
     long? AfterTicks, string? Invoke, string? Guard, bool GuardMissing, IReadOnlyList<string> Actions, bool External, string? Gate, string Label,
-    bool IsTargetless, string DisplayName, string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
+    bool IsTargetless, string DisplayName, string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null);
 
 /// <summary>An event of a process.</summary>
 /// <param name="Id">The event id.</param>
@@ -606,8 +609,11 @@ public sealed record TransitionRecord(string Id, string Source, IReadOnlyList<st
 /// <param name="Description">The description.</param>
 /// <param name="Stereotypes">The stereotype keys.</param>
 /// <param name="Properties">The custom properties.</param>
+/// <param name="Verb">The key of the verb the event names (verbs-design.md decision 11); <see langword="null"/>, and left out of the JSON, when it
+/// names none.</param>
 public sealed record EventRecord(string Id, string Name, IReadOnlyList<AttributeRecord> Payload, IReadOnlyList<string> Actors, IReadOnlyList<string> Transitions,
-    string DisplayName, string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties);
+    string DisplayName, string? Description, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null);
 
 /// <summary>A guard of a process.</summary>
 /// <param name="Id">The guard id.</param>
@@ -852,11 +858,14 @@ public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> Stat
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
 /// <param name="Guards">The guards, in the order they are checked (next-phase-3-design.md section 3.1); <see langword="null"/>, and left out
 /// of the JSON, for an operation without any.</param>
+/// <param name="Verb">The key of the verb the operation names (verbs-design.md decision 13); <see langword="null"/>, and left out of the JSON,
+/// when it names none.</param>
 public sealed record OperationRecord(string Id, string Kind, string Name, string? Package, string? Subject, string? Level, string Effect,
     IReadOnlyList<OperationMemberRecord> Input, IReadOnlyList<OperationOutcomeRecord> Outcomes, string? DefaultOutcome, IReadOnlyList<OperationErrorRecord> Errors,
     IReadOnlyList<string> Fires, IReadOnlyList<string> Requires, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags,
     string? Category, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<OperationGuardRecord>? Guards = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<OperationGuardRecord>? Guards = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null);
 
 /// <summary>A guard of an operation: a condition it requires before it runs, and the error it reports when the condition does not hold;
 /// only true passes (next-phase-3-design.md section 3.1).</summary>
@@ -1086,6 +1095,23 @@ public sealed record MigrationRecord(string Id, string Kind, string Name, string
     IReadOnlyList<string> Missing, IReadOnlyList<string> After, MigrationObject? Object, string? CurrentKey, MigrationState? From,
     MigrationState? To, string Hash);
 
+/// <summary>A verb of <c>model.verbs</c> (verbs-design.md section 6); verb records appear only when the project uses verbs.</summary>
+/// <param name="Id">The own verb's id; <see langword="null"/> for a built-in verb.</param>
+/// <param name="Kind"><c>verb</c>.</param>
+/// <param name="Name">The key, so pages order verbs by it.</param>
+/// <param name="Key">The key every use names, which is what to store.</param>
+/// <param name="DisplayName">The fixed label of a built-in verb, or an own verb's display name, else from its key.</param>
+/// <param name="Description">The fixed meaning of a built-in verb, or an own verb's description (<c>""</c> when none).</param>
+/// <param name="BuiltIn">Whether it is a built-in verb.</param>
+/// <param name="Group">What a built-in verb acts on; <c>project</c> for an own verb.</param>
+/// <param name="Hidden">Whether it is a hidden built-in verb that is still named.</param>
+/// <param name="Used">Whether an event, a transition or an operation names it.</param>
+/// <param name="Events">The ids of the events that name it, in model order.</param>
+/// <param name="Transitions">The ids of the transitions whose move has it, in model order.</param>
+/// <param name="Operations">The ids of the operations that name it, in model order.</param>
+public sealed record VerbRecord(string? Id, string Kind, string Name, string Key, string DisplayName, string Description, bool BuiltIn, string Group, bool Hidden,
+    bool Used, IReadOnlyList<string> Events, IReadOnlyList<string> Transitions, IReadOnlyList<string> Operations);
+
 /// <summary>Projects the resolved model into flat records (resolved objects reference each other, so R-types are never serialized).</summary>
 public static class ResolvedRecords
 {
@@ -1213,6 +1239,14 @@ public static class ResolvedRecords
         {
             foreach (var c in model.Constraints)
                 yield return new Entry("constraint", c.Name, c.Id, () => context.Constraint(c), c);
+        }
+
+        // Verb records (verbs-design.md section 6) come with every other kind, and only when the project uses verbs: model.verbs is empty
+        // otherwise.
+        if (all)
+        {
+            foreach (var v in model.Verbs)
+                yield return new Entry("verb", v.Key, v.Id ?? "", () => Projection.Verb(v), v);
         }
 
         if (all || scope == "databases")
@@ -1425,9 +1459,10 @@ public static class ResolvedRecords
                 Ids(s.Entry), Ids(s.Exit), Ids(s.Invoke), s.IsFinal, s.IsAtomic, s.Depth, s.BoundMember?.Id, Ids(s.TransitionsOut), s.RegionIndex,
                 s.DisplayName, s.Description, Keys(s.Stereotypes), Plain(s.Properties), s.Code))],
             [.. p.Transitions.Select(t => new TransitionRecord(t.Id, t.Source.Id, Ids(t.Targets), t.Trigger, t.Event?.Id, t.After, t.AfterMs, t.AfterTicks, t.Invoke?.Id,
-                t.Guard?.Id, t.GuardMissing, Ids(t.Actions), t.External, t.Gate?.Id, t.Label, t.IsTargetless, t.DisplayName, t.Description, Keys(t.Stereotypes), Plain(t.Properties)))],
+                t.Guard?.Id, t.GuardMissing, Ids(t.Actions), t.External, t.Gate?.Id, t.Label, t.IsTargetless, t.DisplayName, t.Description, Keys(t.Stereotypes), Plain(t.Properties),
+                t.Verb?.Key))],
             [.. p.Events.Select(e => new EventRecord(e.Id, e.Name, [.. e.Payload.Select(a => Attribute(a))], Ids(e.Actors), Ids(e.Transitions),
-                e.DisplayName, e.Description, Keys(e.Stereotypes), Plain(e.Properties)))],
+                e.DisplayName, e.Description, Keys(e.Stereotypes), Plain(e.Properties), e.Verb?.Key))],
             [.. p.Guards.Select(g => new GuardRecord(g.Id, g.Name, g.Expression, g.IsStub, Ids(g.UsedBy), g.DisplayName, g.Description, Keys(g.Stereotypes), Plain(g.Properties),
                 Expression(g.Condition)))],
             [.. p.Actions.Select(a => new ActionRecord(a.Id, a.Name, a.Expression, a.IsStub, Ids(a.Raises), Ids(a.UsedBy), a.DisplayName, a.Description, Keys(a.Stereotypes), Plain(a.Properties)))],
@@ -1473,7 +1508,11 @@ public static class ResolvedRecords
             Ids(o.Fires), Ids(o.Requires),
             o.DisplayName!, o.PluralName!, o.Description, o.Tags, o.Category?.Id, Keys(o.Stereotypes), Plain(o.Properties), o.Generation,
             o.Guards.Count == 0 ? null : [.. o.Guards.Select(g => new OperationGuardRecord(g.Id, g.Name, Expression(g.Condition), g.Error?.Id,
-                g.DisplayName!, g.Description, Keys(g.Stereotypes), Plain(g.Properties)))]);
+                g.DisplayName!, g.Description, Keys(g.Stereotypes), Plain(g.Properties)))],
+            o.Verb?.Key);
+
+        public static VerbRecord Verb(RVerb v) => new(v.Id, "verb", v.Key, v.Key, v.DisplayName, v.Description, v.BuiltIn, v.Group, v.Hidden, v.Used,
+            [.. v.Events.Select(e => e.Id)], [.. v.Transitions.Select(t => t.Id)], [.. v.Operations.Select(o => o.Id)]);
 
         public CustomRecord Custom(RCustom c) => new(c.Id, "custom", c.Name, c.Type, c.Package?.Id,
             model.Source.Get<Model.Custom>(c.Id)?.Content ?? System.Collections.Immutable.ImmutableDictionary<string, System.Text.Json.JsonElement>.Empty,

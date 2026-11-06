@@ -1,0 +1,19 @@
+{
+  "kind": "entity",
+  "id": "01JVB000000000000000000E01",
+  "name": "Document",
+  "package": "01JVB000000000000000000P01",
+  "key": {
+    "attributes": [
+      "01JVB000000000000000000A01"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JVB000000000000000000A01",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    }
+  ]
+}

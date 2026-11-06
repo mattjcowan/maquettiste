@@ -330,6 +330,13 @@ public sealed class ResolvedModel
     /// <summary>The category trees, one per scope: the global one first, then by (package qualified name, id).</summary>
     public RList<RCategoryTree> CategoryTrees { get; internal init; } = RList<RCategoryTree>.Empty;
 
+    /// <summary>
+    /// The verbs (verbs-design.md decision 19): empty unless the project uses verbs (it has a verb vocabulary or names a verb anywhere).
+    /// Then the built-in verbs that are not hidden, in the table's order, then the project's own in file order, then any hidden built-in
+    /// verb that is still named.
+    /// </summary>
+    public RList<RVerb> Verbs { get; internal init; } = RList<RVerb>.Empty;
+
     /// <summary>Resolution diagnostics.</summary>
     public IReadOnlyList<Diagnostic> Diagnostics { get; internal init; } = [];
 

@@ -6,6 +6,7 @@
   "package": "01JPKG00000000000000000001",
   "subject": "01JENT00000000000000000002",
   "effect": "change",
+  "verb": "notify",
   "input": [
     {
       "id": "01JQPN00000000000000000002",

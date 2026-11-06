@@ -69,7 +69,8 @@ public static partial class {{ name }}Definition
 {{- if t.after_ticks != null }}, afterTicks: {{ t.after_ticks }}{{ end }}
 {{- if t.external }}, external: true{{ end }}
 {{- if t.gate }}, gate: {{ gate_index[t.gate.id] }}{{ end }}
-{{- if t.guard_missing }}, guardMissing: true{{ end }}), // {{ cs_line t.label }}
+{{- if t.guard_missing }}, guardMissing: true{{ end }}
+{{- if t.trigger != "event" && t.verb }}, verb: global::{{ base_ns }}.Verb.{{ pascal t.verb.key }}{{ end }}), // {{ cs_line t.label }}
 {{- end }}
         ],
 {{- if p.events.size == 0 }}
@@ -77,7 +78,7 @@ public static partial class {{ name }}Definition
 {{- else }}
         [
 {{- for e in p.events }}
-            new({{ json e.name }}, {{ actor_list(e.actors) }}),
+            new({{ json e.name }}, {{ actor_list(e.actors) }}{{ if e.verb }}, global::{{ base_ns }}.Verb.{{ pascal e.verb.key }}{{ end }}),
 {{- end }}
         ]
 {{- end }},

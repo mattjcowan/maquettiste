@@ -95,7 +95,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | --- | --- | --- |
 | Allowed from-to pairs | E W A O S V | Yes |
 | All pairs allowed by default | V | No: each is declared |
-| Kinds of move: promote, demote, revise, change | E W | Part: events are free-named, with no kinds |
+| Kinds of move: promote, demote, revise, change | E W | Yes: events, automatic moves and operations name a verb (`promote`, `demote`, `revise`, `change-owner` and others). Verbs carry no behaviour yet |
 | A casual state change beside a reviewed one | W | No |
 | Someone with the right may move past unmet conditions (`override`), or set any state | E W O | **No** |
 | Who may run a transition, by role, in a given state | A F S V | Part: an event's `actors` hold in every source state alike |

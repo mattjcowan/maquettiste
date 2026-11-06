@@ -1,0 +1,22 @@
+{
+  "kind": "verb-vocabulary",
+  "id": "01JVB000000000000000000V01",
+  "name": "verbs",
+  "hidden": [
+    "lock",
+    "unlock"
+  ],
+  "verbs": [
+    {
+      "id": "01JVB000000000000000000V02",
+      "key": "escalate",
+      "description": "Raise the document to the next level of review."
+    },
+    {
+      "id": "01JVB000000000000000000V03",
+      "key": "check-out",
+      "displayName": "Check out",
+      "description": "Reserve the document to edit it."
+    }
+  ]
+}

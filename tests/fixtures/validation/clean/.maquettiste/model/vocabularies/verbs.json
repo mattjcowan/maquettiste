@@ -1,0 +1,16 @@
+{
+  "$schema": "../../.schema/v1/verb-vocabulary.json",
+  "kind": "verb-vocabulary",
+  "id": "01JVRB00000000000000000001",
+  "name": "verbs",
+  "hidden": [
+    "set-state"
+  ],
+  "verbs": [
+    {
+      "id": "01JVRB00000000000000000002",
+      "key": "notify",
+      "description": "Tell the customer about the invoice."
+    }
+  ]
+}

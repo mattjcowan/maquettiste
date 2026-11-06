@@ -195,6 +195,7 @@ internal static class Adhoc
         Stereotypes = model.Stereotypes,
         TagVocabularies = model.TagVocabularies,
         CategoryTrees = model.CategoryTrees,
+        Verbs = model.Verbs,
         Diagnostics = model.Diagnostics,
         ById = model.ById,
     };

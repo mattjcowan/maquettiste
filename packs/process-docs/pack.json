@@ -27,6 +27,11 @@
       "output": "processes/{{ kebab scenario.process.name }}/{{ kebab scenario.name }}.md"
     },
     {
+      "id": "verbs-page",
+      "template": "verbs-page.scriban",
+      "for": "model"
+    },
+    {
       "id": "index",
       "template": "index.scriban",
       "for": "model"

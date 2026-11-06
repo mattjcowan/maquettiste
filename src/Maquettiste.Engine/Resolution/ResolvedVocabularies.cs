@@ -89,3 +89,55 @@ public sealed class RCategoryTree : RElement
     /// </summary>
     public IReadOnlyList<RCategory> Categories { get; internal set; } = [];
 }
+
+/// <summary>
+/// A verb (verbs-design.md section 6): an item of <c>model.verbs</c>, a built-in verb with its fixed meaning or one of the project's own.
+/// Uses name it by <see cref="Key"/>, which is what to store. Every member depends on the verb vocabulary and on every process and
+/// operation file, since a use anywhere decides <see cref="Used"/> and the lists.
+/// </summary>
+public sealed class RVerb : IResolvedObject
+{
+    /// <summary>The key every use names, such as <c>promote</c> or <c>escalate</c>.</summary>
+    public string Key { get; internal set; } = "";
+
+    /// <summary>The fixed label of a built-in verb, or an own verb's display name, else its key with the first letter upper case and hyphens
+    /// as spaces.</summary>
+    public string DisplayName { get; internal set; } = "";
+
+    /// <summary>The fixed meaning of a built-in verb, or an own verb's description (<c>""</c> when none).</summary>
+    public string Description { get; internal set; } = "";
+
+    /// <summary>Whether it is a built-in verb.</summary>
+    public bool BuiltIn { get; internal set; }
+
+    /// <summary>What a built-in verb acts on (<c>move</c>, <c>signature</c>, <c>task</c>, <c>object</c>, <c>link</c>); <c>project</c> for an own
+    /// verb.</summary>
+    public string Group { get; internal set; } = "";
+
+    /// <summary>The own verb's id; <see langword="null"/> for a built-in verb.</summary>
+    public string? Id { get; internal set; }
+
+    /// <summary>Whether it is a hidden built-in verb that is still named.</summary>
+    public bool Hidden { get; internal set; }
+
+    /// <summary>The events that name it, in model order (process order, then event order).</summary>
+    public RList<REvent> Events { get; internal set; } = RList<REvent>.Empty;
+
+    /// <summary>The transitions whose move has it, their own verb or their event's, in model order.</summary>
+    public RList<RTransition> Transitions { get; internal set; } = RList<RTransition>.Empty;
+
+    /// <summary>The operations that name it, in <see cref="ResolvedModel.Operations"/> order.</summary>
+    public RList<ROperation> Operations { get; internal set; } = RList<ROperation>.Empty;
+
+    /// <summary>Whether an event, a transition or an operation names it.</summary>
+    public bool Used { get; internal set; }
+
+    /// <inheritdoc/>
+    public string Kind => "verb";
+
+    /// <inheritdoc/>
+    public IReadOnlyList<string> Dependencies { get; internal set; } = [];
+
+    /// <summary>The own verb's id, else <c>verb:&lt;key&gt;</c>: built-in verbs have no id of their own.</summary>
+    string IResolvedObject.Id => Id ?? "verb:" + Key;
+}

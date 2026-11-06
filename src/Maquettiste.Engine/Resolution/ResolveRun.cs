@@ -184,6 +184,7 @@ internal sealed partial class ResolveRun
         ResolveProcesses();
         ResolveOperations();
         ResolveCustomElements();
+        var verbs = ResolveVerbs();
         var (vocabularies, trees) = ResolveDefinitions(stereotypes);
         LinkOperationRequires(); // last: an id of any kind resolves, whatever registered it
 
@@ -213,6 +214,7 @@ internal sealed partial class ResolveRun
             Stereotypes = new RList<RStereotypeDefinition>(stereotypes, ["k:stereotype"]),
             TagVocabularies = new RList<RTagVocabulary>(vocabularies, ["k:tag-vocabulary"]),
             CategoryTrees = new RList<RCategoryTree>(trees, ["k:category-tree"]),
+            Verbs = verbs,
             Diagnostics = [.. Suppressions.Of(Model).Apply(Diagnostics, out var suppressed).Order(Diagnostic.Order)],
             Suppressed = suppressed,
             ById = _byId, // lookups only, never enumerated; freezing a few hundred thousand ids costs more than it saves

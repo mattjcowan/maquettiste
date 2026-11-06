@@ -269,6 +269,21 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Verbs_compile_with_the_rest_of_the_output()
+    {
+        // verbs-design.md section 8: the verbs case's output (Verbs.cs, the events' and the automatic move's verbs, an operation's Verb
+        // constant) matches its expected files and builds with warnings as errors.
+        using var repo = PackRepo.Verbs();
+        await repo.GenerateCleanlyAsync();
+        Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "verbs", "expected"), repo.PathOf("out"));
+        Assert.Contains("public enum Verb", File.ReadAllText(repo.PathOf("out/Verbs.cs")), StringComparison.Ordinal);
+        var project = Path.Combine(repo.Repo.Root, "verbs");
+        WriteProject(project, repo.PathOf("out"), program: null, web: true);
+
+        await BuildOrSkipAsync(project);
+    }
+
+    [Fact]
     public async Task Actors_named_like_the_members_of_the_actors_class_compile()
     {
         // An actor named Accepts or All would clash with the class's own members: only those constants get "Actor" appended, the

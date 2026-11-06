@@ -1352,6 +1352,7 @@ database shows on the Database screen at once. The explorers remember which rows
     custom type its own native types instead, which win over the type map.
   - **Explorer**: your preferences in this browser (Highlight related elements), your saved scopes and the team scopes
     from `maquettiste.json`.
+- **Settings › Verbs** holds the verbs that events, automatic moves and operations may name. See [Verbs](#verbs).
 - **Settings › General** names and brands the project and holds its own properties.
   - **Project name**: the name in the top bar and the browser tab, `name` in `maquettiste.json` (the field
     `maquettiste init --name` writes). The top bar and the tab follow as you type; Save writes it.
@@ -1824,7 +1825,7 @@ Under a role, group or organization, its members are listed, nested at any depth
 
 Search, the selection that follows you, related highlighting, favorites and Problems all reveal a process or an actor in
 this explorer. They no longer switch to the Domain model. In the Domain model explorer, an entity has a **Lifecycles**
-folder listing the lifecycles that govern it, through a base entity too. Its **Processes** kind folder lists the same
+folder listing the lifecycles that govern it, through a base entity too, and through a stereotype it carries (the row says "through Approvable"). Its **Processes** kind folder lists the same
 process rows.
 
 Right-click a process for **Open**, **Open in new tab**, **Simulate** (opens its chart with the simulation panel),
@@ -2018,7 +2019,44 @@ constants only. Once an attribute is bound they are an error (MQ9206).
 - An entry covers its entity and the entities derived from it.
 - An orchestration may list subjects for what its flow is about. It binds nothing.
 - Deleting a listed entity removes its entry. A lifecycle left with no subject gets MQ9201.
-- Two lifecycles may not bind the same attribute of an entity that both list by name (MQ9202).
+- Two lifecycles may not bind the same attribute of an entity or a stereotype that both list by name (MQ9202).
+- An entry may name a stereotype instead of an entity (next).
+
+**A stereotype as a subject.** An entry may hold a `stereotype` (its key) in place of an `entity`. Say "every Approvable type
+follows the approval lifecycle", and the next type that gets the stereotype follows it too. The key is the stereotype's key,
+as in every other stereotype list.
+
+```json
+"subjects": [
+  { "id": "…", "stereotype": "approvable", "boundAttribute": "…approvable.approvalStatus", "owner": "…approvable.requestedBy" },
+  { "id": "…", "entity": "…Contract", "boundAttribute": "…Contract.status" }
+]
+```
+
+- **What it covers.** Every entity that carries the stereotype, and every entity derived from one. An entity carries a
+  stereotype when it lists it, when its package gives it by default, or when another stereotype it carries implies it, less
+  what it excludes. A derived entity stays covered even if it excludes the stereotype as a default, since it holds its base's
+  attributes. If no entity carries it yet, there is no finding. The explorer and `process-docs` say so.
+- **Which entry wins.** When several entries of one process cover an entity, an entry that names the entity, or a base of it,
+  wins. The nearest base comes first. Stereotype entries come after, in the order written. So "every Approvable type, but
+  `Contract` keeps its state in `status`" needs no error. A base named by its own entry wins even over a stereotype the
+  derived entity carries directly.
+- **Binding and owner.** `boundAttribute` and `owner` beside a stereotype name one of the stereotype's own attributes. Every
+  carrier holds it, so each reads the same field. The binding rules are the same as for an entity.
+- **Only for entities.** A stereotype that does not apply to entities is refused in a subject entry (MQ9211). An unknown key is MQ2003.
+- **Reading a stereotype's attributes.** A guard condition, an owner field, an actor taken from the object and a scenario
+  object's `values` may read a stereotype's attributes. An entity entry offers its own and inherited attributes and those of
+  the stereotypes it or a base carries. A stereotype entry offers the stereotype's own attributes and no navigations. When
+  entries are mixed, only what every entry holds under one id is in scope. An actor path on a stereotype entry is one step to
+  a stereotype attribute, with no `within`. The bound attribute is still out of scope. So is a stereotype's attribute on an
+  object reached by navigation.
+- **Deleting** a stereotype removes the entries that name it. A lifecycle left with no subject gets MQ9201.
+- **Tools.** `set-lifecycle` is still about one entity. It adds no entry when a stereotype entry already covers the entity, and
+  clearing never touches a stereotype entry. `sync-enum` and `sync-codes` take `stereotype` (the key) in place of `entity`.
+  `sync-codes` binds only the stereotype's own attribute.
+- **Output.** Templates see one subject per covered entity, each saying which stereotype brought it. `entity.lifecycles` also
+  lists the lifecycles that cover the entity through a stereotype. `process-docs` says "through stereotype approvable".
+- **Teams upgrade together.** An older engine refuses a file with a stereotype entry.
 
 **The deprecated one-subject form.** `subject` and `boundAttribute` on the process itself still work, with the same rules, and
 every process that uses them gets the warning MQ9209. You can turn that warning off. Nothing converts a file on its own, and a
@@ -2052,9 +2090,9 @@ binds `ProjectAssignment.status`. A project with five assignments has five insta
 project's. Nothing in the file format is needed beyond the detail entity.
 
 **Sync codes.** The batch operation `sync-codes` proposes codes and binds them: it takes the lifecycle (`id`), the subject
-(`entity`), the attribute and, for states it cannot match, `stateCodes` keyed by state id. A state keeps a code it already has.
+(`entity`, or `stereotype` for a stereotype entry), the attribute and, for states it cannot match, `stateCodes` keyed by state id. A state keeps a code it already has.
 Otherwise it takes a code equal to its name (ignoring case, `_` and `-`), then the row whose label equals its display name or name. An
-ambiguous match is left unmatched and listed. It creates no rows. **Sync enum** takes an optional `entity` too, the subject whose enum to sync. Without it, it
+ambiguous match is left unmatched and listed. It creates no rows. **Sync enum** takes an optional `entity` or `stereotype` too, the subject whose enum to sync. Without it, it
 uses the lifecycle's one enum binding. A dry run lists the states that found no code.
 
 **Scenario objects.** A scenario may name the objects its run is about. `objects` is its cast. Each object has an `id`, a `name`,
@@ -2084,8 +2122,9 @@ is required once there are objects. Here an order and its customer, linked by th
 
 - With one subject, its own and inherited attributes.
 - With several subjects, what every subject holds under one id: the attributes of a base entity they all derive from.
-- Out of scope: the bound attribute, since the chart already knows the state, and a stereotype's attributes. Naming one is
-  MQ3102. If a context attribute is named `subject`, that attribute keeps its meaning and the object is not read.
+- A stereotype's attributes are in scope too: an entity entry offers those of the stereotypes it or a base carries, and a
+  stereotype entry offers the stereotype's own (see "A stereotype as a subject").
+- Out of scope: the bound attribute, since the chart already knows the state. Naming it is MQ3102. If a context attribute is named `subject`, that attribute keeps its meaning and the object is not read.
 
 A path ends at the attribute that declares it. In simulation and replay a missing value reads as the default, then null, and
 only true passes. With no objects, a guard that reads the object sees defaults, then null. `csharp-dapper` cannot translate such
@@ -2103,7 +2142,11 @@ chips. **Use** and **Subject** change both sides of a lifecycle at once: making 
 subject first), moving it to another entity, or turning it back into an orchestration also updates the entity's
 lifecycle and releases the entity's previous lifecycle, as one change. **Lifecycle** can be chosen only once a subject
 is set; until then the option reads "Lifecycle (choose a subject first)". With one subject, in either form, the two controls
-edit the form the file has. With two or more subjects they show them read-only, and the JSON view edits them. The **Bound attribute**
+edit the form the file has. With two or more subjects they show them read-only (a stereotype as "Approvable (stereotype)"), and the JSON view edits them.
+The **Subject** picker lists entities, then a **Stereotypes** group of the stereotypes that apply to entities. Picking one writes
+`stereotype` and drops `entity`. The bound attribute and owner stay only if they are the stereotype's own, and their pickers then list
+the stereotype's own attributes. Clearing the subject never removes a stereotype entry that covers the entity, and the control says
+"Still covered through stereotype Approvable". The **Bound attribute**
 picker lists enum, reference type and plain status attributes. The **States** tab has a **Code** column: type a code per state, and
 the cell writes a string or a number as the bound type needs. Its quick fixes are listed below. The display names, the description and the
 top controls start folded away so the chart has the room (the inspector shows the same fields); the chevron at the
@@ -2113,10 +2156,11 @@ right of the title row shows them. It opens on **Chart**. The tabs:
 - **States**: the state tree as a grid: name, type, initial, history, entry and exit actions, invokes, and the bound
   enum member (read-only). Below it, the selected state's **Invokes** grid: name, type (process, service, human task),
   the invoked process and the human task's actors. An invoke a transition still waits on is not removed.
-- **Transitions**: source, trigger, event or duration, guard, targets, actions, external and the gate badge; below it
+- **Transitions**: source, trigger, event or duration, **Verb** (only for a move with no event; a move with an event shows its
+  event's verb, greyed), guard, targets, actions, external and the gate badge; below it
   the **Guards** and **Actions** grids. An expression that does not parse is marked MQ9501 at once. Ctrl+G on an event
   transition adds a gate, or removes the one it has (the row's shield button does the same).
-- **Events**: name, actors allowed to raise it (none listed: any actor), where it is used, and the selected event's
+- **Events**: name, **Verb**, actors allowed to raise it (none listed: any actor), where it is used, and the selected event's
   payload attributes.
 - **Gates**: one form per gate: its name, the required count out of the signers (saved when you leave the field or press
   Enter), signers, required actors, **Allow repeat signer**, **Reason required**, the meanings and the audit attributes.
@@ -2263,6 +2307,11 @@ step, and the panel re-validates after it:
 | MQ9105 | **Add the signer to the event's actors** |
 | MQ9205 | **Set default to** the initial state's name, on the subject's bound attribute |
 | MQ9201 | **Set lifecycle on the subject** (the subject names another lifecycle), or **Make it this entity's lifecycle** (an entity names an orchestration) |
+| MQ9701 | **Add the verb** to the project's verbs, or **Clear the verb** |
+| MQ9702, MQ9706 | **Use the built-in verb** (a `rename-verb` to it) |
+| MQ9703 | **Remove the entry** from the hidden list |
+| MQ9704 | **Show the verb again** |
+| MQ9705 | **Move the verb to the event** (when the event names none), or clear it |
 | MQ9209 | **Use subjects**: lists the one subject in `subjects` and clears the one-subject keys |
 | MQ9210 | **Sync codes**: proposes codes from the bound attribute and binds them |
 | MQ1003, MQ1010 | **Rewrite in canonical form**: rewrites that file (an element file, a locale file or `maquettiste.json`) the way the editor writes it, as `maquettiste format` does; `maquettiste.json` also loses the retired `commit` flags |
@@ -2353,7 +2402,14 @@ name a library's actions the same way, and `transition.gatePolicy` names a libra
 
 A verb says what is done: what an actor does by sending an event, what an automatic move does, or what an operation does. Name one in
 an event's, an eventless transition's or an operation's `verb`, by its key. Verbs carry no behaviour yet; they give rights and trigger
-points one shared list of names.
+points one shared list of names. The built-in names are a working set. The owner will confirm them before release.
+
+- An **event** names what the actor does by sending it: `Submit` promotes, `SendBack` demotes.
+- A **transition** names a verb only when it has no event (`after`, `always`, `done`, `invoke-done`, `invoke-error`). With an event,
+  it takes the event's verb, and a verb of its own is MQ9705.
+- An **operation** names what it does: "Assign reviewer" names `connect`. `effect` says whether data changes. The verb says what is
+  done, so no rule ties them.
+- Any verb may be named in any of the three places. A verb is optional. Without one, nothing changes.
 
 **Built-in verbs.** Each has one fixed meaning that never changes, and a project cannot redefine it. A project may hide the ones it
 does not use, and adds its own in `model/vocabularies/verbs.json`.
@@ -2390,10 +2446,56 @@ does not use, and adds its own in `model/vocabularies/verbs.json`.
 |  | `disconnect` | Disconnect | Remove a link between two objects. |
 <!-- built-in-verbs:end -->
 
+The groups say what a verb acts on: Moves, the object's state; Signatures, a signature a move needs; Tasks, a human task; Objects,
+an object (`read`, `modify`, `freeze` and `thaw` also act on a link); Links, a link between two objects.
+
+**Hiding built-in verbs.** In **Settings › Verbs**, tick **Hide** on a verb the project does not use. The pickers stop offering it
+and generated lists leave it out. Naming a hidden verb anyway is the warning MQ9704, and the use still works. The file keeps the
+keys in `hidden`. A key that is not a built-in verb is MQ9703.
+
+**Your own verbs.** Add them in **Settings › Verbs**, or in `model/vocabularies/verbs.json` (kind `verb-vocabulary`). One file serves
+the whole project, and a second one is MQ1009. The first own verb or the first hidden verb creates it. An own verb has an id, a `key`
+(kebab-case), an optional `displayName` and an optional `description`. The key is how every use names it. Display names and
+descriptions can be translated. The built-in names are not.
+
+```json
+{
+  "kind": "verb-vocabulary",
+  "name": "verbs",
+  "hidden": ["lock", "unlock"],
+  "verbs": [
+    { "id": "…", "key": "escalate", "description": "Raise the request to the next level of support." }
+  ]
+}
+```
+
+- **Add a verb…** offers suggestions: check-out, check-in, schedule, enable, disable, grant, revoke, suspend, resume, reassign, start,
+  stop, cancel, archive, publish and notify. Their meaning differs between systems, so they are not built in. A suggestion only
+  fills in the key, name and description. You can change all three.
+- **An undeclared verb is an error** (MQ9701), not a note, because rights and triggers will rely on the name. The quick fix adds it.
+- **A built-in key may not be reused** (MQ9702). MQ9706 warns about `setstate` beside `set-state`. If a later release adds a built-in
+  verb with a key you already use, MQ9702 asks you to choose. `rename-verb` to the same key adopts the built-in in one step.
+- **Rename and remove.** In the Verbs tab, **Rename…** and **Remove…** show what will change, then run one change, so Undo
+  reverts it in one step. The batch operations are `rename-verb` (`verb`, `to`) and `remove-verb` (`verb`), both with `dryRun`.
+  Rename rewrites every use. When `to` is another own verb or a built-in, the two merge and the old definition goes.
+  Remove clears `verb` from every use. Both drop the removed verb's translations. Built-in verbs cannot be renamed or removed.
+- **A plain save** that changes the key of an own verb in use is refused (MQ9707). Use `rename-verb`. An unused verb's key may change.
+- **Deleting `verbs.json`** is refused while own verbs are named, unless you choose to clear those uses.
+
+**The verb picker.** Events, transitions without an event, and operations share one picker. It offers **None**, then the groups,
+likeliest first: Moves for a lifecycle's events and eventless moves, Tasks for an orchestration's events, Objects and Links for
+operations. Your own verbs come next. Typing filters. **Add a verb…** at the foot makes an own verb and picks it. Hidden verbs
+are not listed. The simulation panel's event buttons name the verb in their tooltip.
+
+**Output.** Templates read `model.verbs` (the built-in verbs that are not hidden, then your own) and the verb of each event,
+transition and operation. It is empty unless the project has a verb vocabulary or names a verb. `csharp-dapper` writes a `Verb`
+enum, and each event's and operation's verb. `process-docs` adds a Verb column and a page of verbs. Generated code checks nothing
+about verbs yet. A project that uses no verbs keeps its output. An older engine refuses `verbs.json` and any file with `verb`.
+
 ### The rules for processes (MQ9xxx)
 
 Every rule below has a row in **Settings › Validation**, where its severity can be changed. The structural rules (MQ9001
-to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9210, MQ9501 and MQ9601 to MQ9606) run on every save and every `validate`; MQ9019 is the answer
+to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9211, MQ9501, MQ9601 to MQ9606 and MQ9701 to MQ9707) run on every save and every `validate`; MQ9019 is the answer
 to a refused batch operation. The scenario rules (MQ93xx) and MQ9502 to MQ9507 come from replaying
 scenarios: `validate` replays every scenario of the processes it checks, **Verify scenarios** and `maquettiste process
 verify` replay on request, and the simulation panel shows them for its own run. A replay finding is reported on a save but
@@ -2432,7 +2534,7 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9105 | warning | A gate signer the event does not allow to raise it (a member of one of the event's actors is allowed, and an actor taken from the object is not checked) | **Add the signer to the event's actors** |
 | MQ9106 | info | An actor nothing uses: no process names it, it has no used member, it is not a member of a used actor, no actor taken from the object names it, and no participant names it | |
 | MQ9201 | error | A lifecycle and its subject that do not name each other: no subject, a subject whose lifecycle is another process, or an entity whose lifecycle is an orchestration or another entity's lifecycle | **Set lifecycle on the subject**, or **Make it this entity's lifecycle** |
-| MQ9202 | error | A bound attribute that is not a single-valued attribute of the subject typed by an enum, a reference type or a plain status, one set on an orchestration, or one attribute bound by two lifecycles that both list the entity | |
+| MQ9202 | error | A bound attribute that is not a single-valued attribute of the subject typed by an enum, a reference type or a plain status, one set on an orchestration, or one attribute bound by two lifecycles that both list the entity or the stereotype | |
 | MQ9203 | error | Enum drift: the bound enum's members differ from the lifecycle's root-level states (missing, extra or out of order) | **Sync enum** |
 | MQ9204 | warning | The bound enum is used elsewhere too, so syncing it changes those uses | |
 | MQ9205 | warning | The bound attribute's default is not the lifecycle's initial root-level state | **Set default to** that state |
@@ -2441,6 +2543,7 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9208 | warning | Values the bound attribute can hold that no state's code covers | |
 | MQ9209 | warning | The deprecated one-subject form (`subject` and `boundAttribute` on the process); list it in `subjects`. Can be turned off | **Use subjects** |
 | MQ9210 | warning | Under a reference-type or plain binding, states a configuration rests in have no code; one finding per binding names them | **Sync codes** |
+| MQ9211 | error | A subject entry names a stereotype that does not apply to entities, so no entity can carry it | |
 | MQ9301 | error | A scenario step accepted while it expects a refusal, or refused while it expects to be accepted; a refusal by actor names the participant and the list of actors the moves the event can make then accept, none of which the participant can be | |
 | MQ9302 | error | The active states after a step differ from what the step expects | **Update expectations from replay** |
 | MQ9303 | error | The context attributes a step changed differ from what the step expects | **Update expectations from replay** |
@@ -2465,7 +2568,15 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9603 | error | An actor taken from the object with no form or more than one; `within` without `membersOf`; `membersOf` naming something other than a plain role, group or organization; `memberOf` on such an actor; or an Automatic actor taken from the object | |
 | MQ9604 | error | An actor taken from the object used where it can't be worked out: in a process with no subjects, or with a path that does not resolve on every subject, or that ends at a many-valued attribute, a value object or a to-many end. Reported at the use | |
 | MQ9605 | error | Two or more Automatic actors | **Change the type** |
-| MQ9606 | error | A subject's owner that is not a single-valued attribute or to-one end of its entity | **Clear the owner** |
+| MQ9606 | error | A subject's owner that is not a single-valued attribute or to-one end of its entity, or, on a stereotype entry, not one of the stereotype's own attributes | **Clear the owner** |
+
+| MQ9701 | error | A `verb` that is neither a built-in verb nor one of the project's own. Reported at the event, transition or operation | **Add the verb**, or **Clear the verb** |
+| MQ9702 | error | An own verb whose key is a built-in verb's, or two own verbs with one key | **Use the built-in verb** |
+| MQ9703 | error | The hidden list names a key that is not a built-in verb | **Remove the entry** |
+| MQ9704 | warning | A hidden built-in verb is named. Reported at the use | **Show the verb again** |
+| MQ9705 | error | A transition with an event names a verb of its own; it takes its event's verb | **Move the verb to the event**, or clear it |
+| MQ9706 | warning | An own verb's key equals a built-in key once hyphens are dropped, such as `setstate` beside `set-state` | **Use the built-in verb** |
+| MQ9707 | error | A save changes the key of an own verb that is in use. Use `rename-verb` | |
 
 `GET /api/validation/rules` returns the full descriptions. The MCP tool `list_validation_rules` returns a summary by
 family, and full entries by family, id or text, in pages.
@@ -2549,7 +2660,7 @@ model. Each operation is one file of kind `operation` under `.maquettiste/model/
 its subject's file when it has a subject (`operations/invoice/send.json` for `send` on Invoice); changing the subject
 moves the file. The editor lists operations in an **Operations** folder under their domain (an operation without a
 `package` sits in its subject's) and opens one with its General fields, where the subject, level and effect are shown
-read-only, and the JSON tab, which edits the rest.
+read-only, with the operation's **Verb** beside them, and the JSON tab, which edits the rest.
 
 ### The file shape
 
@@ -2588,6 +2699,7 @@ read-only, and the JSON tab, which edits the rest.
   holds only the rest; `collection` acts on the whole set (a search, a create, a bulk change). It means something only
   with a subject (MQ3023).
 - `effect`: required, `read` or `change`, whether or not the operation takes input.
+- `verb`: optional, the key of a built-in or own verb: what the operation does (see [Verbs](#verbs)). Nothing ties it to `effect`.
 - `input`: the input members, in file order. A member is exactly one of three forms (MQ3024): a typed value, `type`,
   which takes what an attribute's `type` takes (a built-in keyword, an enum, a value object, a custom scalar type or a
   reference type), with `length`, `precision`, `scale`, `default` and `validation` as an attribute has them; a record
@@ -4265,7 +4377,7 @@ table, under `referenceData.strategies`.
 
 Tags and categories can be declared globally (`model/vocabularies/tags.json`, `categories.json`) and per domain: a tag vocabulary
 or category tree with a `package` belongs to that domain and the domains nested in it (`model/vocabularies/<name>-tags.json`,
-`<name>-categories.json`), at most one of each per scope (MQ1009). An element may use the tags and categories of its own domain,
+`<name>-categories.json`), at most one of each per scope (MQ1009; a second verb vocabulary is MQ1009 too). An element may use the tags and categories of its own domain,
 of every enclosing domain and the global ones; one declared only in another domain is error MQ2008, and a domain vocabulary may
 not redeclare a key or category name of the global vocabulary or of an enclosing domain (MQ3021).
 

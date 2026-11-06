@@ -18,6 +18,10 @@ public sealed class ROperation : RElement
     /// <summary><c>read</c> or <c>change</c>.</summary>
     public string Effect { get; internal set; } = "read";
 
+    /// <summary>The verb the operation names (verbs-design.md decision 13), or <see langword="null"/> when it names none or the key names
+    /// no verb. Nothing ties it to <see cref="Effect"/>.</summary>
+    public RVerb? Verb { get; internal set; }
+
     /// <summary>The input members, in file order. A record-level operation takes the subject record's key besides them.</summary>
     public RList<ROperationMember> Input { get; internal set; } = RList<ROperationMember>.Empty;
 
