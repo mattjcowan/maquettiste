@@ -12,7 +12,7 @@ namespace Maquettiste.Engine.Model;
 /// <param name="Folder">
 /// The conventional folder under <c>.maquettiste/</c>; <c>{db}</c> stands for the database's kebab-case name.
 /// </param>
-/// <param name="FixedFileName">The file name when the kind has a fixed one (<c>database.json</c>, <c>tags.json</c>, <c>categories.json</c>), else <see langword="null"/>.</param>
+/// <param name="FixedFileName">The file name when the kind has a fixed one (<c>database.json</c>, <c>tags.json</c>, <c>categories.json</c>, <c>verbs.json</c>), else <see langword="null"/>.</param>
 public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, string SchemaFile, string Folder, string? FixedFileName)
 {
     private static readonly ImmutableArray<KindInfo> AllKinds =
@@ -45,6 +45,7 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
         new(ElementKind.Operation, "operation", typeof(Operation), "operation.json", OperationsFolder, null),
         new(ElementKind.Constraint, "constraint", typeof(Constraint), "constraint.json", ConstraintsFolder, null),
         new(ElementKind.Custom, "custom", typeof(Custom), "custom.json", CustomFolder, null),
+        new(ElementKind.VerbVocabulary, "verb-vocabulary", typeof(VerbVocabulary), "verb-vocabulary.json", "model/vocabularies", "verbs.json"),
     ];
 
     /// <summary>The folder of seeds; each target's seeds share a sub-folder named after the target.</summary>

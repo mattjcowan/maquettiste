@@ -47,6 +47,7 @@ export class ModelIndex {
   private readonly keyResolver: RowResolver = {
     rowOf: () => null,
     stereotypeIdOf: (key) => (this.globals.stereotypes.get(key)?.id as string | undefined) ?? null,
+    verbIdOf: (key) => this.globals.verbs.own.get(key) ?? null,
   };
 
   constructor(private readonly extensions: ValidationInput["extensions"]) {}

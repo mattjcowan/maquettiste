@@ -61,6 +61,7 @@ export const KIND_ORDER: ElementKind[] = [
   "mapping",
   "package",
   "tag-vocabulary",
+  "verb-vocabulary",
   "category-tree",
   "stereotype",
   "reference-type",

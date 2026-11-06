@@ -72,6 +72,8 @@ public sealed class ModelSnapshot
         _summaries = index.Summaries;
         Tags = index.Tags;
         Categories = index.Categories;
+        Verbs = index.Verbs;
+        _ownVerbs = index.OwnVerbs;
         _tagVocabularies = index.TagVocabularies;
         _categoryTrees = index.CategoryTrees;
         Index = index;
@@ -285,6 +287,18 @@ public sealed class ModelSnapshot
 
     /// <summary>The global tag vocabulary (one with no <c>package</c>), when the model has one.</summary>
     public TagVocabulary? Tags { get; }
+
+    /// <summary>The verb vocabulary in use (<c>model/vocabularies/verbs.json</c>, verbs-design.md decision 6), or <see langword="null"/>; a
+    /// second one is MQ1009 and ignored.</summary>
+    public VerbVocabulary? Verbs { get; }
+
+    private readonly FrozenDictionary<string, OwnVerb> _ownVerbs;
+
+    /// <summary>The project's own verb a use of <paramref name="key"/> names: the first own verb of that key in file order, never for a built-in
+    /// verb's key (verbs-design.md decision 7).</summary>
+    /// <param name="key">A verb key.</param>
+    /// <returns>The own verb, or <see langword="null"/>.</returns>
+    public OwnVerb? OwnVerb(string? key) => key is null ? null : _ownVerbs.GetValueOrDefault(key);
 
     /// <summary>The global category tree (one with no <c>package</c>), when the model has one.</summary>
     public CategoryTree? Categories { get; }

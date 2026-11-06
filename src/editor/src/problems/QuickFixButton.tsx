@@ -15,6 +15,7 @@ import { subjectsOf, syncPlanLines, type ProcessDoc } from "@/model/process";
 import { applySyncCodes, applySyncEnum, syncCodes, syncEnum, syncStereotypeEntry, type SyncCodesResult, type SyncEnumResult } from "@/editors/process/api";
 import { deriveQuickFix, fixDocuments, type QuickFix } from "./quickFix";
 import { applyQuickFix, freshQuickFix } from "./applyQuickFix";
+import { applyVerbFix } from "@/verbs/verbFixes";
 import { applyBlockedReason, codesDescription, codesView, codeText, hasNoValueList, NO_VALUE_LIST_NOTE } from "./syncCodesView";
 
 type Pending =
@@ -24,7 +25,8 @@ type Pending =
   | null;
 
 export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnostic; catalogFix: string | null | undefined }) {
-  const { store, drafts } = useServices();
+  const services = useServices();
+  const { store, drafts } = services;
   const qc = useQueryClient();
   const element = useElement(diagnostic.elementId);
   const related = fixDocuments(diagnostic, element.data?.json as ModelJson | undefined)[1];
@@ -77,6 +79,7 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
           `${fix.label}: done.`,
         );
       }
+      if (fix.kind === "verb") return report(await applyVerbFix(services, fix), `${fix.label}: done.`);
       if (fix.kind === "sync-enum")
         return setPending({ kind: "sync", process: fix.process, entity: fix.entity, plan: await syncEnum(fix.process, true, fix.entity) });
       if (fix.kind === "sync-codes") {

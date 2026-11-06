@@ -209,14 +209,22 @@ export function useEditorNavigation() {
           return;
         }
       }
-      if (["tag-vocabulary", "category-tree", "stereotype"].includes(summary.kind) && s.workspace !== "settings") {
+      if (["tag-vocabulary", "category-tree", "stereotype", "verb-vocabulary"].includes(summary.kind) && s.workspace !== "settings") {
         s.select([summary.id], { pointer });
-        openSettings(summary.kind === "tag-vocabulary" ? "tags" : summary.kind === "category-tree" ? "categories" : "stereotypes");
+        openSettings(
+          summary.kind === "tag-vocabulary"
+            ? "tags"
+            : summary.kind === "category-tree"
+              ? "categories"
+              : summary.kind === "verb-vocabulary"
+                ? "verbs"
+                : "stereotypes",
+        );
         return;
       }
       // Settings, Reference data and Generate have no element inspector: going to an element shows its screen.
       if (s.workspace === "settings" || s.workspace === "reference-data" || s.workspace === "generate") {
-        if (!["tag-vocabulary", "category-tree", "stereotype"].includes(summary.kind)) {
+        if (!["tag-vocabulary", "category-tree", "stereotype", "verb-vocabulary"].includes(summary.kind)) {
           s.select([summary.id], { pointer });
           openWorkspace("entities");
           return;

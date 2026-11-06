@@ -14,6 +14,7 @@
     "subject",
     "level",
     "effect",
+    "verb",
     "input",
     "outcomes",
     "defaultOutcome",
@@ -77,6 +78,10 @@
         "read",
         "change"
       ]
+    },
+    "verb": {
+      "description": "What the operation does (verbs-design.md decision 13): a built-in verb's key or one of the project's own (MQ9701). Independent of effect, and of the verbs of the events it fires.",
+      "$ref": "common.json#/$defs/verbRef"
     },
     "input": {
       "description": "The input members, in file order.",

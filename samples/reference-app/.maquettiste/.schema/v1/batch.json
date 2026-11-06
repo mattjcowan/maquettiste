@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Model batch",
-  "description": "An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, binding operations, process operations, tag operations, the names-to-ids refactor, the text-to-trees conversion, the fold into a stereotype and the reference-type refactors, from the editor, a refactoring or an AI proposal.",
+  "description": "An atomic batch of element creates, updates and deletes, database schema operations, materialize operations, binding operations, process operations, tag operations, the names-to-ids refactor, the text-to-trees conversion, the fold into a stereotype, the reference-type refactors and the verb operations, from the editor, a refactoring or an AI proposal.",
   "type": "object",
   "x-order": ["operations"],
   "properties": {
@@ -10,10 +10,10 @@
       "items": {
         "title": "Batch operation",
         "type": "object",
-        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "to", "codes", "entity", "stereotype", "attribute", "stateCodes", "target", "default", "redefine", "excludeMissing", "keepNames"],
+        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "verb", "to", "codes", "entity", "stereotype", "attribute", "stateCodes", "target", "default", "redefine", "excludeMissing", "keepNames"],
         "properties": {
           "op": {
-            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "sync-codes", "set-lifecycle", "set-initial", "refresh-scenario", "use-subjects", "retag", "tags-to-property", "names-to-ids", "fold-into-stereotype", "map-by-name", "resync-binding", "rename-code", "retire-code", "merge-reference-types", "rename-reference-type", "text-to-trees", "upsert"]
+            "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "sync-codes", "set-lifecycle", "set-initial", "refresh-scenario", "use-subjects", "retag", "tags-to-property", "names-to-ids", "fold-into-stereotype", "map-by-name", "resync-binding", "rename-code", "retire-code", "merge-reference-types", "rename-reference-type", "text-to-trees", "rename-verb", "remove-verb", "upsert"]
           },
           "id": {
             "description": "The element: an id, a qualified name (@kind:path) or a placeholder ($name). A create's id must be an id; an update's or delete's must not be a placeholder; an upsert's must be a qualified name. For sync-enum and sync-codes, the lifecycle process; for fold-into-stereotype, the stereotype whose members the tables adopt; for rename-code, retire-code and rename-reference-type, the reference type; for merge-reference-types, the reference type merged away.",
@@ -115,7 +115,7 @@
             "minLength": 1
           },
           "expectedHashes": {
-            "description": "Materialize, map-by-name, resync-binding, retag, tags-to-property, names-to-ids, fold-into-stereotype and the reference-type refactors: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. A key may be a qualified name, never a placeholder.",
+            "description": "Materialize, map-by-name, resync-binding, retag, tags-to-property, names-to-ids, fold-into-stereotype, the reference-type refactors, rename-verb and remove-verb: the hash the caller read of each element it expects the operation to change or delete (the preview's updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is a conflict and nothing is written, so an undo built from what the caller read never puts back a stale version. A key may be a qualified name, never a placeholder.",
             "type": "object",
             "additionalProperties": {
               "type": "string",
@@ -136,8 +136,12 @@
             "type": "string",
             "minLength": 1
           },
+          "verb": {
+            "description": "The key of the project's own verb a verb operation acts on (rename-verb, remove-verb). A built-in verb's key, or a key no own verb has, refuses the operation (MQ1002).",
+            "$ref": "common.json#/$defs/key"
+          },
           "to": {
-            "description": "The code's new text (rename-code), or the live code whose row takes over the retired code's uses (retire-code).",
+            "description": "The code's new text (rename-code), or the live code whose row takes over the retired code's uses (retire-code); the verb's new key (rename-verb): another own verb's or a built-in verb's key merges the two, the uses moving to it and the definition going with its translations.",
             "type": "string",
             "minLength": 1
           },
@@ -398,6 +402,30 @@
             },
             "then": {
               "required": ["id", "code", "to"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "const": "rename-verb"
+                }
+              }
+            },
+            "then": {
+              "required": ["verb", "to"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "op": {
+                  "const": "remove-verb"
+                }
+              }
+            },
+            "then": {
+              "required": ["verb"]
             }
           },
           {

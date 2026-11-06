@@ -42,6 +42,7 @@ public sealed partial class ModelStore
                 : IsBindingOperation(o.Op) ? await MaterializeAsync(snapshot, o, "MQ4089", pointer, materialized, materializeResults, ct).ConfigureAwait(false)
                 : o.Op == BatchOp.Retag ? Wrap("MQ1002", Retag(snapshot, o, materialized))
                 : o.Op == BatchOp.TagsToProperty ? TagsToProperty(snapshot, o, materialized, pointer)
+                : IsVerbOperation(o.Op) ? Wrap("MQ1002", VerbOperation(snapshot, o, materialized))
                 : o.Op == BatchOp.NamesToIds ? NamesToIds(snapshot, o, materialized, pointer)
                 : o.Op == BatchOp.TextToTrees ? TextToTrees(snapshot, o, materialized, pointer)
                 : Wrap("MQ9019", processWork.Apply(o));

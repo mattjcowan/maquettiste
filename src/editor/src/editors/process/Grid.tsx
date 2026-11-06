@@ -15,12 +15,25 @@ export type CellKind = "text" | "select" | "toggle" | "multi" | "readonly";
 export interface GridOption {
   value: string;
   label: string;
+  /** A select cell lists options with one group together under its name. */
+  group?: string;
 }
 
 /** What F12 on a cell goes to, and what Shift+F12 lists the uses of (explorer-redesign.md, the keyboard model). */
 export interface GridTarget {
   go: () => void;
   whereUsed: () => void;
+}
+
+/** Options in runs: those without a group stay loose, those of one group sit together. */
+function groupedOptions(options: GridOption[]): { group: string | undefined; options: GridOption[] }[] {
+  const out: { group: string | undefined; options: GridOption[] }[] = [];
+  for (const o of options) {
+    const last = out[out.length - 1];
+    if (last && last.group === o.group) last.options.push(o);
+    else out.push({ group: o.group, options: [o] });
+  }
+  return out;
 }
 
 export interface GridColumn<R> {
@@ -318,11 +331,23 @@ export function Grid<R extends { id: string }>({
                               }}
                               onBlur={() => commit("blur")}
                             >
-                              {(column.options?.(row) ?? []).map((o) => (
-                                <option key={o.value} value={o.value}>
-                                  {o.label}
-                                </option>
-                              ))}
+                              {groupedOptions(column.options?.(row) ?? []).map((g) =>
+                                g.group === undefined ? (
+                                  g.options.map((o) => (
+                                    <option key={o.value} value={o.value}>
+                                      {o.label}
+                                    </option>
+                                  ))
+                                ) : (
+                                  <optgroup key={g.group} label={g.group}>
+                                    {g.options.map((o) => (
+                                      <option key={o.value} value={o.value}>
+                                        {o.label}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                ),
+                              )}
                             </select>
                           ) : (
                             <input

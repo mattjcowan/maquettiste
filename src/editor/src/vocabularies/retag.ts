@@ -26,11 +26,24 @@ async function readAll(ids: readonly string[]): Promise<Map<string, { hash: stri
 
 /** Applies a retag over the documents it touches (`ids`); resolves to null when saved, else the reason. */
 export async function commitRetag(services: AppServices, label: string, request: RetagRequest, ids: readonly string[]): Promise<string | null> {
+  return commitOperation(services, label, { op: "retag", ...request }, ids);
+}
+
+/**
+ * Applies one batch operation that expects the hashes of the documents it touches (`ids`) as read; one undo step. Resolves to null
+ * when saved, else the reason. Used by retag, rename-verb and remove-verb.
+ */
+export async function commitOperation(
+  services: AppServices,
+  label: string,
+  operation: Record<string, unknown>,
+  ids: readonly string[],
+): Promise<string | null> {
   const unique = [...new Set(ids)];
   for (const id of unique) await services.drafts.flush(id);
   const before = await readAll(unique);
   const expectedHashes = Object.fromEntries([...before].map(([id, d]) => [id, d.hash]));
-  const result = await endpoints.applyBatch({ operations: [{ op: "retag", ...request, expectedHashes }] } as unknown as BatchRequest);
+  const result = await endpoints.applyBatch({ operations: [{ ...operation, expectedHashes }] } as unknown as BatchRequest);
   if (!endpoints.isBatchResult(result)) return `${label} failed: ${result.diagnostics[0]?.message ?? "the batch did not parse"}`;
   if (result.outcome !== "saved") {
     const failed = result.items.find((i) => i.outcome !== "saved");

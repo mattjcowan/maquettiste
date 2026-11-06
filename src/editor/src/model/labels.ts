@@ -154,6 +154,7 @@ export const KIND_FOLDERS: readonly KindFolder[] = [
   folder("tag-vocabulary", "Tags", "tag vocabulary", "tag vocabularies", "tag", 900, "settings"),
   folder("category-tree", "Categories", "category tree", "category trees", "category", 910, "settings"),
   folder("stereotype", "Stereotypes", "stereotype", "stereotypes", "stereotype", 920, "settings"),
+  folder("verb-vocabulary", "Verbs", "verb vocabulary", "verb vocabularies", "verb", 930, "settings"),
 ];
 
 const BY_KIND = new Map(KIND_FOLDERS.map((f) => [f.kind, f]));
@@ -263,6 +264,7 @@ export const KIND_LABELS: Record<ElementKind, string> = {
   mapping: "Customised mapping",
   diagram: "Diagram",
   "tag-vocabulary": "Tags",
+  "verb-vocabulary": "Verbs",
   "category-tree": "Categories",
   stereotype: "Stereotype",
   "reference-type": "Reference type",

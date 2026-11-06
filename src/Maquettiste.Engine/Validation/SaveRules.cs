@@ -10,6 +10,35 @@ namespace Maquettiste.Engine.Validation;
 internal static class SaveRules
 {
     /// <summary>
+    /// The first own verb whose key a save changes while something names it (MQ9707, verbs-design.md decision 9): matched by id, in use
+    /// when the index records a reference to it from an element the save does not also rewrite. An unused verb's key may change freely.
+    /// </summary>
+    /// <param name="current">The stored model.</param>
+    /// <param name="before">The stored vocabulary.</param>
+    /// <param name="after">The proposed vocabulary.</param>
+    /// <param name="rewritten">Whether the same change rewrites an element (a batch's own updates, as <c>rename-verb</c> plans them), whose uses
+    /// then do not count; <see langword="null"/> counts every use.</param>
+    /// <returns>The change, or <see langword="null"/>.</returns>
+    internal static (string Before, string After, int Uses, string Pointer)? RenamedVerbInUse(ModelSnapshot current, VerbVocabulary before, VerbVocabulary after,
+        Func<string, bool>? rewritten)
+    {
+        var stored = new Dictionary<string, OwnVerb>(StringComparer.Ordinal);
+        foreach (var verb in before.Verbs)
+            stored.TryAdd(verb.Id, verb);
+        for (var i = 0; i < after.Verbs.Count; i++)
+        {
+            var verb = after.Verbs[i];
+            if (!stored.TryGetValue(verb.Id, out var old) || string.Equals(old.Key, verb.Key, StringComparison.Ordinal))
+                continue;
+            var uses = current.ReferencesTo(old.Id).Count(r => rewritten is null || !rewritten(r.FromElementId));
+            if (uses > 0)
+                return (old.Key, verb.Key, uses, Ptr.At("/verbs", i) + "/key");
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Checks a proposed element against the stored one: a stereotype whose immutable <c>key</c> changes is MQ3020 (D2), because
     /// every <c>stereotypes</c> list refers to the key.
     /// </summary>
@@ -29,6 +58,15 @@ internal static class SaveRules
             [
                 RuleCatalog.Create("MQ3020", $"The key of stereotype '{stored.Name}' is '{stored.Key}' and cannot change to '{stereotype.Key}'{suffix}; create a new stereotype instead.",
                     stereotype.Id, filePath, "/key"),
+            ];
+        }
+
+        if (proposed is VerbVocabulary verbs && current.Get<VerbVocabulary>(verbs.Id) is { } storedVerbs && RenamedVerbInUse(current, storedVerbs, verbs, null) is { } renamed)
+        {
+            return
+            [
+                RuleCatalog.Create("MQ9707", $"The key of own verb '{renamed.Before}' cannot change to '{renamed.After}' while {Ptr.N(renamed.Uses)} use(s) name it; rename it with the batch operation rename-verb, which rewrites every use.",
+                    verbs.Id, filePath, renamed.Pointer),
             ];
         }
 

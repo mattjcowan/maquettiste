@@ -63,7 +63,7 @@ public static class RuleCatalog
         new("MQ1006", E, "Invalid ULID."),
         new("MQ1007", E, "Unsupported model format version."),
         new("MQ1008", W, "The .schema folder is out of date."),
-        new("MQ1009", E, "A second tag vocabulary or category tree in the same scope (global or one domain); the ordinally first file is used."),
+        new("MQ1009", E, "A second tag vocabulary or category tree in the same scope (global or one domain), or a second verb vocabulary in the project; the ordinally first file is used."),
         new("MQ1010", I, "An outputs.allow entry sets commit, which is ignored since 0.5.5; remove it (maquettiste format drops it)."),
         new("MQ1011", E, "A snapshot archive cannot be imported: not a zip, a path outside the snapshot layout, a size limit, or a missing or unreadable snapshot.json."),
         new("MQ1012", E, "A name or placeholder in a batch finds nothing. No element or sub-element of that kind has the name (an update's or delete's target on the model as loaded; any other name on the model as the earlier operations leave it, with the operation's own element as it will be written), or no operation declares the placeholder. A form through an element renamed earlier in the batch keeps the old qualifier: use the id or a second batch. An upsert with an expectedHash, for a name that finds nothing, is one too."),
@@ -440,6 +440,13 @@ public static class RuleCatalog
         new("MQ9604", E, "An actor from the object is used where it cannot be worked out: in a process with no subjects, or with a path (or within) that does not resolve on every subject (the subject's own and inherited members and the attributes of the stereotypes it or a base carries for one subject, what every subject holds under one id for several; a stereotype entry holds its stereotype's own attributes and no relation ends, so with one a path is one step to such an attribute and within is empty), that passes through something other than a to-one relation end, or that ends at a many-valued attribute, a value object or a to-many end. Reported at the use; a library's gate or human task at each process that uses it."),
         new("MQ9605", E, "Two or more actors of type system: the system itself (shown as Automatic) is one actor per project; change the type of all but one, for example to external-system, or give it roles through memberOf."),
         new("MQ9606", E, "A subject entry's owner that is not a single-valued attribute or a to-one relation end of its entity (own or inherited, or an attribute of a stereotype the entity or a base carries), or on a stereotype entry a single-valued attribute of the stereotype's own; clear the owner, or name a field that holds one actor."),
+        new("MQ9701", E, "A verb that is neither a built-in verb nor one of the project's own (model/vocabularies/verbs.json). Reported at the event, transition or operation; add it to the project's verbs, or clear it."),
+        new("MQ9702", E, "An own verb whose key is a built-in verb's, or two own verbs with one key; use the built-in verb (rename-verb to it), or give the verb another key."),
+        new("MQ9703", E, "The verb vocabulary's hidden list names a key that is not a built-in verb; remove the entry."),
+        new("MQ9704", W, "A hidden built-in verb is named. Reported at the use; show the verb again, or name another verb."),
+        new("MQ9705", E, "A transition triggered by an event names a verb of its own: it takes its event's verb. Move the verb to the event when the event names none, or clear it."),
+        new("MQ9706", W, "An own verb's key equals a built-in verb's key once hyphens are dropped, such as setstate beside set-state; use the built-in verb."),
+        new("MQ9707", E, "A save changes the key of an own verb that is in use; rename it with the batch operation rename-verb, which rewrites every use."),
     ];
 
     private static readonly FrozenDictionary<string, RuleInfo> ById = Rules.ToFrozenDictionary(r => r.Id, StringComparer.Ordinal);
@@ -465,6 +472,7 @@ public static class RuleCatalog
         ["MQ94xx"] = "Process import and export",
         ["MQ95xx"] = "Process expressions and simulation",
         ["MQ96xx"] = "Actors",
+        ["MQ97xx"] = "Verbs",
     }.ToFrozenDictionary(StringComparer.Ordinal);
 
     /// <summary>The hundreds group of a rule id: <c>MQ7204</c> is in <c>MQ72xx</c>.</summary>

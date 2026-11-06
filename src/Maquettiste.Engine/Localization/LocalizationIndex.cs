@@ -852,6 +852,11 @@ public sealed class LocalizationIndex
             nodes[node.Id] = WithProperties(node);
         }
 
+        // The verb vocabulary is no node itself, but its own verbs' display names and descriptions are localizable (verbs-design.md decision 7),
+        // in the root shard.
+        if (_model.Verbs is { } verbVocabulary)
+            scopes.TryAdd(verbVocabulary.Id, ScopeOf(verbVocabulary));
+
         var members = new Dictionary<string, LocalizableNode>(StringComparer.Ordinal);
         foreach (var slot in memberSlots)
         {
@@ -903,6 +908,8 @@ public sealed class LocalizationIndex
                 Cell(row, rowSeed.Label), Cell(row, rowSeed.Description), false, false);
         }
 
+        if (entry.Kind == "verb")
+            return VerbNode(entry, scope, document.Json);
         if (entry.Kind is not ("attribute" or "end" or "enum-member" or "reference-field" or "category") && !ProcessNodeKinds.Contains(entry.Kind)
             && !OperationNodeKinds.Contains(entry.Kind))
             return null;
@@ -992,6 +999,17 @@ public sealed class LocalizationIndex
             _ => null,
         } : null;
         return new LocalizableNode(entry.Id, entry.OwnerId, entry.Kind, scope, display, null, null, description, false, false);
+    }
+
+    /// <summary>
+    /// An own verb (verbs-design.md decision 7): its display name, else the label its key gives, and its description. No plural.
+    /// </summary>
+    private static LocalizableNode? VerbNode(IndexEntry entry, string scope, JsonElement root)
+    {
+        if (!Json.JsonPointer.TryGet(root, entry.JsonPointer, out var node) || node.ValueKind != JsonValueKind.Object)
+            return null;
+        var display = String(node, "displayName") ?? (String(node, "key") is { } key ? BuiltInVerbs.DisplayNameOf(key) : null);
+        return new LocalizableNode(entry.Id, entry.OwnerId, entry.Kind, scope, display, null, null, String(node, "description"), false, false);
     }
 
     private static string DefaultFieldName(string pointer) => pointer.EndsWith("/label", StringComparison.Ordinal) ? "Label" : "Code";

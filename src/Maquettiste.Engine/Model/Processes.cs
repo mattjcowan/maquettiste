@@ -253,6 +253,13 @@ public sealed record ProcessTransition : IProcessNode
     /// <summary>What fires the transition.</summary>
     public TransitionTrigger Trigger { get; init; } = TransitionTrigger.Event;
 
+    /// <summary>
+    /// The verb of the automatic move, by key (verbs-design.md decision 12): only on a transition without an event, since one with an
+    /// event takes its event's verb (MQ9705). <see langword="null"/> when it names none.
+    /// </summary>
+    [VerbKey]
+    public string? Verb { get; init; }
+
     /// <summary>The event, when <see cref="Trigger"/> is <see cref="TransitionTrigger.Event"/>.</summary>
     [ElementRef(IndexKinds = ["event"])]
     public string? Event { get; init; }
@@ -331,6 +338,13 @@ public sealed record ProcessEvent : IProcessNode
 
     /// <summary>An optional display name (localizable).</summary>
     public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// What the actor does by sending the event, by verb key (verbs-design.md decision 11): a built-in verb or one of the project's own;
+    /// <see langword="null"/> when it names none.
+    /// </summary>
+    [VerbKey]
+    public string? Verb { get; init; }
 
     /// <summary>The typed payload, in canonical order.</summary>
     public IReadOnlyList<ModelAttribute> Payload { get; init; } = [];

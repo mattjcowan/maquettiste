@@ -65,6 +65,8 @@ export interface GateDoc {
 }
 
 export interface TransitionDoc {
+  /** The verb of an automatic move: only on a transition without an event (verbs-design.md decision 12). */
+  verb?: string;
   id: string;
   displayName?: string;
   source: string;
@@ -84,6 +86,8 @@ export interface EventDoc {
   id: string;
   name: string;
   displayName?: string;
+  /** The verb the event names (verbs-design.md decision 11): a built-in verb's key or an own verb's. */
+  verb?: string;
   payload?: AttributeDoc[];
   actors?: string[];
   description?: unknown;

@@ -382,6 +382,7 @@
         "displayName",
         "source",
         "trigger",
+        "verb",
         "event",
         "after",
         "invoke",
@@ -416,6 +417,10 @@
             "invoke-error"
           ],
           "default": "event"
+        },
+        "verb": {
+          "description": "The verb of the automatic move (verbs-design.md decision 12): only on a transition without an event, which takes its event's verb otherwise (MQ9705). A built-in verb's key or one of the project's own (MQ9701).",
+          "$ref": "common.json#/$defs/verbRef"
         },
         "event": {
           "description": "Required when trigger is event.",
@@ -481,6 +486,7 @@
         "id",
         "name",
         "displayName",
+        "verb",
         "payload",
         "actors",
         "description",
@@ -496,6 +502,10 @@
         },
         "displayName": {
           "type": "string"
+        },
+        "verb": {
+          "description": "What the actor does by sending the event (verbs-design.md decision 11): a built-in verb's key or one of the project's own (MQ9701). Optional; transitions the event triggers take it.",
+          "$ref": "common.json#/$defs/verbRef"
         },
         "payload": {
           "description": "The typed payload.",

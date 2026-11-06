@@ -2349,6 +2349,47 @@ name a library's actions the same way, and `transition.gatePolicy` names a libra
   simulation panel cannot yet give a signature for a gate policy or an assumed result for a library's stub guard: use `simulate_process` or
   `maquettiste process simulate` for those.
 
+### Verbs
+
+A verb says what is done: what an actor does by sending an event, what an automatic move does, or what an operation does. Name one in
+an event's, an eventless transition's or an operation's `verb`, by its key. Verbs carry no behaviour yet; they give rights and trigger
+points one shared list of names.
+
+**Built-in verbs.** Each has one fixed meaning that never changes, and a project cannot redefine it. A project may hide the ones it
+does not use, and adds its own in `model/vocabularies/verbs.json`.
+
+<!-- built-in-verbs:start -->
+| Group | Key | Display name | Meaning |
+| --- | --- | --- | --- |
+| Moves | `promote` | Promote | Move the object forward to a next state of its lifecycle. |
+|  | `demote` | Demote | Move the object back to an earlier state of its lifecycle. |
+|  | `override` | Override | Make a move although its conditions or signatures are not met. |
+|  | `set-state` | Set state | Put the object in a chosen state directly, without a declared move. |
+| Signatures | `sign` | Sign | Give a signature that a move needs. |
+|  | `reject` | Reject | Refuse a signature, so the move does not happen. |
+|  | `ignore` | Ignore | Waive a signature, so the move no longer waits for it. |
+|  | `withdraw` | Withdraw | Take back a signature already given. |
+|  | `delegate` | Delegate | Hand a signature or a task to another actor. |
+|  | `route` | Route | Send the object to actors for review, signature or a task. |
+| Tasks | `claim` | Claim | Take a task offered to several actors, so only you hold it. |
+|  | `complete` | Complete | Finish a task. |
+| Objects | `create` | Create | Make a new object. |
+|  | `read` | Read | See an object or a link, and its data. |
+|  | `modify` | Modify | Change the values of an object or a link. |
+|  | `delete` | Delete | Remove an object. |
+|  | `copy` | Copy | Make a new object from an existing one. |
+|  | `revise` | Revise | Make the next revision of an object. |
+|  | `lock` | Lock | Reserve an object, so only the actor holding the lock may change it. |
+|  | `unlock` | Unlock | Release a lock. |
+|  | `change-owner` | Change owner | Give an object another owner. |
+|  | `change-type` | Change type | Make an object an instance of another type. |
+|  | `change-lifecycle` | Change lifecycle | Put an object under another lifecycle. |
+|  | `freeze` | Freeze | Make an object or a link read-only until it is thawed. While frozen it can't be modified, connected, disconnected or deleted. |
+|  | `thaw` | Thaw | Undo a freeze. |
+| Links | `connect` | Connect | Link two objects through a relation. |
+|  | `disconnect` | Disconnect | Remove a link between two objects. |
+<!-- built-in-verbs:end -->
+
 ### The rules for processes (MQ9xxx)
 
 Every rule below has a row in **Settings › Validation**, where its severity can be changed. The structural rules (MQ9001

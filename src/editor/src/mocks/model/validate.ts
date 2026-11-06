@@ -9,6 +9,7 @@ import { bindableAttributes } from "@/model/binding";
 import { subjectsOf } from "@/model/process";
 import { referencesOf, subElementIds } from "./refs";
 import { bindingDiagnostics } from "./lifecycleRules";
+import { verbDiagnostics, verbGlobalsOf, type VerbGlobals } from "./verbs";
 import { relativeUseDiagnostics } from "./relativeRules";
 import { appliesToEntities, Coverage } from "./coverage";
 import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
@@ -135,12 +136,15 @@ export interface ModelGlobals {
   categoryTrees: Map<string, ScopedVocabulary>;
   categoryScope: Map<string, string>;
   packages: Map<string, { parent: string | null; name: string }>;
+  /** The project's verb vocabulary (verbs-design.md): own verbs by key, hidden built-ins. */
+  verbs: VerbGlobals;
 }
 
 /** Kinds whose change can alter every other entry's diagnostics. */
-export const GLOBAL_KINDS: ReadonlySet<string> = new Set(["stereotype", "category-tree", "tag-vocabulary"]);
+export const GLOBAL_KINDS: ReadonlySet<string> = new Set(["stereotype", "category-tree", "tag-vocabulary", "verb-vocabulary"]);
 
-export function globalsOf(entries: Iterable<ModelEntry>): ModelGlobals {
+export function globalsOf(input: Iterable<ModelEntry>): ModelGlobals {
+  const entries = [...input];
   const stereotypes = new Map<string, Json>();
   let categories: Set<string> | null = null;
   const tagVocabularies = new Map<string, ScopedVocabulary>();
@@ -165,7 +169,16 @@ export function globalsOf(entries: Iterable<ModelEntry>): ModelGlobals {
     if (kind === "tag-vocabulary" && !tagVocabularies.has(scope))
       tagVocabularies.set(scope, { keys: new Set(arr(e.json.definitions).map((d) => String(d.key))), strict: e.json.strict === true });
   }
-  return { stereotypes, categories, vocabulary: tagVocabularies.get("") ?? null, tagVocabularies, categoryTrees, categoryScope, packages };
+  return {
+    stereotypes,
+    categories,
+    vocabulary: tagVocabularies.get("") ?? null,
+    tagVocabularies,
+    categoryTrees,
+    categoryScope,
+    packages,
+    verbs: verbGlobalsOf(entries),
+  };
 }
 
 /** The scopes an element sees, nearest first: its domain (a package is its own), every enclosing one, then global (""). */
@@ -198,6 +211,8 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   const json = entry.json;
   const kind = String(json.kind);
   out.push(...schemaDiagnostics(entry));
+  // MQ9701 to MQ9706 and MQ1009 for a second verb file (verbs.ts)
+  verbDiagnostics(json, ctx.verbs, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
 
   // MQ2001 dangling references
   for (const ref of referencesOf(json)) {

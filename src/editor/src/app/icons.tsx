@@ -26,6 +26,7 @@ import {
   Type,
   UserRound,
   Workflow,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import type { ElementKind } from "@/api/types";
@@ -48,6 +49,7 @@ export const KIND_ICONS: Record<ElementKind, LucideIcon> = {
   mapping: ArrowLeftRight,
   diagram: Workflow,
   "tag-vocabulary": Tags,
+  "verb-vocabulary": Zap,
   "category-tree": FolderTree,
   stereotype: Stamp,
   "reference-type": Library,

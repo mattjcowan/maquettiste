@@ -356,6 +356,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 continue; // a second vocabulary in its scope (MQ1009)
             if (doc.Element is CategoryTree tree && model.CategoryTreeOf(tree.Package)?.Id != doc.Element.Id)
                 continue;
+            if (doc.Element is VerbVocabulary && model.Verbs?.Id != doc.Element.Id)
+                continue; // a second verb vocabulary (MQ1009)
             list.Add(doc);
         }
 
@@ -656,6 +658,15 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
         switch (element)
         {
+            case VerbVocabulary:
+                // The verb vocabulary decides MQ9701 and MQ9704 at every process and operation that names a verb, and MQ1009 on another one.
+                foreach (var peer in model.Documents)
+                {
+                    if (peer.Element is Process or Operation or VerbVocabulary)
+                        yield return peer;
+                }
+
+                break;
             case TagVocabulary or CategoryTree:
                 // A vocabulary decides MQ2005, MQ2006 and MQ2008 on every element whose chain sees its scope, and MQ3021 and MQ1009
                 // on the other vocabularies; tags are not references, so none of them is a referrer.

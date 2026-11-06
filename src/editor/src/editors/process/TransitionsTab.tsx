@@ -1,6 +1,7 @@
 // The Transitions tab (phase-3-design.md 6.2): the transitions in priority order (source path, trigger, event or
 // duration, guard, targets, actions, external, gate badge), then the Guards and Actions grids (name, the expression
 // as a one-line code field with its MQ9501 marker, description, used by).
+import { useState } from "react";
 import { ShieldCheck, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge, SectionTitle } from "@/components/ui/misc";
@@ -26,6 +27,11 @@ import {
 import { Grid, type GridColumn } from "./Grid";
 import { rowProblems, useGridTargets, type ProcessContext } from "./shared";
 import { selectProcessNode, useProcessSelection } from "./selection";
+import { describeVerb, verbGroups } from "@/model/verbList";
+import { AddVerbDialog } from "@/verbs/VerbsSettings";
+import { useVerbs } from "@/verbs/useVerbs";
+
+const ADD_VERB = "__add-verb__";
 
 const find = (p: ProcessDoc, id: string): TransitionDoc | undefined => p.transitions?.find((t) => t.id === id);
 
@@ -39,6 +45,8 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
   const actions = (process.actions ?? []).map((a) => ({ id: a.id, name: a.name }));
   const rows = transitionRows(process);
   const go = useGridTargets(id);
+  const verbs = useVerbs();
+  const [addingFor, setAddingFor] = useState<string | null>(null);
   const select = (t: string) => selectProcessNode({ process: id, kind: "transition", id: t });
   const invokesOf = (row: TransitionRow) => {
     const t = find(process, row.id);
@@ -70,6 +78,28 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
       },
       options: (r) => (r.trigger === "event" ? events.map((e) => ({ value: e.id, label: e.name })) : invokesOf(r)),
       definition: (r) => (r.trigger === "event" ? go.node("events", find(process, r.id)?.event) : null),
+    },
+    {
+      key: "verb",
+      label: "Verb",
+      tooltip: "The verb of an automatic move; a transition with an event takes its event's verb",
+      kind: "select",
+      width: "min-w-24",
+      // A transition with an event shows its event's verb, greyed (verbs-design.md section 9).
+      locked: (r) => r.trigger === "event",
+      value: (r) => {
+        const t = find(process, r.id);
+        const key = r.trigger === "event" ? events.find((e) => e.id === t?.event)?.verb : t?.verb;
+        return key ? (describeVerb(key, verbs.own)?.label ?? key) : "";
+      },
+      editValue: (r) => find(process, r.id)?.verb ?? "",
+      options: (r) => [
+        { value: "", label: "None" },
+        ...verbGroups("transition", verbs.own, verbs.hidden, find(process, r.id)?.verb).flatMap((g) =>
+          g.options.map((o) => ({ value: o.key, label: o.label, group: g.label })),
+        ),
+        { value: ADD_VERB, label: "Add a verb…" },
+      ],
     },
     {
       key: "guard",
@@ -121,7 +151,12 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
       if (!t) return;
       const v = String(value);
       if (key === "source" && v) t.source = v;
-      else if (key === "trigger") setTrigger(t, v as Trigger, p);
+      else if (key === "verb") {
+        if (row.trigger === "event") return;
+        if (v === ADD_VERB) setAddingFor(t.id);
+        else if (v) t.verb = v;
+        else delete t.verb;
+      } else if (key === "trigger") setTrigger(t, v as Trigger, p);
       else if (key === "detail") {
         if (row.trigger === "after") t.after = v.trim();
         else if (row.trigger === "event") t.event = v;
@@ -156,6 +191,17 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {addingFor ? (
+        <AddVerbDialog
+          onClose={() => setAddingFor(null)}
+          onAdded={(key) =>
+            change((p) => {
+              const t = find(p, addingFor);
+              if (t) t.verb = key;
+            })
+          }
+        />
+      ) : null}
       <Grid
         label={`Transitions of ${process.name}`}
         testid="transitions-grid"

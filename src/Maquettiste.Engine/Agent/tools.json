@@ -355,7 +355,7 @@
     {
       "name": "get_model_index",
       "title": "Model index",
-      "description": "Summaries of the top-level elements (id, kind, name, package, tags, category, stereotypes, hash, path; operation rows add subject and effect, custom element rows type and memberCount). Every filter is optional and they combine with AND. Without cursor or limit the answer is the whole list; with either it is one page, {items, next}, ordered by kind, name and id: pass next as cursor until it is null. Use the index to find elements, get_elements to read their documents in bulk, get_resolved_model for what generation sees (resolved types, inherited attributes, tables), get_model_kinds for the counts.",
+      "description": "Summaries of the top-level elements (id, kind, name, package, tags, category, stereotypes, hash, path; operation rows add subject and effect, and verb when the operation names one; process rows add verbs, the verb keys their events and transitions name, when they name any; custom element rows type and memberCount). Every filter is optional and they combine with AND. Without cursor or limit the answer is the whole list; with either it is one page, {items, next}, ordered by kind, name and id: pass next as cursor until it is null. Use the index to find elements, get_elements to read their documents in bulk, get_resolved_model for what generation sees (resolved types, inherited attributes, tables), get_model_kinds for the counts.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -590,12 +590,12 @@
     {
       "name": "get_schema",
       "title": "JSON schema",
-      "description": "The JSON schema (draft 2020-12) of an element kind or document, with the schema files it references (common.json) and, for an element kind, the project's extension schemas that apply to it (extensions: each constrains the element's properties object) and the typed parameters of the stereotypes that may apply to it (stereotypeParameters: [{stereotype, parameters}], each constraining the properties of the elements that carry the stereotype, implied ones included), so documents built for create_element, save_element, apply_batch or save_settings are valid. custom:<type> returns custom.json with customKind (the declaration with its path) and contentSchema (the compiled schema of content, with the id the engine owns on each member item).",
+      "description": "The JSON schema (draft 2020-12) of an element kind or document, with the schema files it references (common.json) and, for an element kind, the project's extension schemas that apply to it (extensions: each constrains the element's properties object) and the typed parameters of the stereotypes that may apply to it (stereotypeParameters: [{stereotype, parameters}], each constraining the properties of the elements that carry the stereotype, implied ones included), so documents built for create_element, save_element, apply_batch or save_settings are valid. custom:<type> returns custom.json with customKind (the declaration with its path) and contentSchema (the compiled schema of content, with the id the engine owns on each member item). common.json lists the built-in verbs with their fixed meanings ($defs/builtInVerb); a project adds its own in verb-vocabulary (model/vocabularies/verbs.json) and names a verb by key in an event's, an eventless transition's or an operation's verb.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "kind": {
-            "description": "An element kind (entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, stereotype, tag-vocabulary, category-tree), custom:<type> for a custom kind the project declares, or a document (maquettiste for the settings, batch, pack, extension, custom-kind, declared-rules for a rule declaration file extensions/rules/<name>.json); required.",
+            "description": "An element kind (entity, relation, enum, value-object, scalar-type, package, database, table, view, sequence, routine, database-type, sql-object, query, mapping, diagram, stereotype, tag-vocabulary, category-tree, verb-vocabulary), custom:<type> for a custom kind the project declares, or a document (maquettiste for the settings, batch, pack, extension, custom-kind, declared-rules for a rule declaration file extensions/rules/<name>.json); required.",
             "type": [
               "string",
               "null"
