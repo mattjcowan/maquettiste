@@ -115,6 +115,7 @@ const FOLDERS: Partial<Record<ElementKind, string>> = {
   process: "model/processes",
   actor: "model/actors",
   scenario: "model/scenarios",
+  right: "model/rights",
 };
 
 /** The folders of a database's element files other than tables (KindInfo: model/databases/{db}/<folder>). */
@@ -604,7 +605,8 @@ export class MockModel {
   private schemaCheck(id: string, json: Json, path: string): Diagnostic[] {
     const validate = (() => {
       try {
-        return schemaValidator(String(json.kind));
+        // The contract names a named right's schema `right-2`: `right` is the lifecycle's entry.
+        return schemaValidator(json.kind === "right" ? "right-2" : String(json.kind));
       } catch {
         return null;
       }
@@ -1534,6 +1536,14 @@ function e5(json: Json): Partial<ElementSummary> {
     // The distinct verbs its events and transitions name, only when there are some (maquettiste-index/e12).
     const verbs = processVerbs(json);
     if (verbs.length) out.verbs = verbs;
+    // The entries of its rights, inline and uses, only when above zero (maquettiste-index/e13).
+    if (Array.isArray(json.rights) && json.rights.length) out.rights = json.rights.length;
+  }
+  // A named right's access and the verbs it names (maquettiste-index/e13).
+  if (kind === "right") {
+    out.access = json.access === "allow" ? "allow" : "deny";
+    const verbs = processVerbs(json);
+    if (verbs.length) out.verbs = verbs;
   }
   if (kind === "actor" && typeof json.type === "string" && (ACTOR_TYPES as readonly string[]).includes(json.type)) {
     out.actorType = json.type as (typeof ACTOR_TYPES)[number];
@@ -1834,6 +1844,9 @@ function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, t
     const next = edit(json);
     next.use = "orchestration";
     delete next.boundAttribute;
+    // Only lifecycles hold rights (MQ9901): a demoted process lets them go with its bindings.
+    delete next.rights;
+    delete next.rightsDefault;
     if (Array.isArray(next.subjects)) next.subjects = (next.subjects as Json[]).map(({ boundAttribute: _unbound, ...entry }) => entry);
   };
   const oneSubjectForm = (json: Json) => !Array.isArray(json.subjects) && typeof json.subject === "string";
@@ -1871,6 +1884,8 @@ function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, t
         else {
           delete next.subjects;
           next.use = "orchestration";
+          delete next.rights;
+          delete next.rightsDefault;
         }
       }
     }

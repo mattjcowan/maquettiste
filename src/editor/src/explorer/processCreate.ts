@@ -185,6 +185,11 @@ export function buildActor(input: NewActorInput, newId: () => string): Json {
   };
 }
 
+/** A named right (rights-design.md decision 7): it denies by default, since an allow beside an allowing default is MQ9904, and it names one verb, which a right cannot be without. */
+export function buildRight(input: { name: string; access: "allow" | "deny"; verb: string }, newId: () => string): Json {
+  return { kind: "right", id: newId(), name: input.name.trim(), access: input.access, verbs: [input.verb] };
+}
+
 /** The stereotype keys whose extension adds a goals list to actors (the persona field). */
 export function goalsStereotypes(extensions: readonly { appliesTo?: { kinds?: string[]; stereotypes?: string[] }; properties?: Json }[]): Set<string> {
   const out = new Set<string>();

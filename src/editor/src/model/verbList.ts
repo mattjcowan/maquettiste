@@ -12,7 +12,7 @@ export interface OwnVerb {
 }
 
 /** Where a verb is named, which decides the order of the picker's groups. */
-export type VerbPlace = "lifecycle-event" | "transition" | "orchestration-event" | "operation";
+export type VerbPlace = "lifecycle-event" | "transition" | "orchestration-event" | "operation" | "right";
 
 export interface VerbOption {
   key: string;
@@ -64,11 +64,13 @@ const GROUP_ORDER: Record<VerbPlace, (BuiltInVerbGroup | "own" | "rest")[]> = {
   transition: ["move", "own", "rest"],
   "orchestration-event": ["own", "task", "rest"],
   operation: ["object", "link", "own", "rest"],
+  // A right speaks of the object, its links and the project's own verbs first (rights-design.md section 10).
+  right: ["object", "link", "own", "rest"],
 };
 
 /**
  * The groups a picker lists for a place, most likely first (decisions 11 to 14): a lifecycle's event or a transition: Moves, your
- * verbs, the rest; an orchestration's event: your verbs, Tasks, the rest; an operation: Objects and Links, your verbs, the rest.
+ * verbs, the rest; an orchestration's event: your verbs, Tasks, the rest; an operation or a right: Objects and Links, your verbs, the rest.
  * Hidden built-in verbs are left out, except `current`, so a verb a file still names stays visible beside its warning.
  */
 export function verbGroups(place: VerbPlace, own: readonly OwnVerb[], hidden: ReadonlySet<string>, current?: string): VerbGroup[] {
@@ -102,23 +104,34 @@ export function freeKey(base: string, taken: ReadonlySet<string>): string {
 }
 
 /** How many processes and operations name each verb key, from the index rows (a process row lists its distinct verbs). */
-export function verbUsage(rows: readonly ElementSummary[]): Map<string, { processes: number; operations: number }> {
-  const out = new Map<string, { processes: number; operations: number }>();
+export function verbUsage(rows: readonly ElementSummary[]): Map<string, VerbUsage> {
+  const out = new Map<string, VerbUsage>();
   const entry = (key: string) => {
     let e = out.get(key);
-    if (!e) out.set(key, (e = { processes: 0, operations: 0 }));
+    if (!e) out.set(key, (e = { processes: 0, operations: 0, rights: 0 }));
     return e;
   };
   for (const r of rows) {
     if (r.kind === "process") for (const key of r.verbs ?? []) entry(key).processes++;
     else if (r.kind === "operation" && r.verb) entry(r.verb).operations++;
+    // A named right's verbs (a lifecycle's own rights are in its row's verbs, counted with the process).
+    else if (r.kind === "right") for (const key of r.verbs ?? []) entry(key).rights = (entry(key).rights ?? 0) + 1;
   }
   return out;
 }
 
+/** How many places name a verb key. */
+export interface VerbUsage {
+  processes: number;
+  operations: number;
+  rights?: number;
+}
+
+export const isUsed = (u: VerbUsage | undefined): boolean => !!u && (u.processes > 0 || u.operations > 0 || (u.rights ?? 0) > 0);
+
 /** The processes and operations that name a verb key, from the index rows, in index order. */
 export function verbUsers(rows: readonly ElementSummary[], key: string): ElementSummary[] {
-  return rows.filter((r) => (r.kind === "process" && (r.verbs ?? []).includes(key)) || (r.kind === "operation" && r.verb === key));
+  return rows.filter((r) => ((r.kind === "process" || r.kind === "right") && (r.verbs ?? []).includes(key)) || (r.kind === "operation" && r.verb === key));
 }
 
 /**
@@ -132,10 +145,11 @@ export function verbOperationFiles(rows: readonly ElementSummary[], key: string)
   return { vocabulary: rows.find((r) => r.kind === "verb-vocabulary")?.id ?? null, users: builtIn ? [] : verbUsers(rows, key) };
 }
 
-export function usageText(u: { processes: number; operations: number } | undefined): string {
-  if (!u || (!u.processes && !u.operations)) return "unused";
+export function usageText(u: VerbUsage | undefined): string {
+  if (!isUsed(u) || !u) return "unused";
   const parts = [];
   if (u.processes) parts.push(`${u.processes} ${u.processes === 1 ? "process" : "processes"}`);
   if (u.operations) parts.push(`${u.operations} ${u.operations === 1 ? "operation" : "operations"}`);
+  if (u.rights) parts.push(`${u.rights} named ${u.rights === 1 ? "right" : "rights"}`);
   return parts.join(", ");
 }

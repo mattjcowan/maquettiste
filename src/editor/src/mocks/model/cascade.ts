@@ -48,6 +48,7 @@ const NOUNS: Record<string, string> = {
   holds: "holding",
   sets: "set",
   states: "state",
+  rights: "right",
 };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -93,6 +94,13 @@ function removeAt(json: Json, pointer: string, item: boolean): void {
     parent.splice(Number(last), 1);
     // An actor's memberOf is left out when empty, as the engine writes it.
     if (parts.length === 1 && parts[0] === "memberOf" && parent.length === 0) delete json.memberOf;
+    // A lifecycle left with no rights is written without the key, and an `except` left empty means no exception.
+    if (parts.length === 1 && parts[0] === "rights" && parent.length === 0) delete json.rights;
+    if (parent.length === 0 && parts.length >= 1 && parts[parts.length - 1] === "except") {
+      let holder: unknown = json;
+      for (const p of parts.slice(0, -1)) holder = (holder as Json)[p];
+      if (holder && typeof holder === "object") delete (holder as Json).except;
+    }
     // An action left with no sets, or an object with no states, is written without the key.
     if (parent.length === 0 && parts.length >= 1) {
       const key = parts[parts.length - 1];

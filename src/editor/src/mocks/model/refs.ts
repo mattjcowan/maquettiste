@@ -112,7 +112,14 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
   if (rows?.verbIdOf)
     for (const use of verbUses(doc)) {
       const verb = rows.verbIdOf(use.key);
-      if (verb) out.push({ fromId: use.holder ?? id, pointer: use.pointer, field: "verb", toId: verb, required: false });
+      if (!verb) continue;
+      const base = { fromId: use.holder ?? id, pointer: use.pointer, field: "verb", toId: verb };
+      // A right's verbs are a list: the entry leaves it, and the right goes with its last verb (rights-design.md section 8).
+      const at = use.owner === "right" ? rightVerbAt(doc, use.pointer) : null;
+      if (!at) out.push({ ...base, required: false });
+      else if (!at.last) out.push({ ...base, required: false, removeItem: use.pointer });
+      else if (at.whole) out.push({ ...base, required: false, removeItem: at.right, drops: true });
+      else out.push({ ...base, required: true });
     }
   switch (doc.kind) {
     case "package":
@@ -143,6 +150,11 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
         push("/relative/membersOf", "membersOf", relative.membersOf, true);
         (Array.isArray(relative.within) ? (relative.within as unknown[]) : []).forEach((p, i) => push(`/relative/within/${i}`, "within", p, true));
       }
+      break;
+    case "right":
+      // A named right (rights-design.md decision 7). It cannot drop itself from the cascade, so its last actor, end or verb is a
+      // required reference, which the delete refuses unless the right goes with it.
+      rightRefs(out, doc, "", id, false, own);
       break;
     case "value-object":
     case "stereotype":
@@ -240,6 +252,13 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
       arr(doc.events).forEach((e, i) =>
         arr(e.actors).forEach((_, j) => push(`/events/${i}/actors/${j}`, "actors", (e.actors as unknown[])[j], false, `/events/${i}/actors/${j}`)),
       );
+      // The lifecycle's rights: a use of a named right, and what an inline right names (rights-design.md section 8).
+      arr(doc.rights).forEach((r, i) => {
+        const at = `/rights/${i}`;
+        const to = str(r.right);
+        if (to) out.push({ fromId: str(r.id) ?? id, pointer: `${at}/right`, field: "right", toId: to, required: false, removeItem: at, drops: true });
+        else rightRefs(out, r, at, str(r.id) ?? id, true, own);
+      });
       const bound = rows && doc.use === "lifecycle" ? subjectsOf(doc).filter((e) => e.boundAttribute) : [];
       const states = (list: unknown, base: string) =>
         arr(list).forEach((st, i) => {
@@ -362,6 +381,33 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
   return out;
 }
 
+/** Where a right's verb sits: whether it is the last of its list, the right's pointer and whether the right is an entry of a lifecycle. */
+function rightVerbAt(doc: Json, pointer: string): { last: boolean; right: string; whole: boolean } | null {
+  const m = /^(\/rights\/\d+|)\/verbs\/\d+$/.exec(pointer);
+  if (!m) return null;
+  const holder = m[1] === "" ? doc : arr(doc.rights)[Number(m[1].slice(8))];
+  return { last: arr(holder?.verbs).length === 1, right: m[1], whole: m[1] !== "" };
+}
+
+/**
+ * What a right names besides verbs and states: its actors, except, ends and the ids in its condition. `base` is the entry's
+ * pointer ("" for a named right). An item leaves its list; the last actor or end takes the right with it, since an empty list
+ * would widen it (`whole`: an entry of a lifecycle can drop itself). A deleted id in the condition takes the right too.
+ */
+function rightRefs(out: Ref[], right: Json, base: string, holder: string, whole: boolean, own: ReadonlySet<string>): void {
+  const add = (pointer: string, field: string, to: unknown, item: string | null, alone: boolean) => {
+    const toId = str(to);
+    if (!toId || own.has(toId) || toId === holder) return;
+    if (alone) out.push({ fromId: holder, pointer, field, toId, required: !whole, ...(whole ? { removeItem: base, drops: true } : {}) });
+    else out.push({ fromId: holder, pointer, field, toId, required: false, ...(item ? { removeItem: item } : {}) });
+  };
+  for (const field of ["actors", "except", "ends"] as const) {
+    const list = arr(right[field]) as unknown as string[];
+    list.forEach((to, j) => add(`${base}/${field}/${j}`, field, to, `${base}/${field}/${j}`, field !== "except" && list.length === 1));
+  }
+  treeIds(right.condition, `${base}/condition`, (pointer, field, to) => add(pointer, field, to, null, true));
+}
+
 /** The ids a value tree names: path ids, a ref, the states of `inState` and the path `of`. */
 function treeIds(node: unknown, pointer: string, found: (pointer: string, field: string, id: string) => void): void {
   if (Array.isArray(node)) return node.forEach((x, i) => treeIds(x, `${pointer}/${i}`, found));
@@ -396,6 +442,7 @@ export function subElementIds(doc: Json): string[] {
     collect(doc.events);
     collect(doc.guards);
     collect(doc.actions);
+    collect(doc.rights);
     arr(doc.actions).forEach((a) => collect(a.sets));
     const states = (list: unknown) =>
       arr(list).forEach((st) => {

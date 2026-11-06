@@ -13,7 +13,9 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { systemActorProblem } from "@/model/actors";
-import { ACTOR_TYPE_OPTION_LABELS, GROUP_LABELS, PROCESS_LABELS } from "@/model/labels";
+import { ACTOR_TYPE_OPTION_LABELS, GROUP_LABELS, PROCESS_LABELS, RIGHT_LABELS } from "@/model/labels";
+import { verbGroups } from "@/model/verbList";
+import { useVerbs } from "@/verbs/useVerbs";
 import { newId } from "@/lib/ids";
 import { clone } from "@/lib/json";
 import { domainChoices } from "./dialogs";
@@ -24,6 +26,7 @@ import {
   NEW_STATUS,
   buildActor,
   buildProcessBatch,
+  buildRight,
   boundByOthers,
   buildScenario,
   enumAttributes,
@@ -91,6 +94,7 @@ export function ProcessCreateDialog({ kind, domain, source, forest }: { kind: Cr
   const close = () => store.getState().requestNew(null);
   if (kind === "process") return <NewProcessDialog domain={domain} forest={forest} onClose={close} />;
   if (kind === "actor") return <NewActorDialog forest={forest} onClose={close} />;
+  if (kind === "right") return <NewRightDialog forest={forest} onClose={close} />;
   return <NewScenarioDialog process={source ?? null} forest={forest} onClose={close} />;
 }
 
@@ -388,6 +392,74 @@ function NewActorDialog({ forest, onClose }: { forest: Forest; onClose: () => vo
           {(name !== "" || systemProblem) && problem ? <p className="text-12 text-danger">{problem}</p> : null}
           <ErrorLine error={error} />
           <Actions onCancel={onClose} disabled={!!problem || busy} testid="new-actor-create" />
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function NewRightDialog({ forest, onClose }: { forest: Forest; onClose: () => void }) {
+  const commit = useCommit();
+  const finish = useFinish(forest);
+  const verbs = useVerbs();
+  const [name, setName] = useState("");
+  const [access, setAccess] = useState<"allow" | "deny">("deny");
+  const [verb, setVerb] = useState("modify");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const options = verbGroups("right", verbs.own, verbs.hidden);
+  const problem = processNameProblem(name);
+  const save = async () => {
+    if (problem || busy) return;
+    setBusy(true);
+    try {
+      const right = buildRight({ name, access, verb }, newId);
+      const failed = await commit(`New named right ${name.trim()}`, [{ op: "create", element: right }], [null]);
+      if (failed) setError(failed);
+      else {
+        onClose();
+        finish(String(right.id), "right", name.trim());
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title={CREATE_LABELS.right}>
+        <form
+          className="flex flex-col gap-2"
+          data-testid="new-right-dialog"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <Field label="Name" htmlFor="new-right-name">
+            <Input id="new-right-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field label={RIGHT_LABELS.columns.access} htmlFor="new-right-access">
+            <Select id="new-right-access" value={access} onChange={(e) => setAccess(e.target.value as "allow" | "deny")}>
+              <option value="deny">{RIGHT_LABELS.deny}</option>
+              <option value="allow">{RIGHT_LABELS.allow}</option>
+            </Select>
+          </Field>
+          <Field label={RIGHT_LABELS.columns.does} htmlFor="new-right-verb" hint="More verbs are added in the editor.">
+            <Select id="new-right-verb" value={verb} onChange={(e) => setVerb(e.target.value)}>
+              {options.map((g) => (
+                <optgroup key={g.id} label={g.label}>
+                  {g.options.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </Select>
+          </Field>
+          {name !== "" && problem ? <p className="text-12 text-danger">{problem}</p> : null}
+          <ErrorLine error={error} />
+          <Actions onCancel={onClose} disabled={!!problem || busy} testid="new-right-create" />
         </form>
       </DialogContent>
     </Dialog>

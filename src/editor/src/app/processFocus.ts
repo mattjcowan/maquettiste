@@ -3,7 +3,7 @@
 // (src/editors/process, round P3b) reads it and clears it once it has selected the node.
 import { useSyncExternalStore } from "react";
 
-export const PROCESS_TABS = ["chart", "states", "transitions", "events", "gates", "context", "scenarios"] as const;
+export const PROCESS_TABS = ["chart", "states", "transitions", "events", "gates", "rights", "context", "scenarios"] as const;
 export type ProcessTab = (typeof PROCESS_TABS)[number];
 
 export interface ProcessFocus {

@@ -125,6 +125,31 @@ export interface SubjectDoc {
   owner?: string;
 }
 
+/**
+ * One entry of a lifecycle's `rights` (rights-design.md decisions 1, 3 and 7): an inline right, which says what it allows or
+ * denies itself, or a use of a named right (`right`), which carries only the states where it holds.
+ */
+export interface RightDoc {
+  id: string;
+  /** A use: the id of the named right. */
+  right?: string;
+  name?: string;
+  displayName?: string;
+  access?: "allow" | "deny";
+  /** Who it applies to; absent means everyone. */
+  actors?: string[];
+  /** Who it does not apply to; it never grants. */
+  except?: string[];
+  verbs?: string[];
+  /** Relation ends of the subject: the right then speaks of the links through them. */
+  ends?: string[];
+  /** A tree as stored, or `{ text }` as written. */
+  condition?: Json;
+  /** The states where it holds; absent means every state. */
+  states?: string[];
+  description?: unknown;
+}
+
 export interface ProcessDoc {
   kind: "process";
   id: string;
@@ -142,6 +167,9 @@ export interface ProcessDoc {
   states: StateDoc[];
   initial?: string;
   transitions?: TransitionDoc[];
+  /** What the lifecycle answers where no right says (rights-design.md decision 9); absent allows. Lifecycles only. */
+  rightsDefault?: "allow" | "deny";
+  rights?: RightDoc[];
   source?: Json;
   generation?: Json;
 }
@@ -365,6 +393,20 @@ export function incomingTransitions(process: ProcessDoc, id: string): Transition
   return (process.transitions ?? []).filter((t) => !inside.has(t.source) && (t.targets ?? []).some((x) => inside.has(x)));
 }
 
+/**
+ * Takes deleted states out of the rights that name them. When the last one named goes, the right goes too: an empty list would
+ * widen it to every state (rights-design.md section 8).
+ */
+function dropRightStates(process: ProcessDoc, gone: ReadonlySet<string>): void {
+  if (!process.rights) return;
+  process.rights = process.rights.filter((r) => {
+    if (!r.states?.some((s) => gone.has(s))) return true;
+    r.states = r.states.filter((s) => !gone.has(s));
+    return r.states.length > 0;
+  });
+  if (!process.rights.length) delete process.rights;
+}
+
 export type DeleteStateResult = { ok: true } | { ok: false; reason: string };
 
 /** Deletes a state and its subtree with the transitions leaving them; refused while a transition enters it, or for
@@ -393,6 +435,7 @@ export function deleteState(process: ProcessDoc, id: string): DeleteStateResult 
   }
   if (process.transitions) process.transitions = process.transitions.filter((t) => !inside.has(t.source));
   for (const { state } of stateIndex(process).values()) if (state.defaultTarget && inside.has(state.defaultTarget)) delete state.defaultTarget;
+  dropRightStates(process, inside);
   return { ok: true };
 }
 

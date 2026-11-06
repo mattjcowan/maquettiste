@@ -191,7 +191,17 @@ function indexMembers(json: Record<string, unknown>, actorIds?: ReadonlySet<stri
     const named = new Set<string>();
     for (const part of [json.events, json.transitions])
       for (const one of Array.isArray(part) ? (part as Record<string, unknown>[]) : []) if (typeof one.verb === "string") named.add(one.verb);
+    // Its inline rights' verbs count too, and its rights count when there are any (rights-design.md section 8).
+    const rights = Array.isArray(json.rights) ? (json.rights as Record<string, unknown>[]) : [];
+    for (const right of rights) for (const verb of Array.isArray(right.verbs) ? right.verbs : []) if (typeof verb === "string") named.add(verb);
     if (named.size) out.verbs = [...named].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    if (rights.length) out.rights = rights.length;
+  }
+  // A named right's access and verbs (rights-design.md section 8).
+  if (kind === "right") {
+    out.access = json.access === "allow" ? "allow" : "deny";
+    const verbs = [...new Set(Array.isArray(json.verbs) ? json.verbs.filter((v): v is string => typeof v === "string") : [])];
+    if (verbs.length) out.verbs = verbs.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   }
   if (kind === "actor" && typeof json.type === "string" && (ACTOR_TYPES as readonly string[]).includes(json.type)) {
     out.actorType = json.type as ActorType;

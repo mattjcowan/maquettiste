@@ -206,6 +206,9 @@ export async function demoteLifecycle(
   const process = structuredClone(before.json) as Record<string, unknown>;
   delete process.use;
   delete process.boundAttribute;
+  // Only lifecycles hold rights (MQ9901), so they go with the bindings.
+  delete process.rights;
+  delete process.rightsDefault;
   if (Array.isArray(process.subjects))
     process.subjects = (process.subjects as Record<string, unknown>[]).map(({ boundAttribute: _unbound, ...entry }) => entry);
   const docs = [{ id: change.process, before: before.json as ModelJson, hash: before.hash, json: process as ModelJson }];

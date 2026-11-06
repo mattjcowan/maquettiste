@@ -157,7 +157,7 @@ function lifecycle(
   };
 }
 
-const invoiceLifecycle = lifecycle(
+const invoiceBase = lifecycle(
   INVOICE_LIFECYCLE,
   "InvoiceLifecycle",
   INVOICE,
@@ -175,6 +175,35 @@ const invoiceLifecycle = lifecycle(
   ],
   301,
 );
+
+// Rights (rights-design.md): one inline right and a use of the named right PaidIsReadOnly. Both deny, and the default allows, so
+// the model has no findings.
+export const PAID_IS_READ_ONLY = "01JQRGT0000000000000000001";
+const namedRights: Json[] = [
+  {
+    kind: "right",
+    id: PAID_IS_READ_ONLY,
+    name: "PaidIsReadOnly",
+    access: "deny",
+    except: [APPROVER],
+    verbs: ["modify", "delete"],
+    description: "A paid invoice is final; only an approver may correct it.",
+  },
+];
+const invoiceLifecycle: Json = {
+  ...invoiceBase,
+  rights: [
+    {
+      id: "01JQRGT0000000000000000011",
+      name: "NoDeleteOnceIssued",
+      access: "deny",
+      verbs: ["delete"],
+      states: [M(202), M(204)],
+      description: "An issued invoice is voided, not deleted.",
+    },
+    { id: "01JQRGT0000000000000000012", right: PAID_IS_READ_ONLY, states: [M(203)] },
+  ],
+};
 
 const scenarios: Json[] = [
   {
@@ -236,6 +265,7 @@ export function processFiles(): SeedFile[] {
     file("extensions/persona.json", personaExtension),
     file("model/vocabularies/stereotypes/persona.json", persona),
     ...actors.map((a) => file(`model/actors/${kebab(String(a.name))}.json`, a)),
+    ...namedRights.map((r) => file(`model/rights/${kebab(String(r.name))}.json`, r)),
     file("model/processes/purchase-approval.json", purchaseApproval),
     file("model/processes/invoice-lifecycle.json", invoiceLifecycle),
     ...scenarios.map((s) => file(`model/scenarios/${kebab(String(s.name))}.json`, s)),

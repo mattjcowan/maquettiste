@@ -365,6 +365,7 @@ function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row, actsIn?: ReadonlyM
     for (const e of r.ends) text = text ? `${text} → ${nameOf(e.entity) ?? "?"}` : (nameOf(e.entity) ?? "?");
     return text;
   }
+  if (r.kind === "right") return [r.access === "allow" ? "Allows" : "Denies", ...(r.verbs ?? []).slice(0, 3)].join(" ");
   if (r.kind === "diagram" && r.process) return CHART_LABELS.statechartOf(nameOf(r.process) ?? "?");
   if (r.kind === "diagram") return plural(r.memberCount ?? 0, "member", "members");
   if (r.kind === "seed" && r.rowCount != null) return plural(r.rowCount, "row", "rows");
@@ -519,7 +520,7 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
   // The Processes explorer is rebuilt, not patched: a process, actor or scenario change, or a domain change while it lists
   // processes (its groups are named after domains).
   const listsProcesses = (nodes.get(ROOTS.processes)?.children?.length ?? 0) > 0;
-  const PHASE3 = ["process", "actor", "scenario"];
+  const PHASE3 = ["process", "actor", "scenario", "right"];
   for (const [old, row] of steps) {
     const kind = row?.kind ?? old?.kind ?? "";
     if (PHASE3.includes(kind) || (kind === "package" && listsProcesses)) return null;
@@ -781,7 +782,12 @@ export function buildForest(input: TreeInput): Forest {
   const processRows: Row[] = [];
   const actorRows: Row[] = [];
   const scenarioRows: Row[] = [];
+  const rightRows: Row[] = [];
   for (const r of rows) {
+    if (r.kind === "right") {
+      rightRows.push(r);
+      continue;
+    }
     if (r.kind === "process") processRows.push(r);
     else if (r.kind === "actor") actorRows.push(r);
     switch (placementOf(r.kind)) {
@@ -1614,6 +1620,17 @@ export function buildForest(input: TreeInput): Forest {
     folder.home = false;
     folder.secondary = fmt(actorNodes.length);
     folder.sort = "\uffff";
+    processTop.push(folder);
+  }
+  // Named rights (rights-design.md section 10): a Rights folder after Actors, each right with its access and verbs.
+  if (rightRows.length) {
+    // A named right is listed in this explorer only, so its row is its place.
+    const rightNodes = rightRows.map((r) => elementNode(r, "processes", `${ROOTS.processes}/r:${r.id}`));
+    const folder = folderNode(`${ROOTS.processes}/rights`, "processes", kindFolder("right")!, [], PROCESS_LABELS.rights, kindFolder("right")!.tooltip);
+    attach(folder, rightNodes.sort(byLabel));
+    folder.count = rightNodes.length;
+    folder.secondary = fmt(rightNodes.length);
+    folder.sort = "￿￿";
     processTop.push(folder);
   }
   headers.processes = [countOf(processRows.length, "process"), countOf(actorRows.length, "actor"), countOf(scenarioRows.length, "scenario")].join(" · ");

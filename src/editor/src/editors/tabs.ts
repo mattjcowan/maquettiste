@@ -15,6 +15,7 @@ export const EDITOR_KINDS = [
   "package",
   "process",
   "actor",
+  "right",
   "scenario",
   "table",
   "view",

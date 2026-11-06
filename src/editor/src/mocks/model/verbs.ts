@@ -18,7 +18,7 @@ export interface VerbUse {
   /** The event, transition or operation that holds it. */
   holder: string | null;
   key: string;
-  owner: "event" | "transition" | "operation";
+  owner: "event" | "transition" | "operation" | "right";
 }
 
 /** Every use of a verb in a document (the three places of decisions 11 to 13), in file order. */
@@ -33,6 +33,16 @@ export function verbUses(doc: Json): VerbUse[] {
       const key = str(t.verb);
       if (key !== null) out.push({ pointer: `/transitions/${i}/verb`, holder: str(t.id), key, owner: "transition" });
     });
+    // The verbs of the lifecycle's inline rights (rights-design.md section 8); a use names none.
+    arr(doc.rights).forEach((r, i) =>
+      (Array.isArray(r.verbs) ? (r.verbs as unknown[]) : []).forEach((key, j) => {
+        if (typeof key === "string") out.push({ pointer: `/rights/${i}/verbs/${j}`, holder: str(r.id), key, owner: "right" });
+      }),
+    );
+  } else if (doc.kind === "right") {
+    (Array.isArray(doc.verbs) ? (doc.verbs as unknown[]) : []).forEach((key, j) => {
+      if (typeof key === "string") out.push({ pointer: `/verbs/${j}`, holder: str(doc.id), key, owner: "right" });
+    });
   } else if (doc.kind === "operation") {
     const key = str(doc.verb);
     if (key !== null) out.push({ pointer: "/verb", holder: str(doc.id), key, owner: "operation" });
@@ -40,7 +50,7 @@ export function verbUses(doc: Json): VerbUse[] {
   return out;
 }
 
-/** The distinct verb keys a process's events and transitions name, sorted ordinally (ElementSummary.verbs). */
+/** The distinct verb keys a process's events, transitions and inline rights name, or a named right's, sorted ordinally (ElementSummary.verbs). */
 export function processVerbs(doc: Json): string[] {
   return [...new Set(verbUses(doc).map((u) => u.key))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
@@ -174,9 +184,12 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
       const json = working(id, doc);
       const holder = pointerParent(json, use.pointer);
       if (rename) holder[lastSegment(use.pointer)] = to;
+      // A right's verb is an item of its list: marked here, taken out below with the right that has no verb left.
+      else if (use.owner === "right") holder[lastSegment(use.pointer)] = null;
       else delete holder[lastSegment(use.pointer)];
     }
   }
+  if (!rename) for (const json of changed.values()) dropRightsWithoutVerbs(json);
   const target = arr(vocabulary.verbs).find((v) => v.key === to);
   const json = working(String(vocabulary.id), vocabulary);
   const verbs = arr(json.verbs);
@@ -188,6 +201,22 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
   // Writes that change nothing are skipped.
   for (const [id, doc] of [...changed]) if (JSON.stringify(doc) === JSON.stringify(docs.get(id))) changed.delete(id);
   return { changed };
+}
+
+/** Takes the verbs marked gone out of a document's rights; a right whose last verb goes goes too (rights-design.md section 8). */
+function dropRightsWithoutVerbs(json: Json): void {
+  if (json.kind === "right") {
+    json.verbs = arr(json.verbs).filter((v) => v !== null);
+    return;
+  }
+  if (!Array.isArray(json.rights)) return;
+  const kept = arr(json.rights).filter((r) => {
+    if (!Array.isArray(r.verbs)) return true;
+    r.verbs = (r.verbs as unknown[]).filter((v) => v !== null);
+    return (r.verbs as unknown[]).length > 0;
+  });
+  if (kept.length) json.rights = kept;
+  else delete json.rights;
 }
 
 function lastSegment(pointer: string): string {
