@@ -208,6 +208,184 @@ public sealed class ProcessLifecycleSqlTests
         }
     }
 
+    [Fact]
+    public async Task Two_lifecycles_that_bind_one_column_share_one_check_listing_both_sets_of_codes()
+    {
+        using var repo = Customers("postgresql", new JsonObject { ["lifecycleChecks"] = true });
+        // VipCustomer is a second entity over the same customers table and stage column, with a lifecycle of its own.
+        repo.Write(".maquettiste/model/entities/vip-customer.json", """
+            {
+              "$schema": "../../.schema/v1/entity.json",
+              "kind": "entity",
+              "id": "01K6BFX00000000000000000B6",
+              "name": "VipCustomer",
+              "package": "01K6BFX0000000000000000001",
+              "key": { "attributes": [ "01K6BFX00000000000000000B7" ], "strategy": "uuid-v7" },
+              "attributes": [
+                { "id": "01K6BFX00000000000000000B7", "name": "id", "type": "uuid", "required": true },
+                { "id": "01K6BFX00000000000000000B8", "name": "stage", "type": "int16", "required": true, "default": 3 }
+              ],
+              "bindings": [
+                {
+                  "id": "01K6BFX00000000000000000B9",
+                  "database": "01K6BFX0000000000000000002",
+                  "source": "01K6BFX0000000000000000013",
+                  "fields": [
+                    { "attribute": "01K6BFX00000000000000000B7", "column": "01K6BFX0000000000000000009" },
+                    { "attribute": "01K6BFX00000000000000000B8", "column": "01K6BFX0000000000000000090" }
+                  ]
+                }
+              ]
+            }
+
+            """);
+        repo.Write(".maquettiste/model/processes/customer-support.json", """
+            {
+              "$schema": "../../.schema/v1/process.json",
+              "kind": "process",
+              "id": "01K6BFX00000000000000000B0",
+              "name": "CustomerSupport",
+              "package": "01K6BFX0000000000000000001",
+              "use": "lifecycle",
+              "subjects": [ { "id": "01K6BFX00000000000000000B1", "entity": "01K6BFX00000000000000000B6", "boundAttribute": "01K6BFX00000000000000000B8" } ],
+              "events": [ { "id": "01K6BFX00000000000000000B2", "name": "escalate" } ],
+              "states": [
+                { "id": "01K6BFX00000000000000000B3", "name": "Open", "code": 3 },
+                { "id": "01K6BFX00000000000000000B4", "name": "Escalated", "type": "final", "code": 4 }
+              ],
+              "initial": "01K6BFX00000000000000000B3",
+              "transitions": [
+                { "id": "01K6BFX00000000000000000B5", "source": "01K6BFX00000000000000000B3", "event": "01K6BFX00000000000000000B2", "targets": [ "01K6BFX00000000000000000B4" ] }
+              ]
+            }
+
+            """);
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        var seed = repo.Read("db/main/seed.sql");
+        Assert.Contains("-- customers.stage (states of CustomerLifecycle, CustomerSupport).\n", seed, StringComparison.Ordinal);
+        Assert.Contains("ADD CONSTRAINT ck_customers_stage_states CHECK (stage IN (1, 2, 3, 4));", seed, StringComparison.Ordinal);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(seed, "ADD CONSTRAINT ck_customers_stage_states"));
+    }
+
+    [Fact]
+    public async Task Tables_of_one_name_in_two_schemas_each_get_their_own_check()
+    {
+        using var repo = Customers("postgresql", new JsonObject { ["lifecycleChecks"] = true });
+        // ArchivedCustomer keeps its stage in archive.customers, beside public.customers, and has a lifecycle of its own.
+        repo.EditJson(".maquettiste/model/databases/main/database.json", database =>
+            database["schemas"] = JsonNode.Parse("""[ { "id": "01K6BFX00000000000000000F0", "name": "archive" } ]"""));
+        repo.Write(".maquettiste/model/databases/main/tables/archive-customers.json", """
+            {
+              "$schema": "../../../../.schema/v1/table.json",
+              "kind": "table",
+              "id": "01K6BFX00000000000000000C0",
+              "name": "customers",
+              "schema": "01K6BFX00000000000000000F0",
+              "database": "01K6BFX0000000000000000002",
+              "columns": [
+                { "id": "01K6BFX00000000000000000C1", "name": "id", "type": "uuid", "nullable": false },
+                { "id": "01K6BFX00000000000000000C2", "name": "stage", "type": "int16", "nullable": false, "default": 1 }
+              ],
+              "primaryKey": { "columns": [ "01K6BFX00000000000000000C1" ] }
+            }
+
+            """);
+        repo.Write(".maquettiste/model/entities/archived-customer.json", """
+            {
+              "$schema": "../../.schema/v1/entity.json",
+              "kind": "entity",
+              "id": "01K6BFX00000000000000000C3",
+              "name": "ArchivedCustomer",
+              "package": "01K6BFX0000000000000000001",
+              "key": { "attributes": [ "01K6BFX00000000000000000C4" ], "strategy": "uuid-v7" },
+              "attributes": [
+                { "id": "01K6BFX00000000000000000C4", "name": "id", "type": "uuid", "required": true },
+                { "id": "01K6BFX00000000000000000C5", "name": "stage", "type": "int16", "required": true, "default": 1 }
+              ],
+              "bindings": [
+                {
+                  "id": "01K6BFX00000000000000000C6",
+                  "database": "01K6BFX0000000000000000002",
+                  "source": "01K6BFX00000000000000000C0",
+                  "fields": [
+                    { "attribute": "01K6BFX00000000000000000C4", "column": "01K6BFX00000000000000000C1" },
+                    { "attribute": "01K6BFX00000000000000000C5", "column": "01K6BFX00000000000000000C2" }
+                  ]
+                }
+              ]
+            }
+
+            """);
+        repo.Write(".maquettiste/model/processes/archive-lifecycle.json", """
+            {
+              "$schema": "../../.schema/v1/process.json",
+              "kind": "process",
+              "id": "01K6BFX00000000000000000C7",
+              "name": "ArchiveLifecycle",
+              "package": "01K6BFX0000000000000000001",
+              "use": "lifecycle",
+              "subjects": [ { "id": "01K6BFX00000000000000000C8", "entity": "01K6BFX00000000000000000C3", "boundAttribute": "01K6BFX00000000000000000C5" } ],
+              "events": [ { "id": "01K6BFX00000000000000000C9", "name": "restore" } ],
+              "states": [
+                { "id": "01K6BFX00000000000000000D0", "name": "Stored", "code": 7 },
+                { "id": "01K6BFX00000000000000000D1", "name": "Restored", "type": "final", "code": 8 }
+              ],
+              "initial": "01K6BFX00000000000000000D0",
+              "transitions": [
+                { "id": "01K6BFX00000000000000000D2", "source": "01K6BFX00000000000000000D0", "event": "01K6BFX00000000000000000C9", "targets": [ "01K6BFX00000000000000000D1" ] }
+              ]
+            }
+
+            """);
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        var seed = repo.Read("db/main/seed.sql");
+        Assert.Contains("ALTER TABLE public.customers ADD CONSTRAINT ck_customers_stage_states CHECK (stage IN (1, 2, 3));", seed, StringComparison.Ordinal);
+        Assert.Contains("ALTER TABLE archive.customers ADD CONSTRAINT ck_customers_stage_states CHECK (stage IN (7, 8));", seed, StringComparison.Ordinal);
+        Assert.Contains("-- customers.stage (states of CustomerLifecycle).\n", seed, StringComparison.Ordinal);
+        Assert.Contains("-- customers.stage (states of ArchiveLifecycle).\n", seed, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_column_found_through_a_binding_with_constants_gets_a_drop_and_no_check()
+    {
+        using var repo = Customers("postgresql", new JsonObject { ["lifecycleChecks"] = true });
+        // CustomerNote shares the notes table (entity_type 'customer'), so the codes of one lifecycle need not cover its rows.
+        repo.EditJson(".maquettiste/model/databases/main/tables/notes.json", table =>
+            table["columns"]!.AsArray().Add(JsonNode.Parse("""{ "id": "01K6BFX00000000000000000E0", "name": "phase", "type": "string", "length": 20, "nullable": true }""")));
+        repo.EditJson(".maquettiste/model/entities/customer-note.json", entity =>
+        {
+            entity["attributes"]!.AsArray().Add(JsonNode.Parse("""{ "id": "01K6BFX00000000000000000E1", "name": "phase", "type": "string", "length": 20 }"""));
+            entity["bindings"]![0]!["fields"]!.AsArray().Add(JsonNode.Parse("""{ "attribute": "01K6BFX00000000000000000E1", "column": "01K6BFX00000000000000000E0" }"""));
+        });
+        repo.Write(".maquettiste/model/processes/note-lifecycle.json", """
+            {
+              "$schema": "../../.schema/v1/process.json",
+              "kind": "process",
+              "id": "01K6BFX00000000000000000E2",
+              "name": "NoteLifecycle",
+              "package": "01K6BFX0000000000000000001",
+              "use": "lifecycle",
+              "subjects": [ { "id": "01K6BFX00000000000000000E3", "entity": "01K6BFX0000000000000000044", "boundAttribute": "01K6BFX00000000000000000E1" } ],
+              "events": [ { "id": "01K6BFX00000000000000000E4", "name": "publish" } ],
+              "states": [
+                { "id": "01K6BFX00000000000000000E5", "name": "Draft", "code": "draft" },
+                { "id": "01K6BFX00000000000000000E6", "name": "Published", "type": "final", "code": "published" }
+              ],
+              "initial": "01K6BFX00000000000000000E5",
+              "transitions": [
+                { "id": "01K6BFX00000000000000000E7", "source": "01K6BFX00000000000000000E5", "event": "01K6BFX00000000000000000E4", "targets": [ "01K6BFX00000000000000000E6" ] }
+              ]
+            }
+
+            """);
+        await repo.GenerateCleanlyAsync(packs: ["sql-ddl"]);
+        var seed = repo.Read("db/main/seed.sql");
+        Assert.Contains("-- notes.phase (states of NoteLifecycle): its table also holds rows of other entities, so it gets no check.\nALTER TABLE public.notes DROP CONSTRAINT IF EXISTS ck_notes_phase_states;\n", seed, StringComparison.Ordinal);
+        Assert.DoesNotContain("ADD CONSTRAINT ck_notes_phase_states", seed, StringComparison.Ordinal);
+        // The customers check, whose table holds only customers, is still added.
+        Assert.Contains("ADD CONSTRAINT ck_customers_stage_states", seed, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("postgresql")]
     [InlineData("sqlserver")]

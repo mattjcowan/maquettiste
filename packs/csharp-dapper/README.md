@@ -374,13 +374,23 @@ gets none of this, and the files are the same as before.
 When the codes form a map (no two coded states on one path, none inside a parallel region), the class also has:
 
 - `ToCode(IReadOnlyList<string> states)`: the code of a configuration, or `null` for a state with no code.
-- `FromCode(code)`: the path of the coded state. Restoring into a compound state enters its default, as the chart does.
-- `Moves`: every transition as (from code, to code, trigger, event). A move into a history or choice state has no fixed "to" code,
-  since it is decided when the move runs. A timer, a completion or an eventless move has no event. A move inside one coded state
-  has the same code at both ends.
+- `FromCode(code)`: the configuration the code restores, as an `IReadOnlyList<string>` of leaf state paths in document order, ready
+  for a snapshot's `States`. A compound state enters its initial state and a parallel state each of its regions, as the chart
+  does, so a code on a simple state gives one path and a code whose default enters a parallel state gives one per region. A coded
+  state whose default enters a choice state throws, since the chart picks its states when it runs.
+- `Moves`: every transition as (from code, to code, trigger, event).
+  - From a state with no code on its path, there is one move per coded state inside it, plus one with a `null` "from" code where a
+    state without a code can rest inside it.
+  - A move into a history state takes the code of the nearest coded state that holds it, since everything it restores sits inside
+    that state; with no coded state around it, and for a move into a choice state, the "to" code is `null`, since it is decided
+    when the move runs.
+  - A move without a target, or inside one coded state, has the same code at both ends. A timer, a completion or an eventless
+    move has no event.
 
-A lifecycle with several subjects keeps the per-state enum and `Parse`, and gets `To<Entity>Status` for each enum binding. A
-lifecycle with one subject, in either form, writes the same `ToStatus` as before.
+A lifecycle with several subjects keeps the per-state enum and `Parse`, and gets `To<Entity>Status` for each enum binding. Each
+names its enum in full (`global::<namespace>.<Enum>`), so two bound enums with one name, or an enum named like a type of the
+lifecycle's own namespace, return the right type. A lifecycle with one subject, in either form, writes the same `ToStatus` as
+before.
 
 ### The pair and regions shapes
 

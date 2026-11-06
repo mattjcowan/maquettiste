@@ -7,8 +7,8 @@
     # binding to a reference type or a plain status); otherwise it reads as before codes and subjects. -}}
 {{- coded = [] -}}
 {{- for s in p.all_states }}{{ if s.code != null }}{{ coded[coded.size] = s }}{{ end }}{{ end -}}
-{{- listed = p.subjects.size > 1 || coded.size > 0 -}}
-{{- for sj in p.subjects }}{{ if sj.bound_attribute && !sj.bound_enum }}{{ listed = true }}{{ end }}{{ end -}}
+{{- listed = p.use == "lifecycle" && (p.subjects.size > 1 || coded.size > 0) -}}
+{{- for sj in p.subjects }}{{ if p.use == "lifecycle" && sj.bound_attribute && !sj.bound_enum }}{{ listed = true }}{{ end }}{{ end -}}
 {{ banner "<!--" }} -->
 
 # {{ md_cell p.display_name }}
@@ -57,7 +57,7 @@ The attribute {{ md_code (p.subject.name + "." + p.bound_attribute.name) }} of {
 | Subject | Attribute | Type |
 | --- | --- | --- |
 {{- for sj in p.subjects }}
-| {{ md_code sj.entity.name }} | {{ sj.bound_attribute ? (md_code (sj.entity.name + "." + sj.bound_attribute.name)) : "none" }} | {{ if !sj.bound_attribute }}{{ else if sj.bound_enum }}enum {{ md_code sj.bound_enum.name }}{{ else if sj.bound_reference_type }}reference type {{ md_code sj.bound_reference_type.name }}{{ else }}{{ md_code attr_type(sj.bound_attribute) }}{{ end }} |
+| {{ md_code subject_label(p, sj) }} | {{ sj.bound_attribute ? (md_code (subject_label(p, sj) + "." + sj.bound_attribute.name)) : "none" }} | {{ if !sj.bound_attribute }}{{ else if sj.bound_enum }}enum {{ md_code sj.bound_enum.name }}{{ else if sj.bound_reference_type }}reference type {{ md_code sj.bound_reference_type.name }}{{ else }}{{ md_code attr_type(sj.bound_attribute) }}{{ end }} |
 {{- end }}
 {{- end }}
 {{- if coded.size > 0 }}

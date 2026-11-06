@@ -3,7 +3,6 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using App.Model.Sales;
 
 namespace App.Model.Orders;
 
@@ -61,16 +60,16 @@ public static partial class OrderFlowStates
     /// <summary>The OrderStatus value of Order.status for a configuration: the root-level state of its first active state.</summary>
     /// <param name="states">The active leaf states' paths.</param>
     /// <returns>The value.</returns>
-    public static OrderStatus ToOrderStatus(IReadOnlyList<string> states)
+    public static global::App.Model.Orders.OrderStatus ToOrderStatus(IReadOnlyList<string> states)
     {
         ArgumentNullException.ThrowIfNull(states);
         var root = states.Count == 0 ? "" : states[0].Split('.')[0];
         return root switch
         {
-            "Draft" => OrderStatus.Draft,
-            "Review" => OrderStatus.Review,
-            "OnHold" => OrderStatus.OnHold,
-            "Done" => OrderStatus.Done,
+            "Draft" => global::App.Model.Orders.OrderStatus.Draft,
+            "Review" => global::App.Model.Orders.OrderStatus.Review,
+            "OnHold" => global::App.Model.Orders.OrderStatus.OnHold,
+            "Done" => global::App.Model.Orders.OrderStatus.Done,
             _ => throw new ArgumentOutOfRangeException(nameof(states), root, "No OrderStatus member for this state."),
         };
     }
@@ -78,16 +77,16 @@ public static partial class OrderFlowStates
     /// <summary>The OrderStatus value of Item.status for a configuration: the root-level state of its first active state.</summary>
     /// <param name="states">The active leaf states' paths.</param>
     /// <returns>The value.</returns>
-    public static OrderStatus ToOrdersItemStatus(IReadOnlyList<string> states)
+    public static global::App.Model.Orders.OrderStatus ToOrdersItemStatus(IReadOnlyList<string> states)
     {
         ArgumentNullException.ThrowIfNull(states);
         var root = states.Count == 0 ? "" : states[0].Split('.')[0];
         return root switch
         {
-            "Draft" => OrderStatus.Draft,
-            "Review" => OrderStatus.Review,
-            "OnHold" => OrderStatus.OnHold,
-            "Done" => OrderStatus.Done,
+            "Draft" => global::App.Model.Orders.OrderStatus.Draft,
+            "Review" => global::App.Model.Orders.OrderStatus.Review,
+            "OnHold" => global::App.Model.Orders.OrderStatus.OnHold,
+            "Done" => global::App.Model.Orders.OrderStatus.Done,
             _ => throw new ArgumentOutOfRangeException(nameof(states), root, "No OrderStatus member for this state."),
         };
     }
@@ -95,16 +94,16 @@ public static partial class OrderFlowStates
     /// <summary>The ItemPhase value of Item.phase for a configuration: the root-level state of its first active state.</summary>
     /// <param name="states">The active leaf states' paths.</param>
     /// <returns>The value.</returns>
-    public static ItemPhase ToSalesItemStatus(IReadOnlyList<string> states)
+    public static global::App.Model.Sales.ItemPhase ToSalesItemStatus(IReadOnlyList<string> states)
     {
         ArgumentNullException.ThrowIfNull(states);
         var root = states.Count == 0 ? "" : states[0].Split('.')[0];
         return root switch
         {
-            "Draft" => ItemPhase.Draft,
-            "Review" => ItemPhase.Review,
-            "OnHold" => ItemPhase.OnHold,
-            "Done" => ItemPhase.Done,
+            "Draft" => global::App.Model.Sales.ItemPhase.Draft,
+            "Review" => global::App.Model.Sales.ItemPhase.Review,
+            "OnHold" => global::App.Model.Sales.ItemPhase.OnHold,
+            "Done" => global::App.Model.Sales.ItemPhase.Done,
             _ => throw new ArgumentOutOfRangeException(nameof(states), root, "No ItemPhase member for this state."),
         };
     }
@@ -168,21 +167,26 @@ public static partial class OrderFlowStateCodes
         return null;
     }
 
-    /// <summary>The path of the state that has a code. Restoring into a compound state enters its default, as the chart does.</summary>
+    /// <summary>
+    /// The configuration a code restores: the active leaf states' paths, in document order, that entering the coded state rests in. A
+    /// compound state enters its initial state and a parallel state each of its regions, as the chart does, so the paths suit a snapshot.
+    /// </summary>
     /// <param name="code">The code.</param>
-    /// <returns>The state's path.</returns>
-    public static string FromCode(string code) => code switch
+    /// <returns>The active leaf states' paths.</returns>
+    public static IReadOnlyList<string> FromCode(string code) => code switch
     {
-        Draft => OrderFlowStates.Draft,
-        Review => OrderFlowStates.Review,
-        Done => OrderFlowStates.Done,
+        Draft => [OrderFlowStates.Draft],
+        Review => [OrderFlowStates.ReviewChecking],
+        Done => [OrderFlowStates.Done],
         _ => throw new ArgumentOutOfRangeException(nameof(code), code, "No state of OrderFlow has this code."),
     };
 
     /// <summary>
     /// Every transition as a move, in document order: the source's code, the code the target rests in, the trigger and the event. A
-    /// code is null for a state without one. The target's is null for a move into a history or choice state too, since the move decides
-    /// it when it runs. The event is null for timers, completions and eventless moves.
+    /// source without a code on its path gives one move per coded state inside it, plus one with a null code where a state without a
+    /// code rests inside it. A move without a target keeps its code. The target's code is null for a state without one, for a history
+    /// state outside every coded state and for a choice state, since the move decides it when it runs. The event is null for timers,
+    /// completions and eventless moves.
     /// </summary>
     public static IReadOnlyList<(string? From, string? To, string Trigger, string? Event)> Moves { get; } =
     [
@@ -190,7 +194,7 @@ public static partial class OrderFlowStateCodes
         (Review, Review, "event", "check"),
         (Review, Done, "event", "approve"),
         (Review, null, "event", "hold"),
-        (null, null, "event", "resume"),
+        (null, Review, "event", "resume"),
         (null, Done, "after", null),
     ];
 }

@@ -383,6 +383,8 @@ public sealed partial class ProcessDocsTests
 
         public string Read(string path) => Repo.ReadFile(path);
 
+        public void Write(string path, string text) => Repo.WriteFile(path, text);
+
         public void EditJson(string path, Action<JsonNode> edit)
         {
             var node = JsonNode.Parse(Repo.ReadFile(path))!;

@@ -52,9 +52,19 @@ end
 func subject_names(p)
   $text = ""
   for $sj in p.subjects
-    $text = $text + (for.first ? "" : ", ") + (md_code $sj.entity.name)
+    $text = $text + (for.first ? "" : ", ") + (md_code subject_label(p, $sj))
   end
   ret $text
+end
+
+# A subject's entity name, qualified by its package where another subject of the process has an entity of the same name.
+func subject_label(p, sj)
+  for $o in p.subjects
+    if $o.id != sj.id && $o.entity.name == sj.entity.name && sj.entity.package
+      ret sj.entity.package.qualified_name + "." + sj.entity.name
+    end
+  end
+  ret sj.entity.name
 end
 
 # An attribute's type as the model writes it: the type name, a length in parentheses, "[]" for a collection.

@@ -94,11 +94,13 @@ func lifecycle_check_statements(db, out)
       end
       $c = $found[0]
       $ck = "ck_" + $c.table.name + "_" + $c.name + "_states"
-      $k = $checks[$ck]
+      # One check per column, keyed by the table's own key (its schema and name): two schemas can hold tables of one name.
+      $key = $c.table.key + "|" + $c.name
+      $k = $checks[$key]
       if !$k
-        $k = { table: $c.table, column: $c, codes: [], seen: {}, owners: [], shared: false }
-        $checks[$ck] = $k
-        $names[$names.size] = $ck
+        $k = { table: $c.table, column: $c, ck: $ck, codes: [], seen: {}, owners: [], shared: false }
+        $checks[$key] = $k
+        $names[$names.size] = $key
       end
       if $found[1]
         $k.shared = true
@@ -114,8 +116,9 @@ func lifecycle_check_statements(db, out)
       end
     end
   end
-  for $ck in $names
-    $k = $checks[$ck]
+  for $key in $names
+    $k = $checks[$key]
+    $ck = $k.ck
     $owners = $k.owners | array.join ", "
     $what = "-- " + $k.table.name + "." + $k.column.name + " (states of " + $owners + ")"
     if $k.shared

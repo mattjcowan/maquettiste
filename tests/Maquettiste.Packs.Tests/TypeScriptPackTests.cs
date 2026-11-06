@@ -266,11 +266,14 @@ public sealed class TypeScriptPackTests
         var ticket = repo.Read("web/processes/ticket-flow/ticket-flow.states.ts");
         Assert.Contains("export const orderFlowStateCodes = {\n  Draft: 'DRF',\n  Review: 'REV',\n  Done: 'DON',\n} as const;\n", order, StringComparison.Ordinal);
         Assert.Contains("  ['Review.Approving', 'REV'],\n", order, StringComparison.Ordinal);
-        Assert.Contains("  { from: null, to: null, trigger: 'event', event: 'resume' },\n", order, StringComparison.Ordinal);
+        Assert.Contains("  ['REV', ['Review.Checking']],\n", order, StringComparison.Ordinal);
+        Assert.Contains("  { from: null, to: 'REV', trigger: 'event', event: 'resume' },\n", order, StringComparison.Ordinal);
         Assert.Contains("  New: 10,\n", ticket, StringComparison.Ordinal);
-        Assert.Contains("  [20, 'Open.Assigned'],\n", ticket, StringComparison.Ordinal);
+        Assert.Contains("  [20, ['Open.Assigned']],\n", ticket, StringComparison.Ordinal);
         Assert.Contains("  { from: null, to: 10, trigger: 'always', event: null },\n", ticket, StringComparison.Ordinal);
         Assert.Contains("  { from: 30, to: 90, trigger: 'after', event: null },\n", ticket, StringComparison.Ordinal);
+        Assert.Contains("  { from: 10, to: 90, trigger: 'event', event: 'cancel' },\n  { from: 20, to: 90, trigger: 'event', event: 'cancel' },\n", ticket,
+            StringComparison.Ordinal);
 
         var tools = await ToolsOrSkipAsync();
         WriteProject(repo, tools);
@@ -284,15 +287,19 @@ public sealed class TypeScriptPackTests
               assert.equal(orderFlowToCode(['Review.Approving']), 'REV');
               assert.equal(orderFlowToCode(['OnHold']), undefined);
               assert.equal(orderFlowToCode([]), undefined);
-              assert.equal(orderFlowFromCode('REV'), 'Review');
+              assert.deepEqual(orderFlowFromCode('REV'), ['Review.Checking']);
               assert.equal(orderFlowFromCode('XYZ'), undefined);
-              for (const code of Object.values(orderFlowStateCodes)) assert.equal(orderFlowToCode([orderFlowFromCode(code)!]), code);
+              for (const code of Object.values(orderFlowStateCodes)) assert.equal(orderFlowToCode(orderFlowFromCode(code)!), code);
               assert.equal(ticketFlowToCode(['Open.Assigned']), 20);
               assert.equal(ticketFlowToCode(['Open']), undefined);
-              assert.equal(ticketFlowFromCode(10), 'Open.New');
-              for (const code of Object.values(ticketFlowStateCodes)) assert.equal(ticketFlowToCode([ticketFlowFromCode(code)!]), code);
+              assert.deepEqual(ticketFlowFromCode(10), ['Open.New']);
+              for (const code of Object.values(ticketFlowStateCodes)) assert.equal(ticketFlowToCode(ticketFlowFromCode(code)!), code);
               assert.equal(orderFlowMoves.length, 6);
-              assert.deepEqual(ticketFlowMoves[6], { from: 30, to: 30, trigger: 'event', event: 'note' });
+              assert.deepEqual(orderFlowMoves[4], { from: null, to: 'REV', trigger: 'event', event: 'resume' });
+              assert.equal(ticketFlowMoves.length, 8);
+              assert.deepEqual(ticketFlowMoves[5], { from: 10, to: 90, trigger: 'event', event: 'cancel' });
+              assert.deepEqual(ticketFlowMoves[6], { from: 20, to: 90, trigger: 'event', event: 'cancel' });
+              assert.deepEqual(ticketFlowMoves[7], { from: 30, to: 30, trigger: 'event', event: 'note' });
             });
 
             """);

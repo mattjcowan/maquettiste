@@ -55,6 +55,108 @@ func entered_of(s)
   ret $c
 end
 
+# Whether a state is the other state or sits inside it.
+func within(s, outer)
+  $c = s
+  while $c != null
+    if $c.id == outer.id
+      ret true
+    end
+    $c = $c.parent
+  end
+  ret false
+end
+
+# The coded states a move leaves from: the one on the source's path; for a source without one, each coded state inside it, and null
+# where a state without a code rests inside it (or the source is a choice state, which a move only passes through).
+func sources_of(s)
+  $c = coded_of(s)
+  if $c != null
+    ret [$c]
+  end
+  $out = []
+  $uncoded = !can_rest(s)
+  for $d in process.all_states
+    if within($d, s) && can_rest($d)
+      if $d.code != null
+        $out[$out.size] = $d
+      else if $d.children.size == 0 && coded_of($d) == null
+        $uncoded = true
+      end
+    end
+  end
+  if $uncoded
+    $out[$out.size] = null
+  end
+  ret $out
+end
+
+# The coded state a move rests in: its first target's (a history state's nearest coded state, since every state it restores sits
+# inside that one); null for a move into a choice state, which the move decides when it runs.
+func target_of(t)
+  for $target in t.targets
+    if $target.type == "choice"
+      ret null
+    end
+  end
+  ret t.targets.size == 0 ? null : entered_of(t.targets[0])
+end
+
+# The leaves a default entry of a state rests in, added to the list: a compound state enters its initial state, a parallel state
+# each region, a history state its default target and the other regions of any parallel state on the way. A choice state is
+# added as it is, since the chart picks its branch when it runs.
+func enter_default(s, depth, entered)
+  if depth > 64
+    ret
+  end
+  if s.type == "history"
+    if s.default_target
+      enter_default(s.default_target, depth + 1, entered)
+      $c = s.default_target
+      while $c.parent != null && (s.parent == null || $c.parent.id != s.parent.id)
+        if $c.parent.type == "parallel"
+          for $r in $c.parent.children
+            if $r.id != $c.id && $r.type != "history"
+              enter_default($r, depth + 1, entered)
+            end
+          end
+        end
+        $c = $c.parent
+      end
+    end
+  else if s.type == "parallel"
+    for $r in s.children
+      if $r.type != "history"
+        enter_default($r, depth + 1, entered)
+      end
+    end
+  else if s.type == "compound" && s.initial
+    enter_default(s.initial, depth + 1, entered)
+  else
+    entered[entered.size] = s
+  end
+end
+
+# The configuration a coded state restores: the leaves its default entry rests in, in document order; null when the entry meets a
+# choice state, so no configuration is fixed.
+func default_leaves(s)
+  $entered = []
+  enter_default(s, 0, $entered)
+  $out = []
+  for $a in process.all_states
+    for $e in $entered
+      if $e.id == $a.id
+        if $a.type == "choice"
+          ret null
+        end
+        $out[$out.size] = $a
+        break
+      end
+    end
+  end
+  ret $out
+end
+
 # The key of a coded state's constant: its name in PascalCase, or its path's where two coded states share a name.
 func code_key(s)
   $n = pascal s.name
@@ -128,10 +230,13 @@ const {{ p }}CodeOfState = new Map<string, {{ code_ts }}>([
 {{- end }}
 ]);
 
-/** The path of each coded state, by code. */
-const {{ p }}StateOfCode = new Map<{{ code_ts }}, {{ P }}State>([
+/** The configuration each code restores: the active leaf states' paths, in document order, that entering the coded state rests in. */
+const {{ p }}StatesOfCode = new Map<{{ code_ts }}, readonly {{ P }}State[]>([
 {{- for s in coded }}
-  [{{ code_lit(s) }}, {{ ts_string s.path }}],
+{{- leaves = default_leaves(s) }}
+{{- if leaves != null }}
+  [{{ code_lit(s) }}, [{{ for l in leaves }}{{ if !for.first }}, {{ end }}{{ ts_string l.path }}{{ end }}]],
+{{- end }}
 {{- end }}
 ]);
 
@@ -144,36 +249,28 @@ export function {{ p }}ToCode(states: readonly string[]): {{ code_ts }} | undefi
   return undefined;
 }
 
-/** The path of the state that has a code, or undefined for no state's code. Restoring into a compound state enters its default, as the chart does. */
-export function {{ p }}FromCode(code: {{ code_ts }}): {{ P }}State | undefined {
-  return {{ p }}StateOfCode.get(code);
+/**
+ * The configuration a code restores: the active leaf states' paths, in document order, that entering the coded state rests in. A compound
+ * state enters its initial state and a parallel state each of its regions, as the chart does, so the paths suit a snapshot. Undefined for
+ * no state's code, or for a state that enters a choice state by default, since the chart picks its states when it runs.
+ */
+export function {{ p }}FromCode(code: {{ code_ts }}): readonly {{ P }}State[] | undefined {
+  return {{ p }}StatesOfCode.get(code);
 }
 
 /**
- * Every transition as a move, in document order: the source's code, the code the target rests in, the trigger and the event. A code is
- * null for a state without one. The target's is null for a move into a history or choice state too, since the move decides it when it
- * runs. The event is null for timers, completions and eventless moves.
+ * Every transition as a move, in document order: the source's code, the code the target rests in, the trigger and the event. A source
+ * without a code on its path gives one move per coded state inside it, plus one with a null code where a state without a code rests
+ * inside it. A move without a target keeps its code. The target's code is null for a state without one, for a history state outside
+ * every coded state and for a choice state, since the move decides it when it runs. The event is null for timers, completions and
+ * eventless moves.
  */
 export const {{ p }}Moves: readonly { readonly from: {{ code_ts }} | null; readonly to: {{ code_ts }} | null; readonly trigger: string; readonly event: string | null }[] = [
 {{- for t in process.transitions }}
-{{- from = coded_of(t.source) }}
-{{- to = from }}
-{{- if !t.is_targetless }}
-{{- to = null }}
-{{- restless = false }}
-{{- for target in t.targets }}
-{{- if for.first }}
-{{- to = entered_of(target) }}
+{{- to = target_of(t) }}
+{{- for from in sources_of(t.source) }}
+  { from: {{ code_lit(from) }}, to: {{ code_lit(t.is_targetless ? from : to) }}, trigger: {{ ts_string t.trigger }}, event: {{ t.event ? (ts_string t.event.name) : "null" }} },
 {{- end }}
-{{- if !can_rest(target) }}
-{{- restless = true }}
-{{- end }}
-{{- end }}
-{{- if restless }}
-{{- to = null }}
-{{- end }}
-{{- end }}
-  { from: {{ code_lit(from) }}, to: {{ code_lit(to) }}, trigger: {{ ts_string t.trigger }}, event: {{ t.event ? (ts_string t.event.name) : "null" }} },
 {{- end }}
 ];
 {{- end }}

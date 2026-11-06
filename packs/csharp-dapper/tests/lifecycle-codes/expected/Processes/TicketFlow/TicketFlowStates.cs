@@ -111,22 +111,27 @@ public static partial class TicketFlowStateCodes
         return null;
     }
 
-    /// <summary>The path of the state that has a code. Restoring into a compound state enters its default, as the chart does.</summary>
+    /// <summary>
+    /// The configuration a code restores: the active leaf states' paths, in document order, that entering the coded state rests in. A
+    /// compound state enters its initial state and a parallel state each of its regions, as the chart does, so the paths suit a snapshot.
+    /// </summary>
     /// <param name="code">The code.</param>
-    /// <returns>The state's path.</returns>
-    public static string FromCode(long code) => code switch
+    /// <returns>The active leaf states' paths.</returns>
+    public static IReadOnlyList<string> FromCode(long code) => code switch
     {
-        New => TicketFlowStates.OpenNew,
-        Assigned => TicketFlowStates.OpenAssigned,
-        Resolved => TicketFlowStates.Resolved,
-        Closed => TicketFlowStates.Closed,
+        New => [TicketFlowStates.OpenNew],
+        Assigned => [TicketFlowStates.OpenAssigned],
+        Resolved => [TicketFlowStates.Resolved],
+        Closed => [TicketFlowStates.Closed],
         _ => throw new ArgumentOutOfRangeException(nameof(code), code, "No state of TicketFlow has this code."),
     };
 
     /// <summary>
     /// Every transition as a move, in document order: the source's code, the code the target rests in, the trigger and the event. A
-    /// code is null for a state without one. The target's is null for a move into a history or choice state too, since the move decides
-    /// it when it runs. The event is null for timers, completions and eventless moves.
+    /// source without a code on its path gives one move per coded state inside it, plus one with a null code where a state without a
+    /// code rests inside it. A move without a target keeps its code. The target's code is null for a state without one, for a history
+    /// state outside every coded state and for a choice state, since the move decides it when it runs. The event is null for timers,
+    /// completions and eventless moves.
     /// </summary>
     public static IReadOnlyList<(long? From, long? To, string Trigger, string? Event)> Moves { get; } =
     [
@@ -135,7 +140,8 @@ public static partial class TicketFlowStateCodes
         (null, New, "always", null),
         (null, Resolved, "always", null),
         (Resolved, Closed, "after", null),
-        (null, Closed, "event", "cancel"),
+        (New, Closed, "event", "cancel"),
+        (Assigned, Closed, "event", "cancel"),
         (Resolved, Resolved, "event", "note"),
     ];
 }

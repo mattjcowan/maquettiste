@@ -253,22 +253,32 @@ public sealed class CompileTests
 
     private const string LifecycleCodesProgram = """
         using System;
+        using System.Linq;
         using App.Model.Orders;
+        using App.Model.Runtime;
         using App.Model.Sales;
 
-        // String codes: a coded state, nested states taking their coded ancestor's code, a state without one, and every code back.
+        // String codes: a coded state, nested states taking their coded ancestor's code, a state without one.
         Check(OrderFlowStateCodes.ToCode([OrderFlowStates.Draft]) == "DRF", "Draft");
         Check(OrderFlowStateCodes.ToCode([OrderFlowStates.ReviewApproving]) == OrderFlowStateCodes.Review, "Review.Approving takes Review's code");
         Check(OrderFlowStateCodes.ToCode([OrderFlowStates.OnHold]) is null, "OnHold has no code");
         Check(OrderFlowStateCodes.ToCode([]) is null, "no active state");
-        Check(OrderFlowStateCodes.FromCode("REV") == OrderFlowStates.Review, "REV");
+
+        // FromCode gives the leaves a snapshot holds: REV enters Review's initial state, so the generated runtime restores it, the code
+        // comes back, and check moves on to Approving.
+        Check(OrderFlowStateCodes.FromCode("REV").SequenceEqual([OrderFlowStates.ReviewChecking]), "REV enters Review.Checking");
+        var orders = new OrderFlowMachine(new OrderFlowHandlers(), new ManualClock(DateTimeOffset.UnixEpoch));
         foreach (var code in new[] { OrderFlowStateCodes.Draft, OrderFlowStateCodes.Review, OrderFlowStateCodes.Done })
-            Check(OrderFlowStateCodes.ToCode([OrderFlowStateCodes.FromCode(code)]) == code, "round trip " + code);
-        foreach (var state in OrderFlowStates.All)
         {
-            if (OrderFlowStateCodes.ToCode([state]) is { } code)
-                Check(OrderFlowStateCodes.ToCode([OrderFlowStateCodes.FromCode(code)]) == code, "round trip from " + state);
+            var snapshot = orders.Start("o-" + code).Snapshot;
+            snapshot.States = [.. OrderFlowStateCodes.FromCode(code)];
+            Check(OrderFlowStateCodes.ToCode(orders.Restore(snapshot).States) == code, "round trip " + code);
         }
+
+        var review = orders.Start("o-check").Snapshot;
+        review.States = [.. OrderFlowStateCodes.FromCode(OrderFlowStateCodes.Review)];
+        var checkedStep = orders.Check(orders.Restore(review), new OrderFlowCheckCommand(new ProcessEnvelope("o-check")));
+        Check(checkedStep.Accepted && checkedStep.States.SequenceEqual([OrderFlowStates.ReviewApproving]), "check after restoring REV");
 
         try
         {
@@ -279,24 +289,32 @@ public sealed class CompileTests
         {
         }
 
-        // Integer codes on nested states under a compound state without one.
+        // Integer codes on nested states under a compound state without one, each restored through the runtime.
         Check(TicketFlowStateCodes.Assigned == 20L, "Assigned");
         Check(TicketFlowStateCodes.ToCode([TicketFlowStates.OpenAssigned]) == 20L, "Open.Assigned");
         Check(TicketFlowStateCodes.ToCode([TicketFlowStates.Open]) is null, "Open has no code");
-        Check(TicketFlowStateCodes.FromCode(10) == TicketFlowStates.OpenNew, "10");
+        Check(TicketFlowStateCodes.FromCode(10).SequenceEqual([TicketFlowStates.OpenNew]), "10");
+        var tickets = new TicketFlowMachine(new TicketFlowHandlers(), new ManualClock(DateTimeOffset.UnixEpoch));
         foreach (var code in new[] { TicketFlowStateCodes.New, TicketFlowStateCodes.Assigned, TicketFlowStateCodes.Resolved, TicketFlowStateCodes.Closed })
-            Check(TicketFlowStateCodes.ToCode([TicketFlowStateCodes.FromCode(code)]) == code, "round trip " + code);
+        {
+            var snapshot = tickets.Start("t-" + code).Snapshot;
+            snapshot.States = [.. TicketFlowStateCodes.FromCode(code)];
+            Check(TicketFlowStateCodes.ToCode(tickets.Restore(snapshot).States) == code, "round trip " + code);
+        }
 
-        // The moves: within one coded state, into a state without a code, into history, a timer; into a choice, into a compound
-        // state whose default has a code, eventless, targetless.
+        // The moves: within one coded state, into a state without a code, into a history state inside Review, a timer; into a choice,
+        // into a compound state whose default has a code, eventless, from Open (no code) once per coded state inside it, targetless.
         Check(OrderFlowStateCodes.Moves.Count == 6, "six moves");
         Check(OrderFlowStateCodes.Moves[1] == ("REV", "REV", "event", "check"), "within Review");
         Check(OrderFlowStateCodes.Moves[3] == ("REV", null, "event", "hold"), "into OnHold");
-        Check(OrderFlowStateCodes.Moves[4] == (null, null, "event", "resume"), "into history");
+        Check(OrderFlowStateCodes.Moves[4] == (null, "REV", "event", "resume"), "into history inside Review");
         Check(OrderFlowStateCodes.Moves[5] == (null, "DON", "after", null), "a timer");
+        Check(TicketFlowStateCodes.Moves.Count == 8, "eight moves");
         Check(TicketFlowStateCodes.Moves[1] == (20L, null, "event", "resolve"), "into a choice");
         Check(TicketFlowStateCodes.Moves[2] == (null, 10L, "always", null), "into Open, entering New");
-        Check(TicketFlowStateCodes.Moves[6] == (30L, 30L, "event", "note"), "targetless");
+        Check(TicketFlowStateCodes.Moves[5] == (10L, 90L, "event", "cancel"), "cancel from Open.New");
+        Check(TicketFlowStateCodes.Moves[6] == (20L, 90L, "event", "cancel"), "cancel from Open.Assigned");
+        Check(TicketFlowStateCodes.Moves[7] == (30L, 30L, "event", "note"), "targetless");
 
         // Each subject's status; the two entities named Item are qualified by package.
         Check(OrderFlowStates.ToOrderStatus([OrderFlowStates.ReviewChecking]) == OrderStatus.Review, "Order");
@@ -304,6 +322,56 @@ public sealed class CompileTests
         Check(OrderFlowStates.ToSalesItemStatus([OrderFlowStates.OnHold]) == ItemPhase.OnHold, "Sales.Item");
         Check(OrderFlowStates.Parse(OrderFlowStates.ReviewResume) == OrderFlowState.ReviewResume, "Parse");
         Console.WriteLine("codes ok");
+
+        static void Check(bool ok, string what)
+        {
+            if (!ok)
+                throw new InvalidOperationException("Failed: " + what);
+        }
+
+        """;
+
+    [Theory]
+    [InlineData("Orders")]
+    [InlineData("Flows")]
+    public async Task Lifecycle_statuses_name_two_enums_called_Status_in_full(string package)
+    {
+        // Two subjects' enums are both named Status, in packages Orders and Sales. With the lifecycle in Orders, its own Status must not
+        // stand in for Sales.Status; in a third package, Flows, the two must not be ambiguous (CS0104). Each To<Entity>Status names its
+        // enum in full, so the output builds and returns the right enum.
+        using var repo = PackRepo.LifecycleCodes();
+        repo.EditJson(".maquettiste/model/enums/order-status.json", e => e["name"] = "Status");
+        repo.EditJson(".maquettiste/model/enums/item-phase.json", e => e["name"] = "Status");
+        if (package == "Flows")
+        {
+            repo.Write(".maquettiste/model/packages/flows.json", """
+                {
+                  "kind": "package",
+                  "id": "01JMC000000000000000PKG003",
+                  "name": "Flows"
+                }
+
+                """);
+            repo.EditJson(".maquettiste/model/processes/order-flow.json", p => p["package"] = "01JMC000000000000000PKG003");
+        }
+
+        await repo.GenerateCleanlyAsync();
+        var project = Path.Combine(repo.Repo.Root, "statuses");
+        WriteProject(project, repo.PathOf("out"), StatusesProgram.Replace("App.Model.Flows", "App.Model." + package, StringComparison.Ordinal), web: true);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll")], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("statuses ok", StringComparison.Ordinal), run.Output);
+    }
+
+    private const string StatusesProgram = """
+        using System;
+        using App.Model.Flows;
+
+        Check(OrderFlowStates.ToOrderStatus([OrderFlowStates.ReviewChecking]) == App.Model.Orders.Status.Review, "Order");
+        Check(OrderFlowStates.ToOrdersItemStatus([OrderFlowStates.Done]) == App.Model.Orders.Status.Done, "Orders.Item");
+        Check(OrderFlowStates.ToSalesItemStatus([OrderFlowStates.OnHold]) == App.Model.Sales.Status.OnHold, "Sales.Item");
+        Console.WriteLine("statuses ok");
 
         static void Check(bool ok, string what)
         {
