@@ -111,6 +111,8 @@ internal sealed class ImpactKeys
                 && !string.Equals(Processes.SubjectCoverage.NamingHash(_before), Processes.SubjectCoverage.NamingHash(_candidate), StringComparison.Ordinal),
             "vn" => Changes(e => e is Process or Operation or VerbVocabulary or Right)
                 && !string.Equals(_before.VerbNamingHash(), _candidate.VerbNamingHash(), StringComparison.Ordinal),
+            "rn" => Changes(e => e is Process or Right)
+                && !string.Equals(RightsNaming.Hash(_before), RightsNaming.Hash(_candidate), StringComparison.Ordinal),
             _ => true,
         };
     }

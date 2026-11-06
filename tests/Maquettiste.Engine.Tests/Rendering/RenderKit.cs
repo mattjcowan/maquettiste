@@ -187,6 +187,7 @@ internal static class Adhoc
         ProcessLibraries = model.ProcessLibraries,
         Actors = model.Actors,
         Scenarios = model.Scenarios,
+        Rights = model.Rights,
         Operations = model.Operations,
         CustomElements = model.CustomElements,
         Constraints = model.Constraints,

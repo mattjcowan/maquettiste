@@ -205,6 +205,7 @@ internal sealed partial class ResolveRun
             ProcessLibraries = new RList<RProcess>(_libraryOrder, [ProcessKind]),
             Actors = new RList<RActor>(_actorOrder, [ActorKind]),
             Scenarios = new RList<RScenario>(_scenarioOrder, [ScenarioKind]),
+            Rights = new RList<RRight>(_rightOrder, [RightKind]),
             Operations = new RList<ROperation>(_operationOrder, [OperationKind]),
             CustomElements = new RList<RCustom>(_customOrder, [CustomKind]),
             Constraints = new RList<RConstraint>(_constraintOrder, ["k:constraint"]),

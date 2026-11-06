@@ -137,7 +137,15 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
   `after_ticks`, `actor`, `signer`, `meaning`, `payload` (event payload and gate audit attributes) and `assume` by name, `expect`
   with `accepted`, `states`, `state_paths`, `context`, and `trace`: what the engine's interpreter did with the step when it
   replayed the scenario, read once per scenario on first use, with `accepted`, `refusal`, `audit` (the audit records' outcomes),
-  `state_paths` and `final`, null when the replay stopped before the step) and `outcome`.
+  `state_paths` and `final`, null when the replay stopped before the step) and `outcome`. A verb step also has `verb`, `values`
+  (by attribute name), `end` and `object`, and an expectation of a refused step `refusal` and `refused_by` (the refusing element's id).
+- Rights (empty lists in a project that states none): a lifecycle's `rights` (its entries in file order, each a use with `right`,
+  `states`, empty for every state, and `condition`, the right's condition typed for this lifecycle's subjects), `rights_default`
+  (`allow` or `deny`) and `may_refuse` (the other lifecycles that govern a subject and could say no to an object, link or own verb
+  the process's events or rights name: `lifecycle`, `verbs`, `by_events`). A right has `kind` (`right` for a named right,
+  `process-right` for an inline one), `name`, `display_name`, `description` (why), `access` (`allow` or `deny`), `actors`
+  (`everyone` when empty), `except`, `verbs`, `ends`, `condition_text`, `named`, `package` and `uses`. `model.rights` lists the
+  named rights, used or not.
 - `schema_diff.<database>` when the pack sets `"usesSchemaDiff": true`: `from_revision`, `to_revision`, `is_empty` and ordered
   `tables` (`kind` added/renamed/altered/dropped, `columns`, constraint and index changes).
 - Definitions: `model.stereotypes` (one per key, by key: `key`, `name`, `applies_to`, the `attributes` it adds,

@@ -63,11 +63,17 @@ internal sealed partial class ResolveRun
                 operations.Add((operation, key));
         }
 
-        if (vocabulary is null && events.Count == 0 && transitions.Count == 0 && operations.Count == 0)
+        IReadOnlyList<string> vocabularyKeys = vocabulary is null ? [VerbVocabularyKind] : [VerbVocabularyKind, Keys.Element(vocabulary.Id)];
+        if (vocabulary is null && events.Count == 0 && transitions.Count == 0 && operations.Count == 0 && _verbKeysNamed.Count == 0)
+        {
+            FillVerbLists(_ => null, vocabularyKeys);
             return new RList<RVerb>([], keys);
+        }
 
         var hidden = new HashSet<string>(vocabulary?.Hidden ?? [], StringComparer.Ordinal);
-        var named = new HashSet<string>(events.Select(e => e.Key).Concat(transitions.Select(t => t.Key)).Concat(operations.Select(o => o.Key)), StringComparer.Ordinal);
+        // Rights and verb steps name verbs too (rights-design.md section 6), so a hidden built-in verb they name stays listed.
+        var named = new HashSet<string>(events.Select(e => e.Key).Concat(transitions.Select(t => t.Key)).Concat(operations.Select(o => o.Key)).Concat(_verbKeysNamed),
+            StringComparer.Ordinal);
         var byKey = new Dictionary<string, RVerb>(StringComparer.Ordinal);
         var order = new List<RVerb>();
         var hiddenNamed = new List<RVerb>();
@@ -110,7 +116,7 @@ internal sealed partial class ResolveRun
             useKeys.Element(operation.Id);
         var usesKeys = useKeys.ToList();
 
-        var vocabularyKeys = vocabulary is null ? [VerbVocabularyKind] : new[] { VerbVocabularyKind, Keys.Element(vocabulary.Id) };
+        FillVerbLists(byKey.GetValueOrDefault, vocabularyKeys);
         foreach (var (node, key) in events)
         {
             DepsOf(node).AddRange(vocabularyKeys);
@@ -141,5 +147,12 @@ internal sealed partial class ResolveRun
         }
 
         return new RList<RVerb>(order, keys);
+    }
+
+    /// <summary>Fills the verb lists of rights, <c>may_refuse</c> entries and verb steps, which wait for <c>model.verbs</c>.</summary>
+    private void FillVerbLists(Func<string, RVerb?> verbOf, IReadOnlyList<string> vocabularyKeys)
+    {
+        foreach (var fill in _verbFills)
+            fill(verbOf, vocabularyKeys);
     }
 }

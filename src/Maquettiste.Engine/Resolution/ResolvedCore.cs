@@ -303,6 +303,12 @@ public sealed class ResolvedModel
     /// <summary>Scenarios, by (process in <see cref="Processes"/> order, name, id).</summary>
     public RList<RScenario> Scenarios { get; internal init; } = RList<RScenario>.Empty;
 
+    /// <summary>
+    /// The named rights (rights-design.md section 6), by (package qualified name, name, id), whether a lifecycle uses them or not; a
+    /// lifecycle's inline rights are in its <see cref="RProcess.Rights"/>.
+    /// </summary>
+    public RList<RRight> Rights { get; internal init; } = RList<RRight>.Empty;
+
     /// <summary>Operations, by (package qualified name, subject name with none first, name, id) (next-phase-2-design.md section 4.1).</summary>
     public RList<ROperation> Operations { get; internal init; } = RList<ROperation>.Empty;
 

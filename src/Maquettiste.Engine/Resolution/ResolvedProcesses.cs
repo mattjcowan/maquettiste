@@ -96,6 +96,24 @@ public sealed class RProcess : RElement
 
     /// <summary>The root's initial state; <see langword="null"/> only for a process without states (invalid).</summary>
     public RState? Initial { get; internal set; }
+
+    /// <summary>
+    /// A lifecycle's rights in file order (rights-design.md section 6): each inline right's entry, which shares the right's id, and each use
+    /// of a named right. An entry in neither form, or a use whose named right does not resolve, is left out (MQ9901, MQ2001). Empty for a
+    /// process that is no lifecycle. The list keys on the process's file and on each named right it uses.
+    /// </summary>
+    public RList<RRightUse> Rights { get; internal set; } = RList<RRightUse>.Empty;
+
+    /// <summary>What the lifecycle answers when no right of its own holds (rights-design.md decision 9): <c>deny</c> when its file says so, else <c>allow</c>.</summary>
+    public string RightsDefault { get; internal set; } = "allow";
+
+    /// <summary>
+    /// The lifecycles, other than this process, that govern one of its subjects and could say no to an object, link or own verb its events
+    /// or rights name (rights-design.md section 6), by name then id. Filled for lifecycles and for orchestrations with subjects, only in a
+    /// project that uses rights; empty otherwise. It keys on the process's file and the rights naming key, and in a project that uses
+    /// rights also on the named rights the process uses and on what decides which lifecycles govern each subject's entity.
+    /// </summary>
+    public RList<RMayRefuse> MayRefuse { get; internal set; } = RList<RMayRefuse>.Empty;
 }
 
 /// <summary>The members common to the nodes of a process: states, transitions, events, guards, actions, invokes, gates, meanings.</summary>
@@ -747,6 +765,24 @@ public sealed class RStep : RObject
     /// <summary>Results for guards without an expression, by guard name (by id when the guard does not resolve).</summary>
     public IReadOnlyDictionary<string, object?> Assume { get; internal set; } = FrozenDictionary<string, object?>.Empty;
 
+    /// <summary>
+    /// For a <c>verb</c> step (rights-design.md decision 25): the verb the participant does to the subject or one of its links;
+    /// <see langword="null"/> for other steps, or a key that names no verb.
+    /// </summary>
+    public RVerb? Verb { get; internal set; }
+
+    /// <summary>
+    /// For a <c>modify</c> verb step on the subject: the values it sets, by attribute name (by id when the attribute does not resolve), as
+    /// plain values; empty when the file gives none.
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> Values { get; internal set; } = FrozenDictionary<string, object?>.Empty;
+
+    /// <summary>For a verb step on a link: the subject's relation end the link goes through; <see langword="null"/> for the subject itself.</summary>
+    public REnd? End { get; internal set; }
+
+    /// <summary>With <see cref="End"/>: the scenario object at the link's other end, when the file names one of the scenario's.</summary>
+    public RScenarioObject? Object { get; internal set; }
+
     /// <summary>What is expected after the step; <see langword="null"/> when the step checks nothing.</summary>
     public RExpectation? Expect { get; internal set; }
 
@@ -791,6 +827,18 @@ public sealed class RExpectation
 {
     /// <summary>Whether the input is accepted; <see langword="false"/> records a refusal.</summary>
     public bool Accepted { get; internal set; } = true;
+
+    /// <summary>
+    /// For a refused step: why it is expected to be refused (rights-design.md decision 26), such as <c>right</c>, <c>default</c>,
+    /// <c>actor</c> or <c>guard</c>; <see langword="null"/> when the file expects none.
+    /// </summary>
+    public string? Refusal { get; internal set; }
+
+    /// <summary>
+    /// For a refused step: the id of the element expected to refuse it (rights-design.md decision 12), such as a right, a lifecycle, an event
+    /// or a gate; <see langword="null"/> when the file expects none.
+    /// </summary>
+    public string? RefusedBy { get; internal set; }
 
     /// <summary>The expected active atomic states, in document order.</summary>
     public RList<RState> States { get; internal set; } = RList<RState>.Empty;

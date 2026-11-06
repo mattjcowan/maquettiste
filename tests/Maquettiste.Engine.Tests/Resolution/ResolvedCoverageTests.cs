@@ -96,10 +96,11 @@ public sealed class ResolvedCoverageTests
         new("scenario object", "scenario.json", "$defs/object", typeof(RScenarioObject)),
         new("scenario link", "scenario.json", "$defs/link", typeof(RScenarioLink)),
 
-        // Rights (rights-design.md section 6): a named right and an entry of a lifecycle's rights resolve as RRight and RRightUse in a
-        // later round of the same item; until then they are unresolved, and the new process and step keys pending.
-        new("right", "right.json", "", null),
-        new("process right", "process.json", "$defs/right", null),
+        // Rights (rights-design.md section 6): a named right resolves as an RRight; an entry of a lifecycle's rights as its RRightUse and, for an
+        // inline right, as the RRight that shares its id.
+        new("right", "right.json", "", typeof(RRight)),
+        new("process right", "process.json", "$defs/right", typeof(RRightUse)),
+        new("inline right", "process.json", "$defs/right", typeof(RRight)),
 
         // Vocabularies, mappings and diagrams.
         new("stereotype", "stereotype.json", "", typeof(RStereotypeDefinition)),
@@ -166,6 +167,28 @@ public sealed class ResolvedCoverageTests
         [("category", "category")] = "category summary",
         [("category", "properties")] = "category summary",
         [("category", "generation")] = "category summary",
+        // A named right and an inline right are one shape, RRight (rights-design.md section 6): its name, display name, package and
+        // description, as a process part's; the annotations only an element carries are not part of it.
+        [("right", "pluralName")] = "RRight: one shape for named and inline rights",
+        [("right", "rationale")] = "RRight: one shape for named and inline rights",
+        [("right", "decision")] = "RRight: one shape for named and inline rights",
+        [("right", "status")] = "RRight: one shape for named and inline rights",
+        [("right", "stereotypes")] = "RRight: one shape for named and inline rights",
+        [("right", "tags")] = "RRight: one shape for named and inline rights",
+        [("right", "category")] = "RRight: one shape for named and inline rights",
+        [("right", "properties")] = "RRight: one shape for named and inline rights",
+        [("right", "generation")] = "RRight: one shape for named and inline rights",
+        // An entry of a lifecycle's rights: what an inline right says is on use.right, the "inline right" target; where it holds is on the use.
+        [("process right", "name")] = "on use.right (the inline right target)",
+        [("process right", "displayName")] = "on use.right (the inline right target)",
+        [("process right", "access")] = "on use.right (the inline right target)",
+        [("process right", "actors")] = "on use.right (the inline right target)",
+        [("process right", "except")] = "on use.right (the inline right target)",
+        [("process right", "verbs")] = "on use.right (the inline right target)",
+        [("process right", "ends")] = "on use.right (the inline right target)",
+        [("process right", "description")] = "on use.right (the inline right target)",
+        [("inline right", "right")] = "a use's named right: RRightUse.Right (the process right target)",
+        [("inline right", "states")] = "where the right holds: RRightUse.States (the process right target)",
     });
 
     /// <summary>
@@ -212,6 +235,9 @@ public sealed class ResolvedCoverageTests
         [("outcome returns", "list")] = "IsList",
         [("outcome returns", "file")] = "IsFile",
         [("operation member", "file")] = "IsFile",
+        // A right's condition as text from the current names; the typed tree is each use's (RRightUse.Condition).
+        [("right", "condition")] = "ConditionText",
+        [("inline right", "condition")] = "ConditionText",
     };
 
     /// <summary>
@@ -232,10 +258,6 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
-
-        // Rights (rights-design.md section 6), resolved in a later round of the same item: a lifecycle's rights and default, and a verb
-        // step's keys.
-        ("process", "rightsDefault"), ("process", "rights"), ("step", "verb"), ("step", "values"), ("step", "end"), ("step", "object"),
     ];
 
     /// <summary>
@@ -246,7 +268,7 @@ public sealed class ResolvedCoverageTests
     /// (next-phase-1-design.md section 5.5). The verb vocabulary resolves into <c>model.verbs</c> (verbs-design.md section 6): each own verb an
     /// <see cref="RVerb"/>, and its hidden built-in verbs left out unless named, so the file itself is no object.
     /// </summary>
-    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram", "verb vocabulary", "right", "process right" };
+    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram", "verb vocabulary" };
 
     [Fact]
     public void Every_property_of_every_model_file_is_a_member_of_its_resolved_object()
