@@ -41,6 +41,25 @@ must help any team whether they use it or not, and it stays optional.
 | 4.2 | Shared process guards, actions and gate policies | yes | Built, 0.12.2 | [Design 4.4](next-phase-2-design.md#44-shared-guards-actions-and-gate-policies). A library's guard holds an expression, not a condition, since a condition names one process's context. The editor edits a library through the JSON view. |
 | 4.1 | Lifecycles any implementation can follow: a stable code per state, `subjects` for one lifecycle on many types (the one-subject form deprecated with a warning), the state held in an attribute as one option, guard conditions that read the object, and a scenario's objects | yes | Built, 0.13.0 | [The design](lifecycle-design.md), with the owner's decisions of 2026-11-05, checked four times. Built in #36 to #39, each reviewed independently, in about four hours by agents. [What lifecycle systems can do](lifecycle-capabilities.md) is its yardstick, and [Who, what and when](lifecycle-actors-scenarios.md) sets the order of the items that follow. |
 
+## Lifecycles after 4.1 (the owner, 2026-11-05)
+
+The owner's order for what follows 4.1, from [Who, what and when](lifecycle-actors-scenarios.md#10-order) and
+[what comes next](lifecycle-design.md#12-what-comes-next). Each needs its own design first. None has a roadmap number.
+The model keeps two keys on a subject entry for the last items, but does not accept them yet: `when` and `owner`.
+
+| # | Item | Requested | Status | Notes |
+| --- | --- | --- | --- | --- |
+| | Actors: membership, relative actors starting with the owner, roles within a context, the system, and a stereotype as a set of types | yes (the owner) | Next | [Section 4](lifecycle-actors-scenarios.md#4-who-actors). Also brings the explorer's later steps: a role lists its members, scenario personas sit with their scenarios, and the system actor shows as **Automatic**. |
+| | Verbs: a built-in set and the project's own, with events and operations naming theirs | yes (the owner) | Later | [Section 5](lifecycle-actors-scenarios.md#5-what-verbs). |
+| | Setting the object's data from a move, and reading another lifecycle's state | yes (the owner) | Later | [Section 6](lifecycle-actors-scenarios.md#6-two-prerequisites-setting-the-objects-data-and-reading-another-lifecycles-state). Rights need both. |
+| | Rights: named rights, defaults, combining, freezing, and refusal reasons in scenarios | yes (the owner) | Later | [Section 7](lifecycle-actors-scenarios.md#7-when-rights-with-rules-and-freezing-folded-in). |
+| | Trigger points on every verb, as check, override and action, with generated step methods | yes (the owner) | Later | [Section 10](lifecycle-actors-scenarios.md#10-order), step 6. |
+| | Richer sign-off: several named signatures, conditions on who must sign, delegation, escalation, separation of duties | yes (the owner) | Later | [Section 10](lifecycle-actors-scenarios.md#10-order), step 7. Comes with approval stages (4.3). |
+| | Relations with several types at an end | yes (the owner) | Later | [Section 11](lifecycle-actors-scenarios.md#11-relations-with-several-types-at-an-end). Waits on the stereotype-set question in actors and on an agreed drawing. |
+| | Revisions: a revision sequence, revising to a chosen name, and release moving the revision on | yes (the owner) | Later | [Capabilities, part G](lifecycle-capabilities.md#g-revisions). Not the same as sealing migration facts (6.2). |
+| | Lifecycles on custom kinds and tables, not only entities | yes (the owner) | Later | [Design, section 12](lifecycle-design.md#12-what-comes-next). Needs the `when` key. |
+| | One of several lifecycles per object | yes (the owner) | Later | [Design, section 2 and decision on subjects](lifecycle-design.md#2-what-the-owner-said). Adds a `when` condition to the subject entry; an entry without one keeps its meaning. |
+
 ## Phase 1: built in 0.11.0
 
 Designed in `next-phase-1-design.md`. 0.11.0 was published only as previews; its items are released in 0.12.0.
@@ -265,6 +284,11 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 - **Oracle DDL against a server.** Every other dialect ran against a real server in 0.6.0; Oracle did not.
 - **`sql-ddl` writes `bigint` on Oracle for 64-bit integers.** Oracle has no `bigint`; the lifecycle history table's `sequence`
   column has it, and so does the optional `state_code` column of 4.1. Found by the review of the 4.1 output; older than 4.1.
+- **"Acts in N processes" can read low right after a save.** The Processes explorer counts an actor's processes from the
+  model index, so the number can lag until the index refreshes. Found when the explorer was built (0.13.1).
+- **Other lifecycle capabilities that may come after the items above.** Per-state access, required fields on entry and
+  exit (partly 4.4), a reject path, observers and acknowledgers. Listed as directions to confirm in
+  [lifecycle-capabilities.md](lifecycle-capabilities.md#what-this-changes-for-item-41).
 - **Lock files.** The project-reference ranges in `packages.lock.json` still read `1.0.0-alpha.1` (harmless metadata
   from the first restore). Refreshing them would mean a release script that re-evaluates the locks at every version
   bump.
