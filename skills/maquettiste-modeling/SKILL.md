@@ -204,6 +204,15 @@ must equal its bound enum's members, in order (MQ9203).
   ids; else the bound value; else the initial state, noted in the trace) feed `in_state` (MQ9305 on a clash); a step's `expect.values` is
   attribute name to value, exactly what changed (MQ9307). Traces add `sets` per action, `valuesChanged` and `notes`. `csharp-dapper` keeps a sets-only
   action as the team's stub and adds a `Record<Action>` hook; guards using the new names are left to a person. Never add sets unasked.
+- Rights (lifecycles only, MQ9901): `rightsDefault` (`allow` when absent, or `deny`) and `rights`, each entry an inline right
+  `{ id, name, access: allow|deny, actors?, except?, verbs (at least one), ends?, condition?, description?, states? }` or a use
+  `{ id, right, states? }` of a named right (kind `right`, `model/rights/`, same keys without `states`). Empty `actors` means everyone; `except` never grants;
+  `states` are this lifecycle's states (MQ9902), empty means all; `ends` only beside connect, disconnect, read, modify, freeze, thaw (MQ9903). `condition` reads
+  `subject.x`, `current_actor()`, `in_state`, `now()`, not the context or payload; a named right's condition is typed at each use (MQ3102) and stays text with no use (MQ3108).
+  Each answering lifecycle: its denies, then allows, then default; any no wins. Event actors, task actors and gate signers count as allows of their own lifecycle. Checks run
+  in order: lists (`actor`), denies (`right`), defaults (`default`), no move, guards, gate checks; the trace has `refusal` and `refusedBy`. A scenario step may be `{ verb, values?, end?, object? }`
+  and a refused step may expect `refusal` and `refusedBy` (MQ9308; MQ9305 when a step does not fit; `freeze` and `thaw` steps not yet). Warnings MQ9904 (allow where the default allows), MQ9905, MQ9906.
+  `get_rights` (`process`, `states`, `actors`, `verbs`, `entity`) answers allowed, denied or depends per state, actor and verb. Never add rights unasked. Freezing is not available.
 
 - Tools: `simulate_process` runs inputs through the engine's interpreter and keeps no state (send the whole input list each
   time; `enabled` says what can happen next); `record_scenario` saves a run as a scenario with every step's expectations

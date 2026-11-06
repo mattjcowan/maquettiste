@@ -65,16 +65,16 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | An event a state can't handle now: refused, ignored, or deferred until a state can | N | Part: refused only |
 | Entry and exit points on a reusable part of a chart | N | Part: sub-processes |
 | Stages and milestones | N | Part: compound states |
-| Who may read, change or delete per state, by role | E W A S V | **No**: custom property only |
-| A long list of rights per state: promote, demote, override, revise, connect and disconnect from either end, lock, freeze, schedule, change owner, type or policy, and more (32 in E) | E | **No** |
-| Rights set separately for the owner, for everyone and for named people or roles | E | **No** |
-| **A rule that allows or forbids operations when a condition holds,** over the object's data and the current user. For example: forbid changing, deleting or reassigning an item classified secret unless you own it | E Own | **No**: declared rules check the model, not the running system |
-| A named access rule, reused across things | E | **No** |
+| Who may read, change or delete per state, by role | E W A S V | Yes: a lifecycle's `rights` name who, which verbs and which states, with `except` (built for 0.15.0, part 1) |
+| A long list of rights per state: promote, demote, override, revise, connect and disconnect from either end, lock, freeze, schedule, change owner, type or policy, and more (32 in E) | E | Part: rights name any of the 27 built-in verbs or your own, per state (built for 0.15.0, part 1). Which verbs do something beyond a check is left to trigger points |
+| Rights set separately for the owner, for everyone and for named people or roles | E | Yes: `actors` takes the owner, everyone (empty) or named people, roles and groups (built for 0.15.0, part 1) |
+| **A rule that allows or forbids operations when a condition holds,** over the object's data and the current user. For example: forbid changing, deleting or reassigning an item classified secret unless you own it | E Own | Yes: a right's `condition` reads the object and `current_actor()`, with `except` for the owner (built for 0.15.0, part 1). It checks scenarios and generated code, and stops nothing in a system the team does not build |
+| A named access rule, reused across things | E | Part: a named right, used by many lifecycles (built for 0.15.0, part 1). Types with no lifecycle are a later item |
 | Rights on one attribute in one state (hide a salary from everyone outside HR) | N | **No** |
 | Rights passed along containment (a project's rights reach its items) | N | **No** |
 | Role membership valid for a period | N | **No** |
-| Several rights combined: any deny wins, then any allow, then a default | N | **No** |
-| An access rule for every state | E | **No** |
+| Several rights combined: any deny wins, then any allow, then a default | N | Yes: each lifecycle answers on its own, its denies, then its allows, then its default, and any lifecycle's "no" wins (built for 0.15.0, part 1) |
+| An access rule for every state | E | Yes: a right with no states holds in every state (built for 0.15.0, part 1) |
 | The object can't be edited in this state | A | **No**: 4.4 |
 | **Any item can be frozen, and can't be edited until it is thawed:** an object, a relation's instance (it can't be disconnected or have its attributes edited), and others such as rules and processes. Freezing and thawing are operations with their own triggers, so automation can run on them | E Own | **No** |
 | Fields required to enter or to leave a state | O | **No**: 4.4 |

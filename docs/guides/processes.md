@@ -268,6 +268,36 @@ state. The trace notes the guess. Close `north` by listing `ShopStatus.Closed` i
 to a person. See [Actions that set the object's data](../user-guide.md#actions-that-set-the-objects-data) and
 [Who acts, and another lifecycle's state](../user-guide.md#who-acts-and-another-lifecycles-state).
 
+## 15. Close a paid invoice, except to the finance team
+
+Lakeside Hardware keeps an `Invoice` with a lifecycle `InvoiceFlow` and the states `Draft`, `Sent`, `Paid` and `Void`. The shop's rule is
+"nobody may change a paid invoice, except the finance team". Say there are two actors: `Clerk`, a role, and `Finance`, a role. An `Invoice`
+has no other rule.
+
+1. Open `InvoiceFlow` and its **Rights** tab. **When nothing is said** stays **Allowed**, so clerks can still work on drafts and sent invoices.
+2. Add a right. Name it `PaidIsClosed` and set **Allows or denies** to **Deny**. In **Does**, pick **Modify** and **Delete**. In **In states**,
+   pick `Paid`. Leave **Who** empty, which means everyone. In **Except**, pick `Finance`. In **Why**, write "A paid invoice is closed to
+   everyone but finance."
+3. Switch to **Who can do what** and pick the state `Paid`. The row for `Clerk` shows **Denied** under Modify and Delete. The row for
+   `Finance` shows **Allowed**, greyed, because only the default says so. `Except` did not grant anything: it only took finance out of the deny.
+   Click the Denied cell: it names `PaidIsClosed`.
+
+Now a scenario. Add an object `inv1`, an `Invoice` that is the subject, and its **States** are left alone. Add two participants: `cal`, who stands
+for a `Clerk`, and `fay`, who stands for a `Finance`. Then add the steps:
+
+1. `Send` by `cal`. The invoice is in `Sent`.
+2. `Pay` by `cal`. The invoice is in `Paid`.
+3. A verb step: **Verb** `modify`, **Set values** `total=90`, by `cal`. The step is refused. Its **Refusal** is `right` and **Refused by** is
+   `PaidIsClosed`.
+4. The same verb step by `fay`. The step is accepted, and expects the value `total` of 90.
+
+Run **Replay**, or run the steps in the simulation panel and use **Record to scenario…**, then **Update expectations from replay**. The refused
+step shows "a right denies it, refused by PaidIsClosed" and lists the right under **Rights that answered**. If someone later removes the
+right, step 3 is accepted and the replay fails with MQ9308 for the refusal it no longer finds, and with MQ9301 for the step that is now accepted.
+
+A lifecycle that denies by default works the other way: set **When nothing is said** to **Denied**, then add allow rights. An allow in a lifecycle
+that allows by default can change nothing, so it is MQ9904. See [Rights](../user-guide.md#rights).
+
 ## See also
 
 - [Processes, actors and scenarios](../user-guide.md#processes-actors-and-scenarios), including
@@ -275,6 +305,7 @@ to a person. See [Actions that set the object's data](../user-guide.md#actions-t
   [The simulation panel](../user-guide.md#the-simulation-panel).
 - [Lifecycle subjects and state codes](../user-guide.md#lifecycle-subjects-and-state-codes), including a stereotype as a subject.
 - [Verbs](../user-guide.md#verbs).
+- [Rights](../user-guide.md#rights): who may do which verbs in which states, named rights, and refusals in scenarios.
 - [Actions that set the object's data](../user-guide.md#actions-that-set-the-objects-data).
 - [Actors: types, membership and the object](../user-guide.md#actors-types-membership-and-the-object).
 - [Sync enum and the quick fixes](../user-guide.md#sync-enum-and-the-quick-fixes) and

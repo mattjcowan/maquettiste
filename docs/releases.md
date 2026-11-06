@@ -5,6 +5,36 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.15.0 (unreleased)
+
+- **Rights, part 1.** A lifecycle may list rights: who may do which verbs, in which states, under a condition. Each right allows or
+  denies (`access`), names who it applies to (`actors`, empty for everyone), who it does not (`except`, which never grants), the
+  verbs, the states, optionally the links (`ends`) and a condition. A lifecycle has a default, `rightsDefault`, `allow` or `deny`. In the
+  editor, use the lifecycle's **Rights** tab, with **When nothing is said** for the default.
+- **Named rights.** A rule that several lifecycles share is its own element, a **named right**, under **Rights** in the Processes
+  rail. A lifecycle uses it with **Use a named right…** and says in which states.
+- **How rights combine.** Each lifecycle answers on its own: its denies, then its allows, then its default. Any "no" wins. An
+  event's actors, a human task's actors and a gate's signers already count as rights of their own lifecycle, so a model that states no
+  rights answers as before.
+- **Who can do what.** The Rights tab has a **Who can do what** view: one state at a time, actors against verbs, each cell
+  Allowed, Denied or Depends, with what decides it. The MCP tool `get_rights` and `maquettiste process rights` give the same rows.
+- **Verb steps and refusal reasons in scenarios.** A step may do a verb to the object (`verb`, with `values`, `end` and `object`).
+  A refused step names why (`refusal`: `right` and `default` are new) and what refused it (`refusedBy`). The simulation panel has a
+  **Do…** menu. New rules MQ9901 to MQ9906 and MQ9308. Expressions gain a right's condition as a site, which reads `current_actor()`,
+  `in_state` and `now()`.
+- **Generated output.** `csharp-dapper` writes the rights check only when a lifecycle states rights or a default. Teams that use
+  it with rights write their `CallerHoldings` stub (`Dispatch/CallerHoldings.cs`), which says what actors the caller holds, and write the
+  `RightConditions` methods and the `StatesIn<Lifecycle>` methods the build asks for. Teams that also use the generated scenario tests
+  register `ScenarioHoldings` in their `ScenarioHost`, by passing `new ScenarioHoldings()` as each command handler's last argument (or as the
+  container's `ICallerHoldings`). The pack's README has the steps. `process-docs` adds a rights page and a "Who can do what" table.
+- **New names.** `process-right` (the part kind of a right in a lifecycle), `entity` (a row of `get_rights` that differs by entity) and
+  `dependsOn` (the other lifecycles that may also refuse) are new names. The owner will confirm them before release.
+- **Teams upgrade together.** New files use shapes an older engine cannot read: a `right` file, and `rights`, `rightsDefault`,
+  and the new step keys. The file format version stays 1. A project that uses none of this keeps its files, output, findings and tool
+  answers.
+- **The schema copies and the modeling skill change.** Update the copies of the schemas and the `maquettiste-modeling` skill
+  that your repository holds.
+
 ## 0.14.0 (2026-11-06)
 
 - **Actors: more types, membership, and actors taken from the object.** An actor may now be a group, an organization, or

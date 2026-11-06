@@ -2482,8 +2482,8 @@ name a library's actions the same way, and `transition.gatePolicy` names a libra
 ### Verbs
 
 A verb says what is done: what an actor does by sending an event, what an automatic move does, or what an operation does. Name one in
-an event's, an eventless transition's or an operation's `verb`, by its key. Verbs carry no behaviour yet; they give rights and trigger
-points one shared list of names.
+an event's, an eventless transition's or an operation's `verb`, by its key. Verbs carry no behaviour of their own; [rights](#rights) speak of them, and trigger
+points will share the list of names.
 
 - An **event** names what the actor does by sending it: `Submit` promotes, `SendBack` demotes.
 - A **transition** names a verb only when it has no event (`after`, `always`, `done`, `invoke-done`, `invoke-error`). With an event,
@@ -2570,14 +2570,140 @@ are not listed. The simulation panel's event buttons name the verb in their tool
 
 **Output.** Templates read `model.verbs` (the built-in verbs that are not hidden, then your own) and the verb of each event,
 transition and operation. It is empty unless the project has a verb vocabulary or names a verb. `csharp-dapper` writes a `Verb`
-enum, and each event's and operation's verb. `process-docs` adds a Verb column and a page of verbs. Generated code checks nothing
+enum, and each event's and operation's verb. `process-docs` adds a Verb column and a page of verbs. Apart from [rights](#rights), generated code checks nothing
 about verbs yet. A project that uses no verbs keeps its output. An older engine refuses `verbs.json` and any file with `verb`.
+
+### Rights
+
+A **right** says who may do which verbs to the object while it is in which states. A lifecycle holds its rights in its
+**Rights** tab. Rights are optional. A project that states none keeps its files, output, findings and tool answers.
+
+Only lifecycles hold rights. An orchestration or a library with `rights` or `rightsDefault` is MQ9901. Rights on types with
+no lifecycle are not available.
+
+**The default.** At the top of the Rights tab, **When nothing is said** sets what the lifecycle answers when none of its rights
+speaks: **Allowed** (the usual choice, and what a lifecycle without the key does) or **Denied**. In the file it is
+`rightsDefault`, `allow` or `deny`. With Denied, only a right that allows lets anything happen.
+
+**A right.** Each row of the grid is one right. Its columns:
+
+| Column | File key | What it says |
+| --- | --- | --- |
+| **Name** | `name` | An identifier. Two rights of one lifecycle cannot share a name (MQ3001). A refusal names it |
+| **Allows or denies** | `access` | `allow` or `deny`. A deny always wins over an allow |
+| **Who** | `actors` | Whom the right applies to, with their members at any depth. Any actor works, including an actor taken from the object, such as its owner. Empty means everyone |
+| **Except** | `except` | Whom the right does not apply to. The same kinds of actor |
+| **Does** | `verbs` | The verbs it speaks of, at least one. Built-in or your own |
+| **In states** | `states` | The states where it holds. Empty means every state. A compound state counts when any state inside it is active |
+| **Links** | `ends` | Only the links through these relation ends. The column shows only when a right uses it |
+| **When** | `condition` | It holds only when this is true, for example `subject.classification = 'secret'` |
+| **Why** | `description` | Shown with every refusal |
+
+```json
+"rightsDefault": "allow",
+"rights": [
+  { "id": "…", "name": "NoChangeWhenPaid", "access": "deny", "verbs": ["modify", "delete"],
+    "states": ["…Paid"], "except": ["…Finance"], "description": "A paid invoice is closed to everyone but finance." }
+]
+```
+
+- **`except` never grants.** For an actor it lists, the right says nothing. Other rights and the default still answer for that
+  actor. With the usual default of allow, "deny the change, except finance" is the whole rule. In a lifecycle that denies by
+  default, finance still needs an allow. An entry that the same right's Who also names is MQ9906.
+- **The verbs say what a right speaks of.** Moves, signatures and tasks are answered by the lifecycle where the move, signature
+  or task is. Objects, links and your own verbs are answered by every lifecycle that governs the object, each in the object's
+  state there. With **Links**, `connect`, `disconnect`, `read`, `modify`, `freeze` and `thaw` speak of the links through those ends.
+  `ends` beside any other verb is MQ9903. A right's states must be states of its own lifecycle (MQ9902).
+- **When the right holds.** The condition reads the object as `subject.<attribute>` (to-one paths too), `current_actor()`,
+  `in_state` and `now()`. It does not read the context or an event's payload, since rights are also asked outside a run. A condition
+  that is false or unknown means the right says nothing, so a deny over a missing value does not fire. `create` is asked as if the
+  object were in the lifecycle's initial state. A condition shows under the grid as text with its type.
+- **A grid row's problems** show on the row. Each has a quick fix: MQ9901 to MQ9903 remove the entry (or the state), MQ9904 removes
+  the right, MQ9905 adds an allow right for the verb, and MQ9906 removes the entry from Except.
+
+**Named rights.** A rule that several lifecycles share is its own element, a **named right** (kind `right`, in `model/rights/`),
+found in the Processes rail under **Rights**. Use **New named right…** to make one. Its editor has Name, **Allows or denies**,
+**Who**, **Except**, **Does**, **When**, **Why**, a **Used by** list and References, and no states. A lifecycle uses one with
+**Use a named right…** in the Rights tab's toolbar. The use is a row that shows the right's fields read only, with only **In states**
+editable, and a button, **Open the named right**, that opens it. A variant is another named right.
+
+- A named right's condition is checked at each use, in the scope of that lifecycle's subjects. A path the subjects do not hold is
+  MQ3102 at the use. With no use there is no scope, so the text is kept as written and its only finding is MQ3108. Use it in a lifecycle
+  to check it. The condition box previews against a lifecycle that uses the right, which you pick beside it.
+- Its `ends` and its actors taken from the object must resolve on every subject of every lifecycle that uses it (MQ9903, MQ9604).
+
+**How rights combine.** Each lifecycle that answers does so on its own: if a deny right of it holds, it says no. Otherwise, if
+an allow right holds, it says yes. Otherwise its default answers. The verb is allowed only when every answering lifecycle says
+yes, so any "no" wins. A lifecycle that allows by default and says nothing about a verb says yes, so it never blocks another.
+Each answers on its own so that one lifecycle's allow cannot cancel another lifecycle's default.
+
+- **Lists you already wrote count as rights.** An event's actors list is an allow for that event, in its own lifecycle. A human
+  task's actors are one for `complete`. A gate's signers are one for `sign`, and for the gated event. Everyone else is still refused
+  by the list, as before. A right can narrow a list, since a deny wins. It cannot widen it: an allow on `promote` does not let a
+  Manager send an event that lists only Clerks.
+- **An event with no verb** is outside rights that name verbs. Its actors and the lifecycle's default still apply.
+- **Not checked.** Automatic moves, timers, a finished service task and the events of an invoked sub-process. The chart decides
+  those.
+- **An allow in a lifecycle that allows by default** cannot change any answer, so it is MQ9904, a warning. A team writing requirements may keep
+  such rights and lower the warning. Under a default of Denied, an event or task no one can ever do is MQ9905.
+
+**The order of checks.** The first check that fails names the refusal, so two scenarios cannot disagree about the reason:
+
+1. The closed lists: an event's or task's actors. The refusal is `actor`, by the event or invoke.
+2. The denies of every answering lifecycle, the acting one first, in file order, then the others by name. The refusal is `right`,
+   by the right (inline, or the named right).
+3. The defaults, in the same order, where no allow holds and the default is Denied. The refusal is `default`, by the lifecycle.
+4. No move takes the event from the active states: `no-transition`, refused by nothing.
+5. The guards: `guard`, by the guard.
+6. At a gate, the signers, then the lifecycle's denies on `sign`, then a repeat signer, then a missing reason: `gate-signer`,
+   `right`, `gate-repeat` or `gate-reason`.
+
+A **refusal reason** is that value. **`refusedBy`** is the id of the element that refused: the event, the right, the lifecycle,
+the guard or the gate. A deny on the gated event's verb also stops signing, since every signature is sent as that event.
+
+**In a run, a right applies to a participant who satisfies any of its actors and none of its `except`,** not only the actor
+the step acts as. A deny on Owner applies to Bea even when she acts as Author. An `except` that names Owner leaves Bea out.
+
+**Who can do what.** The Rights tab has two views, **Rights** and **Who can do what**. The second shows one state at a time, with
+actors as rows and verbs as columns. Each cell says **Allowed**, **Denied** or **Depends**, greyed when the lifecycle's default
+decides it. Click a cell to list what decides it, each as a link. **Depends** means a condition or an actor from the object
+decides, or that another lifecycle may also refuse, shown as "May also be refused by". With subjects that differ, an **Entity**
+picker appears. The view reads the saved lifecycle, so it updates when you save. The MCP tool `get_rights` and
+`maquettiste process rights <lifecycle>` give the same rows (`--state`, `--actor`, `--verb` and `--entity` narrow them). Each
+row has the state, the actor (null for everyone else), the verb, the answer (`allowed`, `denied` or `depends`), whether the default
+decided it, the ids that decide it (`by`) and the other lifecycles involved (`dependsOn`). It reads the model and never resolves all of it.
+
+**Verb steps in scenarios.** A scenario step may do a verb to the object instead of sending an event. In the step's inputs, pick
+**Verb**. Its keys: `verb`, `values` (for `modify` on the subject, **Set values**, attribute id to value, such as `amount=5`), and
+`end` and `object` for a link (**Link end** and **Linked object**). The step acts as its actor, or as its participant. Object verbs,
+link verbs and your own verbs may be steps. Moves, signatures and task completion keep their own steps. `override`,
+`set-state`, `reject`, `ignore`, `withdraw`, `delegate`, `route` and `claim` are not steps yet, and nor are `freeze` and `thaw` (MQ9305).
+A step that does not fit is MQ9305.
+
+- An accepted `modify` applies its values to the object, and later guards and sets read them. They show in `valuesChanged` and in
+  the step's expected values. An accepted `delete` removes the object and the chart stops: later steps are refused as
+  `no-transition`. The other verbs are checked and recorded only, and a note says the run did not apply them.
+- Other lifecycles answer too, in the states the scenario gives their objects (see "Object states and expected values"). A scenario
+  with no objects asks the lifecycles that govern every subject of its process, each in its initial state.
+
+**Refusals in scenarios.** A step that is refused may expect the `refusal` and the `refusedBy` (the **Refusal** and **Refused by**
+fields). When either differs from the replay, it is MQ9308, and **Update expectations from replay** fills them in. Recording writes both
+for a refused step when the project uses rights. In the simulation panel, **Do…** offers a verb to do as the chosen participant (**Do it as**). A
+refused step shows "reason, refused by element", and **Rights that answered** lists each right with its access and lifecycle. A refused input
+stays in the trace.
+
+**Generated code and documents.** `csharp-dapper` writes the rights check only when a lifecycle states rights or a default. Each
+condition is a method the team writes. The team also fills the `CallerHoldings` stub, which says what actors the caller holds; until
+then the caller is checked only as the actor it acts as. See the pack's README. `process-docs` shows rights and the table of who can do
+what. Templates read `process.rights`, `process.rights_default` and `model.rights`. Generated operation endpoints do not check rights.
+
+**Upgrading.** An older engine refuses a `right` file and any file with the new keys. The file format version stays 1.
 
 ### The rules for processes (MQ9xxx)
 
 Every rule below has a row in **Settings › Validation**, where its severity can be changed. The structural rules (MQ9001
-to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9211, MQ9501, MQ9601 to MQ9606, MQ9701 to MQ9707 and MQ9801 to MQ9803) run on every save and every `validate`; MQ9019 is the answer
-to a refused batch operation. The scenario rules (MQ93xx, MQ9307 among them) and MQ9502 to MQ9507 come from replaying
+to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9211, MQ9501, MQ9601 to MQ9606, MQ9701 to MQ9707, MQ9801 to MQ9803 and MQ9901 to MQ9906) run on every save and every `validate`; MQ9019 is the answer
+to a refused batch operation. The scenario rules (MQ93xx, MQ9307 and MQ9308 among them) and MQ9502 to MQ9507 come from replaying
 scenarios: `validate` replays every scenario of the processes it checks, **Verify scenarios** and `maquettiste process
 verify` replay on request, and the simulation panel shows them for its own run. A replay finding is reported on a save but
 does not refuse it, so a chart edit is saved and its scenarios can be refreshed afterwards. The import and export rules
@@ -2632,6 +2758,7 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9305 | error | A step whose fields do not fit: an unknown event, a time step without a duration, an invoke that is not pending, a payload value of the wrong type. With participants: a holding that is not a role, group or organization; a `within` or `object` that is not one of the scenario's objects; a participant's actor that is a role, group, organization or actor from the object; a step's participant that is not the scenario's; a step's actor its participant does not satisfy; an object's owner beside an owner field. With object states: an object's `states` that name a state of a lifecycle that cannot govern it, two states of one lifecycle that cannot be active together, the state of the process the scenario runs on its subject, or a state that disagrees with the bound value the object gives | |
 | MQ9306 | warning | A guard without an expression is evaluated and the step has no assumption for it, so the replay stops there | |
 | MQ9307 | error | The values a step changed on the object differ from its `expect.values`, keyed by attribute name | **Update expectations from replay** |
+| MQ9308 | error | A refused step's `refusal` or `refusedBy` differs from the replay's: the first check that fails names both | **Update expectations from replay** |
 | MQ9401 | warning | Imported configuration with no place in the model, kept as opaque data and written back on export | |
 | MQ9402 | warning | An inline function in an imported configuration became a named stub (its text kept in the description, never run) | |
 | MQ9403 | error | The import input is not a statechart configuration the importer accepts | |
@@ -2655,6 +2782,12 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9801 | error | A set's attribute is not one every subject of the process holds under one id: an unknown id, another entity's attribute, a to-one end, a collection or a value object's member; or the process has no subjects; or a context attribute named `subject` hides the object | **Remove the set** |
 | MQ9802 | error | A set's attribute is derived, or holds a lifecycle's state | **Remove the set** |
 | MQ9803 | error | One action sets one attribute twice | **Remove the second set** |
+| MQ9901 | error | A rights entry that is both an inline right and a use, or neither (an inline right needs a name, an access and a verb); a use that names something other than a named right; or `rights` or `rightsDefault` on an orchestration or a library | **Remove the entry** |
+| MQ9902 | error | A right's states name something that is not a state of its lifecycle: another process's state, a history state or a choice state | **Remove the state** |
+| MQ9903 | error | A right's links are not ends every subject holds, or stand beside a verb that cannot act on a link (only `connect`, `disconnect`, `read`, `modify`, `freeze` and `thaw` can). For a named right, reported at the use | **Remove the entry** |
+| MQ9904 | warning | An allow right in a lifecycle that allows by default: it cannot change any answer | **Remove the right** |
+| MQ9905 | warning | Under a default of Denied, an event or human task no one can ever do: no actors, no gate signers and no allow right that names its verb; or an event with no verb, actors or signers | **Add an allow right** |
+| MQ9906 | warning | An Except entry that the same right's Who also names, so the right never applies to it | **Remove it from Except** |
 | MQ9701 | error | A `verb` that is neither a built-in verb nor one of the project's own. Reported at the event, transition or operation | **Add the verb**, or **Clear the verb** |
 | MQ9702 | error | An own verb whose key is a built-in verb's, or two own verbs with one key | **Use the built-in verb** |
 | MQ9703 | error | The hidden list names a key that is not a built-in verb | **Remove the entry** |
@@ -3012,6 +3145,7 @@ most 64 deep (MQ3113).
 | Entity check | the entity's `checks`: `name`, `attribute`, `condition`, `message` | the entity's attributes, inherited ones and value object members | check | no | `validation` facets and JavaScript rules |
 | Derived value | an attribute's `derived.value` | the entity's other attributes | value | no | `derived.expression`, text for templates |
 | Process guard | `guards[].condition` | context attributes; `event.amount` for a payload attribute (so a context attribute named `event` cannot be read, MQ3102) | guard | the simulation's clock | `expression`, JavaScript |
+| Right's condition | `condition` of a right in a lifecycle's `rights`, or of a named right | the object as `subject.<attribute>`, to-one paths too, `current_actor()` and `in_state`. Not the context or a payload (MQ3102) | guard | the simulation's clock | `description`, the why |
 | Operation guard | the operation's `guards`: `name`, `condition`, `error` | input members; `subject.status` at record level, to-one navigations included | guard | yes | |
 | Declared rule condition | `expression` in a rule's `require` | `member` paths of the selected object | guard | no | the other conditions |
 | Named constraint | the constraint's `condition` | its parameters | the citing site's | the citing site's | |
@@ -3100,7 +3234,7 @@ one change.
 
 ### Who acts, and another lifecycle's state
 
-Two names read the run rather than a row. They work at process guards, operation guards and sets (MQ3104 anywhere else), since
+Two names read the run rather than a row. They work at process guards, operation guards, sets and a right's condition (MQ3104 anywhere else), since
 a check or a derived value must hold however the object moves.
 
 **`current_actor()`** is whoever acts now. In a run it is the step's signer if given, else its participant's identity, else the
@@ -3110,6 +3244,8 @@ one. Otherwise it is null. So one guard says "the approver is not the submitter"
 - Next to a comparison, `in`, `coalesce` or a `case` branch, or as a set's value, `current_actor()` takes the other side's type. So a team
   that knows people by number or uuid is not blocked. When the identity does not convert, the value is null and the trace notes it.
 - Anywhere else it is a string.
+- In a right's condition, `current_actor()` is whoever does the verb, so `subject.classification = 'secret' and current_actor() <> subject.ownerLogin` reads
+  as written. A right's condition also reads `now()`, as a guard does. See [Rights](#rights).
 - `event.actor` in an action's JavaScript is the name of the actor element, not the person.
 
 **`in_state(object, state, …)`** is true when the object is in any of the states named. The object is `subject`, or a to-one
@@ -3241,7 +3377,7 @@ reports one MQ5003 or MQ5002 instead of a finding on every object. MQ3112 is not
 | MQ3101 | error | An expression does not parse, or a node is malformed: an unknown operator or function, a wrong number of operands. A save whose text does not parse is refused |
 | MQ3102 | error | A path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a `member` outside a rule condition, a payload attribute that an event using the guard lacks, a context attribute named `event`, under which a guard's condition reads the payload, or an overlay's column named like an attribute of its entity, which text reads as the attribute |
 | MQ3103 | error | The types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, `+` on a date, `date_part` of `hour` or `minute` on a date, a site's answer that is not a boolean, a derived value of another type than its attribute, a type the language does not have (`float` among them), an enum member or code against a value of no enum or reference type, a code the column it is compared with cannot store, or a set's value that does not fit its attribute |
-| MQ3104 | error | `now()`, `current_actor()` or `in_state` at a check, a value or a rule condition, directly or through a constraint; guards and sets read the clock, and guards, operation guards and sets read the other two |
+| MQ3104 | error | `now()`, `current_actor()` or `in_state` at a check, a value or a rule condition, directly or through a constraint; guards, sets and a right's condition read the clock, and guards, operation guards, sets and a right's condition read the other two |
 | MQ3105 | error | A regular expression outside the portable subset |
 | MQ3106 | error | An argument that must be a literal is not (a pattern, a `date_part` part, the digits of `round`, an `in` list item), or an `in` list holds null |
 | MQ3107 | error | A site holds both its raw form and a tree, or neither; a process guard with neither is a stub and is not reported |
