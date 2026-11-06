@@ -235,7 +235,7 @@ export const TreeRow = memo(function TreeRow(props: TreeRowProps) {
           {m}
         </span>
       ))}
-      <span className="min-w-0 flex-1 truncate text-right text-11 text-secondary" data-part="count">
+      <span className="min-w-0 flex-1 truncate text-right text-11 text-secondary" data-part="count" title={counted}>
         {counted}
       </span>
       {node.pending ? <Loader2 className="size-3 shrink-0 animate-spin text-secondary" aria-label="Loading the table summaries" /> : null}

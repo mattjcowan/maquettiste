@@ -71,10 +71,10 @@ describe("the Participants grid's model", () => {
     expect(holdable(choices).map((c) => c.name)).toEqual(["Reviewer"]);
   });
 
-  it("writes a holding as the role, then 'in' and the object, and reads it back keeping the ids it can", () => {
+  it("writes a holding as the role, then 'within' and the object, and reads it back keeping the ids it can", () => {
     const doc = withPeople();
     const text = holdsText(doc.participants![0].holds, actorNames, new Map(objects.map((o) => [o.id, o.name])));
-    expect(text).toBe("Reviewer in invoice, Reviewer");
+    expect(text).toBe("Reviewer within invoice, Reviewer");
     let n = 0;
     const parsed = parseHolds("reviewer, Reviewer in Invoice", holdable(choices), objects, doc.participants![0].holds, () => `new${++n}`);
     expect(parsed.error).toBeNull();
@@ -138,7 +138,7 @@ describe("the simulation panel's rows with participants", () => {
   const result = (steps: object[]) => ({ processHash: "h", ...simulate(process() as never, null, steps as never) }) as unknown as SimulationResult;
 
   it("names a participant in an input's label and raises an input that names one", () => {
-    expect(inputLabel({ event: "e", participant: P1 }, names)).toContain("as ann");
+    expect(inputLabel({ event: "e", participant: P1 }, names)).toContain("by ann");
     const answer = result([]);
     const row = enabledRows(answer, process(), names, [{ id: BUDGET_HOLDER, name: "BudgetHolder" }])[0];
     const base = defaultRowValue(row, answer);
@@ -165,14 +165,14 @@ describe("the simulation panel's rows with participants", () => {
     };
     const lines = lastStepLines(entry as never, names);
     expect(lines.map((l) => l.text)).toContain("ann acted as Ann");
-    const none = lastStepLines({ ...entry, accepted: false, refusal: "actor", actsAs: null } as never, names);
+    const none = lastStepLines({ ...entry, accepted: false, refusal: "actor", actsAs: undefined } as never, names);
     expect(none.find((l) => l.text.includes("satisfies none"))?.tone).toBe("warning");
     const traced = traceRows(
       [{ event: "e", participant: P1 } as never],
       { trace: [{ index: 0, configuration: [], accepted: true, refusal: null, actsAs: ANN }] } as never,
       names,
     );
-    expect(traced[1].label).toBe("e as ann (acts as Ann)");
+    expect(traced[1].label).toBe("e by ann, acting as Ann");
     // Without a participant the line and label are the old ones.
     expect(lastStepLines({ ...entry, input: { event: "e" }, actsAs: undefined } as never, names).map((l) => l.text)).not.toContain("ann acted as Ann");
   });
@@ -180,7 +180,8 @@ describe("the simulation panel's rows with participants", () => {
 
 describe("the explorer's participants under a scenario", () => {
   it("makes a scenario row expandable and lists its participants once its document is read", () => {
-    const rows = backend.model.index();
+    // The index row carries the participant count, only above zero.
+    const rows = backend.model.index().map((r) => (r.id === BUDGET_REJECTED ? { ...r, participants: 2 } : r));
     const f = buildForest({ rows });
     const key = f.place.get(BUDGET_REJECTED)!;
     const node = nodeOf(f, key)!;

@@ -32,12 +32,12 @@ export const standsFor = (actors: readonly ActorChoice[]): ActorChoice[] => acto
 /** The actors a participant may hold: a role, group or organization, never one from the object. */
 export const holdable = (actors: readonly ActorChoice[]): ActorChoice[] => actors.filter((a) => !a.relative && !!a.type && HOLDERS.includes(a.type));
 
-/** A holding as text: the role's name, then `in` and the object's name when it has a context. */
+/** A holding as text: the role's name, then `within` and the object's name when it has a context. */
 export function holdsText(holds: readonly HoldingDoc[] | undefined, actorNames: ReadonlyMap<string, string>, objectNames: ReadonlyMap<string, string>): string {
   return (holds ?? [])
     .map((h) => {
       const actor = actorNames.get(h.actor) ?? "?";
-      return h.within ? `${actor} in ${objectNames.get(h.within) ?? "?"}` : actor;
+      return h.within ? `${actor} within ${objectNames.get(h.within) ?? "?"}` : actor;
     })
     .join(", ");
 }
@@ -55,14 +55,14 @@ export function parseHolds(
   for (const raw of text.split(",")) {
     const part = raw.trim();
     if (!part) continue;
-    const at = part.search(/\s+in\s+/i);
+    const at = part.search(/\s+(?:in|within)\s+/i);
     const actorName = (at < 0 ? part : part.slice(0, at)).trim().toLowerCase();
     const objectName =
       at < 0
         ? null
         : part
             .slice(at)
-            .replace(/^\s+in\s+/i, "")
+            .replace(/^\s+(?:in|within)\s+/i, "")
             .trim()
             .toLowerCase();
     const actor = holdable.find((a) => a.name.toLowerCase() === actorName);

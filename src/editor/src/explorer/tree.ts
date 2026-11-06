@@ -1493,8 +1493,8 @@ export function buildForest(input: TreeInput): Forest {
       .map((sc) => {
         const row = elementNode(sc, "processes");
         row.secondary = `${plural(sc.stepCount ?? 0, "step", "steps")} · ${scenarioStatusText(statusOf?.get(sc.id))}`;
-        // Its participants are listed once its document is loaded, when the row is opened (as a process row's States are).
-        row.load = "document";
+        // Its participants are listed once its document is loaded; a scenario with none has nothing to open.
+        if ((sc.participants ?? 0) > 0) row.load = "document";
         return row;
       })
       .sort((a, b) => Number(failed(b.id!)) - Number(failed(a.id!)) || byLabel(a, b));

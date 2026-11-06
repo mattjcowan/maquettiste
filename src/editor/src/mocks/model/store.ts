@@ -1436,6 +1436,8 @@ function e5(json: Json): Partial<ElementSummary> {
   if (kind === "scenario") {
     if (typeof json.process === "string") out.process = json.process;
     out.stepCount = Array.isArray(json.steps) ? json.steps.length : 0;
+    // The participant count only when above zero, so rows of scenarios without participants do not change.
+    if (Array.isArray(json.participants) && json.participants.length) out.participants = json.participants.length;
   }
   // Section 4.1 (maquettiste-index/e10): an operation's subject and effect.
   if (kind === "operation") {

@@ -1,8 +1,11 @@
 // The scenario editor's Participants and Objects grids (actors-design.md section 9): who acts in the scenario (name, display
 // name, identity, the actor they stand for, what they hold, their record object), and each object's owner participant.
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Pencil, Plus, X } from "lucide-react";
 import { useElement, useIndex } from "@/api/queries";
-import { useServices } from "@/app/context";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Field, Input, Select } from "@/components/ui/input";
 import { newId } from "@/lib/ids";
 import { PARTICIPANT_LABELS as L } from "@/model/labels";
 import {
@@ -10,13 +13,13 @@ import {
   holdable,
   identityOf,
   newParticipantName,
-  parseHolds,
+  holdsText,
   participantRows,
   standsFor,
   type ActorChoice,
   type ParticipantRow,
 } from "@/model/participants";
-import { subjectsOf, type ProcessDoc, type ScenarioDoc } from "@/model/process";
+import { subjectsOf, type HoldingDoc, type ProcessDoc, type ScenarioDoc } from "@/model/process";
 import type { EditorContext } from "../EditorFrame";
 import { Grid, type GridColumn, type GridOption } from "../process/Grid";
 import { rowProblems, useActors, useProblems } from "../process/shared";
@@ -31,28 +34,47 @@ export function useActorChoices(): ActorChoice[] {
 const partIds = (scenario: ScenarioDoc) => (scenario.participants ?? []).flatMap((p) => [p.id, ...(p.holds ?? []).map((h) => h.id)]);
 
 export function ParticipantsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDoc }) {
-  const { store } = useServices();
   const choices = useActorChoices();
   const problems = useProblems(ctx.id, ctx.diagnostics, partIds(scenario));
   const actorNames = new Map(choices.map((a) => [a.id, a.name]));
   const objects = scenario.objects ?? [];
   const rows = participantRows(scenario, actorNames);
   const none: GridOption = { value: "", label: L.none };
+  const [holdsFor, setHoldsFor] = useState<string | null>(null);
+  const holder = scenario.participants?.find((p) => p.id === holdsFor);
 
   const columns: GridColumn<ParticipantRow>[] = [
     { key: "name", label: L.name, kind: "text", width: "min-w-28", sticky: true, value: (r) => r.name },
     { key: "displayName", label: L.displayName, kind: "text", width: "min-w-28", value: (r) => r.displayName },
-    { key: "identity", label: L.identity, kind: "text", width: "min-w-24", value: (r) => r.identity },
+    { key: "identity", label: L.identity, tooltip: L.identityHint, kind: "text", width: "min-w-24", value: (r) => r.identity },
     {
       key: "actor",
       label: L.actor,
+      tooltip: L.actorHint,
       kind: "select",
       width: "min-w-28",
       value: (r) => r.actor,
       editValue: (r) => scenario.participants?.[r.index]?.actor ?? "",
       options: () => [none, ...standsFor(choices).map((a) => ({ value: a.id, label: a.type === "system" ? L.automatic : a.name }))],
     },
-    { key: "holds", label: L.holds, tooltip: L.holdsHint, kind: "text", width: "min-w-40", value: (r) => r.holds },
+    {
+      key: "holds",
+      label: L.holds,
+      tooltip: L.holdsHint,
+      kind: "readonly",
+      width: "min-w-44",
+      value: (r) => r.holds,
+      render: (r) => (
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="min-w-0 flex-1 truncate" title={r.holds}>
+            {r.holds || L.none}
+          </span>
+          <Button variant="ghost" size="icon-row" label={L.editHolds(r.name)} onClick={() => setHoldsFor(r.id)} data-testid={`edit-holds-${r.name}`}>
+            <Pencil />
+          </Button>
+        </span>
+      ),
+    },
     {
       key: "object",
       label: L.object,
@@ -66,21 +88,6 @@ export function ParticipantsGrid({ ctx, scenario }: { ctx: EditorContext; scenar
 
   const commit = (row: ParticipantRow, key: string, value: string | boolean) => {
     const v = String(value);
-    if (key === "holds") {
-      const parsed = parseHolds(v, holdable(choices), objects, scenario.participants?.[row.index]?.holds, newId);
-      if (parsed.error) {
-        store.getState().notify(`${row.name}: ${parsed.error}`, "error");
-        return;
-      }
-      ctx.edit((j) => {
-        const p = (j as unknown as ScenarioDoc).participants?.find((x) => x.id === row.id);
-        if (!p) return;
-        if (parsed.holds.length) p.holds = parsed.holds;
-        else delete p.holds;
-      });
-      ctx.flush();
-      return;
-    }
     ctx.edit((j) => {
       const p = (j as unknown as ScenarioDoc).participants?.find((x) => x.id === row.id);
       if (!p) return;
@@ -100,29 +107,141 @@ export function ParticipantsGrid({ ctx, scenario }: { ctx: EditorContext; scenar
     ctx.flush();
   };
 
+  const saveHolds = (holds: HoldingDoc[]) => {
+    ctx.edit((j) => {
+      const p = (j as unknown as ScenarioDoc).participants?.find((x) => x.id === holdsFor);
+      if (!p) return;
+      if (holds.length) p.holds = holds;
+      else delete p.holds;
+    });
+    ctx.flush();
+    setHoldsFor(null);
+  };
+
   return (
-    <Grid
-      label={L.grid(scenario.name)}
-      testid="participants-grid"
-      noun={L.singular}
-      rows={rows}
-      columns={columns}
-      rowName={(r) => r.name}
-      problems={(r) => rowProblems(problems, r.pointer)}
-      onCommit={commit}
-      empty={`No ${L.plural} yet. Add one to say who acts in the scenario.`}
-      onAdd={() => {
-        ctx.edit((j) => {
-          const s = j as unknown as ScenarioDoc;
-          s.participants = [...(s.participants ?? []), { id: newId(), name: newParticipantName(s) }];
-        });
-        ctx.flush();
-      }}
-      onRemove={(row) => {
-        ctx.edit((j) => forgetParticipant(j as unknown as ScenarioDoc, row.id));
-        ctx.flush();
-      }}
-    />
+    <>
+      <Grid
+        label={L.grid(scenario.name)}
+        testid="participants-grid"
+        noun={L.singular}
+        rows={rows}
+        columns={columns}
+        rowName={(r) => r.name}
+        problems={(r) => rowProblems(problems, r.pointer)}
+        onCommit={commit}
+        empty={`No ${L.plural} yet. Add one to say who acts in the scenario.`}
+        onAdd={() => {
+          ctx.edit((j) => {
+            const s = j as unknown as ScenarioDoc;
+            s.participants = [...(s.participants ?? []), { id: newId(), name: newParticipantName(s) }];
+          });
+          ctx.flush();
+        }}
+        onRemove={(row) => {
+          ctx.edit((j) => forgetParticipant(j as unknown as ScenarioDoc, row.id));
+          ctx.flush();
+        }}
+      />
+      {holder ? (
+        <HoldsDialog
+          participant={holder.name}
+          holds={holder.holds ?? []}
+          roles={holdable(choices)}
+          objects={objects}
+          onSave={saveHolds}
+          onClose={() => setHoldsFor(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** A participant's holdings, one row each: a role, group or organization, then an optional scenario object as the context. */
+function HoldsDialog({
+  participant,
+  holds,
+  roles,
+  objects,
+  onSave,
+  onClose,
+}: {
+  participant: string;
+  holds: HoldingDoc[];
+  roles: { id: string; name: string }[];
+  objects: { id: string; name: string }[];
+  onSave: (holds: HoldingDoc[]) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState<HoldingDoc[]>(holds);
+  const set = (i: number, next: Partial<HoldingDoc>) => setDraft((d) => d.map((h, at) => (at === i ? { ...h, ...next } : h)));
+  const text = holdsText(
+    draft.filter((h) => h.actor),
+    new Map(roles.map((r) => [r.id, r.name])),
+    new Map(objects.map((o) => [o.id, o.name])),
+  );
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title={L.holdsTitle(participant)}>
+        <form
+          className="flex flex-col gap-2"
+          data-testid="holds-dialog"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onSave(draft.filter((h) => h.actor));
+          }}
+        >
+          <p className="text-12 text-secondary">{L.holdsHint}</p>
+          {!roles.length ? <p className="text-12 text-secondary">{L.noRoles}</p> : null}
+          {draft.map((h, i) => (
+            <div key={h.id} className="flex items-center gap-1" data-testid="holding-row">
+              <Select aria-label={L.holdsRole} className="h-6 flex-1" value={h.actor} onChange={(e) => set(i, { actor: e.target.value })}>
+                <option value="">{L.holdsPickRole}</option>
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </Select>
+              <span className="text-12 text-secondary">{L.within}</span>
+              <Select
+                aria-label={L.holdsContext}
+                className="h-6 flex-1"
+                value={h.within ?? ""}
+                onChange={(e) =>
+                  setDraft((d) => d.map((x, at) => (at === i ? { id: x.id, actor: x.actor, ...(e.target.value ? { within: e.target.value } : {}) } : x)))
+                }
+              >
+                <option value="">{L.holdsAnywhere}</option>
+                {objects.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </Select>
+              <Button type="button" variant="ghost" size="icon-row" label={L.removeHolding} onClick={() => setDraft((d) => d.filter((_, at) => at !== i))}>
+                <X />
+              </Button>
+            </div>
+          ))}
+          <div className="flex items-center gap-2">
+            <Button type="button" onClick={() => setDraft((d) => [...d, { id: newId(), actor: "" }])} data-testid="add-holding">
+              <Plus /> {L.addHolding}
+            </Button>
+            <span className="min-w-0 flex-1 truncate text-12 text-secondary" title={text}>
+              {text.replace(/ in /g, ` ${L.within} `)}
+            </span>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" data-testid="holds-apply">
+              Apply
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -152,6 +271,7 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
       .map((e) => e.entity),
   );
   const participants = scenario.participants ?? [];
+  const [adding, setAdding] = useState(false);
   const rows: ObjectRow[] = (scenario.objects ?? []).map((o, i) => ({
     id: o.id,
     index: i,
@@ -176,25 +296,103 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
       locked: (r) => r.locked,
     },
   ];
+  const addObject = (name: string, entity: string) => {
+    ctx.edit((j) => {
+      const sc = j as unknown as ScenarioDoc;
+      const id = newId();
+      sc.objects = [...(sc.objects ?? []), { id, name, entity }];
+      // The first object is the one the process runs for, until another is chosen.
+      if (!sc.subject) sc.subject = id;
+    });
+    ctx.flush();
+    setAdding(false);
+  };
+  const taken = new Set((scenario.objects ?? []).map((o) => o.name.toLowerCase()));
   return (
-    <Grid
-      label={`Objects of ${scenario.name}`}
-      testid="objects-grid"
-      noun="object"
-      rows={rows}
-      columns={columns}
-      rowName={(r) => r.name}
-      problems={(r) => rowProblems(problems, r.pointer)}
-      onCommit={(row, key, value) => {
-        if (key !== "owner") return;
-        ctx.edit((j) => {
-          const o = (j as unknown as ScenarioDoc).objects?.find((x) => x.id === row.id);
-          if (!o) return;
-          if (value) o.owner = String(value);
-          else delete o.owner;
-        });
-        ctx.flush();
-      }}
-    />
+    <>
+      <Grid
+        label={`Objects of ${scenario.name}`}
+        testid="objects-grid"
+        noun="object"
+        rows={rows}
+        columns={columns}
+        rowName={(r) => r.name}
+        empty={L.noObjects}
+        onAdd={() => setAdding(true)}
+        problems={(r) => rowProblems(problems, r.pointer)}
+        onCommit={(row, key, value) => {
+          if (key !== "owner") return;
+          ctx.edit((j) => {
+            const o = (j as unknown as ScenarioDoc).objects?.find((x) => x.id === row.id);
+            if (!o) return;
+            if (value) o.owner = String(value);
+            else delete o.owner;
+          });
+          ctx.flush();
+        }}
+      />
+      {adding ? (
+        <AddObjectDialog entities={[...entities].map(([id, name]) => ({ id, name }))} taken={taken} onAdd={addObject} onClose={() => setAdding(false)} />
+      ) : null}
+    </>
+  );
+}
+
+/** Add object: a name and the entity it is an instance of. */
+function AddObjectDialog({
+  entities,
+  taken,
+  onAdd,
+  onClose,
+}: {
+  entities: { id: string; name: string }[];
+  taken: ReadonlySet<string>;
+  onAdd: (name: string, entity: string) => void;
+  onClose: () => void;
+}) {
+  const sorted = [...entities].sort((a, b) => a.name.localeCompare(b.name));
+  const [entity, setEntity] = useState(sorted[0]?.id ?? "");
+  const [name, setName] = useState(() => {
+    const base = (sorted[0]?.name ?? "object").replace(/^./, (c) => c.toLowerCase());
+    let n = base;
+    for (let i = 2; taken.has(n.toLowerCase()); i++) n = `${base}${i}`;
+    return n;
+  });
+  const clash = taken.has(name.trim().toLowerCase());
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title={L.addObjectTitle}>
+        <form
+          className="flex flex-col gap-2"
+          data-testid="add-object-dialog"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name.trim() && entity && !clash) onAdd(name.trim(), entity);
+          }}
+        >
+          <Field label={L.name} htmlFor="add-object-name">
+            <Input id="add-object-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-invalid={clash} />
+            {clash ? <p className="text-11 text-danger">{L.objectNameTaken}</p> : null}
+          </Field>
+          <Field label={L.entity} htmlFor="add-object-entity">
+            <Select id="add-object-entity" value={entity} onChange={(e) => setEntity(e.target.value)}>
+              {sorted.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={!name.trim() || !entity || clash} data-testid="add-object-apply">
+              Add
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

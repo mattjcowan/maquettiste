@@ -314,8 +314,8 @@ export function lastStepLines(entry: StepTrace, names: Names): LastStepLine[] {
   // The actor of the move, when the input does not name it (the input's own actor shows in the trace row): the system actor.
   if (entry.actor && !entry.input?.actor) lines.push({ kind: "actor", text: L.byActor(names.actor(entry.actor)), tone: "neutral" });
   // A step by a participant: the actor the engine worked out for it (`actsAs`), or that it satisfied none of the list.
-  const actsAs = (entry as { actsAs?: string | null }).actsAs;
-  if (entry.input?.participant && actsAs !== undefined)
+  const actsAs = entry.actsAs;
+  if (entry.input?.participant)
     lines.push({
       kind: "actor",
       text: L.actsAsLine(names.participant(entry.input.participant), actsAs ? names.actor(actsAs) : null),
@@ -357,7 +357,7 @@ export function lastStepLines(entry: StepTrace, names: Names): LastStepLine[] {
 // ------------------------------------------------------------------ the trace
 
 /** An input in a few words: `submit as BudgetHolder`, `checkBudget done`, `time +P5D`. */
-export function inputLabel(input: SimInput, names: Names): string {
+export function inputLabel(input: SimInput, names: Names, filled?: { actor?: string | null; signer?: string | null }): string {
   const kind = input.input ?? "event";
   const head =
     kind === "time"
@@ -367,10 +367,18 @@ export function inputLabel(input: SimInput, names: Names): string {
         : kind === "invoke-error"
           ? L.invokeError(names.invoke(input.invoke))
           : names.event(input.event);
+  const actor = input.actor || (input.participant ? filled?.actor : undefined);
+  const signer = input.signer || (input.participant ? filled?.signer : undefined);
+  // A participant's step reads "approve by SalesApprover, acting as Approver, signed by erin".
+  if (input.participant) {
+    const parts = [`${head} ${L.asParticipant(names.participant(input.participant))}`];
+    if (actor) parts.push(L.actingAs(names.actor(actor)));
+    if (signer) parts.push(L.bySigner(signer));
+    return parts.join(", ");
+  }
   const parts = [head];
-  if (input.participant) parts.push(L.asParticipant(names.participant(input.participant)));
-  if (input.actor) parts.push(L.asActor(names.actor(input.actor)));
-  if (input.signer) parts.push(L.bySigner(input.signer));
+  if (actor) parts.push(L.asActor(names.actor(actor)));
+  if (signer) parts.push(L.bySigner(signer));
   return parts.join(" ");
 }
 
@@ -392,10 +400,10 @@ export function traceRows(inputs: readonly SimInput[], result: SimulationResult 
     const t = byIndex.get(index);
     return { index, label, ran: !!t, accepted: t?.accepted ?? true, refusal: t?.refusal ?? null, states: (t?.configuration ?? []).map(names.state).join(", ") };
   };
-  // A participant's step also shows the actor the engine worked out for it (`actsAs`).
+  // A participant's step also shows the actor the engine worked out for it (`actsAs`) and the signer it filled in.
   const label = (input: SimInput, i: number) => {
-    const actsAs = (byIndex.get(i) as { actsAs?: string | null } | undefined)?.actsAs;
-    return inputLabel(input, names) + (input.participant && actsAs ? ` (${L.actsAs(names.actor(actsAs))})` : "");
+    const t = byIndex.get(i);
+    return inputLabel(input, names, { actor: t?.actsAs ?? t?.input?.actor, signer: t?.input?.signer ?? undefined });
   };
   return [row(-1, L.traceStart), ...inputs.map((input, i) => row(i, label(input, i)))];
 }
@@ -422,7 +430,7 @@ export function replaySummary(verification: ScenarioVerification, steps: number)
   if (verification.passed) return L.replayAllPassed(steps);
   const failure = verification.failure;
   if (!failure) return L.replayFailed;
-  return L.replayFailedAt(failure.step < 0 ? L.replayOutcome : L.replayStep(failure.step + 1), failure.rule, failure.message);
+  return L.replayFailedAt(failure.step < 0 ? L.replayOutcome : L.replayStep(failure.step + 1), failure.rule, failure.message.replace(/^Step \d+:?\s*/i, ""));
 }
 
 /** One row per scenario step: the verdict from verify (the engine's), the states after it from simulate. */
@@ -434,7 +442,7 @@ export function replayRows(scenario: ScenarioDoc, verification: ScenarioVerifica
     const t = byIndex.get(i);
     return {
       index: i,
-      label: inputLabel(step as SimInput, names),
+      label: inputLabel(step as SimInput, names, { actor: t?.actsAs ?? t?.input?.actor, signer: t?.input?.signer ?? undefined }),
       verdict,
       states: t && verdict !== "not-run" ? t.configuration.map(names.state).join(", ") : "",
     };

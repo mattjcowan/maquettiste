@@ -112,7 +112,7 @@ function ScenarioBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<ty
       tabs={[
         { value: "steps", label: "Steps", content: <StepsGrid ctx={ctx} scenario={scenario} /> },
         { value: "participants", label: PL.tab, content: <ParticipantsGrid ctx={ctx} scenario={scenario} /> },
-        ...(scenario.objects?.length ? [{ value: "objects", label: PL.objectsTab, content: <ObjectsGrid ctx={ctx} scenario={scenario} /> }] : []),
+        { value: "objects", label: PL.objectsTab, content: <ObjectsGrid ctx={ctx} scenario={scenario} /> },
         codeGeneration,
       ]}
     />
@@ -257,7 +257,9 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
     try {
       const result = await verifyScenario(scenario.process, scenario.id);
       const r = result.results[0];
-      if (r?.failure) setFailure(`Step ${r.failure.step + 1}: ${r.failure.rule} ${r.failure.message}`);
+      // The engine words some findings with their own "Step N"; the step is named once, up front.
+      if (r?.failure)
+        setFailure(`${r.failure.step < 0 ? "Outcome" : `Step ${r.failure.step + 1}`} (${r.failure.rule}): ${r.failure.message.replace(/^Step \d+:?\s*/i, "")}`);
     } catch (e) {
       store.getState().notify(`Replay ${scenario.name}: ${e instanceof Error ? e.message : String(e)}`, "error");
     } finally {
@@ -273,7 +275,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         </Button>
         <ScenarioStatusBadge status={replay.status} failedAt={replay.failedAt} />
         {failure ? (
-          <span className="truncate text-12 text-danger" role="status" data-testid="replay-failure">
+          <span className="min-w-0 flex-1 text-12 text-danger" role="status" title={failure} data-testid="replay-failure">
             {failure}
           </span>
         ) : null}

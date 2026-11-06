@@ -18,7 +18,7 @@ import { subjectsOf, syncPlanLines } from "@/model/process";
 import { MarkChips, NameAndDomain, domIdOf, type EditorContext } from "../EditorFrame";
 import { applySyncEnum, demoteLifecycle, replaceSoleSubject, setLifecycle, setSubjectOwner, syncEnum, type SyncEnumResult } from "./api";
 import { useObjectFields } from "../actor/useObjectFields";
-import { holdsOneActor } from "@/model/objectFields";
+import { canBeOwner } from "@/model/objectFields";
 import { entryIdsOf, useProblems } from "./shared";
 
 type Rec = Record<string, unknown>;
@@ -125,7 +125,7 @@ export function BindingFields({ ctx, dom }: { ctx: Pick<EditorContext, "id" | "j
   const bound = sole?.boundAttribute;
   const listForm = Array.isArray(rec.subjects);
   const { attributes, enumId } = useBinding(subject, bound);
-  const ownerFields = useObjectFields(subject ? [subject] : []).fields.filter(holdsOneActor);
+  const ownerFields = useObjectFields(subject ? [subject] : []).fields.filter(canBeOwner);
   const problems = useProblems(id, ctx.diagnostics, entryIdsOf(rec));
   const drift = problems.find((d) => d.rule === "MQ9203");
   const { store, drafts } = useServices();

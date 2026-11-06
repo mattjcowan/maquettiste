@@ -48,7 +48,9 @@ export function relativeUseDiagnostics(json: Json, all: () => Iterable<ModelEntr
         ? `'${one.owner}' is no attribute or end of '${entity}' or what it derives from`
         : !holdsOneActor(field)
           ? `'${field.name}' ${field.valueObject ? "is a value object" : "holds many"}, not one actor`
-          : null;
+          : field.fromStereotype
+            ? `'${field.name}' comes from a stereotype, not from the entity itself`
+            : null;
       if (why)
         emit(
           "MQ9606",
