@@ -37,6 +37,23 @@ Who acts: the value the team's system holds for them, the actor they stand for, 
 | {{ md_code pt.name }}{{ if pt.display_name }} ({{ md_cell pt.display_name }}){{ end }} | {{ md_code ("" + pt.identity) }} | {{ pt.actor ? actor_link(pt.actor, "../../") : "" }} | {{ holds | array.join ", " }} | {{ pt.object ? (md_code pt.object.name) : "" }} |
 {{- end }}
 {{- end }}
+{{- with_states = false }}{{ for o in sc.objects }}{{ if o.states.size > 0 }}{{ with_states = true }}{{ end }}{{ end }}
+{{- if with_states }}
+
+## Object states
+
+The states objects are in, in lifecycles other than the one the scenario runs. A lifecycle not given takes the state the object's
+bound value maps to, else its initial state.
+
+| Object | Entity | States |
+| --- | --- | --- |
+{{- for o in sc.objects }}
+{{- if o.states.size > 0 }}
+{{- states = [] }}{{ for st in o.states }}{{ states[states.size] = md_code (st.path) }}{{ end }}
+| {{ md_code o.name }} | {{ md_code o.entity.name }} | {{ states | array.join ", " }} |
+{{- end }}
+{{- end }}
+{{- end }}
 
 ## Walk-through
 
@@ -53,6 +70,7 @@ One row per step: who acts{{ if cast }} and the actor they act as{{ end }}, the 
 {{- for kv in st.payload }}{{ notes[notes.size] = "payload " + (md_code kv.key) + " = " + (md_code (json kv.value)) }}{{ end }}
 {{- for kv in st.assume }}{{ notes[notes.size] = "guard " + (md_code kv.key) + " assumed " + (kv.value ? "true" : "false") }}{{ end }}
 {{- if st.expect }}{{ for kv in st.expect.context }}{{ notes[notes.size] = (md_code kv.key) + " becomes " + (md_code (json kv.value)) }}{{ end }}{{ end }}
+{{- if st.expect }}{{ for kv in st.expect.values }}{{ notes[notes.size] = "sets " + (md_code kv.key) + " to " + (md_code (json kv.value)) }}{{ end }}{{ end }}
 {{- input = st.input }}
 {{- if st.input == "event" }}{{ input = "event " + (st.event ? (md_code st.event.name) : "`?`") }}
 {{- else if st.input == "time" }}{{ input = "time passes: " + (md_code st.after) }}

@@ -18,10 +18,12 @@ public sealed class RExpression
 {
     private string? _text;
     private string? _javaScript;
+    private bool? _engineOnly;
 
     /// <summary>
     /// The node's shape: <c>value</c> (a literal), <c>null</c>, <c>path</c>, <c>ref</c> (an enum member or a reference-type code),
-    /// <c>member</c> (a declared rule's member), <c>now</c>, <c>op</c>, <c>call</c> or <c>case</c>.
+    /// <c>member</c> (a declared rule's member), <c>now</c>, <c>actor</c> (who acts, <c>actor()</c>), <c>in-state</c> (whether an object is
+    /// in a state of a lifecycle, <c>in_state</c>), <c>op</c>, <c>call</c> or <c>case</c> (object-effects-design.md section 6).
     /// </summary>
     public string Node { get; internal set; } = "";
 
@@ -56,7 +58,44 @@ public sealed class RExpression
     /// </summary>
     public object? Target { get; internal set; }
 
-    /// <summary>The node's type: <see cref="ExprType.Kind"/>, with <see cref="ExprType.Bits"/> for an <c>int</c> and <see cref="ExprType.Of"/> for an enum or code.</summary>
+    /// <summary>
+    /// For an <c>in-state</c> node: the lifecycle whose states it names; else <see langword="null"/> (object-effects-design.md decision 7).
+    /// </summary>
+    public RProcess? Process { get; internal set; }
+
+    /// <summary>For an <c>in-state</c> node: the states it names, in its order; it holds when the object is in any of them. Else empty.</summary>
+    public RList<RState> States { get; internal set; } = RList<RState>.Empty;
+
+    /// <summary>
+    /// For an <c>in-state</c> node: the to-one relation ends from the subject to the object whose state it reads, in order; empty for the
+    /// object itself, and for any other node (object-effects-design.md decision 8).
+    /// </summary>
+    public RList<REnd> Through { get; internal set; } = RList<REnd>.Empty;
+
+    /// <summary>
+    /// For an <c>in-state</c> node: the attribute that holds the reached object's state in the lifecycle, as the entity (or stereotype) that
+    /// declares it resolves it, when the lifecycle binds the same one for every entity the node can reach; else <see langword="null"/>
+    /// (object-effects-design.md decision 11).
+    /// </summary>
+    public RAttribute? BoundAttribute { get; internal set; }
+
+    /// <summary>For an <c>in-state</c> node: the enum typing <see cref="BoundAttribute"/>, for an enum binding; else <see langword="null"/>.</summary>
+    public REnum? Enum { get; internal set; }
+
+    /// <summary>
+    /// For an <c>in-state</c> node with a <see cref="BoundAttribute"/>: the stored values for which the node holds, when the stored value
+    /// decides it. Under an enum binding, the <see cref="REnumMember"/>s (not their names, lifecycle-design.md decision 14) of the root-level
+    /// states named; under a code binding whose codes form a map, the codes (a <see cref="string"/> or a <see cref="long"/>) of the states
+    /// named and of the coded states inside them, in document order. Empty when the stored value cannot tell whether a named state is
+    /// active (it sits under a bound or coded state, or a state inside it carries no code), and for any other node.
+    /// </summary>
+    public IReadOnlyList<object> Codes { get; internal set; } = [];
+
+    /// <summary>
+    /// The node's type: <see cref="ExprType.Kind"/>, with <see cref="ExprType.Bits"/> for an <c>int</c> and <see cref="ExprType.Of"/> for an enum
+    /// or code. An <c>actor</c> node carries the type the typer gave it: the type of what it meets, else <c>string</c>
+    /// (object-effects-design.md decision 5).
+    /// </summary>
     public ExprType Type { get; internal set; } = ExprType.Null;
 
     /// <summary>Whether the node may be null.</summary>
@@ -67,9 +106,12 @@ public sealed class RExpression
 
     /// <summary>
     /// On the root of a condition: the JavaScript function over a row that calls the expression runtime as <c>mq</c>, lowered on first
-    /// read (<see cref="ExprLowering.ToJavaScript"/>); <see langword="null"/> on an operand.
+    /// read (<see cref="ExprLowering.ToJavaScript"/>); <see langword="null"/> on an operand, and for a tree that reads <c>actor()</c> or
+    /// <c>in_state</c>, whose JavaScript calls helpers only the engine has (<see cref="ExprLowering.IsEngineOnly"/>).
     /// </summary>
-    public string? JavaScript => Root is { } root ? _javaScript ??= ExprLowering.ToJavaScript(root.Typed, root.Site, root.Columns) : null;
+    public string? JavaScript => Root is { } root && !(_engineOnly ??= ExprLowering.IsEngineOnly(root.Typed))
+        ? _javaScript ??= ExprLowering.ToJavaScript(root.Typed, root.Site, root.Columns)
+        : null;
 
     /// <summary>The node the text prints (for an inlined constraint's root, the <c>satisfies</c> that cites it).</summary>
     internal Expr PrintNode { get; set; } = null!;
@@ -84,6 +126,7 @@ public sealed class RExpression
     internal RExpression Copy() => new()
     {
         Node = Node, Op = Op, Call = Call, Value = Value, ValueText = ValueText, Args = Args, Target = Target, Type = Type, Nullable = Nullable,
+        Process = Process, States = States, Through = Through, BoundAttribute = BoundAttribute, Enum = Enum, Codes = Codes,
         PrintNode = PrintNode, PrintScope = PrintScope,
     };
 }
@@ -204,8 +247,9 @@ internal static class ExprResolution
 
     /// <summary>
     /// The ids of the elements a typed tree names beyond its site, which its holder depends on: the enum, or the seed and its reference
-    /// type, of each ref; each constraint it cites with what that constraint names; and for a path through a relation, the relation, the
-    /// entity each navigation leads to with every base of it (whose attributes and navigations the path reads) and the attribute's owner.
+    /// type, of each ref; each constraint it cites with what that constraint names; for a path through a relation, the relation, the
+    /// entity each navigation leads to with every base of it (whose attributes and navigations the path reads) and the attribute's owner;
+    /// and the lifecycle of each <c>in_state</c>, with the relations and entities its object's path goes through.
     /// </summary>
     public static IReadOnlyList<string> Names(ModelSnapshot model, TypedExpr typed)
     {
@@ -243,6 +287,9 @@ internal static class ExprResolution
 
             if (t.Constraint is { } constraint)
                 names.Add(constraint.Id);
+            // An in_state reads its lifecycle's states (object-effects-design.md section 6); its path's relations and entities are above.
+            if (t.Lifecycle is { } lifecycle)
+                names.Add(lifecycle);
             if (t.Body is { } body)
                 pending.Push(body);
             foreach (var arg in t.Args)
@@ -374,9 +421,10 @@ internal static class ExprResolution
 
     /// <summary>
     /// The resolved tree of a typed condition: each node with its shape, type and target, a <c>satisfies</c> inlined with its arguments
-    /// in place of the constraint's parameters, and the root able to lower its JavaScript.
+    /// in place of the constraint's parameters, and the root able to lower its JavaScript. <paramref name="inState"/> fills an
+    /// <c>in-state</c> node's lifecycle, states, ends and binding; the resolver may defer that until every process is built.
     /// </summary>
-    public static RExpression Build(ExprRoot root, Func<ExprMember, object?> target, Func<string, object?> refTarget)
+    public static RExpression Build(ExprRoot root, Func<ExprMember, object?> target, Func<string, object?> refTarget, Action<TypedExpr, RExpression>? inState = null)
     {
         var built = Node(root.Typed, root.Scope, null);
         built.Root = root;
@@ -431,6 +479,15 @@ internal static class ExprResolution
             else if (e.Now is not null)
             {
                 r.Node = "now";
+            }
+            else if (e.Actor is not null)
+            {
+                r.Node = "actor";
+            }
+            else if (e.InState is not null)
+            {
+                r.Node = "in-state";
+                inState?.Invoke(t, r);
             }
             else if (e.Op is { } op)
             {

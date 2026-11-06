@@ -110,6 +110,7 @@ internal static class ModelIndexer
         _ when type == typeof(ProcessEvent) => "event",
         _ when type == typeof(ProcessGuard) => "guard",
         _ when type == typeof(ProcessAction) => "action",
+        _ when type == typeof(ProcessSet) => "set",
         _ when type == typeof(ProcessInvoke) => "invoke",
         _ when type == typeof(ProcessGate) => "gate",
         _ when type == typeof(GateMeaning) => "meaning",
@@ -134,7 +135,7 @@ internal static class ModelIndexer
     {
         "attribute", "enum-member", "end", "column", "category", "schema", "reference-field", "row", "state", "transition", "event",
         "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key", "operation-member", "outcome", "error", "member",
-        "parameter", "subject", "object", "participant", "holding", "verb",
+        "parameter", "subject", "object", "participant", "holding", "verb", "set",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>

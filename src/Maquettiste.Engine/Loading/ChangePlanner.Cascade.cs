@@ -131,14 +131,15 @@ internal sealed partial class ChangePlanner
         }
 
         // An id inside an expression tree (next-phase-3-design.md section 3.1): a tree never loses a node, since it would mean something
-        // else. remove-references refuses; delete-dependents removes what holds the tree: the check or guard, the derived value, or a
-        // constraint whole.
+        // else. remove-references refuses; delete-dependents removes what holds the tree: the check or guard, the derived value, an action's
+        // set (object-effects-design.md section 8), or a constraint whole.
         if (ExpressionHolder(reference.JsonPointer) is { } holder)
         {
             if (mode != DeleteResolution.DeleteDependents)
             {
+                var what = referrer.Element is Process && holder.StartsWith("/actions/", StringComparison.Ordinal) ? "the set" : "the check or guard";
                 _cascadeRefused.Add((index, referrerId, reference,
-                    $"an expression names {Label(target)}, and remove-references does not rewrite an expression; delete with delete-dependents to remove the check or guard that holds it."));
+                    $"an expression names {Label(target)}, and remove-references does not rewrite an expression; delete with delete-dependents to remove {what} that holds it."));
                 return;
             }
 
@@ -221,6 +222,25 @@ internal sealed partial class ChangePlanner
                 foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
                 {
                     if (pointer.Length > 0 && (pointer == part || IsUnder(pointer, part)))
+                        _cascadeQueue.Enqueue((index, subId, mode));
+                }
+
+                return;
+            }
+        }
+
+        // The attribute an action's set writes (object-effects-design.md section 8): a set means nothing without it, so in either resolution
+        // the set goes, and the action keeps its other sets.
+        if (referrer.Element is Process && SetOfAttribute(reference.JsonPointer) is { } setEntry)
+        {
+            var drop = new CascadeOp(setEntry, true, reference, index);
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != setEntry && !IsUnder(o.Pointer, setEntry)), drop];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
+                {
+                    if (pointer.Length > 0 && (pointer == setEntry || IsUnder(pointer, setEntry)))
                         _cascadeQueue.Enqueue((index, subId, mode));
                 }
 
@@ -866,8 +886,8 @@ internal sealed partial class ChangePlanner
 
     /// <summary>
     /// The part that holds the expression tree a pointer is inside: a check or guard (<c>/checks/0</c>, <c>/guards/2</c>), a derived value
-    /// (<c>/attributes/1/derived</c>), or <c>""</c> for a constraint's condition, which needs the whole element; <see langword="null"/>
-    /// when the pointer is in no tree.
+    /// (<c>/attributes/1/derived</c>), an action's set (<c>/actions/0/sets/1</c>, its value, object-effects-design.md section 8), or
+    /// <c>""</c> for a constraint's condition, which needs the whole element; <see langword="null"/> when the pointer is in no tree.
     /// </summary>
     private static string? ExpressionHolder(string pointer)
     {
@@ -881,10 +901,28 @@ internal sealed partial class ChangePlanner
                 return JsonPointer.Build(segments[..k]);
             if (segments[k] == "value" && k >= 1 && segments[k - 1] == "derived")
                 return JsonPointer.Build(segments[..k]);
+            if (SetEntry(segments, k) is { } set)
+                return set;
         }
 
         return null;
     }
+
+    /// <summary>
+    /// The set (<c>/actions/0/sets/1</c>) when the segment at <paramref name="k"/> is its <c>attribute</c> or <c>value</c>
+    /// (object-effects-design.md decision 1); <see langword="null"/> otherwise.
+    /// </summary>
+    private static string? SetEntry(string[] segments, int k) =>
+        k == 4 && segments[0] == "actions" && JsonPointer.TryIndex(segments[1], out _) && segments[2] == "sets" && JsonPointer.TryIndex(segments[3], out _)
+            ? JsonPointer.Build(segments[..4])
+            : null;
+
+    /// <summary>The set whose <c>attribute</c> a pointer is (<c>/actions/0/sets/1/attribute</c>); <see langword="null"/> for any other pointer.</summary>
+    private static string? SetOfAttribute(string pointer) =>
+        pointer.StartsWith("/actions/", StringComparison.Ordinal) && JsonPointer.TryParse(pointer, out var segments) && segments.Length == 5
+            && segments[4] == "attribute"
+            ? SetEntry(segments, 4)
+            : null;
 
     private static bool IsUnder(string pointer, string ancestor) =>
         pointer.Length > ancestor.Length && pointer[ancestor.Length] == '/' && pointer.StartsWith(ancestor, StringComparison.Ordinal);
@@ -1199,6 +1237,7 @@ internal sealed partial class ChangePlanner
         "links" => "link",
         "participants" => "participant",
         "holds" => "holding",
+        "sets" => "set",
         _ => property,
     };
 }

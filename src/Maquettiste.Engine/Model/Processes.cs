@@ -408,8 +408,14 @@ public sealed record ProcessAction : IProcessNode
     /// <summary>An optional display name (localizable).</summary>
     public string? DisplayName { get; init; }
 
-    /// <summary>A JavaScript expression returning an object of context updates, or <see langword="null"/> for a stub.</summary>
+    /// <summary>A JavaScript expression returning an object of context updates, or <see langword="null"/>; with no <see cref="Sets"/> either, a stub.</summary>
     public string? Expression { get; init; }
+
+    /// <summary>
+    /// The values the action sets on the object (object-effects-design.md decision 1), in order: each value is worked out from the object and
+    /// context as they were when the action started, then all are applied together.
+    /// </summary>
+    public IReadOnlyList<ProcessSet> Sets { get; init; } = [];
 
     /// <summary>The internal events queued after the action.</summary>
     [ElementRef(IndexKinds = ["event"])]
@@ -424,6 +430,24 @@ public sealed record ProcessAction : IProcessNode
 
     /// <summary>Custom property values, validated by extension schemas.</summary>
     public IReadOnlyDictionary<string, JsonElement> Properties { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
+}
+
+/// <summary>
+/// One attribute of the object an action sets, and its value (object-effects-design.md decisions 1 to 3): an attribute every subject of the
+/// process holds under one id, neither derived nor bound to a lifecycle (MQ9801, MQ9802), and a value in the expression language that reads
+/// what a guard reads and fits the attribute's type (MQ3103).
+/// </summary>
+public sealed record ProcessSet : IProcessNode
+{
+    /// <inheritdoc/>
+    public required string Id { get; init; }
+
+    /// <summary>The attribute set: an id, or the keyed id of an inherited or contributed attribute.</summary>
+    [ElementRef(Keyed = true)]
+    public required string Attribute { get; init; }
+
+    /// <summary>The value; text is accepted on writes and stored as a tree (MQ3108).</summary>
+    public required Expr Value { get; init; }
 }
 
 /// <summary>Work a state starts on entry: a sub-process, a service task or a human task.</summary>
@@ -693,6 +717,13 @@ public sealed record ScenarioObject : IProcessNode
     [ElementRef(IndexKinds = ["attribute"])]
     public IReadOnlyDictionary<string, JsonElement> Values { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 
+    /// <summary>
+    /// The object's states in lifecycles other than the one the scenario runs, by state id (object-effects-design.md decision 10): at most
+    /// one active configuration per lifecycle (MQ9305). <c>in_state</c> reads them.
+    /// </summary>
+    [ElementRef(IndexKinds = ["state"])]
+    public IReadOnlyList<string> States { get; init; } = [];
+
     /// <summary>The objects this object links to, each through a relation end.</summary>
     public IReadOnlyList<ScenarioLink> Links { get; init; } = [];
 
@@ -878,4 +909,8 @@ public sealed record StepExpectation
     /// <summary>The attributes the step changed, by attribute id.</summary>
     [ElementRef(IndexKinds = ["attribute"])]
     public IReadOnlyDictionary<string, JsonElement> Context { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
+
+    /// <summary>The object's attributes the step set, by attribute id (object-effects-design.md decision 4; MQ9307).</summary>
+    [ElementRef(IndexKinds = ["attribute"])]
+    public IReadOnlyDictionary<string, JsonElement> Values { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 }

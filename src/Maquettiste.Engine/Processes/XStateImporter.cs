@@ -663,9 +663,30 @@ internal sealed partial class XStateImporter(ICanonicalJson json, XStateImportOp
                     continue;
                 var copy = (JsonObject)o.DeepClone();
                 var pointer = "/meta/maquettiste/" + key + "/" + i.ToString(CultureInfo.InvariantCulture);
-                copy["id"] = Assign(Carried(o), definitions.Kind, pointer + "/id", definitions.Into(_into, name), definitions.Kind + ":" + name);
+                var into = definitions.Into(_into, name);
+                copy["id"] = Assign(Carried(o), definitions.Kind, pointer + "/id", into, definitions.Kind + ":" + name);
+                if (key == "actions" && copy["sets"] is JsonArray sets)
+                    AssignSets(sets, into, pointer + "/sets", name);
                 definitions.Put(name, copy);
             }
+        }
+    }
+
+    /// <summary>
+    /// Gives each set an action carries in <c>meta</c> its id (object-effects-design.md section 8): the carried one when it is free, else
+    /// the id of the set of the same attribute in the action re-imported over, else a new one.
+    /// </summary>
+    private void AssignSets(JsonArray sets, JsonObject? intoAction, string pointer, string actionName)
+    {
+        var intoSets = (intoAction?["sets"] as JsonArray)?.OfType<JsonObject>().ToList() ?? [];
+        foreach (var (set, j) in sets.Select((n, j) => (n, j)))
+        {
+            if (set is not JsonObject s)
+                continue;
+            var attribute = s["attribute"] is JsonValue a && a.GetValueKind() == JsonValueKind.String ? a.GetValue<string>() : "";
+            var matched = intoSets.FirstOrDefault(i => i["attribute"]?.GetValue<string>() == attribute);
+            s["id"] = Assign(Carried(s), "set", pointer + "/" + j.ToString(CultureInfo.InvariantCulture) + "/id", matched,
+                "set:" + actionName + ":" + j.ToString(CultureInfo.InvariantCulture));
         }
     }
 

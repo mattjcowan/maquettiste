@@ -591,13 +591,14 @@
     },
     "action": {
       "title": "Action",
-      "description": "A named effect; without an expression it is a stub.",
+      "description": "A named effect: context changes (expression), values set on the object (sets), both, or neither as a stub.",
       "type": "object",
       "x-order": [
         "id",
         "name",
         "displayName",
         "expression",
+        "sets",
         "raises",
         "description",
         "stereotypes",
@@ -616,6 +617,14 @@
         "expression": {
           "description": "A JavaScript expression returning an object of context updates.",
           "type": "string"
+        },
+        "sets": {
+          "description": "Values the action sets on the object, each an attribute every subject of the process holds and a value in the expression language. All values are worked out from the object and context as they were when the action started, then applied together. Not in a library (MQ9020).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/set"
+          },
+          "default": []
         },
         "raises": {
           "description": "Internal events queued after the action.",
@@ -637,6 +646,36 @@
       "required": [
         "id",
         "name"
+      ],
+      "additionalProperties": false
+    },
+    "set": {
+      "title": "Set",
+      "description": "One attribute of the object set to a value when the action runs.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "attribute",
+        "value"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "attribute": {
+          "description": "The attribute set: an attribute every subject of the process holds under one id (an id, or the keyed id of an inherited or contributed attribute). Not derived, and not one that holds a lifecycle's state (MQ9801, MQ9802); once per action (MQ9803).",
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "description": "The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute.",
+          "$ref": "common.json#/$defs/expr"
+        }
+      },
+      "required": [
+        "id",
+        "attribute",
+        "value"
       ],
       "additionalProperties": false
     },

@@ -2,10 +2,14 @@
 // name, identity, the actor they stand for, what they hold, their record object), and each object's owner participant.
 import { useMemo, useState } from "react";
 import { Pencil, Plus, X } from "lucide-react";
-import { useElement, useIndex } from "@/api/queries";
+import { useServices } from "@/app/context";
+import { useElement, useElements, useIndex } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
+import { EFFECT_LABELS as EL } from "@/model/effectLabels";
+import { objectStatesText, parseValuesText, stateChoices, statesOfIds, valuesText, type StateChoiceGroup } from "@/model/effects";
+import { indexLookup } from "@/model/index";
 import { newId } from "@/lib/ids";
 import { PARTICIPANT_LABELS as L } from "@/model/labels";
 import {
@@ -245,6 +249,57 @@ function HoldsDialog({
   );
 }
 
+/** The lifecycles that can govern an entity (it, a base of it, or a stereotype it carries is a subject), with their states, but the one the scenario runs. */
+export function useLifecycleStates(entities: readonly string[], run: string): Map<string, StateChoiceGroup[]> {
+  const index = useIndex();
+  const lookup = indexLookup(index.data);
+  const lifecycles = lookup.ofKind("process").filter((p) => p.use === "lifecycle" && p.id !== run);
+  const docs = useElements(entities.length ? lifecycles.map((p) => p.id) : []).byId;
+  return useMemo(() => {
+    const out = new Map<string, StateChoiceGroup[]>();
+    for (const entity of entities) {
+      const chain: string[] = [];
+      for (let id: string | undefined = entity; id && !chain.includes(id); id = lookup.byId.get(id)?.base) chain.push(id);
+      const governing = lifecycles.filter((p) => {
+        const subjects = [...(p.subject ? [p.subject] : []), ...(p.subjects ?? []), ...(p.covers ?? [])];
+        return chain.some((c) => subjects.includes(c));
+      });
+      out.set(
+        entity,
+        stateChoices(
+          governing.flatMap((p) => (docs.get(p.id)?.json ? [docs.get(p.id)!.json as unknown as ProcessDoc] : [])),
+          run,
+        ),
+      );
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docs, index.data, entities.join(","), run]);
+}
+
+/** The attribute names of each entity (its own and its bases'), by attribute id. */
+export function useAttributeNames(entities: readonly string[]): Map<string, Map<string, string>> {
+  const lookup = indexLookup(useIndex().data);
+  const chains = new Map<string, string[]>();
+  for (const entity of entities) {
+    const chain: string[] = [];
+    for (let id: string | undefined = entity; id && !chain.includes(id); id = lookup.byId.get(id)?.base) chain.push(id);
+    chains.set(entity, chain);
+  }
+  const held = useElements([...new Set([...chains.values()].flat())]).byId;
+  return useMemo(() => {
+    const out = new Map<string, Map<string, string>>();
+    for (const [entity, chain] of chains) {
+      const names = new Map<string, string>();
+      for (const id of chain)
+        for (const a of (held.get(id)?.json as { attributes?: { id: string; name: string }[] } | undefined)?.attributes ?? []) names.set(a.id, a.name);
+      out.set(entity, names);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [held, entities.join(",")]);
+}
+
 interface ObjectRow {
   id: string;
   index: number;
@@ -252,6 +307,8 @@ interface ObjectRow {
   name: string;
   entity: string;
   owner: string;
+  states: string;
+  values: string;
   locked: boolean;
 }
 
@@ -274,6 +331,9 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
   ]);
   const participants = scenario.participants ?? [];
   const [adding, setAdding] = useState(false);
+  const { drafts, store } = useServices();
+  const attributeNames = useAttributeNames([...new Set((scenario.objects ?? []).map((o) => o.entity))]);
+  const stateGroups = useLifecycleStates([...new Set((scenario.objects ?? []).map((o) => o.entity))], scenario.process);
   const rows: ObjectRow[] = (scenario.objects ?? []).map((o, i) => ({
     id: o.id,
     index: i,
@@ -281,6 +341,8 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
     name: o.name,
     entity: entities.get(o.entity) ?? "?",
     owner: participants.find((p) => p.id === o.owner)?.name ?? "",
+    states: objectStatesText(o.states, stateGroups.get(o.entity) ?? []),
+    values: valuesText(o.values, attributeNames.get(o.entity) ?? new Map()),
     locked: withOwnerField.has(o.entity),
   }));
   const columns: GridColumn<ObjectRow>[] = [
@@ -297,6 +359,32 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
       options: () => [{ value: "", label: L.none }, ...participants.map((p) => ({ value: p.id, label: p.name }))],
       locked: (r) => r.locked,
     },
+    {
+      key: "states",
+      label: EL.statesColumn,
+      tooltip: EL.statesHint,
+      kind: "pick",
+      width: "min-w-40",
+      value: (r) => r.states,
+      editValue: (r) => (scenario.objects?.[r.index]?.states ?? []).join(","),
+      options: (r) =>
+        (stateGroups.get(scenario.objects?.[r.index]?.entity ?? "") ?? []).flatMap((g) =>
+          g.states.map((x) => ({
+            value: x.id,
+            label: x.label.startsWith(`${g.lifecycle}.`) ? x.label.slice(g.lifecycle.length + 1) : x.label,
+            group: g.lifecycle,
+          })),
+        ),
+    },
+    {
+      key: "values",
+      label: EL.valuesColumn,
+      tooltip: EL.valuesHint,
+      kind: "text",
+      width: "min-w-48",
+      mono: true,
+      value: (r) => r.values,
+    },
   ];
   const addObject = (name: string, entity: string) => {
     ctx.edit((j) => {
@@ -306,8 +394,11 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
       // The first object is the one the process runs for, until another is chosen.
       if (!sc.subject) sc.subject = id;
     });
-    ctx.flush();
-    setAdding(false);
+    // The dialog closes once the change is accepted; a refusal keeps it open with what was typed.
+    void drafts.flushSaved(ctx.id).then((saved) => {
+      if (saved) setAdding(false);
+      else store.getState().notify(EL.refused, "error");
+    });
   };
   const taken = new Set((scenario.objects ?? []).map((o) => o.name.toLowerCase()));
   return (
@@ -323,18 +414,41 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
         onAdd={() => setAdding(true)}
         problems={(r) => rowProblems(problems, r.pointer)}
         onCommit={(row, key, value) => {
-          if (key !== "owner") return;
+          if (key !== "owner" && key !== "states" && key !== "values") return;
+          if (key === "values") {
+            const entity = scenario.objects?.find((x) => x.id === row.id)?.entity ?? "";
+            const parsed = parseValuesText(String(value), attributeNames.get(entity) ?? new Map());
+            // A name the entity does not have is said, not dropped: nothing is saved until the text is right.
+            if (parsed.unknown.length) {
+              store.getState().notify(EL.unknownAttributes(row.name, parsed.unknown), "error");
+              return;
+            }
+          }
           ctx.edit((j) => {
             const o = (j as unknown as ScenarioDoc).objects?.find((x) => x.id === row.id);
             if (!o) return;
-            if (value) o.owner = String(value);
+            if (key === "values") {
+              const parsed = parseValuesText(String(value), attributeNames.get(o.entity) ?? new Map());
+              if (Object.keys(parsed.values).length) o.values = parsed.values;
+              else delete o.values;
+            } else if (key === "states") {
+              const ids = statesOfIds(String(value), stateGroups.get(o.entity) ?? []);
+              if (ids.length) o.states = ids;
+              else delete o.states;
+            } else if (value) o.owner = String(value);
             else delete o.owner;
           });
           ctx.flush();
         }}
       />
       {adding ? (
-        <AddObjectDialog entities={[...entities].map(([id, name]) => ({ id, name }))} taken={taken} onAdd={addObject} onClose={() => setAdding(false)} />
+        <AddObjectDialog
+          entities={[...entities].map(([id, name]) => ({ id, name }))}
+          preferred={subjectsOf(process).find((e) => e.entity && entities.has(e.entity))?.entity}
+          taken={taken}
+          onAdd={addObject}
+          onClose={() => setAdding(false)}
+        />
       ) : null}
     </>
   );
@@ -343,19 +457,23 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
 /** Add object: a name and the entity it is an instance of. */
 function AddObjectDialog({
   entities,
+  preferred,
   taken,
   onAdd,
   onClose,
 }: {
   entities: { id: string; name: string }[];
+  /** The entity to start on: the process's subject. */
+  preferred?: string;
   taken: ReadonlySet<string>;
   onAdd: (name: string, entity: string) => void;
   onClose: () => void;
 }) {
   const sorted = [...entities].sort((a, b) => a.name.localeCompare(b.name));
-  const [entity, setEntity] = useState(sorted[0]?.id ?? "");
+  const start = sorted.find((e) => e.id === preferred) ?? sorted[0];
+  const [entity, setEntity] = useState(start?.id ?? "");
   const [name, setName] = useState(() => {
-    const base = (sorted[0]?.name ?? "object").replace(/^./, (c) => c.toLowerCase());
+    const base = (start?.name ?? "object").replace(/^./, (c) => c.toLowerCase());
     let n = base;
     for (let i = 2; taken.has(n.toLowerCase()); i++) n = `${base}${i}`;
     return n;

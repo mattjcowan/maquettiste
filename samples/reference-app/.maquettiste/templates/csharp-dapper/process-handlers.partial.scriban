@@ -37,6 +37,15 @@ public sealed partial class {{ name }}Handlers
 {{ end }}    private partial {{ ctx }} Action{{ pascal a.name }}({{ call }} call) =>
         throw new NotImplementedException("Action {{ a.name }} of process {{ p.name }} is not implemented yet.");
 {{- end }}
+{{- if a.sets.size > 0 }}
+{{- if stubs > 0 }}
+{{ end }}
+{{- stubs = stubs + 1 }}
+    // Record on the object what action {{ a.name }} sets: {{ sets_text(a) }}. Each value reads the object and call.Context as they were
+    // before the action; the generated half runs this, then the action.
+    private partial void Record{{ pascal a.name }}({{ call }} call) =>
+        throw new NotImplementedException("Action {{ a.name }} of process {{ p.name }} does not record its sets yet.");
+{{- end }}
 {{- end }}
 {{- for a in relatives }}
 {{- if stubs > 0 }}

@@ -284,6 +284,88 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Object_effects_compile_with_the_rest_of_the_output()
+    {
+        // object-effects-design.md section 9: an action that sets data calls Record<Action>, which the companion implements. One with a
+        // translated expression becomes an instance method that records, then returns the context; one with only sets, or with an expression
+        // outside the translated subset, stays the companion's stub, and the dispatch runs Run<Action>, which records, then runs it. Guards
+        // that read actor() or in_state are left to a person. The output matches its expected files and builds with warnings as errors.
+        // process-docs shows the sets and the guards' conditions.
+        using var repo = PackRepo.ObjectEffects();
+        await repo.GenerateCleanlyAsync();
+        Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "object-effects", "expected"), repo.PathOf("out"));
+        var handlers = File.ReadAllText(Path.Combine(repo.PathOf("out"), "Processes", "RequestLifecycle", "RequestLifecycleHandlers.g.cs"));
+        Assert.Contains("private partial void RecordRecordSubmission(", handlers, StringComparison.Ordinal);
+        Assert.Contains("private partial bool GuardNotTheSubmitter(", handlers, StringComparison.Ordinal);
+        Assert.Contains("private partial bool GuardEmployeeActive(", handlers, StringComparison.Ordinal);
+        Assert.Contains("private partial RequestLifecycleContext ActionRecordSubmission(", handlers, StringComparison.Ordinal);
+        Assert.Contains("\"recordSubmission\" => RunRecordSubmission(call),", handlers, StringComparison.Ordinal);
+        Assert.Contains("private partial RequestLifecycleContext ActionStamp(", handlers, StringComparison.Ordinal);
+        Assert.Contains("\"stamp\" => RunStamp(call),", handlers, StringComparison.Ordinal);
+        Assert.Contains("\"bump\" => ActionBump(call),", handlers, StringComparison.Ordinal);
+
+        var page = File.ReadAllText(Path.Combine(repo.PathOf("docs"), "processes", "request-lifecycle.md"));
+        Assert.Contains("| Action | Expression | Sets | Raises | Used by | Description |", page, StringComparison.Ordinal);
+        Assert.Contains("`submittedBy ← actor()`, `submittedOn ← now()`", page, StringComparison.Ordinal);
+        Assert.Contains("`in_state(subject.employee, Employment.Active)`", page, StringComparison.Ordinal);
+        Assert.Contains("`subject.submittedBy <> actor()`", page, StringComparison.Ordinal);
+        var employment = File.ReadAllText(Path.Combine(repo.PathOf("docs"), "processes", "employment.md"));
+        Assert.DoesNotContain("Sets", employment, StringComparison.Ordinal);
+
+        var project = Path.Combine(repo.Repo.Root, "effects");
+        WriteProject(project, repo.PathOf("out"), program: null, web: true);
+        await BuildOrSkipAsync(project);
+    }
+
+    [Fact]
+    public async Task A_team_file_that_already_implements_an_action_still_builds_when_the_action_gains_sets()
+    {
+        // object-effects-design.md decision 12: the companion is written once. A team that implemented recordSubmission before it set data
+        // keeps its method; the generated half only declares it and adds the Record hook, which is the one method the team adds.
+        using var repo = PackRepo.ObjectEffects();
+        var processPath = repo.PathOf(".maquettiste/model/processes/request-lifecycle.json");
+        var original = File.ReadAllText(processPath);
+        var process = System.Text.Json.Nodes.JsonNode.Parse(original)!.AsObject();
+        process["actions"]!.AsArray().Single(a => (string)a!["name"]! == "recordSubmission")!.AsObject().Remove("sets");
+        File.WriteAllText(processPath, process.ToJsonString());
+        await repo.GenerateCleanlyAsync(packs: ["csharp-dapper"]);
+
+        var teamPath = Path.Combine(repo.PathOf("out"), "Processes", "RequestLifecycle", "RequestLifecycleHandlers.cs");
+        var stub = """
+                private partial RequestLifecycleContext ActionRecordSubmission(StatechartCall<RequestLifecycleContext> call) =>
+                    throw new NotImplementedException("Action recordSubmission of process RequestLifecycle is not implemented yet.");
+            """;
+        var team = File.ReadAllText(teamPath);
+        Assert.Contains(stub, team, StringComparison.Ordinal);
+        Assert.DoesNotContain("RecordRecordSubmission", team, StringComparison.Ordinal);
+        team = team.Replace(stub, """
+                private partial RequestLifecycleContext ActionRecordSubmission(StatechartCall<RequestLifecycleContext> call) => call.Context;
+            """, StringComparison.Ordinal);
+        File.WriteAllText(teamPath, team);
+
+        File.WriteAllText(processPath, original);
+        await repo.GenerateCleanlyAsync(packs: ["csharp-dapper"]);
+        Assert.Equal(team, File.ReadAllText(teamPath));
+        var handlers = File.ReadAllText(Path.Combine(repo.PathOf("out"), "Processes", "RequestLifecycle", "RequestLifecycleHandlers.g.cs"));
+        Assert.Contains("private partial RequestLifecycleContext ActionRecordSubmission(", handlers, StringComparison.Ordinal);
+        Assert.Contains("private partial void RecordRecordSubmission(", handlers, StringComparison.Ordinal);
+
+        // The build names the missing Record method; the team adds it, and its own action stays as written.
+        var last = team.LastIndexOf('}');
+        File.WriteAllText(teamPath, team[..last] + """
+
+                private partial void RecordRecordSubmission(StatechartCall<RequestLifecycleContext> call)
+                {
+                }
+            }
+
+            """);
+        var project = Path.Combine(repo.Repo.Root, "effects");
+        WriteProject(project, repo.PathOf("out"), program: null, web: true);
+        await BuildOrSkipAsync(project);
+    }
+
+    [Fact]
     public async Task Actors_named_like_the_members_of_the_actors_class_compile()
     {
         // An actor named Accepts or All would clash with the class's own members: only those constants get "Actor" appended, the

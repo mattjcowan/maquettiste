@@ -40,6 +40,42 @@ public sealed record ExprNavigation(string Id, string Name, ExprContainer Target
 {
     /// <summary>The dotted identifiers the text writes before <see cref="Name"/>, or <see langword="null"/>.</summary>
     public string? Prefix { get; init; }
+
+    /// <summary>The id of the entity it leads to, which <c>in_state</c> asks a lifecycle about, or <see langword="null"/>.</summary>
+    public string? Entity { get; init; }
+}
+
+/// <summary>
+/// A state <c>in_state</c> can name (object-effects-design.md decision 7): text writes its lifecycle's name, then its path of state names.
+/// </summary>
+/// <param name="Id">The state's id.</param>
+/// <param name="Lifecycle">The id of the process that holds it.</param>
+/// <param name="LifecycleName">The process's name.</param>
+/// <param name="Path">The state's names from the root's child down to it.</param>
+/// <param name="IsState">Whether an object can be in it: not a history or choice state.</param>
+/// <param name="Inside">The state and every state inside it, in document order: <c>in_state</c> holds when any of them is active.</param>
+public sealed record ExprState(string Id, string Lifecycle, string LifecycleName, IReadOnlyList<string> Path, bool IsState, IReadOnlyList<string> Inside);
+
+/// <summary>
+/// What <c>in_state</c> reads at a guard or set site (object-effects-design.md decisions 7 and 8), which the engine gives per site: the
+/// states by id and by name, the process the site belongs to, and whether a lifecycle can govern the object a path reaches.
+/// </summary>
+internal interface IExprLifecycles
+{
+    /// <summary>The id of the process whose guard or set the site is, or <see langword="null"/> at an operation guard.</summary>
+    string? Own { get; }
+
+    /// <summary>The state with an id, or <see langword="null"/>.</summary>
+    ExprState? State(string id);
+
+    /// <summary>The id of the state text names: a lifecycle's name, then a path of state names; <see langword="null"/> when none.</summary>
+    string? Find(IReadOnlyList<string> segments);
+
+    /// <summary>
+    /// Why the lifecycle cannot govern the object reached through the navigations (none: the object itself), or <see langword="null"/>
+    /// when it can: the entity reached, a base, a stereotype it carries or a derived entity is one of its subjects (MQ3116).
+    /// </summary>
+    string? CannotGovern(string lifecycle, IReadOnlyList<ExprNavigation> through);
 }
 
 /// <summary>A named constraint as an expression sees it: its typed parameters and its condition.</summary>
@@ -192,8 +228,9 @@ public sealed class ExprScope
     public ExprScope(ExprSiteKind site)
     {
         Site = site;
-        AllowsNow = site == ExprSiteKind.Guard;
-        AllowsNavigation = site == ExprSiteKind.Guard;
+        AllowsNow = site is ExprSiteKind.Guard or ExprSiteKind.Set;
+        AllowsNavigation = site is ExprSiteKind.Guard or ExprSiteKind.Set;
+        AllowsActor = site is ExprSiteKind.Guard or ExprSiteKind.Set;
         _sets = new(StringComparer.Ordinal);
         _refs = new(StringComparer.Ordinal);
         _setsByName = new(StringComparer.Ordinal);
@@ -216,6 +253,7 @@ public sealed class ExprScope
         Names = parent.Names;
         AllowsNow = true;
         AllowsNavigation = false;
+        AllowsActor = false;
         ConstraintId = constraint.Id;
         ElementId = constraint.Id;
         Pointer = "/condition";
@@ -226,13 +264,22 @@ public sealed class ExprScope
     /// <summary>The site's kind.</summary>
     public ExprSiteKind Site { get; }
 
-    /// <summary>Whether <c>now</c> may be read; by default at guard sites only (MQ3104).</summary>
+    /// <summary>Whether <c>now</c> may be read; by default at guard and set sites only (MQ3104).</summary>
     public bool AllowsNow { get; init; }
 
-    /// <summary>Whether a path may follow navigations; by default at guard sites only (MQ3102).</summary>
+    /// <summary>Whether a path may follow navigations; by default at guard and set sites only (MQ3102).</summary>
     public bool AllowsNavigation { get; init; }
 
-    /// <summary>The type a value site's result must have (a derived attribute's type), or <see langword="null"/> at other sites.</summary>
+    /// <summary>
+    /// Whether <c>actor()</c> and <c>in_state</c> may be read; by default at guard and set sites only, never in a constraint's own condition
+    /// (MQ3104, object-effects-design.md decisions 5 and 9).
+    /// </summary>
+    public bool AllowsActor { get; init; }
+
+    /// <summary>What <c>in_state</c> reads at the site; <see langword="null"/> where no lifecycle can be read.</summary>
+    internal IExprLifecycles? Lifecycles { get; init; }
+
+    /// <summary>The type a value or set site's result must have (a derived or set attribute's type), or <see langword="null"/> at other sites.</summary>
     public ExprType? ValueType { get; init; }
 
     /// <summary>The id of the element that holds the expression, for diagnostics.</summary>

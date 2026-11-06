@@ -68,13 +68,17 @@ public sealed class ProcessExpressions
             {
                 if (!compiled.Add(condition.Id))
                     continue;
+                // A condition or set that reads actor() or in_state calls helpers only mqAt(now, actor) has (ExprRuntime.Clock).
                 code.Append("maquettiste.helper(").Append(JsonSerializer.Serialize(condition.Id)).Append(", ")
-                    .Append(condition.ReadsNow ? "(row, now) => ((mq) => " + condition.JavaScript + ")(mqAt(now))(row)" : condition.JavaScript).Append(");\n");
+                    .Append(condition.EngineOnly ? "(row, now, actor) => ((mq) => " + condition.JavaScript + ")(mqAt(now, actor))(row)"
+                        : condition.ReadsNow ? "(row, now) => ((mq) => " + condition.JavaScript + ")(mqAt(now))(row)"
+                        : condition.JavaScript).Append(");\n");
             }
         }
 
         Compiled = compiled;
-        Conditions = conditions.Select(c => c.Id).Where(compiled.Contains).ToHashSet(StringComparer.Ordinal);
+        Conditions = conditions.Where(c => c.Set is null).Select(c => c.Id).Where(compiled.Contains).ToHashSet(StringComparer.Ordinal);
+        Lowered = conditions.Where(c => compiled.Contains(c.Id)).ToDictionary(c => c.Id, StringComparer.Ordinal);
         Script = compiled.Count == 0 ? "" : code.ToString();
         var own = compiled.Count == 0 ? [] : PreparedScript.PrepareAll([new ScriptSource("process:" + process.Name + ".js", Script, "")], Limits);
         Scripts = conditions.Count > 0 ? [ExprRuntime.Prepared, .. own] : own;
@@ -100,6 +104,9 @@ public sealed class ProcessExpressions
 
     /// <summary>The ids of the guards whose conditions compiled: each answers only true or false, a null operand failing it.</summary>
     public IReadOnlySet<string> Conditions { get; }
+
+    /// <summary>The guards' conditions and the actions' sets that compiled, by guard or set id, with what each reads.</summary>
+    internal IReadOnlyDictionary<string, LoweredCondition> Lowered { get; }
 
     /// <summary>
     /// The text of the process's own script (empty when nothing compiled), for tests: the registrations of its expressions and
@@ -143,7 +150,7 @@ public sealed class ProcessExpressions
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if (process.Guards.All(g => g.Condition is null))
+        if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process))
             return Get(process);
         return ByModel.GetOrCreateValue(model).GetValue(process, p =>
         {
@@ -196,12 +203,38 @@ public sealed class ProcessExpressions
             if (guard.Condition is null || ExprResolution.Type(model, process, guard.Id) is not { } typed)
                 continue;
             var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Guard, ExprResolution.ApiColumns(model, guard.Id, path));
-            lowered.Add(new LoweredCondition(guard.Id, js, ReadsNow(typed.Typed), ExprSites.ReadsSubject(process, typed.Typed)));
+            lowered.Add(Of(guard.Id, js, typed.Typed, ExprSites.ReadsSubject(process, typed.Typed), null));
+        }
+
+        // Each action's sets (object-effects-design.md section 7), lowered at a set site: each writes into the object's row, so each counts
+        // as a read of the object.
+        Dictionary<string, ModelAttribute>? held = null;
+        foreach (var set in process.Actions.SelectMany(a => a.Sets))
+        {
+            held ??= ExprSites.HeldAttributes(model, process);
+            if (!held.TryGetValue(set.Attribute, out var attribute) || ExprResolution.Type(model, process, set.Id) is not { } typed)
+                continue;
+            var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Set, ExprResolution.ApiColumns(model, set.Id, path));
+            lowered.Add(Of(set.Id, js, typed.Typed, true, new LoweredSet(set.Attribute, attribute.Name, typed.Typed.Type.Kind)));
         }
 
         return lowered;
 
+        static LoweredCondition Of(string id, string js, TypedExpr typed, bool readsSubject, LoweredSet? set) =>
+            new(id, js, ReadsNow(typed), readsSubject, set)
+            {
+                EngineOnly = ExprLowering.IsEngineOnly(typed),
+                ActorKinds = [.. ActorKinds(typed).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
+                ReadsRunning = ReadsRunning(typed),
+                StateReads = ObjectStates.ReadsOf(typed),
+            };
+
         static bool ReadsNow(TypedExpr t) => t.Node.Now is not null || (t.Body is { } body && ReadsNow(body)) || t.Args.Any(ReadsNow);
+
+        static bool ReadsRunning(TypedExpr t) => (t.Node.InState is not null && t.Running) || (t.Body is { } body && ReadsRunning(body)) || t.Args.Any(ReadsRunning);
+
+        static IEnumerable<string> ActorKinds(TypedExpr t) =>
+            (t.Node.Actor is not null ? [t.Type.Kind] : Enumerable.Empty<string>()).Concat(t.Body is { } body ? ActorKinds(body) : []).Concat(t.Args.SelectMany(ActorKinds));
     }
 
     /// <summary>
@@ -231,7 +264,7 @@ public sealed class ProcessExpressions
     /// <param name="process">The process.</param>
     /// <returns><see langword="true"/> when they are cached.</returns>
     internal static bool IsCached(ModelSnapshot model, Process process) =>
-        process.Guards.All(g => g.Condition is null)
+        process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process)
             ? IsCached(process)
             : (ByModel.TryGetValue(model, out var processes) && processes.TryGetValue(process, out _)) || IsCachedByContent(model, process);
 
@@ -313,9 +346,9 @@ public sealed class ProcessExpressions
     public ProcessExpressionSession Open(int size, CancellationToken ct, SandboxLimits limits)
     {
         if (Scripts.Count == 0)
-            return new ProcessExpressionSession(null, Compiled, Conditions) { SubjectDefaults = SubjectDefaults };
+            return new ProcessExpressionSession(null, Compiled, Conditions) { SubjectDefaults = SubjectDefaults, Lowered = Lowered };
         var scripts = Scripts;
-        var effective = Conditions.Count > 0 ? limits with { ScriptTimeoutMs = 0 } : limits;
+        var effective = Lowered.Count > 0 ? limits with { ScriptTimeoutMs = 0 } : limits;
         var first = Compiled.First();
         return new ProcessExpressionSession(new LazySandboxPool(() =>
         {
@@ -330,7 +363,7 @@ public sealed class ProcessExpressions
                 pool.Dispose();
                 throw;
             }
-        }), Compiled, Conditions) { SubjectDefaults = SubjectDefaults };
+        }), Compiled, Conditions) { SubjectDefaults = SubjectDefaults, Lowered = Lowered };
     }
 
     // The first call into a fresh engine pays the runtime's one-time costs (code paths compiled on first use), which
@@ -364,7 +397,13 @@ public sealed class ProcessExpressions
         foreach (var a in process.Actions)
             text.Append('a').Append(a.Id).Append('\0').Append(a.Expression ?? "\u0001").Append('\0');
         foreach (var c in conditions)
+        {
             text.Append('c').Append(c.Id).Append('\0').Append(c.JavaScript).Append('\0');
+            if (c.Set is { } set) // the attribute a set writes, by name and type, is part of what it does
+                text.Append('s').Append(set.Attribute).Append('\0').Append(set.Name).Append('\0').Append(set.Kind).Append('\0');
+            foreach (var read in c.StateReads) // the lifecycles it reads on an object, which its JavaScript names by id
+                text.Append('r').Append(read.Key).Append('\0');
+        }
         if (subjectDefaults is { } defaults) // the defaults a condition reading the object sees are part of what it answers
             text.Append('d').Append(defaults.GetRawText()).Append('\0');
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
@@ -374,8 +413,28 @@ public sealed class ProcessExpressions
     /// <param name="Id">The guard id.</param>
     /// <param name="JavaScript">The function over a row (<see cref="ExprLowering.ToJavaScript"/>).</param>
     /// <param name="ReadsNow">Whether it reads <c>now</c>, so it receives the simulation's clock.</param>
-    /// <param name="ReadsSubject">Whether it reads the object under <c>subject</c> (<see cref="ExprSites.ReadsSubject"/>).</param>
-    private sealed record LoweredCondition(string Id, string JavaScript, bool ReadsNow, bool ReadsSubject);
+    /// <param name="ReadsSubject">Whether it reads the object under <c>subject</c> (<see cref="ExprSites.ReadsSubject"/>); every set does.</param>
+    /// <param name="Set">For an action's set, the attribute it writes; <see langword="null"/> for a guard's condition.</param>
+    internal sealed record LoweredCondition(string Id, string JavaScript, bool ReadsNow, bool ReadsSubject, LoweredSet? Set)
+    {
+        /// <summary>Whether it reads <c>actor()</c> or <c>in_state</c> (<see cref="ExprLowering.IsEngineOnly"/>), so it runs with <c>mqAt(now, actor)</c>.</summary>
+        public bool EngineOnly { get; init; }
+
+        /// <summary>The types the <c>actor()</c> nodes it holds met, each once, in order: the identity is read through each.</summary>
+        public IReadOnlyList<string> ActorKinds { get; init; } = [];
+
+        /// <summary>Whether an <c>in_state</c> of it reads the running chart, so its row holds the active states.</summary>
+        public bool ReadsRunning { get; init; }
+
+        /// <summary>The lifecycles an <c>in_state</c> of it reads on an object.</summary>
+        public IReadOnlyList<StateRead> StateReads { get; init; } = [];
+    }
+
+    /// <summary>The attribute an action's set writes.</summary>
+    /// <param name="Attribute">The attribute's id as the set names it.</param>
+    /// <param name="Name">The attribute's name, its member in the object's row.</param>
+    /// <param name="Kind">The value's type kind (<see cref="ExprType.Kind"/>), which says how its result is written.</param>
+    internal sealed record LoweredSet(string Attribute, string Name, string Kind);
 }
 
 /// <summary>The result of one expression evaluation.</summary>
@@ -409,6 +468,102 @@ public sealed class ProcessExpressionSession : IDisposable
     /// <summary>The defaults the object's row falls back on (<see cref="ProcessExpressions.SubjectDefaults"/>); <see langword="null"/> when no
     /// condition reads the object.</summary>
     internal JsonElement? SubjectDefaults { get; init; }
+
+    /// <summary>The guards' conditions and the actions' sets that compiled, by id (<see cref="ProcessExpressions.Lowered"/>).</summary>
+    internal IReadOnlyDictionary<string, ProcessExpressions.LoweredCondition> Lowered { get; init; } =
+        ImmutableDictionary<string, ProcessExpressions.LoweredCondition>.Empty;
+
+    /// <summary>
+    /// Evaluates a compiled guard condition over its row (<see cref="EvaluateCondition(string, string, JsonElement, JsonElement, JsonElement, string, string, CancellationToken)"/>),
+    /// with what <c>actor()</c> and <c>in_state</c> read (object-effects-design.md section 7): the running chart's active states by process
+    /// id, held at the row's top under <c>$states</c>, and the acting identity as text.
+    /// </summary>
+    /// <param name="id">The guard id.</param>
+    /// <param name="label">"Guard 'name'", for messages.</param>
+    /// <param name="context">The context object.</param>
+    /// <param name="event">The event object.</param>
+    /// <param name="subject">The object.</param>
+    /// <param name="running">The running chart's states (a JSON object of process id to state ids), or <see langword="null"/> when not read.</param>
+    /// <param name="now">The simulation's clock.</param>
+    /// <param name="actor">The acting identity, or <see langword="null"/>.</param>
+    /// <param name="seed">The seed of <c>Math.random</c>.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The result: a <see cref="bool"/>, or MQ9502 or MQ9503.</returns>
+    internal ExpressionResult EvaluateCondition(string id, string label, JsonElement context, JsonElement @event, JsonElement subject, JsonElement? running,
+        string now, string? actor, string seed, CancellationToken ct)
+    {
+        if (_pool is null)
+            throw new InvalidOperationException($"{label} has no compiled condition.");
+        var row = Row(context, @event, subject, SubjectDefaults, running);
+        try
+        {
+            using var lease = _pool.Rent();
+            var value = lease.Sandbox.CallHelper(id, Args(id, row, now, actor), new ScriptCallContext(null, seed, NoParameters, ct));
+            return new ExpressionResult(value is true, null);
+        }
+        catch (ScriptLimitException ex)
+        {
+            return new ExpressionResult(null, RuleCatalog.Create("MQ9503", $"{label} stopped: {Detail(ex.Diagnostic.Message)} Simplify the condition.", id, null, null));
+        }
+        catch (ScriptErrorException ex)
+        {
+            return new ExpressionResult(null, RuleCatalog.Create("MQ9502", $"{label} threw: {Detail(ex.Diagnostic.Message)}", id, null, null));
+        }
+    }
+
+    /// <summary>
+    /// Works out the value an action's set gives its attribute (object-effects-design.md decisions 3 and 4) over the row a guard reads: the
+    /// value as JSON, a number for a numeric attribute, else the API's form of the value.
+    /// </summary>
+    /// <param name="id">The set id.</param>
+    /// <param name="label">"Action 'name'", for messages.</param>
+    /// <param name="context">The context object as the action started.</param>
+    /// <param name="event">The event object.</param>
+    /// <param name="subject">The object as the action started.</param>
+    /// <param name="running">The running chart's states, or <see langword="null"/> when not read.</param>
+    /// <param name="now">The simulation's clock.</param>
+    /// <param name="actor">The acting identity, or <see langword="null"/>.</param>
+    /// <param name="seed">The seed of <c>Math.random</c>.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The result: a <see cref="JsonElement"/>, or MQ9502 or MQ9503.</returns>
+    internal ExpressionResult EvaluateSet(string id, string label, JsonElement context, JsonElement @event, JsonElement subject, JsonElement? running,
+        string now, string? actor, string seed, CancellationToken ct)
+    {
+        if (_pool is null || !Lowered.TryGetValue(id, out var lowered) || lowered.Set is not { } set)
+            throw new InvalidOperationException($"{label} has no compiled set '{id}'.");
+        var row = Row(context, @event, subject, SubjectDefaults, running);
+        try
+        {
+            using var lease = _pool.Rent();
+            var value = lease.Sandbox.CallHelper(id, Args(id, row, now, actor), new ScriptCallContext(null, seed, NoParameters, ct));
+            return new ExpressionResult(SetValue(value, set.Kind), null);
+        }
+        catch (ScriptLimitException ex)
+        {
+            return new ExpressionResult(null, RuleCatalog.Create("MQ9503", $"{label} stopped working out '{set.Name}': {Detail(ex.Diagnostic.Message)} Simplify the value.", id, null, null));
+        }
+        catch (ScriptErrorException ex)
+        {
+            return new ExpressionResult(null, RuleCatalog.Create("MQ9502", $"{label} threw working out '{set.Name}': {Detail(ex.Diagnostic.Message)}", id, null, null));
+        }
+    }
+
+    // The arguments a lowered function takes: the row and the clock, and the identity when it reads actor() or in_state.
+    private object?[] Args(string id, JsonElement row, string now, string? actor) =>
+        Lowered.TryGetValue(id, out var lowered) && lowered.EngineOnly ? [new ExactJson(row), now, actor] : [new ExactJson(row), now];
+
+    // A set's result as the object holds it: an exact number for an integer or decimal (the runtime writes it as text), else as it came.
+    private static JsonElement SetValue(object? value, string kind)
+    {
+        if (value is string text && kind is "int" or "decimal" && decimal.TryParse(text, NumberStyles.Number | NumberStyles.AllowExponent, CultureInfo.InvariantCulture, out _))
+        {
+            using var document = JsonDocument.Parse(text);
+            if (document.RootElement.ValueKind == JsonValueKind.Number)
+                return document.RootElement.Clone();
+        }
+
+        return ToJson(value);
+    }
 
     /// <summary>Evaluates a compiled guard or action expression.</summary>
     /// <param name="id">The guard or action id.</param>
@@ -474,7 +629,7 @@ public sealed class ProcessExpressionSession : IDisposable
     {
         if (_pool is null)
             throw new InvalidOperationException($"{label} has no compiled condition.");
-        var row = Row(context, @event, subject, SubjectDefaults);
+        var row = Row(context, @event, subject, SubjectDefaults, null);
         try
         {
             using var lease = _pool.Rent();
@@ -496,7 +651,8 @@ public sealed class ProcessExpressionSession : IDisposable
     // The row a condition reads: the context's members, then the payload as event. A context attribute named event gives way to it; no
     // condition reads one (MQ3102 leaves such a guard unlowered). When a condition of the process reads the object (defaults given), the
     // object follows as subject, each attribute it lacks as its default; a context attribute named subject keeps its place instead.
-    private static JsonElement Row(JsonElement context, JsonElement @event, JsonElement subject, JsonElement? defaults)
+    // With the running chart's states read by an in_state, they follow at the row's top under $states, a member no attribute can be named.
+    private static JsonElement Row(JsonElement context, JsonElement @event, JsonElement subject, JsonElement? defaults, JsonElement? running)
     {
         var buffer = new System.Buffers.ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer))
@@ -538,6 +694,12 @@ public sealed class ProcessExpressionSession : IDisposable
                 }
 
                 writer.WriteEndObject();
+            }
+
+            if (running is { ValueKind: JsonValueKind.Object } states)
+            {
+                writer.WritePropertyName(ObjectStates.Member);
+                states.WriteTo(writer);
             }
 
             writer.WriteEndObject();

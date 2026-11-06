@@ -1,0 +1,19 @@
+{
+  "kind": "entity",
+  "id": "01JFX000000000000000000E01",
+  "name": "Employee",
+  "package": "01JFX000000000000000000P01",
+  "key": {
+    "attributes": [
+      "01JFX000000000000000000A01"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JFX000000000000000000A01",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    }
+  ]
+}

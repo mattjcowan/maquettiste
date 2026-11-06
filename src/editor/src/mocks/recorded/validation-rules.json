@@ -658,7 +658,7 @@
   {
     "id": "MQ3103",
     "defaultSeverity": "error",
-    "description": "An expression's types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, + on a date, date_part of hour or minute on a date, a site result that is not bool, a derived value of another type, a type the core does not have (float among them), or an enum member or code against a value of no enum or reference type, or a code the column it is compared with cannot store.",
+    "description": "An expression's types do not fit: operands of different types, ordering or arithmetic on a type without it, a date with a timestamp, + on a date, date_part of hour or minute on a date, a site result that is not bool, a derived value of another type, a set's value that does not fit its attribute, a type the core does not have (float among them), or an enum member or code against a value of no enum or reference type, or a code the column it is compared with cannot store.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true
@@ -666,7 +666,7 @@
   {
     "id": "MQ3104",
     "defaultSeverity": "error",
-    "description": "now() at a check site, a value site or a rule condition, directly or through a constraint; only guards read the clock.",
+    "description": "now(), actor() or in_state at a check site, a value site or a rule condition, directly or through a constraint (a constraint never reads actor() or in_state); only guards and an action's sets read the clock, the identity of whoever acts and a lifecycle's state.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true
@@ -748,6 +748,14 @@
     "id": "MQ3115",
     "defaultSeverity": "warning",
     "description": "An entity check is listed by no binding with a write table, though one of them maps every attribute it reads, so no database enforces it.",
+    "family": "MQ31xx",
+    "familyLabel": "Expressions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3116",
+    "defaultSeverity": "error",
+    "description": "An in_state names states of two lifecycles, a state that is not a state (a history or choice state), or a lifecycle that cannot govern the object reached (the entity, a base, a stereotype it carries or a derived entity is none of the lifecycle's subjects), or no object (a process without subjects, or a context attribute named subject, for a lifecycle other than the process's own); or its of is not a to-one path every subject holds. Remove the call.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true
@@ -2620,7 +2628,7 @@
   {
     "id": "MQ9020",
     "defaultSeverity": "error",
-    "description": "A library holds what only a running process has (states, an initial state, transitions, context, events, a subject, a bound attribute, an action that raises events, or a guard with a condition), or a process that is not a library has no states or lists gates of its own; move the item, or change use.",
+    "description": "A library holds what only a running process has (states, an initial state, transitions, context, events, a subject, a bound attribute, an action that raises events or sets the object's data, or a guard with a condition), or a process that is not a library has no states or lists gates of its own; move the item, or change use.",
     "family": "MQ90xx",
     "familyLabel": "Processes",
     "canBeOff": true
@@ -2818,7 +2826,7 @@
   {
     "id": "MQ9305",
     "defaultSeverity": "error",
-    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit, or an owner beside its subject's owner field or that is not one of the scenario's participants; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; fix the step, the object or the participant.",
+    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit, or an owner beside its subject's owner field or that is not one of the scenario's participants, or states that name a state of a lifecycle that cannot govern the object, two states of one lifecycle that cannot be active together, the subject's state in the process the scenario runs, or a state that disagrees with the state the object's bound value maps to; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; fix the step, the object or the participant.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true
@@ -2830,6 +2838,15 @@
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true
+  },
+  {
+    "id": "MQ9307",
+    "defaultSeverity": "error",
+    "description": "The values of the object a scenario step set differ from expect.values; fix the actions' sets or update the expectations from a replay.",
+    "family": "MQ93xx",
+    "familyLabel": "Scenarios",
+    "canBeOff": true,
+    "quickFix": "refresh-scenario"
   },
   {
     "id": "MQ9401",
@@ -3037,6 +3054,30 @@
     "description": "A save changes the key of an own verb that is in use; rename it with the batch operation rename-verb, which rewrites every use.",
     "family": "MQ97xx",
     "familyLabel": "Verbs",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9801",
+    "defaultSeverity": "error",
+    "description": "A set's attribute is not one every subject of the process holds under one id: an unknown id, another entity's attribute, a to-one end, a collection or a value object's member; or the process has no subjects; or a context attribute named subject hides the object. Remove the set.",
+    "family": "MQ98xx",
+    "familyLabel": "Object effects",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9802",
+    "defaultSeverity": "error",
+    "description": "A set's attribute is derived, or holds a lifecycle's state (a bound attribute of this process or of any lifecycle that governs the subject), which only its chart moves. Remove the set.",
+    "family": "MQ98xx",
+    "familyLabel": "Object effects",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9803",
+    "defaultSeverity": "error",
+    "description": "One action sets one attribute twice. Remove the second set.",
+    "family": "MQ98xx",
+    "familyLabel": "Object effects",
     "canBeOff": true
   }
 ]

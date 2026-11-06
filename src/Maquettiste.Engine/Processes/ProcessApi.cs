@@ -579,9 +579,11 @@ public static class ProcessApi
         ArgumentNullException.ThrowIfNull(chart);
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentNullException.ThrowIfNull(inputs);
+        var row = ScenarioObjects.Row(runtime.Model, chart.Process, objects ?? [], subject, out var notes);
         var interpreter = new StatechartInterpreter(chart, runtime.Options("simulation") with
         {
-            Subject = ScenarioObjects.Row(runtime.Model, chart.Process, objects ?? [], subject),
+            Subject = row,
+            StateNotes = notes.Count > 0 ? notes : null,
         });
         DateTimeOffset? at = null;
         if (start?.At is { } text && TryParseAt(text, out var parsed))
@@ -591,7 +593,7 @@ public static class ProcessApi
         var cast = new ScenarioCast(objects ?? [], subject, participants ?? []);
         for (var i = 0; complete && i < inputs.Count; i++)
         {
-            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, cast, inputs[i], out _);
+            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, Participants.Current(cast, interpreter.Values), inputs[i], out _);
             traces.Add(trace);
             complete = !trace.Incomplete;
         }
@@ -702,6 +704,15 @@ public static class ProcessApi
             foreach (var (id, value) in expect.Context.OrderBy(p => p.Key, StringComparer.Ordinal))
                 context[id] = JsonNode.Parse(value.GetRawText());
             node["context"] = context;
+        }
+
+        // The object's values the step set (object-effects-design.md decision 4), only when it set one.
+        if (expect.Values.Count > 0)
+        {
+            var values = new JsonObject();
+            foreach (var (id, value) in expect.Values.OrderBy(p => p.Key, StringComparer.Ordinal))
+                values[id] = JsonNode.Parse(value.GetRawText());
+            node["values"] = values;
         }
 
         return node;

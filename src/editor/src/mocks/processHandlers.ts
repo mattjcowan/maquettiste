@@ -244,13 +244,31 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       ),
     };
   };
+  // What the mock's interpreter reads of the object (object-effects-design.md section 7): the attributes of the subject's
+  // entity with their defaults, and every lifecycle (the run's own draft in place of its saved file).
+  const stereotypeOf = (key: string) => [...model.entries.values()].map((e) => e.json).find((d) => d.kind === "stereotype" && d.key === key);
+  const effectOptions = (doc: Json) => ({
+    attributesOf: (entity: string) =>
+      bindableAttributes(model.entries.get(entity)?.json, (id) => model.entries.get(id)?.json, stereotypeOf).map((a) => ({
+        id: String(a.id),
+        default: a.default,
+      })),
+    subjectEntity: subjectsOf(doc).find((e) => e.entity)?.entity,
+    lifecycles: [...[...model.entries.values()].map((e) => e.json).filter((j) => j.kind === "process" && j.use === "lifecycle" && j.id !== doc.id), doc],
+  });
+  const hasExpectedValues = (scenario: Json) => arr(scenario.steps).some((st) => (st.expect as Json | undefined)?.values !== undefined);
+  const sameValues = (a: Json, b: Json) => {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+    return [...keys].every((k) => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null)) && Object.keys(a).length === Object.keys(b).length;
+  };
   // A scenario with participants is replayed for real: a step refused while it expects to be accepted (or the reverse) fails
   // with MQ9301, and a refusal by actor names the participant and the list it did not satisfy.
   const participantFailure = (doc: Json, scenario: Json) => {
-    if (!arr(scenario.participants).length) return null;
+    if (!arr(scenario.participants).length && !hasExpectedValues(scenario)) return null;
     const cast = castOf({}, scenario);
     const result = simulate(doc, scenario.start as never, arr(scenario.steps), {
       ...actorLookup(),
+      ...effectOptions(doc),
       ...(cast && !("error" in cast) ? { objects: cast.objects, subject: cast.subject } : {}),
       participants: arr(scenario.participants),
     });
@@ -271,6 +289,19 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
             )
           : `Step ${t.index + 1} is ${t.accepted ? "accepted" : "refused"} while expect.accepted is ${String(expected)}; fix the step's input or set accepted to what the process does.`;
       return { step: t.index, rule: "MQ9301", message, expected, actual: t.accepted };
+    }
+    // MQ9307: the values a step set against its expect.values (exactly the attributes the step changed).
+    for (const t of result.trace) {
+      if (t.index < 0) continue;
+      const expected = (steps[t.index].expect as Json | undefined)?.values as Json | undefined;
+      if (!expected || sameValues(expected, t.valuesChanged ?? {})) continue;
+      return {
+        step: t.index,
+        rule: "MQ9307",
+        message: `Step ${t.index + 1}: the values of the object the step set differ from expect.values; fix the actions' sets or update the expectations from a replay.`,
+        expected,
+        actual: t.valuesChanged ?? {},
+      };
     }
     return null;
   };
@@ -324,6 +355,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const result = simulate(doc, (scenarioEntry ? scenarioStart : start) as never, steps, {
         from,
         ...actorLookup(),
+        ...effectOptions(doc),
         ...(cast ? { objects: cast.objects, subject: cast.subject } : {}),
         ...(people ? { participants: people.participants } : {}),
       });
@@ -354,6 +386,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       // The expectations come from a replay of the inputs, as the engine's record fills them (refusals as accepted: false).
       const replayed = replay(entry.json, start as never, rawSteps, {
         ...actorLookup(),
+        ...effectOptions(entry.json),
         ...(cast ? { objects: cast.objects, subject: cast.subject } : {}),
         // The steps name the request's participants: the replay runs before the fresh ids are given.
         ...(value.participants ? { participants: arr(value.participants) } : {}),

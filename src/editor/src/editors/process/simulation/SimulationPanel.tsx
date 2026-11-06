@@ -24,6 +24,8 @@ import { summaryFromDocument } from "@/model/model";
 import type { ParticipantDoc, ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
 import { verifyScenario } from "../api";
 import { attributeLabels, castValues, entityChain } from "./castNames";
+import { objectStatesText, type StateChoiceGroup } from "@/model/effects";
+import { useLifecycleStates } from "../../scenario/ParticipantsGrid";
 import type { ProcessContext } from "../shared";
 import { recordScenario, simulateProcess, type ScenarioVerification, type SimInput, type SimulationResult } from "./api";
 import {
@@ -53,6 +55,7 @@ import { consumeSimulationRequest, useSimulationRequest } from "./requests";
 import { addInput, atEnd, castOf, loadScenario, loadScenarioStart, removeFrom, resetSession, restart, selectEntry, setStartValue, shownEntry } from "./session";
 import { useSimulation } from "./useSimulation";
 import { setSimulationView } from "./view";
+import { useSetContext } from "../SetsEditor";
 
 const ROW = "flex h-[var(--mq-row-h)] min-w-0 items-center gap-1.5 border-b border-default px-1.5 text-12";
 const FIELD = "h-5 min-w-0 rounded-[4px] border border-input bg-surface px-1 text-12 text-primary";
@@ -125,6 +128,11 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
   // Attribute names for the cast's values, by entity (the entity's own attributes and its bases').
   const [castLabels, setCastLabels] = useState<ReadonlyMap<string, ReadonlyMap<string, string>>>(new Map());
   const castEntities = [...new Set(cast.objects.map((o) => o.entity))].sort().join(",");
+  const stateGroups = useLifecycleStates(cast.objects.some((o) => o.states?.length) ? castEntities.split(",").filter(Boolean) : [], id);
+  // The process's own subjects name the attributes its actions set, with or without objects in the cast.
+  const setContext = useSetContext(process);
+  const subjectAttribute = (attribute: string) =>
+    [...castLabels.values()].find((m) => m.has(attribute))?.get(attribute) ?? setContext.names.name(attribute) ?? attribute;
   useEffect(() => {
     let active = true;
     const wanted = castEntities ? castEntities.split(",") : [];
@@ -400,14 +408,18 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
           <div className="min-h-0 overflow-auto">
             <Messages session={session} />
             {cast.objects.length
-              ? section("cast", L.cast, <CastSection objects={cast.objects} subject={cast.subject} entityNames={entityNames} labels={castLabels} />)
+              ? section(
+                  "cast",
+                  L.cast,
+                  <CastSection objects={cast.objects} subject={cast.subject} entityNames={entityNames} labels={castLabels} stateGroups={stateGroups} />,
+                )
               : null}
             {section(
               "configuration",
               L.configuration,
               <ConfigurationSection configuration={entry?.configuration ?? []} final={!!entry?.final} names={names} />,
             )}
-            {section("lastStep", L.lastStep, <LastStepSection entry={entry} names={names} />)}
+            {section("lastStep", L.lastStep, <LastStepSection entry={entry} names={names} subjectAttribute={subjectAttribute} />)}
           </div>
           <div className="min-h-0 overflow-auto">
             {replay
@@ -552,16 +564,21 @@ function CastSection({
   subject,
   entityNames,
   labels,
+  stateGroups,
 }: {
   objects: readonly ScenarioObjectDoc[];
   subject?: string;
   entityNames: ReadonlyMap<string, string>;
   labels: ReadonlyMap<string, ReadonlyMap<string, string>>;
+  stateGroups: ReadonlyMap<string, StateChoiceGroup[]>;
 }) {
   return (
     <ul title={L.objectsHint} data-testid="start-objects">
       {objects.map((o) => {
-        const values = castValues(o.values, labels.get(o.entity) ?? new Map(), compactValue);
+        const states = objectStatesText(o.states, stateGroups.get(o.entity) ?? []);
+        const values = [castValues(o.values, labels.get(o.entity) ?? new Map(), compactValue), states ? `${L.objectStates} ${states}` : ""]
+          .filter(Boolean)
+          .join("; ");
         return (
           <li
             key={o.id}
@@ -1029,9 +1046,9 @@ function ConfigurationSection({ configuration, final, names }: { configuration: 
   );
 }
 
-function LastStepSection({ entry, names }: { entry: ReturnType<typeof shownEntry>; names: Names }) {
+function LastStepSection({ entry, names, subjectAttribute }: { entry: ReturnType<typeof shownEntry>; names: Names; subjectAttribute: (id: string) => string }) {
   if (!entry || (entry.index < 0 && !entry.microsteps.some((m) => m.actions.length) && !entry.diagnostics.length)) return <Note>{L.noLastStep}</Note>;
-  const lines = lastStepLines(entry, names);
+  const lines = lastStepLines(entry, names, subjectAttribute);
   return (
     <ul aria-label={L.lastStep}>
       {entry.index < 0 ? (
@@ -1042,12 +1059,24 @@ function LastStepSection({ entry, names }: { entry: ReturnType<typeof shownEntry
       {lines.map((line, i) => (
         <li
           key={i}
-          className={cn(ROW, line.tone === "danger" && "text-danger", line.tone === "warning" && "text-warning", line.tone === "success" && "text-success")}
+          className={cn(
+            ROW,
+            (line.kind === "sets" || line.kind === "values") && "h-auto min-h-[var(--mq-row-h)] items-start py-0.5",
+            line.tone === "danger" && "text-danger",
+            line.tone === "warning" && "text-warning",
+            line.tone === "success" && "text-success",
+          )}
           data-testid="last-step-row"
           data-kind={line.kind}
           title={line.text}
         >
-          <span className="truncate">{line.text}</span>
+          {line.kind === "sets" || line.kind === "values" ? (
+            <span className="min-w-0 whitespace-normal break-words" data-testid="last-step-wrapped">
+              {line.text}
+            </span>
+          ) : (
+            <span className="truncate">{line.text}</span>
+          )}
         </li>
       ))}
     </ul>

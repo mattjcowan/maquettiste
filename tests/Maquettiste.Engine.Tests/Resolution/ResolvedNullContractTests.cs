@@ -112,6 +112,9 @@ public sealed class ResolvedNullContractTests
         // Verbs (verbs-design.md section 6): no fixture model names one, so that their golden output stays as it was; ResolvedVerbTests
         // resolves them.
         ["RVerb"] = "verbs: ResolvedVerbTests",
+        // An action's sets (object-effects-design.md section 6): no fixture model sets data, so that their golden output stays as it was;
+        // ResolvedObjectEffectsTests resolves them.
+        ["RSet"] = "sets: ResolvedObjectEffectsTests",
     };
 
     [Fact]

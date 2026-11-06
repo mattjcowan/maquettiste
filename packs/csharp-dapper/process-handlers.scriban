@@ -2,7 +2,10 @@
 # The guards and actions of a process (the generated half of a pair). Guards written in the expression language that helpers.js
 # expr_cs renders, and guards and actions whose JavaScript is in the translatable subset (cs_expression), are implemented here;
 # every other one is a partial method the companion
-# <P>Handlers.cs implements, so a new stub fails the build until it is written. Methods are Guard<Name> and Action<Name>, so a
+# <P>Handlers.cs implements, so a new stub fails the build until it is written. An action that sets the object's data calls
+# Record<Name>, a partial method the companion implements (generated code has no object to write to yet); an action whose expression
+# is not translated, or that has only sets, stays the companion's Action<Name> and the dispatch runs Run<Name>, which records, then
+# runs it, so a companion that already implements the action still builds. Methods are Guard<Name> and Action<Name>, so a
 # guard and an action may share a name. Also the command handler: load the instance
 # through the store, run the machine, save, and return the result with the events for the outbox. A process that names actors
 # taken from the object answers for them as the runtime's IActorResolver, one partial method per actor (actors-design.md
@@ -42,7 +45,7 @@ public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>
     public {{ ctx }} Action(string action, {{ call }} call) => action switch
     {
 {{- for a in p.actions }}
-        {{ json a.name }} => Action{{ pascal a.name }}(call),
+        {{ json a.name }} => {{ a.sets.size > 0 && translate(p, a, "action") == "" ? "Run" : "Action" }}{{ pascal a.name }}(call),
 {{- end }}
         _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Not an action of {{ p.name }}."),
     };
@@ -61,12 +64,37 @@ public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>
 {{- end }}
 {{- for a in p.actions }}
 {{- cs = translate(p, a, "action") }}
+{{- if a.sets.size > 0 }}
+{{- sets = sets_text(a) }}
+
+    /// <summary>Action {{ a.name }}{{ if a.expression }}: <c>{{ cs_line a.expression | escape_xml }}</c>,{{ end }} setting <c>{{ sets | escape_xml }}</c>{{ if cs == "" }} (implemented in {{ name }}Handlers.cs){{ end }}.</summary>
+{{- if cs == "" }}
+    private partial {{ ctx }} Action{{ pascal a.name }}({{ call }} call);
+
+    /// <summary>Records what action {{ a.name }} sets on the object, then runs it.</summary>
+    private {{ ctx }} Run{{ pascal a.name }}({{ call }} call)
+    {
+        Record{{ pascal a.name }}(call);
+        return Action{{ pascal a.name }}(call);
+    }
+{{- else }}
+    private {{ ctx }} Action{{ pascal a.name }}({{ call }} call)
+    {
+        Record{{ pascal a.name }}(call);
+        return {{ cs }};
+    }
+{{- end }}
+
+    /// <summary>Records on the object what action {{ a.name }} sets, each value from the object and the context before the action: <c>{{ sets | escape_xml }}</c> (implemented in {{ name }}Handlers.cs).</summary>
+    private partial void Record{{ pascal a.name }}({{ call }} call);
+{{- else }}
 
     /// <summary>Action {{ a.name }}{{ if a.expression }}: <c>{{ cs_line a.expression | escape_xml }}</c>{{ end }}{{ if cs == "" }} (implemented in {{ name }}Handlers.cs){{ end }}.</summary>
 {{- if cs != "" }}
     private static {{ ctx }} Action{{ pascal a.name }}({{ call }} call) => {{ cs }};
 {{- else }}
     private partial {{ ctx }} Action{{ pascal a.name }}({{ call }} call);
+{{- end }}
 {{- end }}
 {{- end }}
 {{- if relatives.size > 0 }}

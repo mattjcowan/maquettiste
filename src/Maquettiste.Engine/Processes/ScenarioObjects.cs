@@ -24,14 +24,61 @@ internal static class ScenarioObjects
     /// <param name="objects">The objects.</param>
     /// <param name="subject">The id of the subject among them.</param>
     /// <returns>The row.</returns>
-    public static JsonElement Row(ModelSnapshot model, Process process, IReadOnlyList<ScenarioObject> objects, string? subject)
+    public static JsonElement Row(ModelSnapshot model, Process process, IReadOnlyList<ScenarioObject> objects, string? subject) =>
+        Row(model, process, objects, subject, out _);
+
+    /// <summary>
+    /// The subject's row as a run of a process sees it (<see cref="Row(ModelSnapshot, Process, IReadOnlyList{ScenarioObject}, string?)"/>),
+    /// each object in it holding its states in the lifecycles an <c>in_state</c> of the process reads at its path (object-effects-design.md
+    /// decision 10, <see cref="ObjectStates"/>); with no subject, a row of those states alone, the lifecycles' initial states. A process
+    /// with no such read has the row it always had.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process the run is of.</param>
+    /// <param name="objects">The objects.</param>
+    /// <param name="subject">The id of the subject among them.</param>
+    /// <param name="notes">The notes of the states assumed, by <see cref="StateRead.Key"/>.</param>
+    /// <returns>The row.</returns>
+    internal static JsonElement Row(ModelSnapshot model, Process process, IReadOnlyList<ScenarioObject> objects, string? subject,
+        out IReadOnlyDictionary<string, string> notes)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(objects);
-        if (subject is null || objects.Count == 0)
-            return NoObject;
-        return Row(model, objects, subject, ExprSites.SubjectRowDepth(model, process), ExprSites.StereotypeAttributesRead(model, process));
+        var reads = ObjectStates.Reads(model, process);
+        var found = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        notes = found;
+        var root = subject is null ? null : objects.FirstOrDefault(o => string.Equals(o.Id, subject, StringComparison.Ordinal));
+        if (root is null)
+        {
+            // No object: a lifecycle read on the subject itself reads its initial state (decision 10.3); deeper reads find no object.
+            if (!reads.Any(r => r.Path.Count == 0))
+                return NoObject;
+            var entity = process.Subjects.Select(s => s.Entity).OfType<string>().Select(model.Get<Entity>).FirstOrDefault(e => e is not null);
+            var row = new SortedDictionary<string, object>(StringComparer.Ordinal) { [ObjectStates.Member] = States(model, entity, null, [], reads, found) };
+            return JsonSerializer.SerializeToElement(row);
+        }
+
+        return Row(model, objects, subject, ExprSites.SubjectRowDepth(model, process), ExprSites.StereotypeAttributesRead(model, process), reads, found);
+    }
+
+    // An object's states in each lifecycle read at its path that can govern it, by lifecycle id; each assumed state's note goes to notes.
+    private static SortedDictionary<string, IReadOnlyList<string>> States(ModelSnapshot model, Entity? entity, ScenarioObject? obj, IReadOnlyList<string> path,
+        IReadOnlyList<StateRead> reads, IDictionary<string, string> notes)
+    {
+        var states = new SortedDictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var read in reads)
+        {
+            if (!read.Path.SequenceEqual(path, StringComparer.Ordinal) || model.Get<Process>(read.Lifecycle) is not { } lifecycle
+                || (entity is not null && !SubjectCoverage.Governs(model, lifecycle, entity)))
+                continue;
+            var (active, note) = ObjectStates.Of(model, lifecycle, entity, obj);
+            states[lifecycle.Id] = active;
+            if (note is not null)
+                notes[read.Key] = note;
+        }
+
+        return states;
     }
 
     /// <summary>
@@ -50,7 +97,10 @@ internal static class ScenarioObjects
     /// (stereotype-sets-design.md section 6); <see langword="null"/> or empty for none.</param>
     /// <returns>The row.</returns>
     internal static JsonElement Row(ModelSnapshot model, IReadOnlyList<ScenarioObject> objects, string? subject, int depth,
-        IReadOnlySet<string>? stereotypeAttributes = null)
+        IReadOnlySet<string>? stereotypeAttributes = null) => Row(model, objects, subject, depth, stereotypeAttributes, [], null);
+
+    private static JsonElement Row(ModelSnapshot model, IReadOnlyList<ScenarioObject> objects, string? subject, int depth,
+        IReadOnlySet<string>? stereotypeAttributes, IReadOnlyList<StateRead> reads, IDictionary<string, string>? notes)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(objects);
@@ -59,7 +109,9 @@ internal static class ScenarioObjects
         var byId = new Dictionary<string, ScenarioObject>(StringComparer.Ordinal);
         foreach (var obj in objects)
             byId.TryAdd(obj.Id, obj);
-        return byId.TryGetValue(subject, out var root) ? RowOf(model, root, byId, new HashSet<string>(StringComparer.Ordinal), depth, stereotypeAttributes) : NoObject;
+        return byId.TryGetValue(subject, out var root)
+            ? RowOf(model, root, byId, new HashSet<string>(StringComparer.Ordinal), depth, stereotypeAttributes, reads, [], notes)
+            : NoObject;
     }
 
     /// <summary>
@@ -121,6 +173,9 @@ internal static class ScenarioObjects
                         pointer + "/links/" + k.ToString(CultureInfo.InvariantCulture) + "/end");
                 }
             }
+
+            if (obj.States.Count > 0 && StatesProblem(model, process, obj, entity, subject, pointer) is { } statesProblem)
+                return statesProblem;
         }
 
         if (subject is not null && byId.GetValueOrDefault(subject) is { } root && model.Get<Entity>(root.Entity) is { } rootEntity
@@ -132,6 +187,79 @@ internal static class ScenarioObjects
                 ? $"The subject '{root.Name}' is an object of entity '{rootEntity.Name}', but process '{process.Name}' has no subject; leave subject and objects out, or give the process a subject."
                 : $"The subject '{root.Name}' is an object of entity '{rootEntity.Name}', which is not a subject of process '{process.Name}' ({string.Join(", ", names)}) or derived from one; make an object of a subject's entity the subject.",
                 "/subject");
+        }
+
+        return null;
+    }
+
+    // An object's states (object-effects-design.md decision 10, MQ9305): each a state an object can be in, of a lifecycle that governs the
+    // object's entity, never the state of the process the run is of on its subject, and states of one lifecycle that can be active together
+    // (one inside the other, or in different regions of a parallel state). An id that is no state is left to MQ2001.
+    private static (string Message, string Pointer)? StatesProblem(ModelSnapshot model, Process process, ScenarioObject obj, Entity entity, string? subject,
+        string pointer)
+    {
+        var given = new Dictionary<string, List<IReadOnlyList<ProcessState>>>(StringComparer.Ordinal);
+        for (var k = 0; k < obj.States.Count; k++)
+        {
+            var at = pointer + "/states/" + k.ToString(CultureInfo.InvariantCulture);
+            if (!model.TryGetEntry(obj.States[k], out var entry) || entry.Kind != "state" || model.Get<Process>(entry.OwnerId) is not { } lifecycle
+                || PathTo(lifecycle.States, obj.States[k]) is not { } path)
+                continue;
+            var state = path[^1];
+            if (string.Equals(obj.Id, subject, StringComparison.Ordinal) && string.Equals(lifecycle.Id, process.Id, StringComparison.Ordinal))
+                return ($"Object '{obj.Name}' is the subject, whose state in process '{process.Name}' the run works out; remove '{state.Name}' from its states.", at);
+            if (state.Type is StateType.History or StateType.Choice)
+                return ($"Object '{obj.Name}' gives state '{state.Name}' of '{lifecycle.Name}', a history or choice state, which no object is in; give a state.", at);
+            if (!SubjectCoverage.Governs(model, lifecycle, entity))
+                return ($"Object '{obj.Name}' gives state '{state.Name}' of '{lifecycle.Name}', which does not govern entity '{entity.Name}'; give a state of a lifecycle of the entity.", at);
+            if (!given.TryGetValue(lifecycle.Id, out var others))
+                given[lifecycle.Id] = others = [];
+            foreach (var other in others)
+            {
+                if (!Together(path, other))
+                    return ($"Object '{obj.Name}' gives states '{other[^1].Name}' and '{state.Name}' of '{lifecycle.Name}', which cannot be active together; give one state per lifecycle, or one per region of a parallel state.", at);
+            }
+
+            others.Add(path);
+        }
+
+        // A state that disagrees with the bound value the object gives: the state the value maps to must be active in what the states give.
+        foreach (var (lifecycleId, paths) in given)
+        {
+            if (model.Get<Process>(lifecycleId) is not { } lifecycle || ObjectStates.BoundAttribute(model, lifecycle, entity) is not { } bound
+                || !obj.Values.TryGetValue(bound.Id, out var value) || ObjectStates.Mapped(model, lifecycle, bound, value) is not { } mapped)
+                continue;
+            var active = ObjectStates.Configuration(ProcessLibraries.Chart(model, lifecycle), paths.Select(p => p[^1].Id));
+            if (!active.Contains(mapped.Id, StringComparer.Ordinal))
+            {
+                var at = pointer + "/states/" + obj.States.ToList().FindIndex(id => paths.Any(p => string.Equals(p[^1].Id, id, StringComparison.Ordinal))).ToString(CultureInfo.InvariantCulture);
+                return ($"Object '{obj.Name}' gives state '{paths[0][^1].Name}' of '{lifecycle.Name}', but its '{bound.Name}' {value.GetRawText()} maps to state '{mapped.Name}'; give the state its value maps to, or leave one of them out.", at);
+            }
+        }
+
+        return null;
+
+        static bool Together(IReadOnlyList<ProcessState> a, IReadOnlyList<ProcessState> b)
+        {
+            var i = 0;
+            while (i < a.Count && i < b.Count && ReferenceEquals(a[i], b[i]))
+                i++;
+            return i == a.Count || i == b.Count || (i > 0 && a[i - 1].Type == StateType.Parallel);
+        }
+    }
+
+    // The states from the root's child down to the state with an id, or null.
+    private static List<ProcessState>? PathTo(IReadOnlyList<ProcessState> level, string id)
+    {
+        foreach (var state in level)
+        {
+            if (string.Equals(state.Id, id, StringComparison.Ordinal))
+                return [state];
+            if (PathTo(state.States, id) is { } below)
+            {
+                below.Insert(0, state);
+                return below;
+            }
         }
 
         return null;
@@ -163,11 +291,15 @@ internal static class ScenarioObjects
     }
 
     private static JsonElement RowOf(ModelSnapshot model, ScenarioObject obj, Dictionary<string, ScenarioObject> byId, HashSet<string> path, int depth,
-        IReadOnlySet<string>? stereotypeAttributes = null)
+        IReadOnlySet<string>? stereotypeAttributes, IReadOnlyList<StateRead> reads, List<string> navigation, IDictionary<string, string>? notes)
     {
         path.Add(obj.Id);
         var row = new SortedDictionary<string, object>(StringComparer.Ordinal);
-        if (model.Get<Entity>(obj.Entity) is { } entity)
+        var objectEntity = model.Get<Entity>(obj.Entity);
+        // The object's states in the lifecycles an in_state reads at its path (object-effects-design.md section 7); none without such a read.
+        if (reads.Any(r => r.Path.SequenceEqual(navigation, StringComparer.Ordinal)))
+            row[ObjectStates.Member] = States(model, objectEntity, obj, navigation, reads, notes ?? new Dictionary<string, string>(StringComparer.Ordinal));
+        if (objectEntity is { } entity)
         {
             foreach (var attribute in Attributes(model, entity))
                 row.TryAdd(attribute.Name, obj.Values.TryGetValue(attribute.Id, out var given) ? given : attribute.Default ?? Null);
@@ -187,7 +319,9 @@ internal static class ScenarioObjects
             if (End(model, link.End) is not { Navigation.Length: > 0, Max: MaxCardinality.One } end || row.ContainsKey(end.Navigation)
                 || !byId.TryGetValue(link.Object, out var target) || path.Contains(target.Id))
                 continue;
-            row[end.Navigation] = RowOf(model, target, byId, path, depth - 1);
+            navigation.Add(end.Navigation);
+            row[end.Navigation] = RowOf(model, target, byId, path, depth - 1, null, reads, navigation, notes);
+            navigation.RemoveAt(navigation.Count - 1);
         }
 
         path.Remove(obj.Id);

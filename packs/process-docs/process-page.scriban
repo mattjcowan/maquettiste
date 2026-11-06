@@ -183,21 +183,22 @@ The data a running instance carries.
 | Guard | Expression | Used by transitions | Description |
 | --- | --- | --- | --- |
 {{- for g in p.guards }}
-| {{ md_code g.name }} | {{ g.is_stub ? "none: a named stub the host answers" : (md_code g.expression) }} | {{ sep = "" }}{{ for t in g.used_by }}{{ if numbers[t.id] }}{{ sep }}{{ numbers[t.id] }}{{ sep = ", " }}{{ end }}{{ end }} | {{ md_inline(g.description) }} |
+| {{ md_code g.name }} | {{ g.is_stub ? "none: a named stub the host answers" : (!g.expression && reads_effects(g.condition) ? (md_code g.condition.text) : (md_code g.expression)) }} | {{ sep = "" }}{{ for t in g.used_by }}{{ if numbers[t.id] }}{{ sep }}{{ numbers[t.id] }}{{ sep = ", " }}{{ end }}{{ end }} | {{ md_inline(g.description) }} |
 {{- end }}
 {{- end }}
 {{- if p.actions.size > 0 }}
+{{- with_sets = false }}{{ for a in p.actions }}{{ if a.sets.size > 0 }}{{ with_sets = true }}{{ end }}{{ end }}
 
 ## Actions
 
-| Action | Expression | Raises | Used by | Description |
-| --- | --- | --- | --- | --- |
+| Action | Expression |{{ if with_sets }} Sets |{{ end }} Raises | Used by | Description |
+| --- | --- |{{ if with_sets }} --- |{{ end }} --- | --- | --- |
 {{- for a in p.actions }}
 {{- uses = [] }}
 {{- for u in a.used_by }}
 {{- if u.kind == "transition" }}{{ if numbers[u.id] }}{{ uses[uses.size] = "transition " + numbers[u.id] }}{{ end }}{{ else if own_states[u.id] }}{{ uses[uses.size] = "state " + (md_code u.path) }}{{ end }}
 {{- end }}
-| {{ md_code a.name }} | {{ a.is_stub ? "none: a named stub the host implements" : (md_code a.expression) }} | {{ code_names(a.raises) }} | {{ uses | array.join ", " }} | {{ md_inline(a.description) }} |
+| {{ md_code a.name }} | {{ a.is_stub ? "none: a named stub the host implements" : (a.expression || a.sets.size == 0 ? (md_code a.expression) : sets_cell(a)) }} |{{ if with_sets }} {{ sets_cell(a) }} |{{ end }} {{ code_names(a.raises) }} | {{ uses | array.join ", " }} | {{ md_inline(a.description) }} |
 {{- end }}
 {{- end }}
 {{- if p.invokes.size > 0 }}

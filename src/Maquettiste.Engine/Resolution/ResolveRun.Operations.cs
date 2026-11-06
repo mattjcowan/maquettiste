@@ -37,6 +37,8 @@ internal sealed partial class ResolveRun
             Register(r);
         }
 
+        DrainInStateFills(); // a guard's in_state (object-effects-design.md section 6)
+
         _operationOrder = [.. _operations.Values.OrderBy(o => o.Package?.QualifiedName ?? "", StringComparer.Ordinal)
             .ThenBy(o => o.Subject is null ? 0 : 1).ThenBy(o => o.Subject?.Name ?? "", StringComparer.Ordinal)
             .ThenBy(o => o.Name, StringComparer.Ordinal).ThenBy(o => o.Id, StringComparer.Ordinal)];
@@ -229,7 +231,7 @@ internal sealed partial class ResolveRun
             if (ExprResolution.Type(Model, operation, source.Id) is { } typed)
             {
                 var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Guard, ExprResolution.ApiColumns(Model, source.Id, path));
-                guard.Condition = ExprResolution.Build(root, Target, EnumMemberOf);
+                guard.Condition = ExprResolution.Build(root, Target, EnumMemberOf, InStateFill(null, operation, deps));
                 foreach (var name in ExprResolution.Names(Model, typed.Typed))
                     deps.Element(name);
             }

@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 import { DEFINITION_HINT } from "@/inspector/definition";
 import { SEVERITY_ICON, SEVERITY_TONE } from "@/problems/findings";
 
-export type CellKind = "text" | "select" | "toggle" | "multi" | "readonly";
+export type CellKind = "text" | "select" | "toggle" | "multi" | "pick" | "readonly";
 
 export interface GridOption {
   value: string;
@@ -24,6 +24,9 @@ export interface GridTarget {
   go: () => void;
   whereUsed: () => void;
 }
+
+const stickyStyle = (sticky: GridColumn<never>["sticky"]) =>
+  sticky && typeof sticky === "object" ? { left: sticky.left, width: sticky.width, minWidth: sticky.width, maxWidth: sticky.width } : undefined;
 
 /** Options in runs: those without a group stay loose, those of one group sit together. */
 function groupedOptions(options: GridOption[]): { group: string | undefined; options: GridOption[] }[] {
@@ -44,14 +47,17 @@ export interface GridColumn<R> {
   /** Fixed, or per row (a transition's detail is a select for an event, text for a duration). */
   kind: CellKind | ((row: R) => CellKind);
   width?: string;
-  /** Stays at the left edge while the grid scrolls sideways (the row's name). */
-  sticky?: boolean;
+  /**
+   * Stays at the left edge while the grid scrolls sideways (the row's name). Several sticky columns in a row each give their
+   * `left` edge and a fixed `width` (CSS lengths), so each rests against the one before it.
+   */
+  sticky?: boolean | { left: string; width: string };
   mono?: boolean;
   /** The text the cell shows. */
   value: (row: R) => string;
   /** The editor's starting text (text, multi) or value (select); defaults to `value`. */
   editValue?: (row: R) => string;
-  /** The choices of a select cell; a multi cell's hint. */
+  /** The choices of a select cell; a multi cell's hint; a pick cell's checklist (the cell's text is the chosen values, comma-separated, in `editValue`). */
   options?: (row: R) => GridOption[];
   /** A toggle's state. */
   on?: (row: R) => boolean;
@@ -272,6 +278,7 @@ export function Grid<R extends { id: string }>({
                   key={c.key}
                   scope="col"
                   title={c.tooltip}
+                  style={stickyStyle(c.sticky)}
                   className={cn("h-[var(--mq-row-h)] px-1.5 text-left text-11 font-semibold text-secondary", c.width, c.sticky && "sticky left-0 z-10 bg-app")}
                 >
                   {c.label}
@@ -316,8 +323,10 @@ export function Grid<R extends { id: string }>({
                         }}
                         onDoubleClick={() => startEdit(r, c)}
                         onKeyDown={(e) => onCellKeyDown(e, r, c)}
+                        style={stickyStyle(column.sticky)}
                         className={cn(
                           "h-[var(--mq-row-h)] max-w-64 px-1.5 py-0 align-middle outline-none",
+                          isEditing && kind === "pick" && "relative",
                           column.sticky && "sticky left-0 z-10 bg-surface shadow-[1px_0_0_var(--mq-border-default)]",
                           isActive && "bg-accent-subtle ring-1 ring-inset ring-accent",
                           marker && "ring-1 ring-inset ring-danger",
@@ -326,7 +335,19 @@ export function Grid<R extends { id: string }>({
                         )}
                       >
                         {isEditing ? (
-                          kind === "select" ? (
+                          kind === "pick" ? (
+                            <PickEditor
+                              label={`${column.label} of ${rowName(row)}`}
+                              options={column.options?.(row) ?? []}
+                              value={editing.value}
+                              onChange={(value) => setEditing({ value })}
+                              onDone={(move) => commit(move)}
+                              onCancel={() => {
+                                setEditing(null);
+                                focusCell(active.row, active.col);
+                              }}
+                            />
+                          ) : kind === "select" ? (
                             <select
                               aria-label={`${column.label} of ${rowName(row)}`}
                               className="h-6 w-full rounded-[4px] border border-input bg-surface px-1 text-12"
@@ -430,6 +451,69 @@ export function Grid<R extends { id: string }>({
         </span>
         {onCommit || onKey || onRemove ? <span className="text-11 text-secondary">{hint}</span> : null}
       </div>
+    </div>
+  );
+}
+
+/** A pick cell's editor: a checklist, grouped, under the cell. Enter or leaving it commits; Escape cancels. */
+function PickEditor({
+  label,
+  options,
+  value,
+  onChange,
+  onDone,
+  onCancel,
+}: {
+  label: string;
+  options: GridOption[];
+  value: string;
+  onChange: (value: string) => void;
+  onDone: (move: "none" | "blur") => void;
+  onCancel: () => void;
+}) {
+  const chosen = new Set(value.split(",").filter(Boolean));
+  const toggle = (id: string) => {
+    const next = new Set(chosen);
+    if (!next.delete(id)) next.add(id);
+    onChange(
+      options
+        .filter((o) => next.has(o.value))
+        .map((o) => o.value)
+        .join(","),
+    );
+  };
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      data-testid="pick-editor"
+      className="absolute left-0 top-0 z-30 flex max-h-60 min-w-56 flex-col overflow-y-auto rounded-control border border-input bg-surface p-1 shadow-md"
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onCancel();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          onDone("none");
+        }
+      }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onDone("blur");
+      }}
+    >
+      {!options.length ? <span className="px-1 text-secondary">Nothing to pick.</span> : null}
+      {groupedOptions(options).map((g, i) => (
+        <div key={g.group ?? `loose-${i}`} role="group" aria-label={g.group}>
+          {g.group !== undefined ? <div className="px-1 pt-0.5 text-11 font-semibold text-secondary">{g.group}</div> : null}
+          {g.options.map((o) => (
+            <label key={o.value} className="flex h-[var(--mq-row-h)] cursor-pointer items-center gap-1.5 px-1 hover:bg-accent-subtle">
+              <input type="checkbox" checked={chosen.has(o.value)} onChange={() => toggle(o.value)} />
+              <span className="truncate">{o.label}</span>
+            </label>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

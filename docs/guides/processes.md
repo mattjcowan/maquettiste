@@ -230,6 +230,44 @@ An event name is free text. A verb says what the event does, so a later rule or 
 Typing a verb nobody declared, such as `cancle`, is MQ9701. Its quick fix adds the verb or clears it. To rename `cancel` to
 `call-off`, use **Rename…**. It shows every event that will change, and runs as one step. See [Verbs](../user-guide.md#verbs).
 
+## 14. Record who approved, and check another object's state
+
+Lakeside Hardware keeps a `StockTransfer` that moves stock between two shops. A manager approves it. The shop wants to know who
+approved and when, the approver must not be the person who submitted it, and the transfer may only leave a shop that is open.
+
+Say `StockTransfer` has a lifecycle `Transfer` with states `Draft`, `Review`, `Approved` and `Rejected`, and the attributes
+`submittedBy`, `approvedBy` and `approvedOn`. It also has a to-one end `fromShop` to a `Shop`, which has its own lifecycle
+`ShopStatus` with the states `Open` and `Closed`.
+
+1. On `Transfer`'s **Transitions** tab, add an action `RecordSubmission`. In its **Sets** cell, add one set: attribute
+   `submittedBy`, value `actor()`. Put the action on the `Submit` move.
+2. Add an action `RecordApproval` with two sets: `approvedBy` is `actor()`, and `approvedOn` is `date_of(now())`. Put it on the
+   `Approve` move.
+3. Add a guard `NotTheSubmitter` with the condition `subject.submittedBy <> actor()`. Put it on `Approve`. The submitter is read
+   from the object, so the earlier set is what the guard sees.
+4. Add a guard `ShopIsOpen` with the condition `in_state(subject.fromShop, ShopStatus.Open)`. Put it on `Submit`.
+
+A set's value is checked as you type, so a wrong type shows at once (MQ3103).
+
+Now a scenario. Add two objects. `north` is a `Shop` whose **States** cell holds `ShopStatus.Open`. `t1` is a `StockTransfer`
+linked to `north` by `fromShop`, and `t1` is the subject. Add two participants, `bea` and `carl`. Then add the steps:
+
+1. `Submit` by `bea`. The guard `ShopIsOpen` reads the open shop. The step expects the state `Review` and the value
+   `submittedBy` of `bea`.
+2. `Approve` by `bea`. The guard `NotTheSubmitter` fails, so the step is refused. Mark the step as expecting a refusal.
+3. `Approve` by `carl`. The step is accepted. It expects `Approved` and the values `approvedBy` of `carl` and `approvedOn` of
+   the simulation's date.
+
+Run **Replay**, or **Record from simulation** and then **Update expectations from replay**. The values appear in each step's
+**Expected values**. If a step changes a value you did not expect, MQ9307 names it.
+
+An object's state that the scenario does not give reads from the bound attribute, and otherwise as the lifecycle's initial
+state. The trace notes the guess. Close `north` by listing `ShopStatus.Closed` in its **States**, and step 1 is refused.
+
+`csharp-dapper` adds a `RecordSubmission` hook and a `RecordApproval` hook for the team to fill in, and leaves the two new guards
+to a person. See [Actions that set the object's data](../user-guide.md#actions-that-set-the-objects-data) and
+[Who acts, and another lifecycle's state](../user-guide.md#who-acts-and-another-lifecycles-state).
+
 ## See also
 
 - [Processes, actors and scenarios](../user-guide.md#processes-actors-and-scenarios), including
@@ -237,6 +275,7 @@ Typing a verb nobody declared, such as `cancle`, is MQ9701. Its quick fix adds t
   [The simulation panel](../user-guide.md#the-simulation-panel).
 - [Lifecycle subjects and state codes](../user-guide.md#lifecycle-subjects-and-state-codes), including a stereotype as a subject.
 - [Verbs](../user-guide.md#verbs).
+- [Actions that set the object's data](../user-guide.md#actions-that-set-the-objects-data).
 - [Actors: types, membership and the object](../user-guide.md#actors-types-membership-and-the-object).
 - [Sync enum and the quick fixes](../user-guide.md#sync-enum-and-the-quick-fixes) and
   [The rules for processes (MQ9xxx)](../user-guide.md#the-rules-for-processes-mq9xxx).

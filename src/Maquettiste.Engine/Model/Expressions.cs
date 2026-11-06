@@ -5,7 +5,8 @@ namespace Maquettiste.Engine.Model;
 /// <summary>
 /// A node of an expression of the one expression language (next-phase-3-design.md section 3.1, <c>common.json#/$defs/expr</c>):
 /// exactly one of <see cref="Value"/> (with an optional <see cref="Type"/>), <see cref="Null"/>, <see cref="Path"/>, <see cref="Ref"/>,
-/// <see cref="Member"/>, <see cref="Now"/>, <see cref="Op"/> (with <see cref="Args"/>), <see cref="Call"/> (with <see cref="Args"/>),
+/// <see cref="Member"/>, <see cref="Now"/>, <see cref="Actor"/>, <see cref="InState"/> (with an optional <see cref="Of"/>), <see cref="Op"/>
+/// (with <see cref="Args"/>), <see cref="Call"/> (with <see cref="Args"/>),
 /// <see cref="Case"/> (with an optional <see cref="Else"/>), <see cref="Satisfies"/> (with <see cref="With"/>) or <see cref="Text"/>.
 /// Paths, refs and constraints are ids, so a rename never rewrites the node; the text form is printed from current names.
 /// </summary>
@@ -36,8 +37,28 @@ public sealed record Expr
     /// <summary>A member of the selected object, in phase 2's path syntax (<c>properties.retentionDays</c>); rule conditions only.</summary>
     public string? Member { get; init; }
 
-    /// <summary>The clock, a <c>datetimeoffset</c>, when <see langword="true"/>; guard sites only.</summary>
+    /// <summary>The clock, a <c>datetimeoffset</c>, when <see langword="true"/>; guard and set sites only.</summary>
     public bool? Now { get; init; }
+
+    /// <summary>
+    /// The identity of whoever acts (<c>actor()</c>, object-effects-design.md decision 5), when <see langword="true"/>; guard and set sites
+    /// only. It takes the type of what it meets (a comparison, <c>in</c>, <c>coalesce</c>, a case branch, a set's attribute), else a string.
+    /// </summary>
+    public bool? Actor { get; init; }
+
+    /// <summary>
+    /// The states <c>in_state</c> asks about (object-effects-design.md decision 7), all of one lifecycle: true when the object is in any of
+    /// them; guard and set sites only.
+    /// </summary>
+    [ElementRef(Keyed = true)]
+    public IReadOnlyList<string>? InState { get; init; }
+
+    /// <summary>
+    /// With <see cref="InState"/>: the to-one relation end ids from the subject to the object whose state it reads; absent, the subject
+    /// itself (object-effects-design.md decision 8).
+    /// </summary>
+    [ElementRef(Keyed = true)]
+    public IReadOnlyList<string>? Of { get; init; }
 
     /// <summary>An operator over <see cref="Args"/> (<c>eq</c>, <c>and</c>, <c>add</c>, <c>coalesce</c>…).</summary>
     public string? Op { get; init; }

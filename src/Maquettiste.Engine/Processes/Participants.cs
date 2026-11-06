@@ -154,14 +154,35 @@ internal static class Participants
         choice = null;
         if (step.Participant is null || cast.Participant(step.Participant) is not { } participant)
             return interpreter.Step(step);
-        choice = interpreter.Acting(step);
+        // actor() reads the signer, else the participant's identity (object-effects-design.md decision 5).
+        choice = interpreter.Acting(step, step.Signer ?? participant.IdentityText);
         var actsAs = ActsAs(model, process, cast, step, choice);
         var effective = step with
         {
             Actor = actsAs,
             Signer = step.Signer ?? (step.Input == StepInput.Event ? participant.IdentityText : null),
         };
-        return interpreter.Step(effective) with { ActsAs = actsAs };
+        return interpreter.Step(effective, participant.IdentityText) with { ActsAs = actsAs };
+    }
+
+    /// <summary>
+    /// The run's objects as a step's actor lookup reads them (object-effects-design.md decision 4, actors decision 27): the subject's values
+    /// with what the run's sets gave it so far, by attribute id. The objects as given when nothing was set.
+    /// </summary>
+    /// <param name="cast">The run's cast.</param>
+    /// <param name="values">The values the run set, by attribute id (<see cref="StatechartInterpreter.Values"/>).</param>
+    /// <returns>The cast the next step reads.</returns>
+    public static ScenarioCast Current(ScenarioCast cast, IReadOnlyDictionary<string, JsonElement> values)
+    {
+        ArgumentNullException.ThrowIfNull(cast);
+        ArgumentNullException.ThrowIfNull(values);
+        if (values.Count == 0 || cast.Subject is not { } subject || !cast.Objects.Any(o => string.Equals(o.Id, subject, StringComparison.Ordinal)))
+            return cast;
+        return cast with
+        {
+            Objects = [.. cast.Objects.Select(o => !string.Equals(o.Id, subject, StringComparison.Ordinal) ? o
+                : o with { Values = o.Values.Concat(values).GroupBy(p => p.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last().Value, StringComparer.Ordinal) })],
+        };
     }
 
     /// <summary>

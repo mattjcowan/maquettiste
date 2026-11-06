@@ -30,6 +30,21 @@ public sealed record TypedExpr(Expr Node, string Pointer, ExprType Type, bool Nu
     /// <summary>For a <c>satisfies</c>: the constraint's condition, typed against its parameters; its paths name parameter ids, which
     /// lowering replaces with <see cref="Args"/>.</summary>
     public TypedExpr? Body { get; init; }
+
+    /// <summary>For an <c>in_state</c>: the id of the lifecycle (process) whose states it names. Its <see cref="Through"/> is its
+    /// <c>of</c> path.</summary>
+    public string? Lifecycle { get; init; }
+
+    /// <summary>For an <c>in_state</c>: the states it names, in its order.</summary>
+    public IReadOnlyList<ExprState> States { get; init; } = [];
+
+    /// <summary>For an <c>in_state</c>: the states it names and every state inside them, each once, in the lifecycle's document order:
+    /// it holds when any of them is active.</summary>
+    public IReadOnlyList<string> Inside { get; init; } = [];
+
+    /// <summary>For an <c>in_state</c>: whether it reads the running chart, the process's own lifecycle on the object itself
+    /// (object-effects-design.md decision 8), rather than an object's given states.</summary>
+    public bool Running { get; init; }
 }
 
 /// <summary>
@@ -60,7 +75,7 @@ public static class ExprTyper
         if (typed is null)
             return null;
 
-        if (scope.ConstraintId is not null || scope.Site != ExprSiteKind.Value)
+        if (scope.ConstraintId is not null || scope.Site is not (ExprSiteKind.Value or ExprSiteKind.Set))
         {
             if (!Fits(ExprType.Bool, typed.Type))
             {
@@ -68,10 +83,28 @@ public static class ExprTyper
                 return null;
             }
         }
-        else if (scope.ValueType is { } wanted && !Fits(wanted, typed.Type))
+        else if (scope.ValueType is { } wanted)
         {
-            run.Report("MQ3103", typed.Pointer, "The expression is " + typed.Type + "; the derived value must be " + wanted + ".");
-            return null;
+            // actor() takes the type of the attribute it is set to (object-effects-design.md decision 5): an identity is a string, an integer
+            // or a uuid, so any other type is MQ3103.
+            if (scope.Site == ExprSiteKind.Set && typed.Node.Actor == true && wanted.IsAvailable)
+            {
+                if (!Run.ActorFits(wanted))
+                {
+                    run.Report("MQ3103", typed.Pointer, "actor() is the identity of whoever acts, a string, an integer or a uuid; the set's value must be "
+                        + wanted + ", which an identity can't be.");
+                    return null;
+                }
+
+                typed = typed with { Type = wanted };
+            }
+
+            if (!Fits(wanted, typed.Type))
+            {
+                run.Report("MQ3103", typed.Pointer, "The expression is " + typed.Type + "; the " + (scope.Site == ExprSiteKind.Set ? "set's value" : "derived value")
+                    + " must be " + wanted + ".");
+                return null;
+            }
         }
 
         return typed;
@@ -172,9 +205,18 @@ public static class ExprTyper
         {
             var shapes = (e.Value is not null ? 1 : 0) + (e.Null is not null ? 1 : 0) + (e.Path is not null ? 1 : 0) + (e.Ref is not null ? 1 : 0)
                 + (e.Member is not null ? 1 : 0) + (e.Now is not null ? 1 : 0) + (e.Op is not null ? 1 : 0) + (e.Call is not null ? 1 : 0)
-                + (e.Case is not null ? 1 : 0) + (e.Satisfies is not null ? 1 : 0) + (e.Text is not null ? 1 : 0);
+                + (e.Case is not null ? 1 : 0) + (e.Satisfies is not null ? 1 : 0) + (e.Text is not null ? 1 : 0) + (e.Actor is not null ? 1 : 0)
+                + (e.InState is not null ? 1 : 0);
             if (shapes != 1)
-                return Malformed(pointer, shapes == 0 ? "The node is empty." : "The node holds more than one of value, null, path, ref, member, now, op, call, case, satisfies and text.");
+            {
+                // A node with neither actor nor inState keeps the message it had before them (object-effects-design.md section 11).
+                return Malformed(pointer, shapes == 0 ? "The node is empty."
+                    : e.Actor is null && e.InState is null ? "The node holds more than one of value, null, path, ref, member, now, op, call, case, satisfies and text."
+                    : "The node holds more than one of value, null, path, ref, member, now, actor, inState, op, call, case, satisfies and text.");
+            }
+
+            if (e.Of is not null && e.InState is null)
+                return Malformed(pointer, "'of' goes with 'inState' only.");
             if (e.Type is not null && e.Value is null)
                 return Malformed(pointer, "'type' goes with 'value' only.");
             if (e.Args is not null && e.Op is null && e.Call is null)
@@ -206,6 +248,7 @@ public static class ExprTyper
                     return Malformed(pointer, "'now' must be true.");
                 if (!scope.AllowsNow)
                 {
+                    // The sites that refuse now() are the ones that refused it before sets could read it, so the text stays as it was.
                     Report("MQ3104", pointer, "now() reads the clock; only a guard may read it.");
                     return null;
                 }
@@ -213,6 +256,22 @@ public static class ExprTyper
                 return new TypedExpr(e, pointer, ExprType.DateTimeOffset, false, []);
             }
 
+            if (e.Actor is not null)
+            {
+                if (e.Actor != true)
+                    return Malformed(pointer, "'actor' must be true.");
+                if (!scope.AllowsActor)
+                {
+                    Report("MQ3104", pointer, "actor() is whoever acts; only a guard or a value an action sets may read it.");
+                    return null;
+                }
+
+                // A string until it meets a value of another type (Adopt); null when nobody acts.
+                return new TypedExpr(e, pointer, ExprType.String, true, []);
+            }
+
+            if (e.InState is { } states)
+                return InState(e, states, e.Of, pointer);
             if (e.Op is { } op)
                 return Operator(e, op, e.Args ?? [], pointer, flat);
             if (e.Call is { } call)
@@ -371,6 +430,8 @@ public static class ExprTyper
                 return null;
             if (Operands(args, pointer, flat) is not { } typed)
                 return null;
+            if (op is "eq" or "ne" or "lt" or "le" or "gt" or "ge" or "distinct" or "notDistinct" or "between" or "in" or "notIn" or "coalesce")
+                Adopt(typed, Enumerable.Range(0, typed.Count));
 
             var anyNull = typed.Any(t => t.Nullable);
             switch (op)
@@ -632,6 +693,7 @@ public static class ExprTyper
 
             if (failed)
                 return null;
+            Adopt(typed, Enumerable.Range(0, typed.Count).Where(i => i % 2 == 1 || i == branches.Count * 2));
             var values = typed.Where((_, i) => i % 2 == 1 || i == branches.Count * 2).ToList();
             if (Common(values, pointer, "choose between") is not { } type)
                 return null;
@@ -759,6 +821,130 @@ public static class ExprTyper
 
             return WithinSize(tree, pointer) ? Node(tree, pointer, flat: true) : null;
         }
+
+        /// <summary>Whether <c>actor()</c> can take a type: an identity is a string, an integer or a uuid (object-effects-design.md decision 5).</summary>
+        internal static bool ActorFits(ExprType type) => type.Kind is "string" or "int" or "uuid";
+
+        /// <summary>
+        /// Gives each <c>actor()</c> among the operands at <paramref name="indices"/> the type the others share (object-effects-design.md
+        /// decision 5), as a null literal fits any type; it stays a string when none has a type it can take.
+        /// </summary>
+        private static void Adopt(List<TypedExpr> typed, IEnumerable<int> indices)
+        {
+            var at = indices.ToList();
+            if (!at.Any(i => typed[i].Node.Actor == true))
+                return;
+            ExprType? common = null;
+            foreach (var i in at)
+            {
+                if (typed[i].Node.Actor != true)
+                    common = common is null ? typed[i].Type : Unify(common, typed[i].Type) ?? common;
+            }
+
+            // An identity is a string, an integer or a uuid: beside any other type actor() stays a string, which doesn't fit it (MQ3103).
+            if (common is null || common.Kind == "null" || !common.IsAvailable || !ActorFits(common))
+                return;
+            foreach (var i in at)
+            {
+                if (typed[i].Node.Actor == true)
+                    typed[i] = typed[i] with { Type = common };
+            }
+        }
+
+        /// <summary>
+        /// An <c>in_state</c> (object-effects-design.md decisions 7 to 9): states of one lifecycle that an object can be in, read on the
+        /// subject or an object a to-one path of <c>of</c> reaches, of a lifecycle that can govern it (MQ3116); at guard and set sites only
+        /// (MQ3104). It reads null when the object or its state is missing, except on the running chart.
+        /// </summary>
+        private TypedExpr? InState(Expr e, IReadOnlyList<string> ids, IReadOnlyList<string>? of, string pointer)
+        {
+            if (ids.Count == 0)
+                return Malformed(pointer, "'inState' lists at least one state.");
+            if (of is { Count: 0 })
+                return Malformed(pointer, "'of' lists at least one relation end; leave it out to read the object itself.");
+            if (!scope.AllowsActor || scope.Lifecycles is not { } lifecycles)
+            {
+                Report("MQ3104", pointer, "in_state reads a lifecycle's state; only a guard or a value an action sets may read it.");
+                return null;
+            }
+
+            var states = new List<ExprState>(ids.Count);
+            foreach (var id in ids)
+            {
+                if (lifecycles.State(id) is not { } state)
+                {
+                    Report("MQ3116", pointer, "in_state names '" + id + "', which is no state of a lifecycle.");
+                    return null;
+                }
+
+                if (!state.IsState)
+                {
+                    Report("MQ3116", pointer, "in_state names " + StateText(state) + ", a history or choice state, which no object is in; name a state.");
+                    return null;
+                }
+
+                if (states.Count > 0 && !string.Equals(states[0].Lifecycle, state.Lifecycle, StringComparison.Ordinal))
+                {
+                    Report("MQ3116", pointer, "in_state names states of two lifecycles, " + states[0].LifecycleName + " and " + state.LifecycleName
+                        + "; join one call per lifecycle with 'or'.");
+                    return null;
+                }
+
+                if (states.Any(s => string.Equals(s.Id, state.Id, StringComparison.Ordinal)))
+                    return Malformed(pointer, "in_state names " + StateText(state) + " twice.");
+                states.Add(state);
+            }
+
+            var container = scope.Root;
+            var through = new List<ExprNavigation>();
+            foreach (var end in of ?? [])
+            {
+                if (container.Navigation(end) is not { } navigation || (through.Count == 0 && navigation.Prefix is null))
+                {
+                    Report("MQ3116", pointer, "in_state's object is no path every subject holds: nothing it reaches has the relation end '" + end + "'.");
+                    return null;
+                }
+
+                if (!navigation.ToOne)
+                {
+                    Report("MQ3116", pointer, "in_state's object follows '" + navigation.Name + "', which leads to many records; it follows to-one ends only.");
+                    return null;
+                }
+
+                through.Add(navigation);
+                container = navigation.Target;
+            }
+
+            var lifecycle = states[0].Lifecycle;
+            var running = through.Count == 0 && string.Equals(lifecycle, lifecycles.Own, StringComparison.Ordinal);
+            if (!running && lifecycles.CannotGovern(lifecycle, through) is { } why)
+            {
+                Report("MQ3116", pointer, why);
+                return null;
+            }
+
+            var inside = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var state in states)
+            {
+                foreach (var id in state.Inside)
+                {
+                    if (seen.Add(id))
+                        inside.Add(id);
+                }
+            }
+
+            return new TypedExpr(e, pointer, ExprType.Bool, !running, [])
+            {
+                Lifecycle = lifecycle,
+                States = states,
+                Inside = inside,
+                Through = through,
+                Running = running,
+            };
+        }
+
+        private static string StateText(ExprState state) => state.LifecycleName + "." + string.Join('.', state.Path);
 
         private TypedExpr? Misfit(string pointer, string message)
         {

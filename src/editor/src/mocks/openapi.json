@@ -14336,7 +14336,7 @@
         "properties": {
           "element": {
             "type": "string",
-            "description": "The id of the element, or of the check, guard or derived attribute, that holds the expression or takes the text."
+            "description": "The id of the element, or of the check, guard, derived attribute, action or set, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`."
           },
           "at": {
             "type": [
@@ -14357,7 +14357,14 @@
               "string",
               "null"
             ],
-            "description": "With `text`, `check`, `value` or `guard`, or the pointer of one of the element's sites."
+            "description": "With `text`, `check`, `value`, `guard` or `set` (a value an action of a process sets, with `attribute`), or the pointer of one of the element's sites. `actor()` and `in_state` preview at guard and set sites, with no SQL form and no answer."
+          },
+          "attribute": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "With `site` `set`, the id of the attribute the value is for, whose type the value must fit (MQ3103)."
           },
           "database": {
             "type": [
@@ -16123,6 +16130,7 @@
                 ]
               },
               "isStub": {
+                "description": "True only when the action has neither an expression nor sets.",
                 "type": "boolean"
               },
               "raises": {
@@ -16136,10 +16144,39 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "sets": {
+                "description": "The values the action sets on the object, in file order (object-effects-design.md decision 1); left out when it sets none.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SetRecord"
+                }
               }
             }
           }
         ]
+      },
+      "SetRecord": {
+        "x-engine-record": "Maquettiste.Engine.SetRecord",
+        "description": "One attribute of the object an action sets, and its value (object-effects-design.md decisions 1 to 3).",
+        "type": "object",
+        "required": [
+          "id",
+          "attribute",
+          "value"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "attribute": {
+            "type": "string",
+            "description": "The id of the attribute set (an attribute every subject of the process holds)."
+          },
+          "value": {
+            "$ref": "#/components/schemas/ExpressionRecord"
+          }
+        }
       },
       "InvokeRecord": {
         "x-engine-record": "Maquettiste.Engine.InvokeRecord",
@@ -16555,6 +16592,13 @@
           "owner": {
             "type": "string",
             "description": "The id of the participant that owns the object (actors-design.md decision 16); absent when the file names none."
+          },
+          "states": {
+            "type": "array",
+            "description": "The ids of the object's states in other lifecycles, as given (object-effects-design.md decision 10); absent when the file gives none.",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -16809,6 +16853,11 @@
           },
           "context": {
             "type": "object",
+            "additionalProperties": true
+          },
+          "values": {
+            "type": "object",
+            "description": "The object's values the step expects it set, by attribute name (object-effects-design.md decision 4); absent when the file gives none.",
             "additionalProperties": true
           }
         }
@@ -24250,6 +24299,13 @@
             "type": "object",
             "additionalProperties": true
           },
+          "states": {
+            "description": "The object's states in lifecycles other than the one the run is for, by state id (object-effects-design.md decision 10): at\nmost one active configuration per lifecycle, of lifecycles that can govern the object (MQ9305). A compound state enters its\ndefault states. A lifecycle not given takes the state the object's bound value maps to, else its initial state, and the\ntrace notes it. `in_state` reads them.\n",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
           "links": {
             "type": "array",
             "items": {
@@ -24455,6 +24511,18 @@
           "actsAs": {
             "description": "The actor a step with a participant acted as (actors-design.md decision 15), worked out from the moves the step could make\nwhen it ran: for a gated move, a required actor of the gate not yet signed, else a signer the event's actors also accept,\nelse the first signer the participant satisfies; otherwise the first of the event's or human task's actors it satisfies, or\nthe participant's actor when that list is empty. The input echoes the filled-in step: its actor is this actor and its\nsigner the participant's identity when the step gave none. Left out for a step that names no participant, and when the\nparticipant satisfies none of the actors it could act as. The mock backend fills it and echoes the input the same way.\n",
             "$ref": "#/components/schemas/Ulid"
+          },
+          "valuesChanged": {
+            "description": "The object's attributes the input's actions set to a new value, by attribute id (object-effects-design.md decision 4), as\n`changed` is for the context; a step's `expect.values` is compared with it (MQ9307). Left out when the input set nothing.\n",
+            "type": "object",
+            "additionalProperties": true
+          },
+          "notes": {
+            "description": "What the run assumed or could not do (object-effects-design.md section 7), in the order it happened: a state assumed for an\nobject's lifecycle because the scenario gave none (decision 10), an identity that did not convert to the type `actor()` met\n(decision 5), sets an invoked sub-process ran, which change nothing (decision 4). Left out when empty.\n",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -24507,13 +24575,20 @@
             "$ref": "#/components/schemas/Ulid"
           },
           "source": {
+            "description": "`expression` when its JavaScript ran (its sets too, when it has any), `sets` when it has only sets and they ran, `stub` when it has neither.",
             "type": "string",
             "enum": [
               "expression",
+              "sets",
               "stub"
             ]
           },
           "changed": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "sets": {
+            "description": "The values the action's sets gave the object, by attribute id (object-effects-design.md decision 4): every value worked out from\nthe object and context as they were when the action started, then applied together. Left out when the action has no sets.\n",
             "type": "object",
             "additionalProperties": true
           }
@@ -28664,7 +28739,7 @@
       },
       "expr": {
         "title": "Expression",
-        "description": "A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).",
+        "description": "A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard and set sites only), actor (guard and set sites only), inState (with of; guard and set sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).",
         "type": "object",
         "x-order": [
           "value",
@@ -28674,6 +28749,9 @@
           "ref",
           "member",
           "now",
+          "actor",
+          "inState",
+          "of",
           "op",
           "call",
           "args",
@@ -28728,8 +28806,31 @@
             "minLength": 1
           },
           "now": {
-            "description": "The clock, a datetimeoffset; guard sites only.",
+            "description": "The clock, a datetimeoffset; guard and set sites only.",
             "const": true
+          },
+          "actor": {
+            "description": "The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard and set sites only.",
+            "const": true
+          },
+          "inState": {
+            "description": "True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard and set sites only.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "of": {
+            "description": "The to-one relation end ids from the subject to the object whose state inState reads; absent, the subject itself. Only with inState.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
           },
           "op": {
             "enum": [
@@ -28830,6 +28931,16 @@
           },
           {
             "required": [
+              "actor"
+            ]
+          },
+          {
+            "required": [
+              "inState"
+            ]
+          },
+          {
+            "required": [
               "op"
             ]
           },
@@ -28869,6 +28980,9 @@
           ],
           "satisfies": [
             "with"
+          ],
+          "of": [
+            "inState"
           ]
         },
         "additionalProperties": false
@@ -36695,6 +36809,36 @@
         ],
         "additionalProperties": false
       },
+      "set": {
+        "title": "Set",
+        "description": "One attribute of the object set to a value when the action runs.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "attribute",
+          "value"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "attribute": {
+            "description": "The attribute set: an attribute every subject of the process holds under one id (an id, or the keyed id of an inherited or contributed attribute). Not derived, and not one that holds a lifecycle's state (MQ9801, MQ9802); once per action (MQ9803).",
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "description": "The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute.",
+            "$ref": "#/components/schemas/expr"
+          }
+        },
+        "required": [
+          "id",
+          "attribute",
+          "value"
+        ],
+        "additionalProperties": false
+      },
       "subject": {
         "title": "Subject",
         "description": "An entity the process governs, with the entities derived from it; or a stereotype, standing for every entity that carries it and the entities derived from them. Names exactly one of entity and stereotype.",
@@ -36858,13 +37002,14 @@
       },
       "action": {
         "title": "Action",
-        "description": "A named effect; without an expression it is a stub.",
+        "description": "A named effect: context changes (expression), values set on the object (sets), both, or neither as a stub.",
         "type": "object",
         "x-order": [
           "id",
           "name",
           "displayName",
           "expression",
+          "sets",
           "raises",
           "description",
           "stereotypes",
@@ -36883,6 +37028,14 @@
           "expression": {
             "description": "A JavaScript expression returning an object of context updates.",
             "type": "string"
+          },
+          "sets": {
+            "description": "Values the action sets on the object, each an attribute every subject of the process holds and a value in the expression language. All values are worked out from the object and context as they were when the action started, then applied together. Not in a library (MQ9020).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/set"
+            },
+            "default": []
           },
           "raises": {
             "description": "Internal events queued after the action.",
@@ -37605,13 +37758,14 @@
           },
           "action": {
             "title": "Action",
-            "description": "A named effect; without an expression it is a stub.",
+            "description": "A named effect: context changes (expression), values set on the object (sets), both, or neither as a stub.",
             "type": "object",
             "x-order": [
               "id",
               "name",
               "displayName",
               "expression",
+              "sets",
               "raises",
               "description",
               "stereotypes",
@@ -37630,6 +37784,14 @@
               "expression": {
                 "description": "A JavaScript expression returning an object of context updates.",
                 "type": "string"
+              },
+              "sets": {
+                "description": "Values the action sets on the object, each an attribute every subject of the process holds and a value in the expression language. All values are worked out from the object and context as they were when the action started, then applied together. Not in a library (MQ9020).",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/set"
+                },
+                "default": []
               },
               "raises": {
                 "description": "Internal events queued after the action.",
@@ -37651,6 +37813,36 @@
             "required": [
               "id",
               "name"
+            ],
+            "additionalProperties": false
+          },
+          "set": {
+            "title": "Set",
+            "description": "One attribute of the object set to a value when the action runs.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "attribute",
+              "value"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "attribute": {
+                "description": "The attribute set: an attribute every subject of the process holds under one id (an id, or the keyed id of an inherited or contributed attribute). Not derived, and not one that holds a lifecycle's state (MQ9801, MQ9802); once per action (MQ9803).",
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "description": "The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute.",
+                "$ref": "#/components/schemas/expr"
+              }
+            },
+            "required": [
+              "id",
+              "attribute",
+              "value"
             ],
             "additionalProperties": false
           },
@@ -38093,6 +38285,7 @@
           "name",
           "entity",
           "values",
+          "states",
           "links",
           "owner"
         ],
@@ -38117,6 +38310,11 @@
               "description": "A value of the attribute's type."
             },
             "default": {}
+          },
+          "states": {
+            "description": "The object's states in lifecycles other than the one the scenario runs, by state id: at most one active configuration per lifecycle, of lifecycles that can govern the object (MQ9305). A compound state enters its default states. A lifecycle not given takes the state the object's bound value maps to, else its initial state.",
+            "$ref": "#/components/schemas/idList",
+            "default": []
           },
           "links": {
             "description": "The objects this object links to, each through a relation end.",
@@ -38279,7 +38477,8 @@
             "x-order": [
               "accepted",
               "states",
-              "context"
+              "context",
+              "values"
             ],
             "properties": {
               "accepted": {
@@ -38294,6 +38493,17 @@
               },
               "context": {
                 "description": "The attributes the step changed, by attribute id.",
+                "type": "object",
+                "propertyNames": {
+                  "$ref": "#/components/schemas/id"
+                },
+                "additionalProperties": {
+                  "description": "A value of the attribute's type."
+                },
+                "default": {}
+              },
+              "values": {
+                "description": "The object's attributes the step set, by attribute id: exactly the attributes the step changed (MQ9307).",
                 "type": "object",
                 "propertyNames": {
                   "$ref": "#/components/schemas/id"
@@ -38512,6 +38722,7 @@
               "name",
               "entity",
               "values",
+              "states",
               "links",
               "owner"
             ],
@@ -38536,6 +38747,11 @@
                   "description": "A value of the attribute's type."
                 },
                 "default": {}
+              },
+              "states": {
+                "description": "The object's states in lifecycles other than the one the scenario runs, by state id: at most one active configuration per lifecycle, of lifecycles that can govern the object (MQ9305). A compound state enters its default states. A lifecycle not given takes the state the object's bound value maps to, else its initial state.",
+                "$ref": "#/components/schemas/idList",
+                "default": []
               },
               "links": {
                 "description": "The objects this object links to, each through a relation end.",
@@ -38750,7 +38966,8 @@
                 "x-order": [
                   "accepted",
                   "states",
-                  "context"
+                  "context",
+                  "values"
                 ],
                 "properties": {
                   "accepted": {
@@ -38765,6 +38982,17 @@
                   },
                   "context": {
                     "description": "The attributes the step changed, by attribute id.",
+                    "type": "object",
+                    "propertyNames": {
+                      "$ref": "#/components/schemas/id"
+                    },
+                    "additionalProperties": {
+                      "description": "A value of the attribute's type."
+                    },
+                    "default": {}
+                  },
+                  "values": {
+                    "description": "The object's attributes the step set, by attribute id: exactly the attributes the step changed (MQ9307).",
                     "type": "object",
                     "propertyNames": {
                       "$ref": "#/components/schemas/id"

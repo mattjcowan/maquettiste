@@ -14,6 +14,8 @@ export interface ProblemGroup {
 
 const SEVERITY_ORDER = { error: 0, warning: 1, info: 2 } as const;
 
+const findingKey = (element: string | null, d: Diagnostic) => `${element ?? ""}|${d.rule}|${d.jsonPointer ?? ""}|${d.message}`;
+
 export function groupProblems(report: Diagnostic[], drafts: Draft[], byId: Map<string, ElementSummary>): ProblemGroup[] {
   const groups: ProblemGroup[] = [];
   for (const draft of drafts) {
@@ -58,9 +60,12 @@ export function groupProblems(report: Diagnostic[], drafts: Draft[], byId: Map<s
   const byPath = new Map<string, ElementSummary>();
   for (const summary of byId.values()) if (summary.path) byPath.set(summary.path, summary);
   const byElement = new Map<string, Diagnostic[]>();
+  // A finding an unsaved draft reports again (the saved version has it too) is one finding: the draft's own is listed.
+  const reported = new Set(groups.flatMap((g) => g.diagnostics.map((d) => findingKey(g.elementId, d))));
   for (const d of report) {
     const owner = (d.elementId ? byId.get(d.elementId) : undefined) ?? (d.filePath ? byPath.get(d.filePath) : undefined);
     const key = owner?.id ?? d.elementId ?? `file:${d.filePath ?? "model"}`;
+    if (reported.has(findingKey(key, d))) continue;
     byElement.set(key, [...(byElement.get(key) ?? []), d]);
   }
   const saved = [...byElement.entries()].map(([key, diagnostics]) => {

@@ -39,6 +39,9 @@ internal sealed record ExprSite(string Pointer, Expr? Tree, bool Raw, string Sub
 
     /// <summary>The ids of an operation subject's members, for MQ3111.</summary>
     public HashSet<string>? Subject { get; init; }
+
+    /// <summary>What <c>in_state</c> reads at a guard or set site (object-effects-design.md decisions 7 and 8).</summary>
+    public IExprLifecycles? Lifecycles { get; init; }
 }
 
 /// <summary>
@@ -94,6 +97,7 @@ internal static class ExprSites
                     sites.Add(new ExprSite(Ptr.At("/guards", i) + "/condition", guard.Condition, false, guard.Id, ExprSiteKind.Guard, s => Operation(s, model, operation))
                     {
                         Subject = subject,
+                        Lifecycles = new ModelLifecycles(model, null, operation),
                     });
                 }
 
@@ -109,9 +113,11 @@ internal static class ExprSites
                     {
                         MayBeEmpty = true,
                         Payloads = [.. events.Select(e => e.Payload.Select(a => a.Id).ToHashSet(StringComparer.Ordinal))],
+                        Lifecycles = new ModelLifecycles(model, process, null),
                     });
                 }
 
+                AddSets(sites, model, process);
                 break;
             case Constraint constraint:
                 sites.Add(new ExprSite("/condition", constraint.Condition, false, constraint.Id, ExprSiteKind.Check, _ => { }) { Constraint = constraint });
@@ -119,6 +125,26 @@ internal static class ExprSites
         }
 
         return sites;
+
+        // An action's sets (object-effects-design.md decision 3): typed against the attribute's type, reading what a guard of the action's
+        // transitions reads. An action that runs on entering or leaving a state reads no payload, since no one event enters or leaves it.
+        static void AddSets(List<ExprSite> sites, ModelSnapshot model, Process process)
+        {
+            Dictionary<string, ModelAttribute>? held = null;
+            for (var i = 0; i < process.Actions.Count; i++)
+            {
+                var action = process.Actions[i];
+                if (action.Sets.Count == 0)
+                    continue;
+                held ??= HeldAttributes(model, process);
+                var (events, payloads) = SetEvents(process, action);
+                for (var j = 0; j < action.Sets.Count; j++)
+                {
+                    var set = action.Sets[j];
+                    sites.Add(SetSite(model, process, Ptr.At(Ptr.At("/actions", i) + "/sets", j) + "/value", set.Value, set.Id, set.Attribute, held, events, payloads));
+                }
+            }
+        }
 
         static void AddChecks(List<ExprSite> sites, IReadOnlyList<CheckConstraint> checks, Action<ExprScope> fill)
         {
@@ -151,11 +177,65 @@ internal static class ExprSites
         (Operation operation, ExprSiteKind.Guard) => new ExprSite("", null, false, operation.Id, kind, s => Operation(s, model, operation))
         {
             Subject = SubjectIds(model, operation),
+            Lifecycles = new ModelLifecycles(model, null, operation),
         },
-        (Process process, ExprSiteKind.Guard) => new ExprSite("", null, false, process.Id, kind, s => Process(s, model, process, process.Events)),
+        (Process process, ExprSiteKind.Guard) => new ExprSite("", null, false, process.Id, kind, s => Process(s, model, process, process.Events))
+        {
+            Lifecycles = new ModelLifecycles(model, process, null),
+        },
         (Constraint constraint, ExprSiteKind.Check) => new ExprSite("/condition", null, false, constraint.Id, kind, _ => { }) { Constraint = constraint },
         _ => null,
     };
+
+    /// <summary>
+    /// A site for a value text writes for a set not stored yet (<c>preview_expression</c> with <c>site</c> <c>set</c>): the scope a set of
+    /// the attribute on the action reads (object-effects-design.md section 8). <see langword="null"/> when the process has no such action.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="process">The process.</param>
+    /// <param name="actionId">The action's id.</param>
+    /// <param name="attributeId">The attribute's id.</param>
+    /// <returns>The site, with no tree.</returns>
+    public static ExprSite? FreeSet(ModelSnapshot model, Process process, string actionId, string attributeId)
+    {
+        if (process.Actions.FirstOrDefault(a => string.Equals(a.Id, actionId, StringComparison.Ordinal)) is not { } action)
+            return null;
+        var (events, payloads) = SetEvents(process, action);
+        return SetSite(model, process, "", null, action.Id, attributeId, HeldAttributes(model, process), events, payloads);
+    }
+
+    private static ExprSite SetSite(ModelSnapshot model, Process process, string pointer, Expr? tree, string subId, string attributeId,
+        Dictionary<string, ModelAttribute> held, IReadOnlyList<ProcessEvent> events, IReadOnlyList<HashSet<string>> payloads)
+    {
+        var type = held.TryGetValue(attributeId, out var attribute) && !attribute.Collection ? TypeOf(model, attribute.Type) : null;
+        return new ExprSite(pointer, tree, false, subId, ExprSiteKind.Set, s => Process(s, model, process, events))
+        {
+            ValueType = type is { IsAvailable: true } ? type : null,
+            Payloads = payloads,
+            Lifecycles = new ModelLifecycles(model, process, null),
+        };
+    }
+
+    /// <summary>
+    /// The events whose transitions run an action, whose payloads a set's value reads, and the payloads a read is checked against: one per
+    /// event, and an empty one when the action also runs on entering or leaving a state (MQ3102).
+    /// </summary>
+    private static (IReadOnlyList<ProcessEvent> Events, IReadOnlyList<HashSet<string>> Payloads) SetEvents(Process process, ProcessAction action)
+    {
+        var events = process.Transitions.Where(t => t.Actions.Contains(action.Id, StringComparer.Ordinal) && t.Event is not null).Select(t => t.Event!)
+            .Distinct(StringComparer.Ordinal).Select(id => process.Events.FirstOrDefault(e => e.Id == id)).OfType<ProcessEvent>().ToList();
+        var payloads = events.Select(e => e.Payload.Select(a => a.Id).ToHashSet(StringComparer.Ordinal)).ToList();
+        if (RunsOnStates(process.States, action.Id))
+        {
+            payloads.Add(new HashSet<string>(StringComparer.Ordinal));
+            return ([], payloads);
+        }
+
+        return (events, payloads);
+
+        static bool RunsOnStates(IReadOnlyList<ProcessState> states, string id) =>
+            states.Any(s => s.Entry.Contains(id, StringComparer.Ordinal) || s.Exit.Contains(id, StringComparer.Ordinal) || RunsOnStates(s.States, id));
+    }
 
     /// <summary>
     /// A table's columns: its own and those its stereotypes contribute, by their keyed ids. On the overlay of an entity's table the
@@ -281,6 +361,7 @@ internal static class ExprSites
         {
             ValueType = site.ValueType, ElementId = site.SubId, FilePath = document?.Path, Pointer = site.Pointer,
             Names = text ? new ModelNames(model) : null,
+            Lifecycles = site.Lifecycles,
         };
         site.Fill(scope);
         AddRefs(scope, model, refs);
@@ -356,7 +437,7 @@ internal static class ExprSites
         }
 
         /// <summary>The element of a kind with this exact name and the smallest id, through the kind's name index.</summary>
-        private static T? Named<T>(ModelSnapshot model, string kind, string name) where T : Element
+        internal static T? Named<T>(ModelSnapshot model, string kind, string name) where T : Element
         {
             T? named = null;
             foreach (var entry in model.Names(kind).Find(QualifiedName.Create(kind, [name]).Path))
@@ -367,6 +448,117 @@ internal static class ExprSites
             }
 
             return named;
+        }
+    }
+
+    /// <summary>
+    /// What <c>in_state</c> reads at a process's guard or set, or at an operation's guard (object-effects-design.md decisions 7 and 8): the
+    /// states of the model's processes by id and by name, built once per process and model, and whether a lifecycle can govern the
+    /// object a path reaches. Nothing is read until an <c>in_state</c> asks.
+    /// </summary>
+    private sealed class ModelLifecycles(ModelSnapshot model, Process? process, Operation? operation) : IExprLifecycles
+    {
+        private static readonly ConditionalWeakTable<ModelSnapshot, ConditionalWeakTable<Process, Dictionary<string, ExprState>>> States = new();
+
+        public string? Own => process?.Id;
+
+        public ExprState? State(string id) =>
+            model.TryGetEntry(id, out var entry) && entry.Kind == "state" && model.Get<Process>(entry.OwnerId) is { } owner
+                ? StatesOf(owner).GetValueOrDefault(id)
+                : null;
+
+        public string? Find(IReadOnlyList<string> segments)
+        {
+            if (segments.Count < 2 || ModelNames.Named<Process>(model, "process", segments[0]) is not { } lifecycle)
+                return null;
+            var level = lifecycle.States;
+            ProcessState? found = null;
+            foreach (var name in segments.Skip(1))
+            {
+                found = level.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.Ordinal));
+                if (found is null)
+                    return null;
+                level = found.States;
+            }
+
+            return found?.Id;
+        }
+
+        public string? CannotGovern(string lifecycle, IReadOnlyList<ExprNavigation> through)
+        {
+            if (model.Get<Process>(lifecycle) is not { } governing)
+                return "in_state names a state of '" + lifecycle + "', which is no process of the model.";
+            if (through.Count > 0)
+            {
+                if (through[^1].Entity is not { } id || model.Get<Entity>(id) is not { } reached)
+                    return "in_state's object reaches no entity of the model.";
+                return CanGovern(governing, reached) ? null
+                    : "Lifecycle " + governing.Name + " cannot govern " + reached.Name + ", the object in_state reaches: neither it, a base, a stereotype it carries "
+                        + "nor an entity derived from it is one of the lifecycle's subjects.";
+            }
+
+            if (operation is not null)
+            {
+                return operation.Subject is { } subject && model.Get<Entity>(subject) is { } entity
+                    ? CanGovern(governing, entity) ? null : "Lifecycle " + governing.Name + " cannot govern " + entity.Name + ", the operation's subject."
+                    : "The operation is not on one record, so in_state has no object to read; read a lifecycle through a guard of a process.";
+            }
+
+            if (process is null)
+                return "in_state has no object to read here.";
+            if (process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
+                return "A context attribute named subject hides the object, so in_state reads no object; rename the context attribute.";
+            if (process.Subjects.Count == 0)
+                return "The process has no subjects, so in_state reads no object; give the process a subject, or name a state of the process's own lifecycle.";
+            foreach (var entry in process.Subjects)
+            {
+                if (entry.Entity is { } entityId && model.Get<Entity>(entityId) is { } entity && CanGovern(governing, entity))
+                    return null;
+                if (entry.Stereotype is { } key && (governing.Subjects.Any(g => string.Equals(g.Stereotype, key, StringComparison.Ordinal))
+                    || Processes.SubjectCoverage.Of(model).CarriersOf(key).Any(c => CanGovern(governing, c))))
+                    return null;
+            }
+
+            return "Lifecycle " + governing.Name + " cannot govern the process's subjects: neither they, a base, a stereotype they carry nor an entity "
+                + "derived from them is one of its subjects.";
+        }
+
+        /// <summary>Whether a lifecycle can govern an entity's objects: it governs the entity or one derived from it (decision 8).</summary>
+        private bool CanGovern(Process lifecycle, Entity entity)
+        {
+            if (Processes.SubjectCoverage.Governs(model, lifecycle, entity))
+                return true;
+            foreach (var other in model.All<Entity>())
+            {
+                if (!ReferenceEquals(other, entity) && Processes.SubjectCoverage.Chain(model, other).Contains(entity.Id) && Processes.SubjectCoverage.Governs(model, lifecycle, other))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private Dictionary<string, ExprState> StatesOf(Process owner) => States.GetValue(model, static _ => new()).GetValue(owner, p =>
+        {
+            var states = new Dictionary<string, ExprState>(StringComparer.Ordinal);
+            Walk(p, p.States, [], states);
+            return states;
+        });
+
+        // Each state with its path and the states inside it, in document order; a history or choice state is no state an object is in.
+        private static List<string> Walk(Process p, IReadOnlyList<ProcessState> level, List<string> path, Dictionary<string, ExprState> states)
+        {
+            var all = new List<string>();
+            foreach (var state in level)
+            {
+                var own = new List<string>(path) { state.Name };
+                var isState = state.Type is not (StateType.History or StateType.Choice);
+                var inside = isState ? new List<string> { state.Id } : [];
+                inside.AddRange(Walk(p, state.States, own, states));
+                states[state.Id] = new ExprState(state.Id, p.Id, p.Name, own, isState, inside);
+                all.AddRange(inside);
+            }
+
+            return all;
         }
     }
 
@@ -615,14 +807,21 @@ internal static class ExprSites
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if (process.Guards.All(g => g.Condition is null) || process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
+        if ((process.Guards.All(g => g.Condition is null) && !SetsData(process)) || process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
             return FrozenSet<string>.Empty;
         return StereotypeReads.GetValue(model, static _ => new()).GetValue(process, p =>
         {
             HashSet<string>? read = null;
-            foreach (var guard in p.Guards)
+            // A set writes its attribute into the object's row, so a stereotype's attribute it sets joins the row as one read does.
+            foreach (var set in p.Actions.SelectMany(a => a.Sets))
             {
-                if (guard.Condition is null || ExprResolution.Type(model, p, guard.Id) is not { } typed)
+                if (IsStereotypeAttribute(model, set.Attribute))
+                    (read ??= new HashSet<string>(StringComparer.Ordinal)).Add(set.Attribute);
+            }
+
+            foreach (var siteId in ConditionIds(p))
+            {
+                if (ExprResolution.Type(model, p, siteId) is not { } typed)
                     continue;
                 var pending = new Stack<TypedExpr>();
                 pending.Push(typed.Typed);
@@ -714,7 +913,7 @@ internal static class ExprSites
                     return;
                 AddAttributes(c, model, AttributesOf(model, target), null);
                 AddNavigations(c, model, target, null);
-            }), to.Max == MaxCardinality.One, to.Min == 0) { Prefix = prefix });
+            }), to.Max == MaxCardinality.One, to.Min == 0) { Prefix = prefix, Entity = to.Entity });
         }
     }
 
@@ -768,7 +967,23 @@ internal static class ExprSites
     {
         if (process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
             return ([], []);
-        var bound = process.Subjects.Select(s => s.BoundAttribute).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        return Held(model, process, process.Subjects.Select(s => s.BoundAttribute).OfType<string>().ToHashSet(StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// The attributes every subject of a process holds under one id, its bound attributes included, by id: what a set may name before
+    /// MQ9802 (object-effects-design.md decision 2). Empty without subjects, or when a context attribute named <c>subject</c> hides them.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process.</param>
+    /// <returns>The attributes by id.</returns>
+    internal static Dictionary<string, ModelAttribute> HeldAttributes(ModelSnapshot model, Process process) =>
+        process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal))
+            ? new Dictionary<string, ModelAttribute>(StringComparer.Ordinal)
+            : Held(model, process, new HashSet<string>(StringComparer.Ordinal)).Attributes.ToDictionary(a => a.Id, StringComparer.Ordinal);
+
+    private static (IReadOnlyList<ModelAttribute> Attributes, IReadOnlyList<RelationEnd> Navigations) Held(ModelSnapshot model, Process process, HashSet<string> bound)
+    {
         var named = new HashSet<string>(StringComparer.Ordinal);
         List<ModelAttribute>? attributes = null;
         List<RelationEnd>? navigations = null;
@@ -821,6 +1036,9 @@ internal static class ExprSites
             if (t.Node.Path is not null && (t.Through.Count > 0 ? t.Through[0].Prefix : t.Member?.Prefix) is { } prefix
                 && (prefix == SubjectPrefix || prefix.StartsWith(SubjectPrefix + ".", StringComparison.Ordinal)))
                 depth = Math.Max(depth ?? 0, t.Through.Count);
+            // An in_state reads the object's states, or those of an object its path reaches, unless it reads the running chart.
+            if (t.Node.InState is not null && !t.Running)
+                depth = Math.Max(depth ?? 0, t.Through.Count);
             foreach (var arg in t.Args)
                 pending.Push(arg);
         }
@@ -842,20 +1060,35 @@ internal static class ExprSites
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if (process.Guards.All(g => g.Condition is null))
+        if (process.Guards.All(g => g.Condition is null) && !SetsData(process))
             return null;
         return SubjectDepths.GetValue(model, static _ => new()).GetValue(process, p =>
         {
             int? depth = null;
-            foreach (var guard in p.Guards)
+            foreach (var id in ConditionIds(p))
             {
-                if (guard.Condition is not null && ExprResolution.Type(model, p, guard.Id) is { } typed && SubjectPathDepth(p, typed.Typed) is { } d)
+                if (ExprResolution.Type(model, p, id) is { } typed && SubjectPathDepth(p, typed.Typed) is { } d)
                     depth = Math.Max(depth ?? 0, d);
             }
+
+            // A set writes into the object's own row (object-effects-design.md section 7), so a process that sets data needs the row.
+            if (SetsData(p))
+                depth ??= 0;
 
             return new StrongBox<int?>(depth);
         }).Value;
     }
+
+    /// <summary>Whether an action of a process sets the object's data (object-effects-design.md decision 1).</summary>
+    /// <param name="process">The process.</param>
+    /// <returns>Whether one does.</returns>
+    internal static bool SetsData(Process process) => process.Actions.Any(a => a.Sets.Count > 0);
+
+    /// <summary>The ids of a process's guards that hold a condition, then of its actions' sets, in document order: what reads the object.</summary>
+    /// <param name="process">The process.</param>
+    /// <returns>The guard and set ids.</returns>
+    internal static IEnumerable<string> ConditionIds(Process process) =>
+        process.Guards.Where(g => g.Condition is not null).Select(g => g.Id).Concat(process.Actions.SelectMany(a => a.Sets).Select(s => s.Id));
 
     /// <summary>The processes a process invokes, directly or through the processes it invokes, each once and never itself, in walk order.</summary>
     /// <param name="model">The model.</param>
@@ -948,8 +1181,11 @@ internal static class ExpressionRules
 
             if (element is Process process && ExprSites.EventContextRead(process, typed) is { } shadowed)
             {
-                report.Add("MQ3102", $"The guard reads the context attribute '{shadowed.Name}', but a condition reads the event's payload under that name, so "
-                    + "the guard is left a stub; rename the context attribute.", site.Pointer, site.SubId);
+                report.Add("MQ3102", site.Kind == ExprSiteKind.Set
+                    ? $"The set's value reads the context attribute '{shadowed.Name}', but a value reads the event's payload under that name, so the set is left out; "
+                        + "rename the context attribute."
+                    : $"The guard reads the context attribute '{shadowed.Name}', but a condition reads the event's payload under that name, so "
+                        + "the guard is left a stub; rename the context attribute.", site.Pointer, site.SubId);
             }
 
             var read = ExprSites.PathsOf(tree, typed).SelectMany(p => p).ToHashSet(StringComparer.Ordinal);
@@ -967,8 +1203,11 @@ internal static class ExpressionRules
                 {
                     if (payloads.Any(p => !p.Contains(id)))
                     {
-                        report.Add("MQ3102", $"The guard reads the payload attribute '{id}', which some event that uses the guard does not carry; read a context attribute, "
-                            + "or use the guard only on transitions of events that carry it.", site.Pointer, site.SubId);
+                        report.Add("MQ3102", site.Kind == ExprSiteKind.Set
+                            ? $"The set's value reads the payload attribute '{id}', which some event whose transitions run the action does not carry, or the action also "
+                                + "runs on entering or leaving a state, where no one event is fixed; read a context attribute, or run the action only on transitions of events that carry it."
+                            : $"The guard reads the payload attribute '{id}', which some event that uses the guard does not carry; read a context attribute, "
+                                + "or use the guard only on transitions of events that carry it.", site.Pointer, site.SubId);
                     }
                 }
             }
@@ -979,6 +1218,76 @@ internal static class ExpressionRules
 
         if (element is Entity entity)
             CheckBindings(model, entity, trees, typedTrees, report);
+        if (element is Process { Use: not ProcessUse.Library } owner && ExprSites.SetsData(owner))
+            CheckSets(model, owner, report);
+    }
+
+    /// <summary>
+    /// MQ9801 to MQ9803 on a process's sets (object-effects-design.md decision 2): each names an attribute every subject holds under one id,
+    /// neither a collection nor a value object, neither derived nor holding a lifecycle's state, once per action. A library's sets are MQ9020.
+    /// </summary>
+    private static void CheckSets(ModelSnapshot model, Process process, Report report)
+    {
+        var hidden = process.Context.Any(a => string.Equals(a.Name, ExprSites.SubjectPrefix, StringComparison.Ordinal));
+        var held = hidden || process.Subjects.Count == 0 ? null : ExprSites.HeldAttributes(model, process);
+        var bound = BoundAttributes(model);
+        for (var i = 0; i < process.Actions.Count; i++)
+        {
+            var action = process.Actions[i];
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var j = 0; j < action.Sets.Count; j++)
+            {
+                var set = action.Sets[j];
+                var at = Ptr.At(Ptr.At("/actions", i) + "/sets", j) + "/attribute";
+                if (!seen.Add(set.Attribute))
+                {
+                    report.Add("MQ9803", $"Action '{action.Name}' sets '{AttributeName(model, set.Attribute)}' twice; remove the second set.", at, set.Id);
+                    continue;
+                }
+
+                if (held is null)
+                {
+                    report.Add("MQ9801", hidden
+                        ? "A context attribute named subject hides the object, so the action has nothing to set; rename the context attribute, or remove the set."
+                        : "The process has no subjects, so the action has no object to set; give the process a subject, or remove the set.", at, set.Id);
+                    continue;
+                }
+
+                if (!held.TryGetValue(set.Attribute, out var attribute))
+                {
+                    var what = model.TryGetEntry(set.Attribute, out var entry) && entry.Kind == "end" ? "is a relation end; setting a link is not supported"
+                        : set.Attribute.Contains('.', StringComparison.Ordinal) ? "is a member of a value object; set an attribute of the object itself"
+                        : "is not an attribute every subject of the process holds under one id";
+                    report.Add("MQ9801", $"The set's attribute '{AttributeName(model, set.Attribute)}' {what}; remove the set.", at, set.Id);
+                    continue;
+                }
+
+                if (attribute.Collection || ExprSites.TypeOf(model, attribute.Type).Kind == "value-object")
+                {
+                    report.Add("MQ9801", $"The set's attribute '{attribute.Name}' holds {(attribute.Collection ? "a collection" : "a value object")}, which a set does not write; "
+                        + "remove the set.", at, set.Id);
+                    continue;
+                }
+
+                if (attribute.Derived is not null)
+                    report.Add("MQ9802", $"The set's attribute '{attribute.Name}' is derived, worked out from others; remove the set.", at, set.Id);
+                else if (bound.Contains(attribute.Id))
+                    report.Add("MQ9802", $"The set's attribute '{attribute.Name}' holds a lifecycle's state, which only its chart moves; remove the set.", at, set.Id);
+            }
+        }
+    }
+
+    private static readonly ConditionalWeakTable<ModelSnapshot, FrozenSet<string>> Bound = new();
+
+    /// <summary>The attributes any process's subject entry binds its state to, once per model.</summary>
+    private static FrozenSet<string> BoundAttributes(ModelSnapshot model) => Bound.GetValue(model, static m =>
+        m.All<Process>().SelectMany(p => p.Subjects).Select(s => s.BoundAttribute).OfType<string>().ToFrozenSet(StringComparer.Ordinal));
+
+    private static string AttributeName(ModelSnapshot model, string id)
+    {
+        var last = id.Split('.', '@')[^1];
+        return model.TryGetEntry(last, out var entry) && model.Get<Entity>(entry.OwnerId) is { } owner
+            && owner.Attributes.FirstOrDefault(a => a.Id == last) is { } attribute ? attribute.Name : id;
     }
 
     /// <summary>

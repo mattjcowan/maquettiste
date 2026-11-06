@@ -1,0 +1,41 @@
+{
+  "kind": "process",
+  "id": "01JFX000000000000000000C01",
+  "name": "Employment",
+  "package": "01JFX000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JFX000000000000000000B01",
+      "entity": "01JFX000000000000000000E01"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JFX000000000000000000V01",
+      "name": "leave"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JFX000000000000000000S01",
+      "name": "Active"
+    },
+    {
+      "id": "01JFX000000000000000000S02",
+      "name": "Left",
+      "type": "final"
+    }
+  ],
+  "initial": "01JFX000000000000000000S01",
+  "transitions": [
+    {
+      "id": "01JFX000000000000000000T01",
+      "source": "01JFX000000000000000000S01",
+      "event": "01JFX000000000000000000V01",
+      "targets": [
+        "01JFX000000000000000000S02"
+      ]
+    }
+  ]
+}

@@ -50,6 +50,9 @@ public enum ActionSource
 
     /// <summary>It has no expression: a named stub that changes nothing in the engine (<c>stub</c>).</summary>
     [JsonStringEnumMemberName("stub")] Stub,
+
+    /// <summary>It has no expression but sets the object's data (<c>sets</c>; object-effects-design.md section 7).</summary>
+    [JsonStringEnumMemberName("sets")] Sets,
 }
 
 /// <summary>The outcome an audit record states (phase-3-design.md section 2.3).</summary>
@@ -90,7 +93,16 @@ public sealed record GateAuditRecord(
 /// <param name="Action">The action id.</param>
 /// <param name="Source">Whether its expression ran or it is a stub.</param>
 /// <param name="Changed">The context attributes it changed, by id.</param>
-public sealed record ActionRun(string Action, ActionSource Source, IReadOnlyDictionary<string, JsonElement> Changed);
+public sealed record ActionRun(string Action, ActionSource Source, IReadOnlyDictionary<string, JsonElement> Changed)
+{
+    /// <summary>
+    /// The values the action's sets gave the object, by attribute id (object-effects-design.md decision 4): each worked out from the object
+    /// and context as they were when the action started, then applied together. <see langword="null"/>, and left out of the JSON, when the
+    /// action has no sets, or when they ran in an invoked sub-process, which sees no object.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, JsonElement>? Sets { get; init; }
+}
 
 /// <summary>One microstep: the transitions taken together, the states exited and entered, and the actions run.</summary>
 /// <param name="Transitions">The transition ids.</param>
@@ -140,6 +152,22 @@ public sealed record StepTrace(
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ActsAs { get; init; }
+
+    /// <summary>
+    /// The object's attributes the input's actions set to a new value, by attribute id (object-effects-design.md decision 4), as
+    /// <see cref="Changed"/> is for the context; a step's <c>expect.values</c> is compared with it (MQ9307). <see langword="null"/>, and left
+    /// out of the JSON, when the input set nothing.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, JsonElement>? ValuesChanged { get; init; }
+
+    /// <summary>
+    /// What the run assumed or could not do, in the order it happened (object-effects-design.md section 7): a state assumed for an object's
+    /// lifecycle, an identity that did not convert to the type <c>actor()</c> met, sets an invoked sub-process ran. <see langword="null"/>,
+    /// and left out of the JSON, when there is none.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Notes { get; init; }
 
     /// <summary>Whether a guard's result was missing (MQ9306): what followed in this input is not meaningful.</summary>
     public bool Incomplete => Guards.Any(g => g.Source == GuardSource.Missing) || Diagnostics.Any(d => d.Rule is "MQ9305" or "MQ9507");

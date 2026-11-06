@@ -1,0 +1,98 @@
+{
+  "kind": "scenario",
+  "id": "01JFX000000000000000000D01",
+  "name": "SeparateApprover",
+  "displayName": "Separate approver",
+  "process": "01JFX000000000000000000C02",
+  "objects": [
+    {
+      "id": "01JFX000000000000000000J01",
+      "name": "request",
+      "entity": "01JFX000000000000000000E02",
+      "links": [
+        {
+          "end": "01JFX000000000000000000N02",
+          "object": "01JFX000000000000000000J02"
+        }
+      ]
+    },
+    {
+      "id": "01JFX000000000000000000J02",
+      "name": "ann",
+      "entity": "01JFX000000000000000000E01",
+      "states": [
+        "01JFX000000000000000000S01"
+      ]
+    }
+  ],
+  "subject": "01JFX000000000000000000J01",
+  "participants": [
+    {
+      "id": "01JFX000000000000000000W01",
+      "name": "bob"
+    },
+    {
+      "id": "01JFX000000000000000000W02",
+      "name": "carol"
+    }
+  ],
+  "description": "Bob submits, which records him as the submitter; Bob is refused approval; Carol approves; the request starts while Ann is active.",
+  "start": {
+    "at": "2026-01-05T09:00:00Z"
+  },
+  "steps": [
+    {
+      "id": "01JFX000000000000000000Z01",
+      "event": "01JFX000000000000000000V02",
+      "participant": "01JFX000000000000000000W01",
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JFX000000000000000000S12"
+        ],
+        "context": {
+          "01JFX000000000000000000A06": 1
+        },
+        "values": {
+          "01JFX000000000000000000A03": "bob",
+          "01JFX000000000000000000A04": "2026-01-05T09:00:00Z",
+          "01JFX000000000000000000A05": "bumped"
+        }
+      }
+    },
+    {
+      "id": "01JFX000000000000000000Z02",
+      "event": "01JFX000000000000000000V03",
+      "participant": "01JFX000000000000000000W01",
+      "expect": {
+        "accepted": false,
+        "states": [
+          "01JFX000000000000000000S12"
+        ]
+      }
+    },
+    {
+      "id": "01JFX000000000000000000Z03",
+      "event": "01JFX000000000000000000V03",
+      "participant": "01JFX000000000000000000W02",
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JFX000000000000000000S13"
+        ]
+      }
+    },
+    {
+      "id": "01JFX000000000000000000Z04",
+      "event": "01JFX000000000000000000V04",
+      "participant": "01JFX000000000000000000W02",
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JFX000000000000000000S14"
+        ]
+      }
+    }
+  ],
+  "outcome": "final"
+}

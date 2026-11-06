@@ -407,6 +407,8 @@ internal sealed class XStateExporter(JsonObject document, XStateExportOptions op
             yield return "invoke kinds";
         if (Array(document, "actions").OfType<JsonObject>().Any(a => Array(a, "raises").Count > 0))
             yield return "raises";
+        if (Array(document, "actions").OfType<JsonObject>().Any(a => Array(a, "sets").Count > 0))
+            yield return "the object's data actions set";
     }
 
     private static IEnumerable<JsonObject> Walk(JsonArray states)

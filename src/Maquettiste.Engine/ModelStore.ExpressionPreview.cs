@@ -17,8 +17,8 @@ namespace Maquettiste.Engine;
 public sealed record ExpressionPreviewRequest
 {
     /// <summary>
-    /// The element's id, or the id of the check, guard or derived attribute that holds the expression (a sub-element id names its own
-    /// site, so <see cref="At"/> may be left out).
+    /// The element's id, or the id of the check, guard, derived attribute or set that holds the expression (a sub-element id names its own
+    /// site, so <see cref="At"/> may be left out); for text at a <c>set</c> site, the id of the action.
     /// </summary>
     public required string Element { get; init; }
 
@@ -34,10 +34,14 @@ public sealed record ExpressionPreviewRequest
 
     /// <summary>
     /// With <see cref="Text"/>: <c>check</c> (a table, stereotype, entity or constraint), <c>value</c> (an entity's derived value, of any
-    /// type) or <c>guard</c> (a process or an operation), or the pointer of one of the element's sites, whose scope and mode the text then
-    /// takes (a JavaScript guard's <c>/guards/0/condition</c> reads the payloads of the events that use the guard).
+    /// type), <c>guard</c> (a process or an operation) or <c>set</c> (a value the action <see cref="Element"/> names sets on
+    /// <see cref="Attribute"/>, object-effects-design.md section 8), or the pointer of one of the element's sites, whose scope and mode the
+    /// text then takes (a JavaScript guard's <c>/guards/0/condition</c> reads the payloads of the events that use the guard).
     /// </summary>
     public string? Site { get; init; }
+
+    /// <summary>With <see cref="Site"/> <c>set</c>: the id of the attribute the value is for, whose type it must fit (MQ3103).</summary>
+    public string? Attribute { get; init; }
 
     /// <summary>
     /// The id or name of the database whose binding an entity's expression lowers to SQL through; <see langword="null"/> for the binding
@@ -87,6 +91,7 @@ public sealed partial class ModelStore
         ["check"] = ExprSiteKind.Check,
         ["guard"] = ExprSiteKind.Guard,
         ["value"] = ExprSiteKind.Value,
+        ["set"] = ExprSiteKind.Set,
     };
 
     /// <summary>
@@ -156,7 +161,8 @@ public sealed partial class ModelStore
             ? TableMapping(snapshot, element, null, site.SubId, document.Path)
             : ExprResolution.ApiColumns(snapshot, site.SubId, document.Path);
         var javaScript = ExprLowering.ToJavaScript(typed, site.Kind, columns);
-        var answer = request.Values is { ValueKind: JsonValueKind.Object } values ? Answer(javaScript, values, problems, ct) : null;
+        // actor() and in_state read who acts and the states of a run, which only a simulation has: no answer (object-effects-design.md section 8).
+        var answer = request.Values is { ValueKind: JsonValueKind.Object } values && !ExprLowering.IsEngineOnly(typed) ? Answer(javaScript, values, problems, ct) : null;
         var detail = new ExpressionPreviewDetail(ExprText.Print(tree, scope), typed.Type.ToString(), typed.Nullable, javaScript, sql, sql is null ? note : null, answer);
         return new ExpressionPreview(detail, Outcomes.Sort(problems));
     }
@@ -188,7 +194,15 @@ public sealed partial class ModelStore
         if (request.Text is not null && pointer is null)
         {
             if (!SiteKinds.TryGetValue(request.Site!, out var kind))
-                throw new ArgumentException($"site must be check, value, guard or the pointer of a site, not '{request.Site}'.", nameof(request));
+                throw new ArgumentException($"site must be check, value, guard, set or the pointer of a site, not '{request.Site}'.", nameof(request));
+            if (kind == ExprSiteKind.Set)
+            {
+                if (element is not Process process || sub is null || string.IsNullOrEmpty(request.Attribute))
+                    throw new ArgumentException("site set takes element, the id of an action of a process, and attribute, the id of the attribute the value is for.", nameof(request));
+                return ExprSites.FreeSet(snapshot, process, sub, request.Attribute)
+                    ?? throw new ArgumentException($"'{sub}' is not an action of process '{process.Name}'; site set takes the id of an action.", nameof(request));
+            }
+
             return ExprSites.Free(snapshot, element, kind)
                 ?? throw new ArgumentException($"{AKind(element)} has no {request.Site} site: a table, stereotype, entity or constraint has checks, an entity derived values, "
                     + "a process or an operation guards.", nameof(request));

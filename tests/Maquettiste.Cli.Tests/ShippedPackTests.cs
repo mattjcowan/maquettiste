@@ -21,11 +21,11 @@ public sealed class ShippedPackTests
 
     private static string PackFolder(string pack) => Path.Combine(Fixtures.RepoRoot, "packs", pack);
 
-    // The cases of a pack, by name: billing-small; actors and verbs for csharp-dapper and process-docs; lifecycle-codes for csharp-dapper.
+    // The cases of a pack, by name: billing-small; actors, object-effects and verbs for csharp-dapper and process-docs; lifecycle-codes for csharp-dapper.
     private static string[] CasesOf(string pack) => pack switch
     {
-        "csharp-dapper" => ["actors", Case, "lifecycle-codes", "verbs"],
-        "process-docs" => ["actors", Case, "verbs"],
+        "csharp-dapper" => ["actors", Case, "lifecycle-codes", "object-effects", "verbs"],
+        "process-docs" => ["actors", Case, "object-effects", "verbs"],
         _ => [Case],
     };
 
