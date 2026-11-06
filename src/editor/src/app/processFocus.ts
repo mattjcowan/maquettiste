@@ -48,7 +48,8 @@ export function useProcessFocus(process: string): ProcessFocus | null {
   return focus && focus.process === process ? focus : null;
 }
 
-/** The tab a tree row opens: a state → States, an event → Events, a scenario → Scenarios. */
+/** The tab a tree row opens: a state → States, an event → Events, a guard or action → Transitions, a gate → Gates, a scenario → Scenarios. */
 export function tabOfRow(kind: string | undefined): ProcessTab | null {
-  return kind === "state" ? "states" : kind === "event" ? "events" : kind === "scenario" ? "scenarios" : null;
+  if (kind === "guard" || kind === "action") return "transitions";
+  return kind === "state" ? "states" : kind === "event" ? "events" : kind === "gate" ? "gates" : kind === "scenario" ? "scenarios" : null;
 }

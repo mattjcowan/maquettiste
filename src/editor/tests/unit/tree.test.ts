@@ -194,7 +194,7 @@ describe("tree over the billing fixture", () => {
     const invoice = node(forest, IDS.invoice);
     expect(invoice.load).toBe("document");
     // No projected tables or mapping files: an entity's storage is its bindings, read from its document.
-    expect(labels(forest, invoice.key)).toEqual(["Relationships"]);
+    expect(labels(forest, invoice.key)).toEqual(["Relationships", "Lifecycles"]);
     const relations = find(forest, "domain-model", "Billing", "Entities", "Invoice", "Relationships");
     expect(labels(forest, relations.key)).toEqual(["contains", "places", "settles"]);
     const contains = node(forest, childKeys(forest, relations.key)[0]);
@@ -211,7 +211,7 @@ describe("tree over the billing fixture", () => {
   it("adds Attributes first once the entity's document is loaded", () => {
     const f = buildForest({ rows, tables });
     const children = documentChildren(f, IDS.invoice, backend.model.get(IDS.invoice)!);
-    expect(children.map((k) => node(f, k).label)).toEqual(["Attributes", "Relationships"]);
+    expect(children.map((k) => node(f, k).label)).toEqual(["Attributes", "Relationships", "Lifecycles"]);
     const attributes = node(f, children[0]);
     expect(attributes.count).toBeGreaterThan(0);
     expect(node(f, attributes.children![0]).type).toBe("item");

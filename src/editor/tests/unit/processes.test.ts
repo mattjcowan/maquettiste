@@ -35,13 +35,24 @@ describe("Processes explorer", () => {
     expect(labels(f, f.roots.processes)).toEqual(["Billing", "Actors"]);
     const billing = child(f, f.roots.processes, "Billing");
     expect(nodeOf(f, billing)!.secondary).toBe("2 processes");
-    expect(labels(f, billing)).toEqual(["InvoiceLifecycle", "Purchase approval"]);
-    const lifecycle = nodeOf(f, child(f, billing, "InvoiceLifecycle"))!;
+    // Processes sit in a folder per use, and their keys are the ones they always had.
+    expect(labels(f, billing)).toEqual(["Lifecycles", "Orchestrations"]);
+    const lifecycles = child(f, billing, "Lifecycles");
+    expect(labels(f, lifecycles)).toEqual(["InvoiceLifecycle"]);
+    expect(childKeys(f, lifecycles)).toEqual([`@processes/p:${INVOICE_LIFECYCLE}`]);
+    const lifecycle = nodeOf(f, child(f, lifecycles, "InvoiceLifecycle"))!;
     expect(lifecycle.secondary).toBe("lifecycle · Invoice · 4 states");
-    expect(nodeOf(f, child(f, billing, "Purchase approval"))!.secondary).toBe("orchestration · 13 states");
+    const orchestrations = child(f, billing, "Orchestrations");
+    expect(childKeys(f, orchestrations)).toEqual([`@processes/p:${PURCHASE_APPROVAL}`]);
+    expect(nodeOf(f, child(f, orchestrations, "Purchase approval"))!.secondary).toBe("orchestration · 13 states");
+    // Actors by type.
     const actors = child(f, f.roots.processes, "Actors");
-    expect(labels(f, actors)).toEqual(["Approver", "BudgetHolder", "ProcurementSystem"]);
-    expect(childKeys(f, actors).map((k) => nodeOf(f, k)!.secondary)).toEqual(["role", "person · persona", "external system"]);
+    expect(labels(f, actors)).toEqual(["People", "Roles", "Systems"]);
+    expect(labels(f, child(f, actors, "People"))).toEqual(["BudgetHolder"]);
+    expect(labels(f, child(f, actors, "Roles"))).toEqual(["Approver"]);
+    expect(labels(f, child(f, actors, "Systems"))).toEqual(["ProcurementSystem"]);
+    const rows = ["People", "Roles", "Systems"].flatMap((t) => childKeys(f, child(f, actors, t)));
+    expect(rows.map((k) => nodeOf(f, k)!.secondary)).toEqual(["person · persona", "role", "external system"]);
   });
 
   it("lists a process's scenarios with steps and status, and its States and Events once the document loads", () => {
@@ -53,12 +64,13 @@ describe("Processes explorer", () => {
     const key = `@processes/p:${PURCHASE_APPROVAL}`;
     const scenarios = child(f, key, "Scenarios");
     expect(nodeOf(f, scenarios)!.secondary).toBe("✓ 1 passed");
+    // Failed scenarios come first.
     expect(childKeys(f, scenarios).map((k) => `${nodeOf(f, k)!.label}: ${nodeOf(f, k)!.secondary}`)).toEqual([
-      "Budget rejected: 3 steps · passed",
       "Quick approval: 2 steps · failed at step 2",
+      "Budget rejected: 3 steps · passed",
     ]);
     documentChildren(f, key, backend.model.get(PURCHASE_APPROVAL)!);
-    expect(labels(f, key)).toEqual(["States", "Events", "Scenarios"]);
+    expect(labels(f, key)).toEqual(["States", "Events", "Guards and actions", "Gates", "Scenarios"]);
     const states = child(f, key, "States");
     expect(nodeOf(f, states)!.secondary).toBe("13");
     expect(labels(f, states)).toEqual(["Drafting", "Review", "Approval", "Ordering", "Ordered", "Rejected"]);

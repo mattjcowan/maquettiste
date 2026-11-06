@@ -158,7 +158,7 @@ function indexMembers(json: Record<string, unknown>): Partial<ElementSummary> {
   }
   // Phase 3 (phase-3-design.md 2.1): a process's use, subject and state count; an actor's type; a scenario's process and steps.
   if (kind === "process") {
-    out.use = json.use === "lifecycle" ? "lifecycle" : "orchestration";
+    out.use = json.use === "lifecycle" || json.use === "library" ? json.use : "orchestration";
     // One subject, in either form, is `subject`; two or more are `subjects` (lifecycle-design.md decision 23).
     const subjects = subjectsOf(json as Parameters<typeof subjectsOf>[0]);
     if (subjects.length === 1) out.subject = subjects[0].entity;

@@ -35,6 +35,15 @@ async function openRow(page: Page, place: "Processes" | "Diagrams", row: string)
     await page.keyboard.press("ArrowRight");
     await expect(billing).toHaveAttribute("aria-expanded", "true");
   }
+  // In the Processes explorer a domain's processes sit in a folder per use: open the ones that exist.
+  for (const use of ["Lifecycles", "Orchestrations", "Libraries"]) {
+    const useFolder = side.getByTestId(`explorer-folder-${use}`);
+    if ((await useFolder.count()) && (await useFolder.getAttribute("aria-expanded")) !== "true") {
+      await useFolder.click();
+      await page.keyboard.press("ArrowRight");
+      await expect(useFolder).toHaveAttribute("aria-expanded", "true");
+    }
+  }
   await side.getByTestId(`explorer-row-${row}`).dblclick();
   const editor = page.getByTestId("process-editor");
   await expect(editor).toBeVisible();

@@ -48,6 +48,15 @@ test("a 400-state chart paints within 250 ms and lays out in the worker within 4
   const billing = side.getByTestId("explorer-folder-Billing");
   await billing.click();
   await page.keyboard.press("ArrowRight");
+  // In the Processes explorer a domain's processes sit in a folder per use: open the ones that exist.
+  for (const use of ["Lifecycles", "Orchestrations", "Libraries"]) {
+    const useFolder = side.getByTestId(`explorer-folder-${use}`);
+    if ((await useFolder.count()) && (await useFolder.getAttribute("aria-expanded")) !== "true") {
+      await useFolder.click();
+      await page.keyboard.press("ArrowRight");
+      await expect(useFolder).toHaveAttribute("aria-expanded", "true");
+    }
+  }
   await side.getByTestId("explorer-row-Large chart").dblclick();
   await expect(chart(page)).toHaveAttribute("data-state-count", "400");
   const editor = page.getByTestId("process-editor");
