@@ -266,6 +266,10 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
       const mine = ops.get(doc.id) ?? [];
       if (mine.some((o) => o.remove && (ref.pointer === o.pointer || ref.pointer.startsWith(`${o.pointer}/`)))) continue;
       if (mine.some((o) => !o.remove && o.ref.pointer === ref.pointer)) continue;
+      if (ref.deletesHolder) {
+        markDeleted(doc.id, `names no other actor or end than ${describe(ref.toId)}`);
+        continue;
+      }
       if (!ref.required || ref.drops) {
         mine.push({ pointer: ref.removeItem ?? ref.pointer, item: ref.removeItem !== undefined, remove: !!ref.drops, ref });
         ops.set(doc.id, mine);

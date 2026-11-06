@@ -93,6 +93,16 @@ test("an invoke is added on the selected state, and F12 on a transition's source
 test("Use turns a lifecycle into an orchestration with its entity, as one undo step", async ({ page }) => {
   const editor = await openProcess(page, "InvoiceLifecycle");
   const row = explorer(page).getByTestId("explorer-row-InvoiceLifecycle");
+  // The seeded lifecycle states rights, and an orchestration holds none (MQ9901): take them out first.
+  await tab(editor, "Rights").click();
+  const rights = editor.getByTestId("rights-grid-row");
+  while ((await rights.count()) > 0) {
+    await rights
+      .first()
+      .getByRole("button", { name: /^Remove right/ })
+      .click();
+  }
+  await tab(editor, "States").click();
   await editor.getByTestId("editor-details-toggle").click();
   await editor.getByLabel("Use").selectOption("orchestration");
   // The row moves to the Orchestrations folder.

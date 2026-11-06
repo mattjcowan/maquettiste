@@ -17,6 +17,8 @@ export interface Ref {
   removeItem?: string;
   /** A required reference that remove-references answers by dropping the item at `removeItem` (a scenario object whose entity goes). */
   drops?: boolean;
+  /** Removing it deletes the document that holds it, in either resolution (the last actor or end of a named right). */
+  deletesHolder?: boolean;
 }
 
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -395,17 +397,21 @@ function rightVerbAt(doc: Json, pointer: string): { last: boolean; right: string
  * would widen it (`whole`: an entry of a lifecycle can drop itself). A deleted id in the condition takes the right too.
  */
 function rightRefs(out: Ref[], right: Json, base: string, holder: string, whole: boolean, own: ReadonlySet<string>): void {
-  const add = (pointer: string, field: string, to: unknown, item: string | null, alone: boolean) => {
+  const add = (pointer: string, field: string, to: unknown, item: string | null, alone: boolean, condition = false) => {
     const toId = str(to);
     if (!toId || own.has(toId) || toId === holder) return;
-    if (alone) out.push({ fromId: holder, pointer, field, toId, required: !whole, ...(whole ? { removeItem: base, drops: true } : {}) });
+    // An id in a condition is never rewritten: remove-references refuses, and delete-dependents takes the right (the cascade does it by `required`).
+    if (condition) out.push({ fromId: holder, pointer, field, toId, required: true });
+    // The last actor or end takes the right with it: an inline right drops from its lifecycle, a named right is deleted, in either resolution.
+    else if (alone)
+      out.push({ fromId: holder, pointer, field, toId, required: false, ...(whole ? { removeItem: base, drops: true } : { deletesHolder: true }) });
     else out.push({ fromId: holder, pointer, field, toId, required: false, ...(item ? { removeItem: item } : {}) });
   };
   for (const field of ["actors", "except", "ends"] as const) {
     const list = arr(right[field]) as unknown as string[];
     list.forEach((to, j) => add(`${base}/${field}/${j}`, field, to, `${base}/${field}/${j}`, field !== "except" && list.length === 1));
   }
-  treeIds(right.condition, `${base}/condition`, (pointer, field, to) => add(pointer, field, to, null, true));
+  treeIds(right.condition, `${base}/condition`, (pointer, field, to) => add(pointer, field, to, null, true, true));
 }
 
 /** The ids a value tree names: path ids, a ref, the states of `inState` and the path `of`. */

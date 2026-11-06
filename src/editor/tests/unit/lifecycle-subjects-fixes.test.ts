@@ -137,6 +137,10 @@ describe("the Use control", () => {
     second.use = "lifecycle";
     second.subjects = [{ id: "01JQZZZ0000000000000000050", entity: before.subject }];
     expect(update(api.backend, PURCHASE_APPROVAL, second).outcome).toBe("saved");
+    // The lifecycle states rights; they stay when it is demoted (MQ9901 refuses the save until they are removed).
+    expect(await demoteLifecycle(queryClient, store, drafts, { process: one, label: "Make it an orchestration" })).toMatch(/not a lifecycle/);
+    const { rights: _r, rightsDefault: _d, ...plain } = json(api.backend, one);
+    expect(update(api.backend, one, plain).outcome).toBe("saved");
     const refused = await demoteLifecycle(queryClient, store, drafts, { process: one, label: "Make it an orchestration" });
     expect(refused).toBeNull();
     const after = json(api.backend, one);

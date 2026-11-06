@@ -659,10 +659,12 @@ class Interpreter {
     }
     const actors = ids(ev.actors);
     if (actors.length && (!input.actor || !this.membership.allows(actors, input.actor))) return this.refuse("actor", String(ev.id));
-    // The event's list is an allow of its own lifecycle, and so are the signers of the gates on the moves it can make (decision 14).
+    // The event's list is an allow of its own lifecycle, and so are the signers of the gates on the moves it can make (decision 14): the acting actor only, never the participant's holdings.
     const closed = [
       ...(actors.length ? [String(ev.id)] : []),
-      ...this.eventMoves(input).flatMap((t) => (t.gate && ids(t.gate.signers).some((x) => this.callerSatisfies(x) === true) ? [String(t.gate.id)] : [])),
+      ...this.eventMoves(input).flatMap((t) =>
+        t.gate && !!input.actor && ids(t.gate.signers).some((x) => this.membership.accepts(x, input.actor!)) ? [String(t.gate.id)] : [],
+      ),
     ];
     if (this.checkRights(str(ev.verb), closed)) return;
     this.scope.event = this.eventObject(String(ev.name), input.actor, arr(ev.payload), input.payload);

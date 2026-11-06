@@ -18,7 +18,7 @@ export interface VerbUse {
   /** The event, transition or operation that holds it. */
   holder: string | null;
   key: string;
-  owner: "event" | "transition" | "operation" | "right";
+  owner: "event" | "transition" | "operation" | "right" | "step";
 }
 
 /** Every use of a verb in a document (the three places of decisions 11 to 13), in file order. */
@@ -42,6 +42,12 @@ export function verbUses(doc: Json): VerbUse[] {
   } else if (doc.kind === "right") {
     (Array.isArray(doc.verbs) ? (doc.verbs as unknown[]) : []).forEach((key, j) => {
       if (typeof key === "string") out.push({ pointer: `/verbs/${j}`, holder: str(doc.id), key, owner: "right" });
+    });
+  } else if (doc.kind === "scenario") {
+    // A verb step names one verb (rights-design.md section 8).
+    arr(doc.steps).forEach((st, i) => {
+      const key = str(st.verb);
+      if (st.input === "verb" && key !== null) out.push({ pointer: `/steps/${i}/verb`, holder: str(st.id), key, owner: "step" });
     });
   } else if (doc.kind === "operation") {
     const key = str(doc.verb);
@@ -162,7 +168,7 @@ const KEY = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
  * rename-verb and remove-verb over documents: the changed documents, or why the operation is refused (MQ1002). A rename to another
  * own or built-in key merges (the definition goes); `to` equal to `verb` adopts the built-in of that key.
  */
-export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { changed: Map<string, Json> } | { error: string } {
+export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { changed: Map<string, Json>; deleted: string[] } | { error: string } {
   const vocabulary = [...docs.values()].find((d) => d.kind === "verb-vocabulary");
   const own = arr(vocabulary?.verbs).find((v) => v.key === op.verb);
   if (!vocabulary || !own) return { error: `The project has no own verb with the key '${op.verb}'.` };
@@ -177,8 +183,16 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
     if (!changed.has(id)) changed.set(id, JSON.parse(JSON.stringify(json)) as Json);
     return changed.get(id)!;
   };
+  // The named rights a remove leaves with no verb are deleted, and their uses leave the lifecycles' rights.
+  const gone = new Set<string>();
+  if (!rename && !BUILT_IN_VERB_KEYS.has(op.verb))
+    for (const [id, doc] of docs) {
+      const verbs = Array.isArray(doc.verbs) ? (doc.verbs as unknown[]) : [];
+      if (doc.kind === "right" && verbs.length > 0 && verbs.every((v) => v === op.verb)) gone.add(id);
+    }
   // The uses of a built-in key are not uses of the own verb: the rename and the remove leave them as they are.
   for (const [id, doc] of BUILT_IN_VERB_KEYS.has(op.verb) ? [] : docs) {
+    if (gone.has(id)) continue;
     for (const use of verbUses(doc)) {
       if (use.key !== op.verb) continue;
       const json = working(id, doc);
@@ -186,10 +200,23 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
       if (rename) holder[lastSegment(use.pointer)] = to;
       // A right's verb is an item of its list: marked here, taken out below with the right that has no verb left.
       else if (use.owner === "right") holder[lastSegment(use.pointer)] = null;
+      else if (use.owner === "step")
+        holder.__gone = true; // a verb step goes with its verb
       else delete holder[lastSegment(use.pointer)];
     }
   }
-  if (!rename) for (const json of changed.values()) dropRightsWithoutVerbs(json);
+  if (!rename) {
+    // Uses of a right that is going leave every lifecycle, touched or not.
+    if (gone.size)
+      for (const [id, doc] of docs)
+        if (doc.kind === "process" && arr(doc.rights).some((r) => typeof r.right === "string" && gone.has(r.right))) working(id, doc);
+    for (const json of changed.values()) {
+      if (json.kind === "scenario") json.steps = arr(json.steps).filter((st) => !st.__gone);
+      if (json.kind === "process" && Array.isArray(json.rights))
+        json.rights = arr(json.rights).filter((r) => !(typeof r.right === "string" && gone.has(r.right)));
+      dropRightsWithoutVerbs(json);
+    }
+  }
   const target = arr(vocabulary.verbs).find((v) => v.key === to);
   const json = working(String(vocabulary.id), vocabulary);
   const verbs = arr(json.verbs);
@@ -200,7 +227,7 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
   json.verbs = arr(json.verbs);
   // Writes that change nothing are skipped.
   for (const [id, doc] of [...changed]) if (JSON.stringify(doc) === JSON.stringify(docs.get(id))) changed.delete(id);
-  return { changed };
+  return { changed, deleted: [...gone].sort() };
 }
 
 /** Takes the verbs marked gone out of a document's rights; a right whose last verb goes goes too (rights-design.md section 8). */

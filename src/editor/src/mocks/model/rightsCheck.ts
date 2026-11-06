@@ -58,7 +58,11 @@ function applies(entry: Json, f: Facts): Tri {
   const src = sourceOf(entry, f);
   if (!src || !f.verb || !strs(src.verbs).includes(f.verb)) return false;
   const ends = strs(src.ends);
-  if (ends.length && !(f.end && ends.includes(f.end))) return false;
+  const link = GROUPS.get(f.verb) === "link";
+  if (ends.length) {
+    // A link verb with no end known: a deny with `ends` still holds; an allow with `ends` does not grant.
+    if (f.end ? !ends.includes(f.end) : !(link && (str(src.access) ?? "deny") === "deny")) return false;
+  } else if (f.end && !link) return false; // a right with no `ends` speaks of the object only, and of every link for a link verb
   const states = strs(entry.states);
   if (states.length && f.active && !states.some((s) => f.active!.has(s))) return false;
   const actors = strs(src.actors);
@@ -232,8 +236,8 @@ export function rightsGrid(doc: Json, world: RightsWorld, filter: { states?: str
       if (filter.actors?.length && !filter.actors.includes(actor ?? "")) continue;
       const satisfies = (listed: string): Tri => {
         if (actor === null) return false;
-        if (world.ownerActors.has(listed)) return null;
-        return world.membership.accepts(listed, actor);
+        if (world.membership.accepts(listed, actor)) return true;
+        return world.ownerActors.has(listed) ? null : false;
       };
       for (const verb of verbs) {
         if (filter.verbs?.length && !filter.verbs.includes(verb)) continue;

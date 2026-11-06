@@ -120,7 +120,7 @@ test("raises inputs by Enter and by number key, advances time, and deletes a tra
   // The same signer again is refused with its reason, and the refusal is audited.
   await item(panel, "approve").getByTestId("enabled-signer").fill("signer1");
   await enabled(panel, "approve").getByTestId("enabled-raise").click();
-  await expect(rowsOf(panel, "last-step-row").first()).toHaveText("Refused: this signer already signed the gate");
+  await expect(rowsOf(panel, "last-step-row").first()).toHaveText("Refused: this signer already signed the gate, refused by Purchase approval");
   await expect(rowsOf(panel, "trace-row").last()).toHaveAttribute("data-accepted", "false");
   await expect(item(panel, "approve").getByTestId("enabled-signer")).toHaveValue("signer2");
   await enabled(panel, "approve").getByTestId("enabled-raise").click();

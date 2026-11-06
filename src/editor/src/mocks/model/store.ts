@@ -1063,6 +1063,10 @@ export class MockModel {
           candidate.set(id, entry);
           items.push({ outcome: "saved", id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
         }
+        for (const id of outcome.deleted) {
+          candidate.delete(id);
+          items.push({ outcome: "saved", id, hash: null, current: null, diagnostics: [], referrers: [], changes: null });
+        }
         continue;
       }
       if (op.op === "refresh-scenario") {
@@ -1844,9 +1848,7 @@ function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, t
     const next = edit(json);
     next.use = "orchestration";
     delete next.boundAttribute;
-    // Only lifecycles hold rights (MQ9901): a demoted process lets them go with its bindings.
-    delete next.rights;
-    delete next.rightsDefault;
+    // Only lifecycles hold rights (MQ9901): a demoted process keeps them, as the engine does, and the finding says to remove them.
     if (Array.isArray(next.subjects)) next.subjects = (next.subjects as Json[]).map(({ boundAttribute: _unbound, ...entry }) => entry);
   };
   const oneSubjectForm = (json: Json) => !Array.isArray(json.subjects) && typeof json.subject === "string";
