@@ -21,6 +21,7 @@ import { SIMULATION_LABELS as L } from "@/model/labels";
 import { summaryFromDocument } from "@/model/model";
 import type { ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
 import { verifyScenario } from "../api";
+import { attributeLabels, castValues, entityChain } from "./castNames";
 import type { ProcessContext } from "../shared";
 import { recordScenario, simulateProcess, type ScenarioVerification, type SimInput, type SimulationResult } from "./api";
 import {
@@ -47,7 +48,7 @@ import {
   type RowValue,
 } from "./model";
 import { consumeSimulationRequest, useSimulationRequest } from "./requests";
-import { addInput, atEnd, loadScenario, removeFrom, resetSession, restart, selectEntry, setStartValue, shownEntry } from "./session";
+import { addInput, atEnd, loadScenario, loadScenarioStart, removeFrom, resetSession, restart, selectEntry, setStartValue, shownEntry } from "./session";
 import { useSimulation } from "./useSimulation";
 import { setSimulationView } from "./view";
 
@@ -116,6 +117,19 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
   const cast = replay
     ? { objects: replay.scenario.objects ?? [], subject: replay.scenario.subject }
     : { objects: session.start.objects ?? [], subject: session.start.subject };
+  // Attribute names for the cast's values, by entity (the entity's own attributes and its bases').
+  const [castLabels, setCastLabels] = useState<ReadonlyMap<string, ReadonlyMap<string, string>>>(new Map());
+  const castEntities = [...new Set(cast.objects.map((o) => o.entity))].sort().join(",");
+  useEffect(() => {
+    let active = true;
+    const wanted = castEntities ? castEntities.split(",") : [];
+    void Promise.all(wanted.map(async (e) => [e, attributeLabels(await entityChain(qc, e))] as const)).then((pairs) => {
+      if (active) setCastLabels(new Map(pairs));
+    });
+    return () => {
+      active = false;
+    };
+  }, [castEntities, qc]);
   const rows = useMemo(
     () => (result && live && !result.final ? enabledRows(result, process, names, allActors) : []),
     [result, live, process, names, allActors],
@@ -233,6 +247,8 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
       const failed = verification.failure?.step ?? -1;
       const selected = verification.passed || failed < 0 ? doc.steps.length - 1 : failed;
       setReplay({ scenario: doc, verification, simulation, selected });
+      // The session takes the scenario's start values, as picking it under Start does; the steps are the replay's.
+      update((x) => loadScenarioStart(x, doc));
       return null;
     } catch (e) {
       return (e as Error).message;
@@ -353,6 +369,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
                 rows={rows}
                 result={result}
                 live={live}
+                replay={replay ? { final: !!replayEntry?.final } : null}
                 entryLabel={traceLabel(session, session.selected ?? -1, names)}
                 valueOf={valueOf}
                 onEdit={edit}
@@ -378,7 +395,9 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
           </div>
           <div className="min-h-0 overflow-auto">
             <Messages session={session} />
-            {cast.objects.length ? section("cast", L.cast, <CastSection objects={cast.objects} subject={cast.subject} entityNames={entityNames} />) : null}
+            {cast.objects.length
+              ? section("cast", L.cast, <CastSection objects={cast.objects} subject={cast.subject} entityNames={entityNames} labels={castLabels} />)
+              : null}
             {section(
               "configuration",
               L.configuration,
@@ -508,19 +527,33 @@ function compactValue(v: unknown): string {
 }
 
 /** The run's objects, read-only (edited in the scenario's JSON view): name, entity and values; the subject is marked. */
-function CastSection({ objects, subject, entityNames }: { objects: readonly ScenarioObjectDoc[]; subject?: string; entityNames: ReadonlyMap<string, string> }) {
+function CastSection({
+  objects,
+  subject,
+  entityNames,
+  labels,
+}: {
+  objects: readonly ScenarioObjectDoc[];
+  subject?: string;
+  entityNames: ReadonlyMap<string, string>;
+  labels: ReadonlyMap<string, ReadonlyMap<string, string>>;
+}) {
   return (
     <ul title={L.objectsHint} data-testid="start-objects">
       {objects.map((o) => {
-        const values = Object.entries(o.values ?? {})
-          .map(([k, v]) => `${k} ${compactValue(v)}`)
-          .join(", ");
+        const values = castValues(o.values, labels.get(o.entity) ?? new Map(), compactValue);
         return (
-          <li key={o.id} className={ROW} data-testid="start-object" data-subject={o.id === subject} title={values}>
+          <li
+            key={o.id}
+            className={cn(ROW, "h-auto min-h-[var(--mq-row-h)] flex-wrap py-0.5")}
+            data-testid="start-object"
+            data-subject={o.id === subject}
+            title={values}
+          >
             <span className="max-w-[30%] shrink-0 truncate font-medium">{o.name}</span>
             <span className="max-w-[30%] shrink-0 truncate text-secondary">{entityNames.get(o.entity) ?? o.entity}</span>
             {o.id === subject ? <span className="shrink-0 text-secondary">({L.objectSubject})</span> : null}
-            <span className="min-w-0 flex-1 truncate font-mono text-11 text-secondary">{values}</span>
+            <span className="min-w-0 flex-1 break-words font-mono text-11 text-secondary">{values}</span>
           </li>
         );
       })}
@@ -625,6 +658,7 @@ function EnabledSection({
   rows,
   result,
   live,
+  replay,
   entryLabel,
   valueOf,
   onEdit,
@@ -633,11 +667,15 @@ function EnabledSection({
   rows: EnabledRow[];
   result: SimulationResult | null;
   live: boolean;
+  /** A replay is shown: Enabled describes it, not the live session. */
+  replay: { final: boolean } | null;
   entryLabel: string;
   valueOf: (row: EnabledRow) => RowValue;
   onEdit: (row: EnabledRow, patch: Partial<RowValue>) => void;
   onRaise: (row: EnabledRow, fromKeyboard?: boolean) => void;
 }) {
+  if (replay?.final) return <Note testid="enabled-final">{L.finalReached}</Note>;
+  if (replay) return <Note testid="enabled-replay">{L.replayShown}</Note>;
   if (!result) return <Spinner label={L.running} />;
   if (!live) return <Note testid="enabled-past">{L.pastSelected(entryLabel)}</Note>;
   if (result.final) return <Note testid="enabled-final">{L.finalReached}</Note>;

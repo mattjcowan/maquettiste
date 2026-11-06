@@ -14,7 +14,7 @@ import { syncPlanLines, type ProcessDoc } from "@/model/process";
 import { applySyncCodes, applySyncEnum, syncCodes, syncEnum, type SyncCodesResult, type SyncEnumResult } from "@/editors/process/api";
 import { deriveQuickFix, fixDocuments, type QuickFix } from "./quickFix";
 import { applyQuickFix, freshQuickFix } from "./applyQuickFix";
-import { codesDescription, codesView, codeText } from "./syncCodesView";
+import { applyBlockedReason, codesDescription, codesView, codeText, hasNoValueList, NO_VALUE_LIST_NOTE } from "./syncCodesView";
 
 type Pending =
   | { kind: "initial"; fix: Extract<QuickFix, { kind: "operation" }>; target: string }
@@ -145,7 +145,7 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
   );
 }
 
-function Footer(props: { error: string | null; busy: boolean; disabled: boolean; onCancel: () => void; onApply: () => void }) {
+function Footer(props: { error: string | null; busy: boolean; disabled: boolean; reason?: string | null; onCancel: () => void; onApply: () => void }) {
   return (
     <>
       {props.error ? (
@@ -155,7 +155,13 @@ function Footer(props: { error: string | null; busy: boolean; disabled: boolean;
       ) : null}
       <div className="flex justify-end gap-2">
         <Button onClick={props.onCancel}>Cancel</Button>
-        <Button variant="primary" disabled={props.busy || props.disabled} onClick={props.onApply} data-testid="quick-fix-apply">
+        <Button
+          variant="primary"
+          disabled={props.busy || props.disabled}
+          title={props.disabled ? (props.reason ?? undefined) : undefined}
+          onClick={props.onApply}
+          data-testid="quick-fix-apply"
+        >
           Apply
         </Button>
       </div>
@@ -180,12 +186,20 @@ export function SyncCodesDialog({
   const process = useElement(pending.process);
   const entity = useElement(pending.entity);
   const entityName = String((entity.data?.json as { name?: string } | undefined)?.name ?? pending.entity);
-  const attributes = ((entity.data?.json as { attributes?: { id: string; name: string }[] } | undefined)?.attributes ?? []) as { id: string; name: string }[];
+  const attributes = ((entity.data?.json as { attributes?: { id: string; name: string }[] } | undefined)?.attributes ?? []) as {
+    id: string;
+    name: string;
+    type?: { kind?: string; typeId?: string };
+    validation?: { allowedValues?: unknown[] };
+  }[];
   // An attribute may be inherited or from a stereotype: its id shows until the entity's own list names it.
-  const attributeName = attributes.find((a) => a.id === pending.attribute)?.name ?? pending.attribute;
+  const attribute = attributes.find((a) => a.id === pending.attribute);
+  const attributeName = attribute?.name ?? pending.attribute;
+  const scalar = useElement(attribute?.type?.kind === "plain" ? attribute.type.typeId : undefined);
   const binding = `${entityName}.${attributeName}`;
   const view = codesView(pending.plan, process.data?.json as ProcessDoc | undefined);
-  const nothing = !view.binds && !view.proposed.length;
+  const reason = applyBlockedReason(view, !!pending.plan.diagnostics.length);
+  const noList = !view.proposed.length && view.unmatched.length > 0 && hasNoValueList(attribute, scalar.data?.json as never);
   return (
     <DialogContent title={`Codes for ${binding}`} description={codesDescription(view, binding)}>
       <div className="flex flex-col gap-2 text-12" data-testid="quick-fix-codes">
@@ -210,6 +224,7 @@ export function SyncCodesDialog({
             ))}
           </ul>
         ) : null}
+        {noList ? <p data-testid="quick-fix-no-list">{NO_VALUE_LIST_NOTE}</p> : null}
         {view.binds ? <p>The lifecycle will bind {binding}.</p> : null}
         {view.kept.length ? (
           <div data-testid="quick-fix-code-kept">
@@ -227,7 +242,8 @@ export function SyncCodesDialog({
       <Footer
         error={error ?? pending.plan.diagnostics[0]?.message ?? null}
         busy={busy}
-        disabled={!!pending.plan.diagnostics.length || nothing}
+        disabled={reason !== null}
+        reason={reason}
         onCancel={onCancel}
         onApply={onApply}
       />

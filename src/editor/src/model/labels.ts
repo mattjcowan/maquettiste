@@ -510,6 +510,7 @@ export const SIMULATION_LABELS = {
   advanceTime: "advance time",
   noEnabled: "Nothing is enabled: the process waits for nothing it can take.",
   finalReached: "The process reached a final state.",
+  replayShown: "A replay is shown. Close it to raise inputs.",
   pastSelected: (label: string) => `Showing the state after ${label}. Select the last input to raise more.`,
   enabledHint: "Enter raises the focused row · 1 to 9 raise the first nine rows",
   // Time

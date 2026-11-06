@@ -51,7 +51,38 @@ export function codesView(plan: Plan, process: Pick<ProcessDoc, "states"> | unde
 /** The dialog's one-line description: what will happen, for the binding it is about. */
 export function codesDescription(view: CodesView, binding: string): string {
   const n = view.proposed.length;
-  const parts = [n ? `${n === 1 ? "1 state gets" : `${n} states get`} a code for ${binding}` : `No state needs a new code for ${binding}`];
+  const m = view.unmatched.length;
+  const states = (k: number) => (k === 1 ? "1 state has" : `${k} states have`);
+  const head = n
+    ? `${n === 1 ? "1 state gets" : `${n} states get`} a code for ${binding}`
+    : m
+      ? `${states(m)} no code; none could be proposed`
+      : `No state needs a new code for ${binding}`;
+  const parts = [head];
+  if (n && m) parts.push(`${m === 1 ? "1 other state" : `${m} other states`} could not be proposed a code`);
   if (view.binds) parts.push("the lifecycle will also bind this attribute");
   return `${parts.join("; ")}. States that already have a code keep it.`;
+}
+
+interface AttributeShape {
+  type?: { kind?: string; typeId?: string };
+  validation?: { allowedValues?: unknown[] };
+}
+
+/** True for a plain attribute (text, integer...) with no list of allowed values, own or from its scalar type: there is nothing to take codes from. */
+export function hasNoValueList(attribute: AttributeShape | undefined, scalar: AttributeShape | undefined): boolean {
+  if (!attribute || (attribute.type?.kind ?? "plain") !== "plain") return false;
+  return !attribute.validation?.allowedValues?.length && !scalar?.validation?.allowedValues?.length;
+}
+
+/** The plain line shown when nothing could be proposed because the attribute has no list of values. */
+export const NO_VALUE_LIST_NOTE =
+  "This attribute has no list of values to take codes from. Type the codes in the States tab, or give the attribute allowed values.";
+
+/** Why Apply is off, or null when it is on. */
+export function applyBlockedReason(view: CodesView, hasDiagnostics: boolean): string | null {
+  if (hasDiagnostics) return "The engine refused this sync; see the message above.";
+  if (!view.binds && !view.proposed.length)
+    return view.unmatched.length ? "No code could be proposed, so there is nothing to apply." : "Every state already has a code, so there is nothing to apply.";
+  return null;
 }

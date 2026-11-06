@@ -18,6 +18,7 @@ import { displayName, KIND_LABELS } from "@/model/model";
 import { EDITOR_LABELS, EDITOR_TAB_LABELS, GROUP_LABELS } from "@/model/labels";
 import { local } from "@/lib/storage";
 import { FindingsSummary } from "@/problems/findings";
+import { entryIdsOf, useProblems } from "./process/shared";
 import { Button } from "@/components/ui/button";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { indexLookup } from "@/model/index";
@@ -92,7 +93,8 @@ export function EditorLayout({
   const view = useEditor(store, (s) => s.editors.view[kind]);
   const list = tabs.filter((t): t is EditorSubTab => !!t);
   const current = list.some((t) => t.value === view && !t.disabled) ? view! : list[0]?.value;
-  const diagnostics = draft?.status === "invalid" ? ctx.diagnostics : [];
+  // A refused edit shows its own findings; otherwise the saved element's findings from the last validation, whatever their severity.
+  const diagnostics = useProblems(id, draft?.status === "invalid" ? ctx.diagnostics : [], entryIdsOf(ctx.json));
   // The display names, the description and the top controls can be folded away (a chart or a grid then gets the room;
   // the inspector shows the same fields); the choice is kept per browser and kind. A process starts folded: its chart
   // is what it opens on, and the fields it hides are all in the inspector.

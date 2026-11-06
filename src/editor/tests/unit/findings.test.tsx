@@ -169,7 +169,9 @@ describe("the Sync codes dialog", () => {
       ["Paid", 'from the row labeled "Paid"'],
     ]);
     expect(view.kept).toEqual([{ path: "Draft", code: "DRF" }]);
-    expect(codesDescription(view, "Invoice.status")).toBe("2 states get a code for Invoice.status. States that already have a code keep it.");
+    expect(codesDescription(view, "Invoice.status")).toBe(
+      "2 states get a code for Invoice.status; 1 other state could not be proposed a code. States that already have a code keep it.",
+    );
     expect(codesDescription({ ...view, binds: true }, "Invoice.status")).toContain("the lifecycle will also bind this attribute");
   });
 

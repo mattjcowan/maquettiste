@@ -69,7 +69,7 @@ export function StatesTab({
   const first = (r: StateRow, key: "entry" | "exit") => stateIndex(process).get(r.id)?.state[key]?.[0];
 
   const columns: GridColumn<StateRow>[] = [
-    { key: "name", label: "Name", kind: "text", width: "min-w-40", value: (r) => r.name },
+    { key: "name", label: "Name", kind: "text", width: "min-w-40", sticky: true, value: (r) => r.name },
     {
       key: "type",
       label: "Type",
@@ -113,7 +113,7 @@ export function StatesTab({
       key: "entry",
       label: "Entry",
       kind: "multi",
-      width: "min-w-24",
+      width: "w-20 max-w-20",
       value: (r) => r.entry,
       definition: (r) => go.node("transitions", first(r, "entry")),
       options: () => actions.map((a) => ({ value: a.id, label: a.name })),
@@ -122,12 +122,12 @@ export function StatesTab({
       key: "exit",
       label: "Exit",
       kind: "multi",
-      width: "min-w-24",
+      width: "w-20 max-w-20",
       value: (r) => r.exit,
       definition: (r) => go.node("transitions", first(r, "exit")),
       options: () => actions.map((a) => ({ value: a.id, label: a.name })),
     },
-    { key: "invokes", label: "Invokes", kind: "readonly", width: "min-w-24", value: (r) => r.invokes },
+    { key: "invokes", label: "Invokes", kind: "readonly", width: "w-20 max-w-20", value: (r) => r.invokes },
   ];
   const rootOrder = boundStates(process).map((s) => s.id);
   if (lifecycle && subjectMembers.length)

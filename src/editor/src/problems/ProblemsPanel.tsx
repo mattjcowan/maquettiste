@@ -170,7 +170,7 @@ export function ProblemsPanel() {
                   const Icon = ICON[d.severity];
                   const target = vocabularyProblemTarget(d.rule, group.elementId, index.data ?? []);
                   return (
-                    <li key={i} className="flex items-start">
+                    <li key={i} className="flex items-start" aria-label={`${d.severity} ${d.rule}: ${d.message}`}>
                       <button
                         type="button"
                         data-testid={`problem-${d.rule}`}
