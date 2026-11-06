@@ -98,6 +98,7 @@ public sealed partial class ModelStore
         ["guard"] = ExprSiteKind.Guard,
         ["value"] = ExprSiteKind.Value,
         ["set"] = ExprSiteKind.Set,
+        ["right"] = ExprSiteKind.Right,
     };
 
     /// <summary>
@@ -130,6 +131,13 @@ public sealed partial class ModelStore
         var sub = string.Equals(element.Id, request.Element, StringComparison.Ordinal) ? null : request.Element;
         var database = DatabaseOf(snapshot, request.Database);
         var site = SiteOf(snapshot, element, sub, request);
+        if (request.Lifecycle is not null)
+            site = InLifecycle(snapshot, element, site, request.Lifecycle);
+        if (site.Unscoped)
+        {
+            throw new ArgumentException($"Named right '{element.Name}' is used by no lifecycle, so its condition has no scope yet; pass lifecycle to preview it as if used there.",
+                nameof(request));
+        }
 
         var scope = ExprSites.Scope(snapshot, element, document, site, text: request.Text is not null);
         var problems = new List<Diagnostic>();
@@ -173,6 +181,25 @@ public sealed partial class ModelStore
         return new ExpressionPreview(detail, Outcomes.Sort(problems));
     }
 
+    /// <summary>
+    /// A named right's condition, or text for it, read as if the right were used by a lifecycle (rights-design.md section 8): the lifecycle
+    /// by id, else by name.
+    /// </summary>
+    private static ExprSite InLifecycle(ModelSnapshot snapshot, Element element, ExprSite site, string key)
+    {
+        if (element is not Right right || site.Kind != ExprSiteKind.Right)
+            throw new ArgumentException("lifecycle goes with a named right's condition: it previews the condition as if a lifecycle used the right.", nameof(key));
+        var lifecycle = snapshot.Get<Process>(key) is { } byId ? byId : snapshot.All<Process>().Where(p => string.Equals(p.Name, key, StringComparison.Ordinal)).ToList() switch
+        {
+            [var one] => one,
+            [] => throw new ArgumentException($"No process has the id or name '{key}'.", nameof(key)),
+            var several => throw new ArgumentException($"'{key}' names {several.Count} processes; pass one id.", nameof(key)),
+        };
+        if (lifecycle.Use != ProcessUse.Lifecycle)
+            throw new ArgumentException($"Process '{lifecycle.Name}' is no lifecycle, and only lifecycles hold rights.", nameof(key));
+        return ExprSites.NamedRightSite(snapshot, right, lifecycle) with { Tree = site.Tree };
+    }
+
     /// <summary>An element's kind after its article, to begin a sentence: "An entity", "A table".</summary>
     private static string AKind(Element element) => (BuiltinRules.Article(element.KindName) == "an" ? "An " : "A ") + element.KindName;
 
@@ -200,7 +227,7 @@ public sealed partial class ModelStore
         if (request.Text is not null && pointer is null)
         {
             if (!SiteKinds.TryGetValue(request.Site!, out var kind))
-                throw new ArgumentException($"site must be check, value, guard, set or the pointer of a site, not '{request.Site}'.", nameof(request));
+                throw new ArgumentException($"site must be check, value, guard, set, right or the pointer of a site, not '{request.Site}'.", nameof(request));
             if (kind == ExprSiteKind.Set)
             {
                 if (element is not Process process || sub is null || string.IsNullOrEmpty(request.Attribute))
@@ -211,7 +238,7 @@ public sealed partial class ModelStore
 
             return ExprSites.Free(snapshot, element, kind)
                 ?? throw new ArgumentException($"{AKind(element)} has no {request.Site} site: a table, stereotype, entity or constraint has checks, an entity derived values, "
-                    + "a process or an operation guards.", nameof(request));
+                    + "a process or an operation guards, a lifecycle or a named right a right's condition.", nameof(request));
         }
 
         var matches = sites.Where(s => (sub is null || string.Equals(s.SubId, sub, StringComparison.Ordinal))
@@ -241,6 +268,8 @@ public sealed partial class ModelStore
     /// </summary>
     private static (ExprColumns? Mapping, string? Note) SqlMapping(ModelSnapshot snapshot, Element element, ExprSite site, TypedExpr typed, Database? database, string? path)
     {
+        if (site.Kind == ExprSiteKind.Right)
+            return (null, "A right's condition reads the object, the actor and states where the right is checked, not a table: it runs as JavaScript only.");
         switch (element)
         {
             case Table table:

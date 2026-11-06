@@ -1074,7 +1074,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         var membershipsMatter = element is Actor && Processes.ActorMembership.Of(model).Any;
         // A scenario names actors only through its participants, which MQ9106 counts as used (actors-design.md decision 6): a scenario
         // without them reaches no actor. One that had participants before the change is followed by the store (FormerActorPeers).
-        if (element is Process or Actor || (element is Scenario scenarioSaved && scenarioSaved.Participants.Count > 0))
+        // A named right that names an actor counts it as used too (rights-design.md section 5).
+        if (element is Process or Actor or Right || (element is Scenario scenarioSaved && scenarioSaved.Participants.Count > 0))
         {
             foreach (var actor in model.All<Actor>())
             {
@@ -1099,6 +1100,31 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             foreach (var user in model.All<Process>())
             {
                 if (!(membershipsMatter && NamesActor(model, user)) && UsesThroughLibraryGate(model, user, gateActor.Id) && model.GetDocument(user.Id) is { } peer)
+                    yield return peer;
+            }
+
+            // MQ9604 at each use of a named right that names the actor: the lifecycle names the right, not the actor (rights-design.md decision 7).
+            if (gateActor.Relative is not null)
+            {
+                foreach (var reference in model.ReferencesTo(gateActor.Id))
+                {
+                    if (model.Get<Right>(reference.FromElementId) is not { } naming)
+                        continue;
+                    foreach (var use in ExprSites.RightUses(model, naming))
+                    {
+                        if (model.GetDocument(use.Id) is { } peer)
+                            yield return peer;
+                    }
+                }
+            }
+        }
+
+        // A named right's condition, ends and actors from the object are judged at each use (rights-design.md decision 7).
+        if (element is Right changedRight)
+        {
+            foreach (var use in ExprSites.RightUses(model, changedRight))
+            {
+                if (model.GetDocument(use.Id) is { } peer)
                     yield return peer;
             }
         }
@@ -1139,6 +1165,22 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             {
                 if ((relatives ? owned.Use != ProcessUse.Library : owned.Subjects.Any(s => s.Owner is not null)) && model.GetDocument(owned.Id) is { } peer)
                     yield return peer;
+            }
+
+            // A named right's condition and ends are typed at each use against the subjects (rights-design.md decision 7), and the
+            // lifecycle names the right, not what the condition reads. None without a named right that has either.
+            if (!relatives)
+            {
+                foreach (var named in model.All<Right>())
+                {
+                    if (named.Condition is null && named.Ends.Count == 0)
+                        continue;
+                    foreach (var use in ExprSites.RightUses(model, named))
+                    {
+                        if (model.GetDocument(use.Id) is { } peer)
+                            yield return peer;
+                    }
+                }
             }
         }
 

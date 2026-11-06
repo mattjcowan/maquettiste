@@ -4,7 +4,7 @@ namespace Maquettiste.Engine.Validation;
 
 /// <summary>
 /// The verb rules (verbs-design.md section 5): MQ9702, MQ9703 and MQ9706 on the verb vocabulary; MQ9701, MQ9704 and MQ9705 at each event,
-/// transition and operation that names a verb. Every rule needs a verb vocabulary or a <c>verb</c> key, so a model without either gives the
+/// transition, operation and right that names a verb (rights-design.md section 5). Every rule needs a verb vocabulary or a <c>verb</c> key, so a model without either gives the
 /// same findings as before. MQ9707 compares a save with the stored model (<see cref="SaveRules"/>).
 /// </summary>
 internal static class VerbRules
@@ -45,9 +45,20 @@ internal static class VerbRules
                     CheckUse(context.Model, verb, pointer, t.Id, "This transition", report);
                 }
 
+                for (var i = 0; i < process.Rights.Count; i++)
+                {
+                    var right = process.Rights[i];
+                    for (var k = 0; k < right.Verbs.Count; k++)
+                        CheckUse(context.Model, right.Verbs[k], Ptr.At(Ptr.At("/rights", i) + "/verbs", k), right.Id, $"Right '{right.Name}'", report);
+                }
+
                 break;
             case Operation { Verb: { } operationVerb } operation:
                 CheckUse(context.Model, operationVerb, "/verb", operation.Id, $"Operation '{operation.Name}'", report);
+                break;
+            case Right named:
+                for (var k = 0; k < named.Verbs.Count; k++)
+                    CheckUse(context.Model, named.Verbs[k], Ptr.At("/verbs", k), named.Id, $"Named right '{named.Name}'", report);
                 break;
         }
     }

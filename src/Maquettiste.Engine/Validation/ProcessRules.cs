@@ -179,6 +179,8 @@ internal static partial class ProcessRules
 
         Unique("gate", gates);
         UsedNames("gate", gates.Select(g => g.Item1), uses.Where(u => u.Gate is not null).Select(u => (u.Gate!.Name, u.Pointer, u.Gate.Id)));
+        // An inline right's name is unique among the lifecycle's inline rights (rights-design.md decision 3); a use has no name of its own.
+        Unique("right", process.Rights.Select((r, i) => (r.Right is null ? r.Name ?? "" : "", "/rights/" + N(i), r.Id)));
 
         // A library member's name must not clash with an own node's or another member's where code meets them: a pack generates one method per name.
         void UsedNames(string what, IEnumerable<string> own, IEnumerable<(string Name, string Pointer, string Id)> used)
@@ -1253,7 +1255,8 @@ internal static partial class ProcessRules
         var membership = ActorMembership.Of(model);
         // A process names it, an actor from the object is the members of it, or a scenario's participant stands for it or holds it
         // (actors-design.md decision 6).
-        bool Named(string id) => model.ReferencesTo(id).Any(r => model.Get<Process>(r.FromElementId) is not null
+        // A right that names it in its actors or except counts too, a named right included (rights-design.md section 5).
+        bool Named(string id) => model.ReferencesTo(id).Any(r => model.Get<Process>(r.FromElementId) is not null || model.Get<Right>(r.FromElementId) is not null
             || (model.Get<Actor>(r.FromElementId) is { Relative.MembersOf: { } holder } && string.Equals(holder, id, StringComparison.Ordinal))
             || (model.Get<Scenario>(r.FromElementId) is not null && r.JsonPointer.StartsWith("/participants/", StringComparison.Ordinal)));
         // An actor counts as used when a process names it, one of its members at any depth, or an actor it is a member of at any depth

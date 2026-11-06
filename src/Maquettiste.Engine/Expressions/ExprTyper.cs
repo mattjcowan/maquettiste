@@ -152,6 +152,7 @@ public static class ExprTyper
     {
         ExprSiteKind.Check => "check",
         ExprSiteKind.Guard => "guard",
+        ExprSiteKind.Right => "right's condition",
         _ => "rule condition",
     };
 
@@ -352,7 +353,9 @@ public static class ExprTyper
             {
                 Report("MQ3102", pointer, container.Navigation(path[^1]) is { } last
                     ? "The path ends at the navigation '" + last.Name + "'; it must go on to an attribute."
-                    : "The site has no member with the id '" + path[^1] + "'.");
+                    : scope.Site == ExprSiteKind.Right
+                        ? "The site has no member with the id '" + path[^1] + "'; a right's condition reads the object under subject, never the context or a payload."
+                        : "The site has no member with the id '" + path[^1] + "'.");
                 return null;
             }
 

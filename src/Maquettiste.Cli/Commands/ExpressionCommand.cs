@@ -26,11 +26,11 @@ internal static class ExpressionCommand
         var text = line.Value("--text");
         if (text is null)
         {
-            line.Expect("expression preview", 3, "--at", "--database", "--values", "--format");
+            line.Expect("expression preview", 3, "--at", "--database", "--lifecycle", "--values", "--format");
         }
         else
         {
-            line.Expect("expression preview", 2, "--text", "--on", "--site", "--database", "--values", "--format");
+            line.Expect("expression preview", 2, "--text", "--on", "--site", "--database", "--lifecycle", "--values", "--format");
             if (line.Value("--on") is null || line.Value("--site") is null)
                 throw new UsageException("--text needs --on <element> and --site <check|value|guard|pointer>.");
         }
@@ -55,6 +55,7 @@ internal static class ExpressionCommand
                     Text = text,
                     Site = line.Value("--site"),
                     Database = line.Value("--database"),
+                    Lifecycle = line.Value("--lifecycle"),
                     Values = values,
                 }, ct).ConfigureAwait(false);
             }
