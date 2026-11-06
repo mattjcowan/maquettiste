@@ -12,14 +12,15 @@ import { elementQuery, keys, upsertIndexRow, useIndex } from "@/api/queries";
 import type { AttributeDoc, ModelJson } from "@/api/types";
 import { useServices } from "@/app/context";
 import { Button, iconTitle } from "@/components/ui/button";
-import { describeVerb } from "@/model/verbList";
+import { describeVerb, verbGroups } from "@/model/verbList";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/menu";
 import { useVerbs } from "@/verbs/useVerbs";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Badge, Spinner } from "@/components/ui/misc";
 import { cn } from "@/lib/cn";
 import { indexLookup } from "@/model/index";
-import { SIMULATION_LABELS as L } from "@/model/labels";
+import { RIGHT_LABELS as RL, SIMULATION_LABELS as L } from "@/model/labels";
 import { summaryFromDocument } from "@/model/model";
 import type { ParticipantDoc, ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
 import { verifyScenario } from "../api";
@@ -105,7 +106,12 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
   const focusEnabled = useRef(false);
 
   const participants = (replay ? replay.scenario.participants : session.start.participants) ?? NO_PARTICIPANTS;
-  const names = useMemo(() => namesOf(process, actorNames, participants), [process, actorNames, participants]);
+  // What a refusal points at: the lifecycles and named rights of the project, by name (the process's own parts name themselves).
+  const elementNames = useMemo(
+    () => new Map((index.data ?? []).filter((r) => r.kind === "process" || r.kind === "right").map((r) => [r.id, r.displayName || r.name] as [string, string])),
+    [index.data],
+  );
+  const names = useMemo(() => namesOf(process, actorNames, participants, elementNames), [process, actorNames, participants, elementNames]);
   const entityNames = useMemo(() => new Map((index.data ?? []).filter((r) => r.kind === "entity").map((r) => [r.id, r.name])), [index.data]);
   const allActors = useMemo(() => actors.map((a) => ({ id: a.id, name: a.name })), [actors]);
   const scenarios = useMemo(
@@ -387,6 +393,14 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
                 onEdit={edit}
                 onRaise={raise}
               />,
+              process.use === "lifecycle" ? (
+                <DoMenu
+                  participants={participants}
+                  actors={allActors}
+                  disabled={!result || !live || !!result.final || !!replay}
+                  onDo={(verb, who) => update((s) => addInput(s, { input: "verb", verb, ...who }))}
+                />
+              ) : undefined,
             )}
             {section(
               "time",
@@ -502,6 +516,64 @@ function Section({
       </div>
       {open ? children : null}
     </section>
+  );
+}
+
+/** The Do… menu (rights-design.md section 10): a verb done to the object, as the chosen participant or actor. */
+function DoMenu({
+  participants,
+  actors,
+  disabled,
+  onDo,
+}: {
+  participants: readonly ParticipantDoc[];
+  actors: readonly { id: string; name: string }[];
+  disabled: boolean;
+  onDo: (verb: string, who: { participant?: string; actor?: string }) => void;
+}) {
+  const verbs = useVerbs();
+  const [who, setWho] = useState("");
+  const groups = verbGroups("right", verbs.own, verbs.hidden)
+    .filter((g) => g.id !== "move" && g.id !== "signature" && g.id !== "task")
+    .map((g) => ({ ...g, options: g.options.filter((o) => o.key !== "freeze" && o.key !== "thaw") }))
+    .filter((g) => g.options.length);
+  const pick = (): { participant?: string; actor?: string } =>
+    who.startsWith("p:") ? { participant: who.slice(2) } : who.startsWith("a:") ? { actor: who.slice(2) } : {};
+  return (
+    <span className="flex items-center gap-1">
+      <Select aria-label={RL.doAs} className={cn(FIELD, "w-28")} value={who} onChange={(e) => setWho(e.target.value)} data-testid="do-as">
+        <option value="">{RL.doAsNobody}</option>
+        {participants.map((p) => (
+          <option key={p.id} value={`p:${p.id}`}>
+            {p.name}
+          </option>
+        ))}
+        {actors.map((a) => (
+          <option key={a.id} value={`a:${a.id}`}>
+            {a.name}
+          </option>
+        ))}
+      </Select>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="secondary" size="sm" className={SMALL} disabled={disabled} title={RL.doMenuTip} data-testid="do-menu">
+            {RL.doMenu}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" data-testid="do-menu-content">
+          {groups.map((g) => (
+            <div key={g.id}>
+              <DropdownMenuLabel>{g.label}</DropdownMenuLabel>
+              {g.options.map((o) => (
+                <DropdownMenuItem key={o.key} onSelect={() => onDo(o.key, pick())} data-testid={`do-${o.key}`}>
+                  {o.label}
+                </DropdownMenuItem>
+              ))}
+            </div>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
   );
 }
 
@@ -1143,7 +1215,12 @@ function TraceSection({
             {!r.ran ? (
               <span className="text-11">{L.notRun}</span>
             ) : !r.accepted ? (
-              <Badge tone="danger" title={L.refusals[r.refusal ?? ""] ?? r.refusal ?? ""}>
+              <Badge
+                tone="danger"
+                title={
+                  r.refusedBy ? RL.refusedByLine(L.refusals[r.refusal ?? ""] ?? r.refusal ?? "", r.refusedBy) : (L.refusals[r.refusal ?? ""] ?? r.refusal ?? "")
+                }
+              >
                 {r.refusal}
               </Badge>
             ) : (

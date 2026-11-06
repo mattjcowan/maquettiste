@@ -12,7 +12,7 @@ export type StateType = (typeof STATE_TYPES)[number];
 export const TRIGGERS = ["event", "after", "done", "always", "invoke-done", "invoke-error"] as const;
 export type Trigger = (typeof TRIGGERS)[number];
 export const INVOKE_TYPES = ["process", "service", "human-task"] as const;
-export const STEP_INPUTS = ["event", "time", "invoke-done", "invoke-error"] as const;
+export const STEP_INPUTS = ["event", "time", "invoke-done", "invoke-error", "verb"] as const;
 
 export interface InvokeDoc {
   id: string;
@@ -188,7 +188,12 @@ export interface StepDoc {
   reason?: string;
   payload?: Json;
   assume?: Record<string, boolean>;
-  expect?: { accepted?: boolean; states?: string[]; context?: Json; values?: Json };
+  /** A verb step (rights-design.md decision 25): the verb, for `modify` the values by attribute id, and the link it acts on. */
+  verb?: string;
+  values?: Json;
+  end?: string;
+  object?: string;
+  expect?: { accepted?: boolean; states?: string[]; context?: Json; values?: Json; refusal?: string; refusedBy?: string };
   description?: unknown;
 }
 
@@ -818,6 +823,14 @@ export interface StepRow {
   /** The expected values of the object, by attribute name (read-only: filled by Update from replay). */
   values: string;
   accepted: boolean;
+  /** A verb step: the verb's key, the values it sets, the link end and the linked object (names). */
+  verb: string;
+  setValues: string;
+  end: string;
+  object: string;
+  /** What the step expects of a refusal: the reason's key and the element's name. */
+  refusal: string;
+  refusedBy: string;
 }
 
 /** `name=value` pairs of a map keyed by attribute (or guard) id, names from `names`. */
@@ -871,9 +884,16 @@ export function stepRows(
   process: ProcessDoc | undefined,
   actorNames: Map<string, string>,
   valueNames: Map<string, string> = new Map(),
+  /** Names of what else a step names or a refusal points at: ends, rights, lifecycles, gates. */
+  more: ReadonlyMap<string, string> = new Map(),
 ): StepRow[] {
   const { ids, attrs, guards } = stepNames(process, actorNames);
   for (const p of scenario.participants ?? []) ids.set(p.id, p.name);
+  for (const o of scenario.objects ?? []) ids.set(o.id, o.name);
+  for (const [id, name] of more) ids.set(id, name);
+  for (const g of process?.guards ?? []) ids.set(g.id, g.name);
+  for (const t of process?.transitions ?? []) if (t.gate) ids.set(t.gate.id, t.gate.name);
+  if (process) ids.set(process.id, process.name);
   const name = (id: string | undefined) => (id ? (ids.get(id) ?? "?") : "");
   return scenario.steps.map((s, i) => {
     const input = s.input ?? "event";
@@ -894,6 +914,12 @@ export function stepRows(
       context: mapText(s.expect?.context, attrs),
       values: mapText(s.expect?.values, valueNames),
       accepted: s.expect?.accepted !== false,
+      verb: s.verb ?? "",
+      setValues: mapText(s.values, valueNames),
+      end: name(s.end),
+      object: name(s.object),
+      refusal: s.expect?.refusal ?? "",
+      refusedBy: s.expect?.refusedBy ? name(s.expect.refusedBy) : "",
     };
   });
 }

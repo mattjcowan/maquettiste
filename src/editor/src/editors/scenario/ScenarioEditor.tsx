@@ -14,6 +14,9 @@ import { useScenarioStatuses } from "@/explorer/processApi";
 import { TextField } from "@/inspector/fields";
 import { newId } from "@/lib/ids";
 import { parseValuesText } from "@/model/effects";
+import { useObjectFields } from "../actor/useObjectFields";
+import { describeVerb, verbGroups } from "@/model/verbList";
+import { useVerbs } from "@/verbs/useVerbs";
 import { indexLookup } from "@/model/index";
 import {
   idsOfNames,
@@ -36,7 +39,7 @@ import { verifyScenario } from "../process/api";
 import { useActors, useProblems, rowProblems } from "../process/shared";
 import { ScenarioStatusBadge } from "../process/ScenariosTab";
 import { ObjectsGrid, ParticipantsGrid } from "./ParticipantsGrid";
-import { PARTICIPANT_LABELS as PL } from "@/model/labels";
+import { PARTICIPANT_LABELS as PL, RIGHT_LABELS as RL } from "@/model/labels";
 import { EFFECT_LABELS as EL } from "@/model/effectLabels";
 
 type Rec = Record<string, unknown>;
@@ -143,7 +146,27 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const valueNames = new Map<string, string>();
   for (const id of chain)
     for (const a of (chainDocs.get(id)?.json as { attributes?: { id: string; name: string }[] } | undefined)?.attributes ?? []) valueNames.set(a.id, a.name);
-  const rows = stepRows(scenario, processDoc, actorNames, valueNames);
+  const verbs = useVerbs();
+  const objectFields = useObjectFields(starts);
+  const usedRights = (processDoc?.rights ?? []).flatMap((r) => (r.right ? [r.right] : []));
+  const namedRights = useElements(usedRights).byId;
+  // What a verb step's link and a refusal point at: relation ends, the process's rights (inline or named) and other lifecycles.
+  const more = new Map<string, string>();
+  for (const f of objectFields.fields) more.set(f.id, f.name);
+  for (const r of processDoc?.rights ?? [])
+    more.set(r.right ?? r.id, r.right ? String((namedRights.get(r.right)?.json as Rec | undefined)?.name ?? "?") : (r.name ?? "?"));
+  for (const step of scenario.steps) {
+    const id = step.expect?.refusedBy;
+    if (id && !more.has(id)) more.set(id, lookup.byId.get(id)?.displayName || lookup.byId.get(id)?.name || "?");
+  }
+  const rows = stepRows(scenario, processDoc, actorNames, valueNames, more);
+  const verbOptions: GridOption[] = verbGroups("right", verbs.own, verbs.hidden)
+    .filter((g) => g.id !== "move" && g.id !== "signature" && g.id !== "task")
+    .flatMap((g) => g.options.filter((o) => o.key !== "freeze" && o.key !== "thaw").map((o) => ({ value: o.key, label: o.label })));
+  const endOptions: GridOption[] = objectFields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: f.name }));
+  const objectOptions: GridOption[] = (scenario.objects ?? []).map((o) => ({ value: o.id, label: o.name }));
+  const verbSteps = rows.some((r) => r.input === "verb");
+  const refusals = rows.some((r) => r.refusal || r.refusedBy);
   const names = stepNames(processDoc, actorNames);
   const states = processDoc ? [...stateIndex(processDoc).values()].map((i) => ({ id: i.state.id, name: i.path })) : [];
   const events: GridOption[] = (processDoc?.events ?? []).map((e) => ({ value: e.id, label: e.name }));
@@ -162,10 +185,48 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       label: "Event",
       kind: (r) => (r.input === "time" ? "text" : "select"),
       width: "min-w-28",
-      value: (r) => r.on,
-      editValue: (r) => (r.input === "event" ? (step(r)?.event ?? "") : r.input === "time" ? (step(r)?.after ?? "") : (step(r)?.invoke ?? "")),
-      options: (r) => (r.input === "event" ? events : invokes),
+      value: (r) => (r.input === "verb" ? (describeVerb(r.verb, verbs.own)?.label ?? r.verb) : r.on),
+      editValue: (r) =>
+        r.input === "event"
+          ? (step(r)?.event ?? "")
+          : r.input === "time"
+            ? (step(r)?.after ?? "")
+            : r.input === "verb"
+              ? (step(r)?.verb ?? "")
+              : (step(r)?.invoke ?? ""),
+      options: (r) => (r.input === "event" ? events : r.input === "verb" ? verbOptions : invokes),
     },
+    ...(verbSteps
+      ? [
+          {
+            key: "setValues",
+            label: RL.stepValues,
+            tooltip: RL.stepValuesHint,
+            kind: "text" as const,
+            width: "min-w-28",
+            mono: true,
+            value: (r: StepRow) => r.setValues,
+          },
+          {
+            key: "end",
+            label: RL.linkEnd,
+            kind: "select" as const,
+            width: "min-w-24",
+            value: (r: StepRow) => r.end,
+            editValue: (r: StepRow) => step(r)?.end ?? "",
+            options: () => [none, ...endOptions],
+          },
+          {
+            key: "object",
+            label: RL.linkObject,
+            kind: "select" as const,
+            width: "min-w-24",
+            value: (r: StepRow) => r.object,
+            editValue: (r: StepRow) => step(r)?.object ?? "",
+            options: () => [none, ...objectOptions],
+          },
+        ]
+      : []),
     ...(scenario.participants?.length
       ? [
           {
@@ -219,6 +280,26 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       mono: true,
       value: (r) => r.values,
     },
+    ...(refusals
+      ? [
+          {
+            key: "refusal",
+            label: RL.refusal,
+            tooltip: RL.expectedRefusalHint,
+            kind: "readonly" as const,
+            width: "min-w-24",
+            value: (r: StepRow) => (r.refusal ? (RL.refusalWords[r.refusal] ?? r.refusal) : ""),
+          },
+          {
+            key: "refusedBy",
+            label: RL.refusedBy,
+            tooltip: RL.expectedRefusedByHint,
+            kind: "readonly" as const,
+            width: "min-w-28",
+            value: (r: StepRow) => r.refusedBy,
+          },
+        ]
+      : []),
     {
       key: "status",
       label: "Replay",
@@ -253,7 +334,15 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         if (v !== "event") delete s.event;
         if (v !== "time") delete s.after;
         if (v !== "invoke-done" && v !== "invoke-error") delete s.invoke;
-      } else if (key === "on") setOpt(s, row.input === "event" ? "event" : row.input === "time" ? "after" : "invoke", v.trim());
+        if (v !== "verb") {
+          delete s.verb;
+          delete s.values;
+          delete s.end;
+          delete s.object;
+        } else if (!s.verb && verbOptions[0]) s.verb = verbOptions.find((o) => o.value === "modify")?.value ?? verbOptions[0].value;
+      } else if (key === "on") setOpt(s, row.input === "event" ? "event" : row.input === "time" ? "after" : row.input === "verb" ? "verb" : "invoke", v.trim());
+      else if (key === "end" || key === "object") setOpt(s, key, v.trim());
+      else if (key === "setValues") setOpt(s, "values", parseValuesText(v, valueNames).values);
       else if (key === "participant" || key === "actor" || key === "meaning" || key === "signer" || key === "reason") setOpt(s, key, v.trim());
       else if (key === "payload") setOpt(s, "payload", parseMapText(v, names.attrs));
       else if (key === "assume") {
@@ -283,8 +372,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       const result = await verifyScenario(scenario.process, scenario.id);
       const r = result.results[0];
       // The engine words some findings with their own "Step N"; the step is named once, up front.
-      if (r?.failure)
-        setFailure(`${r.failure.step < 0 ? "Outcome" : `Step ${r.failure.step + 1}`} (${r.failure.rule}): ${r.failure.message.replace(/^Step \d+:?\s*/i, "")}`);
+      if (r?.failure) setFailure(failureText(r.failure, more, lookup.byId));
     } catch (e) {
       store.getState().notify(`Replay ${scenario.name}: ${e instanceof Error ? e.message : String(e)}`, "error");
     } finally {
@@ -417,4 +505,25 @@ function AddExpectedDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * The replay's failure as one line. A refusal that is not the one the step expects (MQ9308) names the refusal and the element
+ * that refused it, so the reason is read where the step is (rights-design.md decision 26).
+ */
+function failureText(
+  failure: { step: number; rule: string; message: string; actual: unknown },
+  names: ReadonlyMap<string, string>,
+  byId: ReadonlyMap<string, { name: string; displayName?: string | null }>,
+): string {
+  const where = failure.step < 0 ? "Outcome" : `Step ${failure.step + 1}`;
+  const rest = failure.message.replace(/^Step \d+:?\s*/i, "");
+  const actual = failure.actual as { refusal?: string | null; refusedBy?: string | null } | null;
+  if (failure.rule === "MQ9308" && actual && typeof actual === "object") {
+    const by = actual.refusedBy;
+    const element = by ? (names.get(by) ?? byId.get(by)?.displayName ?? byId.get(by)?.name ?? "?") : null;
+    const word = actual.refusal ? (RL.refusalWords[actual.refusal] ?? actual.refusal) : "Accepted";
+    return `${where} (${failure.rule}): the replay gives ${element ? RL.refusedByLine(word, element) : word}. ${rest}`;
+  }
+  return `${where} (${failure.rule}): ${rest}`;
 }

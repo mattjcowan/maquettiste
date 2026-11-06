@@ -349,3 +349,23 @@ export async function stereotypeEnumPlan(process: string, enumId: string): Promi
     diagnostics: [],
   };
 }
+
+export type RightsAnswer = { rightsDefault: "allow" | "deny"; rows: components["schemas"]["RightsRow"][] };
+
+/** Who can do what in a lifecycle (`get_rights`): every page of rows, read from the saved lifecycle. */
+export async function getRights(process: string, signal?: AbortSignal): Promise<RightsAnswer> {
+  const rows: RightsAnswer["rows"] = [];
+  let cursor: string | undefined;
+  let rightsDefault: RightsAnswer["rightsDefault"] = "allow";
+  do {
+    const { data, response } = await api().GET("/api/processes/{id}/rights", {
+      params: { path: { id: process }, query: { limit: 1000, ...(cursor ? { cursor } : {}) } },
+      signal,
+    });
+    if (!data) throw new ApiProblem(response.status, null, `HTTP ${response.status}`);
+    rightsDefault = data.rightsDefault;
+    rows.push(...data.rows);
+    cursor = data.next ?? undefined;
+  } while (cursor);
+  return { rightsDefault, rows };
+}

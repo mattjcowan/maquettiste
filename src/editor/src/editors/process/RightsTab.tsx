@@ -32,6 +32,7 @@ import { Grid, type GridColumn } from "./Grid";
 import { useSetContext } from "./SetsEditor";
 import { rowProblems, useGridTargets, type ProcessContext } from "./shared";
 import { useNamedRights } from "./useNamedRights";
+import { WhoCanDo } from "./WhoCanDo";
 
 export function RightsTab({ pc }: { pc: ProcessContext }) {
   const { process, change, actorNames } = pc;
@@ -54,6 +55,7 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
     condition: (tree) => treeText(tree, setContext.names),
   });
   const [picked, setPicked] = useState<string | null>(null);
+  const [view, setView] = useState<"rights" | "who">("rights");
   const current = rows.find((r) => r.id === picked) ?? rows[0] ?? null;
   const actorOptions = pc.actors.map((a) => ({ id: a.id, name: a.name }));
   const verbOptions = verbGroups("right", verbs.own, verbs.hidden).flatMap((g) => g.options.map((o) => ({ value: o.key, label: o.label, group: g.label })));
@@ -155,58 +157,75 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
             <option value="deny">{L.denied}</option>
           </Select>
         </Field>
-      </div>
-      <Grid
-        label={`Rights of ${process.name}`}
-        testid="rights-grid"
-        noun="right"
-        rows={rows}
-        columns={columns}
-        rowName={(r) => r.name}
-        selected={current?.id ?? null}
-        onSelect={(r) => setPicked(r.id)}
-        problems={(r) => rowProblems(pc.problems, r.pointer)}
-        empty={L.empty}
-        onCommit={(r, key, value) => change((p) => void editRight(p, r.id, key, value, { actors: actorOptions }))}
-        onAdd={(after) => {
-          const created: string[] = [];
-          change((p) => void created.push(addRight(p, after?.id)));
-          if (created[0]) setPicked(created[0]);
-        }}
-        onRemove={(r) => change((p) => removeRight(p, r.id))}
-        actions={(r) =>
-          r.named ? (
-            <Button variant="ghost" size="icon-row" label={L.open} onClick={go.element(r.named)?.go} data-testid="open-named-right">
-              <ExternalLink />
+        <div role="group" aria-label={L.viewsLabel} className="flex gap-1" data-testid="rights-views">
+          {(["rights", "who"] as const).map((v) => (
+            <Button
+              key={v}
+              size="sm"
+              variant={view === v ? "primary" : "secondary"}
+              aria-pressed={view === v}
+              onClick={() => setView(v)}
+              data-testid={`rights-view-${v}`}
+            >
+              {v === "rights" ? L.viewRights : L.viewWho}
             </Button>
-          ) : null
-        }
-        toolbar={
-          <Select
-            aria-label={L.useNamed}
-            className="h-6 w-44"
-            data-testid="use-named-right"
-            value=""
-            disabled={!free.length}
-            title={free.length ? undefined : L.noNamed}
-            onChange={(e) => {
-              const id = e.target.value;
-              if (!id) return;
-              const created: string[] = [];
-              change((p) => void created.push(addRightUse(p, id)));
-              if (created[0]) setPicked(created[0]);
-            }}
-          >
-            <option value="">{L.useNamed}</option>
-            {free.map((n) => (
-              <option key={n.id} value={n.id}>
-                {n.name}
-              </option>
-            ))}
-          </Select>
-        }
-      />
-      {current ? <ConditionLine row={current} lifecycle={pc.id} /> : null}
+          ))}
+        </div>
+      </div>
+      {view === "who" ? <WhoCanDo pc={pc} named={namedDocs} /> : null}
+      {view === "rights" ? (
+        <Grid
+          label={`Rights of ${process.name}`}
+          testid="rights-grid"
+          noun="right"
+          rows={rows}
+          columns={columns}
+          rowName={(r) => r.name}
+          selected={current?.id ?? null}
+          onSelect={(r) => setPicked(r.id)}
+          problems={(r) => rowProblems(pc.problems, r.pointer)}
+          empty={L.empty}
+          onCommit={(r, key, value) => change((p) => void editRight(p, r.id, key, value, { actors: actorOptions }))}
+          onAdd={(after) => {
+            const created: string[] = [];
+            change((p) => void created.push(addRight(p, after?.id)));
+            if (created[0]) setPicked(created[0]);
+          }}
+          onRemove={(r) => change((p) => removeRight(p, r.id))}
+          actions={(r) =>
+            r.named ? (
+              <Button variant="ghost" size="icon-row" label={L.open} onClick={go.element(r.named)?.go} data-testid="open-named-right">
+                <ExternalLink />
+              </Button>
+            ) : null
+          }
+          toolbar={
+            <Select
+              aria-label={L.useNamed}
+              className="h-6 w-44"
+              data-testid="use-named-right"
+              value=""
+              disabled={!free.length}
+              title={free.length ? undefined : L.noNamed}
+              onChange={(e) => {
+                const id = e.target.value;
+                if (!id) return;
+                const created: string[] = [];
+                change((p) => void created.push(addRightUse(p, id)));
+                if (created[0]) setPicked(created[0]);
+              }}
+            >
+              <option value="">{L.useNamed}</option>
+              {free.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.name}
+                </option>
+              ))}
+            </Select>
+          }
+        />
+      ) : null}
+      {current && view === "rights" ? <ConditionLine row={current} lifecycle={pc.id} /> : null}
     </div>
   );
 }
