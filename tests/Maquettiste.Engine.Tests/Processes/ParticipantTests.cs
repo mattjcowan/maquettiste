@@ -75,6 +75,9 @@ public sealed class ParticipantTests
         return ScenarioReplayer.Replay(Parse(text), runtime)!;
     }
 
+    private static JsonElement[] Cast(LoaderHarness h, string key) =>
+        [.. JsonNode.Parse(h.Read(ScenarioFile))![key]!.AsArray().Select(n => JsonSerializer.SerializeToElement(n))];
+
     private static string Pointers(ScenarioReplay replay, string rule) =>
         string.Join(",", replay.Diagnostics.Where(d => d.Rule == rule).Select(d => d.JsonPointer));
 
@@ -90,6 +93,8 @@ public sealed class ParticipantTests
 
         var diagnostics = await ActorKit.ValidateAsync(h, model);
         Assert.DoesNotContain(diagnostics, d => d.Rule is "MQ9301" or "MQ9305");
+        Assert.All(model.Index.Summaries, s => Assert.Null(s.Participants));
+        Assert.DoesNotContain("\"participants\"", JsonSerializer.Serialize(model.Index.Summaries, EngineJson.Options), StringComparison.Ordinal);
         var resolved = ResolutionKit.Resolve(model);
         foreach (var scenario in resolved.Scenarios)
         {
@@ -124,6 +129,7 @@ public sealed class ParticipantTests
         var cast = ScenarioCast.Of(scenario);
         var review = model.Get<Process>(R.Review)!;
         bool Satisfies(string participant, string actor) => Participants.Satisfies(model, review, cast, cast.Participant(participant)!, actor);
+        Assert.Equal(5, model.Index.Summaries.Single(s => s.Id == Scn).Participants); // the index row counts them, for the explorer's expand arrow
 
         // The owner by identity; a path by the participant's object; members of Reviewer within the item's project only (decision 13).
         Assert.True(Satisfies(PBea, R.Owner));
@@ -185,16 +191,24 @@ public sealed class ParticipantTests
         var scenario = model.Get<Scenario>(Scn)!;
         using var runtime = new ProcessRuntime(model, 1, Ct);
         var chart = runtime.Chart(R.Review)!;
-        string? ActsAs(string participant) => Participants.ActsAs(model, chart, ScenarioCast.Of(scenario),
-            new ScenarioStep { Id = "x", Event = R.ApproveEvent, Participant = participant });
+        // Each step is judged where it runs: after a submit, so Approve's gated move is the one it can make.
+        string? Judge(ScenarioStep step)
+        {
+            var interpreter = ScenarioReplayer.Interpreter(scenario, chart, runtime);
+            interpreter.Start();
+            Assert.True(interpreter.Step(new ScenarioStep { Id = "s", Event = R.SubmitEvent, Actor = R.Owner }).Accepted);
+            return Participants.ActsAs(model, chart.Process, ScenarioCast.Of(scenario), step, interpreter.Acting(step));
+        }
+
+        string? ActsAs(string participant) => Judge(new ScenarioStep { Id = "x", Event = R.ApproveEvent, Participant = participant });
 
         Assert.Equal(R.ProjectReviewer, ActsAs(PAnn)); // the signers, not the event's actors
         Assert.Equal(R.Reviewer, ActsAs(PCarl));
         Assert.Equal(R.ProjectReviewer, ActsAs(PPat)); // satisfies ProjectReviewer and Lead: the first listed
         Assert.Null(ActsAs(PBea));
-        Assert.Equal(R.Owner, Participants.ActsAs(model, chart, ScenarioCast.Of(scenario), new ScenarioStep { Id = "x", Event = R.SubmitEvent, Participant = PBea }));
+        Assert.Equal(R.Owner, Judge(new ScenarioStep { Id = "x", Event = R.SubmitEvent, Participant = PBea }));
         // A time step has no list: the participant's actor, here none.
-        Assert.Null(Participants.ActsAs(model, chart, ScenarioCast.Of(scenario), new ScenarioStep { Id = "x", Input = StepInput.Time, After = "P1D", Participant = PAnn }));
+        Assert.Null(Judge(new ScenarioStep { Id = "x", Input = StepInput.Time, After = "P1D", Participant = PAnn }));
 
         // Simulation by name: ann signs as ProjectReviewer under her identity.
         var call = await store.SimulateProcessAsync(R.Review, new SimulateRequest
@@ -301,7 +315,7 @@ public sealed class ParticipantTests
         await using var __ = store;
         var replay = Replay(store.Current!, h.Read(ScenarioFile));
         Assert.Equal("MQ9301", replay.Failure!.Rule);
-        Assert.Contains("participant 'carl' satisfies none of ProjectReviewer, Lead", replay.Failure.Message, StringComparison.Ordinal);
+        Assert.Contains("participant 'carl' satisfies none of the actors of event 'approve' (ProjectReviewer, Lead)", replay.Failure.Message, StringComparison.Ordinal);
         Assert.Contains(replay.Diagnostics, d => d.Rule == "MQ9301" && d.Message.Contains("'carl'", StringComparison.Ordinal));
     }
 
@@ -454,5 +468,122 @@ public sealed class ParticipantTests
         Assert.True(own.Status == ProcessCallStatus.Ok, own.Detail);
         Assert.True(own.Value!.Trace[2].Accepted, own.Value.Trace[2].Refusal);
         Assert.Equal(R.ProjectReviewer, own.Value.Trace[2].Input!.Actor);
+    }
+
+    // ---- the moves a step can make now ----
+
+    // Review where approve moves Draft to Done with no gate, and Submitted to Done through a gate whose signers are Reviewer, Lead and
+    // ProjectReviewer, ProjectReviewer required, two signatures; the event takes Owner, ProjectReviewer and Lead.
+    private const string Gated = $$"""
+        {"kind":"process","id":"{{R.Review}}","name":"Review","package":"{{R.Pkg}}","use":"lifecycle"{{R.ReviewSubjects}},
+         "events":[{"id":"01JPRC00000000000000000911","name":"submit","actors":["{{R.Owner}}"]},
+           {"id":"01JPRC00000000000000000912","name":"approve","actors":["{{R.Owner}}","{{R.ProjectReviewer}}","{{R.Lead}}"]}],
+         "states":[{"id":"01JPRC00000000000000000921","name":"Draft"},{"id":"01JPRC00000000000000000922","name":"Submitted"},{"id":"01JPRC00000000000000000923","name":"Done","type":"final"}],
+         "transitions":[{"id":"01JPRC00000000000000000931","source":"01JPRC00000000000000000921","event":"01JPRC00000000000000000911","targets":["01JPRC00000000000000000922"]},
+           {"id":"01JPRC00000000000000000933","source":"01JPRC00000000000000000921","event":"01JPRC00000000000000000912","targets":["01JPRC00000000000000000923"]},
+           {"id":"01JPRC00000000000000000932","source":"01JPRC00000000000000000922","event":"01JPRC00000000000000000912","targets":["01JPRC00000000000000000923"],
+            "gate":{"id":"01JPRC00000000000000000941","name":"approval","required":2,"signers":["{{R.Reviewer}}","{{R.Lead}}","{{R.ProjectReviewer}}"],
+              "requiredActors":["{{R.ProjectReviewer}}"],"meanings":[{"id":"01JPRC00000000000000000942","name":"ok"}]} }]}
+        """;
+
+    // ann holds Reviewer within apollo; bea is the owner; carl holds Reviewer with no context; pat is the lead and holds Reviewer within apollo.
+    private const string Signers = $$"""
+        [{"id":"{{PAnn}}","name":"ann","holds":[{"id":"{{HAnn}}","actor":"{{R.Reviewer}}","within":"{{OApollo}}"}]},
+         {"id":"{{PBea}}","name":"bea"},
+         {"id":"{{PCarl}}","name":"carl","holds":[{"id":"{{HCarl}}","actor":"{{R.Reviewer}}"}]},
+         {"id":"{{PPat}}","name":"pat","object":"{{OPat}}","holds":[{"id":"01JHDG00000000000000000103","actor":"{{R.Reviewer}}","within":"{{OApollo}}"}]}]
+        """;
+
+    [Fact]
+    public async Task The_actor_comes_from_the_move_that_can_fire_now()
+    {
+        // In Draft, approve fires the move with no gate: bea approves as the owner, though the event's other move is gated.
+        const string ApproveByBea = $$"""[{"id":"01JSTP00000000000000000101","event":"{{R.ApproveEvent}}","participant":"{{PBea}}","expect":{"accepted":true} }]""";
+        var (h, store) = await OpenAsync(Scenario(Signers, ApproveByBea), harness => harness.Write(R.ReviewFile, Gated));
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+        var replay = Replay(model, h.Read(ScenarioFile));
+        Assert.True(replay.Passed, string.Join(" | ", replay.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        Assert.Equal(R.Owner, replay.Steps[0].ActsAs);
+        Assert.Equal(R.Owner, ResolutionKit.Resolve(model).Scenarios.Single(s => s.Id == Scn).Steps[0].ActsAs?.Id);
+
+        // After a submit, the gated move is the one approve can make.
+        var scenario = model.Get<Scenario>(Scn)!;
+        var cast = ScenarioCast.Of(scenario);
+        using var runtime = new ProcessRuntime(model, 1, Ct);
+        var chart = runtime.Chart(R.Review)!;
+        var interpreter = ScenarioReplayer.Interpreter(scenario, chart, runtime);
+        interpreter.Start();
+        Assert.True(interpreter.Step(new ScenarioStep { Id = "s", Event = R.SubmitEvent, Actor = R.Owner }).Accepted);
+        string? ActsAs(string participant)
+        {
+            var step = new ScenarioStep { Id = "x", Event = R.ApproveEvent, Participant = participant };
+            return Participants.ActsAs(model, chart.Process, cast, step, interpreter.Acting(step));
+        }
+
+        Assert.Equal(R.ProjectReviewer, ActsAs(PPat)); // (a) the required actor not yet signed, before Lead
+        Assert.Equal(R.Reviewer, ActsAs(PCarl)); // (c) the event does not take Reviewer, the only signer carl satisfies
+        Assert.Equal(R.Owner, ActsAs(PBea)); // no signer: the gated move is passed over, and the event's actors decide
+        var signed = interpreter.Step(new ScenarioStep { Id = "a", Event = R.ApproveEvent, Actor = R.ProjectReviewer, Signer = "ann", Meaning = "01JPRC00000000000000000942" });
+        Assert.True(signed.Accepted, signed.Refusal);
+        Assert.Equal(R.Lead, ActsAs(PPat)); // (b) ProjectReviewer has signed: the first signer the event also takes
+
+        // MQ9301 names what the participant failed, and simulation's trace gives actsAs only for a step with a participant.
+        string Failure(string participant)
+        {
+            var steps = $$"""[{"id":"01JSTP00000000000000000101","event":"{{R.SubmitEvent}}","actor":"{{R.Owner}}"},{"id":"01JSTP00000000000000000102","event":"{{R.ApproveEvent}}","participant":"{{participant}}","expect":{"accepted":true} }]""";
+            return Replay(model, Scenario(Signers, steps, outcome: "active")).Failure!.Message;
+        }
+
+        Assert.Contains("participant 'carl' acts as 'Reviewer', a signer of the gate, which is not one of the actors of event 'approve' (Owner, ProjectReviewer, Lead)", Failure(PCarl), StringComparison.Ordinal);
+        Assert.Contains("participant 'bea' acts as 'Owner', which is not one of the signers of gate 'approval' (Reviewer, Lead, ProjectReviewer)", Failure(PBea), StringComparison.Ordinal);
+        var call = await store.SimulateProcessAsync(R.Review, new SimulateRequest
+        {
+            Objects = Cast(h, "objects"), Subject = OItem, Participants = Cast(h, "participants"),
+            Steps = [JsonSerializer.SerializeToElement(new { @event = R.SubmitEvent, actor = R.Owner }), JsonSerializer.SerializeToElement(new { @event = R.ApproveEvent, participant = "pat" })],
+        }, Ct);
+        Assert.True(call.Status == ProcessCallStatus.Ok, call.Detail);
+        var trace = JsonSerializer.SerializeToNode(call.Value!.Trace, new JsonSerializerOptions(JsonSerializerDefaults.Web))!.AsArray();
+        Assert.False(trace[1]!.AsObject().ContainsKey("actsAs"), trace[1]!.ToJsonString());
+        Assert.Equal(R.ProjectReviewer, (string?)trace[2]!["actsAs"]);
+        Assert.Equal((R.ProjectReviewer, "pat"), ((string?)trace[2]!["input"]!["actor"], (string?)trace[2]!["input"]!["signer"]));
+    }
+
+    [Fact]
+    public async Task Null_holds_read_as_none_in_simulation_and_recording()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        JsonElement[] people = [JsonSerializer.SerializeToElement(JsonNode.Parse($$"""{"id":"{{PBea}}","name":"bea","holds":null}"""))];
+        JsonElement[] steps = [JsonSerializer.SerializeToElement(new { @event = R.SubmitEvent, participant = "bea" })];
+        var call = await store.SimulateProcessAsync(R.Review, new SimulateRequest { Objects = Cast(h, "objects"), Subject = OItem, Participants = people, Steps = steps }, Ct);
+        Assert.True(call.Status == ProcessCallStatus.Ok, call.Status + " " + call.Detail);
+        Assert.Equal(R.Owner, call.Value!.Trace[^1].ActsAs);
+
+        var objects = JsonNode.Parse(h.Read(ScenarioFile))!["objects"]!.AsArray().Select(n => JsonSerializer.SerializeToElement(n)).ToArray();
+        var recorded = await store.RecordScenarioAsync(R.Review, new RecordScenarioRequest { Name = "held", Objects = objects, Subject = OItem, Participants = people, Steps = steps },
+            true, ChangeSource.Editor, Ct);
+        Assert.True(recorded.Status == ProcessCallStatus.Ok, recorded.Detail);
+    }
+
+    [Fact]
+    public async Task A_step_with_a_participant_keys_on_every_subjects_entity()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        var before = store.Current!;
+        var step = ResolutionKit.Resolve(before).Scenarios.Single(s => s.Id == Scn).Steps[0];
+
+        // Document is Review's other subject: the item is no document, but Owner's field must mean the same on both.
+        var text = h.Read("model/entities/document.json").Replace("\"attributes\":[", "\"description\":\"edited\",\"attributes\":[", StringComparison.Ordinal);
+        var saved = await store.SaveAsync(R.Document, Encoding.UTF8.GetBytes(text), before.GetDocument(R.Document)!.Hash, ChangeSource.Editor, Ct);
+        Assert.True(saved.Outcome == SaveOutcome.Saved, string.Join(" | ", saved.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        var after = store.Current!;
+        Assert.NotEqual(before.GetDocument(R.Document)!.DependencyHash, after.GetDocument(R.Document)!.DependencyHash);
+        Assert.Contains("e:" + R.Document, step.Dependencies);
+        Assert.Contains(Maquettiste.Engine.Validation.ModelValidator.ProcessPeers(after, after.Get<Entity>(R.Document)!), d => d.Element.Id == Scn);
     }
 }

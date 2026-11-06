@@ -1081,6 +1081,17 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             }
         }
 
+        if (element is Actor gateActor)
+        {
+            // MQ9604 on a process that uses the actor only through a library's gate (gatePolicy): the process names the gate, not the
+            // actor, so it is not among the actor's referrers (actors-design.md decision 11).
+            foreach (var user in model.All<Process>())
+            {
+                if (!(membershipsMatter && NamesActor(model, user)) && UsesThroughLibraryGate(model, user, gateActor.Id) && model.GetDocument(user.Id) is { } peer)
+                    yield return peer;
+            }
+        }
+
         if (element is Process process)
         {
 
@@ -1168,6 +1179,12 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 yield return peer;
         }
     }
+
+    // Whether a process's transitions use a library's gate whose signers or required actors name the actor.
+    private static bool UsesThroughLibraryGate(ModelSnapshot model, Process process, string actorId) =>
+        process.Transitions.Any(t => t.GatePolicy is { } policy && Processes.ProcessLibraries.Owner(model, policy, "gate") is { } library
+            && library.Gates.Any(g => string.Equals(g.Id, policy, StringComparison.Ordinal)
+                && (g.Signers.Contains(actorId, StringComparer.Ordinal) || g.RequiredActors.Contains(actorId, StringComparer.Ordinal))));
 
     // Whether a process document names an actor anywhere (the index row's actors).
     private static bool NamesActor(ModelSnapshot model, Process process) =>

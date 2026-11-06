@@ -32,7 +32,8 @@ internal static partial class ProcessRules
             report.Add("MQ9603", $"Actor '{actor.Name}' is the system itself (type system), which is never worked out from the object; remove relative, or change the type.", "/relative");
     }
 
-    // MQ9606: a subject entry's owner names a single-valued attribute (own, inherited or from a stereotype) or a to-one end of its entity.
+    // MQ9606: a subject entry's owner names a single-valued attribute (own or inherited) or a to-one end of its entity. An attribute from a
+    // stereotype waits for the stereotype as a set of types (actors-design.md decision 19), as guard conditions do.
     private static void CheckSubjectOwners(ValidationContext context, Process process, Report report)
     {
         var model = context.Model;
@@ -45,7 +46,9 @@ internal static partial class ProcessRules
             string? why = null;
             if (context.Flatten(entity).FirstOrDefault(f => string.Equals(f.Attribute.Id, owner, StringComparison.Ordinal)) is { } flat)
             {
-                if (flat.Attribute.Collection)
+                if (flat.Source == AttributeSource.Virtual)
+                    why = $"is attribute '{flat.Attribute.Name}', which comes from stereotype '{flat.From}'; an owner field from a stereotype can't be read until a stereotype can stand for a set of types";
+                else if (flat.Attribute.Collection)
                     why = $"is attribute '{flat.Attribute.Name}', which holds many values";
                 else if (flat.Attribute.Type.Ref is { } typeId && model.Get<ValueObject>(typeId) is { } valueObject)
                     why = $"is attribute '{flat.Attribute.Name}', which holds value object '{valueObject.Name}'";

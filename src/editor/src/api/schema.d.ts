@@ -2973,6 +2973,11 @@ export interface components {
             /** @description The number of steps, on scenario rows. */
             stepCount?: number;
             /**
+             * @description The number of participants, on scenario rows that have at least one (actors-design.md decision 14). Left out when the
+             *     scenario has none, so rows of projects without participants do not change.
+             */
+            participants?: number;
+            /**
              * @description The operation's effect, on operation rows (next-phase-2-design.md section 4.1).
              * @enum {string}
              */
@@ -4223,10 +4228,12 @@ export interface components {
             /** @description The id of the participant that acts (actors-design.md decision 15); absent for a step that names none. */
             participant?: string;
             /**
-             * @description With participant: the id of the actor the step acts as. It is the step's actor when given; else the first actor of the first
-             *     list (for a gated move, the gate's signers; else the event's or human task's actors) that the participant satisfies; with an
-             *     empty first list, the participant's actor. Absent for a step that names no participant, and when the participant satisfies
-             *     none of the first list (the replay refuses the step by actor).
+             * @description With participant: the id of the actor the engine's replay ran the step as. It is the step's actor when given; else it is
+             *     worked out from the moves the step could make when it ran: for a gated move, a required actor of the gate not yet signed,
+             *     else a signer the event's actors also accept, else the first signer the participant satisfies; otherwise the first of the
+             *     event's or human task's actors it satisfies, or the participant's actor when that list is empty. Absent for a step that
+             *     names no participant, when the participant satisfies none (the replay refuses the step by actor), and when the replay did
+             *     not reach the step.
              */
             actsAs?: string;
         };
@@ -6079,7 +6086,7 @@ export interface components {
             after?: string | null;
             /**
              * @description The id of a participant of the run (actors-design.md decision 15); the engine works out the actor it acts as unless `actor` is
-             *     given, and an event's signer defaults to its identity. A trace's echo gives the actor it acted as and the signer; it leaves participant out when absent.
+             *     given, and an event's signer defaults to its identity. A trace's echo gives the actor it acted as and the signer, and the trace's actsAs names that actor; it leaves participant out when absent.
              */
             participant?: string | null;
             actor?: string | null;
@@ -6197,6 +6204,15 @@ export interface components {
              *     has exactly one. Left out otherwise, without a system actor always: a step's own actor is in its input.
              */
             actor?: components["schemas"]["Ulid"];
+            /**
+             * @description The actor a step with a participant acted as (actors-design.md decision 15), worked out from the moves the step could make
+             *     when it ran: for a gated move, a required actor of the gate not yet signed, else a signer the event's actors also accept,
+             *     else the first signer the participant satisfies; otherwise the first of the event's or human task's actors it satisfies, or
+             *     the participant's actor when that list is empty. The input echoes the filled-in step: its actor is this actor and its
+             *     signer the participant's identity when the step gave none. Left out for a step that names no participant, and when the
+             *     participant satisfies none of the actors it could act as. The mock backend fills it and echoes the input the same way.
+             */
+            actsAs?: components["schemas"]["Ulid"];
         };
         MicrostepTrace: {
             transitions: components["schemas"]["Ulid"][];
@@ -9893,7 +9909,7 @@ export interface components {
             entity: components["schemas"]["id"];
             /** @description An attribute of the entity that holds the state (lifecycle only). */
             boundAttribute?: components["schemas"]["id"];
-            /** @description Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own, inherited or from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner. */
+            /** @description Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own or inherited; not an attribute from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner. */
             owner?: components["schemas"]["id"];
         };
         /**
@@ -10090,7 +10106,7 @@ export interface components {
                     entity: components["schemas"]["id"];
                     /** @description An attribute of the entity that holds the state (lifecycle only). */
                     boundAttribute?: components["schemas"]["id"];
-                    /** @description Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own, inherited or from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner. */
+                    /** @description Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own or inherited; not an attribute from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner. */
                     owner?: components["schemas"]["id"];
                 };
                 /**

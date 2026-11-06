@@ -30,7 +30,7 @@ One row per step: who acts and the actor they act as, the input, whether the pro
 | Step | Participant | Actor | Input | Result | States after | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | `bea` | [Owner](../../actors/owner.md) | event `submit` | accepted | `Submitted` |  |
-| 2 | `carl` |  | event `approve` | **refused** |  | matches no actor the step accepts; meaning `approved` |
+| 2 | `carl` | [Pat](../../actors/pat.md) | event `approve` | **refused** |  | meaning `approved` |
 | 3 | `ann` | [Project approver](../../actors/project-approver.md) | event `approve` | accepted | `Approved` | meaning `approved` |
 
 ## Outcome

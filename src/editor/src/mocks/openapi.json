@@ -11740,6 +11740,11 @@
             "minimum": 0,
             "description": "The number of steps, on scenario rows."
           },
+          "participants": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The number of participants, on scenario rows that have at least one (actors-design.md decision 14). Left out when the\nscenario has none, so rows of projects without participants do not change.\n"
+          },
           "effect": {
             "description": "The operation's effect, on operation rows (next-phase-2-design.md section 4.1).",
             "type": "string",
@@ -16662,7 +16667,7 @@
           },
           "actsAs": {
             "type": "string",
-            "description": "With participant: the id of the actor the step acts as. It is the step's actor when given; else the first actor of the first\nlist (for a gated move, the gate's signers; else the event's or human task's actors) that the participant satisfies; with an\nempty first list, the participant's actor. Absent for a step that names no participant, and when the participant satisfies\nnone of the first list (the replay refuses the step by actor).\n"
+            "description": "With participant: the id of the actor the engine's replay ran the step as. It is the step's actor when given; else it is\nworked out from the moves the step could make when it ran: for a gated move, a required actor of the gate not yet signed,\nelse a signer the event's actors also accept, else the first signer the participant satisfies; otherwise the first of the\nevent's or human task's actors it satisfies, or the participant's actor when that list is empty. Absent for a step that\nnames no participant, when the participant satisfies none (the replay refuses the step by actor), and when the replay did\nnot reach the step.\n"
           }
         }
       },
@@ -23869,7 +23874,7 @@
             ]
           },
           "participant": {
-            "description": "The id of a participant of the run (actors-design.md decision 15); the engine works out the actor it acts as unless `actor` is\ngiven, and an event's signer defaults to its identity. A trace's echo gives the actor it acted as and the signer; it leaves participant out when absent.\n",
+            "description": "The id of a participant of the run (actors-design.md decision 15); the engine works out the actor it acts as unless `actor` is\ngiven, and an event's signer defaults to its identity. A trace's echo gives the actor it acted as and the signer, and the trace's actsAs names that actor; it leaves participant out when absent.\n",
             "type": [
               "string",
               "null"
@@ -24238,6 +24243,10 @@
           },
           "actor": {
             "description": "The system actor when it made the move (actors-design.md decision 2): for the initial entry, a time step or a finished invoke\nthat is not a human task, whose input names no actor, the project's system actor (type `system`, shown as Automatic) when it\nhas exactly one. Left out otherwise, without a system actor always: a step's own actor is in its input.\n",
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "actsAs": {
+            "description": "The actor a step with a participant acted as (actors-design.md decision 15), worked out from the moves the step could make\nwhen it ran: for a gated move, a required actor of the gate not yet signed, else a signer the event's actors also accept,\nelse the first signer the participant satisfies; otherwise the first of the event's or human task's actors it satisfies, or\nthe participant's actor when that list is empty. The input echoes the filled-in step: its actor is this actor and its\nsigner the participant's identity when the step gave none. Left out for a step that names no participant, and when the\nparticipant satisfies none of the actors it could act as. The mock backend fills it and echoes the input the same way.\n",
             "$ref": "#/components/schemas/Ulid"
           }
         }
@@ -36351,7 +36360,7 @@
             "$ref": "#/components/schemas/id"
           },
           "owner": {
-            "description": "Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own, inherited or from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner.",
+            "description": "Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own or inherited; not an attribute from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner.",
             "$ref": "#/components/schemas/id"
           }
         },
@@ -36856,7 +36865,7 @@
                 "$ref": "#/components/schemas/id"
               },
               "owner": {
-                "description": "Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own, inherited or from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner.",
+                "description": "Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own or inherited; not an attribute from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner.",
                 "$ref": "#/components/schemas/id"
               }
             },

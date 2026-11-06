@@ -2775,7 +2775,7 @@
   {
     "id": "MQ9301",
     "defaultSeverity": "error",
-    "description": "A scenario step is refused while expect.accepted is true (no transition, a guard false, an actor not allowed, a gate refusal), or accepted while it is false; a refusal by actor names the step's participant and the list it did not satisfy; fix the step's input or set accepted to what the process does.",
+    "description": "A scenario step is refused while expect.accepted is true (no transition, a guard false, an actor not allowed, a gate refusal), or accepted while it is false; a refusal by actor names the step's participant and what it failed (the list it satisfies none of, or the list that does not accept the actor it acted as); fix the step's input or set accepted to what the process does.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true
@@ -2970,7 +2970,7 @@
   {
     "id": "MQ9606",
     "defaultSeverity": "error",
-    "description": "A subject entry's owner that is not a single-valued attribute or a to-one relation end of its entity (own, inherited or from a stereotype); clear the owner, or name a field that holds one actor.",
+    "description": "A subject entry's owner that is not a single-valued attribute or a to-one relation end of its entity (own or inherited; an attribute from a stereotype waits for a stereotype that stands for a set of types); clear the owner, or name a field that holds one actor.",
     "family": "MQ96xx",
     "familyLabel": "Actors",
     "canBeOff": true

@@ -23,6 +23,18 @@ internal sealed record ScenarioCast(IReadOnlyList<ScenarioObject> Objects, strin
         id is null ? null : Participants.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal));
 }
 
+/// <summary>What a step can do now, for the actor its participant acts as (actors-design.md decision 15).</summary>
+/// <param name="Source"><c>event</c> or <c>human task</c>; <see langword="null"/> when the step names neither one that can run.</param>
+/// <param name="Name">The event's or human task's name.</param>
+/// <param name="Actors">The event's or human task's actors.</param>
+/// <param name="Moves">For an event, the transitions it enables now, in the order the interpreter tries them.</param>
+internal sealed record ActingChoice(string? Source, string? Name, IReadOnlyList<string> Actors, IReadOnlyList<ActingMove> Moves);
+
+/// <summary>One transition an event enables now.</summary>
+/// <param name="Gate">Its gate, or <see langword="null"/>.</param>
+/// <param name="Unsigned">The gate's required actors that no signature yet satisfies, in file order.</param>
+internal sealed record ActingMove(ProcessGate? Gate, IReadOnlyList<string> Unsigned);
+
 /// <summary>
 /// A scenario's participants (actors-design.md decisions 14 to 17): which actors a participant satisfies, the actor a step acts as by the
 /// fixed rule, the step the interpreter runs, and the checks of MQ9305. Signatures are untouched: a signature counts for a required
@@ -75,86 +87,114 @@ internal static class Participants
     }
 
     /// <summary>
-    /// The first list of the fixed rule (decision 15): for an event step with a gated transition, the signers of its gates in transition
-    /// order; else the event's actors; for a completed or failed human task, its actors; else empty. The event or task is looked up in the
-    /// process, then in the processes it invokes.
-    /// </summary>
-    /// <param name="model">The model.</param>
-    /// <param name="chart">The chart that runs.</param>
-    /// <param name="step">The step.</param>
-    /// <returns>The actor ids, each once.</returns>
-    public static IReadOnlyList<string> FirstList(ModelSnapshot model, StatechartModel chart, ScenarioStep step)
-    {
-        ArgumentNullException.ThrowIfNull(model);
-        ArgumentNullException.ThrowIfNull(chart);
-        ArgumentNullException.ThrowIfNull(step);
-        foreach (var c in Charts(model, chart))
-        {
-            if (step.Input == StepInput.Event && step.Event is { } eventId && c.Events.TryGetValue(eventId, out var ev))
-            {
-                var signers = c.Transitions.Where(t => t.Trigger == TransitionTrigger.Event && string.Equals(t.Transition.Event, eventId, StringComparison.Ordinal))
-                    .Select(t => t.Gate).OfType<ProcessGate>().SelectMany(g => g.Signers).Distinct(StringComparer.Ordinal).ToList();
-                return signers.Count > 0 ? signers : [.. ev.Actors.Distinct(StringComparer.Ordinal)];
-            }
-
-            if (step.Input is StepInput.InvokeDone or StepInput.InvokeError && step.Invoke is { } invokeId && c.Invokes.TryGetValue(invokeId, out var found))
-                return found.Invoke.Type == InvokeType.HumanTask ? [.. found.Invoke.Actors.Distinct(StringComparer.Ordinal)] : [];
-        }
-
-        return [];
-    }
-
-    /// <summary>
     /// The actor a step acts as (decision 15, <c>RStep.ActsAs</c>): the step's actor when given (and always for a step with no
-    /// participant); else the first actor of <see cref="FirstList"/> the participant satisfies, or the participant's actor when that
-    /// list is empty; <see langword="null"/> when the participant satisfies none, or is not one of the cast's.
+    /// participant). Otherwise it is read from the moves the step can make now (<see cref="StatechartInterpreter.Acting"/>), in the order
+    /// the interpreter tries them, stopping at the first move the participant can act for. A gated move: (a) a required actor of the gate
+    /// not yet signed that the participant satisfies; else (b) a signer it satisfies that the event's actors also accept, when the event
+    /// lists actors; else (c) the first signer it satisfies. A gated move it satisfies no signer of is passed over, as the interpreter
+    /// passes over a gate the actor cannot sign. A move with no gate, or no move at all: the first of the event's or human task's actors
+    /// it satisfies, or the participant's actor when that list is empty. <see langword="null"/> when the participant satisfies none, or
+    /// is not one of the cast's.
     /// </summary>
     /// <param name="model">The model.</param>
-    /// <param name="chart">The chart that runs.</param>
+    /// <param name="process">The process that runs.</param>
     /// <param name="cast">The run's cast.</param>
     /// <param name="step">The step.</param>
+    /// <param name="choice">What the step can do now.</param>
     /// <returns>The actor id.</returns>
-    public static string? ActsAs(ModelSnapshot model, StatechartModel chart, ScenarioCast cast, ScenarioStep step)
+    public static string? ActsAs(ModelSnapshot model, Process process, ScenarioCast cast, ScenarioStep step, ActingChoice choice)
     {
         ArgumentNullException.ThrowIfNull(model);
-        ArgumentNullException.ThrowIfNull(chart);
+        ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(cast);
         ArgumentNullException.ThrowIfNull(step);
+        ArgumentNullException.ThrowIfNull(choice);
         if (step.Participant is null || step.Actor is not null)
             return step.Actor;
         if (cast.Participant(step.Participant) is not { } participant)
             return null;
-        var list = FirstList(model, chart, step);
-        if (list.Count == 0)
-            return participant.Actor;
-        foreach (var listed in list)
+        bool Satisfied(string id) => Satisfies(model, process, cast, participant, id);
+        var membership = ActorMembership.Of(model);
+        foreach (var move in choice.Moves)
         {
-            if (Satisfies(model, chart.Process, cast, participant, listed))
-                return listed;
+            if (move.Gate is not { } gate)
+                break;
+            if (move.Unsigned.FirstOrDefault(Satisfied) is { } required)
+                return required;
+            var signers = gate.Signers.Distinct(StringComparer.Ordinal).Where(Satisfied).ToList();
+            if (signers.Count == 0)
+                continue;
+            if (choice.Actors.Count > 0 && signers.FirstOrDefault(s => choice.Actors.Any(a => membership.Accepts(a, s))) is { } accepted)
+                return accepted;
+            return signers[0];
         }
 
-        return null;
+        if (choice.Actors.Count == 0)
+            return participant.Actor;
+        return choice.Actors.Distinct(StringComparer.Ordinal).FirstOrDefault(Satisfied);
     }
 
     /// <summary>
-    /// The step the interpreter runs for a step with a participant: its actor is the one it acts as (<see cref="ActsAs"/>), and an event
-    /// step's signer defaults to the participant's identity. A step with no participant, or one the cast does not hold, runs as given.
+    /// Runs a step. One with a participant runs as the actor it acts as (<see cref="ActsAs"/>, read from what the step can do now), an
+    /// event step's signer defaulting to the participant's identity; its trace echoes that input and names the actor in <c>actsAs</c>.
+    /// A step with no participant, or one the cast does not hold, runs as given and its trace has no <c>actsAs</c>.
     /// </summary>
     /// <param name="model">The model.</param>
-    /// <param name="chart">The chart that runs.</param>
+    /// <param name="interpreter">The interpreter the step runs in.</param>
+    /// <param name="process">The process that runs.</param>
     /// <param name="cast">The run's cast.</param>
     /// <param name="step">The step.</param>
-    /// <returns>The step to run.</returns>
-    public static ScenarioStep Effective(ModelSnapshot model, StatechartModel chart, ScenarioCast cast, ScenarioStep step)
+    /// <param name="choice">What the step could do when it ran, for a step with a participant; else <see langword="null"/>.</param>
+    /// <returns>The trace.</returns>
+    public static StepTrace Run(ModelSnapshot model, StatechartInterpreter interpreter, Process process, ScenarioCast cast, ScenarioStep step, out ActingChoice? choice)
     {
+        ArgumentNullException.ThrowIfNull(interpreter);
+        ArgumentNullException.ThrowIfNull(cast);
         ArgumentNullException.ThrowIfNull(step);
+        choice = null;
         if (step.Participant is null || cast.Participant(step.Participant) is not { } participant)
-            return step;
-        return step with
+            return interpreter.Step(step);
+        choice = interpreter.Acting(step);
+        var actsAs = ActsAs(model, process, cast, step, choice);
+        var effective = step with
         {
-            Actor = ActsAs(model, chart, cast, step),
+            Actor = actsAs,
             Signer = step.Signer ?? (step.Input == StepInput.Event ? participant.IdentityText : null),
         };
+        return interpreter.Step(effective) with { ActsAs = actsAs };
+    }
+
+    /// <summary>
+    /// What a participant failed when its step was refused by actor (MQ9301), or <see langword="null"/> for another refusal: the list it
+    /// satisfied none of (the signers of the gates it could sign, or the event's or human task's actors), or the list that did not accept
+    /// the actor it acted as.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="participant">The participant.</param>
+    /// <param name="choice">What the step could do when it ran.</param>
+    /// <param name="refusal">The refusal.</param>
+    /// <param name="actsAs">The actor the step acted as.</param>
+    /// <returns>The text, starting with the participant.</returns>
+    public static string? Failed(ModelSnapshot model, ScenarioParticipant participant, ActingChoice choice, string? refusal, string? actsAs)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(participant);
+        ArgumentNullException.ThrowIfNull(choice);
+        var who = $"participant '{participant.Name}'";
+        if (refusal == Refusals.GateSigner && choice.Moves.Select(m => m.Gate).OfType<ProcessGate>().DistinctBy(g => g.Id).ToList() is { Count: > 0 } gates)
+        {
+            var lists = string.Join(" or ", gates.Select(g => $"the signers of gate '{g.Name}' ({Names(model, g.Signers.Distinct(StringComparer.Ordinal))})"));
+            return actsAs is null
+                ? $"{who} satisfies none of {lists}"
+                : $"{who} acts as '{Names(model, [actsAs])}', which is not one of {lists}";
+        }
+
+        if (refusal != Refusals.Actor || choice.Source is null)
+            return null;
+        var list = $"the actors of {choice.Source} '{choice.Name}' ({Names(model, choice.Actors.Distinct(StringComparer.Ordinal))})";
+        return actsAs is null
+            ? $"{who} satisfies none of {list}"
+            : $"{who} acts as '{Names(model, [actsAs])}', a signer of the gate, which is not one of {list}";
     }
 
     /// <summary>
@@ -243,16 +283,6 @@ internal static class Participants
     /// <returns>The names, comma-separated.</returns>
     public static string Names(ModelSnapshot model, IEnumerable<string> list) =>
         string.Join(", ", list.Select(id => model.Get<Actor>(id)?.Name ?? id));
-
-    private static IEnumerable<StatechartModel> Charts(ModelSnapshot model, StatechartModel chart)
-    {
-        yield return chart;
-        foreach (var process in ExprSites.InvokedProcesses(model, chart.Process))
-        {
-            if (!string.Equals(process.Id, chart.Process.Id, StringComparison.Ordinal))
-                yield return ProcessLibraries.Chart(model, process);
-        }
-    }
 
     private static ScenarioObject? SubjectObject(ModelSnapshot model, ScenarioCast cast) =>
         cast.Subject is { } subject ? cast.Objects.FirstOrDefault(o => string.Equals(o.Id, subject, StringComparison.Ordinal)) : null;

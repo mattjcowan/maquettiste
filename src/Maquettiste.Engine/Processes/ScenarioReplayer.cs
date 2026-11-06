@@ -178,6 +178,7 @@ public static class ScenarioReplayer
         if (objectProblem is { } bad)
             Add(RuleCatalog.Create("MQ9305", $"Scenario '{scenario.Name}': {bad.Message}", scenario.Id, null, bad.Pointer));
         var steps = new List<StepTrace>();
+        var choices = new List<ActingChoice?>();
         ScenarioFailure? failure = null;
         var complete = !start.Incomplete && !badAt && !badObject;
         for (var i = 0; complete && i < scenario.Steps.Count; i++)
@@ -191,8 +192,9 @@ public static class ScenarioReplayer
                 break;
             }
 
-            var trace = interpreter.Step(Participants.Effective(runtime.Model, chart, cast, step));
+            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, cast, step, out var choice);
             steps.Add(trace);
+            choices.Add(choice);
             Report(trace, pointer);
             if (trace.Incomplete)
             {
@@ -238,7 +240,7 @@ public static class ScenarioReplayer
             {
                 var message = trace.Accepted
                     ? $"{At(i)}{Describe(c, step)} was accepted, but expect.accepted is false; fix the step's input, or set accepted to true."
-                    : RefusedAs(c, step) is { } refusedAs
+                    : RefusedAs(step) is { } refusedAs
                         ? $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}): {refusedAs}, but expect.accepted is true; fix the step's participant, or set accepted to false."
                         : $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}), but expect.accepted is true; fix the step's input (event, actor, signer, reason or assume), or set accepted to false.";
                 first ??= Fail("MQ9301", message, expect.Accepted, trace.Accepted, pointer + "/expect/accepted");
@@ -258,14 +260,11 @@ public static class ScenarioReplayer
 
             return first;
 
-            // A refusal by actor of a step with a participant names the participant and the list it did not satisfy (MQ9301).
-            string? RefusedAs(StatechartModel c, ScenarioStep step)
-            {
-                if (trace.Refusal is not (Refusals.Actor or Refusals.GateSigner) || cast.Participant(step.Participant) is not { } participant)
-                    return null;
-                var list = trace.Refusal == Refusals.GateSigner ? Participants.FirstList(runtime.Model, c, step) : ActorList(runtime.Model, c, step);
-                return $"participant '{participant.Name}' satisfies none of {Participants.Names(runtime.Model, list)}";
-            }
+            // A refusal by actor of a step with a participant names the participant and what it failed (MQ9301).
+            string? RefusedAs(ScenarioStep step) =>
+                cast.Participant(step.Participant) is { } participant && choices[i] is { } choice
+                    ? Participants.Failed(runtime.Model, participant, choice, trace.Refusal, trace.ActsAs)
+                    : null;
 
             ScenarioFailure Fail(string rule, string message, object expected, object actual, string at)
             {
@@ -302,21 +301,6 @@ public static class ScenarioReplayer
         if (step.Meaning is { } meaning && !gates.Any(g => g.Meanings.Any(m => string.Equals(m.Id, meaning, StringComparison.Ordinal))))
             return ($"{At(index)}the meaning '{meaning}' is not a meaning of a gate on event '{ev.Name}'; pick one of the gate's meanings.", "/meaning");
         return null;
-    }
-
-    // The event's or the human task's actors: the list a refusal by actor did not satisfy.
-    private static IReadOnlyList<string> ActorList(ModelSnapshot model, StatechartModel chart, ScenarioStep step)
-    {
-        if (step.Input == StepInput.Event && step.Event is { } eventId)
-        {
-            foreach (var c in new[] { chart }.Concat(ExprSites.InvokedProcesses(model, chart.Process).Select(p => ProcessLibraries.Chart(model, p))))
-            {
-                if (c.Events.TryGetValue(eventId, out var ev))
-                    return ev.Actors;
-            }
-        }
-
-        return Participants.FirstList(model, chart, step);
     }
 
     private static string At(int index) => index < 0 ? "Initial entry: " : "Step " + N(index + 1) + ": ";

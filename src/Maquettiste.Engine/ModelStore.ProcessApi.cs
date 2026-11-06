@@ -156,6 +156,8 @@ public sealed partial class ModelStore
             var nodes = participants.Select(p => JsonNode.Parse(p.GetRawText())!.AsObject()).ToArray();
             foreach (var node in nodes)
             {
+                if (node.TryGetPropertyValue("holds", out var holds) && holds is null)
+                    node.Remove("holds"); // "holds": null reads as no holdings
                 Renew(node);
                 Follow(node, "object");
                 foreach (var holding in (node["holds"] as JsonArray ?? []).OfType<JsonObject>())

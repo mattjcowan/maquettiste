@@ -436,7 +436,11 @@ and deep history, `done` for compound and parallel states, timers, service and h
 actor checks, with the same refusal reasons as the engine (`no-transition`, `guard`, `actor`, `gate-signer`, `gate-repeat`,
 `gate-reason`). When the model has actors taken from the object (the order's owner, an approver on its project), the generated code
 can't read the object: the interpreter accepts such an actor only when the process's Handlers, as `IActorResolver<TContext>`,
-says the caller is that actor for the instance, and refuses it otherwise (actors-design.md decision 27). Audit records hold the actor's and the meaning's ids, as the engine's do (the envelope carries names). A transition
+says the caller is that actor for the instance, and refuses it otherwise (actors-design.md decision 27). Until the team
+implements those `Is<Actor>` methods, the generated scenario tests whose steps act as an actor taken from the object fail: the
+stub refuses, so the step is refused by actor where the engine's replay accepts it. A human task's completion or failure carries
+no caller identity in its envelope, so for a task whose actors are taken from the object the resolver must judge the host's own
+principal (the user the host runs the completion for). Audit records hold the actor's and the meaning's ids, as the engine's do (the envelope carries names). A transition
 naming a guard the process does not declare never fires, as in the engine. A macrostep over the microstep bound (1,000 by
 default) does not throw: the step result's `Failure` says so and the instance keeps the state it reached, as the engine reports
 MQ9507. It keeps nothing between calls: `ProcessSnapshot<TContext>` (active leaf paths, history, timers, pending invokes,

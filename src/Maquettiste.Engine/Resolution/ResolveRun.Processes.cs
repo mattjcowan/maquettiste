@@ -284,7 +284,11 @@ internal sealed partial class ResolveRun
             if (entry.Owner is { } ownerId && Model.Get<Entity>(entry.Entity) is { } modelEntity)
             {
                 if (entity.Attributes.FirstOrDefault(a => string.Equals(a.Id, ownerId, StringComparison.Ordinal)) is { } owner)
-                    subject.OwnerAttribute = owner.Collection || owner.Type.ValueObject is not null ? null : owner;
+                {
+                    // Own or inherited only: an attribute from a stereotype is MQ9606.
+                    var declared = ExprSites.AttributesOf(Model, modelEntity).Any(a => string.Equals(a.Id, ownerId, StringComparison.Ordinal));
+                    subject.OwnerAttribute = !declared || owner.Collection || owner.Type.ValueObject is not null ? null : owner;
+                }
                 else if (Processes.RelativeActors.OwnerEnd(Model, modelEntity, ownerId) is { Max: MaxCardinality.One } && _byId.GetValueOrDefault(ownerId) is REnd ownerEnd)
                     subject.OwnerEnd = ownerEnd;
                 if (subject.OwnerEnd is not null && Model.TryGetEntry(ownerId, out var ownerEntry))
@@ -778,8 +782,7 @@ internal sealed partial class ResolveRun
             ResolveScenarioObjects(s, scenario, keys);
             var participants = ResolveParticipants(s, scenario, keys);
             var traced = TraceInputs(scenario);
-            var cast = Processes.ScenarioCast.Of(scenario);
-            var chart = scenario.Participants.Count > 0 && Model.Get<Process>(scenario.Process) is { } runs ? ProcessLibraries.Chart(Model, runs) : null;
+            var runs = scenario.Participants.Count > 0 ? Model.Get<Process>(scenario.Process) : null;
             var steps = new List<RStep>();
             for (var i = 0; i < scenario.Steps.Count; i++)
             {
@@ -805,18 +808,28 @@ internal sealed partial class ResolveRun
                 var stepDeps = DepsOf(r).AddRange(keys);
                 if (step.Actor is { } actor)
                     stepDeps.Element(actor);
-                r.ActsAs = r.Actor;
-                if (step.Participant is { } participantId && chart is not null)
+                if (step.Participant is { } participantId && runs is not null)
                 {
-                    // The actor a participant acts as (actors-design.md decision 15) reads the actors' files (memberships and the actors
-                    // from the object) and which actors exist, the processes it invokes, and the scenario's objects (traced below).
+                    // The actor a participant acts as (actors-design.md decision 15) is the one the engine's replay ran the step as. It
+                    // reads the actors' files (memberships and the actors from the object) and which actors exist, the processes it
+                    // invokes, the entities of every subject of the process with their bases (a path must mean the same on each), and the
+                    // scenario's objects (traced below).
                     r.Participant = participants.GetValueOrDefault(participantId);
-                    r.ActsAs = Processes.Participants.ActsAs(Model, chart, cast, step) is { } acting ? _actors.GetValueOrDefault(acting) : null;
+                    var known = r;
+                    var actors = _actors;
+                    r.ReplayedActsAs = new Lazy<RActor?>(() => known.Trace?.ActsAs is { } acting ? actors.GetValueOrDefault(acting) : null,
+                        LazyThreadSafetyMode.ExecutionAndPublication);
                     stepDeps.Add(ActorKind);
-                    foreach (var known in _actorOrder)
-                        stepDeps.Element(known.Id);
-                    foreach (var invoked in ExprSites.InvokedProcesses(Model, chart.Process))
+                    foreach (var listed in _actorOrder)
+                        stepDeps.Element(listed.Id);
+                    foreach (var invoked in ExprSites.InvokedProcesses(Model, runs))
                         stepDeps.Element(invoked.Id);
+                    foreach (var subject in runs.Subjects)
+                    {
+                        var chain = new HashSet<string>(StringComparer.Ordinal);
+                        for (var id = subject.Entity; id is not null && chain.Add(id); id = Model.Get<Entity>(id)?.Base)
+                            stepDeps.Element(id);
+                    }
                 }
 
                 foreach (var id in traced)
@@ -1007,6 +1020,7 @@ internal sealed partial class ResolveRun
             Audit = [.. t.Audit.Select(a => ResolutionValues.Kebab(a.Outcome))],
             StatePaths = [.. t.Configuration.Select(id => lookup.States.TryGetValue(id, out var state) ? state.Path : id)],
             Final = t.Final,
+            ActsAs = t.ActsAs,
         })];
     }
 

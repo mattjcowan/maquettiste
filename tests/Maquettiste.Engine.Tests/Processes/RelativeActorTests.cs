@@ -412,4 +412,53 @@ public sealed class RelativeActorTests
         Assert.Equal((Document, (string?)null), (entry.Entity, entry.Owner));
         Assert.DoesNotContain("owner", JsonNode.Parse(h.Read(ReviewFile))!["subjects"]![1]!.AsObject().Select(p => p.Key));
     }
+
+    [Fact]
+    public async Task MQ9606_refuses_an_owner_field_from_a_stereotype()
+    {
+        const string TrackedBy = "01JATT00000000000000000199";
+        var (h, store) = await OpenAsync(h =>
+        {
+            h.Write("model/vocabularies/stereotypes/tracked.json", $$"""
+                {"kind":"stereotype","id":"01JSTR00000000000000000101","key":"tracked","name":"Tracked","appliesTo":["entity"],"attributes":[{{Attr(TrackedBy, "trackedBy")}}]}
+                """);
+            h.Write("model/entities/item.json", $$"""
+                {"kind":"entity","id":"{{Item}}","name":"Item","package":"{{Pkg}}","base":"{{Work}}","stereotypes":["tracked"],"attributes":[{{Attr(ItemOnly, "itemOnly")}}]}
+                """);
+            h.Write(ReviewFile, Process(Review, "Review", $$""","subjects":[{"id":"{{ItemEntry}}","entity":"{{Item}}","owner":"{{TrackedBy}}"}]""", Ids(Owner), Ids(Ann)));
+        });
+        using var _ = h;
+        await using var __ = store;
+        var diagnostics = await ActorKit.ValidateAsync(h, store.Current!);
+
+        Assert.Equal(["review.json:/subjects/0/owner"], Hits(diagnostics, "MQ9606"));
+        Assert.Contains("comes from stereotype 'tracked'", diagnostics.Single(d => d.Rule == "MQ9606").Message, StringComparison.Ordinal);
+        Assert.Null(ResolutionKit.Resolve(store.Current!).Processes.Single(p => p.Id == Review).Subjects[0].OwnerAttribute);
+    }
+
+    [Fact]
+    public async Task An_actor_edit_is_checked_where_only_a_library_gate_uses_it_without_memberships()
+    {
+        const string Shared = "01JPRX00000000000000000161";
+        var gate = $$""","gatePolicy":"{{Shared}}" """;
+        var (h, store) = await OpenAsync(h =>
+        {
+            h.Write("model/actors/ann.json", ActorKit.Actor(Ann, "Ann", "person")); // no membership anywhere in the model
+            h.Write("model/processes/shared.json", $$"""
+                {"kind":"process","id":"01JPRC00000000000000000105","name":"Shared","package":"{{Pkg}}","use":"library",
+                 "gates":[{"id":"{{Shared}}","name":"leadSigns","signers":[{{Ids(Lead)}}],"meanings":[{"id":"01JPRX00000000000000000162","name":"ok"}]}]}
+                """);
+            h.Write(ReviewFile, Process(Review, "Review", ReviewSubjects, Ids(Owner), Ids(ProjectReviewer), gate: gate));
+        });
+        using var _ = h;
+        await using var __ = store;
+        Assert.False(ActorMembership.Of(store.Current!).Any);
+        Assert.DoesNotContain(await ActorKit.ValidateAsync(h, store.Current!), d => d.Rule == "MQ9604");
+
+        var result = await store.SaveAsync(Lead, Encoding.UTF8.GetBytes(Relative(Lead, "Lead", "person", $$"""{"path":[{{Ids(ItemOnly)}}]}""")),
+            store.Current!.GetDocument(Lead)!.Hash, ChangeSource.Editor, Ct);
+
+        Assert.NotEqual(SaveOutcome.Saved, result.Outcome);
+        Assert.Contains(result.Diagnostics, d => d.Rule == "MQ9604" && (d.FilePath ?? "").EndsWith("review.json", StringComparison.Ordinal) && d.JsonPointer == "/transitions/1/gatePolicy");
+    }
 }

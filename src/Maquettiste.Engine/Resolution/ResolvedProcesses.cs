@@ -637,12 +637,17 @@ public sealed class RStep : RObject
     public RActor? Actor { get; internal set; }
 
     /// <summary>
-    /// The actor the step acts as (actors-design.md decision 15): for a step with a participant and no actor, the first actor of the first
-    /// list (for a gated move the gate's signers, else the event's or human task's actors) that the participant satisfies, or the
-    /// participant's actor when that list is empty, and <see langword="null"/> when it satisfies none; otherwise <see cref="Actor"/>.
-    /// The engine's replay runs the step as this actor, so generated tests that use it agree with it.
+    /// The actor the step acts as (actors-design.md decision 15). For a step with a participant, the actor the engine's replay ran it as:
+    /// worked out from the moves the step could make when it ran (for a gated move, a required actor of the gate not yet signed, else a
+    /// signer the event's actors also accept, else the first signer the participant satisfies; otherwise the first of the event's or
+    /// human task's actors it satisfies, or the participant's actor when that list is empty), and <see langword="null"/> when it
+    /// satisfies none or the replay did not reach the step. Otherwise <see cref="Actor"/>. Generated tests that use it agree with the
+    /// replay because it is the replay's.
     /// </summary>
-    public RActor? ActsAs { get; internal set; }
+    public RActor? ActsAs => ReplayedActsAs is { } replayed ? replayed.Value : Actor;
+
+    /// <summary>For a step with a participant, the actor the replay ran it as (read on first use).</summary>
+    internal Lazy<RActor?>? ReplayedActsAs { get; set; }
 
     /// <summary>The signing person's identity, for a gated event, as the file gives it.</summary>
     public string? Signer { get; internal set; }
@@ -693,6 +698,9 @@ public sealed class RStepTrace
 
     /// <summary>Whether the root is final after the step.</summary>
     public bool Final { get; internal set; }
+
+    /// <summary>For a step with a participant, the id of the actor it acted as (<see cref="RStep.ActsAs"/>).</summary>
+    internal string? ActsAs { get; set; }
 }
 
 /// <summary>What a scenario step expects.</summary>

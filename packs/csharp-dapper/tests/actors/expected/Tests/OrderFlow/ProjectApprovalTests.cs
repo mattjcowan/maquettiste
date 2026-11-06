@@ -33,8 +33,8 @@ public sealed class ProjectApprovalTests
         Assert.Equal<string>(["Submitted"], result.States);
         Assert.Equal<string>([], result.Changed);
 
-        // Step 2: approve by carl, signed by carl.
-        result = await host.Dispatcher.SendAsync(new OrderFlowApproveCommand(new ProcessEnvelope(Instance, Signer: "carl", Meaning: "approved")), cancellationToken);
+        // Step 2: approve by carl as Pat, signed by carl.
+        result = await host.Dispatcher.SendAsync(new OrderFlowApproveCommand(new ProcessEnvelope(Instance, Actor: Actors.Pat, Signer: "carl", Meaning: "approved")), cancellationToken);
         Assert.False(result.Accepted);
         Assert.Equal("gate-signer", result.Refusal);
         Assert.Equal<string>(["refused"], [.. result.Audit.Select(a => a.OutcomeText)]);

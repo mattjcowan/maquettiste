@@ -7890,6 +7890,12 @@ components:
           type: integer
           minimum: 0
           description: The number of steps, on scenario rows.
+        participants:
+          type: integer
+          minimum: 1
+          description: |
+            The number of participants, on scenario rows that have at least one (actors-design.md decision 14). Left out when the
+            scenario has none, so rows of projects without participants do not change.
         effect:
           description: The operation's effect, on operation rows (next-phase-2-design.md section 4.1).
           type: string
@@ -10549,10 +10555,12 @@ components:
         actsAs:
           type: string
           description: |
-            With participant: the id of the actor the step acts as. It is the step's actor when given; else the first actor of the first
-            list (for a gated move, the gate's signers; else the event's or human task's actors) that the participant satisfies; with an
-            empty first list, the participant's actor. Absent for a step that names no participant, and when the participant satisfies
-            none of the first list (the replay refuses the step by actor).
+            With participant: the id of the actor the engine's replay ran the step as. It is the step's actor when given; else it is
+            worked out from the moves the step could make when it ran: for a gated move, a required actor of the gate not yet signed,
+            else a signer the event's actors also accept, else the first signer the participant satisfies; otherwise the first of the
+            event's or human task's actors it satisfies, or the participant's actor when that list is empty. Absent for a step that
+            names no participant, when the participant satisfies none (the replay refuses the step by actor), and when the replay did
+            not reach the step.
     ExpectationRecord:
       x-engine-record: Maquettiste.Engine.ExpectationRecord
       description: What a step expects.
@@ -14160,7 +14168,7 @@ components:
         participant:
           description: |
             The id of a participant of the run (actors-design.md decision 15); the engine works out the actor it acts as unless `actor` is
-            given, and an event's signer defaults to its identity. A trace's echo gives the actor it acted as and the signer; it leaves participant out when absent.
+            given, and an event's signer defaults to its identity. A trace's echo gives the actor it acted as and the signer, and the trace's actsAs names that actor; it leaves participant out when absent.
           type: [string, 'null']
         actor:
           type: [string, 'null']
@@ -14363,6 +14371,15 @@ components:
             The system actor when it made the move (actors-design.md decision 2): for the initial entry, a time step or a finished invoke
             that is not a human task, whose input names no actor, the project's system actor (type `system`, shown as Automatic) when it
             has exactly one. Left out otherwise, without a system actor always: a step's own actor is in its input.
+          $ref: '#/components/schemas/Ulid'
+        actsAs:
+          description: |
+            The actor a step with a participant acted as (actors-design.md decision 15), worked out from the moves the step could make
+            when it ran: for a gated move, a required actor of the gate not yet signed, else a signer the event's actors also accept,
+            else the first signer the participant satisfies; otherwise the first of the event's or human task's actors it satisfies, or
+            the participant's actor when that list is empty. The input echoes the filled-in step: its actor is this actor and its
+            signer the participant's identity when the step gave none. Left out for a step that names no participant, and when the
+            participant satisfies none of the actors it could act as. The mock backend fills it and echoes the input the same way.
           $ref: '#/components/schemas/Ulid'
     MicrostepTrace:
       x-engine-record: Maquettiste.Engine.Processes.MicrostepTrace

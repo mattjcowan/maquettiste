@@ -513,6 +513,9 @@ public static class ProcessApi
                 return null;
             }
 
+            // "holds": null reads as no holdings.
+            if (participant.Holds is null)
+                participant = participant with { Holds = [] };
             if (!ids.Add(participant.Id) || participant.Holds.Any(h => !ids.Add(h.Id)))
             {
                 error = $"participants[{i}] repeats an id another participant or holding has; give each its own id.";
@@ -588,7 +591,7 @@ public static class ProcessApi
         var cast = new ScenarioCast(objects ?? [], subject, participants ?? []);
         for (var i = 0; complete && i < inputs.Count; i++)
         {
-            var trace = interpreter.Step(Participants.Effective(runtime.Model, chart, cast, inputs[i]));
+            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, cast, inputs[i], out _);
             traces.Add(trace);
             complete = !trace.Incomplete;
         }
