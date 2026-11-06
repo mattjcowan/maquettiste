@@ -92,4 +92,7 @@ public enum ElementKind
 
     /// <summary>The project's own verbs and the built-in verbs it hides (<c>verb-vocabulary</c>, verbs-design.md decision 6).</summary>
     [JsonStringEnumMemberName("verb-vocabulary")] VerbVocabulary,
+
+    /// <summary>A named right that many lifecycles use (<c>right</c>, rights-design.md decision 7).</summary>
+    [JsonStringEnumMemberName("right")] Right,
 }

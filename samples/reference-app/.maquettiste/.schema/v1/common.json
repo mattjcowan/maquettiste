@@ -1165,7 +1165,7 @@
     },
     "expr": {
       "title": "Expression",
-      "description": "A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard and set sites only), actor (guard and set sites only), inState (with of; guard and set sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).",
+      "description": "A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard, set and right sites only), currentActor (guard, set and right sites only), inState (with of; guard, set and right sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).",
       "type": "object",
       "x-order": ["value", "type", "null", "path", "ref", "member", "now", "currentActor", "inState", "of", "op", "call", "args", "case", "else", "satisfies", "with", "text"],
       "properties": {
@@ -1201,15 +1201,15 @@
           "minLength": 1
         },
         "now": {
-          "description": "The clock, a datetimeoffset; guard and set sites only.",
+          "description": "The clock, a datetimeoffset; guard, set and right sites only.",
           "const": true
         },
         "currentActor": {
-          "description": "The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard and set sites only.",
+          "description": "The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard, set and right sites only.",
           "const": true
         },
         "inState": {
-          "description": "True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard and set sites only.",
+          "description": "True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard, set and right sites only.",
           "type": "array",
           "items": {
             "type": "string",
@@ -1526,6 +1526,60 @@
       "required": [
         "id",
         "name"
+      ],
+      "additionalProperties": false
+    },
+    "rightBody": {
+      "title": "Right body",
+      "description": "What a right says (rights-design.md decisions 3 to 6), shared by an inline right in a lifecycle's rights and a named right (model/rights/): it allows or denies some actors some verbs, under an optional condition. Each form refers to these properties one by one.",
+      "type": "object",
+      "x-order": [
+        "access",
+        "actors",
+        "except",
+        "verbs",
+        "ends",
+        "condition"
+      ],
+      "properties": {
+        "access": {
+          "description": "allow or deny. Each lifecycle that answers says no when a deny that holds names the verb, else yes when an allow holds, else its rightsDefault answers; one no decides.",
+          "enum": [
+            "allow",
+            "deny"
+          ]
+        },
+        "actors": {
+          "description": "Who the right applies to: any actor, as an event's actors (people, roles, groups, organizations, external systems, the system actor, actors from the object). A role, group or organization stands for its members at any depth. Empty means everyone.",
+          "$ref": "#/$defs/idList",
+          "uniqueItems": true
+        },
+        "except": {
+          "description": "Actors the right does not apply to, with their members at any depth; other rights and the lifecycle's default still answer for them, so it never grants. An entry that actors also names is MQ9906.",
+          "$ref": "#/$defs/idList",
+          "uniqueItems": true
+        },
+        "verbs": {
+          "description": "What the right speaks of, at least one verb: a built-in verb's key or one of the project's own (MQ9701). A move, signature or task verb speaks of this lifecycle's moves, signatures and human tasks; an object, link or own verb speaks of the object, whichever lifecycle acts.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/verbRef"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ends": {
+          "description": "Relation ends of the subject: the right then speaks of the links through them, for connect, disconnect, read, modify, freeze and thaw. Ends every subject holds, beside only those verbs (MQ9903).",
+          "$ref": "#/$defs/idList"
+        },
+        "condition": {
+          "description": "The right holds only when this is true; false or unknown means it says nothing. It reads the object under subject (to-one paths too), current_actor(), in_state and now(), not the context or a payload.",
+          "$ref": "#/$defs/expr"
+        }
+      },
+      "required": [
+        "access",
+        "verbs"
       ],
       "additionalProperties": false
     }

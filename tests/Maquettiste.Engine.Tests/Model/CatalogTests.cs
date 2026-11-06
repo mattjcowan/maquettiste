@@ -21,9 +21,11 @@ public sealed class CatalogTests
 
         Assert.True(KindInfo.TryGet("custom", out var custom));
         Assert.Equal(ElementKind.Custom, custom.Kind);
-        Assert.Equal(KindInfo.All[^2], custom);
+        Assert.Equal(KindInfo.All[^3], custom);
         Assert.True(KindInfo.TryGet("verb-vocabulary", out var verbs));
-        Assert.Equal(KindInfo.All[^1], verbs);
+        Assert.Equal(KindInfo.All[^2], verbs);
+        Assert.True(KindInfo.TryGet("right", out var rights));
+        Assert.Equal((KindInfo.All[^1], "model/rights", (string?)null), (rights, rights.Folder, rights.FixedFileName));
     }
 
     [Fact]
@@ -47,7 +49,7 @@ public sealed class CatalogTests
         Assert.All(RuleCatalog.All.Where(r => r.Id.StartsWith("MQ1", StringComparison.Ordinal)), r => Assert.False(r.CanBeDisabled));
         Assert.Equal(DiagnosticSeverity.Warning, RuleCatalog.Get("MQ1003").DefaultSeverity);
         Assert.Equal(DiagnosticSeverity.Info, RuleCatalog.Get("MQ2006").DefaultSeverity);
-        Assert.Equal(384, RuleCatalog.All.Count);
+        Assert.Equal(391, RuleCatalog.All.Count);
     }
 
     [Fact]

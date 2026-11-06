@@ -51,6 +51,12 @@ public sealed record Process : Element, IPackaged
     public string? BoundAttribute { get; init; }
 
     /// <summary>
+    /// What the lifecycle answers for a verb when no right of its own holds (rights-design.md decision 9): <see cref="RightAccess.Allow"/>
+    /// when <see langword="null"/>. Written, even as allow, it makes the project use rights. Lifecycles only (MQ9901).
+    /// </summary>
+    public RightAccess? RightsDefault { get; init; }
+
+    /// <summary>
     /// Every subject of the process in one list, whatever the form of the file (lifecycle-design.md decision 6): the entries of
     /// <c>subjects</c>, else one entry for the one-subject form, whose id is the process's own and which holds <see cref="Subject"/> and
     /// <see cref="BoundAttribute"/>; empty when the process has no subject.
@@ -82,6 +88,12 @@ public sealed record Process : Element, IPackaged
 
     /// <summary>A library's gates, which a transition names with <see cref="ProcessTransition.GatePolicy"/>; other processes hold theirs on transitions (MQ9020).</summary>
     public IReadOnlyList<ProcessGate> Gates { get; init; } = [];
+
+    /// <summary>
+    /// The lifecycle's rights in file order (rights-design.md decisions 1 and 7): inline rights and uses of named rights. Lifecycles only
+    /// (MQ9901).
+    /// </summary>
+    public IReadOnlyList<ProcessRight> Rights { get; init; } = [];
 
     /// <summary>
     /// The root's children in document order (entry order, priority and the bound enum's member order). A library has none, and any other
@@ -844,6 +856,14 @@ public sealed record ScenarioStep : IProcessNode
     /// <summary>An ISO 8601 duration to advance the clock by, for <see cref="StepInput.Time"/>.</summary>
     public string? After { get; init; }
 
+    /// <summary>
+    /// For <see cref="StepInput.Verb"/>: the verb done, by key (rights-design.md decision 25), an object, link or own verb. Left out of a
+    /// trace's echo when absent.
+    /// </summary>
+    [VerbKey]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Verb { get; init; }
+
     /// <summary>The scenario's participant that acts (actors-design.md decision 15); the engine works out the actor it acts as unless
     /// <see cref="Actor"/> is given. Left out of a trace's echo when absent.</summary>
     [ElementRef(IndexKinds = ["participant"])]
@@ -867,6 +887,24 @@ public sealed record ScenarioStep : IProcessNode
     /// <summary>Payload values by attribute id.</summary>
     [ElementRef(IndexKinds = ["attribute"])]
     public IReadOnlyDictionary<string, JsonElement> Payload { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
+
+    /// <summary>
+    /// For a <c>modify</c> verb step on the subject: the values it sets, by attribute id (rights-design.md decision 25), seen by later guards
+    /// and sets. <see langword="null"/>, and left out of a trace's echo, when absent.
+    /// </summary>
+    [ElementRef(IndexKinds = ["attribute"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, JsonElement>? Values { get; init; }
+
+    /// <summary>For a verb step on a link: the subject's relation end the link goes through; <see langword="null"/> for the subject itself.</summary>
+    [ElementRef(IndexKinds = ["end"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? End { get; init; }
+
+    /// <summary>With <see cref="End"/>: the scenario object at the link's other end.</summary>
+    [ElementRef(IndexKinds = ["object"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Object { get; init; }
 
     /// <summary>Results for guards without an expression, by guard id.</summary>
     [ElementRef(IndexKinds = ["guard"])]
@@ -894,6 +932,9 @@ public enum StepInput
 
     /// <summary>An invoke failed (<c>invoke-error</c>).</summary>
     [JsonStringEnumMemberName("invoke-error")] InvokeError,
+
+    /// <summary>A participant does a verb to the subject or one of its links (<c>verb</c>, rights-design.md decision 25).</summary>
+    [JsonStringEnumMemberName("verb")] Verb,
 }
 
 /// <summary>What a step expects.</summary>
@@ -901,6 +942,20 @@ public sealed record StepExpectation
 {
     /// <summary>Whether the input is accepted; <see langword="false"/> records a refusal.</summary>
     public bool Accepted { get; init; } = true;
+
+    /// <summary>
+    /// With <see cref="Accepted"/> <see langword="false"/>: why the step is refused, a value of <see cref="Processes.Refusals"/>
+    /// (rights-design.md decision 26; MQ9308); <see langword="null"/> checks nothing.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Refusal { get; init; }
+
+    /// <summary>
+    /// With <see cref="Accepted"/> <see langword="false"/>: the id of the element that refused the step (rights-design.md decision 12; MQ9308);
+    /// <see langword="null"/> checks nothing.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? RefusedBy { get; init; }
 
     /// <summary>The active atomic states, in document order.</summary>
     [ElementRef(IndexKinds = ["state"])]

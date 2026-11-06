@@ -255,7 +255,8 @@ export interface paths {
          *     - `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,
          *       `scenarios`: the matching record.
          *     - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards
-         *       (a guard written in the expression language with its `condition`), actions, gates and invokes, actors by id.
+         *       (a guard written in the expression language with its `condition`), actions, gates and invokes, actors by id, and a
+         *       lifecycle's `rightsDefault` and `rights` when it has them. Named rights (`RightRecord`) come with `all`, as verbs do.
          *     - `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,
          *       `completes`, `returns`), the errors (`code`, `input`), `fires` and `requires` by id, and the `guards` in the order
          *       they are checked, each with its `condition` and the `error` it reports.
@@ -572,15 +573,16 @@ export interface paths {
         /**
          * One expression's text, type, JavaScript and SQL
          * @description Previews one expression of the expression language (next-phase-3-design.md section 3.1): a check, an entity check, a
-         *     derived value, a process or operation guard, or a constraint's condition. `element` names the element, or the check,
-         *     guard or derived attribute, that holds it; `at` is the stored expression's pointer (`/checks/0/condition`), optional
-         *     when the element holds one. Or `text` that is not saved, with `site`: `check`, `value` or `guard`, or the pointer of one
-         *     of the element's sites, whose scope and mode the text takes (a JavaScript guard's `/guards/0/condition` reads the
+         *     derived value, a process or operation guard, a constraint's condition, or a right's condition (rights-design.md section 8).
+         *     `element` names the element, or the check, guard or derived attribute, that holds it; `at` is the stored expression's pointer (`/checks/0/condition`), optional
+         *     when the element holds one. Or `text` that is not saved, with `site`: `check`, `value`, `guard`, `set` or `right`, or the
+         *     pointer of one of the element's sites, whose scope and mode the text takes (a JavaScript guard's `/guards/0/condition` reads the
          *     payloads of the events that use it). The answer has the text printed from current names, the type, whether it may be
          *     null, the JavaScript function over a row that calls the expression runtime as `mq`, and the PostgreSQL text through the
          *     one table the site reads (a table's own columns; an entity's check or value through its binding's field map onto the
          *     binding's table, `database` choosing the binding), else `sql` null and `sqlNote` saying why (a guard or a constraint
-         *     reads no table; another dialect is MQ4056). `values`, the row by member name, adds `answer` under the site's mode: a
+         *     reads no table; another dialect is MQ4056). A named right's condition, or text for it, previews in the scope of all the
+         *     lifecycles that use it, or with `lifecycle` as if it were used there; a named right no lifecycle uses needs `lifecycle`. `values`, the row by member name, adds `answer` under the site's mode: a
          *     check passes on true or unknown, a guard holds on true only, a value answers itself (a decimal as exact text);
          *     `now()` reads the sandbox's fixed clock, 2000-01-01T00:00:00Z. `preview` is null when the text does not parse or the
          *     expression does not type, with MQ3101 to MQ3113 in `diagnostics`. The preview reads that element and what its
@@ -1097,7 +1099,7 @@ export interface paths {
         /**
          * Record a scenario from a list of inputs
          * @description phase-3-design.md section 4.4. The engine replays `start` and `steps` and fills each step's `expect` (refusals recorded as
-         *     `accepted: false`) and the `outcome` (unless the request gives one) from the replay, gives the scenario, its steps and its
+         *     `accepted: false`, with `refusal` and `refusedBy` when the project uses rights, rights-design.md decision 26) and the `outcome` (unless the request gives one) from the replay, gives the scenario, its steps and its
          *     objects new ids (`subject` and each link follow their objects), and saves it as one change under
          *     `model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing it. Inputs that cannot be
          *     replayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.
@@ -1127,10 +1129,46 @@ export interface paths {
         /**
          * Replay a process's scenarios and report each one's first failure
          * @description phase-3-design.md sections 3 and 4.4. Every scenario of the process (or the ids or names in `scenarios`) is replayed through
-         *     the engine interpreter; `failure` is the first failed expectation (MQ9301 to MQ9304) or the stop that kept the replay from the
+         *     the engine interpreter; `failure` is the first failed expectation (MQ9301 to MQ9304, MQ9307, MQ9308) or the stop that kept the replay from the
          *     last step (MQ9305, MQ9306, MQ9507; `expected` and `actual` are then null). Results are ordered by name, then id.
          */
         post: operations["verifyScenarios"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/processes/{id}/rights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Who can do what in a lifecycle, per state, actor and verb
+         * @description rights-design.md decision 31. For each atomic state of the lifecycle, each actor its rights (in `actors` or `except`), events,
+         *     human tasks and gates name, plus everyone else (`actor` null), and each verb those name, whether the verb is allowed, denied,
+         *     or depends (on a condition, an actor from the object, or another lifecycle that governs the object), with the ids that decide.
+         *     A row is one kind of caller: one who satisfies that actor, and so every actor it is a member of, and no other actor the grid
+         *     names. Each lifecycle answers on its own and any no wins: another lifecycle answers only for object, link and own verbs, and
+         *     one that could say no in only some of its states, or under a condition, makes the cell depend on it (`dependsOn`). When the
+         *     subjects are governed by different other lifecycles and that changes a cell, the cell has one row per entity (`entity`).
+         *     A project without rights still gets answers, from the closed lists of events, tasks and gates and the default. The answer
+         *     reads the lifecycle, the named rights it uses, the actors and their memberships, and the lifecycles that govern its subjects;
+         *     the model is never resolved, and nothing is written. Rows come in the order of `process.access_grid`: state, actor, verb,
+         *     then entity; pass `next` as `cursor` until it is null. The MCP tool `get_rights` answers the same.
+         */
+        get: operations["getRights"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2900,7 +2938,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration" | "operation" | "custom" | "verb-vocabulary";
+        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration" | "operation" | "custom" | "verb-vocabulary" | "right";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
         /**
@@ -2992,12 +3030,23 @@ export interface components {
              */
             verb?: string;
             /**
-             * @description The distinct verb keys a process's events and transitions name, sorted ordinally (verbs-design.md section 7), on process
-             *     rows that name at least one. Left out when the process names none. The editor's Verbs tab counts uses from these rows.
+             * @description The distinct verb keys a process's events and transitions name, and those its rights name (rights-design.md section 8),
+             *     sorted ordinally (verbs-design.md section 7), on process rows that name at least one; a named right's verbs, on right rows.
+             *     Left out when the process names none. The editor's Verbs tab counts uses from these rows.
              */
             verbs?: string[];
             /** @description The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2). */
             type?: string;
+            /**
+             * @description The number of entries in a lifecycle's rights, inline rights and uses of named rights (rights-design.md section 8), on process
+             *     rows that have at least one. Left out otherwise, so rows of projects without rights do not change.
+             */
+            rights?: number;
+            /**
+             * @description Whether a named right allows or denies, on right rows (rights-design.md section 8).
+             * @enum {string}
+             */
+            access?: "allow" | "deny";
             /**
              * @description The actors a process names anywhere in its document (event senders, gate signers, invokes and so on), as ids sorted
              *     ordinally, on process rows (libraries too) that name at least one. Only ids of actors that exist count. Left out when the
@@ -3020,7 +3069,7 @@ export interface components {
             missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
-        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"] | components["schemas"]["operation"] | components["schemas"]["custom"] | components["schemas"]["verb-vocabulary"];
+        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"] | components["schemas"]["operation"] | components["schemas"]["custom"] | components["schemas"]["verb-vocabulary"] | components["schemas"]["right-2"];
         /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other. */
         NewModelDocument: {
             kind: components["schemas"]["ElementKind"];
@@ -3497,7 +3546,7 @@ export interface components {
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
             /** @description The records, by kind, name and id (ordinal). */
-            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["CustomRecord"] | components["schemas"]["ConstraintRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"] | components["schemas"]["VerbRecord"])[];
+            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["CustomRecord"] | components["schemas"]["ConstraintRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"] | components["schemas"]["VerbRecord"] | components["schemas"]["RightRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
             next: string | null;
             /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise the failures of the calculated values the page reads (MQ5010, MQ5011, MQ5013). */
@@ -3654,18 +3703,20 @@ export interface components {
         };
         /** @description What `previewExpression` previews: a stored expression (`at`), or `text` at a `site`. */
         ExpressionPreviewRequest: {
-            /** @description The id of the element, or of the check, guard, derived attribute, action or set, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`. */
+            /** @description The id of the element, or of the check, guard, derived attribute, action, set or right, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for an inline right not yet saved names its lifecycle, with `site` `right`. */
             element: string;
             /** @description The pointer of a stored expression in the element's file, or of what holds it; omit when the element holds one, and with text. */
             at?: string | null;
             /** @description Text to preview instead of a stored expression; needs `site`. */
             text?: string | null;
-            /** @description With `text`, `check`, `value`, `guard` or `set` (a value an action of a process sets, with `attribute`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard and set sites, with no SQL form and no answer. */
+            /** @description With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`) or `right` (a right's condition, which reads the object under `subject`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set and right sites, with no SQL form and no answer. */
             site?: string | null;
             /** @description With `site` `set`, the id of the attribute the value is for, whose type the value must fit (MQ3103). */
             attribute?: string | null;
             /** @description A database id or name, choosing the binding an entity's expression lowers to SQL through. */
             database?: string | null;
+            /** @description A lifecycle id or name: a named right's condition, or text for it, previews as if the right were used there (rights-design.md section 8). Absent, it previews in the scope of all the lifecycles that use the right; a named right with no use needs one. */
+            lifecycle?: string | null;
             /** @description The row the expression reads, members by name (a process guard's payload under `event`, an operation's subject under `subject`). */
             values?: {
                 [key: string]: unknown;
@@ -3989,6 +4040,73 @@ export interface components {
             invokes: components["schemas"]["InvokeRecord"][];
             actors: string[];
             scenarios: string[];
+            /**
+             * @description The lifecycle's rightsDefault, `allow` or `deny` (rights-design.md decision 9), as the file writes it; left out when it writes none, which allows.
+             * @enum {string}
+             */
+            rightsDefault?: "allow" | "deny";
+            /** @description The entries of the lifecycle's rights in file order (rights-design.md decisions 1 and 7), inline rights and uses of named rights; left out when it has none. */
+            rights?: components["schemas"]["ProcessRightRecord"][];
+        };
+        /**
+         * @description One entry of a lifecycle's rights (rights-design.md decisions 1, 3 and 7): an inline right, which carries what it says and shares
+         *     its id with the entry, or a use of a named right, whose record (kind `right`) carries what it says.
+         */
+        ProcessRightRecord: {
+            /** @description The entry's id. */
+            id: string;
+            /** @description The right's id, the entry's own for an inline right, the named right's for a use. */
+            right: string;
+            /** @description Whether the entry uses a named right. */
+            named: boolean;
+            /** @description The ids of the states of the lifecycle where the right holds; empty for every state. */
+            states: string[];
+            /** @description The right's condition, typed for this lifecycle's subjects; left out when it has none or it does not type. */
+            condition?: components["schemas"]["ExpressionRecord"];
+            /** @description An inline right's name; left out for a use. */
+            name?: string;
+            /** @description An inline right's display name; left out when it has none, and for a use. */
+            displayName?: string;
+            /** @description An inline right's description (why); left out when it has none, and for a use. */
+            description?: string;
+            /**
+             * @description An inline right's access; left out for a use.
+             * @enum {string}
+             */
+            access?: "allow" | "deny";
+            /** @description An inline right's actors' ids in file order, empty for everyone; left out for a use. */
+            actors?: string[];
+            /** @description The ids of the actors an inline right does not apply to, in file order; left out for a use. */
+            except?: string[];
+            /** @description An inline right's verb keys in file order; left out for a use. */
+            verbs?: string[];
+            /** @description The ids of the subject's relation ends whose links an inline right speaks of; left out for a use. */
+            ends?: string[];
+        };
+        /**
+         * @description A named right (rights-design.md decision 7), with what it says and the lifecycles that use it. Right records come with every
+         *     other kind (`all`), as verb records do, and only in a model that has named rights.
+         */
+        RightRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "right";
+            name: string;
+            package: string | null;
+            /** @enum {string} */
+            access: "allow" | "deny";
+            /** @description The ids of the actors it applies to, in file order; empty for everyone. */
+            actors: string[];
+            /** @description The ids of the actors it does not apply to, in file order. */
+            except: string[];
+            /** @description Its verb keys, in file order. */
+            verbs: string[];
+            /** @description The ids of the relation ends whose links it speaks of. */
+            ends: string[];
+            /** @description Its condition's text, printed from current names, or as stored for a right no lifecycle uses; null when it has none. Each use's record has the condition typed for its lifecycle. */
+            conditionText: string | null;
+            /** @description The ids of the lifecycles that use it. */
+            processes: string[];
         };
         /** @description An entry of a process's `subjects` (lifecycle-design.md decision 5), or one subject a stereotype entry gives (stereotype-sets-design.md decision 12). */
         SubjectRecord: {
@@ -4283,6 +4401,16 @@ export interface components {
             description: string | null;
             /** @description The id of the participant that acts (actors-design.md decision 15); absent for a step that names none. */
             participant?: string;
+            /** @description A verb step's verb key (rights-design.md decision 25); absent for other steps. */
+            verb?: string;
+            /** @description The values a modify verb step sets, by attribute name (by id when no subject has such an attribute), as written; absent when the step gives none. */
+            values?: {
+                [key: string]: unknown;
+            };
+            /** @description The id of the subject's relation end a verb step's link goes through; absent when the step names none. */
+            end?: string;
+            /** @description The id of the scenario object at the other end of a verb step's link; absent when the step names none. */
+            object?: string;
             /**
              * @description With participant: the id of the actor the engine's replay ran the step as. It is the step's actor when given; else it is
              *     worked out from the moves the step could make when it ran: for a gated move, a required actor of the gate not yet signed,
@@ -4305,6 +4433,13 @@ export interface components {
             values?: {
                 [key: string]: unknown;
             };
+            /**
+             * @description The refusal the step expects (rights-design.md decision 26); absent when the file gives none.
+             * @enum {string}
+             */
+            refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default";
+            /** @description The id of the element the step expects to refuse it (rights-design.md decision 26); absent when the file gives none. */
+            refusedBy?: string;
         };
         /** @description A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors; the events it fires and what it requires by id. */
         OperationRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -6176,11 +6311,24 @@ export interface components {
              * @default event
              * @enum {string}
              */
-            input?: "event" | "time" | "invoke-done" | "invoke-error";
+            input?: "event" | "time" | "invoke-done" | "invoke-error" | "verb";
             event?: string | null;
             invoke?: string | null;
             /** @description An ISO 8601 duration, for `time`. */
             after?: string | null;
+            /**
+             * @description For `verb` (rights-design.md decision 25): the verb the participant does to the subject, or with `end` to one of its links,
+             *     an object, link or own verb, by key. Left out of a trace's echo when absent.
+             */
+            verb?: string;
+            /** @description For a `modify` verb step on the subject, the values it sets, by attribute id; later guards and sets read them. Left out of a trace's echo when absent. */
+            values?: {
+                [key: string]: unknown;
+            };
+            /** @description For a verb step on a link, the id of the subject's relation end the link goes through. Left out of a trace's echo when absent. */
+            end?: string;
+            /** @description With `end`, the id of the scenario object at the link's other end. Left out of a trace's echo when absent. */
+            object?: string;
             /**
              * @description The id of a participant of the run (actors-design.md decision 15); the engine works out the actor it acts as unless `actor` is
              *     given, and an event's signer defaults to its identity. A trace's echo gives the actor it acted as and the signer, and the trace's actsAs names that actor; it leaves participant out when absent.
@@ -6285,8 +6433,11 @@ export interface components {
             index: number;
             input: components["schemas"]["SimInput"] | null;
             accepted: boolean;
-            /** @enum {string|null} */
-            refusal: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | null;
+            /**
+             * @description Why the input was refused, the first check that failed (rights-design.md decision 12); null when accepted.
+             * @enum {string|null}
+             */
+            refusal: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | null;
             microsteps: components["schemas"]["MicrostepTrace"][];
             guards: components["schemas"]["GuardEvaluation"][];
             audit: components["schemas"]["GateAuditRecord"][];
@@ -6327,9 +6478,32 @@ export interface components {
             /**
              * @description What the run assumed or could not do (object-effects-design.md section 7), in the order it happened: a state assumed for an
              *     object's lifecycle because the scenario gave none (decision 10), an identity that did not convert to the type `current_actor()` met
-             *     (decision 5), sets an invoked sub-process ran, which change nothing (decision 4). Left out when empty.
+             *     (decision 5), sets an invoked sub-process ran, which change nothing (decision 4). With rights (rights-design.md section
+             *     7), also a verb the run checked but did not apply, a delete that stopped the chart, and the other lifecycles a scenario with
+             *     no objects assumed in their initial states or did not ask. Left out when empty.
              */
             notes?: string[];
+            /**
+             * @description The id of the element that refused the input (rights-design.md decision 12): the event or invoke whose actors leave the actor
+             *     out, the right (an inline right, or the named right), the lifecycle whose default denies, the guard, or the gate or gate
+             *     policy. Written for a refused input in a project that uses rights, and for a step that expects it; left out otherwise, and
+             *     for `no-transition`, which no element refused.
+             */
+            refusedBy?: components["schemas"]["Ulid"];
+            /**
+             * @description The rights that answered for the input, each with its access, in check order (rights-design.md decision 26): rights that
+             *     held for the actor, the verb and the object's states. Left out when none did.
+             */
+            rights?: components["schemas"]["RightEvaluation"][];
+        };
+        /** @description A right that answered for an input; a named right used by several lifecycles answers once for each lifecycle that asked. */
+        RightEvaluation: {
+            /** @description The right's id, an inline right's own or the named right's. */
+            right: components["schemas"]["Ulid"];
+            /** @description The id of the lifecycle whose rights list it. */
+            lifecycle: components["schemas"]["Ulid"];
+            /** @enum {string} */
+            access: "allow" | "deny";
         };
         MicrostepTrace: {
             transitions: components["schemas"]["Ulid"][];
@@ -6482,6 +6656,50 @@ export interface components {
             process: components["schemas"]["Ulid"];
             results: components["schemas"]["ScenarioVerification"][];
             passed: boolean;
+        };
+        /** @description One page of who can do what in a lifecycle (`getRights`, rights-design.md decision 31). */
+        RightsPage: {
+            lifecycle: components["schemas"]["Ulid"];
+            /**
+             * @description The lifecycle's default, `allow` when its file writes none.
+             * @enum {string}
+             */
+            rightsDefault: "allow" | "deny";
+            rows: components["schemas"]["RightsRow"][];
+            /** @description The cursor of the next page; null on the last one. */
+            next: string | null;
+        };
+        /**
+         * @description Whether one kind of caller, one who satisfies `actor` and no other actor the grid names, may do `verb` while the object is in
+         *     `state` (rights-design.md decision 31).
+         */
+        RightsRow: {
+            /** @description An atomic state of the lifecycle. */
+            state: components["schemas"]["Ulid"];
+            /** @description The actor of the row; null for everyone else, who satisfies none of the actors the grid names. */
+            actor: components["schemas"]["Ulid"] | null;
+            /** @description The verb's key. */
+            verb: string;
+            /**
+             * @description The entity the row holds for, when the lifecycle's subjects are governed by different other lifecycles and that changes
+             *     the answer: such a cell has one row per entity. Left out when one row holds for every entity.
+             */
+            entity?: components["schemas"]["Ulid"];
+            /**
+             * @description `allowed`, `denied`, or `depends`: a condition or an actor from the object decides, within the lifecycle, or another
+             *     lifecycle that governs the object could say no in only some of its states or under a condition (`dependsOn`).
+             * @enum {string}
+             */
+            answer: "allowed" | "denied" | "depends";
+            /** @description Whether a lifecycle's default decides it, no right or closed list. */
+            byDefault: boolean;
+            /**
+             * @description The ids of what decides: the rights (an inline right, or the named right), the events whose closed lists let the caller
+             *     through, the human tasks and gates, or the lifecycle whose default answers.
+             */
+            by: components["schemas"]["Ulid"][];
+            /** @description The ids of the other lifecycles that may say no; empty otherwise. */
+            dependsOn: components["schemas"]["Ulid"][];
         };
         ProcessImportRequest: {
             /** @description The XState machine config, as an object or a string holding one. */
@@ -7583,7 +7801,7 @@ export interface components {
         };
         /**
          * Expression
-         * @description A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard and set sites only), actor (guard and set sites only), inState (with of; guard and set sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).
+         * @description A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard, set and right sites only), currentActor (guard, set and right sites only), inState (with of; guard, set and right sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).
          */
         expr: {
             /** @description A literal: a string, an integer or a boolean; with type, the value's text, so that digits are kept. */
@@ -7605,16 +7823,16 @@ export interface components {
             /** @description A member of the selected object in the path syntax of declared rules (properties.retentionDays); rule conditions only. */
             member?: string;
             /**
-             * @description The clock, a datetimeoffset; guard and set sites only.
+             * @description The clock, a datetimeoffset; guard, set and right sites only.
              * @constant
              */
             now?: true;
             /**
-             * @description The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard and set sites only.
+             * @description The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard, set and right sites only.
              * @constant
              */
             currentActor?: true;
-            /** @description True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard and set sites only. */
+            /** @description True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard, set and right sites only. */
             inState?: string[];
             /** @description The to-one relation end ids from the subject to the object whose state inState reads; absent, the subject itself. Only with inState. */
             of?: string[];
@@ -9909,6 +10127,17 @@ export interface components {
             source?: components["schemas"]["source"];
         };
         /**
+         * @description allow or deny. Each lifecycle that answers says no when a deny that holds names the verb, else yes when an allow holds, else its rightsDefault answers; one no decides.
+         * @enum {unknown}
+         */
+        access: "allow" | "deny";
+        /** @description A built-in verb (verbs-design.md decision 1): a fixed key whose meaning never changes. Made from the engine's table (Model/BuiltInVerbs.cs); a test checks they agree. */
+        builtInVerb: "promote" | "demote" | "override" | "set-state" | "sign" | "reject" | "ignore" | "withdraw" | "delegate" | "route" | "claim" | "complete" | "create" | "read" | "modify" | "delete" | "copy" | "revise" | "lock" | "unlock" | "change-owner" | "change-type" | "change-lifecycle" | "freeze" | "thaw" | "connect" | "disconnect";
+        /** @description A verb, by key: a built-in verb, or one of the project's own verbs (model/vocabularies/verbs.json). A key neither declares is MQ9701. */
+        verbRef: components["schemas"]["builtInVerb"] | components["schemas"]["key"];
+        /** @description What the right speaks of, at least one verb: a built-in verb's key or one of the project's own (MQ9701). A move, signature or task verb speaks of this lifecycle's moves, signatures and human tasks; an object, link or own verb speaks of the object, whichever lifecycle acts. */
+        verbs: components["schemas"]["verbRef"][];
+        /**
          * Invoke
          * @description Work a state starts on entry: a sub-process, a service task or a human task.
          */
@@ -9982,10 +10211,6 @@ export interface components {
             /** @default {} */
             properties?: components["schemas"]["properties"];
         };
-        /** @description A built-in verb (verbs-design.md decision 1): a fixed key whose meaning never changes. Made from the engine's table (Model/BuiltInVerbs.cs); a test checks they agree. */
-        builtInVerb: "promote" | "demote" | "override" | "set-state" | "sign" | "reject" | "ignore" | "withdraw" | "delegate" | "route" | "claim" | "complete" | "create" | "read" | "modify" | "delete" | "copy" | "revise" | "lock" | "unlock" | "change-owner" | "change-type" | "change-lifecycle" | "freeze" | "thaw" | "connect" | "disconnect";
-        /** @description A verb, by key: a built-in verb, or one of the project's own verbs (model/vocabularies/verbs.json). A key neither declares is MQ9701. */
-        verbRef: components["schemas"]["builtInVerb"] | components["schemas"]["key"];
         /**
          * Meaning
          * @description What a signature means.
@@ -10136,6 +10361,39 @@ export interface components {
             properties?: components["schemas"]["properties"];
         };
         /**
+         * Right
+         * @description An entry of a lifecycle's rights: an inline right (name, access, verbs and the rest of what it says) or a use of a named right (right, with states only); exactly one form (MQ9901). An inline right shares its id with its entry.
+         */
+        right: {
+            id: components["schemas"]["id"];
+            /** @description A use: the id of the named right (kind right) that holds here. Not written with the keys of an inline right (MQ9901). */
+            right?: components["schemas"]["id"];
+            /** @description An inline right's name, unique among the lifecycle's inline rights (MQ3001); a refusal names it. Required for an inline right (MQ9901). */
+            name?: components["schemas"]["identifier"];
+            displayName?: string;
+            /** @description An inline right's access: allow or deny. Required for an inline right (MQ9901). */
+            access?: components["schemas"]["access"];
+            /** @default [] */
+            actors?: components["schemas"]["idList"];
+            /** @default [] */
+            except?: components["schemas"]["idList"];
+            /**
+             * @description An inline right's verbs, at least one (MQ9901).
+             * @default []
+             */
+            verbs?: components["schemas"]["verbs"];
+            /** @default [] */
+            ends?: components["schemas"]["idList"];
+            condition?: components["schemas"]["expr"];
+            /**
+             * @description The states of this lifecycle where the right holds (MQ9902); a compound state counts while any state inside it is active, and create is checked in the initial state. Empty: every state.
+             * @default []
+             */
+            states?: components["schemas"]["idList"];
+            /** @description Why: shown with every refusal, in the rights grid and in the docs. */
+            description?: components["schemas"]["description"];
+        };
+        /**
          * Transition
          * @description A transition; among transitions with one source and one trigger, array order is priority.
          */
@@ -10209,6 +10467,11 @@ export interface components {
             subject?: components["schemas"]["id"];
             /** @description The one-subject form, deprecated (MQ9209): use subjects. An enum-typed attribute of the subject that holds the state (lifecycle only). */
             boundAttribute?: components["schemas"]["id"];
+            /**
+             * @description What the lifecycle answers for a verb when no right of its own holds: allow (also when absent) or deny. Written, even as allow, it makes the project use rights. Lifecycles only (MQ9901).
+             * @enum {unknown}
+             */
+            rightsDefault?: "allow" | "deny";
             description?: components["schemas"]["description"];
             /** @description Markdown text: why the element is shaped this way. */
             rationale?: string;
@@ -10240,6 +10503,11 @@ export interface components {
              * @default []
              */
             gates?: components["schemas"]["gate"][];
+            /**
+             * @description The lifecycle's rights, in file order: each allows or denies some actors some verbs, in some states, under an optional condition. An entry is an inline right or a use of a named right (model/rights/). Lifecycles only (MQ9901).
+             * @default []
+             */
+            rights?: components["schemas"]["right"][];
             /**
              * @description The root's children, in document order. A process that is not a library has at least one, and a library has none (MQ9020).
              * @default []
@@ -10273,6 +10541,39 @@ export interface components {
                     /** @description Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own or inherited, or a single-valued attribute of a stereotype the entity or a base carries; on a stereotype entry, a single-valued attribute of the stereotype's own (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner. */
                     owner?: components["schemas"]["id"];
                 } & (unknown | unknown);
+                /**
+                 * Right
+                 * @description An entry of a lifecycle's rights: an inline right (name, access, verbs and the rest of what it says) or a use of a named right (right, with states only); exactly one form (MQ9901). An inline right shares its id with its entry.
+                 */
+                right: {
+                    id: components["schemas"]["id"];
+                    /** @description A use: the id of the named right (kind right) that holds here. Not written with the keys of an inline right (MQ9901). */
+                    right?: components["schemas"]["id"];
+                    /** @description An inline right's name, unique among the lifecycle's inline rights (MQ3001); a refusal names it. Required for an inline right (MQ9901). */
+                    name?: components["schemas"]["identifier"];
+                    displayName?: string;
+                    /** @description An inline right's access: allow or deny. Required for an inline right (MQ9901). */
+                    access?: components["schemas"]["access"];
+                    /** @default [] */
+                    actors?: components["schemas"]["idList"];
+                    /** @default [] */
+                    except?: components["schemas"]["idList"];
+                    /**
+                     * @description An inline right's verbs, at least one (MQ9901).
+                     * @default []
+                     */
+                    verbs?: components["schemas"]["verbs"];
+                    /** @default [] */
+                    ends?: components["schemas"]["idList"];
+                    condition?: components["schemas"]["expr"];
+                    /**
+                     * @description The states of this lifecycle where the right holds (MQ9902); a compound state counts while any state inside it is active, and create is checked in the initial state. Empty: every state.
+                     * @default []
+                     */
+                    states?: components["schemas"]["idList"];
+                    /** @description Why: shown with every refusal, in the rights grid and in the docs. */
+                    description?: components["schemas"]["description"];
+                };
                 /**
                  * State
                  * @description A state of the process; the root is implicit (the process is the root compound state).
@@ -10697,14 +10998,17 @@ export interface components {
         step: {
             id: components["schemas"]["id"];
             /**
+             * @description event, time, invoke-done, invoke-error, or verb: a participant does a verb to the scenario's subject or to one of its links.
              * @default event
              * @enum {unknown}
              */
-            input?: "event" | "time" | "invoke-done" | "invoke-error";
+            input?: "event" | "time" | "invoke-done" | "invoke-error" | "verb";
             event?: components["schemas"]["id"];
             invoke?: components["schemas"]["id"];
             /** @description An ISO 8601 duration to advance the clock by, for input time. */
             after?: string;
+            /** @description For input verb: the verb done, an object, link or own verb (MQ9305). Moves, signatures and task completion are event and invoke-done steps. */
+            verb?: components["schemas"]["verbRef"];
             /** @description The id of the scenario's participant that acts; the engine works out the actor it acts as unless actor is given. */
             participant?: components["schemas"]["id"];
             actor?: components["schemas"]["id"];
@@ -10719,6 +11023,14 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             };
+            /** @description For a modify verb step on the subject: the values it sets, by attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them. */
+            values?: {
+                [key: string]: unknown;
+            };
+            /** @description For a verb step on a link: the id of the subject's relation end the link goes through. Absent, the verb acts on the subject. */
+            end?: components["schemas"]["id"];
+            /** @description With end: the id of the scenario object at the link's other end, linked to the subject through end except for connect (MQ9305). */
+            object?: components["schemas"]["id"];
             /**
              * @description Results for guards without an expression, by guard id.
              * @default {}
@@ -10733,6 +11045,13 @@ export interface components {
                  * @default true
                  */
                 accepted?: boolean;
+                /**
+                 * @description With accepted false: why the step is refused, the first check that failed (MQ9308).
+                 * @enum {unknown}
+                 */
+                refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default";
+                /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy (MQ9308). */
+                refusedBy?: components["schemas"]["id"];
                 /**
                  * @description The active atomic states, in document order.
                  * @default []
@@ -10904,14 +11223,17 @@ export interface components {
                 step: {
                     id: components["schemas"]["id"];
                     /**
+                     * @description event, time, invoke-done, invoke-error, or verb: a participant does a verb to the scenario's subject or to one of its links.
                      * @default event
                      * @enum {unknown}
                      */
-                    input?: "event" | "time" | "invoke-done" | "invoke-error";
+                    input?: "event" | "time" | "invoke-done" | "invoke-error" | "verb";
                     event?: components["schemas"]["id"];
                     invoke?: components["schemas"]["id"];
                     /** @description An ISO 8601 duration to advance the clock by, for input time. */
                     after?: string;
+                    /** @description For input verb: the verb done, an object, link or own verb (MQ9305). Moves, signatures and task completion are event and invoke-done steps. */
+                    verb?: components["schemas"]["verbRef"];
                     /** @description The id of the scenario's participant that acts; the engine works out the actor it acts as unless actor is given. */
                     participant?: components["schemas"]["id"];
                     actor?: components["schemas"]["id"];
@@ -10926,6 +11248,14 @@ export interface components {
                     payload?: {
                         [key: string]: unknown;
                     };
+                    /** @description For a modify verb step on the subject: the values it sets, by attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them. */
+                    values?: {
+                        [key: string]: unknown;
+                    };
+                    /** @description For a verb step on a link: the id of the subject's relation end the link goes through. Absent, the verb acts on the subject. */
+                    end?: components["schemas"]["id"];
+                    /** @description With end: the id of the scenario object at the link's other end, linked to the subject through end except for connect (MQ9305). */
+                    object?: components["schemas"]["id"];
                     /**
                      * @description Results for guards without an expression, by guard id.
                      * @default {}
@@ -10940,6 +11270,13 @@ export interface components {
                          * @default true
                          */
                         accepted?: boolean;
+                        /**
+                         * @description With accepted false: why the step is refused, the first check that failed (MQ9308).
+                         * @enum {unknown}
+                         */
+                        refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default";
+                        /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy (MQ9308). */
+                        refusedBy?: components["schemas"]["id"];
                         /**
                          * @description The active atomic states, in document order.
                          * @default []
@@ -11758,6 +12095,55 @@ export interface components {
                 /** @description The meaning a pack or an implementer fills in (localizable). */
                 description?: string;
             }[];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+        };
+        /**
+         * Right
+         * @description A named right (model/rights/): one rule that many lifecycles use, each with an entry of its rights that names it and the states where it holds. It allows or denies some actors some verbs, under an optional condition; its description says why.
+         */
+        "right-2": {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "right";
+            id: components["schemas"]["id"];
+            /**
+             * @description An identifier, unique among the named rights of the package (MQ3001); a refusal names it.
+             * @default
+             */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            package?: components["schemas"]["id"];
+            access: components["schemas"]["access"];
+            /** @default [] */
+            actors?: components["schemas"]["idList"];
+            /** @default [] */
+            except?: components["schemas"]["idList"];
+            verbs: components["schemas"]["verbs"];
+            /** @default [] */
+            ends?: components["schemas"]["idList"];
+            /** @description The right holds only when this is true. Its scope is what every subject of every lifecycle that uses the right holds under one id; it is typed at each use, where a failure is reported. With no use there is no scope, so text written for it stays text (MQ3108) until a lifecycle uses the right. */
+            condition?: components["schemas"]["expr"];
+            /** @description Why: shown with every refusal, in the rights grid and in the docs. */
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
             /** @default {} */
             properties?: components["schemas"]["properties"];
             /** @default {} */
@@ -14477,6 +14863,79 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["VerifyResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getRights: {
+        parameters: {
+            query?: {
+                /** @description Comma-separated state ids; only the rows of these states (a compound state's atomic states included). */
+                states?: string;
+                /** @description Comma-separated actor ids; only the rows of these actors. */
+                actors?: string;
+                /** @description Comma-separated verb keys; only the rows of these verbs. */
+                verbs?: string;
+                /** @description An entity id, one of the lifecycle's subjects; only the rows that hold for it. */
+                entity?: components["schemas"]["Ulid"];
+                /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */
+                cursor?: components["parameters"]["PageCursor"];
+                /** @description The page size, 1 to 1000; 100 when absent. Out of range is `bad-request`. */
+                limit?: components["parameters"]["PageLimit"];
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "lifecycle": "01JQPRC0000000000000000002",
+                     *       "rightsDefault": "deny",
+                     *       "rows": [
+                     *         {
+                     *           "state": "01JQSTA0000000000000000101",
+                     *           "actor": "01JQACT0000000000000000008",
+                     *           "verb": "modify",
+                     *           "answer": "allowed",
+                     *           "byDefault": false,
+                     *           "by": [
+                     *             "01JQRGT0000000000000000001"
+                     *           ],
+                     *           "dependsOn": []
+                     *         },
+                     *         {
+                     *           "state": "01JQSTA0000000000000000101",
+                     *           "actor": null,
+                     *           "verb": "modify",
+                     *           "answer": "denied",
+                     *           "byDefault": true,
+                     *           "by": [
+                     *             "01JQPRC0000000000000000002"
+                     *           ],
+                     *           "dependsOn": []
+                     *         }
+                     *       ],
+                     *       "next": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RightsPage"];
                 };
             };
             400: components["responses"]["BadRequest"];

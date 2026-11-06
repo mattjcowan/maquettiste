@@ -15,6 +15,7 @@
     "subjects",
     "subject",
     "boundAttribute",
+    "rightsDefault",
     "description",
     "rationale",
     "decision",
@@ -29,6 +30,7 @@
     "guards",
     "actions",
     "gates",
+    "rights",
     "states",
     "initial",
     "transitions",
@@ -82,6 +84,13 @@
     "boundAttribute": {
       "description": "The one-subject form, deprecated (MQ9209): use subjects. An enum-typed attribute of the subject that holds the state (lifecycle only).",
       "$ref": "common.json#/$defs/id"
+    },
+    "rightsDefault": {
+      "description": "What the lifecycle answers for a verb when no right of its own holds: allow (also when absent) or deny. Written, even as allow, it makes the project use rights. Lifecycles only (MQ9901).",
+      "enum": [
+        "allow",
+        "deny"
+      ]
     },
     "description": {
       "$ref": "common.json#/$defs/description"
@@ -154,6 +163,14 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/gate"
+      },
+      "default": []
+    },
+    "rights": {
+      "description": "The lifecycle's rights, in file order: each allows or denies some actors some verbs, in some states, under an optional condition. An entry is an inline right or a use of a named right (model/rights/). Lifecycles only (MQ9901).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/right"
       },
       "default": []
     },
@@ -260,6 +277,78 @@
             "stereotype"
           ]
         }
+      ],
+      "additionalProperties": false
+    },
+    "right": {
+      "title": "Right",
+      "description": "An entry of a lifecycle's rights: an inline right (name, access, verbs and the rest of what it says) or a use of a named right (right, with states only); exactly one form (MQ9901). An inline right shares its id with its entry.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "right",
+        "name",
+        "displayName",
+        "access",
+        "actors",
+        "except",
+        "verbs",
+        "ends",
+        "condition",
+        "states",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "right": {
+          "description": "A use: the id of the named right (kind right) that holds here. Not written with the keys of an inline right (MQ9901).",
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "description": "An inline right's name, unique among the lifecycle's inline rights (MQ3001); a refusal names it. Required for an inline right (MQ9901).",
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "access": {
+          "description": "An inline right's access: allow or deny. Required for an inline right (MQ9901).",
+          "$ref": "common.json#/$defs/rightBody/properties/access"
+        },
+        "actors": {
+          "$ref": "common.json#/$defs/rightBody/properties/actors",
+          "default": []
+        },
+        "except": {
+          "$ref": "common.json#/$defs/rightBody/properties/except",
+          "default": []
+        },
+        "verbs": {
+          "description": "An inline right's verbs, at least one (MQ9901).",
+          "$ref": "common.json#/$defs/rightBody/properties/verbs",
+          "default": []
+        },
+        "ends": {
+          "$ref": "common.json#/$defs/rightBody/properties/ends",
+          "default": []
+        },
+        "condition": {
+          "$ref": "common.json#/$defs/rightBody/properties/condition"
+        },
+        "states": {
+          "description": "The states of this lifecycle where the right holds (MQ9902); a compound state counts while any state inside it is active, and create is checked in the initial state. Empty: every state.",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
+        },
+        "description": {
+          "description": "Why: shown with every refusal, in the rights grid and in the docs.",
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": [
+        "id"
       ],
       "additionalProperties": false
     },

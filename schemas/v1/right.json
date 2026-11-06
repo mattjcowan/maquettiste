@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Right",
+  "description": "A named right (model/rights/): one rule that many lifecycles use, each with an entry of its rights that names it and the states where it holds. It allows or denies some actors some verbs, under an optional condition; its description says why.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "package",
+    "access",
+    "actors",
+    "except",
+    "verbs",
+    "ends",
+    "condition",
+    "description",
+    "rationale",
+    "decision",
+    "status",
+    "suppressions",
+    "stereotypes",
+    "excludeStereotypes",
+    "tags",
+    "category",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "right"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "description": "An identifier, unique among the named rights of the package (MQ3001); a refusal names it.",
+      "$ref": "common.json#/$defs/identifier",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "package": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "access": {
+      "$ref": "common.json#/$defs/rightBody/properties/access"
+    },
+    "actors": {
+      "$ref": "common.json#/$defs/rightBody/properties/actors",
+      "default": []
+    },
+    "except": {
+      "$ref": "common.json#/$defs/rightBody/properties/except",
+      "default": []
+    },
+    "verbs": {
+      "$ref": "common.json#/$defs/rightBody/properties/verbs"
+    },
+    "ends": {
+      "$ref": "common.json#/$defs/rightBody/properties/ends",
+      "default": []
+    },
+    "condition": {
+      "description": "The right holds only when this is true. Its scope is what every subject of every lifecycle that uses the right holds under one id; it is typed at each use, where a failure is reported. With no use there is no scope, so text written for it stays text (MQ3108) until a lifecycle uses the right.",
+      "$ref": "common.json#/$defs/rightBody/properties/condition"
+    },
+    "description": {
+      "description": "Why: shown with every refusal, in the rights grid and in the docs.",
+      "$ref": "common.json#/$defs/description"
+    },
+    "rationale": {
+      "description": "Markdown text: why the element is shaped this way.",
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "status": {
+      "$ref": "common.json#/$defs/status"
+    },
+    "suppressions": {
+      "$ref": "common.json#/$defs/suppressions",
+      "default": []
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": [
+    "kind",
+    "id",
+    "name",
+    "access",
+    "verbs"
+  ],
+  "additionalProperties": false
+}

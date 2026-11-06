@@ -96,6 +96,11 @@ public sealed class ResolvedCoverageTests
         new("scenario object", "scenario.json", "$defs/object", typeof(RScenarioObject)),
         new("scenario link", "scenario.json", "$defs/link", typeof(RScenarioLink)),
 
+        // Rights (rights-design.md section 6): a named right and an entry of a lifecycle's rights resolve as RRight and RRightUse in a
+        // later round of the same item; until then they are unresolved, and the new process and step keys pending.
+        new("right", "right.json", "", null),
+        new("process right", "process.json", "$defs/right", null),
+
         // Vocabularies, mappings and diagrams.
         new("stereotype", "stereotype.json", "", typeof(RStereotypeDefinition)),
         new("category", "category-tree.json", "categories/[]", typeof(RCategory)),
@@ -227,6 +232,10 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
+
+        // Rights (rights-design.md section 6), resolved in a later round of the same item: a lifecycle's rights and default, and a verb
+        // step's keys.
+        ("process", "rightsDefault"), ("process", "rights"), ("step", "verb"), ("step", "values"), ("step", "end"), ("step", "object"),
     ];
 
     /// <summary>
@@ -237,7 +246,7 @@ public sealed class ResolvedCoverageTests
     /// (next-phase-1-design.md section 5.5). The verb vocabulary resolves into <c>model.verbs</c> (verbs-design.md section 6): each own verb an
     /// <see cref="RVerb"/>, and its hidden built-in verbs left out unless named, so the file itself is no object.
     /// </summary>
-    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram", "verb vocabulary" };
+    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram", "verb vocabulary", "right", "process right" };
 
     [Fact]
     public void Every_property_of_every_model_file_is_a_member_of_its_resolved_object()

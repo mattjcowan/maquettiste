@@ -226,7 +226,7 @@ internal sealed class NameIndex
         "schema" => [ElementKind.Database],
         "enum-member" => [ElementKind.Enum],
         "guard" => [ElementKind.Process, ElementKind.Operation],
-        "event" or "action" or "invoke" or "gate" or "meaning" or "state" => [ElementKind.Process],
+        "event" or "action" or "invoke" or "gate" or "meaning" or "state" or "process-right" => [ElementKind.Process],
         "end" => [ElementKind.Relation],
         "reference-field" => [ElementKind.ReferenceType],
         "row" => [ElementKind.Seed],
@@ -412,6 +412,14 @@ internal sealed class NameIndex
                 add("meaning", meaning.Id, forms.Then(gate.Name, meaning.Name));
             foreach (var attribute in gate.AuditAttributes)
                 add("attribute", attribute.Id, forms.Then(gate.Name, attribute.Name));
+        }
+
+        // An inline right by its name (rights-design.md decision 3): @process-right:Documents.ReleasedIsReadOnly. A use has no name of its
+        // own; the named right it uses has its own forms.
+        foreach (var right in process.Rights)
+        {
+            if (right.Right is null && right.Name is { Length: > 0 } name)
+                add("process-right", right.Id, forms.Then(name));
         }
     }
 

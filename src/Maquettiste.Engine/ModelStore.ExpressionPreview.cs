@@ -50,6 +50,12 @@ public sealed record ExpressionPreviewRequest
     public string? Database { get; init; }
 
     /// <summary>
+    /// The id or name of a lifecycle: a named right's condition, or text for it, previews as if the right were used there (rights-design.md
+    /// section 8). <see langword="null"/> previews it in the scope of all its uses; a named right with no use needs one.
+    /// </summary>
+    public string? Lifecycle { get; init; }
+
+    /// <summary>
     /// The row the expression reads, a JSON object of members by name: a table's column names (on a synthesized table, the names its
     /// text prints: an overlay's attributes as an entity's), an entity's attribute names (a value object's members nested), a process's
     /// context attributes with the event's payload under <c>event</c> and its object under <c>subject</c>, an operation's input members

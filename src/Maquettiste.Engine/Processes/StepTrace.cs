@@ -5,7 +5,10 @@ using Maquettiste.Engine.Model;
 
 namespace Maquettiste.Engine.Processes;
 
-/// <summary>Why an input was refused (phase-3-design.md section 4.1).</summary>
+/// <summary>
+/// Why an input was refused (phase-3-design.md section 4.1, rights-design.md decision 12): the values of a trace's refusal and of a step's
+/// <c>expect.refusal</c>. The checks run in a fixed order, and the first that fails names the refusal.
+/// </summary>
 public static class Refusals
 {
     /// <summary>No transition matches the input in the active configuration (or the input names nothing pending).</summary>
@@ -25,7 +28,25 @@ public static class Refusals
 
     /// <summary>The gate requires a reason and none was given.</summary>
     public const string GateReason = "gate-reason";
+
+    /// <summary>A deny right that holds names the verb (rights-design.md decision 12): the right refused it.</summary>
+    public const string Right = "right";
+
+    /// <summary>No allow holds in a lifecycle whose default is deny (rights-design.md decision 12): the lifecycle refused it.</summary>
+    public const string Default = "default";
+
+    /// <summary>Every refusal value, in the order the checks run, then the gate's own: what <c>expect.refusal</c> may name.</summary>
+    public static IReadOnlyList<string> All { get; } = [Actor, Right, Default, NoTransition, Guard, GateSigner, GateRepeat, GateReason];
 }
+
+/// <summary>
+/// A right that answered for a step (rights-design.md decision 26): it held for the actor, the verb and the object's state, and said its
+/// access. A named right used by several lifecycles answers once for each lifecycle that asked.
+/// </summary>
+/// <param name="Right">The right's id: an inline right's own, or the named right's.</param>
+/// <param name="Lifecycle">The id of the lifecycle whose rights list it.</param>
+/// <param name="Access">Whether it allowed or denied.</param>
+public sealed record RightEvaluation(string Right, string Lifecycle, RightAccess Access);
 
 /// <summary>Where a guard's result came from.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<GuardSource>))]
@@ -168,6 +189,22 @@ public sealed record StepTrace(
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? Notes { get; init; }
+
+    /// <summary>
+    /// The id of the element that refused the input (rights-design.md decision 12): the event or invoke whose actors leave the actor out, the
+    /// right (an inline right, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy. Written for a
+    /// refused input in a project that uses rights, and for a step that expects it; <see langword="null"/>, and left out of the JSON,
+    /// otherwise, and when nothing refused it (<see cref="Refusals.NoTransition"/>).
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? RefusedBy { get; init; }
+
+    /// <summary>
+    /// The rights that answered for the input, each with its access, in check order (rights-design.md decision 26). <see langword="null"/>,
+    /// and left out of the JSON, when none did.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<RightEvaluation>? Rights { get; init; }
 
     /// <summary>Whether a guard's result was missing (MQ9306): what followed in this input is not meaningful.</summary>
     public bool Incomplete => Guards.Any(g => g.Source == GuardSource.Missing) || Diagnostics.Any(d => d.Rule is "MQ9305" or "MQ9507");

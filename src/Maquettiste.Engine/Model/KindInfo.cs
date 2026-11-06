@@ -46,6 +46,7 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
         new(ElementKind.Constraint, "constraint", typeof(Constraint), "constraint.json", ConstraintsFolder, null),
         new(ElementKind.Custom, "custom", typeof(Custom), "custom.json", CustomFolder, null),
         new(ElementKind.VerbVocabulary, "verb-vocabulary", typeof(VerbVocabulary), "verb-vocabulary.json", "model/vocabularies", "verbs.json"),
+        new(ElementKind.Right, "right", typeof(Right), "right.json", "model/rights", null),
     ];
 
     /// <summary>The folder of seeds; each target's seeds share a sub-folder named after the target.</summary>
