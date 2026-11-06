@@ -117,6 +117,14 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
     case "actor":
       // A deleted role, group or organization leaves its members' memberOf lists (actors-design.md decision 3).
       arr(doc.memberOf).forEach((_, i) => push(`/memberOf/${i}`, "memberOf", (doc.memberOf as unknown[])[i], false, `/memberOf/${i}`));
+      // An actor from the object needs the fields and the role it names (decision 9): the delete is refused under
+      // remove-references unless the actor goes too, and delete-dependents deletes the actor.
+      if (doc.relative && typeof doc.relative === "object") {
+        const relative = doc.relative as Json;
+        (Array.isArray(relative.path) ? (relative.path as unknown[]) : []).forEach((p, i) => push(`/relative/path/${i}`, "path", p, true));
+        push("/relative/membersOf", "membersOf", relative.membersOf, true);
+        (Array.isArray(relative.within) ? (relative.within as unknown[]) : []).forEach((p, i) => push(`/relative/within/${i}`, "within", p, true));
+      }
       break;
     case "value-object":
     case "stereotype":
@@ -191,6 +199,8 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
       arr(doc.subjects).forEach((e, i) => {
         push(`/subjects/${i}/entity`, "entity", e.entity, false, `/subjects/${i}`);
         push(`/subjects/${i}/boundAttribute`, "boundAttribute", e.boundAttribute, false);
+        // The owner field is optional: a delete clears the key (decision 10).
+        push(`/subjects/${i}/owner`, "owner", e.owner, false);
       });
       arr(doc.events).forEach((e, i) =>
         arr(e.actors).forEach((_, j) => push(`/events/${i}/actors/${j}`, "actors", (e.actors as unknown[])[j], false, `/events/${i}/actors/${j}`)),

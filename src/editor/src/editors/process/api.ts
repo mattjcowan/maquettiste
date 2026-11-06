@@ -17,6 +17,54 @@ export type SyncEnumResult = components["schemas"]["SyncEnumResult"];
 export type SyncCodesResult = components["schemas"]["SyncCodesResult"];
 
 /**
+ * Sets, or with no `owner` clears, the owner of a process's one subject (actors-design.md decision 10). `owner` exists only in
+ * the `subjects` form, so a process in the one-subject form is converted first (use-subjects). One undo step, from the document
+ * as it was to the one written. Null when saved, else the refusal's message.
+ */
+export async function setSubjectOwner(
+  qc: QueryClient,
+  store: EditorStore,
+  drafts: { flush(id: string): Promise<unknown> },
+  change: { process: string; owner: string | undefined; label: string },
+): Promise<string | null> {
+  await drafts.flush(change.process);
+  const before = await endpoints.getElement(change.process);
+  const refusal = (result: Awaited<ReturnType<typeof endpoints.applyBatch>>): string | null => {
+    if (!endpoints.isBatchResult(result)) return result.diagnostics[0]?.message ?? "The batch did not parse.";
+    if (result.outcome === "saved") return null;
+    const refused = result.items.find((i) => i.outcome !== "saved");
+    return refused?.diagnostics[0]?.message ?? `The change was refused (${result.outcome}).`;
+  };
+  let current = before;
+  if (!Array.isArray((before.json as Record<string, unknown>).subjects)) {
+    const converted = await endpoints.applyBatch({ operations: [{ op: "use-subjects", elementIds: [change.process] }] } as never);
+    const why = refusal(converted);
+    if (why) return why;
+    if (endpoints.isBatchResult(converted)) applyBatchResult(qc, converted);
+    current = await endpoints.getElement(change.process);
+  }
+  const json = structuredClone(current.json) as Record<string, unknown>;
+  const entry = (json.subjects as Record<string, unknown>[] | undefined)?.[0];
+  if (!entry) return "The process has no subject.";
+  if (change.owner) entry.owner = change.owner;
+  else delete entry.owner;
+  const result = await endpoints.applyBatch({ operations: [{ op: "update", id: change.process, expectedHash: current.hash, element: json }] } as never);
+  const why = refusal(result);
+  if (why || !endpoints.isBatchResult(result)) return why ?? "The batch did not parse.";
+  applyBatchResult(qc, result);
+  store.getState().pushUndo({
+    label: change.label,
+    ids: [change.process],
+    before: [before.json as ModelJson],
+    after: [json as ModelJson],
+    afterHashes: [result.items[0]?.hash ?? null],
+  });
+  void qc.invalidateQueries({ queryKey: keys.index });
+  void qc.invalidateQueries({ queryKey: keys.validation });
+  return null;
+}
+
+/**
  * The sync-enum plan (dry run) or its application; a 422 refusal answers with the result and its diagnostics. `entity`
  * names the subject whose enum is synced; absent, the lifecycle's one enum binding (decision 15).
  */

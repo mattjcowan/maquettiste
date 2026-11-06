@@ -230,6 +230,21 @@ internal sealed partial class ChangePlanner
         // A scenario's objects (lifecycle-design.md decision 22): in either resolution an object whose entity goes is dropped with its
         // links, and so is each link to an object that goes. A subject left naming no object refuses remove-references (unless the
         // scenario goes too, FinishCascade); delete-dependents deletes the scenario.
+        // An actor from the object (actors-design.md section 7): an id on its path or within, or its membersOf, is what it means, so
+        // remove-references refuses unless the actor goes too (Refusals), and delete-dependents deletes the actor.
+        if (referrer.Element is Actor && IsRelativePart(reference.JsonPointer))
+        {
+            if (mode != DeleteResolution.DeleteDependents)
+            {
+                _cascadeRefused.Add((index, referrerId, reference,
+                    $"it is worked out from the object through {Label(target)} (relative), and remove-references does not change what such an actor means; delete the actor too, or delete with delete-dependents."));
+                return;
+            }
+
+            MarkCascadeDeleted(index, referrerId, "is worked out through " + Label(target), mode);
+            return;
+        }
+
         if (referrer.Element is Scenario && reference.JsonPointer == "/subject")
         {
             if (mode != DeleteResolution.DeleteDependents)
@@ -330,7 +345,11 @@ internal sealed partial class ChangePlanner
     /// </summary>
     private IEnumerable<(int Index, string ElementId, ReferenceInfo Reference, string Why)> Refusals() =>
         _cascadeRefused.Where(r => !(r.Reference.JsonPointer == "/subject" && _cascadeDeleted.ContainsKey(r.ElementId)
-            && _snapshot.GetDocument(r.ElementId)?.Element is Scenario));
+            && _snapshot.GetDocument(r.ElementId)?.Element is Scenario)
+            && !(IsRelativePart(r.Reference.JsonPointer) && _cascadeDeleted.ContainsKey(r.ElementId) && _snapshot.GetDocument(r.ElementId)?.Element is Actor));
+
+    /// <summary>Whether a pointer is inside an actor's <c>relative</c> (its path, within or membersOf).</summary>
+    private static bool IsRelativePart(string pointer) => pointer.StartsWith("/relative/", StringComparison.Ordinal);
 
     private void ResolveXRef(int index, string referrerId, Working referrer, ReferenceInfo reference, List<CascadeOp> ops, DeleteResolution mode)
     {

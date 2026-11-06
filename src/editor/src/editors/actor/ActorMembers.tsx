@@ -91,7 +91,7 @@ function AddMembersDialog({ id, rows, onClose }: { id: string; rows: ActorRow[];
   const [error, setError] = useState<string | null>(null);
   const holder = rows.find((r) => r.id === id);
   // Not the holder, not a member already, and not one that holds the holder (that would close a cycle).
-  const candidates = rows.filter((r) => !r.memberOf?.includes(id) && !wouldCycle(rows, id, r.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const candidates = rows.filter((r) => !r.relative && !r.memberOf?.includes(id) && !wouldCycle(rows, id, r.id)).sort((a, b) => a.name.localeCompare(b.name));
   const save = async () => {
     if (!chosen.length || busy) return;
     setBusy(true);

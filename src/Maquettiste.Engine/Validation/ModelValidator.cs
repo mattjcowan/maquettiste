@@ -1105,7 +1105,20 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     yield return peer;
             }
         }
-        else if (element is ReferenceType or ScalarType or Seed)
+
+        if (element is Entity or Relation or ValueObject or Stereotype)
+        {
+            // MQ9604 and MQ9606 read the subjects' attributes and navigations (actors-design.md section 5): every process that runs once
+            // the model has an actor from the object, else only those whose subjects name an owner; none without either.
+            var relatives = model.All<Actor>().Any(a => a.Relative is not null);
+            foreach (var owned in model.All<Process>())
+            {
+                if ((relatives ? owned.Use != ProcessUse.Library : owned.Subjects.Any(s => s.Owner is not null)) && model.GetDocument(owned.Id) is { } peer)
+                    yield return peer;
+            }
+        }
+
+        if (element is ReferenceType or ScalarType or Seed)
         {
             // MQ9205, MQ9207 and MQ9208 under a reference or plain binding read the type's codes, rows and facets (lifecycle-design.md
             // decision 18): only the lifecycles that bind an attribute of that type, none when nothing binds.

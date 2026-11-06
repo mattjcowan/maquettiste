@@ -78,6 +78,8 @@ public sealed class ResolvedNullContractTests
         ["RMigrationCollection"] = "value map collections: MigrationResolutionTests",
         // A reference type's former codes (section 3.5); ReferenceDataResolutionTests resolves them.
         ["RFormerCode"] = "former codes: ReferenceDataResolutionTests",
+        // Actors worked out from the object (actors-design.md section 6); RelativeActorTests resolves them.
+        ["RRelative"] = "actors from the object: RelativeActorTests",
         // A query's case branches; QueryTests resolves them.
         ["RQueryWhen"] = "case expressions: QueryTests",
         // A scenario's objects and their links (lifecycle-design.md decision 22); no fixture has them, ScenarioObjectTests resolves them.

@@ -187,6 +187,8 @@ public sealed class ResolvedCoverageTests
     internal static readonly Dictionary<(string Target, string Property), string> Renamed = new()
     {
         [("transition", "gatePolicy")] = "Gate",
+        // A subject's owner field is an attribute or a to-one end (actors-design.md section 6): OwnerAttribute or OwnerEnd.
+        [("subject", "owner")] = "OwnerAttribute",
         // The overlay entry's synthesized column key is the column's key.
         [("column", "attribute")] = "Key",
         // A join's kind is the source's join kind (from for the first source).

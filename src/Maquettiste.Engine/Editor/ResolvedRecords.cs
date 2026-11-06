@@ -515,8 +515,11 @@ public sealed record ProcessRecord(string Id, string Kind, string Name, string? 
 /// <param name="BoundEnum">The bound attribute's enum's id.</param>
 /// <param name="BoundReferenceType">The bound attribute's reference type's id (lifecycle-design.md decision 11); <see langword="null"/>, and left
 /// out of the JSON, for any other binding.</param>
+/// <param name="Owner">The id of the attribute or to-one end that holds the object's owner (actors-design.md decision 10); <see langword="null"/>,
+/// and left out of the JSON, when the entry names none or MQ9606 reports it.</param>
 public sealed record SubjectRecord(string Id, string Entity, string? BoundAttribute, string? BoundEnum,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? BoundReferenceType = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? BoundReferenceType = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Owner = null);
 
 /// <summary>A state of a process.</summary>
 /// <param name="Id">The state id.</param>
@@ -688,10 +691,20 @@ public sealed record AuditFieldRecord(string Id, string Name, string Type, bool 
 /// <param name="MemberOf">The ids of the roles, groups and organizations it is a member of, in file order, each once, without the entries
 /// MQ9601 reports; left out when none
 /// (actors-design.md section 6).</param>
+/// <param name="Relative">How it is worked out from the object; left out for an actor that stands for itself (actors-design.md section 6).</param>
 public sealed record ActorRecord(string Id, string Kind, string Name, string? Package, string Type, IReadOnlyList<string> Processes, IReadOnlyList<string> Events,
     IReadOnlyList<string> Gates, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
     IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? MemberOf = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? MemberOf = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] RelativeRecord? Relative = null);
+
+/// <summary>How an actor from the object is worked out (actors-design.md decisions 8 to 12).</summary>
+/// <param name="Form"><c>owner</c>, <c>path</c> or <c>members-of</c>; the first with several (MQ9603), <c>none</c> with none.</param>
+/// <param name="Path">The ids along the path as the model resolves them (an id it does not hold is left out): a path's steps, a members-of's
+/// within ends; empty for the owner.</param>
+/// <param name="MembersOf">The id of the role, group or organization whose members it is; <see langword="null"/>, and left out, otherwise.</param>
+public sealed record RelativeRecord(string Form, IReadOnlyList<string> Path,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? MembersOf = null);
 
 /// <summary>A resolved scenario.</summary>
 /// <param name="Id">The scenario id.</param>
@@ -1377,12 +1390,13 @@ public static class ResolvedRecords
             [.. p.Invokes.Select(i => new InvokeRecord(i.Id, i.Name, i.Type, i.Process?.Id, Ids(i.Actors), i.State.Id, i.DisplayName, i.Description, Keys(i.Stereotypes), Plain(i.Properties)))],
             Ids(p.Actors), Ids(p.Scenarios),
             p.DisplayName!, p.PluralName!, p.Description, p.Tags, p.Category?.Id, Keys(p.Stereotypes), Plain(p.Properties), p.Generation,
-            p.ListsSubjects ? [.. p.Subjects.Select(s => new SubjectRecord(s.Id, s.Entity.Id, s.BoundAttribute?.Id, s.BoundEnum?.Id, s.BoundReferenceType?.Id))] : null,
+            p.ListsSubjects ? [.. p.Subjects.Select(s => new SubjectRecord(s.Id, s.Entity.Id, s.BoundAttribute?.Id, s.BoundEnum?.Id, s.BoundReferenceType?.Id, s.OwnerAttribute?.Id ?? s.OwnerEnd?.Id))] : null,
             p.HasCodes ? p.CodesMap : null);
 
         public ActorRecord Actor(RActor a) => new(a.Id, "actor", a.Name, a.Package?.Id, a.Type, Ids(a.Processes), Ids(a.Events), Ids(a.Gates),
             a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation,
-            a.MemberOf.Count > 0 ? Ids(a.MemberOf) : null);
+            a.MemberOf.Count > 0 ? Ids(a.MemberOf) : null,
+            a.Relative is { } relative ? new RelativeRecord(relative.Form, [.. relative.Path.Select(o => o.Id)], relative.MembersOf?.Id) : null);
 
         public ScenarioRecord Scenario(RScenario s) => new(s.Id, "scenario", s.Name, s.Package?.Id, s.Process.Id, new ScenarioStartRecord(Plain(s.Start.Context), s.Start.At),
             [.. s.Steps.Select(t => new StepRecord(t.Id, t.Index, t.Input, t.Event?.Id, t.Invoke?.Id, t.After, t.AfterMs, t.AfterTicks, t.Actor?.Id, t.Signer, t.Meaning?.Id,

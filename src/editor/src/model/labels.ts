@@ -342,6 +342,7 @@ export const PROCESS_TIPS = {
   organizations: "Organizations: units with a place in a hierarchy, such as a supplier or a plant",
   automatic: "Automatic: the system itself, which makes the moves nobody does",
   systems: "Systems: outside systems that act in processes",
+  fromObject: "From the object: actors worked out for each object, such as its owner or the reviewers on its project",
   guards: "Conditions transitions check, and effects they run",
   gates: "Signatures a transition waits for",
   entityLifecycles: "Lifecycles that govern this entity, including its base entity's",
@@ -367,6 +368,7 @@ export const PROCESS_LABELS = {
   groups: "Groups",
   organizations: "Organizations",
   automatic: "Automatic",
+  fromObject: "From the object",
   systems: "Systems",
   guard: "guard",
   action: "action",
@@ -632,6 +634,28 @@ export const ACTOR_MEMBER_LABELS = {
   addTitle: (name: string) => `Add members to ${name}`,
   addApply: (n: number) => (n ? `Add ${n}` : "Add"),
   addUndo: (name: string) => `Add members to ${name}`,
+} as const;
+
+/** The actor editor's "Taken from the object" section (actors-design.md section 9). */
+export const ACTOR_RELATIVE_LABELS = {
+  title: "Taken from the object",
+  form: "Worked out as",
+  forms: {
+    none: "Not taken from the object",
+    owner: "The object's owner",
+    path: "A field of the object",
+    "members-of": "Members of a role within a context",
+  },
+  fieldsOf: "Fields of",
+  noSubjects: "No process that uses this actor has a subject yet. Choose an entity to pick fields from.",
+  pick: "(choose)",
+  then: "(then…)",
+  role: "Role",
+  noRoles: "There is no plain role, group or organization yet.",
+  context: "Within",
+  itself: "(the object itself)",
+  means: (text: string) => `Means ${text}.`,
+  ownerNote: "Held where each lifecycle subject's Owner names it; without one, the team's system holds it.",
 } as const;
 
 /** A library process, which has no chart to open. */

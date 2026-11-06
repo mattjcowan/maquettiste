@@ -8,6 +8,7 @@ import { ACTOR_TYPES } from "@/model/labels";
 import { applySchemaOperation, SCHEMA_OPS, type SchemaOp } from "@/model/databaseSchemas";
 import { DATABASE_MEMBER_KINDS } from "@/model/model";
 import { subjectsOf } from "@/model/process";
+import { relativeForms, type RelativeDoc } from "@/model/objectFields";
 import type {
   BatchResult,
   BatchParseResult,
@@ -1416,6 +1417,8 @@ function e5(json: Json): Partial<ElementSummary> {
     // memberOf only when non-empty, in file order, as the engine's index row has it.
     const memberOf = Array.isArray(json.memberOf) ? json.memberOf.filter((m): m is string => typeof m === "string") : [];
     if (memberOf.length) out.memberOf = memberOf;
+    // A relative actor's form, in the order owner, path, members-of; none when the file gives no form (MQ9603).
+    if (json.relative !== undefined) out.relative = relativeForms(json.relative as RelativeDoc)[0] ?? "none";
   }
   if (kind === "scenario") {
     if (typeof json.process === "string") out.process = json.process;

@@ -97,6 +97,47 @@ internal sealed partial class ResolveRun
         }
     }
 
+    /// <summary>
+    /// Actors worked out from the object (actors-design.md section 6): each with <c>relative</c> gets its form, the ids of its path as the
+    /// model resolves them (ends, then the declaring attribute, a base's for an inherited one), and the role, group or organization it is
+    /// the members of. A relative path keys on the actor's file (its own keys) and on the relations and entities it passes through.
+    /// </summary>
+    private void ResolveRelatives()
+    {
+        foreach (var actor in Model.All<Actor>())
+        {
+            if (actor.Relative is not { } relative || !_actors.TryGetValue(actor.Id, out var r))
+                continue;
+            var deps = DepsOf(r);
+            var path = new List<RObject>();
+            foreach (var id in relative.Steps)
+            {
+                if (_byId.GetValueOrDefault(id) is REnd end)
+                {
+                    path.Add(end);
+                    if (Model.TryGetEntry(id, out var entry))
+                        deps.Element(entry.OwnerId);
+                    deps.Element(end.Entity.Id);
+                }
+                else if (DeclaredAttribute(id) is { } attribute)
+                {
+                    path.Add(attribute);
+                    if (Model.TryGetEntry(id, out var entry))
+                        deps.Element(entry.OwnerId);
+                }
+            }
+
+            r.Relative = new RRelative
+            {
+                Form = relative.Form,
+                Path = path,
+                MembersOf = relative.MembersOf is { } holder ? _actors.GetValueOrDefault(holder) : null,
+            };
+            if (relative.MembersOf is { } named)
+                deps.Element(named);
+        }
+    }
+
     /// <summary>Resolves actors, processes and scenarios, the actors' uses and the entities' lifecycles.</summary>
     private void ResolveProcesses()
     {
@@ -113,6 +154,7 @@ internal sealed partial class ResolveRun
 
         _actorOrder = [.. _actors.Values.OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.Id, StringComparer.Ordinal)];
         ResolveMemberships();
+        ResolveRelatives();
 
         // Shells first: an invoke names another process.
         var sources = new Dictionary<string, Process>(StringComparer.Ordinal);
@@ -236,6 +278,17 @@ internal sealed partial class ResolveRun
                 subject.BoundReferenceType = subject.BoundAttribute?.Type.ReferenceType;
                 if (subject.BoundReferenceType is { } referenceType)
                     deps.Element(referenceType.Id);
+            }
+
+            // The owner field (actors-design.md decision 10), only when MQ9606 has nothing to say about it.
+            if (entry.Owner is { } ownerId && Model.Get<Entity>(entry.Entity) is { } modelEntity)
+            {
+                if (entity.Attributes.FirstOrDefault(a => string.Equals(a.Id, ownerId, StringComparison.Ordinal)) is { } owner)
+                    subject.OwnerAttribute = owner.Collection || owner.Type.ValueObject is not null ? null : owner;
+                else if (Processes.RelativeActors.OwnerEnd(Model, modelEntity, ownerId) is { Max: MaxCardinality.One } && _byId.GetValueOrDefault(ownerId) is REnd ownerEnd)
+                    subject.OwnerEnd = ownerEnd;
+                if (subject.OwnerEnd is not null && Model.TryGetEntry(ownerId, out var ownerEntry))
+                    deps.Element(ownerEntry.OwnerId);
             }
 
             subjects.Add(subject);

@@ -1,7 +1,9 @@
 // The mock's actor rules (ProcessRules.cs CheckActor, actors-design.md section 5): MQ9601 a memberOf entry that names an
-// actor that holds no members, the actor itself, or the same actor twice; MQ9602 a membership cycle; MQ9605 a second system actor.
+// actor that holds no members (or is an actor from the object), the actor itself, or the same actor twice; MQ9602 a membership
+// cycle; MQ9603 a malformed relative; MQ9605 a second system actor.
 import type { Diagnostic } from "@/api/types";
 import { Membership } from "./membership";
+import { relativeForms, type RelativeDoc } from "@/model/objectFields";
 
 type Json = Record<string, unknown>;
 interface Entry {
@@ -51,6 +53,8 @@ export function actorDiagnostics(json: Json, entry: Entry, all: Iterable<Entry>)
       );
   }
 
+  out.push(...relativeDiagnostics(json, name, byId, diag));
+
   const membership = new Membership(actors);
   const seen = new Set<string>();
   let cycle: string | null = null;
@@ -69,6 +73,16 @@ export function actorDiagnostics(json: Json, entry: Entry, all: Iterable<Entry>)
     }
     const holder = byId.get(target);
     if (!holder) return; // MQ2001, MQ2002
+    if (holder.json.relative !== undefined) {
+      out.push(
+        diag(
+          "MQ9601",
+          `Actor '${name}' is a member of '${nameOf(target)}', an actor taken from the object; it is worked out per object, so it has no members. Remove the entry.`,
+          pointer,
+        ),
+      );
+      return;
+    }
     const type = String(holder.json.type);
     if (type !== "role" && type !== "group" && type !== "organization") {
       out.push(
@@ -108,4 +122,44 @@ function cyclePath(membership: Membership, actor: string, target: string, nameOf
     }
   }
   return null;
+}
+
+/** MQ9603: a relative with no form or several, within without membersOf, membersOf naming other than a plain role, group or organization, memberOf on it, or type system. */
+function relativeDiagnostics(
+  json: Json,
+  name: string,
+  byId: Map<string, Entry>,
+  diag: (rule: string, message: string, pointer: string) => Diagnostic,
+): Diagnostic[] {
+  if (json.relative === undefined || json.relative === null || typeof json.relative !== "object") return [];
+  const relative = json.relative as RelativeDoc;
+  const out: Diagnostic[] = [];
+  const bad = (message: string, pointer: string) => out.push(diag("MQ9603", message, pointer));
+  const forms = relativeForms(relative);
+  if (forms.length === 0 && relative.within === undefined)
+    bad(`Actor '${name}' is taken from the object but gives no form; give exactly one of owner, path or membersOf.`, "/relative");
+  else if (forms.length > 1)
+    bad(`Actor '${name}' gives ${forms.length} forms (${forms.join(", ")}); give exactly one of owner, path or membersOf.`, "/relative");
+  if (relative.within !== undefined && relative.membersOf === undefined)
+    bad(
+      `Actor '${name}' gives within without membersOf; within says where a role is held, so name the role with membersOf, or remove within.`,
+      "/relative/within",
+    );
+  if (typeof relative.membersOf === "string") {
+    const holder = byId.get(relative.membersOf);
+    if (holder) {
+      const type = String(holder.json.type);
+      const holds = type === "role" || type === "group" || type === "organization";
+      if (!holds || holder.json.relative !== undefined)
+        bad(
+          `Actor '${name}' names '${String(holder.json.name ?? holder.id)}' in membersOf, which is ${holds ? "itself taken from the object" : (TYPE_TEXT[type] ?? type)}; name a plain role, group or organization.`,
+          "/relative/membersOf",
+        );
+    }
+  }
+  if (Array.isArray(json.memberOf) && json.memberOf.length > 0)
+    bad(`Actor '${name}' is taken from the object, so it cannot be a member of anything; remove memberOf.`, "/memberOf");
+  if (json.type === "system")
+    bad(`Actor '${name}' is the system actor, which is not worked out from the object; remove relative, or change the type.`, "/type");
+  return out;
 }

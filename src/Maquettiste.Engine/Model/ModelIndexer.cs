@@ -759,7 +759,8 @@ internal static class ModelIndexer
             Type: element is Custom typed ? typed.Type : null,
             Subjects: element is Process { Subjects.Count: > 1 } several ? [.. several.Subjects.Select(s => s.Entity)] : null,
             Actors: actors,
-            MemberOf: element is Actor { MemberOf.Count: > 0 } member ? [.. member.MemberOf] : null);
+            MemberOf: element is Actor { MemberOf.Count: > 0 } member ? [.. member.MemberOf] : null,
+            Relative: element is Actor { Relative: { } relative } ? relative.Form : null);
 
     /// <summary>
     /// The actors a process's document names: the targets of its references (every field, custom properties included) whose element is

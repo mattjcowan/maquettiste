@@ -13,6 +13,7 @@
     "package",
     "type",
     "memberOf",
+    "relative",
     "description",
     "rationale",
     "decision",
@@ -64,6 +65,10 @@
       "description": "The roles, groups and organizations this actor is a member of. An actor in a process's list stands for itself and its members at any depth. Each entry names a role, group or organization other than the actor itself, once (MQ9601); memberships form no cycle (MQ9602).",
       "$ref": "common.json#/$defs/idList",
       "default": []
+    },
+    "relative": {
+      "description": "Makes this an actor worked out from the object a process runs for, per object at run time: the object's owner, the actor a field of the object names, or the members of a role, group or organization within a context object. Exactly one form (MQ9603). Such an actor is never a member and has no members, and a process that uses it must be able to work it out on every subject (MQ9604).",
+      "$ref": "#/$defs/relative"
     },
     "description": {
       "$ref": "common.json#/$defs/description"
@@ -119,5 +124,39 @@
     "name",
     "type"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "relative": {
+      "title": "Relative",
+      "description": "How an actor is worked out from the object. Give exactly one of owner, path, or membersOf (with within).",
+      "type": "object",
+      "x-order": [
+        "owner",
+        "path",
+        "membersOf",
+        "within"
+      ],
+      "properties": {
+        "owner": {
+          "description": "The object's owner, held where each subject entry's owner names (or by the team's system when it names none).",
+          "const": true
+        },
+        "path": {
+          "description": "The actor a field of the object names: to-one relation ends to follow, then a single-valued attribute or a to-one end. Ids must mean the same thing for every subject of a process that uses the actor (MQ9604).",
+          "$ref": "common.json#/$defs/idList",
+          "minItems": 1
+        },
+        "membersOf": {
+          "description": "The members of this role, group or organization (not itself an actor from the object) within the context object that within reaches.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "within": {
+          "description": "With membersOf only: the to-one relation ends that lead from the object to its context object; empty for the object itself.",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    }
+  }
 }

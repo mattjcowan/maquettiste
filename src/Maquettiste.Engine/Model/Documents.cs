@@ -75,6 +75,8 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// when an actor file appears or goes; that file's own row changes with it, so the index tag still follows.</param>
 /// <param name="MemberOf">The roles, groups and organizations an actor is a member of, as ids in file order, on actor rows that name at
 /// least one (actors-design.md decision 3).</param>
+/// <param name="Relative">How an actor from the object is worked out, <c>owner</c>, <c>path</c>, <c>members-of</c> or <c>none</c>
+/// (actors-design.md decision 9), on actor rows whose file has <c>relative</c>.</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
 /// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
@@ -100,7 +102,8 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Type = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Subjects = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Actors = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? MemberOf = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? MemberOf = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Relative = null)
 {
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>
@@ -133,7 +136,8 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && (ReferenceEquals(Ends, other.Ends) || (Ends is not null && other.Ends is not null && Ends.SequenceEqual(other.Ends)))
         && (ReferenceEquals(Subjects, other.Subjects) || (Subjects is not null && other.Subjects is not null && Subjects.SequenceEqual(other.Subjects, StringComparer.Ordinal)))
         && (ReferenceEquals(Actors, other.Actors) || (Actors is not null && other.Actors is not null && Actors.SequenceEqual(other.Actors, StringComparer.Ordinal)))
-        && (ReferenceEquals(MemberOf, other.MemberOf) || (MemberOf is not null && other.MemberOf is not null && MemberOf.SequenceEqual(other.MemberOf, StringComparer.Ordinal)));
+        && (ReferenceEquals(MemberOf, other.MemberOf) || (MemberOf is not null && other.MemberOf is not null && MemberOf.SequenceEqual(other.MemberOf, StringComparer.Ordinal)))
+        && string.Equals(Relative, other.Relative, StringComparison.Ordinal);
 
     /// <inheritdoc/>
     public override int GetHashCode() => HashCode.Combine(

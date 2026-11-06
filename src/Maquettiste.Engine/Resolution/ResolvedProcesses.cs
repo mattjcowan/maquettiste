@@ -129,6 +129,27 @@ public sealed class RSubject : RObject
 
     /// <summary>The reference type typing the bound attribute (lifecycle-design.md decision 11): its codes are the states' codes.</summary>
     public RReferenceType? BoundReferenceType { get; internal set; }
+
+    /// <summary>The single-valued attribute that holds the object's owner (actors-design.md decision 10), when the entry names one.</summary>
+    public RAttribute? OwnerAttribute { get; internal set; }
+
+    /// <summary>The to-one relation end that leads to the object's owner (actors-design.md decision 10), when the entry names one.</summary>
+    public REnd? OwnerEnd { get; internal set; }
+}
+
+/// <summary>How an actor is worked out from the object (actors-design.md decisions 8 to 12).</summary>
+public sealed class RRelative
+{
+    /// <summary><c>owner</c>, <c>path</c> or <c>members-of</c>; with several forms (MQ9603) the first in that order, <c>none</c> with none.</summary>
+    public string Form { get; internal set; } = "";
+
+    /// <summary>For <c>path</c>, the <see cref="REnd"/> steps, then the last <see cref="RAttribute"/> (the declaring one) or
+    /// <see cref="REnd"/>; for <c>members-of</c>, the <c>within</c> ends (empty for the object itself); empty for <c>owner</c>. An id the
+    /// model does not hold is left out.</summary>
+    public IReadOnlyList<RObject> Path { get; internal set; } = [];
+
+    /// <summary>The role, group or organization whose members it is, for <c>members-of</c>.</summary>
+    public RActor? MembersOf { get; internal set; }
 }
 
 /// <summary>A state of a process.</summary>
@@ -456,6 +477,10 @@ public sealed class RActor : RElement
 
     /// <summary>The actors members of this one at any depth, by (name, id), each once and never the actor itself.</summary>
     public RList<RActor> AllMembers { get; internal set; } = RList<RActor>.Empty;
+
+    /// <summary>How the actor is worked out from the object (actors-design.md section 6), or <see langword="null"/> for an actor that
+    /// stands for itself.</summary>
+    public RRelative? Relative { get; internal set; }
 
     /// <summary>The processes that reference the actor (event actors, invoke actors, gate signers), in process order.</summary>
     public RList<RProcess> Processes { get; internal set; } = RList<RProcess>.Empty;

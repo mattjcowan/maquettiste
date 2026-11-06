@@ -103,6 +103,8 @@ export interface SubjectDoc {
   id: string;
   entity: string;
   boundAttribute?: string;
+  /** Where the object's owner is held (actors-design.md decision 10); the `subjects` form only. */
+  owner?: string;
 }
 
 export interface ProcessDoc {
@@ -850,6 +852,7 @@ export function subjectsOf(doc: { id?: unknown; subjects?: unknown; subject?: un
               id: typeof e.id === "string" ? e.id : "",
               entity: e.entity,
               ...(typeof e.boundAttribute === "string" ? { boundAttribute: e.boundAttribute } : {}),
+              ...(typeof e.owner === "string" ? { owner: e.owner } : {}),
             },
           ]
         : [],

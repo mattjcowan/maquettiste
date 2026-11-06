@@ -11,6 +11,7 @@ import type { AttributeDoc } from "@/api/types";
 import { attributesOf, typeLabel } from "@/model/model";
 import { soleSubject } from "@/model/process";
 import { memberOfText } from "@/model/actors";
+import { relativeRowText } from "@/model/objectFields";
 import { tableKeyOf } from "@/search/engine";
 import type { TablePart, TablePartKind } from "@/workspaces/database/tableParts";
 import { patchesBetween, type IndexPatch } from "@/api/indexPatch";
@@ -364,8 +365,14 @@ export function processSecondary(r: Pick<Row, "use" | "stateCount">, subject: st
 }
 
 /** An actor row's secondary text: its type, its stereotypes, then where it acts ("role · persona · acts in 3 processes"). */
-export function actorSecondary(r: Pick<Row, "actorType" | "stereotypes">, actsIn?: number, memberOf?: string): string {
-  return [r.actorType ? ACTOR_TYPE_LABELS[r.actorType] : "", memberOf, ...(r.stereotypes ?? []), actsIn ? PROCESS_LABELS.actsIn(actsIn) : ""]
+export function actorSecondary(r: Pick<Row, "actorType" | "stereotypes" | "relative">, actsIn?: number, memberOf?: string): string {
+  return [
+    r.actorType ? ACTOR_TYPE_LABELS[r.actorType] : "",
+    memberOf,
+    relativeRowText(r.relative),
+    ...(r.stereotypes ?? []),
+    actsIn ? PROCESS_LABELS.actsIn(actsIn) : "",
+  ]
     .filter(Boolean)
     .join(" · ");
 }
@@ -1539,7 +1546,8 @@ export function buildForest(input: TreeInput): Forest {
       const node = add(newElementNode(byId, r, "processes", `${ROOTS.processes}/a:${r.id}`, errorsOf(r.id), related.actsIn));
       processPlace.set(r.id, node.key);
       attachMembers(node, [r.id]);
-      push(byType, r.actorType ?? "", node);
+      // An actor taken from the object sits only in From the object, whatever its type.
+      push(byType, r.relative ? "relative" : (r.actorType ?? ""), node);
       return node;
     });
     const ACTOR_FOLDERS = [
@@ -1549,6 +1557,7 @@ export function buildForest(input: TreeInput): Forest {
       ["organization", PROCESS_LABELS.organizations, "actor", PROCESS_TIPS.organizations],
       ["external-system", PROCESS_LABELS.systems, "actor", PROCESS_TIPS.systems],
       ["system", PROCESS_LABELS.automatic, "actor", PROCESS_TIPS.automatic],
+      ["relative", PROCESS_LABELS.fromObject, "actor", PROCESS_TIPS.fromObject],
     ] as const;
     const typed = ACTOR_FOLDERS.flatMap(([type, label, icon, tip]) => {
       const list = byType.get(type);

@@ -2960,6 +2960,14 @@ export interface components {
              *     rows that name at least one. Left out when the actor names none.
              */
             memberOf?: components["schemas"]["Ulid"][];
+            /**
+             * @description How an actor from the object is worked out (actors-design.md decision 9), on actor rows whose file has `relative`: `owner`
+             *     (the object's owner), `path` (the actor a field of the object names) or `members-of` (members of a role, group or
+             *     organization within a context object). With several forms (MQ9603), the first in that order. Left out when the file has
+             *     no `relative`; `none` when it gives no form (MQ9603).
+             * @enum {string}
+             */
+            relative?: "owner" | "path" | "members-of" | "none";
             /** @description The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows. */
             process?: components["schemas"]["Ulid"];
             /** @description The number of steps, on scenario rows. */
@@ -3967,6 +3975,11 @@ export interface components {
             boundEnum: string | null;
             /** @description The bound attribute's reference type's id (lifecycle-design.md decision 11); absent for any other binding. */
             boundReferenceType?: string;
+            /**
+             * @description The id of the single-valued attribute or to-one relation end that holds the object's owner (actors-design.md decision 10),
+             *     as the entry names it; absent when the entry names none or MQ9606 reports it.
+             */
+            owner?: string;
         };
         /** @description A state. */
         StateRecord: components["schemas"]["ProcessNodeAnnotations"] & {
@@ -4095,6 +4108,26 @@ export interface components {
             gates: string[];
             /** @description The ids of the roles, groups and organizations the actor is a member of, in file order, each once; an entry MQ9601 reports is left out (actors-design.md section 6). Left out when there are none. */
             memberOf?: string[];
+            relative?: components["schemas"]["RelativeRecord"];
+        };
+        /**
+         * @description How an actor from the object is worked out (actors-design.md decisions 8 to 12), on actor records whose file has `relative`; left
+         *     out otherwise.
+         */
+        RelativeRecord: {
+            /**
+             * @description owner, path or members-of; with several forms (MQ9603), the first in that order; none when the file gives no form.
+             * @enum {string}
+             */
+            form: "owner" | "path" | "members-of" | "none";
+            /**
+             * @description The ids along the path as the model resolves them (an id it does not hold is left out): for path, the to-one relation ends
+             *     followed, then the last attribute or end;
+             *     for members-of, the within ends (empty for the object itself); empty for owner.
+             */
+            path: string[];
+            /** @description The id of the role, group or organization whose members it is, for members-of; absent otherwise. */
+            membersOf?: string;
         };
         /** @description A resolved scenario. */
         ScenarioRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -9792,6 +9825,8 @@ export interface components {
             entity: components["schemas"]["id"];
             /** @description An attribute of the entity that holds the state (lifecycle only). */
             boundAttribute?: components["schemas"]["id"];
+            /** @description Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own, inherited or from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner. */
+            owner?: components["schemas"]["id"];
         };
         /**
          * Event
@@ -9987,6 +10022,8 @@ export interface components {
                     entity: components["schemas"]["id"];
                     /** @description An attribute of the entity that holds the state (lifecycle only). */
                     boundAttribute?: components["schemas"]["id"];
+                    /** @description Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own, inherited or from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner. */
+                    owner?: components["schemas"]["id"];
                 };
                 /**
                  * State
@@ -10227,6 +10264,26 @@ export interface components {
             };
         };
         /**
+         * Relative
+         * @description How an actor is worked out from the object. Give exactly one of owner, path, or membersOf (with within).
+         */
+        relative: {
+            /**
+             * @description The object's owner, held where each subject entry's owner names (or by the team's system when it names none).
+             * @constant
+             */
+            owner?: true;
+            /** @description The actor a field of the object names: to-one relation ends to follow, then a single-valued attribute or a to-one end. Ids must mean the same thing for every subject of a process that uses the actor (MQ9604). */
+            path?: components["schemas"]["idList"];
+            /** @description The members of this role, group or organization (not itself an actor from the object) within the context object that within reaches. */
+            membersOf?: components["schemas"]["id"];
+            /**
+             * @description With membersOf only: the to-one relation ends that lead from the object to its context object; empty for the object itself.
+             * @default []
+             */
+            within?: components["schemas"]["idList"];
+        };
+        /**
          * Actor
          * @description A person, a role, a group, an organization, an external system or the system itself that takes part in processes (model/actors/). A role, group or organization may have members, which state it in their memberOf.
          */
@@ -10250,6 +10307,8 @@ export interface components {
              * @default []
              */
             memberOf?: components["schemas"]["idList"];
+            /** @description Makes this an actor worked out from the object a process runs for, per object at run time: the object's owner, the actor a field of the object names, or the members of a role, group or organization within a context object. Exactly one form (MQ9603). Such an actor is never a member and has no members, and a process that uses it must be able to work it out on every subject (MQ9604). */
+            relative?: components["schemas"]["relative"];
             description?: components["schemas"]["description"];
             /** @description Markdown text: why the element is shaped this way. */
             rationale?: string;
@@ -10270,6 +10329,28 @@ export interface components {
             /** @default {} */
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
+            $defs: {
+                /**
+                 * Relative
+                 * @description How an actor is worked out from the object. Give exactly one of owner, path, or membersOf (with within).
+                 */
+                relative: {
+                    /**
+                     * @description The object's owner, held where each subject entry's owner names (or by the team's system when it names none).
+                     * @constant
+                     */
+                    owner?: true;
+                    /** @description The actor a field of the object names: to-one relation ends to follow, then a single-valued attribute or a to-one end. Ids must mean the same thing for every subject of a process that uses the actor (MQ9604). */
+                    path?: components["schemas"]["idList"];
+                    /** @description The members of this role, group or organization (not itself an actor from the object) within the context object that within reaches. */
+                    membersOf?: components["schemas"]["id"];
+                    /**
+                     * @description With membersOf only: the to-one relation ends that lead from the object to its context object; empty for the object itself.
+                     * @default []
+                     */
+                    within?: components["schemas"]["idList"];
+                };
+            };
         };
         /**
          * Link

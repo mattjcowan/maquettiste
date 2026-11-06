@@ -7875,6 +7875,14 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/Ulid'
+        relative:
+          description: |
+            How an actor from the object is worked out (actors-design.md decision 9), on actor rows whose file has `relative`: `owner`
+            (the object's owner), `path` (the actor a field of the object names) or `members-of` (members of a role, group or
+            organization within a context object). With several forms (MQ9603), the first in that order. Left out when the file has
+            no `relative`; `none` when it gives no form (MQ9603).
+          type: string
+          enum: [owner, path, members-of, none]
         process:
           description: The process a scenario runs, on scenario rows; the process a diagram is the statechart of, on process diagram rows.
           $ref: '#/components/schemas/Ulid'
@@ -10021,6 +10029,11 @@ components:
         boundReferenceType:
           type: string
           description: The bound attribute's reference type's id (lifecycle-design.md decision 11); absent for any other binding.
+        owner:
+          type: string
+          description: |
+            The id of the single-valued attribute or to-one relation end that holds the object's owner (actors-design.md decision 10),
+            as the entry names it; absent when the entry names none or MQ9606 reports it.
     StateRecord:
       x-engine-record: Maquettiste.Engine.StateRecord
       description: A state.
@@ -10334,6 +10347,31 @@ components:
             minItems: 1
             items:
               type: string
+          relative:
+            $ref: '#/components/schemas/RelativeRecord'
+    RelativeRecord:
+      x-engine-record: Maquettiste.Engine.RelativeRecord
+      description: |
+        How an actor from the object is worked out (actors-design.md decisions 8 to 12), on actor records whose file has `relative`; left
+        out otherwise.
+      type: object
+      required: [form, path]
+      properties:
+        form:
+          description: owner, path or members-of; with several forms (MQ9603), the first in that order; none when the file gives no form.
+          type: string
+          enum: [owner, path, members-of, none]
+        path:
+          description: |
+            The ids along the path as the model resolves them (an id it does not hold is left out): for path, the to-one relation ends
+            followed, then the last attribute or end;
+            for members-of, the within ends (empty for the object itself); empty for owner.
+          type: array
+          items:
+            type: string
+        membersOf:
+          description: The id of the role, group or organization whose members it is, for members-of; absent otherwise.
+          type: string
     ScenarioRecord:
       x-engine-record: Maquettiste.Engine.ScenarioRecord
       description: A resolved scenario.

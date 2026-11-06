@@ -2676,7 +2676,7 @@
   {
     "id": "MQ9105",
     "defaultSeverity": "warning",
-    "description": "A gate signer that may not raise the gate's event (the event lists its actors and leaves the signer out, and the signer is not a member of one of them at any depth); add the signer to the event's actors.",
+    "description": "A gate signer that may not raise the gate's event (the event lists its actors and leaves the signer out, and the signer is not a member of one of them at any depth); add the signer to the event's actors. Never reported when the signer or one of the event's actors is an actor from the object, which only the object decides.",
     "family": "MQ91xx",
     "familyLabel": "Actors and gates",
     "canBeOff": true
@@ -2684,7 +2684,7 @@
   {
     "id": "MQ9106",
     "defaultSeverity": "info",
-    "description": "An actor no process references (event actors, gate signers, human tasks), directly, through a member at any depth, or through an actor it is a member of at any depth; use it in a process or remove it.",
+    "description": "An actor no process references (event actors, gate signers, human tasks), directly, through a member at any depth, through an actor it is a member of at any depth, or as the membersOf of an actor from the object; use it in a process or remove it.",
     "family": "MQ91xx",
     "familyLabel": "Actors and gates",
     "canBeOff": true
@@ -2930,9 +2930,9 @@
   {
     "id": "MQ9601",
     "defaultSeverity": "error",
-    "description": "A memberOf entry that does not name a role, group or organization, names the actor itself, or is listed twice; remove the entry.",
+    "description": "A memberOf entry that does not name a role, group or organization, names an actor from the object (relative), names the actor itself, or is listed twice; remove the entry.",
     "family": "MQ96xx",
-    "familyLabel": "Actor types and membership",
+    "familyLabel": "Actors",
     "canBeOff": true
   },
   {
@@ -2940,7 +2940,23 @@
     "defaultSeverity": "error",
     "description": "Memberships form a cycle (an actor is, through memberOf, a member of itself); the message names the cycle. Remove one of its memberships.",
     "family": "MQ96xx",
-    "familyLabel": "Actor types and membership",
+    "familyLabel": "Actors",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9603",
+    "defaultSeverity": "error",
+    "description": "An actor's relative is malformed: no form or more than one (owner, path, membersOf), within without membersOf, membersOf naming something other than a role, group or organization that is not itself an actor from the object, memberOf on an actor from the object, or type system with relative; give exactly one form.",
+    "family": "MQ96xx",
+    "familyLabel": "Actors",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9604",
+    "defaultSeverity": "error",
+    "description": "An actor from the object is used where it cannot be worked out: in a process with no subjects, or with a path (or within) that does not resolve on every subject (the subject's own and inherited members for one subject, a shared base entity's for several), that passes through something other than a to-one relation end, or that ends at a many-valued attribute, a value object or a to-many end. Reported at the use; a library's gate or human task at each process that uses it.",
+    "family": "MQ96xx",
+    "familyLabel": "Actors",
     "canBeOff": true
   },
   {
@@ -2948,7 +2964,15 @@
     "defaultSeverity": "error",
     "description": "Two or more actors of type system: the system itself (shown as Automatic) is one actor per project; change the type of all but one, for example to external-system, or give it roles through memberOf.",
     "family": "MQ96xx",
-    "familyLabel": "Actor types and membership",
+    "familyLabel": "Actors",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9606",
+    "defaultSeverity": "error",
+    "description": "A subject entry's owner that is not a single-valued attribute or a to-one relation end of its entity (own, inherited or from a stereotype); clear the owner, or name a field that holds one actor.",
+    "family": "MQ96xx",
+    "familyLabel": "Actors",
     "canBeOff": true
   }
 ]
