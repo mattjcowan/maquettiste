@@ -920,31 +920,9 @@ public sealed partial class ModelStore
             return null;
         }
 
-        private static JsonObject ExpectNode(StepExpectation expect)
-        {
-            var node = new JsonObject();
-            if (!expect.Accepted)
-                node["accepted"] = false;
-            node["states"] = new JsonArray([.. expect.States.Select(s => (JsonNode?)JsonValue.Create(s))]);
-            if (expect.Context.Count > 0)
-            {
-                var context = new JsonObject();
-                foreach (var (id, value) in expect.Context.OrderBy(p => p.Key, StringComparer.Ordinal))
-                    context[id] = JsonNode.Parse(value.GetRawText());
-                node["context"] = context;
-            }
-
-            // The object's values the step set, by attribute id, only when it set one (object-effects-design.md decision 4).
-            if (expect.Values.Count > 0)
-            {
-                var values = new JsonObject();
-                foreach (var (id, value) in expect.Values.OrderBy(p => p.Key, StringComparer.Ordinal))
-                    values[id] = JsonNode.Parse(value.GetRawText());
-                node["values"] = values;
-            }
-
-            return node;
-        }
+        // The expectations a replay gives, as recording writes them: the refusal and what refused it too, where the replay records them
+        // (rights-design.md decision 26).
+        private static JsonObject ExpectNode(StepExpectation expect) => ProcessApi.ExpectNode(expect);
 
         // ---- helpers ----
 

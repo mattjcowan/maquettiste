@@ -20,7 +20,7 @@ public sealed partial class ModelStore
 
     /// <summary>
     /// Plans a verb operation: adds the updates to <paramref name="changes"/>; returns why it is refused, or <see langword="null"/>. Uses are
-    /// found by key in every event, transition, operation and right. <c>rename-verb</c> and <c>remove-verb</c> of an own verb whose key a built-in
+    /// found by key in every event, transition, operation, right and scenario verb step. <c>rename-verb</c> and <c>remove-verb</c> of an own verb whose key a built-in
     /// verb has (MQ9702) leave the uses, which name the built-in verb: they write only the vocabulary.
     /// </summary>
     private string? VerbOperation(ModelSnapshot snapshot, BatchOperation o, List<PlannedChange> changes)
@@ -144,6 +144,20 @@ public sealed partial class ModelStore
                     break;
                 case Right named when !goneRights.Contains(named.Id) && named.Verbs.Contains(key, StringComparer.Ordinal):
                     RewriteList(Working(document));
+                    break;
+                case Scenario scenario:
+                    // A verb step (rights-design.md section 8): renamed in place; on a remove the step goes, since a verb step names one verb.
+                    for (var i = scenario.Steps.Count - 1; i >= 0; i--)
+                    {
+                        if (scenario.Steps[i].Input != StepInput.Verb || !string.Equals(scenario.Steps[i].Verb, key, StringComparison.Ordinal)
+                            || Working(document)["steps"] is not JsonArray steps || steps[i] is not JsonObject step)
+                            continue;
+                        if (to is null)
+                            steps.RemoveAt(i);
+                        else
+                            step["verb"] = to;
+                    }
+
                     break;
             }
         }

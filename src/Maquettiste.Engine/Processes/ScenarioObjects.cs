@@ -99,6 +99,21 @@ internal static class ScenarioObjects
     internal static JsonElement Row(ModelSnapshot model, IReadOnlyList<ScenarioObject> objects, string? subject, int depth,
         IReadOnlySet<string>? stereotypeAttributes = null) => Row(model, objects, subject, depth, stereotypeAttributes, [], null);
 
+    /// <summary>
+    /// The subject's row (<see cref="Row(ModelSnapshot, IReadOnlyList{ScenarioObject}, string?, int, IReadOnlySet{string}?)"/>), each object in
+    /// it holding its states in the lifecycles that <paramref name="reads"/> read at its path: the row a right's condition reads
+    /// (rights-design.md decision 6).
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="objects">The objects.</param>
+    /// <param name="subject">The id of the subject among them.</param>
+    /// <param name="depth">How many links deep the row nests.</param>
+    /// <param name="stereotypeAttributes">The stereotype attributes read on the object.</param>
+    /// <param name="reads">The lifecycles an <c>in_state</c> reads, by path.</param>
+    /// <returns>The row.</returns>
+    internal static JsonElement RowWithStates(ModelSnapshot model, IReadOnlyList<ScenarioObject> objects, string? subject, int depth,
+        IReadOnlySet<string>? stereotypeAttributes, IReadOnlyList<StateRead> reads) => Row(model, objects, subject, depth, stereotypeAttributes, reads, null);
+
     private static JsonElement Row(ModelSnapshot model, IReadOnlyList<ScenarioObject> objects, string? subject, int depth,
         IReadOnlySet<string>? stereotypeAttributes, IReadOnlyList<StateRead> reads, IDictionary<string, string>? notes)
     {

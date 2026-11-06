@@ -150,7 +150,7 @@ public sealed class ProcessExpressions
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process))
+        if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process))
             return Get(process);
         return ByModel.GetOrCreateValue(model).GetValue(process, p =>
         {
@@ -218,6 +218,19 @@ public sealed class ProcessExpressions
             lowered.Add(Of(set.Id, js, typed.Typed, true, new LoweredSet(set.Attribute, attribute.Name, typed.Typed.Type.Kind)));
         }
 
+        // A lifecycle's rights' conditions (rights-design.md decision 6), lowered at a right site under the entry's id: an inline right's, and a
+        // named right's typed at this use against the lifecycle's subjects. Only true holds, as at a guard.
+        if (process.Use == ProcessUse.Lifecycle)
+        {
+            foreach (var entry in process.Rights)
+            {
+                if (RightCondition(model, entry) is null || ExprResolution.Type(model, process, entry.Id) is not { } typed)
+                    continue;
+                var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Right, ExprResolution.ApiColumns(model, entry.Id, path));
+                lowered.Add(Of(entry.Id, js, typed.Typed, ExprSites.ReadsSubject(process, typed.Typed), null));
+            }
+        }
+
         return lowered;
 
         static LoweredCondition Of(string id, string js, TypedExpr typed, bool readsSubject, LoweredSet? set) =>
@@ -236,6 +249,17 @@ public sealed class ProcessExpressions
         static IEnumerable<string> ActorKinds(TypedExpr t) =>
             (t.Node.CurrentActor is not null ? [t.Type.Kind] : Enumerable.Empty<string>()).Concat(t.Body is { } body ? ActorKinds(body) : []).Concat(t.Args.SelectMany(ActorKinds));
     }
+
+    /// <summary>The condition of an entry of a lifecycle's rights: an inline right's own, or the named right's it uses; <see langword="null"/> for none.</summary>
+    /// <param name="model">The model.</param>
+    /// <param name="entry">The entry.</param>
+    /// <returns>The condition.</returns>
+    internal static Expr? RightCondition(ModelSnapshot model, ProcessRight entry) =>
+        entry.Right is { } named ? model.Get<Right>(named)?.Condition : entry.Condition;
+
+    // Whether a lifecycle states a right with a condition, which compiles with its guards' conditions (rights-design.md section 7).
+    private static bool HasRightConditions(ModelSnapshot model, Process process) =>
+        process.Use == ProcessUse.Lifecycle && process.Rights.Count > 0 && process.Rights.Any(e => RightCondition(model, e) is not null);
 
     /// <summary>
     /// The expressions of a process that do not parse (MQ9501), in guard then action order: the <see cref="Problems"/> of
@@ -264,7 +288,7 @@ public sealed class ProcessExpressions
     /// <param name="process">The process.</param>
     /// <returns><see langword="true"/> when they are cached.</returns>
     internal static bool IsCached(ModelSnapshot model, Process process) =>
-        process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process)
+        process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process)
             ? IsCached(process)
             : (ByModel.TryGetValue(model, out var processes) && processes.TryGetValue(process, out _)) || IsCachedByContent(model, process);
 
