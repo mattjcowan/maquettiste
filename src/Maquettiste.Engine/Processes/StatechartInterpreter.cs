@@ -151,7 +151,7 @@ public sealed class StatechartInterpreter
     /// <returns>The trace.</returns>
     public StepTrace Step(ScenarioStep input) => Step(input, null);
 
-    /// <summary>Runs one input as a macrostep, for a participant: <c>actor()</c> reads its identity when the step gives no signer.</summary>
+    /// <summary>Runs one input as a macrostep, for a participant: <c>current_actor()</c> reads its identity when the step gives no signer.</summary>
     /// <param name="input">The input; its <c>expect</c> is ignored.</param>
     /// <param name="identity">The participant's identity as text (its name when it has none), or <see langword="null"/>.</param>
     /// <returns>The trace.</returns>
@@ -305,7 +305,7 @@ public sealed class StatechartInterpreter
     /// completed or failed human task: its actors. Guards are evaluated as the step will evaluate them; nothing runs and nothing is recorded.
     /// </summary>
     /// <param name="input">The step about to run.</param>
-    /// <param name="identity">The identity <c>actor()</c> reads in the guards it evaluates, or <see langword="null"/>.</param>
+    /// <param name="identity">The identity <c>current_actor()</c> reads in the guards it evaluates, or <see langword="null"/>.</param>
     /// <returns>The choice.</returns>
     internal ActingChoice Acting(ScenarioStep input, string? identity = null)
     {
@@ -743,8 +743,8 @@ public sealed class StatechartInterpreter
         _current = JsonSerializer.SerializeToElement(row);
     }
 
-    // What a lowered condition or set that reads actor() or in_state is given (decisions 5 and 10): the acting identity, with a note when it
-    // does not convert to a type actor() met, and the note of each state its in_state reads that the run assumed.
+    // What a lowered condition or set that reads current_actor() or in_state is given (decisions 5 and 10): the acting identity, with a note when it
+    // does not convert to a type current_actor() met, and the note of each state its in_state reads that the run assumed.
     private string? Reads(Instance inst, ProcessExpressions.LoweredCondition lowered)
     {
         var identity = Identity();
@@ -753,7 +753,7 @@ public sealed class StatechartInterpreter
             foreach (var kind in lowered.ActorKinds)
             {
                 if (!Converts(identity, kind))
-                    Note($"The identity '{identity}' is not {Article(kind)}, so actor() reads null where it meets one.");
+                    Note($"The identity '{identity}' is not {Article(kind)}, so current_actor() reads null where it meets one.");
             }
         }
 
@@ -777,7 +777,7 @@ public sealed class StatechartInterpreter
         };
     }
 
-    // Whether an identity's text converts to a type actor() met, as the runtime's reader of that type reads it.
+    // Whether an identity's text converts to a type current_actor() met, as the runtime's reader of that type reads it.
     private static bool Converts(string identity, string kind) => kind switch
     {
         "int" => System.Numerics.BigInteger.TryParse(identity.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _),
@@ -787,7 +787,7 @@ public sealed class StatechartInterpreter
         _ => true,
     };
 
-    // The identity actor() reads (object-effects-design.md decision 5): the step's signer, else its participant's identity (its name when it
+    // The identity current_actor() reads (object-effects-design.md decision 5): the step's signer, else its participant's identity (its name when it
     // has none), else the name of the actor the step acts as; a move no one sends acts as the system actor when the project has one.
     private string? Identity()
     {

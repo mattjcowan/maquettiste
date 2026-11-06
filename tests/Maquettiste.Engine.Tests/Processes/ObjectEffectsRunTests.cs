@@ -49,7 +49,7 @@ public sealed class ObjectEffectsRunTests
 
     private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync()
     {
-        const string ActorValue = "{\"actor\":true}";
+        const string ActorValue = "{\"currentActor\":true}";
         var leave = Set(1, Note, When("01JSTA00000000000000000815", "exit-in-B1", "exit-out"));
         var enter = Set(2, Who, When("01JSTA00000000000000000816", "entry-in-B2", "entry-out"));
         var system = Set(3, By, ActorValue);

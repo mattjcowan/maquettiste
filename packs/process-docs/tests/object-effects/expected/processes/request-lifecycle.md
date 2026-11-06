@@ -64,14 +64,14 @@ The data a running instance carries.
 
 | Guard | Expression | Used by transitions | Description |
 | --- | --- | --- | --- |
-| `notTheSubmitter` | `subject.submittedBy <> actor()` | 2 |  |
+| `notTheSubmitter` | `subject.submittedBy <> current_actor()` | 2 |  |
 | `employeeActive` | `in_state(subject.employee, Employment.Active)` | 3 |  |
 
 ## Actions
 
 | Action | Expression | Sets | Raises | Used by | Description |
 | --- | --- | --- | --- | --- | --- |
-| `recordSubmission` | `submittedBy ← actor()`, `submittedOn ← now()` | `submittedBy ← actor()`, `submittedOn ← now()` |  | transition 1 |  |
+| `recordSubmission` | `submittedBy ← current_actor()`, `submittedOn ← now()` | `submittedBy ← current_actor()`, `submittedOn ← now()` |  | transition 1 |  |
 | `bump` | `({ count: context.count + 1 })` | `note ← 'bumped'` |  | transition 1 |  |
 | `notify` | none: a named stub the host implements |  |  | transition 1 |  |
 

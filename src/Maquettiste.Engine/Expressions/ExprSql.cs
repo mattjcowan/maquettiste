@@ -156,9 +156,9 @@ internal static class ExprSql
             }
             else if (e.Now is not null)
                 node = Node("call", call: "now");
-            else if (e.Actor is not null || e.InState is not null)
+            else if (e.CurrentActor is not null || e.InState is not null)
             {
-                Report("MQ3104", t.Pointer, (e.Actor is not null ? "actor()" : "in_state") + " has no SQL form: a database sees neither who acts nor a lifecycle's state.");
+                Report("MQ3104", t.Pointer, (e.CurrentActor is not null ? "current_actor()" : "in_state") + " has no SQL form: a database sees neither who acts nor a lifecycle's state.");
                 node = new RQueryExpression { Node = "null" };
             }
             else if (e.Satisfies is not null || e.Call == "matches" || IsCondition(e.Op))

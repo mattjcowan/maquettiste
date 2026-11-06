@@ -101,7 +101,7 @@ export function treeText(tree: Json | undefined, names: TreeNames): string {
   }
   if (typeof t.ref === "string") return names.name(t.ref) ?? "?";
   if (t.now === true) return "now()";
-  if (t.actor === true) return "actor()";
+  if (t.currentActor === true) return "current_actor()";
   if (Array.isArray(t.inState)) {
     const of = Array.isArray(t.of) ? (t.of as string[]).map((id) => names.name(id) ?? "?").join(".") : "";
     return `in_state(${["subject" + (of ? `.${of}` : ""), ...(t.inState as string[]).map((id) => names.state(id) ?? "?")].join(", ")})`;
@@ -119,7 +119,7 @@ export function treeText(tree: Json | undefined, names: TreeNames): string {
   return "...";
 }
 
-/** An action's sets as a line: `submittedBy <- actor(), submittedOn <- now()`. */
+/** An action's sets as a line: `submittedBy <- current_actor(), submittedOn <- now()`. */
 export function setsText(sets: readonly SetDoc[] | undefined, attributeName: (id: string) => string, names: TreeNames): string {
   return (sets ?? []).map((s) => `${attributeName(s.attribute)} ← ${treeText(s.value, names) || "?"}`).join(", ");
 }

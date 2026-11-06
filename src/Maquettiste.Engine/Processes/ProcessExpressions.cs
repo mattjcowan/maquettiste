@@ -68,7 +68,7 @@ public sealed class ProcessExpressions
             {
                 if (!compiled.Add(condition.Id))
                     continue;
-                // A condition or set that reads actor() or in_state calls helpers only mqAt(now, actor) has (ExprRuntime.Clock).
+                // A condition or set that reads current_actor() or in_state calls helpers only mqAt(now, actor) has (ExprRuntime.Clock).
                 code.Append("maquettiste.helper(").Append(JsonSerializer.Serialize(condition.Id)).Append(", ")
                     .Append(condition.EngineOnly ? "(row, now, actor) => ((mq) => " + condition.JavaScript + ")(mqAt(now, actor))(row)"
                         : condition.ReadsNow ? "(row, now) => ((mq) => " + condition.JavaScript + ")(mqAt(now))(row)"
@@ -234,7 +234,7 @@ public sealed class ProcessExpressions
         static bool ReadsRunning(TypedExpr t) => (t.Node.InState is not null && t.Running) || (t.Body is { } body && ReadsRunning(body)) || t.Args.Any(ReadsRunning);
 
         static IEnumerable<string> ActorKinds(TypedExpr t) =>
-            (t.Node.Actor is not null ? [t.Type.Kind] : Enumerable.Empty<string>()).Concat(t.Body is { } body ? ActorKinds(body) : []).Concat(t.Args.SelectMany(ActorKinds));
+            (t.Node.CurrentActor is not null ? [t.Type.Kind] : Enumerable.Empty<string>()).Concat(t.Body is { } body ? ActorKinds(body) : []).Concat(t.Args.SelectMany(ActorKinds));
     }
 
     /// <summary>
@@ -417,10 +417,10 @@ public sealed class ProcessExpressions
     /// <param name="Set">For an action's set, the attribute it writes; <see langword="null"/> for a guard's condition.</param>
     internal sealed record LoweredCondition(string Id, string JavaScript, bool ReadsNow, bool ReadsSubject, LoweredSet? Set)
     {
-        /// <summary>Whether it reads <c>actor()</c> or <c>in_state</c> (<see cref="ExprLowering.IsEngineOnly"/>), so it runs with <c>mqAt(now, actor)</c>.</summary>
+        /// <summary>Whether it reads <c>current_actor()</c> or <c>in_state</c> (<see cref="ExprLowering.IsEngineOnly"/>), so it runs with <c>mqAt(now, actor)</c>.</summary>
         public bool EngineOnly { get; init; }
 
-        /// <summary>The types the <c>actor()</c> nodes it holds met, each once, in order: the identity is read through each.</summary>
+        /// <summary>The types the <c>current_actor()</c> nodes it holds met, each once, in order: the identity is read through each.</summary>
         public IReadOnlyList<string> ActorKinds { get; init; } = [];
 
         /// <summary>Whether an <c>in_state</c> of it reads the running chart, so its row holds the active states.</summary>
@@ -475,7 +475,7 @@ public sealed class ProcessExpressionSession : IDisposable
 
     /// <summary>
     /// Evaluates a compiled guard condition over its row (<see cref="EvaluateCondition(string, string, JsonElement, JsonElement, JsonElement, string, string, CancellationToken)"/>),
-    /// with what <c>actor()</c> and <c>in_state</c> read (object-effects-design.md section 7): the running chart's active states by process
+    /// with what <c>current_actor()</c> and <c>in_state</c> read (object-effects-design.md section 7): the running chart's active states by process
     /// id, held at the row's top under <c>$states</c>, and the acting identity as text.
     /// </summary>
     /// <param name="id">The guard id.</param>
@@ -548,7 +548,7 @@ public sealed class ProcessExpressionSession : IDisposable
         }
     }
 
-    // The arguments a lowered function takes: the row and the clock, and the identity when it reads actor() or in_state.
+    // The arguments a lowered function takes: the row and the clock, and the identity when it reads current_actor() or in_state.
     private object?[] Args(string id, JsonElement row, string now, string? actor) =>
         Lowered.TryGetValue(id, out var lowered) && lowered.EngineOnly ? [new ExactJson(row), now, actor] : [new ExactJson(row), now];
 

@@ -45,7 +45,7 @@
             ]
           },
           {
-            "actor": true
+            "currentActor": true
           }
         ]
       }
@@ -72,7 +72,7 @@
           "id": "01JFX000000000000000000Y01",
           "attribute": "01JFX000000000000000000A03",
           "value": {
-            "actor": true
+            "currentActor": true
           }
         },
         {

@@ -15,21 +15,18 @@ one.
   within a context such as the item's project. A lifecycle's subject has an optional **Owner** picker.
 - **Scenario participants.** A scenario lists its participants, each standing for an actor and holding roles, in a context if
   you like. A step names its participant, and the engine works out the actor it acts as. The simulation panel has a
-  participant picker, and `simulate_process` and `record_scenario` take `participants`. "Participants" is a working name, and
-  the owner will confirm it before release.
+  participant picker, and `simulate_process` and `record_scenario` take `participants`.
 - **A stereotype as a set of types.** A lifecycle's subject may name a stereotype, such as every `approvable` type. It covers
   each entity that carries it. An entry that names the entity wins. Guards, owner fields, actors taken from the object and
   scenario values may read a stereotype's attributes. New rule MQ9211. `sync-enum` and `sync-codes` take `stereotype`.
 - **Verbs.** Events, moves with no event and operations may name a verb. There are 27 built-in verbs in five groups, each with one
   fixed meaning. A project may hide built-ins and add its own in Settings › Verbs. `rename-verb` and `remove-verb` follow every
-  use. New rules MQ9701 to MQ9707. `csharp-dapper` writes a `Verb` enum, and `process-docs` a Verb column and a page of verbs. The
-  built-in verb names are a working set. The owner will confirm them before release.
+  use. New rules MQ9701 to MQ9707. `csharp-dapper` writes a `Verb` enum, and `process-docs` a Verb column and a page of verbs.
 - **Setting the object's data, and reading another lifecycle's state.** An action may list sets: an attribute of the object and a
-  value in the expression language. Expressions gain `actor()`, the identity of whoever acts, and `in_state(object, state, …)`,
+  value in the expression language. Expressions gain `current_actor()`, the identity of whoever acts, and `in_state(object, state, …)`,
   which asks whether an object is in a state of any lifecycle. A scenario object may list its `states`, and a step may expect the
   `values` it changed. Simulation, replay, `csharp-dapper` (a `Record<Action>` hook beside the action's stub) and `process-docs`
-  follow. New rules MQ9801 to MQ9803, MQ3116 and MQ9307. The new names (`sets`, `actor()`, `in_state`, `states`, `expect.values`)
-  are a working set. The owner will confirm them before release.
+  follow. New rules MQ9801 to MQ9803, MQ3116 and MQ9307.
 - **New rules MQ9601 to MQ9606**, and MQ9102, MQ9105, MQ9106, MQ9301 and MQ9305 now follow membership and participants.
 - **Generated output.** `csharp-dapper` adds the new actor types only when a model uses them, and checks membership when the
   model has memberships. Actors taken from the object go through a resolver the host supplies. `process-docs` lists members,

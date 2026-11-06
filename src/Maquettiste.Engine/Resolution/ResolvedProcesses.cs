@@ -418,7 +418,7 @@ public sealed class RSet : RObject
     /// <summary>
     /// The value, typed against the attribute's type; its paths end at the context's and payloads' attributes, and at the declaring entity's
     /// attribute for one of the object's. Its root carries the JavaScript, as a guard's condition does, except for a tree that reads
-    /// <c>actor()</c> or <c>in_state</c>.
+    /// <c>current_actor()</c> or <c>in_state</c>.
     /// </summary>
     public RExpression Value { get; internal set; } = null!;
 

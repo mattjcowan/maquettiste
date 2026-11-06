@@ -29,12 +29,12 @@ func sets_cell(a)
   ret $text
 end
 
-# Whether an expression reads actor() or in_state (object-effects-design.md section 9): such a guard shows its condition's text.
+# Whether an expression reads current_actor() or in_state (object-effects-design.md section 9): such a guard shows its condition's text.
 func reads_effects(e)
   if !e
     ret false
   end
-  if e.node == "actor" || e.node == "in-state"
+  if e.node == "current-actor" || e.node == "in-state"
     ret true
   end
   for $arg in e.args

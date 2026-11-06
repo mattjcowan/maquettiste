@@ -1127,7 +1127,7 @@ internal sealed partial class ResolveRun
             var participants = ResolveParticipants(s, scenario, keys);
             var traced = TraceInputs(scenario);
             var runs = scenario.Participants.Count > 0 ? Model.Get<Process>(scenario.Process) : null;
-            // A process that reads actor() (object-effects-design.md section 7): the identity comes from each step's signer, participant and
+            // A process that reads current_actor() (object-effects-design.md section 7): the identity comes from each step's signer, participant and
             // actor, and an automatic move's from the system actor, so every step reads the actors as a participant's step does.
             var readsActor = Model.Get<Process>(scenario.Process) is { } running && ReadsActor(running);
             Dictionary<string, string>? valueNames = null;
@@ -1469,7 +1469,7 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>
-    /// The nodes of the typed trees of a process's guard conditions and set values, in document order: what reads <c>actor()</c> and
+    /// The nodes of the typed trees of a process's guard conditions and set values, in document order: what reads <c>current_actor()</c> and
     /// <c>in_state</c>. A tree stored as text holds its nodes only once parsed, so the typed form is walked, as the run reads it
     /// (<see cref="ObjectStates.Reads"/>); a tree that does not type reads nothing. Typed once per process and run.
     /// </summary>
@@ -1497,9 +1497,9 @@ internal sealed partial class ResolveRun
         }
     }
 
-    /// <summary>Whether a guard condition or set value of the process, or of a process it invokes, reads <c>actor()</c>.</summary>
+    /// <summary>Whether a guard condition or set value of the process, or of a process it invokes, reads <c>current_actor()</c>.</summary>
     private bool ReadsActor(Process process) =>
-        ExprSites.InvokedProcesses(Model, process).Prepend(process).SelectMany(ConditionNodes).Any(n => n.Node.Actor == true);
+        ExprSites.InvokedProcesses(Model, process).Prepend(process).SelectMany(ConditionNodes).Any(n => n.Node.CurrentActor == true);
 
     /// <summary>The lifecycles the <c>in_state</c> calls of a process's guard conditions and set values name, each once, in document order.</summary>
     private IEnumerable<Process> InStateLifecycles(Process process)

@@ -23,6 +23,7 @@ import {
   stepRows,
   stepStatuses,
   STEP_INPUTS,
+  subjectsOf,
   type ProcessDoc,
   type ScenarioDoc,
   type StepDoc,
@@ -132,10 +133,12 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const [failure, setFailure] = useState<string | null>(null);
   const [expecting, setExpecting] = useState<string | null>(null);
   // The expected values name the subject's attributes (the file keys them by id): the subject entity and the entities it is based on.
+  // A scenario without a subject object still sets the process's own subjects' attributes, so their entities name the values then.
   const lookup = indexLookup(useIndex().data);
   const subjectEntity = scenario.objects?.find((o) => o.id === scenario.subject)?.entity;
+  const starts = subjectEntity ? [subjectEntity] : subjectsOf(processDoc).flatMap((s) => (s.entity ? [s.entity] : []));
   const chain: string[] = [];
-  for (let id = subjectEntity; id && !chain.includes(id); id = lookup.byId.get(id)?.base) chain.push(id);
+  for (const start of starts) for (let id: string | undefined = start; id && !chain.includes(id); id = lookup.byId.get(id)?.base) chain.push(id);
   const chainDocs = useElements(chain).byId;
   const valueNames = new Map<string, string>();
   for (const id of chain)

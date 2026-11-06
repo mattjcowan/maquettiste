@@ -35,13 +35,13 @@ public sealed partial class RequestLifecycleHandlers : IStatechartBehaviour<Requ
     /// <inheritdoc/>
     public IReadOnlyList<string> Changed(RequestLifecycleContext before, RequestLifecycleContext after) => RequestLifecycleContext.Changed(before, after);
 
-    /// <summary>Guard notTheSubmitter: <c>subject.submittedBy &lt;&gt; actor()</c> (implemented in RequestLifecycleHandlers.cs).</summary>
+    /// <summary>Guard notTheSubmitter: <c>subject.submittedBy &lt;&gt; current_actor()</c> (implemented in RequestLifecycleHandlers.cs).</summary>
     private partial bool GuardNotTheSubmitter(StatechartCall<RequestLifecycleContext> call);
 
     /// <summary>Guard employeeActive: <c>in_state(subject.employee, Employment.Active)</c> (implemented in RequestLifecycleHandlers.cs).</summary>
     private partial bool GuardEmployeeActive(StatechartCall<RequestLifecycleContext> call);
 
-    /// <summary>Action recordSubmission setting <c>submittedBy = actor(), submittedOn = now()</c> (implemented in RequestLifecycleHandlers.cs).</summary>
+    /// <summary>Action recordSubmission setting <c>submittedBy = current_actor(), submittedOn = now()</c> (implemented in RequestLifecycleHandlers.cs).</summary>
     private partial RequestLifecycleContext ActionRecordSubmission(StatechartCall<RequestLifecycleContext> call);
 
     /// <summary>Records what action recordSubmission sets on the object, then runs it.</summary>
@@ -51,7 +51,7 @@ public sealed partial class RequestLifecycleHandlers : IStatechartBehaviour<Requ
         return ActionRecordSubmission(call);
     }
 
-    /// <summary>Records on the object what action recordSubmission sets, each value from the object and the context before the action: <c>submittedBy = actor(), submittedOn = now()</c> (implemented in RequestLifecycleHandlers.cs).</summary>
+    /// <summary>Records on the object what action recordSubmission sets, each value from the object and the context before the action: <c>submittedBy = current_actor(), submittedOn = now()</c> (implemented in RequestLifecycleHandlers.cs).</summary>
     private partial void RecordRecordSubmission(StatechartCall<RequestLifecycleContext> call);
 
     /// <summary>Action bump: <c>({ count: context.count + 1 })</c>, setting <c>note = &apos;bumped&apos;</c>.</summary>

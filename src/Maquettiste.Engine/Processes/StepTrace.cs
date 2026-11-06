@@ -163,7 +163,7 @@ public sealed record StepTrace(
 
     /// <summary>
     /// What the run assumed or could not do, in the order it happened (object-effects-design.md section 7): a state assumed for an object's
-    /// lifecycle, an identity that did not convert to the type <c>actor()</c> met, sets an invoked sub-process ran. <see langword="null"/>,
+    /// lifecycle, an identity that did not convert to the type <c>current_actor()</c> met, sets an invoked sub-process ran. <see langword="null"/>,
     /// and left out of the JSON, when there is none.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

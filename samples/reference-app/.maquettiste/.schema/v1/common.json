@@ -1167,7 +1167,7 @@
       "title": "Expression",
       "description": "A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard and set sites only), actor (guard and set sites only), inState (with of; guard and set sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).",
       "type": "object",
-      "x-order": ["value", "type", "null", "path", "ref", "member", "now", "actor", "inState", "of", "op", "call", "args", "case", "else", "satisfies", "with", "text"],
+      "x-order": ["value", "type", "null", "path", "ref", "member", "now", "currentActor", "inState", "of", "op", "call", "args", "case", "else", "satisfies", "with", "text"],
       "properties": {
         "value": {
           "description": "A literal: a string, an integer or a boolean; with type, the value's text, so that digits are kept.",
@@ -1204,7 +1204,7 @@
           "description": "The clock, a datetimeoffset; guard and set sites only.",
           "const": true
         },
-        "actor": {
+        "currentActor": {
           "description": "The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard and set sites only.",
           "const": true
         },
@@ -1288,7 +1288,7 @@
           "required": ["now"]
         },
         {
-          "required": ["actor"]
+          "required": ["currentActor"]
         },
         {
           "required": ["inState"]

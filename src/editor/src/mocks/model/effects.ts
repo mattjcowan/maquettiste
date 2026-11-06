@@ -1,5 +1,5 @@
 // The mock's reading of object effects (object-effects-design.md sections 7 and 10). The mock has no expression engine, so
-// this evaluates a small closed subset of the expression language: literals, paths, now(), actor(), in_state, the
+// this evaluates a small closed subset of the expression language: literals, paths, now(), current_actor(), in_state, the
 // comparisons, and/or/not, null tests, arithmetic, concat, coalesce, trim and length. A tree or a text outside the subset is
 // UNKNOWN: a set with an unknown value does nothing and the trace says so; a guard with one falls back to its `assume` value.
 // The engine evaluates all of it; the mock only has to behave alike on what it can read.
@@ -19,10 +19,10 @@ export interface EvalEnv {
 
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
 
-/** Text in the subset: `actor()`, `now()`, `null`, `true`, `false`, a number, a quoted string. Anything else is UNKNOWN (the engine parses the rest). */
+/** Text in the subset: `current_actor()`, `now()`, `null`, `true`, `false`, a number, a quoted string. Anything else is UNKNOWN (the engine parses the rest). */
 export function treeOfText(text: string): Json | typeof UNKNOWN {
   const t = text.trim();
-  if (t === "actor()") return { actor: true };
+  if (t === "current_actor()") return { currentActor: true };
   if (t === "now()") return { now: true };
   if (t === "null") return { null: true };
   if (t === "true" || t === "false") return { value: t === "true" };
@@ -45,7 +45,7 @@ export function evalTree(tree: unknown, env: EvalEnv): Value {
   if ("value" in t) return t.value;
   if (Array.isArray(t.path)) return env.path(t.path as string[]);
   if (t.now === true) return env.now();
-  if (t.actor === true) return env.actor();
+  if (t.currentActor === true) return env.actor();
   if (Array.isArray(t.inState)) return env.inState(t.inState as string[], Array.isArray(t.of) ? (t.of as string[]) : undefined);
   const args = arr(t.args).map((a) => evalTree(a, env));
   if (typeof t.op === "string") return evalOp(t.op, args);
@@ -131,7 +131,7 @@ export function printTree(tree: unknown, name: (id: string) => string, state: (i
   if ("value" in t) return typeof t.value === "string" ? `'${t.value.replace(/'/g, "''")}'` : String(t.value);
   if (Array.isArray(t.path)) return (t.path as string[]).map(name).join(".");
   if (t.now === true) return "now()";
-  if (t.actor === true) return "actor()";
+  if (t.currentActor === true) return "current_actor()";
   if (Array.isArray(t.inState))
     return `in_state(${["subject", ...(Array.isArray(t.of) ? (t.of as string[]).map(name) : [])].join(".")}, ${(t.inState as string[]).map(state).join(", ")})`;
   const args = arr(t.args);
