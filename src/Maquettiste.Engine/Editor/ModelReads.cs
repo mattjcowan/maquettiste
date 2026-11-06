@@ -20,7 +20,7 @@ public static class ModelReads
     /// The format of the index rows, hashed into <see cref="IndexTag"/>: changed whenever <see cref="ElementSummary"/> gains or loses a
     /// member, so a client holding an index of an older shape never gets 304 for it.
     /// </summary>
-    internal const string IndexFormat = "maquettiste-index/e11";
+    internal const string IndexFormat = "maquettiste-index/e12";
 
     /// <summary>
     /// Reads the documents of up to <see cref="MaxReadIds"/> element or sub-element ids from one snapshot (no rescan): a sub-element id
@@ -60,7 +60,9 @@ public static class ModelReads
 
     /// <summary>
     /// The index's ETag (E5e): a hash of the index format and of every row's id, file hash and path, in index order. A row is a function
-    /// of its file's bytes and path, so the tag changes exactly when a row does, and is the same across processes for the same files.
+    /// of its file's bytes and path (a process row's actors also depend on which of the ids it names are actors, which changes only when
+    /// an actor file comes, goes or changes, and so changes that file's row), so the tag changes exactly when a row does, and is the same
+    /// across processes for the same files.
     /// </summary>
     /// <param name="summaries">The index.</param>
     /// <returns>A lowercase hex SHA-256.</returns>

@@ -9,6 +9,8 @@ import { buildForest, childKeys, documentChildren, needsDocument, nodeOf, patchF
 import { IDS } from "./harness";
 
 const labels = (f: Forest, key: string) => childKeys(f, key).map((k) => nodeOf(f, k)!.label);
+/** Every folder under `key` that is not a process row (domains and use folders). */
+const allKeys = (f: Forest, key: string): string[] => childKeys(f, key).flatMap((k) => (nodeOf(f, k)!.type === "element" ? [] : [k, ...allKeys(f, k)]));
 
 /** A diagram row as the index lists one once Layout made the chart's diagram. */
 function diagramRow(rows: readonly ElementSummary[], process: string): ElementSummary {
@@ -23,11 +25,11 @@ describe("document children across a new forest", () => {
 
   it("asks again for an expanded process's States and Events after a rebuild, and gets them back with their counts", () => {
     const before = buildForest({ rows });
-    const open = new Set<string>([before.roots.processes, ...childKeys(before, before.roots.processes), processKey]);
+    const open = new Set<string>([before.roots.processes, ...allKeys(before, before.roots.processes), processKey]);
     expect(rowsNeedingDocuments(before, visibleRows(before, "processes", open), open)).toEqual([processKey]);
     documentChildren(before, processKey, backend.model.get(PURCHASE_APPROVAL)!);
     expect(needsDocument(before, processKey)).toBe(false);
-    expect(labels(before, processKey)).toEqual(["States", "Events", "Scenarios"]);
+    expect(labels(before, processKey)).toEqual(["States", "Events", "Guards and actions", "Gates", "Scenarios"]);
 
     // Layout on a chart without a diagram adds one: the tree is rebuilt and the new process row has only Scenarios.
     const after = buildForest({ rows: [...rows, diagramRow(rows, PURCHASE_APPROVAL)] });
@@ -35,7 +37,7 @@ describe("document children across a new forest", () => {
     expect(needsDocument(after, processKey)).toBe(true);
     expect(rowsNeedingDocuments(after, visibleRows(after, "processes", open), open)).toEqual([processKey]);
     documentChildren(after, processKey, backend.model.get(PURCHASE_APPROVAL)!);
-    expect(labels(after, processKey)).toEqual(["States", "Events", "Scenarios"]);
+    expect(labels(after, processKey)).toEqual(["States", "Events", "Guards and actions", "Gates", "Scenarios"]);
     expect(nodeOf(after, `${processKey}/states`)!.secondary).toBe("13");
     expect(nodeOf(after, `${processKey}/events`)!.secondary).toBe("4");
     expect(rowsNeedingDocuments(after, visibleRows(after, "processes", open), open)).toEqual([]);

@@ -188,7 +188,14 @@ export class MockModel {
   // ---------------------------------------------------------------- reads
 
   index(): ElementSummary[] {
-    return [...this.entries.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)).map((e) => summary(e));
+    return [...this.entries.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)).map((e) => this.withActors(summary(e), e));
+  }
+
+  /** A process row with the actors its document names (sorted, only actors that exist), as the engine's index gives them. */
+  private withActors(row: ElementSummary, e: Entry): ElementSummary {
+    if (row.kind !== "process") return row;
+    const actors = [...new Set(referencesOf(e.json).map((r) => r.toId))].filter((id) => this.entries.get(id)?.json.kind === "actor").sort();
+    return actors.length ? { ...row, actors } : row;
   }
 
   private tagCache: { version: number; tag: string } | null = null;
@@ -226,7 +233,7 @@ export class MockModel {
   /** The index row of one element, or undefined when it is gone (E5d). */
   summaryOf(id: string): ElementSummary | undefined {
     const entry = this.entries.get(id);
-    return entry ? summary(entry) : undefined;
+    return entry ? this.withActors(summary(entry), entry) : undefined;
   }
 
   /** The entry that holds an id (an element or one of its sub-elements). */
@@ -1395,7 +1402,7 @@ function e5(json: Json): Partial<ElementSummary> {
   if (kind === "diagram" && typeof json.process === "string") out.process = json.process;
   // Phase 3 (phase-3-design.md 2.1): a process's use, subject and state count; an actor's type; a scenario's process and steps.
   if (kind === "process") {
-    out.use = json.use === "lifecycle" ? "lifecycle" : "orchestration";
+    out.use = json.use === "lifecycle" || json.use === "library" ? json.use : "orchestration";
     // One subject, in either form, is `subject`; two or more are `subjects` (lifecycle-design.md decision 23).
     const subjects = subjectsOf(json);
     if (subjects.length === 1) out.subject = subjects[0].entity;

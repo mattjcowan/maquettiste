@@ -58,6 +58,15 @@ async function openProcess(page: Page, domain: string, row: string, id: string):
     await page.keyboard.press("ArrowRight");
     await expect(folder).toHaveAttribute("aria-expanded", "true");
   }
+  // In the Processes explorer a domain's processes sit in a folder per use: open the ones that exist.
+  for (const use of ["lifecycle", "orchestration", "library"]) {
+    const useFolder = side.locator(`[data-key$="/use:${use}"]`);
+    if ((await useFolder.count()) && (await useFolder.getAttribute("aria-expanded")) !== "true") {
+      await useFolder.click();
+      await page.keyboard.press("ArrowRight");
+      await expect(useFolder).toHaveAttribute("aria-expanded", "true");
+    }
+  }
   await side.getByTestId(`explorer-row-${row}`).dblclick();
   const editor = page.locator(`[data-testid="process-editor"][data-id="${id}"]`);
   await expect(editor.getByRole("tab", { name: "Chart", exact: true })).toHaveAttribute("aria-selected", "true", slow);

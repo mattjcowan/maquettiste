@@ -57,6 +57,8 @@ import {
   collapseAt,
   databaseOf,
   documentChildren,
+  libraryPartIds,
+  type LibraryDoc,
   needsDocument,
   rowsNeedingDocuments,
   tableChildren,
@@ -74,7 +76,8 @@ import {
   relatedCounts,
   canvasCounts,
   relatedKeys,
-  revealPath,
+  pathOf,
+  placeIn,
   visibleRows,
   childKeys,
   type ExplorerId,
@@ -585,10 +588,10 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   // ------------------------------------------------------------------ selection follows the active tab (1.0, 3.5)
   useEffect(() => {
     if (!forest || !followSelection || selection.length !== 1 || cache.current.filtering) return;
-    const key = forest.place.get(selection[0]);
+    const key = placeIn(forest, id, selection[0]);
     if (!key || forest.nodes.get(key)?.explorer !== id) return;
     let added = false;
-    for (const k of revealPath(forest, selection[0]))
+    for (const k of pathOf(forest, key).slice(0, -1))
       if (!k.startsWith("@") || forest.nodes.get(k)?.type !== "root")
         if (!view.expanded.has(k)) {
           view.expanded.add(k);
@@ -615,7 +618,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
   // ------------------------------------------------------------------ related highlighting (1.9)
   // A selected table or column (explorerItem) takes the place of the element selection: its "mapped by" rows (1.3).
   const explorerItem = useEditor(store, (s) => s.explorerItem);
-  const selectedKey = forest && selection.length === 1 ? forest.place.get(selection[0]) : undefined;
+  const selectedKey = forest && selection.length === 1 ? (placeIn(forest, id, selection[0]) ?? forest.place.get(selection[0])) : undefined;
   const focusKey = forest && explorerItem && forest.nodes.has(explorerItem) ? explorerItem : selectedKey;
   const related = useMemo(() => (forest && highlight && focusKey ? relatedKeys(forest, focusKey) : new Set<string>()), [forest, highlight, focusKey]);
   const onCanvasCount = useMemo(
@@ -645,7 +648,14 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         const list = ((subject?.json as { attributes?: { id?: string; name?: string }[] } | undefined)?.attributes ?? []).filter(Boolean);
         attribute = list.find((a) => a.id === sole.boundAttribute)?.name;
       }
-      documentChildren(f, key, doc, attribute);
+      // The library parts a process names (a guard, an action or a gate policy that its document does not define).
+      let libraries: LibraryDoc[] = [];
+      if (node.kind === "process" && libraryPartIds(doc.json).length) {
+        const rows = [...f.byId.values()].filter((r) => r.kind === "process" && r.use === "library" && r.id !== id);
+        const docs = await Promise.all(rows.map((r) => queryClient.fetchQuery(elementQuery(r.id)).catch(() => null)));
+        libraries = rows.flatMap((r, i) => (docs[i] ? [{ id: r.id, name: r.displayName || r.name, json: docs[i]!.json }] : []));
+      }
+      documentChildren(f, key, doc, attribute, libraries);
     },
     [queryClient],
   );
@@ -801,8 +811,19 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
         const process = up ? forest.nodes.get(up)?.id : undefined;
         const summary = process ? (forest.byId.get(process) as ElementSummary | undefined) : undefined;
         if (summary) {
+          // A library has no editor: select it and point the inspector at the part.
+          if (!hasEditor("process", summary)) {
+            selectIn([summary.id], node.pointer ?? null, pinned ? id : undefined);
+            return;
+          }
           if (node.kind === "scenario" && node.id) select([node.id]);
-          focusProcess(summary.id, tab, node.id ?? null);
+          // A guard, action or gate: the Transitions tab, on the first transition that uses it (the tab alone when none does).
+          const toTransition = (node.kind === "guard" || node.kind === "action" || node.kind === "gate") && node.transition;
+          focusProcess(
+            summary.id,
+            toTransition ? "transitions" : tab,
+            toTransition ? node.transition! : node.kind === "scenario" || node.kind === "state" || node.kind === "event" ? (node.id ?? null) : null,
+          );
           store.getState().updateEditors((e) => openTab(setView(e, "process", tab), { id: summary.id, kind: "process" }, { pin: how === "open" }));
           return;
         }
@@ -857,7 +878,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       }
       toggle(key);
     },
-    [forest, reveal, toggle, openEditor, store, select, tableRows],
+    [forest, reveal, toggle, openEditor, store, select, selectIn, pinned, id, tableRows],
   );
   /** A double click: opens the row pinned (as Enter does). A folder, a schema or a database only toggles, which the
    * first click did already (a table's part folder also opens the table editor on its tab); a domain opens its editor

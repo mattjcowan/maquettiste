@@ -20,6 +20,15 @@ async function openProcess(page: Page, row: string, path = "/") {
   await workspace(page, "Processes");
   const side = explorer(page);
   await expand(page, side.getByTestId("explorer-folder-Billing"));
+  // A domain's processes sit in a folder per use: open the ones this model has.
+  for (const use of ["lifecycle", "orchestration"]) {
+    const folder = side.locator(`[data-key$="/use:${use}"]`);
+    if ((await folder.count()) && (await folder.getAttribute("aria-expanded")) !== "true") {
+      await folder.click();
+      await page.keyboard.press("ArrowRight");
+      await expect(folder).toHaveAttribute("aria-expanded", "true");
+    }
+  }
   await side.getByTestId(`explorer-row-${row}`).dblclick();
   const editor = page.getByTestId("process-editor");
   await expect(editor).toBeVisible();

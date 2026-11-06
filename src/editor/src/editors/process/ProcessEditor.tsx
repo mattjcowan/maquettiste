@@ -45,6 +45,7 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
     store.getState().updateEditors((e) => setView(e, "process", focus.tab));
     setNode({ tab: focus.tab, node: focus.node });
     if ((focus.tab === "states" || focus.tab === "chart") && focus.node) selectProcessNode({ process: id, kind: "state", id: focus.node });
+    if (focus.tab === "transitions" && focus.node) selectProcessNode({ process: id, kind: "transition", id: focus.node });
     clearProcessFocus();
   }, [focus, id, store]);
 

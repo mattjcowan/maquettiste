@@ -331,13 +331,43 @@ export const GLOSSARY = {
 } as const;
 
 /** The Processes explorer and the process dialogs (phase-3-design.md 6.1). */
+/** Tooltips of the Processes explorer's folders. */
+export const PROCESS_TIPS = {
+  lifecycles: "Lifecycles: the states an entity goes through",
+  orchestrations: "Orchestrations: flows of work across people, roles and systems",
+  libraries: "Libraries: guards, actions and gates other processes share",
+  people: "People: actors who are individual persons",
+  roles: "Roles: jobs or groups anyone in them can fill",
+  systems: "Systems: outside systems that act in processes",
+  guards: "Conditions transitions check, and effects they run",
+  gates: "Signatures a transition waits for",
+  entityLifecycles: "Lifecycles that govern this entity, including its base entity's",
+} as const;
+
 export const PROCESS_LABELS = {
   states: "States",
   events: "Events",
+  guardsAndActions: "Guards and actions",
+  gates: "Gates",
   scenarios: "Scenarios",
   actors: "Actors",
   lifecycle: "lifecycle",
   orchestration: "orchestration",
+  library: "library",
+  /** The folders that group a domain's processes by use, in the order they show. */
+  lifecycles: "Lifecycles",
+  orchestrations: "Orchestrations",
+  libraries: "Libraries",
+  /** The folders that group actors by type; "Systems" is the folder's label only (the type's label is "external system"). */
+  people: "People",
+  roles: "Roles",
+  systems: "Systems",
+  guard: "guard",
+  action: "action",
+  /** An actor row's reach, from the processes that name it ("acts in 3 processes"). */
+  actsIn: (n: number) => `acts in ${n.toLocaleString("en-US")} ${n === 1 ? "process" : "processes"}`,
+  /** A lifecycle in an entity's Lifecycles folder that governs it through a base entity. */
+  throughBase: (base: string) => `through ${base}`,
   /** What each Use means, shown under the choice in New process… and as the Use field's tooltip in the editor. */
   useMeaning: {
     lifecycle:
@@ -349,6 +379,9 @@ export const PROCESS_LABELS = {
   passed: "passed",
   failedAt: (step: number) => `failed at step ${step}`,
   passedCount: (n: number) => `✓ ${n.toLocaleString("en-US")} passed`,
+  failedCount: (n: number) => `✗ ${n.toLocaleString("en-US")} failed`,
+  /** A library part listed under a process that uses it. */
+  fromLibrary: (library: string) => `from ${library}`,
   initialState: "Initial",
   newProcess: "New process…",
   newActor: "New actor…",

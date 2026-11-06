@@ -45,6 +45,18 @@ public sealed class ContractTests
         var wrongKind = good.DeepClone();
         wrongKind["kind"] = "widget";
         Assert.ThrowsAny<XunitException>(() => Contract.AssertSchema("ElementSummary", wrongKind));
+
+        // A process row's actors: ids, at least one (a process that names none leaves the member out).
+        var process = good.DeepClone();
+        process["kind"] = "process";
+        process["actors"] = new JsonArray("01J92P0V0WKRGKH7YBKA2V30NC");
+        Contract.AssertSchema("ElementSummary", process);
+        var noActors = process.DeepClone();
+        noActors["actors"] = new JsonArray();
+        Assert.ThrowsAny<XunitException>(() => Contract.AssertSchema("ElementSummary", noActors));
+        var badActor = process.DeepClone();
+        badActor["actors"] = new JsonArray("clerk");
+        Assert.ThrowsAny<XunitException>(() => Contract.AssertSchema("ElementSummary", badActor));
     }
 
     [Fact]

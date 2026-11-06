@@ -28,6 +28,7 @@ test("Layout keeps an expanded process's States and Events, and an expanded enti
   // Processes: Billing › InvoiceLifecycle, expanded with its States and Events, then opened on its chart.
   await workspace(page, "Processes");
   await expanded(side.getByTestId("explorer-folder-Billing"));
+  await expanded(side.locator('[data-key$="/use:lifecycle"]'));
   const lifecycle = side.getByTestId("explorer-row-InvoiceLifecycle");
   await expanded(lifecycle);
   const states = side.getByTestId("explorer-folder-States");

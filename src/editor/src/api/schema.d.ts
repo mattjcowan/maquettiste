@@ -2966,6 +2966,12 @@ export interface components {
             effect?: "read" | "change";
             /** @description The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2). */
             type?: string;
+            /**
+             * @description The actors a process names anywhere in its document (event senders, gate signers, invokes and so on), as ids sorted
+             *     ordinally, on process rows (libraries too) that name at least one. Only ids of actors that exist count. Left out when the
+             *     process names none. The explorer reads it to show where an actor acts.
+             */
+            actors?: components["schemas"]["Ulid"][];
         };
         RelationEndSummary: {
             entity: components["schemas"]["Ulid"];

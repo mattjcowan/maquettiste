@@ -22,6 +22,7 @@ import {
   OTHER_FOLDER,
   ACTOR_TYPE_LABELS,
   PROCESS_LABELS,
+  PROCESS_TIPS,
   CHART_LABELS,
   countOf,
   kindFolder,
@@ -53,6 +54,10 @@ export interface TreeNode {
   home: boolean;
   /** For a navigation row, the key of the row it leads to. */
   target?: string;
+  /** A process part's JSON pointer in its document (`/guards/0`), for the inspector when the process has no editor. */
+  pointer?: string;
+  /** A guard, action or gate row: the first transition of its process that uses it. */
+  transition?: string;
   /** Direct members of a folder or group. */
   count?: number;
   /** Error count: the element's own, rolled up on containers. */
@@ -134,6 +139,8 @@ export type IndexRow = Omit<ElementSummary, "kind"> & {
   target?: string | null;
   rowCount?: number | null;
   fieldCount?: number | null;
+  /** The actors a process names (its events, signers and steps), on process rows; read when the index carries them. */
+  actors?: readonly string[] | null;
 };
 type Row = IndexRow;
 
@@ -214,6 +221,12 @@ export interface RelatedMaps {
   seedsOf: Map<string, string[]>;
   /** Entity → its mapping files. */
   mappingsOf: Map<string, string[]>;
+  /** Entity → the lifecycles that name it as a subject (not through a base entity: the folder walks the bases). */
+  lifecyclesOf: Map<string, string[]>;
+  /** Entity → every process (any use) that names it as a subject: their rows say the entity's name. */
+  processesOf: Map<string, string[]>;
+  /** Actor → how many processes name it (from the index's `actors` on process rows), for "acts in 3 processes". */
+  actsIn: Map<string, number>;
 }
 
 export interface VocabularyRef {
@@ -237,6 +250,8 @@ export interface Forest {
   parent: KeyMap;
   /** Element id → the key of its own row. */
   place: KeyMap;
+  /** Process or actor id → the key of its row in the Processes explorer (its `place` row is in the Domain model). */
+  processPlace: Map<string, string>;
   roots: Record<ExplorerId, string>;
   /** Each explorer's header totals ("40 domains · 5,000 entities"). */
   headers: Record<ExplorerId, string>;
@@ -314,7 +329,7 @@ export function soleSeedOf(seeds: readonly unknown[]): boolean {
 }
 
 /** An element row's secondary text: a relation's ends, a diagram's member count (a process diagram: whose statechart it is), a seed's row count. */
-function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row): string | undefined {
+function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row, actsIn?: ReadonlyMap<string, number>): string | undefined {
   const nameOf = (id: string) => {
     const e = byId.get(id);
     return e ? e.displayName || e.name : undefined;
@@ -332,23 +347,24 @@ function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row): string | undefine
     const names = r.subjects?.length ? r.subjects.map((e) => nameOf(e) ?? e).join(", ") : r.subject ? nameOf(r.subject) : undefined;
     return processSecondary(r, names, undefined);
   }
-  if (r.kind === "actor") return actorSecondary(r);
+  if (r.kind === "actor") return actorSecondary(r, actsIn?.get(r.id));
   if (r.kind === "operation") return [r.subject ? nameOf(r.subject) : undefined, r.effect].filter(Boolean).join(" · ");
   return undefined;
 }
 
 /** A process row's secondary text: "lifecycle · Invoice.status · 4 states" (the attribute once the document is loaded). */
 export function processSecondary(r: Pick<Row, "use" | "stateCount">, subject: string | undefined, attribute: string | undefined): string {
-  const use = r.use === "lifecycle" ? PROCESS_LABELS.lifecycle : PROCESS_LABELS.orchestration;
+  const use = r.use === "lifecycle" ? PROCESS_LABELS.lifecycle : r.use === "library" ? PROCESS_LABELS.library : PROCESS_LABELS.orchestration;
   const parts: string[] = [use];
   if (subject) parts.push(attribute ? `${subject}.${attribute}` : subject);
-  parts.push(plural(r.stateCount ?? 0, "state", "states"));
+  // A library has no states, only guards, actions and gates.
+  if (r.use !== "library") parts.push(plural(r.stateCount ?? 0, "state", "states"));
   return parts.join(" · ");
 }
 
-/** An actor row's secondary text: its type, then its stereotypes ("person · persona"). */
-export function actorSecondary(r: Pick<Row, "actorType" | "stereotypes">): string {
-  return [r.actorType ? ACTOR_TYPE_LABELS[r.actorType] : "", ...(r.stereotypes ?? [])].filter(Boolean).join(" · ");
+/** An actor row's secondary text: its type, its stereotypes, then where it acts ("role · persona · acts in 3 processes"). */
+export function actorSecondary(r: Pick<Row, "actorType" | "stereotypes">, actsIn?: number): string {
+  return [r.actorType ? ACTOR_TYPE_LABELS[r.actorType] : "", ...(r.stereotypes ?? []), actsIn ? PROCESS_LABELS.actsIn(actsIn) : ""].filter(Boolean).join(" · ");
 }
 
 /** A scenario's status words: "passed", "failed at step 2", "not run". */
@@ -358,7 +374,14 @@ export function scenarioStatusText(status: ScenarioStatus | undefined): string {
 }
 
 /** An element's own row (not registered in any map). */
-function newElementNode(byId: ReadonlyMap<string, Row>, r: Row, explorer: ExplorerId, key: string, errors: number): TreeNode {
+function newElementNode(
+  byId: ReadonlyMap<string, Row>,
+  r: Row,
+  explorer: ExplorerId,
+  key: string,
+  errors: number,
+  actsIn?: ReadonlyMap<string, number>,
+): TreeNode {
   const f = kindFolder(r.kind) ?? OTHER_FOLDER;
   const label = rowLabel(byId, r);
   const node = newNode(key, "element", explorer, label, f.icon, label.toLowerCase());
@@ -367,7 +390,7 @@ function newElementNode(byId: ReadonlyMap<string, Row>, r: Row, explorer: Explor
   node.errors = errors;
   if (DOCUMENT_KINDS.has(r.kind)) node.load = "document";
   if (!INDEX_CHILD_KINDS.has(r.kind)) node.children = [];
-  node.secondary = rowSecondary(byId, r);
+  node.secondary = rowSecondary(byId, r, actsIn);
   return node;
 }
 
@@ -487,7 +510,16 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
       if (!nodes.has(folderKey(r))) return null;
       if (r.kind === "entity") {
         const id = r.id;
-        const maps = [related.relationsOf, related.derivedOf, related.tablesOf, related.seedsOf, related.mappingsOf, related.lookupOf];
+        const maps = [
+          related.relationsOf,
+          related.derivedOf,
+          related.tablesOf,
+          related.seedsOf,
+          related.mappingsOf,
+          related.lookupOf,
+          related.lifecyclesOf,
+          related.processesOf,
+        ];
         if (maps.some((m) => m.get(id)?.length)) return null;
       }
       delta.set(folderKey(r), (delta.get(folderKey(r)) ?? 0) + (r === old ? -1 : 1));
@@ -499,6 +531,8 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
   for (const [old] of renamed) {
     if (old.kind !== "entity") continue;
     if (related.mappingsOf.get(old.id)?.length) return null;
+    // A process row (a lifecycle's or an orchestration's) says its subject's name.
+    if (related.processesOf.get(old.id)?.length) return null;
     // Rows without a name of their own are labelled with their entity's name.
     for (const r of byId.values()) if (r.entity === old.id && !r.name && !r.displayName && r.kind !== "relation") return null;
   }
@@ -600,7 +634,7 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
     folderOf.set(row.id, key);
     const folder = edit(key, { count: (nodes.get(key)!.count ?? 0) + 1 })!;
     if (folder.children && !forest.pending.has(key)) {
-      const node = newElementNode(byId, row, "domain-model", row.id, 0);
+      const node = newElementNode(byId, row, "domain-model", row.id, 0, related.actsIn);
       node.parent = key;
       nodes.set(node.key, node);
       insertChild(key, node);
@@ -612,7 +646,7 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
     replaceInList(old, row);
     touch(row);
     const label = rowLabel(byId, row);
-    const node = edit(row.id, { label, sort: label.toLowerCase(), secondary: rowSecondary(byId, row) });
+    const node = edit(row.id, { label, sort: label.toLowerCase(), secondary: rowSecondary(byId, row, related.actsIn) });
     if (!node) continue;
     if (node.parent && nodes.get(node.parent)?.children) insertChild(node.parent, node);
   }
@@ -646,6 +680,7 @@ export function buildForest(input: TreeInput): Forest {
   const nodes = new Map<string, TreeNode>();
   const parent = new ParentMap(nodes);
   const place = new PlaceMap(nodes);
+  const processPlace = new Map<string, string>();
   const pending = new Map<string, () => TreeNode[]>();
   const errorsOf = (id: string | null | undefined) => (id && input.errors?.get(id)) || 0;
   const related: RelatedMaps = {
@@ -659,6 +694,9 @@ export function buildForest(input: TreeInput): Forest {
     derivedOf: new Map(),
     seedsOf: new Map(),
     mappingsOf: new Map(),
+    lifecyclesOf: new Map(),
+    processesOf: new Map(),
+    actsIn: new Map(),
   };
   const nameOf = (id: string | null | undefined) => {
     const r = id ? byId.get(id) : undefined;
@@ -679,7 +717,7 @@ export function buildForest(input: TreeInput): Forest {
     return holder;
   };
   const elementNode = (r: Row, explorer: ExplorerId, key = r.id): TreeNode => {
-    const node = newElementNode(byId, r, explorer, key, errorsOf(r.id));
+    const node = newElementNode(byId, r, explorer, key, errorsOf(r.id), related.actsIn);
     place.set(r.id, key);
     return add(node);
   };
@@ -755,6 +793,12 @@ export function buildForest(input: TreeInput): Forest {
       if (r.entity) push(related.mappingsOf, r.entity, r.id);
     } else if (r.kind === "seed" && r.target) {
       push(related.seedsOf, r.target, r.id);
+    } else if (r.kind === "process") {
+      for (const a of new Set(r.actors ?? [])) related.actsIn.set(a, (related.actsIn.get(a) ?? 0) + 1);
+      for (const e of r.subjects?.length ? r.subjects : r.subject ? [r.subject] : []) {
+        push(related.processesOf, e, r.id);
+        if (r.use === "lifecycle") push(related.lifecyclesOf, e, r.id);
+      }
     }
     if (r.base) {
       related.baseOf.set(r.id, r.base);
@@ -1382,14 +1426,38 @@ export function buildForest(input: TreeInput): Forest {
 
   // ------------------------------------------------------------------ Processes tree (phase-3-design.md 6.1)
 
-  // Processes grouped by domain, nested as in the Domain model (domains without processes are hidden), then Actors. A
-  // process row holds its Scenarios (from the index); its States and Events come with its document (documentChildren).
+  // Processes grouped by domain, nested as in the Domain model (domains without processes are hidden). In each domain (and
+  // among the loose processes) a process sits in the folder of its use: Lifecycles, Orchestrations, Libraries. Then Actors,
+  // grouped by type. A process row holds its Scenarios (from the index), failed ones first; the parts that come with its
+  // document (States, Events, Guards and actions, Gates) are added by documentChildren.
   const scenariosOf = new Map<string, Row[]>();
   for (const r of scenarioRows) push(scenariosOf, r.process ?? "", r);
   const processKey = (id: string) => `${ROOTS.processes}/p:${id}`;
-  const processGroups = new Map<string, { node: TreeNode; members: TreeNode[]; total: number }>();
+  const USE_FOLDERS = [
+    ["lifecycle", PROCESS_LABELS.lifecycles, PROCESS_TIPS.lifecycles],
+    ["orchestration", PROCESS_LABELS.orchestrations, PROCESS_TIPS.orchestrations],
+    ["library", PROCESS_LABELS.libraries, PROCESS_TIPS.libraries],
+  ] as const;
+  type ProcessUse = (typeof USE_FOLDERS)[number][0];
+  const processUseOf = (r: Row): ProcessUse => (r.use === "lifecycle" || r.use === "library" ? r.use : "orchestration");
+  type ProcessGroup = { node: TreeNode; members: TreeNode[]; byUse: Map<ProcessUse, TreeNode[]>; total: number };
+  const processGroups = new Map<string, ProcessGroup>();
   const processTop: TreeNode[] = [];
-  const processGroup = (pkg: string): { node: TreeNode; members: TreeNode[]; total: number } => {
+  const looseByUse = new Map<ProcessUse, TreeNode[]>();
+  /** The use folders that have processes, in their fixed order; the keys are new, the process rows keep theirs. */
+  const groupByUse = (prefix: string, byUse: Map<ProcessUse, TreeNode[]>): TreeNode[] =>
+    USE_FOLDERS.flatMap(([use, label, tip]) => {
+      const list = byUse.get(use);
+      if (!list?.length) return [];
+      const folder = add(newNode(`${prefix}/use:${use}`, "folder", "processes", label, "process", ""));
+      folder.kind = "process";
+      folder.tooltip = tip;
+      folder.count = list.length;
+      folder.secondary = fmt(list.length);
+      attach(folder, list.sort(byLabel));
+      return [folder];
+    });
+  const processGroup = (pkg: string): ProcessGroup => {
     let group = processGroups.get(pkg);
     if (group) return group;
     const label = nameOf(pkg) ?? pkg;
@@ -1397,7 +1465,7 @@ export function buildForest(input: TreeInput): Forest {
     node.id = pkg;
     node.kind = "process";
     add(node);
-    group = { node, members: [], total: 0 };
+    group = { node, members: [], byUse: new Map(), total: 0 };
     processGroups.set(pkg, group);
     const up = byId.get(pkg)?.package;
     if (isPackage(up) && up !== pkg) processGroup(up!).members.push(node);
@@ -1407,30 +1475,68 @@ export function buildForest(input: TreeInput): Forest {
   const statusOf = input.scenarioStatus;
   for (const r of processRows) {
     const node = add(newElementNode(byId, r, "processes", processKey(r.id), errorsOf(r.id)));
+    processPlace.set(r.id, node.key);
     node.load = "document";
-    const scenarios = (scenariosOf.get(r.id) ?? []).map((sc) => {
-      const row = elementNode(sc, "processes");
-      row.secondary = `${plural(sc.stepCount ?? 0, "step", "steps")} · ${scenarioStatusText(statusOf?.get(sc.id))}`;
-      return row;
-    });
+    const failed = (id: string) => !!statusOf?.get(id) && !statusOf.get(id)!.passed;
+    const scenarios = (scenariosOf.get(r.id) ?? [])
+      .map((sc) => {
+        const row = elementNode(sc, "processes");
+        row.secondary = `${plural(sc.stepCount ?? 0, "step", "steps")} · ${scenarioStatusText(statusOf?.get(sc.id))}`;
+        return row;
+      })
+      .sort((a, b) => Number(failed(b.id!)) - Number(failed(a.id!)) || byLabel(a, b));
     const passed = scenarios.filter((sc) => statusOf?.get(sc.id!)?.passed).length;
-    const folder = folderNode(`${node.key}/scenarios`, "processes", kindFolder("scenario")!, scenarios, PROCESS_LABELS.scenarios);
-    if (passed) folder.secondary = PROCESS_LABELS.passedCount(passed);
-    attach(node, [folder]);
+    const failedCount = scenarios.filter((sc) => failed(sc.id!)).length;
+    const folder = folderNode(`${node.key}/scenarios`, "processes", kindFolder("scenario")!, [], PROCESS_LABELS.scenarios);
+    attach(folder, scenarios);
+    folder.count = scenarios.length;
+    const status = [failedCount ? PROCESS_LABELS.failedCount(failedCount) : "", passed ? PROCESS_LABELS.passedCount(passed) : ""].filter(Boolean);
+    if (status.length) folder.secondary = status.join(" · ");
+    // A library holds no scenarios.
+    attach(node, r.use === "library" ? [] : [folder]);
     if (isPackage(r.package)) {
-      processGroup(r.package!).members.push(node);
+      const group = processGroup(r.package!);
+      push(group.byUse, processUseOf(r), node);
       for (let p: string | null | undefined = r.package, guard = 0; isPackage(p) && guard < 64; p = byId.get(p!)?.package, guard++) processGroup(p!).total++;
-    } else processTop.push(node);
+    } else push(looseByUse, processUseOf(r), node);
   }
-  for (const { node, members, total } of processGroups.values()) {
-    attach(node, members.sort(byLabel));
-    node.count = members.length;
+  for (const { node, members, byUse, total } of processGroups.values()) {
+    attach(node, [...members.sort(byLabel), ...groupByUse(node.key, byUse)]);
+    node.count = node.children!.length;
     node.secondary = plural(total, "process", "processes");
   }
   processTop.sort(byLabel);
+  processTop.push(...groupByUse(ROOTS.processes, looseByUse));
   if (actorRows.length) {
-    const actorNodes = actorRows.map((r) => add(newElementNode(byId, r, "processes", `${ROOTS.processes}/a:${r.id}`, errorsOf(r.id))));
-    const folder = folderNode(`${ROOTS.processes}/actors`, "processes", kindFolder("actor")!, actorNodes, PROCESS_LABELS.actors, kindFolder("actor")!.tooltip);
+    const byType = new Map<string, TreeNode[]>();
+    const actorNodes = actorRows.map((r) => {
+      const node = add(newElementNode(byId, r, "processes", `${ROOTS.processes}/a:${r.id}`, errorsOf(r.id), related.actsIn));
+      processPlace.set(r.id, node.key);
+      push(byType, r.actorType ?? "", node);
+      return node;
+    });
+    const ACTOR_FOLDERS = [
+      ["person", PROCESS_LABELS.people, "people", PROCESS_TIPS.people],
+      ["role", PROCESS_LABELS.roles, "actor", PROCESS_TIPS.roles],
+      ["external-system", PROCESS_LABELS.systems, "actor", PROCESS_TIPS.systems],
+    ] as const;
+    const typed = ACTOR_FOLDERS.flatMap(([type, label, icon, tip]) => {
+      const list = byType.get(type);
+      if (!list?.length) return [];
+      const f = add(newNode(`${ROOTS.processes}/actors/${type}`, "folder", "processes", label, icon, ""));
+      f.kind = "actor";
+      f.tooltip = tip;
+      f.home = false;
+      f.count = list.length;
+      f.secondary = fmt(list.length);
+      attach(f, list.sort(byLabel));
+      return [f];
+    });
+    // An actor whose type the index does not give sits in the Actors folder itself, after the type folders.
+    const folder = folderNode(`${ROOTS.processes}/actors`, "processes", kindFolder("actor")!, [], PROCESS_LABELS.actors, kindFolder("actor")!.tooltip);
+    attach(folder, [...typed, ...(byType.get("") ?? []).sort(byLabel)]);
+    // The folder's direct children are the type folders (and any untyped actors); the total of actors is its secondary text.
+    folder.count = folder.children!.length;
     folder.home = false;
     folder.secondary = fmt(actorNodes.length);
     folder.sort = "\uffff";
@@ -1467,6 +1573,7 @@ export function buildForest(input: TreeInput): Forest {
     nodes,
     parent,
     place,
+    processPlace,
     roots: { ...ROOTS },
     headers,
     related,
@@ -1526,6 +1633,7 @@ export function usesOf(forest: Forest, id: string): string[] {
   add(r.database);
   add(r.target);
   add(r.base);
+  for (const a of r.kind === "process" ? (r.actors ?? []) : []) add(a);
   return out;
 }
 
@@ -1640,13 +1748,23 @@ function navigation(forest: Forest, holder: string, id: string, secondary?: stri
   return node;
 }
 
-function navFolder(forest: Forest, holder: TreeNode, name: string, label: string, icon: string, members: TreeNode[], secondary?: string): TreeNode {
+function navFolder(
+  forest: Forest,
+  holder: TreeNode,
+  name: string,
+  label: string,
+  icon: string,
+  members: TreeNode[],
+  secondary?: string,
+  tooltip?: string,
+): TreeNode {
   const key = `${holder.key}/${name}`;
   const node: TreeNode = {
     key,
     type: "folder",
     explorer: holder.explorer,
     label,
+    tooltip,
     icon,
     home: false,
     count: members.length,
@@ -1695,6 +1813,22 @@ function elementChildren(forest: Forest, node: TreeNode): TreeNode[] {
           `${plural(seeds.length, "seed", "seeds")} · ${plural(rowsTotal, "row", "rows")}`,
         ),
       );
+    }
+    // The lifecycles that govern the entity, including those of a base entity (a derived entity is governed by its base's).
+    const governing: { id: string; via?: string }[] = [];
+    const seen = new Set<string>();
+    for (let e: string | undefined = r.id, guard = 0; e && !seen.has(e) && guard < 64; e = related.baseOf.get(e), guard++) {
+      seen.add(e);
+      for (const p of related.lifecyclesOf.get(e) ?? []) if (!governing.some((g) => g.id === p)) governing.push({ id: p, via: e === r.id ? undefined : e });
+    }
+    if (governing.length) {
+      const members = governing.map((g) => {
+        const process = forest.byId.get(g.id);
+        const base = g.via ? forest.byId.get(g.via) : undefined;
+        const text = base ? PROCESS_LABELS.throughBase(base.displayName || base.name) : plural(process?.stateCount ?? 0, "state", "states");
+        return navigation(forest, `${node.key}/lifecycles`, g.id, text);
+      });
+      out.push(navFolder(forest, node, "lifecycles", PROCESS_LABELS.lifecycles, "process", members.sort(byLabel), undefined, PROCESS_TIPS.entityLifecycles));
     }
   } else if (r.kind === "relation") {
     const ends = r.ends ?? [];
@@ -1765,11 +1899,17 @@ export function rowsNeedingDocuments(forest: Forest, rows: readonly { key: strin
 }
 
 /** Children that need the element's document: Attributes (entity, value object, relation) or Members (enum), first. */
-export function documentChildren(forest: Forest, key: string, doc: ElementDocument, boundAttribute?: string): readonly string[] {
+export function documentChildren(
+  forest: Forest,
+  key: string,
+  doc: ElementDocument,
+  boundAttribute?: string,
+  libraries: readonly LibraryDoc[] = [],
+): readonly string[] {
   const node = nodeOf(forest, key);
   if (!node) return [];
   if (node.id) documentHashes.set(node, forest.byId.get(node.id)?.hash ?? "");
-  if (node.kind === "process") return processChildren(forest, node, doc, boundAttribute);
+  if (node.kind === "process") return processChildren(forest, node, doc, boundAttribute, libraries);
   const rest = childKeys(forest, key).filter((k) => k !== `${key}/attributes` && k !== `${key}/members` && k !== `${key}/storage`);
   const json = doc.json as Record<string, unknown>;
   const nameOf = (id: string) => forest.byId.get(id)?.name;
@@ -1794,11 +1934,47 @@ export function documentChildren(forest: Forest, key: string, doc: ElementDocume
 
 type StateDoc = { id?: string; name?: string; type?: string; states?: StateDoc[] };
 
-/** A process row's States (nested) and Events folders from its document, before its Scenarios folder (6.1). */
-function processChildren(forest: Forest, node: TreeNode, doc: ElementDocument, attribute: string | undefined): readonly string[] {
+/** A library's document, for the parts a process names from it (the caller reads the libraries when a transition names one). */
+export interface LibraryDoc {
+  id: string;
+  name: string;
+  json: unknown;
+}
+
+type Named = { id?: string; name?: string; displayName?: string };
+type TransitionDoc = { id?: string; guard?: string; actions?: string[]; gate?: Named; gatePolicy?: string };
+
+/** The ids a process's transitions name that its own document does not define: those come from a library. */
+export function libraryPartIds(json: unknown): string[] {
+  const doc = json as { guards?: Named[]; actions?: Named[]; gates?: Named[]; transitions?: TransitionDoc[] };
+  const own = new Set([...(doc.guards ?? []), ...(doc.actions ?? []), ...(doc.gates ?? [])].map((p) => p.id));
+  const out = new Set<string>();
+  for (const t of doc.transitions ?? []) for (const id of [t.guard, ...(t.actions ?? []), t.gatePolicy]) if (id && !own.has(id)) out.add(id);
+  return [...out];
+}
+
+/** A process row's States (nested), Events, Guards and actions and Gates folders from its document, before its Scenarios folder (6.1). */
+function processChildren(
+  forest: Forest,
+  node: TreeNode,
+  doc: ElementDocument,
+  attribute: string | undefined,
+  libraries: readonly LibraryDoc[],
+): readonly string[] {
   const key = node.key;
-  const json = doc.json as { states?: StateDoc[]; events?: { id?: string; name?: string; actors?: string[] }[] };
-  const rest = childKeys(forest, key).filter((k) => k !== `${key}/states` && k !== `${key}/events`);
+  const json = doc.json as {
+    use?: string;
+    states?: StateDoc[];
+    events?: { id?: string; name?: string; actors?: string[] }[];
+    guards?: Named[];
+    actions?: Named[];
+    gates?: Named[];
+    transitions?: TransitionDoc[];
+  };
+  const row = node.id ? forest.byId.get(node.id) : undefined;
+  const library = (row?.use ?? json.use) === "library";
+  const mine = [`${key}/states`, `${key}/events`, `${key}/guards`, `${key}/gates`];
+  const rest = childKeys(forest, key).filter((k) => !mine.includes(k));
   const stateItems = (holder: string, list: StateDoc[] | undefined): TreeNode[] =>
     (list ?? []).map((st, i) => {
       const row = item(forest, holder, st.id ?? String(i), st.name ?? "", st.type && st.type !== "atomic" ? st.type : undefined);
@@ -1812,26 +1988,88 @@ function processChildren(forest: Forest, node: TreeNode, doc: ElementDocument, a
       }
       return row;
     });
-  let total = 0;
-  const countAll = (list: StateDoc[] | undefined) => (list ?? []).forEach((st) => (total++, countAll(st.states)));
-  countAll(json.states);
-  const states = navFolder(forest, node, "states", PROCESS_LABELS.states, "state", stateItems(`${key}/states`, json.states), fmt(total));
-  const events = (json.events ?? []).map((e, i) => {
-    const row = item(forest, `${key}/events`, e.id ?? String(i), e.name ?? "", undefined);
-    row.icon = "event";
-    row.kind = "event";
+  const children: string[] = [];
+  // A library holds guards, actions and gates only: no states, events or scenarios.
+  if (!library) {
+    let total = 0;
+    const countAll = (list: StateDoc[] | undefined) => (list ?? []).forEach((st) => (total++, countAll(st.states)));
+    countAll(json.states);
+    children.push(navFolder(forest, node, "states", PROCESS_LABELS.states, "state", stateItems(`${key}/states`, json.states), fmt(total)).key);
+    const events = (json.events ?? []).map((e, i) => {
+      const row = item(forest, `${key}/events`, e.id ?? String(i), e.name ?? "", undefined);
+      row.icon = "event";
+      row.kind = "event";
+      row.explorer = node.explorer;
+      return row;
+    });
+    children.push(navFolder(forest, node, "events", PROCESS_LABELS.events, "event", events.sort(byLabel), fmt(events.length)).key);
+  }
+  // Guards then actions in one folder; gates in another: the parts a process (or library) holds, then the library parts its
+  // transitions name ("from <library>"). A row opens its tab, on the first transition that uses the part.
+  const transitions = json.transitions ?? [];
+  type Kind = "guard" | "action" | "gate";
+  const firstUse = (kind: Kind, id: string | undefined): string | undefined =>
+    id === undefined
+      ? undefined
+      : transitions.find((t) => (kind === "guard" ? t.guard === id : kind === "action" ? !!t.actions?.includes(id) : t.gate?.id === id || t.gatePolicy === id))
+          ?.id;
+  const part = (kind: Kind, g: Named, i: number, secondary: string | undefined): TreeNode => {
+    const holder = `${key}/${kind === "gate" ? "gates" : "guards"}`;
+    const row = item(forest, holder, g.id ?? String(i), g.displayName || g.name || "", secondary);
+    row.icon = kind;
+    row.kind = kind;
     row.explorer = node.explorer;
+    row.pointer = `/${kind}s/${i}`;
+    row.transition = firstUse(kind, g.id);
     return row;
-  });
-  const eventFolder = navFolder(forest, node, "events", PROCESS_LABELS.events, "event", events.sort(byLabel), fmt(events.length));
+  };
+  const named = (kind: Kind, list: Named[] | undefined, secondary?: string): TreeNode[] => (list ?? []).map((g, i) => part(kind, g, i, secondary));
+  const own = new Set([...(json.guards ?? []), ...(json.actions ?? []), ...(json.gates ?? [])].map((p) => p.id));
+  const fromLibraries = (kind: Kind, ids: Iterable<string | undefined>): TreeNode[] => {
+    const wanted = new Set([...ids].filter((id): id is string => !!id && !own.has(id)));
+    const out: TreeNode[] = [];
+    for (const lib of libraries) {
+      const parts = (lib.json as Record<string, Named[] | undefined>)[`${kind}s`] ?? [];
+      parts.forEach((g, i) => {
+        if (!g.id || !wanted.delete(g.id)) return;
+        out.push(part(kind, g, i, PROCESS_LABELS.fromLibrary(lib.name)));
+      });
+    }
+    return out.sort(byLabel);
+  };
+  const guardRows = [
+    ...named("guard", json.guards, PROCESS_LABELS.guard).sort(byLabel),
+    ...named("action", json.actions, PROCESS_LABELS.action).sort(byLabel),
+    ...fromLibraries(
+      "guard",
+      transitions.map((t) => t.guard),
+    ),
+    ...fromLibraries(
+      "action",
+      transitions.flatMap((t) => t.actions ?? []),
+    ),
+  ];
+  const gateRows = [
+    ...named("gate", json.gates).sort(byLabel),
+    ...named(
+      "gate",
+      transitions.flatMap((t) => (t.gate ? [t.gate] : [])),
+    ).sort(byLabel),
+    ...fromLibraries(
+      "gate",
+      transitions.map((t) => t.gatePolicy),
+    ),
+  ];
+  if (guardRows.length)
+    children.push(navFolder(forest, node, "guards", PROCESS_LABELS.guardsAndActions, "guard", guardRows, fmt(guardRows.length), PROCESS_TIPS.guards).key);
+  if (gateRows.length) children.push(navFolder(forest, node, "gates", PROCESS_LABELS.gates, "gate", gateRows, fmt(gateRows.length), PROCESS_TIPS.gates).key);
   // The bound attribute's name is in the subject's document (the caller reads it); the row then says Subject.attribute.
-  const row = node.id ? forest.byId.get(node.id) : undefined;
   const sole = soleSubject(doc.json);
   if (row && sole && attribute) {
     const subject = forest.byId.get(sole.entity);
     node.secondary = processSecondary(row, subject ? subject.displayName || subject.name : undefined, attribute);
   }
-  node.children = [states.key, eventFolder.key, ...rest];
+  node.children = [...children, ...rest];
   return node.children;
 }
 
@@ -1968,6 +2206,18 @@ export function pathOf(forest: Forest, key: string): string[] {
 export function revealPath(forest: Forest, id: string): string[] {
   const key = forest.place.get(id);
   return key ? pathOf(forest, key).slice(0, -1) : [];
+}
+
+/**
+ * The key of an element's row in an explorer: its own row when that explorer holds it, else (for the Processes explorer) the
+ * row it has there, as processes and actors are listed in two explorers.
+ */
+export function placeIn(forest: Forest, explorer: ExplorerId, id: string): string | undefined {
+  const home = forest.place.get(id);
+  if (home !== undefined && forest.nodes.get(home)?.explorer === explorer) return home;
+  if (explorer !== "processes") return undefined;
+  const key = forest.processPlace.get(id);
+  return key !== undefined && forest.nodes.has(key) ? key : undefined;
 }
 
 /** "Domain model › Billing › Entities › Invoice". */
@@ -2181,7 +2431,7 @@ export function filteredRows(
   const shown = new Map<string, number>();
   const root = forest.roots[explorer];
   for (const id of ids) {
-    let key = forest.place.get(id);
+    let key = placeIn(forest, explorer, id);
     if (key === undefined && forest.nodes.has(id)) key = id;
     if (!key || forest.nodes.get(key)?.explorer !== explorer || keep.has(key)) continue;
     keep.add(key);

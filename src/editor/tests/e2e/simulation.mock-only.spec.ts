@@ -24,6 +24,7 @@ async function processes(page: Page) {
   await workspace(page, "Processes");
   const side = explorer(page);
   await expand(page, side.getByTestId("explorer-folder-Billing"));
+  await expand(page, side.locator('[data-key$="/use:orchestration"]'));
   return side;
 }
 
