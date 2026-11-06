@@ -255,6 +255,60 @@ public sealed class TypeScriptPackTests
         repo.Write(HandlersCompanion, companion.Replace(NotShippedStub, NotShippedRule, StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Lifecycle_codes_get_constants_a_mapping_and_moves_that_type_check_and_round_trip()
+    {
+        // lifecycle-design.md section 9, over csharp-dapper's lifecycle-codes case: string codes quoted, integer codes unquoted; then,
+        // where node and the compiler are available, the output type-checks and a test maps configurations to codes and back.
+        using var repo = PackRepo.LifecycleCodes(typeScript: true);
+        await repo.GenerateCleanlyAsync();
+        var order = repo.Read("web/processes/order-flow/order-flow.states.ts");
+        var ticket = repo.Read("web/processes/ticket-flow/ticket-flow.states.ts");
+        Assert.Contains("export const orderFlowStateCodes = {\n  Draft: 'DRF',\n  Review: 'REV',\n  Done: 'DON',\n} as const;\n", order, StringComparison.Ordinal);
+        Assert.Contains("  ['Review.Approving', 'REV'],\n", order, StringComparison.Ordinal);
+        Assert.Contains("  ['REV', ['Review.Checking']],\n", order, StringComparison.Ordinal);
+        Assert.Contains("  { from: null, to: 'REV', trigger: 'event', event: 'resume' },\n", order, StringComparison.Ordinal);
+        Assert.Contains("  New: 10,\n", ticket, StringComparison.Ordinal);
+        Assert.Contains("  [20, ['Open.Assigned']],\n", ticket, StringComparison.Ordinal);
+        Assert.Contains("  { from: null, to: 10, trigger: 'always', event: null },\n", ticket, StringComparison.Ordinal);
+        Assert.Contains("  { from: 30, to: 90, trigger: 'after', event: null },\n", ticket, StringComparison.Ordinal);
+        Assert.Contains("  { from: 10, to: 90, trigger: 'event', event: 'cancel' },\n  { from: 20, to: 90, trigger: 'event', event: 'cancel' },\n", ticket,
+            StringComparison.Ordinal);
+
+        var tools = await ToolsOrSkipAsync();
+        WriteProject(repo, tools);
+        repo.Write("web/codes.test.ts", """
+            import { test } from 'node:test';
+            import assert from 'node:assert/strict';
+            import { orderFlowFromCode, orderFlowMoves, orderFlowStateCodes, orderFlowToCode } from './processes/order-flow/order-flow.states.ts';
+            import { ticketFlowFromCode, ticketFlowMoves, ticketFlowStateCodes, ticketFlowToCode } from './processes/ticket-flow/ticket-flow.states.ts';
+
+            test('configurations map to codes and back', () => {
+              assert.equal(orderFlowToCode(['Review.Approving']), 'REV');
+              assert.equal(orderFlowToCode(['OnHold']), undefined);
+              assert.equal(orderFlowToCode([]), undefined);
+              assert.deepEqual(orderFlowFromCode('REV'), ['Review.Checking']);
+              assert.equal(orderFlowFromCode('XYZ'), undefined);
+              for (const code of Object.values(orderFlowStateCodes)) assert.equal(orderFlowToCode(orderFlowFromCode(code)!), code);
+              assert.equal(ticketFlowToCode(['Open.Assigned']), 20);
+              assert.equal(ticketFlowToCode(['Open']), undefined);
+              assert.deepEqual(ticketFlowFromCode(10), ['Open.New']);
+              for (const code of Object.values(ticketFlowStateCodes)) assert.equal(ticketFlowToCode(ticketFlowFromCode(code)!), code);
+              assert.equal(orderFlowMoves.length, 6);
+              assert.deepEqual(orderFlowMoves[4], { from: null, to: 'REV', trigger: 'event', event: 'resume' });
+              assert.equal(ticketFlowMoves.length, 8);
+              assert.deepEqual(ticketFlowMoves[5], { from: 10, to: 90, trigger: 'event', event: 'cancel' });
+              assert.deepEqual(ticketFlowMoves[6], { from: 20, to: 90, trigger: 'event', event: 'cancel' });
+              assert.deepEqual(ticketFlowMoves[7], { from: 30, to: 30, trigger: 'event', event: 'note' });
+            });
+
+            """);
+        var tsc = await ProcessRunner.RunAsync(tools.Node, [tools.Tsc, "--noEmit", "-p", "tsconfig.json"], repo.Repo.RepoRoot, TimeSpan.FromMinutes(3));
+        Assert.True(tsc.ExitCode == 0, "tsc --noEmit failed:\n" + tsc.Output);
+        var run = await RunScenarioTestsAsync(repo, tools, "web/codes.test.ts");
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("# pass 1", StringComparison.Ordinal), "node --test failed:\n" + run.Output);
+    }
+
     private sealed record Tools(string Node, string Tsc, string TypeRoots, bool StripFlag);
 
     private static List<string> Listing(PackRepo repo)

@@ -14,7 +14,7 @@ if model.processes.size > 0 || model.actors.size > 0
 | Process | Domain | Use | Subject | States | Scenarios |
 | --- | --- | --- | --- | --- | --- |
 {{- for p in model.processes }}
-| [{{ md_cell p.display_name }}](processes/{{ kebab p.name }}.md) | {{ p.package ? (md_code p.package.qualified_name) : "" }} | {{ p.use }} | {{ p.subject ? (md_code p.subject.name) : "" }} | {{ p.all_states.size }} | {{ p.scenarios.size }} |
+| [{{ md_cell p.display_name }}](processes/{{ kebab p.name }}.md) | {{ p.package ? (md_code p.package.qualified_name) : "" }} | {{ p.use }} | {{ p.subject ? (md_code p.subject.name) : subject_names(p) }} | {{ p.all_states.size }} | {{ p.scenarios.size }} |
 {{- end }}
 {{- end }}
 {{- if model.actors.size > 0 }}

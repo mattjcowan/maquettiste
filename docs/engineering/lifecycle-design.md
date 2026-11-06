@@ -235,6 +235,7 @@ public sealed class REntity { public RList<RProcess> Lifecycles { get; internal 
 
 - **`get_references`, `referenced_by`:** a code under a reference binding is a use with field `code`. Scenario objects are parts with references.
 - **`export_process`, `import_process`:** `code` goes in `meta.maquettiste`, and the importer's kept state keys gain it. The form follows decision 7.
+- **`POST /api/processes/{id}/sync-codes`:** exists beside sync-enum's endpoint, so a dry run can list the states that found no code.
 - **`simulate_process`, `record_scenario`, `verify_scenarios`:** `objects` and `subject`.
 - **The rule list, the schemas and the tool and verb texts** describe all of this.
 

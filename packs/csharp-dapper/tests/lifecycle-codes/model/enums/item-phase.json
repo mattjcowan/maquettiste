@@ -1,0 +1,27 @@
+{
+  "kind": "enum",
+  "id": "01JMC000000000000000ENM002",
+  "name": "ItemPhase",
+  "package": "01JMC000000000000000PKG002",
+  "members": [
+    {
+      "id": "01JMC000000000000000MEM101",
+      "name": "Draft",
+      "code": "DRF"
+    },
+    {
+      "id": "01JMC000000000000000MEM102",
+      "name": "Review",
+      "code": "REV"
+    },
+    {
+      "id": "01JMC000000000000000MEM103",
+      "name": "OnHold"
+    },
+    {
+      "id": "01JMC000000000000000MEM104",
+      "name": "Done",
+      "code": "DON"
+    }
+  ]
+}

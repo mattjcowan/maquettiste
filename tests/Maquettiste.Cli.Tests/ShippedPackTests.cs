@@ -6,7 +6,8 @@ namespace Maquettiste.Cli.Tests;
 /// <summary>
 /// The shipped packs' own tests (next-phase-2-design.md section 5.4): each of <c>packs/sql-ddl</c>, <c>packs/csharp-dapper</c>,
 /// <c>packs/process-docs</c> and <c>packs/seed-data</c> holds one small case, <c>billing-small</c>, and helper tests under its
-/// <c>tests/</c> folder. The test copies the packs, <c>tests/</c> included, into a temporary project and runs
+/// <c>tests/</c> folder; csharp-dapper also holds <c>lifecycle-codes</c> (lifecycle-design.md section 9). The test copies the packs,
+/// <c>tests/</c> included, into a temporary project and runs
 /// <c>maquettiste pack test</c>. With <c>MAQUETTISTE_UPDATE_GOLDEN=1</c> it runs <c>pack test --update</c> and copies each rewritten
 /// <c>expected/</c> back under <c>packs/&lt;pack&gt;/tests/</c>; review the diff before keeping it.
 /// </summary>
@@ -17,6 +18,9 @@ public sealed class ShippedPackTests
     private const string Case = "billing-small";
 
     private static string PackFolder(string pack) => Path.Combine(Fixtures.RepoRoot, "packs", pack);
+
+    // The cases of a pack, by name: billing-small, and lifecycle-codes for csharp-dapper.
+    private static string[] CasesOf(string pack) => pack == "csharp-dapper" ? [Case, "lifecycle-codes"] : [Case];
 
     [Fact]
     public async Task Pack_test_passes_for_every_shipped_pack()
@@ -32,10 +36,13 @@ public sealed class ShippedPackTests
             Assert.True(update.ExitCode == 0, update.ToString());
             foreach (var pack in Packs)
             {
-                var target = Path.Combine(PackFolder(pack), "tests", Case, "expected");
-                if (Directory.Exists(target))
-                    Directory.Delete(target, recursive: true);
-                CliRepo.CopyTree(repo.PathOf($".maquettiste/templates/{pack}/tests/{Case}/expected"), target);
+                foreach (var name in CasesOf(pack))
+                {
+                    var target = Path.Combine(PackFolder(pack), "tests", name, "expected");
+                    if (Directory.Exists(target))
+                        Directory.Delete(target, recursive: true);
+                    CliRepo.CopyTree(repo.PathOf($".maquettiste/templates/{pack}/tests/{name}/expected"), target);
+                }
             }
         }
 
@@ -47,8 +54,9 @@ public sealed class ShippedPackTests
         Assert.Equal(Packs, packs.Select(p => (string)p!["pack"]!));
         foreach (var pack in packs)
         {
-            var only = Assert.Single(pack!["cases"]!.AsArray());
-            Assert.Equal((Case, "passed"), ((string)only!["name"]!, (string)only["outcome"]!));
+            var cases = pack!["cases"]!.AsArray();
+            Assert.Equal(CasesOf((string)pack["pack"]!), cases.Select(c => (string)c!["name"]!));
+            Assert.All(cases, c => Assert.Equal("passed", (string)c!["outcome"]!));
             Assert.All(pack["tests"]!.AsArray(), t => Assert.Equal("passed", (string)t!["outcome"]!));
         }
 
@@ -64,10 +72,13 @@ public sealed class ShippedPackTests
         {
             var tests = Path.Combine(PackFolder(pack), "tests");
             Assert.Equal("* -text", File.ReadAllLines(Path.Combine(tests, ".gitattributes")).Last());
-            Assert.Equal([Case], Directory.EnumerateDirectories(tests).Select(Path.GetFileName));
-            Assert.True(File.Exists(Path.Combine(tests, Case, "maquettiste.json")), pack);
-            Assert.NotEmpty(Directory.EnumerateFiles(Path.Combine(tests, Case, "model"), "*.json", SearchOption.AllDirectories));
-            Assert.NotEmpty(Directory.EnumerateFiles(Path.Combine(tests, Case, "expected"), "*", SearchOption.AllDirectories));
+            Assert.Equal(CasesOf(pack), Directory.EnumerateDirectories(tests).Select(Path.GetFileName).Order(StringComparer.Ordinal));
+            foreach (var name in CasesOf(pack))
+            {
+                Assert.True(File.Exists(Path.Combine(tests, name, "maquettiste.json")), pack);
+                Assert.NotEmpty(Directory.EnumerateFiles(Path.Combine(tests, name, "model"), "*.json", SearchOption.AllDirectories));
+                Assert.NotEmpty(Directory.EnumerateFiles(Path.Combine(tests, name, "expected"), "*", SearchOption.AllDirectories));
+            }
         }
     }
 }

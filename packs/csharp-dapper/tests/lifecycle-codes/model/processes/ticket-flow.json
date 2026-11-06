@@ -1,0 +1,132 @@
+{
+  "kind": "process",
+  "id": "01JMC000000000000000PRC002",
+  "name": "TicketFlow",
+  "package": "01JMC000000000000000PKG001",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JMC000000000000000SBJ004",
+      "entity": "01JMC000000000000000ENT004"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JMC000000000000000EVT101",
+      "name": "assign"
+    },
+    {
+      "id": "01JMC000000000000000EVT102",
+      "name": "resolve"
+    },
+    {
+      "id": "01JMC000000000000000EVT103",
+      "name": "cancel"
+    },
+    {
+      "id": "01JMC000000000000000EVT104",
+      "name": "note"
+    }
+  ],
+  "guards": [
+    {
+      "id": "01JMC000000000000000GRD101",
+      "name": "needsWork",
+      "expression": "true"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JMC000000000000000STA101",
+      "name": "Open",
+      "type": "compound",
+      "initial": "01JMC000000000000000STA102",
+      "states": [
+        {
+          "id": "01JMC000000000000000STA102",
+          "name": "New",
+          "code": 10
+        },
+        {
+          "id": "01JMC000000000000000STA103",
+          "name": "Assigned",
+          "code": 20
+        }
+      ]
+    },
+    {
+      "id": "01JMC000000000000000STA104",
+      "name": "Triage",
+      "type": "choice"
+    },
+    {
+      "id": "01JMC000000000000000STA105",
+      "name": "Resolved",
+      "code": 30
+    },
+    {
+      "id": "01JMC000000000000000STA106",
+      "name": "Closed",
+      "type": "final",
+      "code": 90
+    }
+  ],
+  "initial": "01JMC000000000000000STA101",
+  "transitions": [
+    {
+      "id": "01JMC000000000000000TRN101",
+      "source": "01JMC000000000000000STA102",
+      "event": "01JMC000000000000000EVT101",
+      "targets": [
+        "01JMC000000000000000STA103"
+      ]
+    },
+    {
+      "id": "01JMC000000000000000TRN102",
+      "source": "01JMC000000000000000STA103",
+      "event": "01JMC000000000000000EVT102",
+      "targets": [
+        "01JMC000000000000000STA104"
+      ]
+    },
+    {
+      "id": "01JMC000000000000000TRN103",
+      "source": "01JMC000000000000000STA104",
+      "trigger": "always",
+      "guard": "01JMC000000000000000GRD101",
+      "targets": [
+        "01JMC000000000000000STA101"
+      ]
+    },
+    {
+      "id": "01JMC000000000000000TRN104",
+      "source": "01JMC000000000000000STA104",
+      "trigger": "always",
+      "targets": [
+        "01JMC000000000000000STA105"
+      ]
+    },
+    {
+      "id": "01JMC000000000000000TRN105",
+      "source": "01JMC000000000000000STA105",
+      "trigger": "after",
+      "after": "P7D",
+      "targets": [
+        "01JMC000000000000000STA106"
+      ]
+    },
+    {
+      "id": "01JMC000000000000000TRN106",
+      "source": "01JMC000000000000000STA101",
+      "event": "01JMC000000000000000EVT103",
+      "targets": [
+        "01JMC000000000000000STA106"
+      ]
+    },
+    {
+      "id": "01JMC000000000000000TRN107",
+      "source": "01JMC000000000000000STA105",
+      "event": "01JMC000000000000000EVT104"
+    }
+  ]
+}

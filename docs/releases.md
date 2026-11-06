@@ -5,6 +5,32 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.13.0 (unreleased)
+
+- **Lifecycles any implementation can follow, first half.** A state may carry a `code`, a string or a whole number that is its
+  stable stored value, unique in the lifecycle. A lifecycle lists what it governs in `subjects`, so one lifecycle can cover
+  several entities and an entity can follow several lifecycles. Each subject may bind the attribute that holds its state: an
+  enum, a reference type or a plain string or integer. A code under a reference binding is a use of the type's row, so renames
+  and merges follow it. The batch operations `sync-codes` (proposes codes and binds them) and `use-subjects` (converts the old
+  form) are new, and `sync-enum` takes an optional `entity`. The editor gains a Code column and a **Sync codes** fix. New rules are
+  MQ9206 to MQ9210. [Lifecycle subjects and state codes](user-guide.md#lifecycle-subjects-and-state-codes) has the details.
+  A project that uses none of this keeps its files and its output.
+- **New lifecycles are written as `subjects`, which an older engine can't read.** A team must upgrade together. Until then a
+  teammate on an older engine can't open a lifecycle created on the new one.
+- **The one-subject form is deprecated.** `subject` and `boundAttribute` on a process still work, and warn with MQ9209. You can
+  turn that warning off. Nothing converts a file unasked: use the quick fix or `use-subjects`.
+- **The schema copies change,** so `validate` warns MQ1008 until `maquettiste init` or the editor refreshes them.
+- **The modeling skill changes.** `maquettiste init --skill` refreshes it.
+- **`csharp-dapper` writes the codes.** A constant per coded state and, when the codes form a map, `ToCode`, `FromCode` and every
+  move as (from code, to code, trigger, event). A lifecycle with several subjects gets `To<Entity>Status` per enum binding.
+  `process-docs` lists subjects, bindings and codes.
+- **`sql-ddl` has two new parameters, both off.** `lifecycleColumns` adds the subject and the current code to the lifecycle
+  tables. `lifecycleChecks` reconciles a check on a plain status column in every dialect.
+- **If you turn on `lifecycleColumns` for tables you already have,** add the columns by hand. A parameter never changes a table
+  that exists. The three columns are `subject_type`, `subject_id` and `state_code`, all nullable. For example, in PostgreSQL:
+  `ALTER TABLE order_flow_instances ADD COLUMN subject_type text NULL, ADD COLUMN subject_id text NULL, ADD COLUMN state_code text NULL;`
+  Use `bigint` for `state_code` when the codes are whole numbers. The pack README lists the types for each dialect.
+
 ## 0.12.2 (2026-11-05)
 
 - **Shared guards, actions and gates.** A process with `use: library` holds guards, actions and gates once, and any process names
