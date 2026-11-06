@@ -12,7 +12,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/misc";
 import { useServices } from "@/app/context";
-import { bindableAttributes, classifyAttribute } from "@/model/binding";
+import { bindableAttributes, classifyAttribute, codeKindOf } from "@/model/binding";
 import { indexLookup } from "@/model/index";
 import { subjectsOf, syncPlanLines } from "@/model/process";
 import { MarkChips, NameAndDomain, domIdOf, type EditorContext } from "../EditorFrame";
@@ -43,7 +43,7 @@ export function useBinding(subject: string | undefined, bound: string | undefine
       candidates.flatMap((a) => {
         const ref = typeof a.type === "object" && a.type ? (a.type as { ref?: string }).ref : undefined;
         const kind = ref ? lookup.byId.get(ref)?.kind : undefined;
-        return ref && (kind === "enum" || kind === "scalar-type") ? [ref] : [];
+        return ref && (kind === "enum" || kind === "scalar-type" || kind === "reference-type") ? [ref] : [];
       }),
     ),
   ];
@@ -63,7 +63,8 @@ export function useBinding(subject: string | undefined, bound: string | undefine
   const enumId = bindType?.kind === "enum" ? (bindType.typeId ?? null) : null;
   const enumDoc = useElement(enumId);
   const members = enumDoc.data ? (((enumDoc.data.json as { members?: { name: string }[] }).members ?? []).map((m) => m.name) as string[]) : null;
-  return { attributes, enumId, members };
+  const codeKind = bindType && attribute ? codeKindOf(bindType, attribute as unknown as Rec, typeDoc) : undefined;
+  return { attributes, enumId, members, codeKind };
 }
 
 export function ProcessControls({ ctx }: { ctx: EditorContext }) {

@@ -349,7 +349,7 @@ public sealed class ProcessOperationTests
         Assert.Equal("sync-enum", RuleCatalog.Describe().Single(r => r.Id == "MQ9203").QuickFix);
         var fixes = RuleCatalog.All.Where(r => r.QuickFix is not null).Select(r => r.QuickFix!).ToHashSet(StringComparer.Ordinal);
         Assert.All(fixes, fix => Assert.Contains(fix, (IReadOnlySet<string>)new HashSet<string>(["sync-enum", "sync-codes", "set-lifecycle", "set-initial", "refresh-scenario", "text-to-trees", "use-subjects"], StringComparer.Ordinal)));
-        Assert.Equal("sync-codes", RuleCatalog.Get("MQ9206").QuickFix);
+        Assert.Null(RuleCatalog.Get("MQ9206").QuickFix); // sync-codes keeps the codes a state has, so it cannot part two that clash
         Assert.Equal("sync-codes", RuleCatalog.Get("MQ9210").QuickFix);
         Assert.Equal("use-subjects", RuleCatalog.Get("MQ9209").QuickFix);
         Assert.Equal(DiagnosticSeverity.Error, RuleCatalog.Get("MQ9019").DefaultSeverity);

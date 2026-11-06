@@ -193,9 +193,12 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
       const states = (list: unknown, base: string) =>
         arr(list).forEach((st, i) => {
           // A code under a reference binding is a use of the row it names (decision 18): one reference per binding it fits.
+          const seen = new Set<string>();
           for (const e of bound) {
             const row = rows!.rowOf(e.entity, e.boundAttribute!, st.code);
-            if (row && str(st.id)) out.push({ fromId: st.id as string, pointer: `${base}/${i}/code`, field: "code", toId: row, required: true });
+            if (!row || !str(st.id) || seen.has(row)) continue;
+            seen.add(row);
+            out.push({ fromId: st.id as string, pointer: `${base}/${i}/code`, field: "code", toId: row, required: true });
           }
           arr(st.invoke).forEach((inv, k) => {
             push(`${base}/${i}/invoke/${k}/process`, "process", inv.process, false);

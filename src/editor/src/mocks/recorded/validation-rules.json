@@ -2736,8 +2736,7 @@
     "description": "State codes clash: two states share a code (1 and \"1\" are one code), codes mix strings and integers, a history or choice state has a code, or, under a binding, two coded states sit on one path or a coded state sits in a parallel region; give each state that rests its own code, all strings or all integers, at most one per configuration.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
-    "canBeOff": true,
-    "quickFix": "sync-codes"
+    "canBeOff": true
   },
   {
     "id": "MQ9207",
@@ -2750,7 +2749,7 @@
   {
     "id": "MQ9208",
     "defaultSeverity": "warning",
-    "description": "Values a binding can hold that no state's code covers: the bound attribute's allowedValues, else the reference type's rows; add a state with each code, or narrow allowedValues.",
+    "description": "Once the lifecycle has codes, values a binding can hold that no state's code covers: the bound attribute's allowedValues, else the reference type's rows; add a state with each code, or narrow allowedValues.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true

@@ -777,6 +777,41 @@ public sealed class ProcessRuleTests
     }
 
     [Fact]
+    public async Task Under_an_enum_binding_MQ9210_asks_for_the_code_the_other_states_have()
+    {
+        // lifecycle-design.md decision 13: under an enum binding the member holds the value, so a state with no code still has one; what
+        // it lacks is the code the other states have.
+        var model = Load();
+        Failing["MQ9210 an enum binding once the lifecycle has codes"](model);
+
+        var diagnostics = await ValidateAsync(model);
+
+        Assert.Equal("State 'Review' has no code, though other states of process 'OrderLifecycle' have one; give it the code its member stands for, or remove the others.",
+            diagnostics.Single(d => d.Rule == "MQ9210" && d.ElementId == Review).Message);
+    }
+
+    [Theory]
+    [InlineData("plain")]
+    [InlineData("reference")]
+    public async Task A_lifecycle_with_no_codes_gets_MQ9210_and_not_MQ9208(string binding)
+    {
+        // lifecycle-design.md section 11: a lifecycle bound to a plain attribute with allowedValues, or to a reference-typed one, that has
+        // no codes yet gets one MQ9210 per state, and not MQ9208 listing every value, which MQ9210 already covers.
+        var model = Load();
+        if (binding == "plain")
+            model.BindPlain();
+        else
+            model.BindReference();
+        foreach (var state in new[] { Draft, Review, Fulfilment, Closed })
+            model.State(state).Remove("code");
+
+        var diagnostics = await ValidateAsync(model);
+
+        Assert.Contains(diagnostics, d => d.Rule == "MQ9210");
+        Assert.DoesNotContain(diagnostics, d => d.Rule == "MQ9208");
+    }
+
+    [Fact]
     public async Task Binding_findings_sit_on_the_binding_and_code_findings_on_the_code()
     {
         var model = Load();

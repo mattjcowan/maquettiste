@@ -174,9 +174,9 @@ public sealed partial class ModelStore
 
         /// <summary>
         /// The refusals the batch's refactors earn together, once each has planned (lifecycle-design.md decisions 16 and 18), each with the
-        /// first operation that rewrote the code: a rewritten state code that another reference type its lifecycle binds held before and
-        /// does not hold after the batch (a code two bound types share is renamed in both in one batch), and two states of one lifecycle
-        /// left with one code. Empty when the batch rewrites no state code.
+        /// first operation that rewrote the code: a rewritten state code that a reference type its lifecycle binds does not hold after the
+        /// batch, either never held (a code two bound types share is renamed in both in one batch) or taken away by another refactor of the
+        /// batch (a chain across the bound types), and two states of one lifecycle left with one code. Empty when the batch rewrites no state code.
         /// </summary>
         public IEnumerable<(int Operation, string Refusal)> LifecycleRefusals()
         {
@@ -206,7 +206,12 @@ public sealed partial class ModelStore
                         if (!IsLive(typeId, oldKey) || LiveAfter(typeId, newKey))
                             continue;
                         var name = snapshot.Get<ReferenceType>(typeId)?.Name ?? typeId;
-                        yield return (index, $"Process '{process.Name}' binds reference type '{name}' too, which holds code '{oldKey}' and not '{newKey}', so the state whose code this rewrites would hold no code of '{name}'; rename the code in '{name}' in this batch as well.");
+
+                        // A type that held the new code before the batch loses it to another refactor of the batch (a chain), so renaming
+                        // the code there as well is no help.
+                        yield return (index, IsLive(typeId, newKey)
+                            ? $"State '{StateNameAt(node, pointer)}' of process '{process.Name}' would get code '{newKey}', but this batch also retires or renames '{newKey}' in reference type '{name}', so the state would hold no code of '{name}'; retire '{oldKey}' straight into the code that replaces '{newKey}'."
+                            : $"Process '{process.Name}' binds reference type '{name}' too, which holds code '{oldKey}' and not '{newKey}', so the state whose code this rewrites would hold no code of '{name}'; rename the code in '{name}' in this batch as well.");
                         break;
                     }
                 }
@@ -223,6 +228,10 @@ public sealed partial class ModelStore
                 }
             }
         }
+
+        /// <summary>The name of the state whose code sits at a pointer of a process's working copy.</summary>
+        private static string StateNameAt(JsonObject node, string pointer) =>
+            JsonPointer.TryGetParent(node, pointer, out var parent, out _) && parent is JsonObject state && (string?)state["name"] is { } name ? name : "";
 
         /// <summary>The code a working copy holds at a pointer, as its key.</summary>
         private static string? CodeAt(JsonObject node, string pointer)

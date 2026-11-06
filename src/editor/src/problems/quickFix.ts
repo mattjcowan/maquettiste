@@ -17,7 +17,7 @@ export type QuickFix =
   | { kind: "operation"; op: QuickFixOperation; id: string; target?: string; label: string; ids: string[]; choices?: { id: string; name: string }[] }
   /** Sync enum: a dry run first, then the apply (the process's own endpoint). */
   | { kind: "sync-enum"; process: string; label: string; entity?: string }
-  /** Sync codes (MQ9206, MQ9210): the process; the binding is picked when it runs (a dry run first, then the apply). */
+  /** Sync codes (MQ9210): the process; the binding is picked when it runs (a dry run first, then the apply). */
   | { kind: "sync-codes"; process: string; label: string }
   /** A plain update of one document. */
   | { kind: "update"; id: string; json: ModelJson; label: string };
@@ -27,6 +27,7 @@ const EDITOR_FIXES = new Set(["MQ9013", "MQ9016", "MQ9102", "MQ9105", "MQ9205", 
 
 /** True when the diagnostic's rule has a quick fix: a catalog `quickFix` or one the editor builds. */
 export function hasQuickFix(rule: string, catalogFix: string | null | undefined): boolean {
+  if (rule === "MQ9206") return false; // a code map the codes themselves break; no sync-codes fix (decision 19)
   return !!catalogFix || EDITOR_FIXES.has(rule);
 }
 
@@ -132,6 +133,7 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
   // A finding of a `subjects` entry names the entry, not the process: the fetched document is the process.
   const id = typeof element.id === "string" ? element.id : d.elementId;
   // The process comes from the fetched document, never from a finding's element id (a state's or an entry's id).
+  if (d.rule === "MQ9206") return null;
   if (catalogFix === "sync-codes") return element.kind === "process" ? { kind: "sync-codes", process: str(element.id) ?? id, label: "Sync codes" } : null;
   // Sync enum for one binding: a subjects entry's finding sends its entity; the one-subject form omits it (decision 15).
   if (catalogFix === "sync-enum" && element.kind === "process" && Array.isArray(element.subjects)) {

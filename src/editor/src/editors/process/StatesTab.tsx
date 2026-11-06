@@ -24,6 +24,7 @@ import {
   stateRows,
   STATE_TYPES,
   subtreeIds,
+  type CodeKind,
   type InvokeDoc,
   type ProcessDoc,
   type StateRow,
@@ -37,7 +38,7 @@ import { Grid, type GridColumn } from "./Grid";
 import { rowProblems, useGridTargets, type ProcessContext } from "./shared";
 import { selectProcessNode, useProcessSelection } from "./selection";
 
-export function StatesTab({ pc, members }: { pc: ProcessContext; members: string[] | null }) {
+export function StatesTab({ pc, members, codeKind }: { pc: ProcessContext; members: string[] | null; codeKind?: CodeKind }) {
   const { process, change, id } = pc;
   const services = useServices();
   const index = useIndex();
@@ -129,7 +130,7 @@ export function StatesTab({ pc, members }: { pc: ProcessContext; members: string
       if (!state) return;
       if (key === "name") state.name = String(value).trim() || state.name;
       else if (key === "type") setStateType(state, value as StateType);
-      else if (key === "code") setStateCode(p, row.id, String(value));
+      else if (key === "code") setStateCode(p, row.id, String(value), codeKind);
       else if (key === "initial") setInitial(p, row.id);
       else if (key === "history") {
         if (value === "deep") state.history = "deep";

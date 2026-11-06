@@ -337,13 +337,19 @@ export function deleteState(process: ProcessDoc, id: string): DeleteStateResult 
   return { ok: true };
 }
 
-/** Makes a state the initial child of its parent (or the process): `initial` is omitted when it is the first child. */
 /**
- * Writes the code a cell holds (lifecycle-design.md decision 1): an empty cell removes the key; integer text is a JSON
- * number, unless another state's code is a string (the codes of a process are all strings or all integers, MQ9206),
- * and anything else a string.
+ * What a bound attribute holds, so a code is written in its form: "string" or "integer" for a plain status or a
+ * reference type, or the integer `values` of an enum's members (a code of an enum binding is a number only where a
+ * member's value says so, and the codes the lifecycle already has decide first).
  */
-export function setStateCode(process: Pick<ProcessDoc, "states">, id: string, text: string): void {
+export type CodeKind = "string" | "integer" | { enumValues: readonly number[] };
+
+/**
+ * Writes the code a cell holds (lifecycle-design.md decision 1): an empty cell removes the key. With a binding the code
+ * follows the binding's type (`kind`, see CodeKind). Without one, integer text is a JSON number, unless another state's
+ * code is a string (the codes of a process are all strings or all integers, MQ9206), and anything else a string.
+ */
+export function setStateCode(process: Pick<ProcessDoc, "states">, id: string, text: string, kind?: CodeKind): void {
   const state = stateIndex(process).get(id)?.state;
   if (!state) return;
   const value = text.trim();
@@ -353,9 +359,16 @@ export function setStateCode(process: Pick<ProcessDoc, "states">, id: string, te
   }
   const integer = /^-?(0|[1-9]\d*)$/.test(value) && Number.isSafeInteger(Number(value));
   const otherStrings = [...stateIndex(process).values()].some((i) => i.state.id !== id && typeof i.state.code === "string");
-  state.code = integer && !otherStrings ? Number(value) : value;
+  if (kind === "string") state.code = value;
+  else if (kind === "integer") state.code = integer ? Number(value) : value;
+  else if (kind) {
+    const others = [...stateIndex(process).values()].filter((i) => i.state.id !== id && i.state.code !== undefined);
+    if (others.length) state.code = integer && !otherStrings ? Number(value) : value;
+    else state.code = integer && kind.enumValues.includes(Number(value)) ? Number(value) : value;
+  } else state.code = integer && !otherStrings ? Number(value) : value;
 }
 
+/** Makes a state the initial child of its parent (or the process): `initial` is omitted when it is the first child. */
 export function setInitial(process: ProcessDoc, id: string): void {
   const info = stateIndex(process).get(id);
   if (!info) return;

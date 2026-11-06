@@ -868,7 +868,10 @@ internal static partial class ProcessRules
         {
             if (!analysis.Reachable.Contains(node.Id))
                 continue; // MQ9003
-            report.Add("MQ9210", $"State '{node.Path}' of process '{process.Name}' has no code, so attribute '{needing.Attribute.Name}' of entity '{needing.Subject.Name}', which the process binds, has no value for it; give the state a code.",
+            // Under enum bindings only, the member holds the value: what the state lacks is the code the other states have.
+            report.Add("MQ9210", needing.Type.NeedsCodes
+                    ? $"State '{node.Path}' of process '{process.Name}' has no code, so attribute '{needing.Attribute.Name}' of entity '{needing.Subject.Name}', which the process binds, has no value for it; give the state a code."
+                    : $"State '{node.Path}' has no code, though other states of process '{process.Name}' have one; give it the code its member stands for, or remove the others.",
                 node.Pointer, node.Id);
         }
     }
@@ -1061,10 +1064,15 @@ internal static partial class ProcessRules
     }
 
     // MQ9208 (decision 17): the values a binding can hold that no state's code covers, once per binding: the attribute's allowedValues when
-    // it has them (else a scalar type's), else a reference type's stored rows. Rows a script fills are not judged.
+    // it has them (else a scalar type's), else a reference type's stored rows. Rows a script fills are not judged, and a lifecycle with no
+    // codes yet is left to MQ9210.
     private static void CheckUncoveredValues(ValidationContext context, Process process, ProcessCodes codes, Entity subject, ModelAttribute attribute, BindingType type,
         string pointer, string? entryId, Report report)
     {
+        // While the lifecycle has no codes, MQ9210 already asks one of each state it rests in; listing every value as well adds nothing.
+        var covered = codes.Coded.Where(c => c.State.Type is not (StateType.History or StateType.Choice)).Select(c => c.Key).ToHashSet(StringComparer.Ordinal);
+        if (covered.Count == 0)
+            return;
         var values = new List<string>();
         var allowed = attribute.Validation?.AllowedValues is { Count: > 0 } own ? own : type.Plain?.Scalar?.Validation?.AllowedValues ?? [];
         if (allowed.Count > 0)
@@ -1080,7 +1088,6 @@ internal static partial class ProcessRules
             values.AddRange(rows.Keys.Order(StringComparer.Ordinal));
         }
 
-        var covered = codes.Coded.Where(c => c.State.Type is not (StateType.History or StateType.Choice)).Select(c => c.Key).ToHashSet(StringComparer.Ordinal);
         var uncovered = values.Where(v => !covered.Contains(v)).ToList();
         if (uncovered.Count == 0)
             return;

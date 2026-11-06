@@ -56,3 +56,32 @@ export function bindableAttributes(entity: Json | undefined, doc: (id: string) =
   }
   return out;
 }
+
+/**
+ * The form a state's code takes under a binding: "string" for a string or text status and for a reference type whose
+ * codes are strings, "integer" for int16/int32/int64 and integer-coded reference types, and, for an enum, its
+ * members' integer values (the lifecycle's own codes decide first). Undefined when the type cannot tell.
+ */
+export function codeKindOf(
+  type: BindingType,
+  attribute: Json,
+  doc: (id: string) => Json | undefined,
+): "string" | "integer" | { enumValues: number[] } | undefined {
+  const integerKeyword = (k: unknown) => typeof k === "string" && /^int(16|32|64)$/.test(k);
+  switch (type.kind) {
+    case "plain": {
+      const keyword = typeof attribute.type === "string" ? attribute.type : (doc(type.typeId ?? "")?.base as string | undefined);
+      return keyword ? (integerKeyword(keyword) ? "integer" : "string") : undefined;
+    }
+    case "reference": {
+      const code = doc(type.typeId ?? "")?.code as Json | undefined;
+      return typeof code?.type === "string" ? (integerKeyword(code.type) ? "integer" : "string") : undefined;
+    }
+    case "enum": {
+      const members = arr(doc(type.typeId ?? "")?.members);
+      return { enumValues: members.map((m) => m.value).filter((v): v is number => typeof v === "number") };
+    }
+    default:
+      return undefined;
+  }
+}

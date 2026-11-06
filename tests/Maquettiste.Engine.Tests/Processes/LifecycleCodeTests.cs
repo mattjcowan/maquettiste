@@ -275,6 +275,29 @@ public sealed class LifecycleCodeTests
     }
 
     [Fact]
+    public async Task A_retire_chain_across_the_bound_types_is_refused_for_the_code_it_leaves()
+    {
+        // A type is refactored once per batch, so a chain runs across the two bound types: REV into FUL in OrderState, then FUL into CLS
+        // in ReturnState. The state that held REV would get FUL, which ReturnState held before the batch and does not after it.
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+
+        var result = await store.ApplyBatchAsync(new ModelBatch(
+        [
+            new BatchOperation(BatchOp.RetireCode, OrderState, null, null, Code: "REV", To: "FUL"),
+            new BatchOperation(BatchOp.RetireCode, ReturnState, null, null, Code: "FUL", To: "CLS"),
+        ]), ChangeSource.Editor, Ct);
+
+        Assert.Equal(SaveOutcome.Invalid, result.Outcome);
+        var refusal = Assert.Single(result.Items[0].Diagnostics);
+        Assert.Equal(("MQ7020", "/operations/0"), (refusal.Rule, refusal.JsonPointer));
+        Assert.Equal("State 'Review' of process 'Fulfil' would get code 'FUL', but this batch also retires or renames 'FUL' in reference type 'ReturnState', so the state would hold no code of 'ReturnState'; retire 'REV' straight into the code that replaces 'FUL'.",
+            refusal.Message);
+        Assert.Equal("REV", File(h, FFile)["states"]![1]!["code"]!.GetValue<string>());
+    }
+
+    [Fact]
     public async Task Merging_a_bound_type_keeps_the_codes_it_shares_with_the_target()
     {
         var (h, store) = await OpenAsync();

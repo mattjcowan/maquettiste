@@ -243,7 +243,16 @@ export function bindingDiagnostics(json: Json, entry: ModelEntry, ctx: Validatio
       );
       return;
     }
-    if (type.kind === "unknown") return;
+    if (type.kind === "unknown") {
+      emit(
+        "MQ9202",
+        "error",
+        `The type of the bound attribute '${String(attribute.name)}' of process '${name}' is not in the model; bind a single-valued attribute of '${sname}' typed by an enum, a reference type, or a string or integer type.`,
+        pointer,
+        at,
+      );
+      return;
+    }
     // Two lifecycles may not bind one attribute for an entity both list by name; two in the one-subject form already
     // disagree on the entity's lifecycle (MQ9201).
     for (const other of all()) {
@@ -522,7 +531,9 @@ function boundCodes(process: Json, nodes: Node[], bindings: Bound[], emit: Emit)
         emit(
           "MQ9210",
           "warning",
-          `State '${child.path}' of process '${name}' has no code, so attribute '${String(needing.attribute.name)}' of entity '${String(needing.subject.name)}', which the process binds, has no value for it; give the state a code.`,
+          needing.type.kind === "enum"
+            ? `State '${child.path}' has no code, though other states of process '${name}' have one; give it the code its member stands for, or remove the others.`
+            : `State '${child.path}' of process '${name}' has no code, so attribute '${String(needing.attribute.name)}' of entity '${String(needing.subject.name)}', which the process binds, has no value for it; give the state a code.`,
           child.pointer,
           child.id,
         );

@@ -6,19 +6,19 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { MockBackend } from "@/mocks/backend";
-import { bindableAttributes, classifyAttribute } from "@/model/binding";
+import { bindableAttributes, classifyAttribute, codeKindOf } from "@/model/binding";
 import { setStateCode, stateRows, type ProcessDoc } from "@/model/process";
 import type { Diagnostic, ModelJson } from "@/api/types";
 import { useBinding } from "@/editors/process/ProcessControls";
 import { applySyncCodes, pickCodesBinding, syncCodes } from "@/editors/process/api";
-import { deriveQuickFix, fixDocuments, initialCode } from "@/problems/quickFix";
+import { deriveQuickFix, fixDocuments, hasQuickFix, initialCode } from "@/problems/quickFix";
 import { useMockApi } from "./harness";
 
 type Json = Record<string, unknown>;
 
 const U = (n: number) => `01JQTSB${String(n).padStart(19, "0")}`;
 const [TYPE_REF, SEED, ENTITY, OTHER, PROCESS, SUBJ, ENUM] = [U(1), U(2), U(3), U(4), U(5), U(6), U(7)];
-const A = { key: U(10), ref: U(11), plain: U(12), int: U(13), enumA: U(14), money: U(15), many: U(16) };
+const A = { key: U(10), ref: U(11), plain: U(12), int: U(13), enumA: U(14), money: U(15), many: U(16), ref2: U(17) };
 const ROW = { draft: U(20), issued: U(21), paid: U(22) };
 const S = { draft: U(30), issued: U(31), paid: U(32), nested: U(33) };
 
@@ -72,7 +72,16 @@ function seedModel(backend: MockBackend, process: Json) {
       { id: A.many, name: "tags", type: "string", collection: true },
     ],
   });
-  make({ kind: "entity", id: OTHER, name: "Receipt", key: { attributes: [U(50)] }, attributes: [{ id: U(50), name: "id", type: "uuid" }] });
+  make({
+    kind: "entity",
+    id: OTHER,
+    name: "Receipt",
+    key: { attributes: [U(50)] },
+    attributes: [
+      { id: U(50), name: "id", type: "uuid" },
+      { id: A.ref2, name: "status", type: { ref: TYPE_REF } },
+    ],
+  });
   force(backend, process);
 }
 
@@ -169,6 +178,56 @@ describe("the States tab's Code cell", () => {
     setStateCode(p, "S2", "2");
     expect(p.states[1].code).toBe("2");
   });
+
+  it("follows the binding's type: strings for a string status, numbers for an integer one", () => {
+    const p = process();
+    setStateCode(p, "S2", "10", "string");
+    expect(p.states[1].code).toBe("10");
+    setStateCode(p, "S1", "7", "integer");
+    expect(p.states[0].code).toBe(7);
+    setStateCode(p, "S1", "SEVEN", "integer");
+    expect(p.states[0].code).toBe("SEVEN");
+  });
+
+  it("under an enum binding takes the codes' kind, else a number only where a member's value says so", () => {
+    const fresh = (): ProcessDoc =>
+      ({
+        kind: "process",
+        id: "P",
+        name: "P",
+        states: [
+          { id: "S1", name: "A" },
+          { id: "S2", name: "B" },
+        ],
+      }) as unknown as ProcessDoc;
+    const first = fresh();
+    setStateCode(first, "S1", "1", { enumValues: [1] });
+    setStateCode(first, "S2", "2", { enumValues: [1] });
+    expect(first.states.map((s) => s.code)).toEqual([1, 2]);
+    const text = fresh();
+    setStateCode(text, "S1", "1", { enumValues: [] });
+    expect(text.states[0].code).toBe("1");
+    const named = fresh();
+    setStateCode(named, "S1", "A", { enumValues: [1] });
+    setStateCode(named, "S2", "2", { enumValues: [1, 2] });
+    expect(named.states[1].code).toBe("2");
+  });
+
+  it("codeKindOf reads the binding's type", () => {
+    const docs: Record<string, Json> = {
+      sc: { kind: "scalar-type", base: "int32" },
+      rt: { kind: "reference-type", code: { type: "int16" } },
+      rs: { kind: "reference-type", code: { type: "string" } },
+      en: { kind: "enum", members: [{ name: "A", value: 3 }, { name: "B" }] },
+    };
+    const doc = (id: string) => docs[id];
+    expect(codeKindOf({ kind: "plain" }, { type: "text" }, doc)).toBe("string");
+    expect(codeKindOf({ kind: "plain" }, { type: "int64" }, doc)).toBe("integer");
+    expect(codeKindOf({ kind: "plain", typeId: "sc" }, { type: { ref: "sc" } }, doc)).toBe("integer");
+    expect(codeKindOf({ kind: "reference", typeId: "rt" }, {}, doc)).toBe("integer");
+    expect(codeKindOf({ kind: "reference", typeId: "rs" }, {}, doc)).toBe("string");
+    expect(codeKindOf({ kind: "enum", typeId: "en" }, {}, doc)).toEqual({ enumValues: [3] });
+  });
 });
 
 describe("mock lifecycle rules", () => {
@@ -197,6 +256,33 @@ describe("mock lifecycle rules", () => {
       ),
     );
     expect(findings(enumBackend)).toEqual([`MQ9205 /subjects/0/boundAttribute ${SUBJ}`]);
+  });
+
+  it("MQ9210 under an enum binding says the member's code, or removing the others", () => {
+    const backend = new MockBackend();
+    seedModel(
+      backend,
+      lifecycle(
+        [
+          { id: S.draft, name: "Draft", code: "D" },
+          { id: S.issued, name: "Issued" },
+        ],
+        A.enumA,
+      ),
+    );
+    const d = backend.model.validate().diagnostics.find((x) => x.rule === "MQ9210")!;
+    expect(d.message).toBe(
+      "State 'Issued' has no code, though other states of process 'InvoiceFlow' have one; give it the code its member stands for, or remove the others.",
+    );
+  });
+
+  it("MQ9202 when the bound attribute's type is not in the model", () => {
+    const backend = new MockBackend();
+    seedModel(backend, lifecycle([{ id: S.draft, name: "Draft" }], A.ref));
+    const entity = backend.model.entries.get(ENTITY)!.json as Json;
+    const attrs = (entity.attributes as Json[]).map((a) => (a.id === A.ref ? { ...a, type: { ref: U(999) } } : a));
+    force(backend, { ...entity, attributes: attrs }, "invoice-entity");
+    expect(findings(backend).some((f) => f.startsWith("MQ9202"))).toBe(true);
   });
 
   it("MQ9210 under an enum binding once some state has a code, and an uncoded compound is reported once on itself", () => {
@@ -384,6 +470,20 @@ describe("a code under a reference binding uses the row", () => {
     expect(backend.model.references(ROW.issued)!.filter((r) => r.field === "code")).toEqual([]);
   });
 
+  it("lists one use when two bindings of a subject fit the same type", () => {
+    const backend = new MockBackend();
+    seedModel(
+      backend,
+      lifecycle([{ id: S.draft, name: "Draft", code: "DRF" }], A.ref, {
+        subjects: [
+          { id: SUBJ, entity: ENTITY, boundAttribute: A.ref },
+          { id: U(7000), entity: OTHER, boundAttribute: A.ref2 },
+        ],
+      }),
+    );
+    expect(backend.model.references(ROW.draft)!.filter((r) => r.field === "code")).toHaveLength(1);
+  });
+
   it("is no reference under a plain binding", () => {
     const backend = new MockBackend();
     seedModel(backend, lifecycle([{ id: S.draft, name: "Draft", code: "DRF" }], A.plain));
@@ -444,6 +544,39 @@ describe("sync-codes and sync-enum with an entity (the mock endpoints)", () => {
     const given = await post(`/api/processes/${PROCESS}/sync-codes`, { entity: ENTITY, attribute: A.ref, stateCodes: { [S.issued]: "PD" } });
     expect(given.body).toMatchObject({ applied: true, unmatched: [] });
     expect(((mock.backend.model.get(PROCESS)!.json as Json).states as Json[]).map((s) => s.code)).toEqual(["DRF", "PD"]);
+  });
+
+  it("refuses a process that has a bound attribute and no subject, writing neither form", async () => {
+    seedModel(mock.backend, {
+      kind: "process",
+      id: PROCESS,
+      name: "InvoiceFlow",
+      use: "lifecycle",
+      boundAttribute: A.enumA,
+      states: [{ id: S.draft, name: "Draft" }],
+    });
+    const refused = await post(`/api/processes/${PROCESS}/sync-codes`, { entity: ENTITY, attribute: A.enumA });
+    expect(refused.status).toBe(422);
+    expect((refused.body.diagnostics as Json[])[0]).toMatchObject({ rule: "MQ9019" });
+    expect((mock.backend.model.get(PROCESS)!.json as Json).subjects).toBeUndefined();
+  });
+
+  it("takes integer codes only when every resting state's code is an integer", async () => {
+    seedModel(mock.backend, {
+      kind: "process",
+      id: PROCESS,
+      name: "InvoiceFlow",
+      use: "lifecycle",
+      subject: ENTITY,
+      states: [
+        { id: S.draft, name: "Draft", code: 1 },
+        { id: S.issued, name: "Issued", code: "ISS" },
+        { id: S.paid, name: "Phase" },
+      ],
+    });
+    const planned = await post(`/api/processes/${PROCESS}/sync-codes`, { entity: ENTITY, attribute: A.enumA, dryRun: true });
+    expect(planned.status).toBe(200);
+    expect(JSON.stringify(planned.body)).not.toContain('"code":1,"source":"name"');
   });
 
   it("matches enum members by name, writes the one-subject form's binding in place, and refuses another entity", async () => {
@@ -573,11 +706,12 @@ describe("quick fixes for bindings and codes", () => {
     expect(deriveQuickFix(diag("MQ9203", "P", "/boundAttribute"), "sync-enum", docs(one))).toEqual({ kind: "sync-enum", process: "P", label: "Sync enum" });
   });
 
-  it("MQ9206 and MQ9210 sync the codes of the process the fetched document is, not the state the finding names", () => {
+  it("MQ9210 syncs the codes of the process the fetched document is, not the state the finding names", () => {
     const p = process([{ id: "S1", name: "Draft" }]);
     const get = (id: string) => (id === "S1" ? (p as unknown as ModelJson) : undefined);
     expect(deriveQuickFix(diag("MQ9210", "S1", "/states/0"), "sync-codes", get)).toEqual({ kind: "sync-codes", process: "P", label: "Sync codes" });
-    expect(deriveQuickFix(diag("MQ9206", "S1", "/states/0/code"), "sync-codes", get)).toMatchObject({ kind: "sync-codes", process: "P" });
+    expect(deriveQuickFix(diag("MQ9206", "S1", "/states/0/code"), "sync-codes", get)).toBeNull();
+    expect(hasQuickFix("MQ9206", "sync-codes")).toBe(false);
   });
 });
 

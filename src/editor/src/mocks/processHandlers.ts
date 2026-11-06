@@ -354,7 +354,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const wanted = typeof value.entity === "string" && value.entity ? value.entity : undefined;
       if (wanted && !subjectsOf(entry.json).some((e) => e.entity === wanted))
         return refusal(`Entity ${wanted} is not a subject of process '${String(entry.json.name)}'.`);
-      const stereotypes = () => undefined;
+      const stereotypes = (key: string) => [...model.entries.values()].map((e) => e.json).find((d) => d.kind === "stereotype" && d.key === key);
       const enumBinding = (e: { entity: string; boundAttribute?: string }) => {
         const attribute = bindableAttributes(lookup(e.entity)?.json, (id) => lookup(id)?.json, stereotypes).find((a) => a.id === e.boundAttribute);
         const ref = (attribute?.type as Json | undefined)?.ref;

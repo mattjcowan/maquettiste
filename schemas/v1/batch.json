@@ -150,11 +150,11 @@
             }
           },
           "entity": {
-            "description": "The subject whose binding the operation acts on: an id, a qualified name or a placeholder. sync-enum: the subject whose bound enum is synced; absent means the lifecycle's one enum binding, in either subject form. sync-codes: the subject whose attribute holds the state; on a lifecycle in the one-subject form it must be that subject, on one that lists subjects an entity not listed gets an entry, and a lifecycle with no subject gets subjects with one entry.",
+            "description": "The subject whose binding the operation acts on: an id, a qualified name or a placeholder. sync-enum: the subject whose bound enum is synced; absent means the lifecycle's one enum binding, in either subject form. sync-codes: the subject whose attribute holds the state; on a lifecycle in the one-subject form it must be that subject, on one that lists subjects an entity not listed gets an entry, and a lifecycle with no subject gets subjects with one entry. sync-codes reads the model as it was before the batch, so its entity must name an existing entity (an id or a qualified name, not a placeholder).",
             "$ref": "#/$defs/idOrName"
           },
           "attribute": {
-            "description": "sync-codes: the attribute of entity (own, inherited or from a stereotype) that holds the state, single-valued and typed by an enum, a reference type or a plain status (string, text, int16, int32 or int64, directly or through a scalar type). The operation binds it in the form the file has. An id, a qualified name or a placeholder.",
+            "description": "sync-codes: the attribute of entity (own, inherited or from a stereotype) that holds the state, single-valued and typed by an enum, a reference type or a plain status (string, text, int16, int32 or int64, directly or through a scalar type). The operation binds it in the form the file has. It must name an existing attribute (an id or a qualified name, not a placeholder): sync-codes reads the model as it was before the batch.",
             "$ref": "#/$defs/idOrName"
           },
           "stateCodes": {

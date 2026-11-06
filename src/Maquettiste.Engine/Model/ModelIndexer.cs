@@ -339,7 +339,7 @@ internal static class ModelIndexer
 
         // A state code under a reference binding becomes a reference to its row through the bound attribute's type, which may sit in another
         // file and which only a full build refreshes (lifecycle-design.md decision 18): a process that adds, removes or changes a binding,
-        // and a document that retypes or removes a bound attribute, need the full build. Neither happens in a model that binds nothing.
+        // and a document that retypes, removes or adds a bound attribute, need the full build. Neither happens in a model that binds nothing.
         if (MovesBindings([.. removed.Select(r => old[r].Element)], [.. added.Select(a => documents[a].Element)], referenceData))
             return null;
 
@@ -546,7 +546,8 @@ internal static class ModelIndexer
 
     /// <summary>
     /// Whether a patch's change moves what a lifecycle's state codes are indexed through (lifecycle-design.md decision 18): a process whose
-    /// bindings (or, with bindings, its use) differ before and after, or a bound attribute retyped or gone from the documents that held it.
+    /// bindings (or, with bindings, its use) differ before and after, or a bound attribute retyped, gone from the documents that held it, or
+    /// new in a changed document.
     /// </summary>
     /// <param name="removed">The elements of the removed documents (the versions before).</param>
     /// <param name="added">The elements of the added documents (the versions after).</param>
@@ -583,17 +584,39 @@ internal static class ModelIndexer
 
         if (referenceData.BoundAttributes.Count == 0)
             return false;
+
+        // Both ways: a bound attribute retyped or gone, and one that comes back (or arrives) in a changed document, since the kept
+        // attribute types know only the attributes the full build saw.
+        var was = new Dictionary<string, TypeRef>(StringComparer.Ordinal);
         foreach (var element in removed)
         {
-            var now = after.TryGetValue(element.Id, out var next) ? ReferenceDataIndex.AttributesOf(next) : [];
             foreach (var attribute in ReferenceDataIndex.AttributesOf(element))
             {
-                if (!referenceData.BoundAttributes.Contains(attribute.Id))
-                    continue;
-                var kept = now.FirstOrDefault(a => string.Equals(a.Id, attribute.Id, StringComparison.Ordinal));
-                if (kept is null || !Equals(kept.Type, attribute.Type))
-                    return true;
+                if (referenceData.BoundAttributes.Contains(attribute.Id))
+                    was.TryAdd(attribute.Id, attribute.Type);
             }
+        }
+
+        var @is = new Dictionary<string, TypeRef>(StringComparer.Ordinal);
+        foreach (var element in added)
+        {
+            foreach (var attribute in ReferenceDataIndex.AttributesOf(element))
+            {
+                if (referenceData.BoundAttributes.Contains(attribute.Id))
+                    @is.TryAdd(attribute.Id, attribute.Type);
+            }
+        }
+
+        foreach (var (id, type) in was)
+        {
+            if (!@is.TryGetValue(id, out var now) || !Equals(now, type))
+                return true;
+        }
+
+        foreach (var (id, type) in @is)
+        {
+            if (!was.TryGetValue(id, out var then) || !Equals(then, type))
+                return true;
         }
 
         return false;

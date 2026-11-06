@@ -28,6 +28,7 @@ interface Node {
 
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
 const restless = (s: Json) => s.type === "history" || s.type === "choice";
+const ordinal = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const loose = (text: string) => text.replace(/[_-]/g, "").toUpperCase();
 
 function nodesOf(states: unknown, parent: Node | null, path: string, out: Node[]): Node[] {
@@ -67,7 +68,7 @@ function candidatesOf(
   if (kind === "reference" && typeId) {
     const seeds = [...all]
       .filter((d) => d.kind === "seed" && d.target === typeId && d.rowsFrom === undefined)
-      .sort((a, b) => String(a.name).localeCompare(String(b.name)) || String(a.id).localeCompare(String(b.id)));
+      .sort((a, b) => ordinal(String(a.name), String(b.name)) || ordinal(String(a.id), String(b.id)));
     for (const seed of seeds) {
       const columns = (seed.columns as string[] | undefined) ?? [];
       const at = columns.indexOf("code");
@@ -135,6 +136,8 @@ export function planSyncCodes(
   const entity = entityId ? lookup(entityId) : undefined;
   if (!entity || entity.kind !== "entity")
     return { problem: `'${String(entityId)}' is not an entity; pass the subject whose attribute holds the state as entity.` };
+  if (process.boundAttribute !== undefined && typeof process.subject !== "string")
+    return { problem: `Process '${name}' binds an attribute but names no subject; set its subject (or list its subjects) first, then sync its codes.` };
   const oneSubject = typeof process.subject === "string" && !Array.isArray(process.subjects);
   if (oneSubject && process.subject !== entityId)
     return {
@@ -185,7 +188,8 @@ export function planSyncCodes(
   for (const n of coded) if (!restless(n.state) && !stateCodes.has(String(n.state.id))) taken.add(codeKey(n.state.code)!);
   for (const code of stateCodes.values()) taken.add(String(code));
 
-  const integerCodes = coded.some((n) => typeof n.state.code === "number");
+  const resting = coded.filter((n) => !restless(n.state));
+  const integerCodes = resting.length > 0 && resting.every((n) => Number.isInteger(n.state.code));
   const scalar = type.kind === "plain" && type.typeId ? lookup(type.typeId) : undefined;
   const candidates = candidatesOf(type.kind, "typeId" in type ? type.typeId : undefined, attribute, scalar, all, lookup, integerCodes);
 

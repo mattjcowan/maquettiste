@@ -197,9 +197,9 @@ Also updated: the sample app's schema copies, `openapi.yaml` by hand, and the ed
 | MQ9203 | E | Unchanged, per enum binding | `sync-enum` |
 | MQ9204 | W | Unchanged, but quiet about subjects of the same lifecycle | |
 | MQ9205 | W | Changed: per binding. For an enum binding, unchanged: the default isn't the initial state's name. For other bindings, the default isn't the initial state's code | Set the default |
-| MQ9206 | E | Two states share a code; codes mix strings and integers; a code on a history or choice state; or, under a binding, codes that don't form a map | `sync-codes` |
+| MQ9206 | E | Two states share a code; codes mix strings and integers; a code on a history or choice state; or, under a binding, codes that don't form a map | |
 | MQ9207 | E | A code doesn't fit its binding (decisions 14 and 16) | Use a fitting code |
-| MQ9208 | W | Values a binding can hold that no state covers | Add a state, or narrow `allowedValues` |
+| MQ9208 | W | Once the lifecycle has codes, values a binding can hold that no state covers | Add a state, or narrow `allowedValues` |
 | MQ9209 | W | The deprecated one-subject form | `use-subjects` |
 | MQ9210 | W | Under a binding, a reachable state with no code | `sync-codes` |
 
