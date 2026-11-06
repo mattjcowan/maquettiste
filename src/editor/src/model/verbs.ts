@@ -39,33 +39,11 @@ export const builtInVerbs: readonly BuiltInVerb[] = [
   { key: "change-owner", displayName: "Change owner", group: "object", meaning: "Give an object another owner." },
   { key: "change-type", displayName: "Change type", group: "object", meaning: "Make an object an instance of another type." },
   { key: "change-lifecycle", displayName: "Change lifecycle", group: "object", meaning: "Put an object under another lifecycle." },
-  {
-    key: "freeze",
-    displayName: "Freeze",
-    group: "object",
-    meaning: "Make an object or a link read-only until it is thawed. While frozen it can't be modified, connected, disconnected or deleted.",
-  },
+  { key: "freeze", displayName: "Freeze", group: "object", meaning: "Make an object or a link read-only until it is thawed. While frozen it can't be modified, connected, disconnected or deleted." },
   { key: "thaw", displayName: "Thaw", group: "object", meaning: "Undo a freeze." },
   { key: "connect", displayName: "Connect", group: "link", meaning: "Link two objects through a relation." },
   { key: "disconnect", displayName: "Disconnect", group: "link", meaning: "Remove a link between two objects." },
 ];
 
 /** Verbs left to projects, which "Add a verb…" offers as suggestions that only pre-fill an own verb (verbs-design.md decision 7). */
-export const suggestedVerbKeys: readonly string[] = [
-  "check-out",
-  "check-in",
-  "schedule",
-  "enable",
-  "disable",
-  "grant",
-  "revoke",
-  "suspend",
-  "resume",
-  "reassign",
-  "start",
-  "stop",
-  "cancel",
-  "archive",
-  "publish",
-  "notify",
-];
+export const suggestedVerbKeys: readonly string[] = ["check-out", "check-in", "schedule", "enable", "disable", "grant", "revoke", "suspend", "resume", "reassign", "start", "stop", "cancel", "archive", "publish", "notify"];
