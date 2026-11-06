@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.13.1 (unreleased)
+## 0.13.1 (2026-11-06)
 
 - **Fewer warnings for states without a code (MQ9210).** An enum binding no longer asks for codes, since the member is the
   stored value. Under a reference-type or plain binding there is one warning per binding that names the states without a
@@ -18,6 +18,17 @@ one.
   row says "acts in N processes". In the Domain model, an entity has a **Lifecycles** folder. Search, the selection that
   follows you, favorites and Problems reveal a process or an actor in the Processes explorer. The editor no longer turns a
   library into an orchestration. See [The Processes explorer](user-guide.md#the-processes-explorer).
+- **Each finding is shown once.** An element's editor shows one line under its title, such as "1 error · 5 warnings", which
+  opens Problems for that element. The inspector shows only the findings of what is selected, warnings always look like
+  warnings, and Problems groups a finding on a state or a subject under its process.
+- **Clearer lifecycle screens.**
+  - **The new-process dialog** says what happens to the entity's current lifecycle before you create one, and never offers
+    an attribute that would clash.
+  - **A lifecycle with several subjects** lists each with its attribute.
+  - **The simulation panel** shows its cast, with attribute names and values, whenever a run has objects.
+  - **The States grid** keeps the Name column in view while scrolling.
+  - **The Scenarios tab** lists failed scenarios first.
+  - **The Sync codes dialog** says plainly where each code comes from, and why none can be proposed when that's the case.
 - **The model index lists a process's actors.** A process's index row gains an optional `actors` field: the ids of the actors
   it names, sorted, and left out when there are none. A project whose processes name no actors gets the same rows.
 - **The index is read in full once after upgrading.** Its format changes, so each project rebuilds its index on first open.
