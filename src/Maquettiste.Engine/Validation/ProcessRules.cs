@@ -1200,7 +1200,7 @@ internal static partial class ProcessRules
             var others = model.All<Actor>().Where(a => a.Type == ActorType.System && !string.Equals(a.Id, actor.Id, StringComparison.Ordinal))
                 .Select(a => "'" + a.Name + "'").Order(StringComparer.Ordinal).ToList();
             if (others.Count > 0)
-                report.Add("MQ9605", $"Actor '{actor.Name}' is of type system, as {(others.Count == 1 ? "is" : "are")} {Names(others)}; a project has one system actor, the system itself (shown as Automatic). Change the type of all but one, for example to external-system.", "/type");
+                report.Add("MQ9605", $"Actor '{actor.Name}' is the Automatic actor, as {(others.Count == 1 ? "is" : "are")} {Names(others)}; a project has at most one. Change the type of all but one, for example to external-system.", "/type");
         }
     }
 

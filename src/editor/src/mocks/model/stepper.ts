@@ -977,7 +977,8 @@ class Interpreter {
       final: this.done,
       diagnostics,
       incomplete: this.scope.guards.some((g) => g.source === "missing") || diagnostics.some((d) => d.rule === "MQ9305" || d.rule === "MQ9507"),
-      ...(this.scope.actor ? { actor: this.scope.actor } : {}),
+      // A refused step moved nothing, so it names no actor.
+      ...(this.scope.actor && this.scope.refusal === null ? { actor: this.scope.actor } : {}),
     };
   }
 

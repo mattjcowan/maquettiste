@@ -204,4 +204,17 @@ describe("the mock's membership in the stepper", () => {
     expect(simulate(doc, null, [{ event: "go" }], { membership: members }).trace[1].actor).toBeUndefined();
     expect(simulate(doc, null, [{ input: "time", after: "PT2H" }]).trace.map((t) => t.actor)).toEqual([undefined, undefined]);
   });
+
+  it("names no actor on a refused time step or invoke end, as the engine does: nothing moved", () => {
+    // Each is incomplete (MQ9305), which ends a run, so each runs alone.
+    for (const step of [
+      { input: "time", after: "P0D" },
+      { input: "invoke-done", invoke: "nothing" },
+      { input: "invoke-error", invoke: "nothing" },
+    ]) {
+      const result = simulate(doc, null, [step], { membership: members });
+      expect(result.trace.map((t) => t.refusal)).toEqual([null, "no-transition"]);
+      expect(result.trace.map((t) => t.actor)).toEqual(["Auto", undefined]);
+    }
+  });
 });

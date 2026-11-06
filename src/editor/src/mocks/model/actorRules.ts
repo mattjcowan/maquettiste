@@ -47,7 +47,7 @@ export function actorDiagnostics(json: Json, entry: Entry, all: Iterable<Entry>)
       out.push(
         diag(
           "MQ9605",
-          `Actor '${name}' is of type system, as ${others.length === 1 ? "is" : "are"} ${others.join(", ")}; a project has one system actor, the system itself (shown as Automatic). Change the type of all but one, for example to external-system.`,
+          `Actor '${name}' is the Automatic actor, as ${others.length === 1 ? "is" : "are"} ${others.join(", ")}; a project has at most one. Change the type of all but one, for example to external-system.`,
           "/type",
         ),
       );
