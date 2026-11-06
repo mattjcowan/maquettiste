@@ -645,6 +645,7 @@ export class MockModel {
   private entryFor(json: Json, existing?: Entry): Entry {
     this.mintSubjectIds(json);
     this.mintObjectIds(json);
+    this.mintParticipantIds(json);
     const path = this.conventionalPath(json, existing);
     const withSchema = this.withSchemaPath(json, path);
     const text = serialize(withSchema);
@@ -665,6 +666,18 @@ export class MockModel {
     json.objects = json.objects.map((o: unknown) =>
       o && typeof o === "object" && typeof (o as Json).id !== "string" ? { id: this.options.newId(), ...(o as Json) } : o,
     );
+  }
+
+  /** The engine mints the id of every participant and holding that has none (actors-design.md decision 14). */
+  private mintParticipantIds(json: Json): void {
+    if (json.kind !== "scenario" || !Array.isArray(json.participants)) return;
+    const withId = (x: unknown): unknown =>
+      x && typeof x === "object" && typeof (x as Json).id !== "string" ? { id: this.options.newId(), ...(x as Json) } : x;
+    json.participants = json.participants.map((p: unknown) => {
+      const one = withId(p);
+      if (one && typeof one === "object" && Array.isArray((one as Json).holds)) (one as Json).holds = ((one as Json).holds as unknown[]).map(withId);
+      return one;
+    });
   }
 
   create(input: Json): SaveResult {

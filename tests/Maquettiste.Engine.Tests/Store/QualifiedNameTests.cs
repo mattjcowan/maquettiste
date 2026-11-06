@@ -257,7 +257,7 @@ public sealed class QualifiedNameTests
 
         Assert.All(kinds, k => Assert.True(NameIndex.NamedKinds.Contains(k) ^ NameIndex.IdOnlyKinds.Contains(k), k));
         Assert.Contains("migration", (IReadOnlySet<string>)NameIndex.IdOnlyKinds);
-        Assert.Equal(["category-tree", "migration", "step", "tag-vocabulary", "transition"], NameIndex.IdOnlyKinds.Order(StringComparer.Ordinal));
+        Assert.Equal(["category-tree", "holding", "migration", "step", "tag-vocabulary", "transition"], NameIndex.IdOnlyKinds.Order(StringComparer.Ordinal));
         Assert.All(NameIndex.NamedKinds, k => Assert.True(QualifiedName.TryParse("@" + k + ":x", out _, out _), k));
         Assert.All(NameIndex.IdOnlyKinds, k => Assert.False(QualifiedName.TryParse("@" + k + ":x", out _, out _), k));
         Assert.Equal(kinds.Order(StringComparer.Ordinal), NameIndex.NamedKinds.Concat(NameIndex.IdOnlyKinds).Order(StringComparer.Ordinal));

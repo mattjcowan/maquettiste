@@ -507,6 +507,9 @@ public sealed class RScenario : RElement
     /// <summary>The object the process runs for, or <see langword="null"/> when the scenario has no objects (or names none of them).</summary>
     public RScenarioObject? Subject { get; internal set; }
 
+    /// <summary>Who acts in the scenario, in file order (actors-design.md decision 14); empty for a scenario with none.</summary>
+    public RList<RParticipant> Participants { get; internal set; } = RList<RParticipant>.Empty;
+
     /// <summary>The starting point.</summary>
     public RScenarioStart Start { get; internal set; } = new();
 
@@ -535,6 +538,48 @@ public sealed class RScenarioObject : RObject
 
     /// <summary>The links to other objects of the scenario, in file order; a link whose end or object does not resolve is left out.</summary>
     public IReadOnlyList<RScenarioLink> Links { get; internal set; } = [];
+
+    /// <summary>The participant that owns the object (actors-design.md decision 16), when the file names one of the scenario's.</summary>
+    public RParticipant? Owner { get; internal set; }
+}
+
+/// <summary>A participant of a scenario (actors-design.md decision 14): who acts, with the actor it stands for and what it holds.</summary>
+public sealed class RParticipant : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "participant";
+
+    /// <summary>The name, unique in the scenario.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The display name, or <see langword="null"/> when the file gives none.</summary>
+    public string? DisplayName { get; internal set; }
+
+    /// <summary>The value the team's system would hold for them: a <see cref="string"/> or a <see cref="long"/>; the name when the file gives
+    /// none.</summary>
+    public object Identity { get; internal set; } = "";
+
+    /// <summary>The person, external system or system actor they stand for, when the file names one that resolves.</summary>
+    public RActor? Actor { get; internal set; }
+
+    /// <summary>The roles, groups and organizations they hold, in file order; a holding whose actor does not resolve is left out.</summary>
+    public IReadOnlyList<RHolding> Holds { get; internal set; } = [];
+
+    /// <summary>The scenario object that is their record, when the file names one of the scenario's.</summary>
+    public RScenarioObject? Object { get; internal set; }
+}
+
+/// <summary>A role, group or organization a participant holds (actors-design.md decision 14).</summary>
+public sealed class RHolding
+{
+    /// <summary>The holding's id.</summary>
+    public string Id { get; internal set; } = "";
+
+    /// <summary>The role, group or organization held.</summary>
+    public RActor Actor { get; internal set; } = null!;
+
+    /// <summary>The scenario object it counts within, or <see langword="null"/> for a holding with no context.</summary>
+    public RScenarioObject? Within { get; internal set; }
 }
 
 /// <summary>A link from a scenario object to another object of the scenario, through a relation end.</summary>
@@ -585,10 +630,21 @@ public sealed class RStep : RObject
     /// a millisecond.</summary>
     public long? AfterTicks { get; internal set; }
 
+    /// <summary>The participant that acts (actors-design.md decision 15), when the step names one of the scenario's.</summary>
+    public RParticipant? Participant { get; internal set; }
+
     /// <summary>The actor sending the input.</summary>
     public RActor? Actor { get; internal set; }
 
-    /// <summary>The signing person's identity, for a gated event.</summary>
+    /// <summary>
+    /// The actor the step acts as (actors-design.md decision 15): for a step with a participant and no actor, the first actor of the first
+    /// list (for a gated move the gate's signers, else the event's or human task's actors) that the participant satisfies, or the
+    /// participant's actor when that list is empty, and <see langword="null"/> when it satisfies none; otherwise <see cref="Actor"/>.
+    /// The engine's replay runs the step as this actor, so generated tests that use it agree with it.
+    /// </summary>
+    public RActor? ActsAs { get; internal set; }
+
+    /// <summary>The signing person's identity, for a gated event, as the file gives it.</summary>
     public string? Signer { get; internal set; }
 
     /// <summary>The meaning of the signature.</summary>

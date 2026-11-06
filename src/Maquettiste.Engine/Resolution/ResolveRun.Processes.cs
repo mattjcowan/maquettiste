@@ -776,7 +776,10 @@ internal sealed partial class ResolveRun
             };
             var keys = deps.ToList();
             ResolveScenarioObjects(s, scenario, keys);
+            var participants = ResolveParticipants(s, scenario, keys);
             var traced = TraceInputs(scenario);
+            var cast = Processes.ScenarioCast.Of(scenario);
+            var chart = scenario.Participants.Count > 0 && Model.Get<Process>(scenario.Process) is { } runs ? ProcessLibraries.Chart(Model, runs) : null;
             var steps = new List<RStep>();
             for (var i = 0; i < scenario.Steps.Count; i++)
             {
@@ -802,6 +805,20 @@ internal sealed partial class ResolveRun
                 var stepDeps = DepsOf(r).AddRange(keys);
                 if (step.Actor is { } actor)
                     stepDeps.Element(actor);
+                r.ActsAs = r.Actor;
+                if (step.Participant is { } participantId && chart is not null)
+                {
+                    // The actor a participant acts as (actors-design.md decision 15) reads the actors' files (memberships and the actors
+                    // from the object) and which actors exist, the processes it invokes, and the scenario's objects (traced below).
+                    r.Participant = participants.GetValueOrDefault(participantId);
+                    r.ActsAs = Processes.Participants.ActsAs(Model, chart, cast, step) is { } acting ? _actors.GetValueOrDefault(acting) : null;
+                    stepDeps.Add(ActorKind);
+                    foreach (var known in _actorOrder)
+                        stepDeps.Element(known.Id);
+                    foreach (var invoked in ExprSites.InvokedProcesses(Model, chart.Process))
+                        stepDeps.Element(invoked.Id);
+                }
+
                 foreach (var id in traced)
                     stepDeps.Element(id);
                 if (step.Expect is { } expect)
@@ -891,6 +908,60 @@ internal sealed partial class ResolveRun
 
         s.Objects = new RList<RScenarioObject>(objects, listKeys.ToList());
         s.Subject = scenario.Subject is { } subject ? byId.GetValueOrDefault(subject) : null;
+    }
+
+    /// <summary>
+    /// A scenario's participants (actors-design.md decision 14), by id: each with its actor, its holdings (a holding whose actor does not
+    /// resolve is left out) and its object; and each object's owner. They are parts of the scenario's own file, and read the actors they
+    /// name.
+    /// </summary>
+    private Dictionary<string, RParticipant> ResolveParticipants(RScenario s, Scenario scenario, IReadOnlyList<string> keys)
+    {
+        var byId = new Dictionary<string, RParticipant>(StringComparer.Ordinal);
+        if (scenario.Participants.Count == 0)
+            return byId;
+        var objects = new Dictionary<string, RScenarioObject>(StringComparer.Ordinal);
+        foreach (var obj in s.Objects)
+            objects.TryAdd(obj.Id, obj);
+        var list = new List<RParticipant>();
+        var listKeys = new DependencySet(Keys).AddRange(keys);
+        foreach (var participant in scenario.Participants)
+        {
+            var r = new RParticipant
+            {
+                Id = participant.Id,
+                Name = participant.Name,
+                DisplayName = participant.DisplayName,
+                Identity = participant.Identity is { ValueKind: JsonValueKind.Number } number && number.TryGetInt64(out var integer) ? integer : participant.IdentityText,
+                Actor = participant.Actor is { } actor ? _actors.GetValueOrDefault(actor) : null,
+                Object = participant.Object is { } record ? objects.GetValueOrDefault(record) : null,
+                Holds = [.. participant.Holds.Where(h => _actors.ContainsKey(h.Actor)).Select(h => new RHolding
+                {
+                    Id = h.Id,
+                    Actor = _actors[h.Actor],
+                    Within = h.Within is { } within ? objects.GetValueOrDefault(within) : null,
+                })],
+            };
+            var deps = DepsOf(r).AddRange(keys);
+            foreach (var named in participant.Holds.Select(h => h.Actor).Prepend(participant.Actor).OfType<string>())
+            {
+                deps.Element(named);
+                listKeys.Element(named);
+            }
+
+            list.Add(r);
+            byId.TryAdd(r.Id, r);
+            Register(r);
+        }
+
+        s.Participants = new RList<RParticipant>(list, listKeys.ToList());
+        foreach (var obj in scenario.Objects)
+        {
+            if (obj.Owner is { } owner && objects.TryGetValue(obj.Id, out var r))
+                r.Owner = byId.GetValueOrDefault(owner);
+        }
+
+        return byId;
     }
 
     /// <summary>

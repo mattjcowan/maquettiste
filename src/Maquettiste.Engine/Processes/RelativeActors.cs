@@ -132,9 +132,7 @@ internal static class RelativeActors
             return null;
         if (relative.Form == "owner")
         {
-            var chain = Chain(model, rootEntity);
-            var entry = process.Subjects.Where(s => chain.Contains(s.Entity)).OrderBy(s => chain.IndexOf(s.Entity)).FirstOrDefault();
-            if (entry?.Owner is not { } owner)
+            if (EntryOf(model, process, rootEntity)?.Owner is not { } owner)
                 return null;
             if (ExprSites.AttributesOf(model, rootEntity).FirstOrDefault(a => string.Equals(a.Id, owner, StringComparison.Ordinal)) is { } attribute)
                 return new RelativeTarget(ValueOf(root, attribute), null);
@@ -155,6 +153,21 @@ internal static class RelativeActors
         }
 
         return new RelativeTarget(null, current.Id);
+    }
+
+    /// <summary>The subject entry of a process that governs an entity: its own, else its nearest base's; <see langword="null"/> when none
+    /// does.</summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process.</param>
+    /// <param name="entity">The entity.</param>
+    /// <returns>The entry.</returns>
+    public static ProcessSubject? EntryOf(ModelSnapshot model, Process process, Entity entity)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(entity);
+        var chain = Chain(model, entity);
+        return process.Subjects.Where(s => chain.Contains(s.Entity)).OrderBy(s => chain.IndexOf(s.Entity)).FirstOrDefault();
     }
 
     private static JsonElement ValueOf(ScenarioObject obj, ModelAttribute attribute) =>

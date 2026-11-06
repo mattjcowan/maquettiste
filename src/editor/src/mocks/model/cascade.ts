@@ -44,6 +44,8 @@ const NOUNS: Record<string, string> = {
   alternateKeys: "key",
   objects: "object",
   links: "link",
+  participants: "participant",
+  holds: "holding",
 };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);

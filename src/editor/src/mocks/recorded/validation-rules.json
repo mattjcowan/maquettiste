@@ -2775,7 +2775,7 @@
   {
     "id": "MQ9301",
     "defaultSeverity": "error",
-    "description": "A scenario step is refused while expect.accepted is true (no transition, a guard false, an actor not allowed, a gate refusal), or accepted while it is false; fix the step's input or set accepted to what the process does.",
+    "description": "A scenario step is refused while expect.accepted is true (no transition, a guard false, an actor not allowed, a gate refusal), or accepted while it is false; a refusal by actor names the step's participant and the list it did not satisfy; fix the step's input or set accepted to what the process does.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true
@@ -2810,7 +2810,7 @@
   {
     "id": "MQ9305",
     "defaultSeverity": "error",
-    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject, or a link whose end does not fit; fix the step or the object.",
+    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject, or a link whose end does not fit, or an owner beside its subject's owner field or that is not one of the scenario's participants; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; fix the step, the object or the participant.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true

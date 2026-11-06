@@ -828,6 +828,18 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
           return;
         }
       }
+      // A participant row opens its scenario's editor on the Participants tab.
+      if (node.kind === "participant") {
+        let up: string | undefined = node.parent;
+        while (up && forest.nodes.get(up)?.kind !== "scenario") up = forest.nodes.get(up)?.parent;
+        const scenario = up ? forest.nodes.get(up)?.id : undefined;
+        const summary = scenario ? (forest.byId.get(scenario) as ElementSummary | undefined) : undefined;
+        if (summary) {
+          store.getState().updateEditors((e) => openTab(setView(e, "scenario", "participants"), { id: summary.id, kind: "scenario" }, { pin: how === "open" }));
+          select([summary.id]);
+          return;
+        }
+      }
       const targetId = node.target ? forest.nodes.get(node.target)?.id : undefined;
       // Opening (not a click, which only selects) makes the element a recent one (3.3).
       const opened = targetId ?? node.id;

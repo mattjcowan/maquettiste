@@ -634,6 +634,9 @@ public sealed record Scenario : Element, IPackaged
     [ElementRef(IndexKinds = ["object"])]
     public string? Subject { get; init; }
 
+    /// <summary>Who acts in the scenario (actors-design.md decision 14), in file order; parts of the scenario with name forms.</summary>
+    public IReadOnlyList<ScenarioParticipant> Participants { get; init; } = [];
+
     /// <summary>The starting point; <see langword="null"/> means the attribute defaults and the fixed start instant.</summary>
     public ScenarioStart? Start { get; init; }
 
@@ -666,6 +669,65 @@ public sealed record ScenarioObject : IProcessNode
 
     /// <summary>The objects this object links to, each through a relation end.</summary>
     public IReadOnlyList<ScenarioLink> Links { get; init; } = [];
+
+    /// <summary>The participant that owns the object (actors-design.md decision 16), for a subject whose entry names no owner field.</summary>
+    [ElementRef(IndexKinds = ["participant"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Owner { get; init; }
+}
+
+/// <summary>
+/// Someone or something that acts in a scenario (actors-design.md decision 14): it stands for an actor, holds roles, groups and
+/// organizations, optionally within one of the scenario's objects, and may have an object as its record. It lives in the scenario only.
+/// </summary>
+public sealed record ScenarioParticipant : IProcessNode
+{
+    /// <inheritdoc/>
+    public required string Id { get; init; }
+
+    /// <summary>The name, unique in the scenario.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>An optional display name.</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>The value the team's system would hold for them (a string or an integer); the name when absent.</summary>
+    public JsonElement? Identity { get; init; }
+
+    /// <summary>The person, external system or system actor they stand for, whose memberships they then have.</summary>
+    [ElementRef(ElementKind.Actor)]
+    public string? Actor { get; init; }
+
+    /// <summary>The roles, groups and organizations they hold, in file order.</summary>
+    public IReadOnlyList<ScenarioHolding> Holds { get; init; } = [];
+
+    /// <summary>The scenario object that is their record.</summary>
+    [ElementRef(IndexKinds = ["object"])]
+    public string? Object { get; init; }
+
+    /// <summary>The identity's text: a string as written, an integer in invariant digits, else the name.</summary>
+    [JsonIgnore]
+    public string IdentityText => Identity switch
+    {
+        { ValueKind: JsonValueKind.String } text => text.GetString() ?? Name,
+        { ValueKind: JsonValueKind.Number } number => number.GetRawText(),
+        _ => Name,
+    };
+}
+
+/// <summary>A role, group or organization a participant holds, with no context or within one of the scenario's objects.</summary>
+public sealed record ScenarioHolding
+{
+    /// <summary>The holding's ULID.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The role, group or organization held.</summary>
+    [ElementRef(ElementKind.Actor)]
+    public required string Actor { get; init; }
+
+    /// <summary>The scenario object it counts within; without it, it counts only where no context is asked (decision 13).</summary>
+    [ElementRef(IndexKinds = ["object"])]
+    public string? Within { get; init; }
 }
 
 /// <summary>A link from a scenario object to another object of the scenario, through a relation end.</summary>
@@ -724,6 +786,12 @@ public sealed record ScenarioStep : IProcessNode
 
     /// <summary>An ISO 8601 duration to advance the clock by, for <see cref="StepInput.Time"/>.</summary>
     public string? After { get; init; }
+
+    /// <summary>The scenario's participant that acts (actors-design.md decision 15); the engine works out the actor it acts as unless
+    /// <see cref="Actor"/> is given. Left out of a trace's echo when absent.</summary>
+    [ElementRef(IndexKinds = ["participant"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Participant { get; init; }
 
     /// <summary>The actor sending the input.</summary>
     [ElementRef(ElementKind.Actor)]

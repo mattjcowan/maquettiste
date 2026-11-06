@@ -570,6 +570,15 @@ export const SIMULATION_LABELS = {
   /** The actor of a move the input names no actor for: the system actor (Automatic) of the initial entry, a time step or an invoke completion. */
   byActor: (actor: string) => `by ${actor}`,
   bySigner: (signer: string) => `signed by ${signer}`,
+  // Participants (actors-design.md decision 15)
+  participant: "Participant",
+  noParticipant: "(no participant)",
+  fromParticipant: "(from the participant)",
+  actsAs: (actor: string) => `acts as ${actor}`,
+  asParticipant: (participant: string) => `as ${participant}`,
+  /** A step by a participant: the actor the engine worked out for it, or that it satisfied none of the list. */
+  actsAsLine: (participant: string, actor: string | null) =>
+    actor ? `${participant} acted as ${actor}` : `${participant} satisfies none of the actors the step needs`,
   // Record
   record: "Record to scenario…",
   recordTitle: "Record to scenario",
@@ -673,4 +682,30 @@ export const PROCESS_TAB_LABELS = {
   gates: "Gates",
   context: "Context",
   scenarios: "Scenarios",
+} as const;
+
+/** The scenario editor's participants (actors-design.md decision 14). The word is one constant here: the owner has yet to confirm it. */
+export const PARTICIPANT_LABELS = {
+  singular: "participant",
+  plural: "participants",
+  tab: "Participants",
+  objectsTab: "Objects",
+  grid: (scenario: string) => `Participants of ${scenario}`,
+  name: "Name",
+  displayName: "Display name",
+  identity: "Identity",
+  actor: "Stands for",
+  holds: "Holds",
+  object: "Record object",
+  step: "Participant",
+  owner: "Owner",
+  entity: "Entity",
+  none: "(none)",
+  automatic: "Automatic",
+  holdsHint: "A role, group or organization, optionally followed by 'in' and an object of the scenario, comma-separated: Reviewer in Project1, Admin",
+  ownerLocked: "The process names where this object's owner is held, so the owner comes from its values and links.",
+  holdsUnknown: (text: string) => `'${text}' is not a role, group or organization, or not an object of the scenario.`,
+  /** Show the row's step text in the simulation panel and the trace. */
+  actsAs: (actor: string) => `acts as ${actor}`,
+  noActsAs: "satisfies none of the actors it needs",
 } as const;

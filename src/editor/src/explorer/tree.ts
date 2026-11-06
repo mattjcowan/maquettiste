@@ -25,6 +25,7 @@ import {
   ACTOR_TYPE_LABELS,
   PROCESS_LABELS,
   PROCESS_TIPS,
+  PARTICIPANT_LABELS,
   CHART_LABELS,
   countOf,
   kindFolder,
@@ -1492,6 +1493,8 @@ export function buildForest(input: TreeInput): Forest {
       .map((sc) => {
         const row = elementNode(sc, "processes");
         row.secondary = `${plural(sc.stepCount ?? 0, "step", "steps")} · ${scenarioStatusText(statusOf?.get(sc.id))}`;
+        // Its participants are listed once its document is loaded, when the row is opened (as a process row's States are).
+        row.load = "document";
         return row;
       })
       .sort((a, b) => Number(failed(b.id!)) - Number(failed(a.id!)) || byLabel(a, b));
@@ -1949,6 +1952,7 @@ export function documentChildren(
   if (!node) return [];
   if (node.id) documentHashes.set(node, forest.byId.get(node.id)?.hash ?? "");
   if (node.kind === "process") return processChildren(forest, node, doc, boundAttribute, libraries);
+  if (node.kind === "scenario") return scenarioChildren(forest, node, doc);
   const rest = childKeys(forest, key).filter((k) => k !== `${key}/attributes` && k !== `${key}/members` && k !== `${key}/storage`);
   const json = doc.json as Record<string, unknown>;
   const nameOf = (id: string) => forest.byId.get(id)?.name;
@@ -1972,6 +1976,31 @@ export function documentChildren(
 }
 
 type StateDoc = { id?: string; name?: string; type?: string; states?: StateDoc[] };
+
+/** A scenario row's Participants folder from its document (actors-design.md section 9); none when it has no participants. */
+function scenarioChildren(forest: Forest, node: TreeNode, doc: ElementDocument): readonly string[] {
+  const json = doc.json as { participants?: { id?: string; name?: string; displayName?: string; actor?: string }[] };
+  const list = json.participants ?? [];
+  const items = list.map((p, i) => {
+    const row = item(
+      forest,
+      `${node.key}/participants`,
+      p.id ?? String(i),
+      p.displayName || p.name || "",
+      p.actor ? forest.byId.get(p.actor)?.name : undefined,
+    );
+    row.icon = "actor";
+    row.kind = "participant";
+    row.explorer = node.explorer;
+    row.pointer = `/participants/${i}`;
+    return row;
+  });
+  const folder = items.length ? navFolder(forest, node, "participants", PARTICIPANT_LABELS.tab, "actor", items, fmt(items.length)) : undefined;
+  node.children = folder ? [folder.key] : [];
+  // A scenario with no participants has nothing to open.
+  if (!folder) node.load = undefined;
+  return node.children;
+}
 
 /** A library's document, for the parts a process names from it (the caller reads the libraries when a transition names one). */
 export interface LibraryDoc {

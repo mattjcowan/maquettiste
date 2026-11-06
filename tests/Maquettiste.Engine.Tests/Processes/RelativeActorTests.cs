@@ -18,34 +18,34 @@ namespace Maquettiste.Engine.Tests.Processes;
 /// </summary>
 public sealed class RelativeActorTests
 {
-    private const string Pkg = "01JPKG00000000000000000001";
-    private const string Work = "01JENT00000000000000000101";
-    private const string Item = "01JENT00000000000000000102";
-    private const string Document = "01JENT00000000000000000103";
-    private const string Project = "01JENT00000000000000000104";
-    private const string Person = "01JENT00000000000000000105";
-    private const string OwnerLogin = "01JATT00000000000000000102";
-    private const string Tags = "01JATT00000000000000000103";
-    private const string ItemOnly = "01JATT00000000000000000104";
-    private const string ProjectName = "01JATT00000000000000000106";
-    private const string WorkProject = "01JRXN00000000000000000101";
-    private const string ProjectLead = "01JRXN00000000000000000102";
-    private const string DocumentAuthor = "01JRXN00000000000000000104";
-    private const string EProject = "01JEND00000000000000000102";
-    private const string ELead = "01JEND00000000000000000104";
-    private const string EWatchers = "01JEND00000000000000000106";
-    private const string EAuthor = "01JEND00000000000000000108";
-    private const string Reviewer = "01JACT00000000000000000101";
-    private const string Owner = "01JACT00000000000000000102";
-    private const string Lead = "01JACT00000000000000000103";
-    private const string ProjectReviewer = "01JACT00000000000000000104";
-    private const string Ann = "01JACT00000000000000000105";
-    private const string Review = "01JPRC00000000000000000101";
-    private const string ItemEntry = "01JPRX00000000000000000101";
-    private const string DocumentEntry = "01JPRX00000000000000000102";
-    private const string SubmitEvent = "01JPRC00000000000000000911"; // Review's events: its id's prefix, then 911 and 912
-    private const string ApproveEvent = "01JPRC00000000000000000912";
-    private const string ReviewFile = "model/processes/review.json";
+    internal const string Pkg = "01JPKG00000000000000000001";
+    internal const string Work = "01JENT00000000000000000101";
+    internal const string Item = "01JENT00000000000000000102";
+    internal const string Document = "01JENT00000000000000000103";
+    internal const string Project = "01JENT00000000000000000104";
+    internal const string Person = "01JENT00000000000000000105";
+    internal const string OwnerLogin = "01JATT00000000000000000102";
+    internal const string Tags = "01JATT00000000000000000103";
+    internal const string ItemOnly = "01JATT00000000000000000104";
+    internal const string ProjectName = "01JATT00000000000000000106";
+    internal const string WorkProject = "01JRXN00000000000000000101";
+    internal const string ProjectLead = "01JRXN00000000000000000102";
+    internal const string DocumentAuthor = "01JRXN00000000000000000104";
+    internal const string EProject = "01JEND00000000000000000102";
+    internal const string ELead = "01JEND00000000000000000104";
+    internal const string EWatchers = "01JEND00000000000000000106";
+    internal const string EAuthor = "01JEND00000000000000000108";
+    internal const string Reviewer = "01JACT00000000000000000101";
+    internal const string Owner = "01JACT00000000000000000102";
+    internal const string Lead = "01JACT00000000000000000103";
+    internal const string ProjectReviewer = "01JACT00000000000000000104";
+    internal const string Ann = "01JACT00000000000000000105";
+    internal const string Review = "01JPRC00000000000000000101";
+    internal const string ItemEntry = "01JPRX00000000000000000101";
+    internal const string DocumentEntry = "01JPRX00000000000000000102";
+    internal const string SubmitEvent = "01JPRC00000000000000000911"; // Review's events: its id's prefix, then 911 and 912
+    internal const string ApproveEvent = "01JPRC00000000000000000912";
+    internal const string ReviewFile = "model/processes/review.json";
 
     private static CancellationToken Ct => ActorKit.Ct;
 
@@ -60,10 +60,10 @@ public sealed class RelativeActorTests
         $$"""{"kind":"relation","id":"{{id}}","name":"{{name}}","ends":[{"id":"{{fromEnd}}","entity":"{{from}}","role":"{{fromRole}}"},{"id":"{{toEnd}}","entity":"{{to}}","role":"{{navigation}}"{{(many ? "" : ",\"max\":1")}},"navigation":"{{navigation}}"}]}""";
 
     /// <summary>An actor file's text with a relative (raw JSON) and optional memberOf.</summary>
-    private static string Relative(string id, string name, string type, string relative, params string[] memberOf) =>
+    internal static string Relative(string id, string name, string type, string relative, params string[] memberOf) =>
         $$"""{"kind":"actor","id":"{{id}}","name":"{{name}}","type":"{{type}}"{{(memberOf.Length == 0 ? "" : ",\"memberOf\":[" + string.Join(",", memberOf.Select(m => "\"" + m + "\"")) + "]")}},"relative":{{relative}}}""";
 
-    private static string Process(string id, string name, string subjects, string submitActors, string approveActors, string use = "lifecycle", string gate = "") => $$"""
+    internal static string Process(string id, string name, string subjects, string submitActors, string approveActors, string use = "lifecycle", string gate = "") => $$"""
         {"kind":"process","id":"{{id}}","name":"{{name}}","package":"{{Pkg}}","use":"{{use}}"{{subjects}},
          "events":[{"id":"{{id[..^3]}}911","name":"submit","actors":[{{submitActors}}]},{"id":"{{id[..^3]}}912","name":"approve","actors":[{{approveActors}}]}],
          "states":[{"id":"{{id[..^3]}}921","name":"Draft"},{"id":"{{id[..^3]}}922","name":"Submitted"},{"id":"{{id[..^3]}}923","name":"Done","type":"final"}],
@@ -71,12 +71,12 @@ public sealed class RelativeActorTests
            {"id":"{{id[..^3]}}932","source":"{{id[..^3]}}922","event":"{{id[..^3]}}912","targets":["{{id[..^3]}}923"]{{gate}}}]}
         """;
 
-    private static string Ids(params string[] ids) => string.Join(",", ids.Select(i => "\"" + i + "\""));
+    internal static string Ids(params string[] ids) => string.Join(",", ids.Select(i => "\"" + i + "\""));
 
-    private const string ReviewSubjects = $$""","subjects":[{"id":"{{ItemEntry}}","entity":"{{Item}}","owner":"{{OwnerLogin}}"},{"id":"{{DocumentEntry}}","entity":"{{Document}}","owner":"{{EAuthor}}"}]""";
+    internal const string ReviewSubjects = $$""","subjects":[{"id":"{{ItemEntry}}","entity":"{{Item}}","owner":"{{OwnerLogin}}"},{"id":"{{DocumentEntry}}","entity":"{{Document}}","owner":"{{EAuthor}}"}]""";
 
     // The invented model; prepare adds or overwrites files after it.
-    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(Action<LoaderHarness>? prepare = null) =>
+    internal static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(Action<LoaderHarness>? prepare = null) =>
         await ActorKit.OpenAsync(h =>
         {
             h.Write("model/entities/work.json", Entity(Work, "Work", null, Attr("01JATT00000000000000000101", "id", "uuid"), Attr(OwnerLogin, "ownerLogin"), Attr(Tags, "tags", collection: true)));
@@ -100,7 +100,7 @@ public sealed class RelativeActorTests
     private static IEnumerable<string> Hits(IEnumerable<Diagnostic> diagnostics, string rule) =>
         diagnostics.Where(d => d.Rule == rule).Select(d => Path.GetFileName(d.FilePath) + ":" + d.JsonPointer).Order(StringComparer.Ordinal);
 
-    private static JsonObject Record(Maquettiste.Engine.Resolution.ResolvedModel model, string id) =>
+    internal static JsonObject Record(Maquettiste.Engine.Resolution.ResolvedModel model, string id) =>
         JsonSerializer.SerializeToNode(ResolvedRecords.Entries(model, "all", null).Single(e => e.Id == id).Project(), new JsonSerializerOptions(JsonSerializerDefaults.Web))!.AsObject();
 
     // ---- no change ----

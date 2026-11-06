@@ -1061,7 +1061,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         // the candidate), and, once the model has memberships, MQ9102 and MQ9105 on the processes that name actors and their scenarios'
         // replays (actors-design.md section 14).
         var membershipsMatter = element is Actor && Processes.ActorMembership.Of(model).Any;
-        if (element is Process or Actor)
+        // A scenario's participants name actors, which MQ9106 counts as used (actors-design.md decision 6).
+        if (element is Process or Actor or Scenario)
         {
             foreach (var actor in model.All<Actor>())
             {
@@ -1153,12 +1154,16 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
         // A scenario's objects (lifecycle-design.md decision 22) read their entities and the bases that declare their attributes and
         // defaults, the types (reference types too) their values must fit, and the relations whose ends name their links' navigations.
+        // A scenario's participants (actors-design.md decisions 14 to 17) read every actor's type, memberships and relative form: an actor
+        // change re-checks the scenarios that have participants, and none when no scenario has them.
         var objectsReached = element is Entity or Relation or EnumType or ValueObject or ScalarType or ReferenceType;
-        if (replayed.Count == 0 && !objectsReached)
+        var participantsReached = element is Actor;
+        if (replayed.Count == 0 && !objectsReached && !participantsReached)
             yield break;
         foreach (var scenario in model.All<Scenario>())
         {
-            if ((replayed.Contains(scenario.Process) || (objectsReached && ObjectsReach(model, scenario, element))) && model.GetDocument(scenario.Id) is { } peer)
+            if ((replayed.Contains(scenario.Process) || (objectsReached && ObjectsReach(model, scenario, element))
+                    || (participantsReached && scenario.Participants.Count > 0)) && model.GetDocument(scenario.Id) is { } peer)
                 yield return peer;
         }
     }

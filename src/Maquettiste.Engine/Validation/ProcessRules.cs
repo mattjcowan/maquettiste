@@ -1180,9 +1180,11 @@ internal static partial class ProcessRules
     {
         var model = context.Model;
         var membership = ActorMembership.Of(model);
-        // A process names it, or an actor from the object is the members of it (actors-design.md decision 6).
+        // A process names it, an actor from the object is the members of it, or a scenario's participant stands for it or holds it
+        // (actors-design.md decision 6).
         bool Named(string id) => model.ReferencesTo(id).Any(r => model.Get<Process>(r.FromElementId) is not null
-            || (model.Get<Actor>(r.FromElementId) is { Relative.MembersOf: { } holder } && string.Equals(holder, id, StringComparison.Ordinal)));
+            || (model.Get<Actor>(r.FromElementId) is { Relative.MembersOf: { } holder } && string.Equals(holder, id, StringComparison.Ordinal))
+            || (model.Get<Scenario>(r.FromElementId) is not null && r.JsonPointer.StartsWith("/participants/", StringComparison.Ordinal)));
         // An actor counts as used when a process names it, one of its members at any depth, or an actor it is a member of at any depth
         // (actors-design.md decision 6). The message is today's unless the actor has memberships or members.
         if (!Named(actor.Id) && !membership.AllMembers(actor.Id).Any(Named) && !membership.AllMemberOf(actor.Id).Any(Named))

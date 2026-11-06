@@ -16379,6 +16379,14 @@
                 "type": "string",
                 "description": "The id of the object the process runs for; absent for a scenario with no objects."
               },
+              "participants": {
+                "type": "array",
+                "description": "Who acts in the scenario, in file order (actors-design.md decision 14); absent for a scenario with none.",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/components/schemas/ParticipantRecord"
+                }
+              },
               "start": {
                 "$ref": "#/components/schemas/ScenarioStartRecord"
               },
@@ -16428,6 +16436,76 @@
             "items": {
               "$ref": "#/components/schemas/ScenarioLinkRecord"
             }
+          },
+          "owner": {
+            "type": "string",
+            "description": "The id of the participant that owns the object (actors-design.md decision 16); absent when the file names none."
+          }
+        }
+      },
+      "ParticipantRecord": {
+        "x-engine-record": "Maquettiste.Engine.ParticipantRecord",
+        "description": "A participant of a scenario (actors-design.md decision 14).",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "identity",
+          "holds"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Absent when the file gives none."
+          },
+          "identity": {
+            "type": [
+              "string",
+              "integer"
+            ],
+            "description": "The value the team's system would hold for them; the name when the file gives none."
+          },
+          "actor": {
+            "type": "string",
+            "description": "The id of the person, external system or system actor they stand for; absent when the file names none."
+          },
+          "holds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HoldingRecord"
+            }
+          },
+          "object": {
+            "type": "string",
+            "description": "The id of the scenario object that is their record; absent when the file names none."
+          }
+        }
+      },
+      "HoldingRecord": {
+        "x-engine-record": "Maquettiste.Engine.HoldingRecord",
+        "description": "A role, group or organization a participant holds (actors-design.md decision 14).",
+        "type": "object",
+        "required": [
+          "id",
+          "actor"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "string",
+            "description": "The id of the role, group or organization held."
+          },
+          "within": {
+            "type": "string",
+            "description": "The id of the scenario object it counts within; absent for a holding with no context."
           }
         }
       },
@@ -16577,6 +16655,14 @@
               "string",
               "null"
             ]
+          },
+          "participant": {
+            "type": "string",
+            "description": "The id of the participant that acts (actors-design.md decision 15); absent for a step that names none."
+          },
+          "actsAs": {
+            "type": "string",
+            "description": "With participant: the id of the actor the step acts as. It is the step's actor when given; else the first actor of the first\nlist (for a gated move, the gate's signers; else the event's or human task's actors) that the participant satisfies; with an\nempty first list, the participant's actor. Absent for a step that names no participant, and when the participant satisfies\nnone of the first list (the replay refuses the step by actor).\n"
           }
         }
       },
@@ -23782,6 +23868,13 @@
               "null"
             ]
           },
+          "participant": {
+            "description": "The id of a participant of the run (actors-design.md decision 15); the engine works out the actor it acts as unless `actor` is\ngiven, and an event's signer defaults to its identity. A trace's echo gives the actor it acted as and the signer; it leaves participant out when absent.\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "actor": {
             "type": [
               "string",
@@ -23864,6 +23957,16 @@
               "null"
             ]
           },
+          "participants": {
+            "description": "The run's participants, as a scenario's `participants` (actors-design.md decision 14); with `scenario`, that scenario's participants when absent.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ScenarioParticipant"
+            }
+          },
           "scenario": {
             "description": "A scenario of the process whose start and steps run first.",
             "type": [
@@ -23940,6 +24043,75 @@
             "items": {
               "$ref": "#/components/schemas/ScenarioLink"
             }
+          },
+          "owner": {
+            "description": "The id of the participant that owns the object, for a subject whose process entry names no owner field (actors-design.md decision 16).",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScenarioParticipant": {
+        "description": "A participant of a scenario or a simulation (`schemas/v1/scenario.json` `$defs/participant`, actors-design.md decision 14).",
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "name": {
+            "description": "The name, unique in the scenario (letters, digits and underscores, not starting with a digit).",
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "identity": {
+            "description": "The value the team's system would hold for them, such as a login or a number; the name when absent.",
+            "type": [
+              "string",
+              "integer"
+            ]
+          },
+          "actor": {
+            "description": "The id of the person, external system or system actor they stand for; they then have its memberships.",
+            "type": "string"
+          },
+          "holds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScenarioHolding"
+            }
+          },
+          "object": {
+            "description": "The id of the scenario object that is their record.",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ScenarioHolding": {
+        "description": "A role, group or organization a participant holds (`schemas/v1/scenario.json` `$defs/holding`).",
+        "type": "object",
+        "required": [
+          "id",
+          "actor"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "actor": {
+            "description": "The id of the role, group or organization held.",
+            "type": "string"
+          },
+          "within": {
+            "description": "The id of the scenario object it counts within; without it, it counts only where no context is asked (actors-design.md decision 13).",
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -24510,6 +24682,16 @@
               "string",
               "null"
             ]
+          },
+          "participants": {
+            "description": "The scenario's participants (actors-design.md decision 14), written to its `participants`; a step keeps the participant it names.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ScenarioParticipant"
+            }
           },
           "steps": {
             "type": [
@@ -37453,6 +37635,34 @@
         ],
         "additionalProperties": false
       },
+      "holding": {
+        "title": "Holding",
+        "description": "A role, group or organization held, with no context or within one of the scenario's objects.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "actor",
+          "within"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "actor": {
+            "description": "The role, group or organization held.",
+            "$ref": "#/components/schemas/id"
+          },
+          "within": {
+            "description": "The id of the scenario object it counts within; without it, it counts only where no context is asked.",
+            "$ref": "#/components/schemas/id"
+          }
+        },
+        "required": [
+          "id",
+          "actor"
+        ],
+        "additionalProperties": false
+      },
       "object": {
         "title": "Object",
         "description": "An object of the scenario: an instance of an entity with its values and its links to other objects.",
@@ -37462,7 +37672,8 @@
           "name",
           "entity",
           "values",
-          "links"
+          "links",
+          "owner"
         ],
         "properties": {
           "id": {
@@ -37493,12 +37704,69 @@
               "$ref": "#/components/schemas/link"
             },
             "default": []
+          },
+          "owner": {
+            "description": "The id of the scenario's participant that owns the object, for a subject whose process entry names no owner field.",
+            "$ref": "#/components/schemas/id"
           }
         },
         "required": [
           "id",
           "name",
           "entity"
+        ],
+        "additionalProperties": false
+      },
+      "participant": {
+        "title": "Participant",
+        "description": "Someone or something that acts in the scenario.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "identity",
+          "actor",
+          "holds",
+          "object"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/identifier"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "identity": {
+            "description": "The value the team's system would hold for them, such as a login or a number; the name when absent.",
+            "type": [
+              "string",
+              "integer"
+            ]
+          },
+          "actor": {
+            "description": "The person, external system or system actor they stand for; they then have its memberships.",
+            "$ref": "#/components/schemas/id"
+          },
+          "holds": {
+            "description": "The roles, groups and organizations they hold.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/holding"
+            },
+            "default": []
+          },
+          "object": {
+            "description": "The id of the scenario object that is their record.",
+            "$ref": "#/components/schemas/id"
+          }
+        },
+        "required": [
+          "id",
+          "name"
         ],
         "additionalProperties": false
       },
@@ -37512,6 +37780,7 @@
           "event",
           "invoke",
           "after",
+          "participant",
           "actor",
           "signer",
           "meaning",
@@ -37544,11 +37813,15 @@
             "description": "An ISO 8601 duration to advance the clock by, for input time.",
             "type": "string"
           },
+          "participant": {
+            "description": "The id of the scenario's participant that acts; the engine works out the actor it acts as unless actor is given.",
+            "$ref": "#/components/schemas/id"
+          },
           "actor": {
             "$ref": "#/components/schemas/id"
           },
           "signer": {
-            "description": "The signing person's identity, for gated events.",
+            "description": "The signing person's identity, for gated events; the participant's identity when absent.",
             "type": "string"
           },
           "meaning": {
@@ -37638,6 +37911,7 @@
           "process",
           "objects",
           "subject",
+          "participants",
           "description",
           "rationale",
           "decision",
@@ -37693,6 +37967,14 @@
           "subject": {
             "description": "The id of the object the process runs for; required once there are objects.",
             "$ref": "#/components/schemas/id"
+          },
+          "participants": {
+            "description": "Who acts in the scenario: each stands for an actor, holds roles, groups or organizations (optionally within one of the scenario's objects), and may have an object as its record. A step names the one that acts.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/participant"
+            },
+            "default": []
           },
           "description": {
             "$ref": "#/components/schemas/description"
@@ -37809,7 +38091,8 @@
               "name",
               "entity",
               "values",
-              "links"
+              "links",
+              "owner"
             ],
             "properties": {
               "id": {
@@ -37840,6 +38123,10 @@
                   "$ref": "#/components/schemas/link"
                 },
                 "default": []
+              },
+              "owner": {
+                "description": "The id of the scenario's participant that owns the object, for a subject whose process entry names no owner field.",
+                "$ref": "#/components/schemas/id"
               }
             },
             "required": [
@@ -37873,6 +38160,87 @@
             ],
             "additionalProperties": false
           },
+          "participant": {
+            "title": "Participant",
+            "description": "Someone or something that acts in the scenario.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "identity",
+              "actor",
+              "holds",
+              "object"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "$ref": "#/components/schemas/identifier"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "identity": {
+                "description": "The value the team's system would hold for them, such as a login or a number; the name when absent.",
+                "type": [
+                  "string",
+                  "integer"
+                ]
+              },
+              "actor": {
+                "description": "The person, external system or system actor they stand for; they then have its memberships.",
+                "$ref": "#/components/schemas/id"
+              },
+              "holds": {
+                "description": "The roles, groups and organizations they hold.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/holding"
+                },
+                "default": []
+              },
+              "object": {
+                "description": "The id of the scenario object that is their record.",
+                "$ref": "#/components/schemas/id"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "holding": {
+            "title": "Holding",
+            "description": "A role, group or organization held, with no context or within one of the scenario's objects.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "actor",
+              "within"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "actor": {
+                "description": "The role, group or organization held.",
+                "$ref": "#/components/schemas/id"
+              },
+              "within": {
+                "description": "The id of the scenario object it counts within; without it, it counts only where no context is asked.",
+                "$ref": "#/components/schemas/id"
+              }
+            },
+            "required": [
+              "id",
+              "actor"
+            ],
+            "additionalProperties": false
+          },
           "step": {
             "title": "Step",
             "description": "One input to the process and what is expected after it.",
@@ -37883,6 +38251,7 @@
               "event",
               "invoke",
               "after",
+              "participant",
               "actor",
               "signer",
               "meaning",
@@ -37915,11 +38284,15 @@
                 "description": "An ISO 8601 duration to advance the clock by, for input time.",
                 "type": "string"
               },
+              "participant": {
+                "description": "The id of the scenario's participant that acts; the engine works out the actor it acts as unless actor is given.",
+                "$ref": "#/components/schemas/id"
+              },
               "actor": {
                 "$ref": "#/components/schemas/id"
               },
               "signer": {
-                "description": "The signing person's identity, for gated events.",
+                "description": "The signing person's identity, for gated events; the participant's identity when absent.",
                 "type": "string"
               },
               "meaning": {

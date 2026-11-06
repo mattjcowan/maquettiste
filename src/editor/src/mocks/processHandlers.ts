@@ -13,7 +13,7 @@ import { mentions, replayable, type Recording } from "./recorded";
 
 const kebab = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 import { MOCK_FAILURES } from "./model/processSeed";
-import { normalizeInput, readAt, replay, simulate } from "./model/stepper";
+import { normalizeInput, PARTICIPANT_TEXTS, readAt, replay, simulate, unsatisfiedLists } from "./model/stepper";
 import { enumDrift, schemaDiagnostics } from "./model/validate";
 import { syncCodesOf } from "./model/syncCodes";
 import { report } from "./model/store";
@@ -116,6 +116,45 @@ function castOf(value: Json, scenario: Json | undefined, mint = false): { object
   return { objects, subject: fresh.get(wanted)! };
 }
 
+/**
+ * The participants a run carries (actors-design.md decision 14): the request's, else the scenario's. Recording mints a fresh id
+ * for every participant and holding, and remaps the objects' `owner`, a participant's `object` and a holding's `within`
+ * (the objects take their fresh ids from `objectIds`).
+ */
+function participantsOf(
+  value: Json,
+  scenario: Json | undefined,
+  mint = false,
+  objectIds: ReadonlyMap<string, string> = new Map(),
+): { participants: Json[]; ids: ReadonlyMap<string, string> } | { error: string } | null {
+  const own = value.participants !== undefined && value.participants !== null;
+  if (own && !Array.isArray(value.participants)) return { error: "participants must be an array." };
+  const list = own ? arr(value.participants) : arr(scenario?.participants);
+  if (!list.length) return null;
+  const seen = new Set<string>();
+  const names = new Set<string>();
+  for (const p of list) {
+    if (typeof p.id !== "string" || !p.id) return { error: "each participant needs an id." };
+    if (seen.has(p.id)) return { error: `the participant id ${p.id} is used twice.` };
+    seen.add(p.id);
+    if (typeof p.name !== "string" || !p.name) return { error: "each participant needs a name." };
+    if (names.has(p.name)) return { error: `the scenario has two participants named ${p.name}.` };
+    names.add(p.name);
+  }
+  if (!mint) return { participants: list, ids: new Map(list.map((p) => [p.id as string, p.id as string])) };
+  const fresh = new Map(list.map((p) => [p.id as string, newId()]));
+  const remap = (id: unknown) => (typeof id === "string" ? (objectIds.get(id) ?? id) : id);
+  const participants = list.map((p) => ({
+    ...p,
+    id: fresh.get(p.id as string)!,
+    ...(p.object !== undefined ? { object: remap(p.object) } : {}),
+    ...(Array.isArray(p.holds)
+      ? { holds: arr(p.holds).map((h) => ({ ...h, id: newId(), ...(h.within !== undefined ? { within: remap(h.within) } : {}) })) }
+      : {}),
+  }));
+  return { participants, ids: fresh };
+}
+
 /** A process document from a statechart config: one state per config state, one event per `on` key (import dry run). */
 export function importDocument(config: Json, name: string, pkg: string | null, id: string = newId()): { document: Json; created: string[] } {
   const created: string[] = [];
@@ -196,7 +235,38 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       },
       actorName: (id: string) => actors.find((a) => a.id === id)?.json.name as string | undefined,
       membership: new Membership(actors),
+      ownerActors: new Set(actors.filter((a) => (a.json.relative as Json | undefined)?.owner === true).map((a) => a.id)),
     };
+  };
+  // A scenario with participants is replayed for real: a step refused while it expects to be accepted (or the reverse) fails
+  // with MQ9301, and a refusal by actor names the participant and the list it did not satisfy.
+  const participantFailure = (doc: Json, scenario: Json) => {
+    if (!arr(scenario.participants).length) return null;
+    const cast = castOf({}, scenario);
+    const result = simulate(doc, scenario.start as never, arr(scenario.steps), {
+      ...actorLookup(),
+      ...(cast && !("error" in cast) ? { objects: cast.objects, subject: cast.subject } : {}),
+      participants: arr(scenario.participants),
+    });
+    const steps = arr(scenario.steps);
+    for (const t of result.trace) {
+      if (t.index < 0) continue;
+      const step = steps[t.index];
+      const expected = (step.expect as Json | undefined)?.accepted !== false;
+      if (t.accepted === expected) continue;
+      const people = arr(scenario.participants);
+      const p = people.find((x) => x.id === step.participant);
+      const message =
+        !t.accepted && t.refusal === "actor" && p
+          ? PARTICIPANT_TEXTS.refusedByActor(
+              t.index + 1,
+              String(p.name),
+              (unsatisfiedLists.get(t) ?? []).map((a) => actorLookup().actorName(a) ?? a),
+            )
+          : `Step ${t.index + 1} is ${t.accepted ? "accepted" : "refused"} while expect.accepted is ${String(expected)}; fix the step's input or set accepted to what the process does.`;
+      return { step: t.index, rule: "MQ9301", message, expected, actual: t.accepted };
+    }
+    return null;
   };
   const scenariosOf = (processId: string) =>
     [...model.entries.values()].filter((e) => e.json.kind === "scenario" && e.json.process === processId).sort((a, b) => (a.path < b.path ? -1 : 1));
@@ -222,6 +292,8 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       if (readAt(start?.at) === "invalid") return bad(`start.at is not an ISO 8601 instant: ${String(start?.at)}.`);
       const cast = castOf(value, scenarioEntry?.json);
       if (cast && "error" in cast) return bad(cast.error);
+      const people = participantsOf(value, scenarioEntry?.json);
+      if (people && "error" in people) return bad(people.error);
       let doc = entry.json;
       if (value.document && typeof value.document === "object") {
         doc = value.document as Json;
@@ -247,6 +319,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         from,
         ...actorLookup(),
         ...(cast ? { objects: cast.objects, subject: cast.subject } : {}),
+        ...(people ? { participants: people.participants } : {}),
       });
       return HttpResponse.json({ processHash: value.document ? sha256Hex(JSON.stringify(doc)) : entry.hash, ...result });
     }),
@@ -261,9 +334,18 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       if (readAt(start?.at) === "invalid") return bad(`start.at is not an ISO 8601 instant: ${String(start?.at)}.`);
       const cast = castOf(value, undefined, true);
       if (cast && "error" in cast) return bad(cast.error);
+      const objectIds = new Map<string, string>();
+      if (cast && !("error" in cast)) arr(value.objects).forEach((o, i) => objectIds.set(String(o.id), String(cast.objects[i].id)));
+      const people = participantsOf(value, undefined, true, objectIds);
+      if (people && "error" in people) return bad(people.error);
       const dryRun = new URL(request.url).searchParams.get("dryRun") === "true";
       // The expectations come from a replay of the inputs, as the engine's record fills them (refusals as accepted: false).
-      const replayed = replay(entry.json, start as never, value.steps as Json[], actorLookup());
+      const replayed = replay(entry.json, start as never, value.steps as Json[], {
+        ...actorLookup(),
+        ...(cast ? { objects: cast.objects, subject: cast.subject } : {}),
+        // The steps name the request's participants: the replay runs before the fresh ids are given.
+        ...(value.participants ? { participants: arr(value.participants) } : {}),
+      });
       // The engine refuses inputs that cannot be replayed to the last step (422 with the replay's findings).
       if (!replayed.complete && value.steps.length) return HttpResponse.json(report(replayed.diagnostics.length ? replayed.diagnostics : []), { status: 422 });
       const lookup = actorLookup();
@@ -271,12 +353,13 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         // Names resolve to ids as the engine's record resolves them; defaults are left out (the canonical form).
         const s = normalizeInput(raw, i, { doc: entry.json }, lookup.actorId) as unknown as Json;
         const step: Json = { id: newId() };
-        for (const key of ["input", "event", "invoke", "after", "actor", "signer", "meaning", "reason", "payload", "assume"]) {
+        for (const key of ["input", "event", "invoke", "after", "participant", "actor", "signer", "meaning", "reason", "payload", "assume"]) {
           const v = s[key];
           if (v === undefined || v === null || v === "" || (key === "input" && v === "event")) continue;
           if (typeof v === "object" && !Array.isArray(v) && !Object.keys(v as Json).length) continue;
           step[key] = v;
         }
+        if (typeof step.participant === "string" && people && !("error" in people)) step.participant = people.ids.get(step.participant) ?? step.participant;
         step.expect = replayed.expects[i] ?? {};
         if (typeof s.description === "string" && s.description) step.description = s.description;
         return step;
@@ -288,7 +371,13 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         name: value.name.trim(),
         process: entry.id,
         ...(start && (start.context || start.at) ? { start } : {}),
-        ...(cast ? { objects: cast.objects, subject: cast.subject } : {}),
+        ...(cast
+          ? {
+              objects: cast.objects.map((o) => (typeof o.owner === "string" && people ? { ...o, owner: people.ids.get(o.owner) ?? o.owner } : o)),
+              subject: cast.subject,
+            }
+          : {}),
+        ...(people ? { participants: people.participants } : {}),
         steps,
         ...(outcome === "final" ? { outcome } : {}),
       };
@@ -313,7 +402,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         list = list.filter((s) => wanted.includes(s.id) || wanted.includes(String(s.json.name)));
       }
       const results = list.map((s) => {
-        const failure = MOCK_FAILURES[s.id] ?? null;
+        const failure = MOCK_FAILURES[s.id] ?? participantFailure(entry.json, s.json) ?? null;
         return { scenario: s.id, name: String(s.json.name), passed: !failure, steps: arr(s.json.steps).length, failure };
       });
       return HttpResponse.json({ process: entry.id, results, passed: results.every((r) => r.passed) });
