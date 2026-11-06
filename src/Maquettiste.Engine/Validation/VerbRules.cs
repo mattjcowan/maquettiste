@@ -69,6 +69,8 @@ internal static class VerbRules
     private static void CheckVocabulary(VerbVocabulary vocabulary, Report report)
     {
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+        // Keys without their hyphens: x-1 and x1 would get one name in generated code (one enum member twice).
+        var compact = new Dictionary<string, int>(StringComparer.Ordinal);
         for (var i = 0; i < vocabulary.Verbs.Count; i++)
         {
             var verb = vocabulary.Verbs[i];
@@ -81,6 +83,12 @@ internal static class VerbRules
             else if (!seen.TryAdd(verb.Key, i))
             {
                 report.Add("MQ9702", $"Own verb '{verb.Key}' is already declared at index {Ptr.N(seen[verb.Key])}; merge the two (rename-verb), or give this verb another key.",
+                    pointer, verb.Id);
+            }
+            else if (!compact.TryAdd(BuiltInVerbs.Compact(verb.Key), i))
+            {
+                var first = vocabulary.Verbs[compact[BuiltInVerbs.Compact(verb.Key)]];
+                report.Add("MQ9702", $"Own verbs '{first.Key}' and '{verb.Key}' are one key once hyphens are dropped, so generated code would give them one name; merge the two (rename-verb), or give this verb another key.",
                     pointer, verb.Id);
             }
             else if (BuiltInVerbs.LookAlike(verb.Key) is { } builtIn)

@@ -184,6 +184,75 @@ describe("rename-verb and remove-verb", () => {
     expect((backend.model.get(operation)!.json as Json).verb).toBe("escalate");
   });
 
+  it("writes an emptied list as [], not by deleting it", () => {
+    const { backend } = setup();
+    expect(batch(backend, { op: "remove-verb", verb: "escalate" }).outcome).toBe("saved");
+    expect((backend.model.get(VOCAB)!.json as Json).verbs).toEqual([]);
+  });
+
+  it("leaves the uses of a built-in key alone when an own verb shadows it, and skips writes that change nothing", () => {
+    const docs = new Map<string, Json>([
+      [VOCAB, { kind: "verb-vocabulary", id: VOCAB, verbs: [{ id: ESCALATE, key: "promote" }] }],
+      ["o", { kind: "operation", id: "o", verb: "promote" }],
+      ["p", { kind: "operation", id: "p", name: "unrelated" }],
+    ]);
+    const removed = verbOperation(docs, { op: "remove-verb", verb: "promote" });
+    expect("changed" in removed && [...removed.changed.keys()]).toEqual([VOCAB]);
+    expect("changed" in removed && removed.changed.get(VOCAB)!.verbs).toEqual([]);
+    // Adopting the built-in of the same key writes the vocabulary only.
+    const adopted = verbOperation(docs, { op: "rename-verb", verb: "promote", to: "promote" });
+    expect("changed" in adopted && [...adopted.changed.keys()]).toEqual([VOCAB]);
+    // An own key that names no use writes the vocabulary only, never the unrelated documents.
+    const quiet = verbOperation(new Map<string, Json>([...docs, [VOCAB, { kind: "verb-vocabulary", id: VOCAB, verbs: [{ id: ESCALATE, key: "escalate" }] }]]), {
+      op: "rename-verb",
+      verb: "escalate",
+      to: "raise",
+    });
+    expect("changed" in quiet && [...quiet.changed.keys()]).toEqual([VOCAB]);
+  });
+
+  it("does not refuse MQ9707 for a use the batch itself writes", () => {
+    const { backend, operation } = setup();
+    const vocab = backend.model.get(VOCAB)!;
+    const op = backend.model.get(operation)!;
+    const renamed = structuredClone(vocab.json) as Json;
+    (renamed.verbs as Json[])[0].key = "raise";
+    const moved = structuredClone(op.json) as Json;
+    moved.verb = "raise";
+    const process = backend.model.index().find((r) => r.kind === "process" && r.use === "lifecycle")!.id;
+    const processDoc = structuredClone(backend.model.get(process)!.json) as Json;
+    (processDoc.events as Json[])[0].verb = "raise";
+    const result = backend.model.batch({
+      operations: [
+        { op: "update", id: VOCAB, expectedHash: vocab.hash, element: renamed },
+        { op: "update", id: operation, expectedHash: op.hash, element: moved },
+        { op: "update", id: process, expectedHash: backend.model.get(process)!.hash, element: processDoc },
+      ],
+    });
+    expect((result.body as { outcome: string }).outcome).toBe("saved");
+    // Left out of the batch, the same change is refused.
+    const again = setup();
+    const lone = structuredClone(again.backend.model.get(VOCAB)!.json) as Json;
+    (lone.verbs as Json[])[0].key = "raise";
+    const refused = again.backend.model.batch({
+      operations: [{ op: "update", id: VOCAB, expectedHash: again.backend.model.get(VOCAB)!.hash, element: lone }],
+    });
+    expect((refused.body as { outcome: string }).outcome).toBe("invalid");
+  });
+
+  it("reports own keys that differ only by hyphens as MQ9702", () => {
+    const { backend } = setup();
+    const doc = structuredClone(backend.model.get(VOCAB)!.json) as Json;
+    doc.verbs = [
+      { id: ESCALATE, key: "escalate" },
+      { id: "01JVERB000000000000000E005", key: "x-1" },
+      { id: "01JVERB000000000000000E006", key: "x1" },
+    ];
+    const refused = backend.model.save(VOCAB, doc, backend.model.get(VOCAB)!.hash);
+    expect(refused.outcome).toBe("invalid");
+    expect(refused.diagnostics.map((d) => `${d.rule} ${d.jsonPointer}`)).toContain("MQ9702 /verbs/2/key");
+  });
+
   it("is a pure function over documents", () => {
     const docs = new Map<string, Json>([
       [VOCAB, { kind: "verb-vocabulary", id: VOCAB, verbs: [{ id: ESCALATE, key: "escalate" }] }],

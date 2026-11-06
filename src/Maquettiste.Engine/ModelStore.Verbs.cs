@@ -19,8 +19,8 @@ public sealed partial class ModelStore
 
     /// <summary>
     /// Plans a verb operation: adds the updates to <paramref name="changes"/>; returns why it is refused, or <see langword="null"/>. Uses are
-    /// found by key in every event, transition and operation. <c>remove-verb</c> of an own verb whose key a built-in verb has (MQ9702) leaves
-    /// the uses, which name the built-in verb.
+    /// found by key in every event, transition and operation. <c>rename-verb</c> and <c>remove-verb</c> of an own verb whose key a built-in
+    /// verb has (MQ9702) leave the uses, which name the built-in verb: they write only the vocabulary.
     /// </summary>
     private string? VerbOperation(ModelSnapshot snapshot, BatchOperation o, List<PlannedChange> changes)
     {
@@ -75,8 +75,9 @@ public sealed partial class ModelStore
                 holder["verb"] = to;
         }
 
-        // A remove of an own verb that shadows a built-in key leaves the uses: they name the built-in verb.
-        var rewriteUses = to is not null || !BuiltInVerbs.IsBuiltIn(key);
+        // An own verb that shadows a built-in key (MQ9702) has no uses: they name the built-in verb, so a rename or a remove leaves them, and
+        // adopting the built-in (to the same key) writes only the vocabulary. A write that would change nothing is skipped.
+        var rewriteUses = !BuiltInVerbs.IsBuiltIn(key) && !string.Equals(to, key, StringComparison.Ordinal);
         foreach (var document in snapshot.Documents)
         {
             if (!rewriteUses || !ReferenceEquals(snapshot.GetDocument(document.Element.Id), document))

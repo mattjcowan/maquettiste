@@ -441,7 +441,7 @@ public static class RuleCatalog
         new("MQ9605", E, "Two or more actors of type system: the system itself (shown as Automatic) is one actor per project; change the type of all but one, for example to external-system, or give it roles through memberOf."),
         new("MQ9606", E, "A subject entry's owner that is not a single-valued attribute or a to-one relation end of its entity (own or inherited, or an attribute of a stereotype the entity or a base carries), or on a stereotype entry a single-valued attribute of the stereotype's own; clear the owner, or name a field that holds one actor."),
         new("MQ9701", E, "A verb that is neither a built-in verb nor one of the project's own (model/vocabularies/verbs.json). Reported at the event, transition or operation; add it to the project's verbs, or clear it."),
-        new("MQ9702", E, "An own verb whose key is a built-in verb's, or two own verbs with one key; use the built-in verb (rename-verb to it), or give the verb another key."),
+        new("MQ9702", E, "An own verb whose key is a built-in verb's, or two own verbs with one key, also once hyphens are dropped (x-1 and x1); use the built-in verb (rename-verb to it), merge the two, or give the verb another key."),
         new("MQ9703", E, "The verb vocabulary's hidden list names a key that is not a built-in verb; remove the entry."),
         new("MQ9704", W, "A hidden built-in verb is named. Reported at the use; show the verb again, or name another verb."),
         new("MQ9705", E, "A transition triggered by an event names a verb of its own: it takes its event's verb. Move the verb to the event when the event names none, or clear it."),

@@ -5,7 +5,7 @@
 // inverse entry.
 import type { QueryClient } from "@tanstack/react-query";
 import type { BatchOperationRequest, BatchParseResult, BatchRequest, BatchResult, ModelJson } from "@/api/types";
-import { applyBatchResult } from "@/api/queries";
+import { applyBatchResult, invalidateVerbs } from "@/api/queries";
 import { isBatchResult } from "@/api/endpoints";
 import { clone } from "@/lib/json";
 import type { EditorStore, UndoEntry } from "./store";
@@ -79,6 +79,8 @@ export class UndoManager {
     }
 
     applyBatchResult(this.deps.queryClient, result);
+    // A step that touched the verb vocabulary (or a verb the index lists) moves the "Used by" counts.
+    if (entry.before.concat(entry.after).some((j) => j?.kind === "verb-vocabulary")) invalidateVerbs(this.deps.queryClient);
     // Drafts left for these elements (invalid ones) were based on the hashes the batch replaced.
     for (const id of entry.ids) if (this.deps.store.getState().drafts[id]) this.deps.drafts.discard(id);
     const inverse: UndoEntry = {

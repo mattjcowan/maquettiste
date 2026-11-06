@@ -266,8 +266,12 @@ internal static class PlanExplainer
         "exports" => ExportsOf(key) is (var pack, { } id)
             ? "The exports of " + (Label(id, nameOf) ?? "element " + id) + " from " + pack
             : "The model exports of " + key[3..],
-        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? StereotypeCoverage(key) ?? "Input " + key,
+        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? StereotypeCoverage(key) ?? VerbNaming(key) ?? "Input " + key,
     };
+
+    /// <summary>The <c>vn:verbs</c> key's words (verbs-design.md section 6): "The verbs the model names". Its cause kind stays <c>inputs</c>.</summary>
+    private static string? VerbNaming(string key) =>
+        string.Equals(key, Model.ModelSnapshot.VerbNamingKey, StringComparison.Ordinal) ? "The verbs the model names" : null;
 
     /// <summary>
     /// A <c>cs:&lt;stereotype key&gt;</c> or <c>sn:subjects</c> key's words (stereotype-sets-design.md section 6): "The entities that carry

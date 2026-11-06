@@ -777,8 +777,9 @@ export class MockModel {
   }
 
   /** MQ9707: a save changes the key of an own verb that a use names (rename-verb does that, everywhere at once). */
-  private verbKeyRefusals(existing: Entry, entry: Entry, models: Iterable<Entry>): Diagnostic[] {
-    const docs = [...models];
+  private verbKeyRefusals(existing: Entry, entry: Entry, models: Iterable<Entry>, written: ReadonlySet<string> = new Set()): Diagnostic[] {
+    // A batch ignores the elements it writes itself: it is about to change their uses too.
+    const docs = [...models].filter((e) => !written.has(e.id));
     return verbKeyChanges(existing.json, entry.json, (key) => docs.some((e) => verbUses(e.json).some((u) => u.key === key))).map((message) => ({
       rule: "MQ9707",
       severity: "error" as const,
@@ -911,6 +912,7 @@ export class MockModel {
       };
     }
     const operations = (body as { operations: { op: string; id?: string; expectedHash?: string; element?: Json; resolution?: DeleteResolution }[] }).operations;
+    const batchWrites = new Set(operations.flatMap((o) => [o.id, o.element?.id].filter((v): v is string => typeof v === "string")));
     const candidate = new Map(this.entries);
     const items: SaveResult[] = [];
     const deleting = new Set(operations.filter((o) => o.op === "delete" && o.id).map((o) => o.id!));
@@ -1221,7 +1223,7 @@ export class MockModel {
           fail(this.invalid(id, schema.length ? schema : []));
           continue;
         }
-        const keyChanges = this.verbKeyRefusals(existing, entry, candidate.values());
+        const keyChanges = this.verbKeyRefusals(existing, entry, candidate.values(), batchWrites);
         if (keyChanges.length) {
           fail(this.invalid(id, keyChanges));
           continue;

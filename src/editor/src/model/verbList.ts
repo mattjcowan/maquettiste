@@ -116,6 +116,22 @@ export function verbUsage(rows: readonly ElementSummary[]): Map<string, { proces
   return out;
 }
 
+/** The processes and operations that name a verb key, from the index rows, in index order. */
+export function verbUsers(rows: readonly ElementSummary[], key: string): ElementSummary[] {
+  return rows.filter((r) => (r.kind === "process" && (r.verbs ?? []).includes(key)) || (r.kind === "operation" && r.verb === key));
+}
+
+/**
+ * What rename-verb or remove-verb of the own verb `key` writes, as the engine plans it: the vocabulary, and the elements that
+ * name the key unless it is a built-in key (an own verb that shadows a built-in key has no uses of its own: they name the
+ * built-in verb, so the operation leaves them). The batch call has no dry run to ask, so this answers it from the index; the
+ * operation's `expectedHashes` come from these files.
+ */
+export function verbOperationFiles(rows: readonly ElementSummary[], key: string): { vocabulary: string | null; users: ElementSummary[] } {
+  const builtIn = builtInVerbs.some((v) => v.key === key);
+  return { vocabulary: rows.find((r) => r.kind === "verb-vocabulary")?.id ?? null, users: builtIn ? [] : verbUsers(rows, key) };
+}
+
 export function usageText(u: { processes: number; operations: number } | undefined): string {
   if (!u || (!u.processes && !u.operations)) return "unused";
   const parts = [];

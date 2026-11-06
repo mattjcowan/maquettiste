@@ -1,6 +1,6 @@
 # Verbs: design
 
-**Status (2026-11-06): a design for the owner, not built.** It designs the third item in the owner's order after 4.1: a built-in set of verbs with fixed meanings, the project's own verbs, and events, automatic moves and operations naming theirs. [Who, what and when](lifecycle-actors-scenarios.md) section 5 sets its direction. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick. [The actors design](actors-design.md) gives its shape. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
+**Status (2026-11-06): built (in #51).** It designs the third item in the owner's order after 4.1: a built-in set of verbs with fixed meanings, the project's own verbs, and events, automatic moves and operations naming theirs. [Who, what and when](lifecycle-actors-scenarios.md) section 5 sets its direction. [What lifecycle systems can do](lifecycle-capabilities.md) is the yardstick. [The actors design](actors-design.md) gives its shape. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
 
 ## 1. In short
 
@@ -97,7 +97,7 @@ Each decision gives its confidence: **high**, **medium** or **low**.
    - The editor doesn't offer hidden verbs. They are left out of `model.verbs` and so out of generated enums.
    - Naming one anyway is a warning at the use (MQ9704). It then stays in `model.verbs`, so the use still resolves.
 9. **Renaming and removing go through two batch operations.** Confidence: medium-high.
-   - **`rename-verb`** renames an own verb and rewrites every use, all or nothing. When `to` is another own verb or a built-in, the two merge: the uses move to it and the definition goes. It drops the removed verb's translations, as `retire-code` does, and takes `expectedHashes`, as `retag` and `rename-code` do.
+   - **`rename-verb`** renames an own verb and rewrites every use, all or nothing. When `to` is another own verb or a built-in, the two merge: the uses move to it and the definition goes. It drops the removed verb's translations, as `retire-code` does, and takes `expectedHashes`, as `retag` and `rename-code` do. An own verb whose key is a built-in's (MQ9702) has no uses, since they name the built-in: renaming or removing it writes only the vocabulary, so adopting the built-in (`to` the same key) leaves every process and operation alone.
    - **`remove-verb`** removes an own verb and clears `verb` from every use. It takes `expectedHashes` and drops the verb's translations in the same way.
    - **A plain save** that changes the key of an own verb in use is refused (MQ9707), pointing to `rename-verb`, as a stereotype's key change is refused (MQ3020). An unused verb's key may change freely.
    - Built-in verbs can't be renamed or removed.
@@ -196,7 +196,7 @@ The next free family is MQ97xx.
 | Id | Severity | Rule | Quick fix |
 | --- | --- | --- | --- |
 | MQ9701 | E | A `verb` that is neither a built-in verb nor one of the project's own. Reported at the event, transition or operation | Add it to the project's verbs; clear it |
-| MQ9702 | E | An own verb whose key is a built-in verb's, or two own verbs with one key | Use the built-in (`rename-verb` to it) |
+| MQ9702 | E | An own verb whose key is a built-in verb's, or two own verbs with one key, also once hyphens are dropped (`x-1` and `x1` would be one enum member in generated code) | Use the built-in (`rename-verb` to it) |
 | MQ9703 | E | `hidden` names a key that isn't a built-in verb | Remove the entry |
 | MQ9704 | W | A hidden built-in verb is named. Reported at the use | Show the verb again |
 | MQ9705 | E | A transition triggered by an event names a verb of its own | Move it to the event, when the event names none; clear it |
@@ -227,7 +227,7 @@ public sealed class ResolvedModel { public RList<RVerb> Verbs { get; internal in
 ```
 
 - **Templates read** `model.verbs`, `verb.key`, `verb.display_name`, `verb.description`, `verb.built_in`, `verb.group`, `verb.hidden`, `verb.used`, `verb.events`, `verb.transitions`, `verb.operations`, `event.verb`, `transition.verb` and `operation.verb`.
-- **Dependency keys:** `model.verbs` keys on the vocabulary file and on every process and operation file, since a use anywhere decides whether it is empty. `event.verb`, `transition.verb` and `operation.verb` key on their own file and on the vocabulary file. Only a template that reads them pays.
+- **Dependency keys:** `model.verbs` and each verb's own fields key on the vocabulary file and on `vn:verbs`, a key whose hash is the vocabulary plus the sorted set of verb keys named anywhere. That set decides whether the list is empty, which hidden verbs it shows and which verbs are used. So editing a process or an operation renders again the units that read `model.verbs` only when it starts or stops naming a key. In a project without verbs the key never changes. `verb.events`, `verb.transitions` and `verb.operations` key on every process and operation file; they matter only when the list is not empty. `event.verb`, `transition.verb` and `operation.verb` key on their own file and on the vocabulary file. Only a template that reads them pays.
 - **Records:** event, transition and operation records gain `verb`, the key, only where named. A transition's record `verb` is its own, else its event's. Verb records appear only when the project uses verbs. So `get_resolved_model` answers don't change for a project without them.
 
 ## 7. Tools

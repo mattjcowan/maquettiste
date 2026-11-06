@@ -2994,7 +2994,7 @@
   {
     "id": "MQ9702",
     "defaultSeverity": "error",
-    "description": "An own verb whose key is a built-in verb's, or two own verbs with one key; use the built-in verb (rename-verb to it), or give the verb another key.",
+    "description": "An own verb whose key is a built-in verb's, or two own verbs with one key, also once hyphens are dropped (x-1 and x1); use the built-in verb (rename-verb to it), merge the two, or give the verb another key.",
     "family": "MQ97xx",
     "familyLabel": "Verbs",
     "canBeOff": true

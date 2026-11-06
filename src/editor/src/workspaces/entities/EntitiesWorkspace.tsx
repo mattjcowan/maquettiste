@@ -31,6 +31,7 @@ import { useServices } from "@/app/context";
 import { useEditorNavigation } from "@/app/navigation";
 import { Toolbar, EmptyState } from "@/components/ui/misc";
 import { CreateButtons } from "@/explorer/NewElementDialog";
+import { errorCounts as errorCountsOf } from "@/explorer/tree";
 import { domainOfRow, FIRST_RUN_CREATE } from "@/explorer/create";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
@@ -206,11 +207,7 @@ function EntitiesCanvas() {
   const treeId = lookup.ofKind("category-tree")[0]?.id ?? null;
   const tree = useElement(treeId);
   const categoryIds = useMemo(() => ((tree.data?.json as CategoryTreeDoc | undefined)?.categories ?? []).map((c) => c.id), [tree.data]);
-  const errorCounts = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const d of validation.data?.diagnostics ?? []) if (d.severity === "error" && d.elementId) map.set(d.elementId, (map.get(d.elementId) ?? 0) + 1);
-    return map;
-  }, [validation.data]);
+  const errorCounts = useMemo(() => errorCountsOf(validation.data?.diagnostics, index.data), [validation.data, index.data]);
 
   const [display, setDisplay] = useState<DisplayOptions>(DEFAULT_DISPLAY);
   useEffect(() => {

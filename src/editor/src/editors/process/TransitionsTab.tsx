@@ -93,6 +93,15 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
         return key ? (describeVerb(key, verbs.own)?.label ?? key) : "";
       },
       editValue: (r) => find(process, r.id)?.verb ?? "",
+      // The verb belongs to the event: say which one, and a click selects it.
+      cellTitle: (r) => {
+        const event = r.trigger === "event" ? events.find((e) => e.id === find(process, r.id)?.event) : undefined;
+        return event ? `Set on event '${event.name}'` : undefined;
+      },
+      onCellClick: (r) => {
+        const event = r.trigger === "event" ? find(process, r.id)?.event : undefined;
+        if (event) go.node("events", event)?.go();
+      },
       options: (r) => [
         { value: "", label: "None" },
         ...verbGroups("transition", verbs.own, verbs.hidden, find(process, r.id)?.verb).flatMap((g) =>

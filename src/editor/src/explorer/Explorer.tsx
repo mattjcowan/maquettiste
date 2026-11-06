@@ -24,7 +24,7 @@ import {
   type TablesState,
 } from "@/api/queries";
 import { editorPerf, perfOnce, perfStart, perfSync } from "@/lib/perf";
-import type { CategoryTreeDoc, ElementDocument, ElementSummary } from "@/api/types";
+import type { CategoryTreeDoc, Diagnostic, ElementDocument, ElementSummary } from "@/api/types";
 import { mergeCategoryTrees, type CategoryMaps } from "@/model/vocabularies";
 import { EmptyState, Spinner } from "@/components/ui/misc";
 import { Button } from "@/components/ui/button";
@@ -129,6 +129,13 @@ function once<T>(source: object | undefined | null, build: () => T): T | undefin
   if (!derived.has(source)) derived.set(source, build());
   return derived.get(source) as T;
 }
+let lastErrors: { report: object; rows: unknown; map: Map<string, number> } | null = null;
+/** The error counts, shared by every explorer on screen for one report and one index. */
+function errorsOf(report: { diagnostics: readonly Diagnostic[] } | undefined, rows: readonly ElementSummary[] | undefined): Map<string, number> | undefined {
+  if (!report) return undefined;
+  if (lastErrors?.report !== report || lastErrors.rows !== rows) lastErrors = { report, rows, map: errorCounts(report.diagnostics, rows) };
+  return lastErrors.map;
+}
 let lastDatabases: { signature: string; map: Map<string, DatabaseInfo> } | null = null;
 let lastTables: { signature: string; map: Map<string, TablesInput | undefined> } | null = null;
 const NOT_IN_DOMAIN = "@domain-model/not-in-domain";
@@ -166,7 +173,7 @@ export function useForest(): { forest: Forest | null; rows: readonly ElementSumm
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the signature stands for the results
   }, [signature]);
-  const errors = useMemo(() => once(validation.data, () => errorCounts(validation.data?.diagnostics)), [validation.data]);
+  const errors = useMemo(() => errorsOf(validation.data, rows), [validation.data, rows]);
   const folders = useMemo(
     () =>
       once(settings.data, () =>
@@ -324,8 +331,12 @@ const relationsIn = (forest: Forest): RelationLookup => ({
  */
 function useChipData(filter: ExplorerFilter): { errorIds?: string[]; members?: string[]; storageIds?: string[] } {
   const validation = useValidation();
+  const index = useIndex();
   const diagram = useElement(filter.diagram);
-  const errorIds = useMemo(() => (filter.errors ? [...errorCounts(validation.data?.diagnostics).keys()] : undefined), [filter.errors, validation.data]);
+  const errorIds = useMemo(
+    () => (filter.errors ? [...errorCounts(validation.data?.diagnostics, index.data).keys()] : undefined),
+    [filter.errors, validation.data, index.data],
+  );
   const members = useMemo(() => {
     if (!filter.diagram) return undefined;
     const json = diagram.data?.json as { members?: { element: string }[] } | undefined;
