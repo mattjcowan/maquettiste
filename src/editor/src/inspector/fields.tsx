@@ -95,6 +95,7 @@ export function ChipsEditor({
   allowFree,
   onChange,
   empty,
+  whenNone,
 }: {
   label: string;
   values: string[];
@@ -103,12 +104,19 @@ export function ChipsEditor({
   onChange: (values: string[]) => void;
   /** Said when there is nothing to add and nothing chosen (where the choices come from). */
   empty?: string;
+  /** Said beside the add control while nothing is chosen (what an empty list means). */
+  whenNone?: string;
 }) {
   const [adding, setAdding] = useState("");
   const remaining = options.filter((o) => !values.includes(o.value));
   return (
     <Field label={label}>
       <div className="flex flex-wrap items-center gap-1">
+        {!values.length && whenNone ? (
+          <span className="inline-flex h-6 items-center rounded-control border border-default bg-app px-1.5 text-12 text-secondary" data-testid="chips-none">
+            {whenNone}
+          </span>
+        ) : null}
         {values.map((v) => (
           <span key={v} className="inline-flex h-6 items-center gap-1 rounded-control border border-default bg-app px-1.5 text-12">
             {options.find((o) => o.value === v)?.label ?? v}

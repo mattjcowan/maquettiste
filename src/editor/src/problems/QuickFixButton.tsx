@@ -53,11 +53,12 @@ export function QuickFixButton({
   if (partner.data && related) docs.set(related, partner.data.json as ModelJson);
   if (typeDoc.data && typeId) docs.set(typeId, typeDoc.data.json as ModelJson);
   const shown = deriveQuickFix(diagnostic, catalogFix, (id) => docs.get(id));
-  if (!shown) return null;
   const extras = extraQuickFixes(diagnostic, (id) => docs.get(id));
+  // The extra fixes show whenever they apply, also when the main fix cannot be derived (an event with no verb has no right to add).
+  if (!shown && !extras.length) return null;
 
   const report = (message: string | null, done: string) => {
-    if (message) store.getState().notify(`${shown.label}: ${message}`, "error");
+    if (message) store.getState().notify(`${shown?.label ?? extras[0]?.label}: ${message}`, "error");
     else store.getState().notify(done);
   };
   const run = async (task: () => Promise<void>) => {
@@ -65,7 +66,7 @@ export function QuickFixButton({
     try {
       await task();
     } catch (e) {
-      store.getState().notify(`${shown.label}: ${e instanceof Error ? e.message : String(e)}`, "error");
+      store.getState().notify(`${shown?.label ?? extras[0]?.label}: ${e instanceof Error ? e.message : String(e)}`, "error");
     } finally {
       setBusy(false);
     }
@@ -116,24 +117,26 @@ export function QuickFixButton({
         const result = await applySyncCodes(qc, store, pending.process, { entity: pending.entity, attribute: pending.attribute });
         if (!result.applied) return setError(result.diagnostics[0]?.message ?? "The sync was refused.");
       }
-      store.getState().notify(`${shown.label}: done.`);
+      store.getState().notify(`${shown?.label ?? extras[0]?.label}: done.`);
       setPending(null);
     });
   const plan = pending?.kind === "sync" ? pending.plan : null;
   const nothing = plan && !plan.added.length && !plan.removed.length && !plan.reordered;
   return (
     <>
-      <Button
-        size="sm"
-        variant="ghost"
-        className="mr-2 shrink-0"
-        disabled={busy}
-        data-testid={`problem-fix-${diagnostic.rule}`}
-        title={`Quick fix: ${shown.label}`}
-        onClick={() => void start()}
-      >
-        <Wrench /> {shown.label}
-      </Button>
+      {shown ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="mr-2 shrink-0"
+          disabled={busy}
+          data-testid={`problem-fix-${diagnostic.rule}`}
+          title={`Quick fix: ${shown.label}`}
+          onClick={() => void start()}
+        >
+          <Wrench /> {shown.label}
+        </Button>
+      ) : null}
       {extras.map((extra) => (
         <Button
           key={extra.label}

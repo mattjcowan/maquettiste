@@ -74,6 +74,11 @@ export function useEditorContext(id: string, kind: EditorKind): { ctx: EditorCon
 }
 
 /** The editor's layout: header, top controls and sub-tabs. */
+/** Whether a finding belongs to the rights (the rules MQ9901 to MQ9906, or a finding on a rights row). */
+export function isRightsFinding(d: { rule: string; jsonPointer?: string | null }): boolean {
+  return /^MQ99\d\d$/.test(d.rule) || /^\/rights\/\d+(\/|$)/.test(d.jsonPointer ?? "");
+}
+
 export function EditorLayout({
   ctx,
   draft,
@@ -133,8 +138,8 @@ export function EditorLayout({
             {draft.error}
           </p>
         ) : null}
-        {/* A finding on a rights row shows at the row and in Problems; the line here would count it a third time. */}
-        <FindingsSummary diagnostics={diagnostics.filter((d) => !/^\/rights\/\d+(\/|$)/.test(d.jsonPointer ?? ""))} element={id} />
+        {/* A rights finding (MQ99xx, or any finding on a rights row) shows inline and in Problems; the line here would count it again. */}
+        <FindingsSummary diagnostics={diagnostics.filter((d) => !isRightsFinding(d))} element={id} />
         {details ? <HeaderFields {...ctx} translations={translations} /> : null}
       </header>
       {details ? (

@@ -148,6 +148,11 @@ export class MockModel {
    * JSON, so this set stands for them: a save or a format (POST /api/model/format) clears a path.
    */
   readonly nonCanonical = new Set<string>();
+  /**
+   * The expectations a replay of a scenario gives (the process handlers set this: the interpreter needs their actor and
+   * object lookups). Null when the replay cannot run to the last step.
+   */
+  scenarioReplay: ((process: Json, scenario: Json) => { expects: Json[]; outcome: "final" | "active" } | null) | null = null;
 
   constructor(
     seed: Seed,
@@ -1070,13 +1075,34 @@ export class MockModel {
         continue;
       }
       if (op.op === "refresh-scenario") {
-        // The mock has no interpreter: the expectations stay as they are (the engine rewrites them from a replay).
+        // The expectations are rewritten from a replay, as the engine does: accepted, states, context, values and, in a project
+        // that uses rights, each refusal and what refused it (rights-design.md decision 26).
         const existing = candidate.get(op.id ?? "");
         if (!existing || existing.json.kind !== "scenario") {
           fail(this.notFound(op.id ?? ""));
           continue;
         }
-        items.push({ outcome: "saved", id: existing.id, hash: existing.hash, current: null, diagnostics: [], referrers: [], changes: null });
+        const scenario = existing.json as Json;
+        const process = candidate.get(String(scenario.process ?? ""))?.json as Json | undefined;
+        const observed = process && this.scenarioReplay ? this.scenarioReplay(process, scenario) : null;
+        if (!observed) {
+          items.push({ outcome: "saved", id: existing.id, hash: existing.hash, current: null, diagnostics: [], referrers: [], changes: null });
+          continue;
+        }
+        const steps = (Array.isArray(scenario.steps) ? scenario.steps : []).map((st, i) => {
+          const expect = observed.expects[i];
+          return expect ? { ...(st as Json), expect } : st;
+        });
+        const next: Json = { ...scenario, steps };
+        if (observed.outcome === "final") next.outcome = "final";
+        else delete next.outcome;
+        if (JSON.stringify(next) === JSON.stringify(scenario)) {
+          items.push({ outcome: "saved", id: existing.id, hash: existing.hash, current: null, diagnostics: [], referrers: [], changes: null });
+          continue;
+        }
+        const entry = this.entryFor(next, existing);
+        candidate.set(entry.id, entry);
+        items.push({ outcome: "saved", id: entry.id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
         continue;
       }
       if (op.op === "use-subjects") {

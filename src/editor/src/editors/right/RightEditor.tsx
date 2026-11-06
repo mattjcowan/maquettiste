@@ -11,6 +11,7 @@ import { indexLookup } from "@/model/index";
 import { EDITOR_TAB_LABELS, RIGHT_LABELS as L } from "@/model/labels";
 import { treeText } from "@/model/effects";
 import type { Json, ProcessDoc } from "@/model/process";
+import { EVERYONE } from "@/model/rights";
 import { verbGroups } from "@/model/verbList";
 import { useVerbs } from "@/verbs/useVerbs";
 import { useSetContext } from "../process/SetsEditor";
@@ -101,6 +102,7 @@ function RightBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
               <div className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-2">
                 <ChipsEditor
                   label={L.columns.who}
+                  whenNone={EVERYONE}
                   values={strings(rec.actors)}
                   options={actorOptions}
                   allowFree={false}

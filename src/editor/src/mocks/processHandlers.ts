@@ -328,6 +328,17 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
     }
     return null;
   };
+  // Refresh expectations (the batch operation of the store) replays the scenario with the same lookups as a verify.
+  model.scenarioReplay = (doc, scenario) => {
+    const cast = castOf({}, scenario);
+    const replayed = replay(doc, scenario.start as never, arr(scenario.steps), {
+      ...actorLookup(),
+      ...effectOptions(doc),
+      ...(cast && !("error" in cast) ? { objects: cast.objects, subject: cast.subject } : {}),
+      participants: arr(scenario.participants),
+    });
+    return replayed.complete ? { expects: replayed.expects, outcome: replayed.outcome } : null;
+  };
   const idList = (v: string | null) => (v ? v.split(",").filter(Boolean) : undefined);
   const scenariosOf = (processId: string) =>
     [...model.entries.values()].filter((e) => e.json.kind === "scenario" && e.json.process === processId).sort((a, b) => (a.path < b.path ? -1 : 1));

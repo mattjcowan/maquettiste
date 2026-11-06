@@ -216,6 +216,60 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
               : (step(r)?.invoke ?? ""),
       options: (r) => (r.input === "event" ? events : r.input === "verb" ? verbOptions : invokes),
     },
+    ...(scenario.participants?.length
+      ? [
+          {
+            key: "participant",
+            label: PL.step,
+            kind: "select" as const,
+            width: "min-w-24",
+            value: (r: StepRow) => r.participant,
+            editValue: (r: StepRow) => step(r)?.participant ?? "",
+            options: () => [none, ...(scenario.participants ?? []).map((p) => ({ value: p.id, label: p.name }))],
+          },
+        ]
+      : []),
+    {
+      key: "actor",
+      label: "Actor",
+      kind: "select",
+      width: "min-w-24",
+      value: (r) => r.actor,
+      editValue: (r) => step(r)?.actor ?? "",
+      options: () => [none, ...actors.map((a) => ({ value: a.id, label: a.name }))],
+    },
+    ...(refusals
+      ? [
+          {
+            key: "refusal",
+            label: RL.refusal,
+            tooltip: RL.expectedRefusalHint,
+            kind: "select" as const,
+            width: "w-24",
+            value: (r: StepRow) => (r.refusal ? (RL.refusalWords[r.refusal] ?? r.refusal) : ""),
+            editValue: (r: StepRow) => step(r)?.expect?.refusal ?? "",
+            options: () => [{ value: "", label: RL.refusalNone }, ...Object.entries(RL.refusalWords).map(([value, label]) => ({ value, label }))],
+          },
+          {
+            key: "refusedBy",
+            label: RL.refusedBy,
+            tooltip: RL.expectedRefusedByHint,
+            kind: "select" as const,
+            width: "w-28",
+            value: (r: StepRow) => r.refusedBy,
+            editValue: (r: StepRow) => step(r)?.expect?.refusedBy ?? "",
+            options: (r: StepRow) => {
+              const current = step(r)?.expect?.refusedBy;
+              // A refuser that no longer exists stays in the list, as "(deleted)", until it is changed.
+              return [
+                { value: "", label: RL.refusalNone },
+                ...refusers,
+                ...(current && !refusers.some((o) => o.value === current) ? [{ value: current, label: more.get(current) ?? RL.deleted }] : []),
+              ];
+            },
+          },
+        ]
+      : []),
     ...(verbSteps
       ? [
           {
@@ -247,28 +301,6 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
           },
         ]
       : []),
-    ...(scenario.participants?.length
-      ? [
-          {
-            key: "participant",
-            label: PL.step,
-            kind: "select" as const,
-            width: "min-w-24",
-            value: (r: StepRow) => r.participant,
-            editValue: (r: StepRow) => step(r)?.participant ?? "",
-            options: () => [none, ...(scenario.participants ?? []).map((p) => ({ value: p.id, label: p.name }))],
-          },
-        ]
-      : []),
-    {
-      key: "actor",
-      label: "Actor",
-      kind: "select",
-      width: "min-w-24",
-      value: (r) => r.actor,
-      editValue: (r) => step(r)?.actor ?? "",
-      options: () => [none, ...actors.map((a) => ({ value: a.id, label: a.name }))],
-    },
     {
       key: "states",
       label: "Expected states",
@@ -287,38 +319,6 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       mono: true,
       value: (r) => r.values,
     },
-    ...(refusals
-      ? [
-          {
-            key: "refusal",
-            label: RL.refusal,
-            tooltip: RL.expectedRefusalHint,
-            kind: "select" as const,
-            width: "min-w-24",
-            value: (r: StepRow) => (r.refusal ? (RL.refusalWords[r.refusal] ?? r.refusal) : ""),
-            editValue: (r: StepRow) => step(r)?.expect?.refusal ?? "",
-            options: () => [{ value: "", label: RL.refusalNone }, ...Object.entries(RL.refusalWords).map(([value, label]) => ({ value, label }))],
-          },
-          {
-            key: "refusedBy",
-            label: RL.refusedBy,
-            tooltip: RL.expectedRefusedByHint,
-            kind: "select" as const,
-            width: "min-w-28",
-            value: (r: StepRow) => r.refusedBy,
-            editValue: (r: StepRow) => step(r)?.expect?.refusedBy ?? "",
-            options: (r: StepRow) => {
-              const current = step(r)?.expect?.refusedBy;
-              // A refuser that no longer exists stays in the list, as "(deleted)", until it is changed.
-              return [
-                { value: "", label: RL.refusalNone },
-                ...refusers,
-                ...(current && !refusers.some((o) => o.value === current) ? [{ value: current, label: more.get(current) ?? RL.deleted }] : []),
-              ];
-            },
-          },
-        ]
-      : []),
     { key: "signer", label: "Signer", kind: "text", width: "min-w-20", value: (r) => r.signer },
     {
       key: "meaning",
