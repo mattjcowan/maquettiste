@@ -14,7 +14,8 @@ public sealed class RProcess : RElement
     /// <summary><c>lifecycle</c> or <c>orchestration</c>.</summary>
     public string Use { get; internal set; } = "orchestration";
 
-    /// <summary>The subject entity, when the process has exactly one subject, in either form, and it resolves.</summary>
+    /// <summary>The subject entity, when the process has exactly one subject, in either form, and it resolves; with a stereotype entry,
+    /// when <see cref="Subjects"/> holds exactly one (stereotype-sets-design.md decision 12).</summary>
     public REntity? Subject { get; internal set; }
 
     /// <summary>The bound attribute: the one subject's (flattened) attribute that holds the lifecycle state.</summary>
@@ -25,9 +26,18 @@ public sealed class RProcess : RElement
 
     /// <summary>
     /// Every subject whose entity resolves, in file order, whatever the file's form (lifecycle-design.md section 7): the entries of
-    /// <c>subjects</c>, or one entry, with the process's id, for the one-subject form.
+    /// <c>subjects</c>, or one entry, with the process's id, for the one-subject form. A stereotype entry is expanded at its place into
+    /// one subject per carrier it governs, by qualified name, each with the id <c>&lt;entry id&gt;/&lt;entity id&gt;</c>
+    /// (stereotype-sets-design.md decision 12); with no carrier it gives none.
     /// </summary>
     public RList<RSubject> Subjects { get; internal set; } = RList<RSubject>.Empty;
+
+    /// <summary>
+    /// The entries of <c>subjects</c> that name a stereotype, as written, in file order (stereotype-sets-design.md section 6): each with
+    /// its stereotype, the stereotype's own bound and owner attributes, and the carriers it governs. Empty when the process has none; it
+    /// lists a stereotype nothing carries yet, which <see cref="Subjects"/> then leaves out.
+    /// </summary>
+    public RList<RStereotypeSubject> StereotypeSubjects { get; internal set; } = RList<RStereotypeSubject>.Empty;
 
     /// <summary>
     /// Whether the states' codes form a map (lifecycle-design.md decision 4): some state has a code, no two coded states sit on one path
@@ -135,6 +145,35 @@ public sealed class RSubject : RObject
 
     /// <summary>The to-one relation end that leads to the object's owner (actors-design.md decision 10), when the entry names one.</summary>
     public REnd? OwnerEnd { get; internal set; }
+
+    /// <summary>
+    /// The stereotype whose entry gave the subject (stereotype-sets-design.md decision 12), or <see langword="null"/> on a subject an
+    /// entity entry gave. Its bound and owner attributes are then the carrier's copies of the stereotype's own.
+    /// </summary>
+    public RStereotypeDefinition? Stereotype { get; internal set; }
+}
+
+/// <summary>
+/// An entry of a process's <c>subjects</c> that names a stereotype, as written (stereotype-sets-design.md section 6): it covers every
+/// entity that carries the stereotype and the entities derived from them.
+/// </summary>
+public sealed class RStereotypeSubject : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "stereotype-subject";
+
+    /// <summary>The stereotype's definition; <see langword="null"/> when no stereotype has the entry's key (MQ2003).</summary>
+    public RStereotypeDefinition? Stereotype { get; internal set; }
+
+    /// <summary>The stereotype's own attribute that holds the state, when set and resolved.</summary>
+    public RAttribute? BoundAttribute { get; internal set; }
+
+    /// <summary>The stereotype's own single-valued attribute that holds the object's owner, when the entry names one that MQ9606 accepts.</summary>
+    public RAttribute? OwnerAttribute { get; internal set; }
+
+    /// <summary>The carriers the entry governs, by qualified name (decision 4): a carrier another entry wins is left out. Empty when nothing
+    /// carries the stereotype yet.</summary>
+    public RList<REntity> Entities { get; internal set; } = RList<REntity>.Empty;
 }
 
 /// <summary>How an actor is worked out from the object (actors-design.md decisions 8 to 12).</summary>

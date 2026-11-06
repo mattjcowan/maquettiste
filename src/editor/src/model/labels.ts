@@ -376,6 +376,12 @@ export const PROCESS_LABELS = {
   actsIn: (n: number) => `acts in ${n.toLocaleString("en-US")} ${n === 1 ? "process" : "processes"}`,
   /** A lifecycle in an entity's Lifecycles folder that governs it through a base entity. */
   throughBase: (base: string) => `through ${base}`,
+  /** An entity's lifecycle that covers it through a stereotype (stereotype-sets-design.md section 8). */
+  throughStereotype: (stereotype: string) => `through ${stereotype}`,
+  /** Added after the stereotype when a derived entity is covered through its base ("through Approvable, via Order"). */
+  viaBase: (base: string) => `, via ${base}`,
+  /** A lifecycle row's subject when it governs every entity that carries a stereotype. */
+  everyStereotype: (stereotype: string) => `every ${stereotype}`,
   /** What each Use means, shown under the choice in New process… and as the Use field's tooltip in the editor. */
   useMeaning: {
     lifecycle:

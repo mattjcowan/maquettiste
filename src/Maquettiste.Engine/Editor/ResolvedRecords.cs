@@ -495,10 +495,13 @@ public sealed record SeedRowRecord(string Id, int Order, IReadOnlyDictionary<str
 /// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
-/// <param name="Subjects">The entries of <c>subjects</c> (lifecycle-design.md section 7); <see langword="null"/>, and left out of the JSON, for a
-/// process in the one-subject form or with no subject.</param>
+/// <param name="Subjects">The entries of <c>subjects</c> (lifecycle-design.md section 7), a stereotype entry expanded at its place into one
+/// subject per carrier it governs (stereotype-sets-design.md decision 12); <see langword="null"/>, and left out of the JSON, for a process in
+/// the one-subject form or with no subject.</param>
 /// <param name="CodesMap">Whether the states' codes form a map (decision 4); <see langword="null"/>, and left out of the JSON, when no state has
 /// a code.</param>
+/// <param name="StereotypeSubjects">The stereotype entries of <c>subjects</c> as written (stereotype-sets-design.md section 6);
+/// <see langword="null"/>, and left out of the JSON, when the process has none.</param>
 public sealed record ProcessRecord(string Id, string Kind, string Name, string? Package, string Use, string? Subject, string? BoundAttribute,
     string? BoundEnum, string? Initial, IReadOnlyList<AttributeRecord> Context, IReadOnlyList<StateRecord> States, IReadOnlyList<TransitionRecord> Transitions,
     IReadOnlyList<EventRecord> Events, IReadOnlyList<GuardRecord> Guards, IReadOnlyList<ActionRecord> Actions, IReadOnlyList<GateRecord> Gates,
@@ -506,19 +509,35 @@ public sealed record ProcessRecord(string Id, string Kind, string Name, string? 
     string? Description, IReadOnlyList<string> Tags, string? Category, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
     IReadOnlyDictionary<string, GenerationHints> Generation,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SubjectRecord>? Subjects = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? CodesMap = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? CodesMap = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<StereotypeSubjectRecord>? StereotypeSubjects = null);
 
-/// <summary>An entry of a process's <c>subjects</c> (lifecycle-design.md decision 5).</summary>
-/// <param name="Id">The entry's id.</param>
-/// <param name="Entity">The entity's id.</param>
+/// <summary>An entry of a process's <c>subjects</c> (lifecycle-design.md decision 5), or one subject a stereotype entry gives
+/// (stereotype-sets-design.md decision 12).</summary>
+/// <param name="Id">The entry's id; for a subject a stereotype entry gives, <c>&lt;entry id&gt;/&lt;entity id&gt;</c>.</param>
+/// <param name="Entity">The entity's id; for a subject a stereotype entry gives, the carrier's.</param>
 /// <param name="BoundAttribute">The bound attribute's id.</param>
 /// <param name="BoundEnum">The bound attribute's enum's id.</param>
 /// <param name="BoundReferenceType">The bound attribute's reference type's id (lifecycle-design.md decision 11); <see langword="null"/>, and left
 /// out of the JSON, for any other binding.</param>
 /// <param name="Owner">The id of the attribute or to-one end that holds the object's owner (actors-design.md decision 10); <see langword="null"/>,
 /// and left out of the JSON, when the entry names none or MQ9606 reports it.</param>
+/// <param name="Stereotype">The id of the stereotype whose entry gave the subject; <see langword="null"/>, and left out of the JSON, on a
+/// subject an entity entry gave.</param>
 public sealed record SubjectRecord(string Id, string Entity, string? BoundAttribute, string? BoundEnum,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? BoundReferenceType = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Owner = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Stereotype = null);
+
+/// <summary>A stereotype entry of a process's <c>subjects</c>, as written (stereotype-sets-design.md section 6).</summary>
+/// <param name="Id">The entry's id.</param>
+/// <param name="Stereotype">The stereotype's id.</param>
+/// <param name="BoundAttribute">The bound attribute's id, one of the stereotype's own attributes.</param>
+/// <param name="Entities">The ids of the carriers the entry governs, by qualified name (decision 4); empty when nothing carries the stereotype
+/// yet.</param>
+/// <param name="Owner">The id of the stereotype's own attribute that holds the object's owner; <see langword="null"/>, and left out of the
+/// JSON, when the entry names none or MQ9606 reports it.</param>
+public sealed record StereotypeSubjectRecord(string Id, string Stereotype, string? BoundAttribute, IReadOnlyList<string> Entities,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Owner = null);
 
 /// <summary>A state of a process.</summary>
@@ -1419,8 +1438,11 @@ public static class ResolvedRecords
             [.. p.Invokes.Select(i => new InvokeRecord(i.Id, i.Name, i.Type, i.Process?.Id, Ids(i.Actors), i.State.Id, i.DisplayName, i.Description, Keys(i.Stereotypes), Plain(i.Properties)))],
             Ids(p.Actors), Ids(p.Scenarios),
             p.DisplayName!, p.PluralName!, p.Description, p.Tags, p.Category?.Id, Keys(p.Stereotypes), Plain(p.Properties), p.Generation,
-            p.ListsSubjects ? [.. p.Subjects.Select(s => new SubjectRecord(s.Id, s.Entity.Id, s.BoundAttribute?.Id, s.BoundEnum?.Id, s.BoundReferenceType?.Id, s.OwnerAttribute?.Id ?? s.OwnerEnd?.Id))] : null,
-            p.HasCodes ? p.CodesMap : null);
+            p.ListsSubjects ? [.. p.Subjects.Select(s => new SubjectRecord(s.Id, s.Entity.Id, s.BoundAttribute?.Id, s.BoundEnum?.Id, s.BoundReferenceType?.Id,
+                s.OwnerAttribute?.Id ?? s.OwnerEnd?.Id, s.Stereotype?.Id))] : null,
+            p.HasCodes ? p.CodesMap : null,
+            p.StereotypeSubjects.Count == 0 ? null : [.. p.StereotypeSubjects.Where(e => e.Stereotype is not null)
+                .Select(e => new StereotypeSubjectRecord(e.Id, e.Stereotype!.Id, e.BoundAttribute?.Id, Ids(e.Entities), e.OwnerAttribute?.Id))]);
 
         public ActorRecord Actor(RActor a) => new(a.Id, "actor", a.Name, a.Package?.Id, a.Type, Ids(a.Processes), Ids(a.Events), Ids(a.Gates),
             a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation,

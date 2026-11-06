@@ -673,7 +673,7 @@ public sealed class ProcessConditionTests
     }
 
     [Fact]
-    public async Task A_stereotypes_attributes_and_the_bound_attribute_are_out_of_scope()
+    public async Task The_bound_attribute_is_out_of_scope_and_a_stereotypes_attribute_in_it()
     {
         using var repo = ObjectRepo(["subject.trackedAt is not null", "subject.status = 'open'", "subject.rush"]);
         // The bound attribute read by id, as a tree: the typer refuses it as the parser refuses its name.
@@ -681,8 +681,9 @@ public sealed class ProcessConditionTests
             $$"""{ "op": "isNotNull", "args": [{ "path": ["{{OrderStatus}}"] }] }""", StringComparison.Ordinal));
         await using var store = new ModelStore(repo.Options);
         var findings = await FindingsAsync(store);
-        Assert.True(findings.Count == 3 && findings.All(d => d.Rule == "MQ3102"), Describe(findings));
-        Assert.Equal(["/guards/0/condition", "/guards/1/condition", "/guards/2/condition/args/0"], findings.Select(d => d.JsonPointer).Order(StringComparer.Ordinal));
+        // A stereotype's attribute that the subject carries is in scope (stereotype-sets-design.md decision 7).
+        Assert.True(findings.Count == 2 && findings.All(d => d.Rule == "MQ3102"), Describe(findings));
+        Assert.Equal(["/guards/1/condition", "/guards/2/condition/args/0"], findings.Select(d => d.JsonPointer).Order(StringComparer.Ordinal));
     }
 
     [Fact]

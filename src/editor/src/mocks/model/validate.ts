@@ -10,6 +10,7 @@ import { subjectsOf } from "@/model/process";
 import { referencesOf, subElementIds } from "./refs";
 import { bindingDiagnostics } from "./lifecycleRules";
 import { relativeUseDiagnostics } from "./relativeRules";
+import { appliesToEntities, Coverage } from "./coverage";
 import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
 
 type Json = Record<string, unknown>;
@@ -73,25 +74,31 @@ export function enumDrift(
   json: Json,
   lookup: (id: string) => ModelEntry | undefined,
   entity?: string,
-): { states: string[]; members: string[]; enumId: string; pointer: string; entity: string; attribute: string } | null {
+  stereotype?: (key: string) => Json | undefined,
+  stereotypeKey?: string,
+): { states: string[]; members: string[]; enumId: string; pointer: string; entity?: string; stereotype?: string; attribute: string } | null {
   if (json.kind !== "process" || json.use !== "lifecycle") return null;
-  // The first enum binding of the one list (both forms), of `entity` when given; the pointer names it where the file keeps it.
-  // The attributes a stereotype adds are not read here (the mock's sync works on the entity's own and inherited ones).
-  const stereotypes = () => undefined;
+  // The first enum binding of the one list (both forms), of `entity` or of `stereotypeKey` when given; the pointer names it where
+  // the file keeps it. A stereotype entry binds one of the stereotype's own attributes; an entity entry reads its stereotypes' too.
+  const noStereotypes = () => undefined;
+  const attributeOf = (e: ReturnType<typeof subjectsOf>[number]): Json | undefined => {
+    if (e.stereotype !== undefined) return arr(stereotype?.(e.stereotype)?.attributes).find((a) => a.id === e.boundAttribute);
+    return bindableAttributes(lookup(e.entity!)?.json, (id) => lookup(id)?.json, stereotype ?? noStereotypes).find((a) => a.id === e.boundAttribute);
+  };
+  const enumOf = (e: ReturnType<typeof subjectsOf>[number]): ModelEntry | undefined => {
+    const ref = (attributeOf(e)?.type as Json | undefined)?.ref;
+    const found = typeof ref === "string" ? lookup(ref) : undefined;
+    return found?.json.kind === "enum" ? found : undefined;
+  };
   const at = subjectsOf(json).findIndex((e) => {
-    if (e.boundAttribute === undefined || (entity !== undefined && e.entity !== entity)) return false;
-    const subject = lookup(e.entity)?.json;
-    const attribute = bindableAttributes(subject, (id) => lookup(id)?.json, stereotypes).find((a) => a.id === e.boundAttribute);
-    const ref = (attribute?.type as Json | undefined)?.ref;
-    return typeof ref === "string" && lookup(ref)?.json.kind === "enum";
+    if (e.boundAttribute === undefined) return false;
+    if (entity !== undefined && e.entity !== entity) return false;
+    if (stereotypeKey !== undefined && e.stereotype !== stereotypeKey) return false;
+    return !!enumOf(e);
   });
   if (at < 0) return null;
   const entry = subjectsOf(json)[at];
-  const subject = lookup(entry.entity)?.json;
-  const attribute = bindableAttributes(subject, (id) => lookup(id)?.json, stereotypes).find((a) => a.id === entry.boundAttribute);
-  const ref = (attribute?.type as Json | undefined)?.ref;
-  const enumEntry = typeof ref === "string" ? lookup(ref) : undefined;
-  if (!enumEntry || enumEntry.json.kind !== "enum") return null;
+  const enumEntry = enumOf(entry)!;
   const states = arr(json.states)
     .filter((st) => st.type !== "history" && st.type !== "choice")
     .map((st) => String(st.name));
@@ -99,7 +106,14 @@ export function enumDrift(
   const pointer = Array.isArray(json.subjects) ? `/subjects/${at}/boundAttribute` : "/boundAttribute";
   return states.join("\u0000") === members.join("\u0000")
     ? null
-    : { states, members, enumId: enumEntry.id, pointer, entity: entry.entity, attribute: entry.boundAttribute! };
+    : {
+        states,
+        members,
+        enumId: enumEntry.id,
+        pointer,
+        ...(entry.stereotype !== undefined ? { stereotype: entry.stereotype } : { entity: entry.entity }),
+        attribute: entry.boundAttribute!,
+      };
 }
 
 /** One tag vocabulary or category tree of a scope ("" is global, else the domain's package id). */
@@ -305,7 +319,7 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
       else seen.set(name, `attribute ${i + 1}`);
     });
   }
-  if (kind === "entity" && typeof json.lifecycle === "string" && ctx.lookup) entityLifecycleDiagnostics(json, entry, ctx.lookup, out);
+  if (kind === "entity" && typeof json.lifecycle === "string" && ctx.lookup) entityLifecycleDiagnostics(json, entry, ctx.lookup, out, ctx.all);
   if (kind === "relation") {
     const ends = arr(json.ends);
     if (json.relationKind !== "n-ary" && ends.length !== 2)
@@ -328,7 +342,7 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   // MQ9601, MQ9602, MQ9603 and MQ9605: an actor's memberOf and relative and the one system actor (actorRules.ts)
   if (kind === "actor" && ctx.all) out.push(...actorDiagnostics(json, entry, ctx.all()));
   // MQ9001 initial and MQ9201 (process side), as ProcessRules.cs reports them
-  if (kind === "process") out.push(...lifecycleDiagnostics(json, entry, ctx.lookup));
+  if (kind === "process") out.push(...lifecycleDiagnostics(json, entry, ctx.lookup, stereotypes));
   // MQ9501 guard and action expressions: one JavaScript expression each (parsed, never run)
   if (kind === "process")
     for (const field of ["guards", "actions"] as const)
@@ -437,7 +451,13 @@ export function diagnosticKey(d: Diagnostic): string {
 }
 
 /** MQ9201, entity side: the named process is a lifecycle that lists the entity or a base of it (either form). */
-function entityLifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: NonNullable<ValidationContext["lookup"]>, out: Diagnostic[]): void {
+function entityLifecycleDiagnostics(
+  json: Json,
+  entry: ModelEntry,
+  lookup: NonNullable<ValidationContext["lookup"]>,
+  out: Diagnostic[],
+  all?: () => Iterable<ModelEntry>,
+): void {
   const process = lookup(json.lifecycle as string)?.json;
   if (!process || process.kind !== "process") return;
   const entity = String(json.name);
@@ -456,7 +476,10 @@ function entityLifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: NonNu
   }
   const chain = new Set<string>([entry.id]);
   for (let base = json.base; typeof base === "string" && !chain.has(base); base = lookup(base)?.json.base) chain.add(base);
-  if (!subjectsOf(process).some((e) => chain.has(e.entity)))
+  // A stereotype entry covers the entity when it or a base carries the stereotype (stereotype-sets-design.md decision 3).
+  const entries = subjectsOf(process);
+  const covered = () => !!all && entries.some((e) => e.stereotype !== undefined) && new Coverage(all()).governs(process, entry.id);
+  if (!entries.some((e) => e.entity !== undefined && chain.has(e.entity)) && !covered())
     out.push(
       diag(
         "MQ9201",
@@ -473,7 +496,7 @@ function entityLifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: NonNu
 /** MQ9001 (an initial that is not a direct child, or an initial on a state that is not compound), MQ9201 (a lifecycle
  * without a subject, or whose subject's lifecycle does not name it) and MQ9205 (the bound attribute's default is not
  * the initial root state's name), as the engine's ProcessRules.cs reports them. */
-function lifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationContext["lookup"]): Diagnostic[] {
+function lifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationContext["lookup"], stereotypes: Map<string, Json>): Diagnostic[] {
   const out: Diagnostic[] = [];
   const name = String(json.name);
   const checkInitial = (owner: Json, pointer: string, label: string) => {
@@ -520,12 +543,35 @@ function lifecycleDiagnostics(json: Json, entry: ModelEntry, lookup: ValidationC
   subjects.forEach((one, i) => {
     const at = listForm ? `/subjects/${i}` : "";
     const owner = listForm ? one.id : undefined;
-    if (seen.has(one.entity)) {
+    if (one.stereotype !== undefined) {
+      if (seen.has(`stereotype:${one.stereotype}`)) {
+        out.push(
+          diag("MQ9201", "error", `Process '${name}' lists stereotype '${one.stereotype}' twice; list each subject once.`, entry, `${at}/stereotype`, owner),
+        );
+        return;
+      }
+      seen.add(`stereotype:${one.stereotype}`);
+      const st = stereotypes.get(one.stereotype);
+      if (!st) out.push(diag("MQ2003", "error", `Unknown stereotype '${one.stereotype}'.`, entry, `${at}/stereotype`, owner));
+      else if (!appliesToEntities(st))
+        out.push(
+          diag(
+            "MQ9211",
+            "error",
+            `Subject '${one.stereotype}' of process '${name}' is a stereotype that does not apply to entities, so no entity can carry it; name a stereotype entities carry, or an entity.`,
+            entry,
+            `${at}/stereotype`,
+            owner,
+          ),
+        );
+      return;
+    }
+    if (seen.has(one.entity!)) {
       out.push(diag("MQ9201", "error", `Process '${name}' lists entity '${one.entity}' twice; list each subject once.`, entry, `${at}/entity`, owner));
       return;
     }
-    seen.add(one.entity);
-    const subject = lookup?.(one.entity)?.json;
+    seen.add(one.entity!);
+    const subject = lookup?.(one.entity!)?.json;
     if (!subject || subject.kind !== "entity") return;
     // With `subjects` the entity need not name the lifecycle, since several may govern it (decision 8).
     if (!listForm && subject.lifecycle !== entry.id)

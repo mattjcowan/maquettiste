@@ -237,3 +237,17 @@ test("a process is revealed in its new use folder after its use changes", async 
   await expect(side.locator('[data-key$="/use:orchestration"]')).toHaveAttribute("aria-expanded", "true");
   await expect(side.getByTestId("explorer-row-InvoiceLifecycle")).toContainText("orchestration");
 });
+
+test("picking a stereotype as the subject updates the lifecycle's explorer row", async ({ page }) => {
+  const side = await openProcesses(page);
+  await expand(page, side.getByTestId("explorer-folder-Billing"));
+  await ensureOpen(page, side.locator('[data-key$="/use:lifecycle"]'));
+  const row = side.getByTestId("explorer-row-InvoiceLifecycle");
+  await expect(row).not.toContainText("every Audited");
+  await row.dblclick();
+  const editor = page.getByTestId("process-editor");
+  await editor.getByTestId("editor-details-toggle").click();
+  await editor.getByLabel("Subject", { exact: true }).selectOption({ label: "Audited" });
+  await expect(side.getByTestId("explorer-row-InvoiceLifecycle")).toContainText("every Audited");
+  await expect(side.getByTestId("explorer-row-InvoiceLifecycle")).not.toContainText("Invoice ·");
+});

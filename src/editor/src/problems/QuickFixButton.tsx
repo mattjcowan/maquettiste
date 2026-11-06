@@ -2,16 +2,17 @@
 // which child (the first one preselected), Sync enum shows its dry run before applying; every other fix applies at
 // once. Each is one batch and one undo step, and the report re-validates after it.
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Wrench } from "lucide-react";
-import { useElement } from "@/api/queries";
+import * as endpoints from "@/api/endpoints";
+import { indexQuery, useElement } from "@/api/queries";
 import type { Diagnostic, ModelJson } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Select } from "@/components/ui/input";
 import { useServices } from "@/app/context";
-import { syncPlanLines, type ProcessDoc } from "@/model/process";
-import { applySyncCodes, applySyncEnum, syncCodes, syncEnum, type SyncCodesResult, type SyncEnumResult } from "@/editors/process/api";
+import { subjectsOf, syncPlanLines, type ProcessDoc } from "@/model/process";
+import { applySyncCodes, applySyncEnum, syncCodes, syncEnum, syncStereotypeEntry, type SyncCodesResult, type SyncEnumResult } from "@/editors/process/api";
 import { deriveQuickFix, fixDocuments, type QuickFix } from "./quickFix";
 import { applyQuickFix, freshQuickFix } from "./applyQuickFix";
 import { applyBlockedReason, codesDescription, codesView, codeText, hasNoValueList, NO_VALUE_LIST_NOTE } from "./syncCodesView";
@@ -61,11 +62,26 @@ export function QuickFixButton({ diagnostic, catalogFix }: { diagnostic: Diagnos
       setError(null);
       const fix = await freshQuickFix(drafts, diagnostic, catalogFix);
       if (!fix) return report("The problem is no longer there.", "");
+      // A stereotype entry has no endpoint (they are entity-only): it syncs through the batch, applied at once.
+      if ((fix.kind === "sync-enum" || fix.kind === "sync-codes") && fix.stereotype) {
+        const enumId = fix.kind === "sync-enum" ? await enumOfStereotypeEntry(qc, fix.process, fix.stereotype) : undefined;
+        return report(
+          await syncStereotypeEntry(qc, store, {
+            process: fix.process,
+            stereotype: fix.stereotype,
+            op: fix.kind,
+            enumId: enumId ?? undefined,
+            attribute: fix.kind === "sync-codes" ? fix.attribute : undefined,
+            label: fix.label,
+          }),
+          `${fix.label}: done.`,
+        );
+      }
       if (fix.kind === "sync-enum")
         return setPending({ kind: "sync", process: fix.process, entity: fix.entity, plan: await syncEnum(fix.process, true, fix.entity) });
       if (fix.kind === "sync-codes") {
         // The finding sits on the binding, so the fix already names the entity and the attribute: a dry run first, then the apply.
-        const binding = { entity: fix.entity, attribute: fix.attribute };
+        const binding = { entity: fix.entity!, attribute: fix.attribute };
         return setPending({ kind: "codes", process: fix.process, ...binding, plan: await syncCodes(fix.process, { ...binding, dryRun: true }) });
       }
       if (fix.kind === "operation" && fix.choices && fix.choices.length > 1)
@@ -249,4 +265,17 @@ export function SyncCodesDialog({
       />
     </DialogContent>
   );
+}
+
+/** The id of the enum a stereotype entry of a process binds, read from the documents; null when it binds none. */
+async function enumOfStereotypeEntry(qc: QueryClient, process: string, stereotype: string): Promise<string | null> {
+  const entry = subjectsOf((await endpoints.getElement(process)).json as never).find((e) => e.stereotype === stereotype);
+  const rows = await qc.ensureQueryData(indexQuery);
+  for (const row of rows.filter((r) => r.kind === "stereotype")) {
+    const doc = (await endpoints.getElement(row.id)).json as { key?: string; attributes?: { id?: string; type?: { ref?: string } | string }[] };
+    if (doc.key !== stereotype) continue;
+    const type = doc.attributes?.find((a) => a.id === entry?.boundAttribute)?.type;
+    return typeof type === "object" && typeof type?.ref === "string" ? type.ref : null;
+  }
+  return null;
 }

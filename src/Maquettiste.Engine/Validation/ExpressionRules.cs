@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -545,6 +546,106 @@ internal static class ExprSites
         }
     }
 
+    /// <summary>
+    /// The attributes a process reads on an entity it governs (stereotype-sets-design.md decision 7): its own and inherited attributes
+    /// (<see cref="AttributesOf"/>), then the attributes of the stereotypes in the effective sets of the entity and its bases, nearest entity
+    /// first, each set in its order; each attribute once. Operation guards and entity checks keep <see cref="AttributesOf"/>.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="entity">The entity.</param>
+    /// <returns>The attributes.</returns>
+    internal static IEnumerable<ModelAttribute> ProcessAttributesOf(ModelSnapshot model, Entity entity)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var attribute in AttributesOf(model, entity))
+        {
+            if (seen.Add(attribute.Id))
+                yield return attribute;
+        }
+
+        var levels = new HashSet<string>(StringComparer.Ordinal);
+        for (var current = entity; current is not null && levels.Add(current.Id); current = current.Base is { } b ? model.Get<Entity>(b) : null)
+        {
+            foreach (var applied in model.EffectiveStereotypes(current))
+            {
+                foreach (var attribute in applied.Stereotype.Attributes)
+                {
+                    if (seen.Add(attribute.Id))
+                        yield return attribute;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// What one subject entry offers a process under its ids (stereotype-sets-design.md decision 7): an entity entry, the attributes of
+    /// <see cref="ProcessAttributesOf"/> and the entity's navigations; a stereotype entry, the stereotype's own attributes and no
+    /// navigations. <see langword="null"/> when the entry's entity or stereotype is not in the model.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="entry">The entry.</param>
+    /// <returns>The attributes and the relation ends navigated to, or <see langword="null"/>.</returns>
+    internal static (IReadOnlyList<ModelAttribute> Attributes, IReadOnlyList<RelationEnd> Navigations)? EntryMembers(ModelSnapshot model, ProcessSubject entry)
+    {
+        if (entry.Stereotype is { } key)
+            return model.GetStereotype(key) is { } stereotype ? (stereotype.Attributes, []) : null;
+        if (entry.Entity is not { } entityId || model.Get<Entity>(entityId) is not { } entity)
+            return null;
+        return (ProcessAttributesOf(model, entity).ToList(), NavigationsOf(model, entity).Select(n => n.To).ToList());
+    }
+
+    /// <summary>Whether an attribute id names an attribute a stereotype declares.</summary>
+    /// <param name="model">The model.</param>
+    /// <param name="attributeId">The attribute id.</param>
+    /// <returns>Whether a stereotype declares it.</returns>
+    internal static bool IsStereotypeAttribute(ModelSnapshot model, string attributeId) =>
+        model.TryGetEntry(attributeId, out var entry) && entry.Kind == "attribute" && model.Get<Stereotype>(entry.OwnerId) is not null;
+
+    private static readonly ConditionalWeakTable<ModelSnapshot, ConditionalWeakTable<Process, IReadOnlySet<string>>> StereotypeReads = new();
+
+    /// <summary>
+    /// The ids of the stereotype attributes a process's guard conditions read on the object itself (under <c>subject</c>, through no
+    /// navigation; stereotype-sets-design.md decision 7), typed once per model; empty when none does. A scenario's subject row and the
+    /// subject's defaults gain them only then, so a run's answers stay the same otherwise.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process.</param>
+    /// <returns>The attribute ids.</returns>
+    internal static IReadOnlySet<string> StereotypeAttributesRead(ModelSnapshot model, Process process)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(process);
+        if (process.Guards.All(g => g.Condition is null) || process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
+            return FrozenSet<string>.Empty;
+        return StereotypeReads.GetValue(model, static _ => new()).GetValue(process, p =>
+        {
+            HashSet<string>? read = null;
+            foreach (var guard in p.Guards)
+            {
+                if (guard.Condition is null || ExprResolution.Type(model, p, guard.Id) is not { } typed)
+                    continue;
+                var pending = new Stack<TypedExpr>();
+                pending.Push(typed.Typed);
+                while (pending.Count > 0)
+                {
+                    var t = pending.Pop();
+                    if (t.Node.Path is not null && t.Through.Count == 0 && t.Member is { Prefix: { } prefix } member
+                        && (prefix == SubjectPrefix || prefix.StartsWith(SubjectPrefix + ".", StringComparison.Ordinal)))
+                    {
+                        var id = member.Id.Split('.')[0];
+                        if (IsStereotypeAttribute(model, id))
+                            (read ??= new HashSet<string>(StringComparer.Ordinal)).Add(id);
+                    }
+
+                    foreach (var arg in t.Args)
+                        pending.Push(arg);
+                }
+            }
+
+            return read is null ? FrozenSet<string>.Empty : read.ToFrozenSet(StringComparer.Ordinal);
+        });
+    }
+
     private static void Attributes(ExprScope scope, ModelSnapshot model, Entity entity) => AddAttributes(scope.Root, model, AttributesOf(model, entity), null);
 
     /// <summary>
@@ -652,12 +753,13 @@ internal static class ExprSites
     internal const string SubjectPrefix = "subject";
 
     /// <summary>
-    /// What a process guard's condition reads on its object under <c>subject</c> (lifecycle-design.md decision 20): what every subject holds
-    /// under one id. With one subject, its own and inherited attributes and to-one or to-many navigations (the typer refuses a path through a
-    /// to-many one); with several, those of a base entity they all derive from, so attributes that only share a name are not in it. A
-    /// subject whose entity is not in the model is left out, as resolution leaves it out. Kept out: the subjects' bound attributes (the
-    /// chart already knows its state), a stereotype's attributes (not an entity's own), and everything when a context attribute is named
-    /// <c>subject</c>, which keeps its meaning. Attributes nearest first, navigations in model order, each once.
+    /// What a process guard's condition reads on its object under <c>subject</c> (lifecycle-design.md decision 20, stereotype-sets-design.md
+    /// decision 7): what every subject entry holds under one id (<see cref="EntryMembers"/>). With one entity entry, its own and inherited
+    /// attributes, the attributes of the stereotypes it or a base carries, and to-one or to-many navigations (the typer refuses a path through
+    /// a to-many one); with several, what they all hold under one id, so attributes that only share a name are not in it; a stereotype entry
+    /// holds its stereotype's own attributes and no navigations. An entry whose entity or stereotype is not in the model is left out, as
+    /// resolution leaves it out. Kept out: the subjects' bound attributes (the chart already knows its state), and everything when a context
+    /// attribute is named <c>subject</c>, which keeps its meaning. Attributes nearest first, navigations in model order, each once.
     /// </summary>
     /// <param name="model">The snapshot.</param>
     /// <param name="process">The process.</param>
@@ -666,21 +768,28 @@ internal static class ExprSites
     {
         if (process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
             return ([], []);
-        var entities = process.Subjects.Select(s => model.Get<Entity>(s.Entity)).OfType<Entity>().DistinctBy(e => e.Id).ToList();
-        if (entities.Count == 0)
-            return ([], []);
         var bound = process.Subjects.Select(s => s.BoundAttribute).OfType<string>().ToHashSet(StringComparer.Ordinal);
-        var attributes = AttributesOf(model, entities[0]).Where(a => !bound.Contains(a.Id)).DistinctBy(a => a.Id).ToList();
-        var navigations = NavigationsOf(model, entities[0]).Select(n => n.To).DistinctBy(e => e.Id).ToList();
-        foreach (var other in entities.Skip(1))
+        var named = new HashSet<string>(StringComparer.Ordinal);
+        List<ModelAttribute>? attributes = null;
+        List<RelationEnd>? navigations = null;
+        foreach (var entry in process.Subjects)
         {
-            var held = AttributesOf(model, other).Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+            if (!named.Add(entry.Entity is { } id ? "e:" + id : "s:" + entry.Stereotype) || EntryMembers(model, entry) is not { } members)
+                continue;
+            if (attributes is null || navigations is null)
+            {
+                attributes = members.Attributes.Where(a => !bound.Contains(a.Id)).DistinctBy(a => a.Id).ToList();
+                navigations = members.Navigations.DistinctBy(e => e.Id).ToList();
+                continue;
+            }
+
+            var held = members.Attributes.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
             attributes.RemoveAll(a => !held.Contains(a.Id));
-            var reached = NavigationsOf(model, other).Select(n => n.To.Id).ToHashSet(StringComparer.Ordinal);
+            var reached = members.Navigations.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
             navigations.RemoveAll(e => !reached.Contains(e.Id));
         }
 
-        return (attributes, navigations);
+        return (attributes ?? [], navigations ?? []);
     }
 
     /// <summary>

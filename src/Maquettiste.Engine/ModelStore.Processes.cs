@@ -39,7 +39,7 @@ public sealed partial class ModelStore
     {
         ArgumentNullException.ThrowIfNull(processId);
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
-        return new ProcessWork(snapshot, _options.EffectiveIdGenerator, []).PlanSync(processId, entity, out _);
+        return new ProcessWork(snapshot, _options.EffectiveIdGenerator, []).PlanSync(processId, entity, null, out _);
     }
 
     /// <summary>
@@ -57,7 +57,7 @@ public sealed partial class ModelStore
     {
         ArgumentNullException.ThrowIfNull(processId);
         var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
-        return new ProcessWork(snapshot, _options.EffectiveIdGenerator, []).PlanCodes(processId, entity, attribute, stateCodes, out _);
+        return new ProcessWork(snapshot, _options.EffectiveIdGenerator, []).PlanCodes(processId, entity, null, attribute, stateCodes, out _);
     }
 
     /// <summary>
@@ -90,7 +90,7 @@ public sealed partial class ModelStore
 
         private string? Sync(BatchOperation o)
         {
-            var plan = PlanSync(o.Id ?? "", o.Entity, out var members);
+            var plan = PlanSync(o.Id ?? "", o.Entity, o.Stereotype, out var members);
             if (plan.Problem is not null)
                 return plan.Problem;
             foreach (var written in new[] { plan.Process, plan.Enum! })
@@ -114,10 +114,11 @@ public sealed partial class ModelStore
         }
 
         /// <summary>
-        /// Plans a sync of one subject's enum binding (lifecycle-design.md decision 15): <paramref name="entityId"/>'s, else the lifecycle's
-        /// one enum binding in either form; <paramref name="members"/> is the new members array.
+        /// Plans a sync of one subject's enum binding (lifecycle-design.md decision 15): <paramref name="entityId"/>'s, or the entry of
+        /// stereotype <paramref name="stereotypeKey"/> (stereotype-sets-design.md decision 10), else the lifecycle's one enum binding in either
+        /// form; <paramref name="members"/> is the new members array.
         /// </summary>
-        public SyncEnumPlan PlanSync(string processId, string? entityId, out JsonArray members)
+        public SyncEnumPlan PlanSync(string processId, string? entityId, string? stereotypeKey, out JsonArray members)
         {
             members = [];
             SyncEnumPlan Problem(string message, string? enumId = null) => new(processId, enumId, [], [], false, [], message);
@@ -130,7 +131,18 @@ public sealed partial class ModelStore
                     ? $"Process '{process.Name}' is a library, which has no states to sync; pass the id of a lifecycle process."
                     : $"Process '{process.Name}' binds no attribute; set use to lifecycle and bind an enum attribute of the subject, then sync.");
             string bound;
-            if (entityId is not null)
+            if (entityId is not null && stereotypeKey is not null)
+                return Problem($"sync-enum on process '{process.Name}' names both an entity and a stereotype; pass one of them.");
+            if (stereotypeKey is not null)
+            {
+                var entry = process.Subjects.FirstOrDefault(s => string.Equals(s.Stereotype, stereotypeKey, StringComparison.Ordinal));
+                if (entry is null)
+                    return Problem($"Process '{process.Name}' does not list stereotype '{stereotypeKey}' as a subject; pass one of its subjects.");
+                if (entry.BoundAttribute is null)
+                    return Problem($"Subject stereotype '{stereotypeKey}' of process '{process.Name}' binds no attribute; bind an enum attribute of the stereotype, then sync.");
+                bound = entry.BoundAttribute;
+            }
+            else if (entityId is not null)
             {
                 var entry = process.Subjects.FirstOrDefault(s => string.Equals(s.Entity, entityId, StringComparison.Ordinal));
                 var label = snapshot.Get<Entity>(entityId) is { } named ? "entity '" + named.Name + "'" : "'" + entityId + "'";
@@ -211,7 +223,7 @@ public sealed partial class ModelStore
         // lifecycle-design.md decision 19: writes the plan's codes and binding to the process, in the form the file has.
         private string? SyncCodes(BatchOperation o)
         {
-            var plan = PlanCodes(o.Id ?? "", o.Entity, o.Attribute, o.StateCodes, out var writes);
+            var plan = PlanCodes(o.Id ?? "", o.Entity, o.Stereotype, o.Attribute, o.StateCodes, out var writes);
             if (plan.Problem is not null)
                 return plan.Problem;
             if (_staged.ContainsKey(plan.Process))
@@ -227,8 +239,17 @@ public sealed partial class ModelStore
                     state["code"] = JsonNode.Parse(code.GetRawText());
             }
 
-            if (plan.Binds)
+            if (plan.Binds && o.Stereotype is { } key)
+            {
+                // A stereotype entry (stereotype-sets-design.md decision 10): the lifecycle lists it, so its entry takes the binding.
+                if (Listed(node)?.FirstOrDefault(e => e["stereotype"]?.GetValue<string>() == key) is { } entry)
+                    entry["boundAttribute"] = plan.Attribute;
+            }
+            else if (plan.Binds)
+            {
                 Bind(node, plan.Entity, plan.Attribute);
+            }
+
             return null;
         }
 
@@ -260,7 +281,7 @@ public sealed partial class ModelStore
         /// ignored), else the one row or member whose label equals their display name or name. An ambiguous match, or a code another state
         /// keeps or takes, takes none. <paramref name="writes"/> are the codes to write, by the state's pointer.
         /// </summary>
-        public SyncCodesPlan PlanCodes(string processId, string? entityId, string? attributeId, IReadOnlyDictionary<string, JsonElement>? given,
+        public SyncCodesPlan PlanCodes(string processId, string? entityId, string? stereotypeKey, string? attributeId, IReadOnlyDictionary<string, JsonElement>? given,
             out List<(string Pointer, JsonElement Code)> writes)
         {
             writes = [];
@@ -271,19 +292,46 @@ public sealed partial class ModelStore
                 return Problem(process.Use == ProcessUse.Library
                     ? $"Process '{process.Name}' is a library, which has no states to code; pass the id of a lifecycle process."
                     : $"Process '{process.Name}' is an orchestration, which binds no attribute; set use to lifecycle first, then sync its codes.");
-            if (entityId is null || snapshot.Get<Entity>(entityId) is not { } entity)
-                return Problem($"'{entityId}' is not an entity; pass the subject whose attribute holds the state as entity.");
-            if (process.UsesOneSubjectForm && !string.Equals(process.Subject, entityId, StringComparison.Ordinal))
+            // The subject: an entity, or a stereotype the lifecycle lists (stereotype-sets-design.md decision 10), whose own attribute it binds.
+            ModelAttribute? attribute;
+            string label;
+            ProcessSubject? listedEntry;
+            if (stereotypeKey is not null)
             {
-                var subject = process.Subject is not null && snapshot.Get<Entity>(process.Subject) is { } named ? "entity '" + named.Name + "'" : "no entity";
-                return Problem($"Process '{process.Name}' names {subject} as its one subject, so sync-codes binds that subject's attribute only; pass it as entity, or list the subjects first (use-subjects).");
+                if (entityId is not null)
+                    return Problem($"sync-codes on process '{process.Name}' names both an entity and a stereotype; pass one of them.");
+                listedEntry = process.Subjects.FirstOrDefault(s => string.Equals(s.Stereotype, stereotypeKey, StringComparison.Ordinal));
+                if (listedEntry is null || snapshot.GetStereotype(stereotypeKey) is not { } stereotype)
+                    return Problem($"Process '{process.Name}' does not list stereotype '{stereotypeKey}' as a subject; list it first, or pass an entity.");
+                label = "stereotype '" + stereotype.Key + "'";
+                attribute = attributeId is null ? null : stereotype.Attributes.FirstOrDefault(a => string.Equals(a.Id, attributeId, StringComparison.Ordinal));
+                if (attribute is null)
+                    return Problem($"'{attributeId}' is not an attribute of stereotype '{stereotype.Key}'; a stereotype subject binds one of the stereotype's own attributes.");
+            }
+            else
+            {
+                if (entityId is null || snapshot.Get<Entity>(entityId) is not { } entity)
+                    return Problem($"'{entityId}' is not an entity; pass the subject whose attribute holds the state as entity.");
+                if (process.UsesOneSubjectForm && !string.Equals(process.Subject, entityId, StringComparison.Ordinal))
+                {
+                    var subject = process.Subject is not null && snapshot.Get<Entity>(process.Subject) is { } named ? "entity '" + named.Name + "'" : "no entity";
+                    return Problem($"Process '{process.Name}' names {subject} as its one subject, so sync-codes binds that subject's attribute only; pass it as entity, or list the subjects first (use-subjects).");
+                }
+
+                // An entity that follows the lifecycle only through a stereotype entry keeps following it there: an entry of its own would
+                // take it from the stereotype's binding (stereotype-sets-design.md decision 10).
+                if (SubjectCoverage.EntryOf(snapshot, process, entity) is { Stereotype: { } through })
+                    return Problem($"Entity '{entity.Name}' follows process '{process.Name}' through stereotype '{through}'; sync codes through the stereotype: pass stereotype '{through}' and one of its own attributes.");
+                label = "entity '" + entity.Name + "'";
+                listedEntry = process.Subjects.FirstOrDefault(s => string.Equals(s.Entity, entity.Id, StringComparison.Ordinal));
+                attribute = attributeId is null || !Holds(entity, attributeId) ? null : LifecycleBindings.Find(snapshot, attributeId);
+                if (attribute is null)
+                    return Problem($"'{attributeId}' is not an attribute of entity '{entity.Name}' (own, inherited or from a stereotype); pass the one that holds the state.");
             }
 
-            if (attributeId is null || LifecycleBindings.Find(snapshot, attributeId) is not { } attribute || !Holds(entity, attributeId))
-                return Problem($"'{attributeId}' is not an attribute of entity '{entity.Name}' (own, inherited or from a stereotype); pass the one that holds the state.");
             var type = LifecycleBindings.Classify(snapshot, attribute);
             if (type.Kind == BindingKind.Unsupported)
-                return Problem($"Attribute '{attribute.Name}' of entity '{entity.Name}' {type.Why}; pass an attribute typed by an enum, a reference type, or a string or integer type.");
+                return Problem($"Attribute '{attribute.Name}' of {label} {type.Why}; pass an attribute typed by an enum, a reference type, or a string or integer type.");
 
             var analysis = new ProcessAnalysis(process);
             var codes = ProcessCodes.Of(process);
@@ -362,9 +410,8 @@ public sealed partial class ModelStore
                 }
             }
 
-            var current = process.Subjects.FirstOrDefault(s => string.Equals(s.Entity, entity.Id, StringComparison.Ordinal))?.BoundAttribute;
-            var binds = !string.Equals(current, attribute.Id, StringComparison.Ordinal);
-            return new SyncCodesPlan(process.Id, entity.Id, attribute.Id, binds, result, left, null);
+            var binds = !string.Equals(listedEntry?.BoundAttribute, attribute.Id, StringComparison.Ordinal);
+            return new SyncCodesPlan(process.Id, entityId ?? "", attribute.Id, binds, result, left, null);
         }
 
         // Whether an attribute is one of an entity's: its own or a base's, or one of a stereotype the entity carries.
@@ -673,9 +720,11 @@ public sealed partial class ModelStore
             var processNode = Node(target.Id, null, track: false);
             if (!OneSubjectForm(processNode) && Listed(processNode) is { } targetEntries)
             {
-                // The target lists its subjects: it gains the entity unless the entity, or an entity it derives from, is listed.
+                // The target lists its subjects: it gains the entity unless the entity, or an entity it derives from, is listed, or a stereotype
+                // entry covers it (stereotype-sets-design.md decision 9).
                 var chain = Chain(entity);
-                var covered = targetEntries.Any(e => e["entity"]?.GetValue<string>() is { } listed && chain.Contains(listed));
+                var covered = targetEntries.Any(e => e["entity"]?.GetValue<string>() is { } listed && chain.Contains(listed))
+                    || SubjectCoverage.EntryOf(snapshot, target, entity) is { Stereotype: not null };
                 if (processNode["use"]?.GetValue<string>() != "lifecycle" || !covered)
                 {
                     var node = Node(target.Id, null);

@@ -69,7 +69,7 @@
       "default": "orchestration"
     },
     "subjects": {
-      "description": "The entities the process governs, each entry with its own id; an entry covers its entity and the entities derived from it. A lifecycle lists at least one (MQ9201). Not written together with subject or boundAttribute.",
+      "description": "The entities the process governs, each entry with its own id; an entry covers its entity and the entities derived from it, or names a stereotype and covers every entity that carries it and the entities derived from them. When several entries cover an entity, an entry naming the entity or a base wins, nearest first, then stereotype entries in entry order. A lifecycle lists at least one (MQ9201). Not written together with subject or boundAttribute.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/subject"
@@ -215,11 +215,12 @@
   "$defs": {
     "subject": {
       "title": "Subject",
-      "description": "An entity the process governs, with the entities derived from it.",
+      "description": "An entity the process governs, with the entities derived from it; or a stereotype, standing for every entity that carries it and the entities derived from them. Names exactly one of entity and stereotype.",
       "type": "object",
       "x-order": [
         "id",
         "entity",
+        "stereotype",
         "boundAttribute",
         "owner"
       ],
@@ -228,21 +229,37 @@
           "$ref": "common.json#/$defs/id"
         },
         "entity": {
-          "description": "The entity.",
+          "description": "The entity. Not written together with stereotype.",
           "$ref": "common.json#/$defs/id"
         },
+        "stereotype": {
+          "description": "The key of a stereotype that applies to entities (MQ2003, MQ9211): the entry covers every entity that carries it (package defaults, implied stereotypes and its own list, less what it excludes) and every entity derived from one. An entity that an entry naming it or a base also covers follows that entry. Not written together with entity.",
+          "type": "string",
+          "minLength": 1
+        },
         "boundAttribute": {
-          "description": "An attribute of the entity that holds the state (lifecycle only).",
+          "description": "The attribute that holds the state (lifecycle only): one of the entity's, own, inherited or from a stereotype it carries; on a stereotype entry, one of the stereotype's own attributes.",
           "$ref": "common.json#/$defs/id"
         },
         "owner": {
-          "description": "Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own or inherited; not an attribute from a stereotype (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner.",
+          "description": "Where the object's owner is held: a single-valued attribute or a to-one relation end of the entity, own or inherited, or a single-valued attribute of a stereotype the entity or a base carries; on a stereotype entry, a single-valued attribute of the stereotype's own (MQ9606). An actor whose relative is owner reads it. Optional: without it the team's system holds the owner.",
           "$ref": "common.json#/$defs/id"
         }
       },
       "required": [
-        "id",
-        "entity"
+        "id"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "entity"
+          ]
+        },
+        {
+          "required": [
+            "stereotype"
+          ]
+        }
       ],
       "additionalProperties": false
     },

@@ -36,6 +36,8 @@ function attributeRefs(owner: string, base: string, attributes: unknown, out: Re
 /** Finds the seed row a code of a bound attribute's reference type names (lifecycle-design.md decision 18). */
 export interface RowResolver {
   rowOf(entityId: string, attributeId: string, code: unknown): string | null;
+  /** The id of the stereotype with a key (a subject entry names one by key; stereotype-sets-design.md decision 2). */
+  stereotypeIdOf?(key: string): string | null;
 }
 
 /**
@@ -65,6 +67,10 @@ export function rowResolverOf(docs: () => Iterable<Json>): RowResolver {
     return (built = { byId, rows, stereotypes });
   };
   return {
+    stereotypeIdOf(key) {
+      const found = build().stereotypes.get(key);
+      return found ? String(found.id) : null;
+    },
     rowOf(entityId, attributeId, code) {
       if (typeof code !== "string" && typeof code !== "number") return null;
       const { byId, rows, stereotypes } = build();
@@ -198,6 +204,9 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
       // A deleted entity takes its entry with it, under either delete choice (lifecycle-design.md decision 5).
       arr(doc.subjects).forEach((e, i) => {
         push(`/subjects/${i}/entity`, "entity", e.entity, false, `/subjects/${i}`);
+        // A stereotype entry names its stereotype by key; the reference is to the stereotype's id, and a delete takes the entry with it.
+        const stereotypeId = typeof e.stereotype === "string" ? rows?.stereotypeIdOf?.(e.stereotype) : null;
+        if (stereotypeId) push(`/subjects/${i}/stereotype`, "stereotype", stereotypeId, false, `/subjects/${i}`);
         push(`/subjects/${i}/boundAttribute`, "boundAttribute", e.boundAttribute, false);
         // The owner field is optional: a delete clears the key (decision 10).
         push(`/subjects/${i}/owner`, "owner", e.owner, false);
@@ -211,7 +220,7 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
           // A code under a reference binding is a use of the row it names (decision 18): one reference per binding it fits.
           const seen = new Set<string>();
           for (const e of bound) {
-            const row = rows!.rowOf(e.entity, e.boundAttribute!, st.code);
+            const row = e.entity ? rows!.rowOf(e.entity, e.boundAttribute!, st.code) : null;
             if (!row || !str(st.id) || seen.has(row)) continue;
             seen.add(row);
             out.push({ fromId: st.id as string, pointer: `${base}/${i}/code`, field: "code", toId: row, required: true });

@@ -10,7 +10,7 @@
       "items": {
         "title": "Batch operation",
         "type": "object",
-        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "to", "codes", "entity", "attribute", "stateCodes", "target", "default", "redefine", "excludeMissing", "keepNames"],
+        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "to", "codes", "entity", "stereotype", "attribute", "stateCodes", "target", "default", "redefine", "excludeMissing", "keepNames"],
         "properties": {
           "op": {
             "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "sync-codes", "set-lifecycle", "set-initial", "refresh-scenario", "use-subjects", "retag", "tags-to-property", "names-to-ids", "fold-into-stereotype", "map-by-name", "resync-binding", "rename-code", "retire-code", "merge-reference-types", "rename-reference-type", "text-to-trees", "upsert"]
@@ -153,8 +153,13 @@
             "description": "The subject whose binding the operation acts on: an id, a qualified name or a placeholder. sync-enum: the subject whose bound enum is synced; absent means the lifecycle's one enum binding, in either subject form. sync-codes: the subject whose attribute holds the state; on a lifecycle in the one-subject form it must be that subject, on one that lists subjects an entity not listed gets an entry, and a lifecycle with no subject gets subjects with one entry. sync-codes reads the model as it was before the batch, so its entity must name an existing entity (an id or a qualified name, not a placeholder).",
             "$ref": "#/$defs/idOrName"
           },
+          "stereotype": {
+            "description": "sync-enum and sync-codes, in place of entity: the key of the stereotype whose subjects entry the operation acts on. sync-enum syncs the enum that entry binds; sync-codes binds one of the stereotype's own attributes in that entry, which the lifecycle must already list.",
+            "type": "string",
+            "minLength": 1
+          },
           "attribute": {
-            "description": "sync-codes: the attribute of entity (own, inherited or from a stereotype) that holds the state, single-valued and typed by an enum, a reference type or a plain status (string, text, int16, int32 or int64, directly or through a scalar type). The operation binds it in the form the file has. It must name an existing attribute (an id or a qualified name, not a placeholder): sync-codes reads the model as it was before the batch.",
+            "description": "sync-codes: the attribute of entity (own, inherited or from a stereotype), or of stereotype (its own), that holds the state, single-valued and typed by an enum, a reference type or a plain status (string, text, int16, int32 or int64, directly or through a scalar type). The operation binds it in the form the file has. It must name an existing attribute (an id or a qualified name, not a placeholder): sync-codes reads the model as it was before the batch.",
             "$ref": "#/$defs/idOrName"
           },
           "stateCodes": {
@@ -268,7 +273,15 @@
               }
             },
             "then": {
-              "required": ["id", "entity", "attribute"]
+              "required": ["id", "attribute"],
+              "oneOf": [
+                {
+                  "required": ["entity"]
+                },
+                {
+                  "required": ["stereotype"]
+                }
+              ]
             }
           },
           {

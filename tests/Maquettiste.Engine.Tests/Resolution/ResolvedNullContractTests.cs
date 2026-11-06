@@ -55,6 +55,7 @@ public sealed class ResolvedNullContractTests
         ["REnumMember.DisplayName"] = "the file's displayName, else the name",
         ["RProcessNode.DisplayName"] = "the file's displayName, else the name (a transition's label)",
         ["RScenario.Start"] = "the file's start, else a start with its fields' defaults (no context values, the default instant)",
+        ["RSubject.Entity"] = "the entry's entity, else the carrier a stereotype entry gives the subject for (stereotype-sets-design.md decision 12)",
         ["ROperationError.Code"] = "the file's code, else the error's name (next-phase-2-design.md section 4.1)",
     };
 
@@ -80,6 +81,8 @@ public sealed class ResolvedNullContractTests
         ["RFormerCode"] = "former codes: ReferenceDataResolutionTests",
         // Actors worked out from the object (actors-design.md section 6); RelativeActorTests resolves them.
         ["RRelative"] = "actors from the object: RelativeActorTests",
+        // A subject entry that names a stereotype (stereotype-sets-design.md section 6); StereotypeSubjectResolutionTests resolves it.
+        ["RStereotypeSubject"] = "stereotype subject entries: StereotypeSubjectResolutionTests",
         // A query's case branches; QueryTests resolves them.
         ["RQueryWhen"] = "case expressions: QueryTests",
         // A scenario's objects and their links (lifecycle-design.md decision 22); no fixture has them, ScenarioObjectTests resolves them.

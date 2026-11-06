@@ -414,7 +414,7 @@ public sealed class RelativeActorTests
     }
 
     [Fact]
-    public async Task MQ9606_refuses_an_owner_field_from_a_stereotype()
+    public async Task MQ9606_accepts_an_owner_field_from_a_stereotype_the_entity_carries()
     {
         const string TrackedBy = "01JATT00000000000000000199";
         var (h, store) = await OpenAsync(h =>
@@ -431,9 +431,8 @@ public sealed class RelativeActorTests
         await using var __ = store;
         var diagnostics = await ActorKit.ValidateAsync(h, store.Current!);
 
-        Assert.Equal(["review.json:/subjects/0/owner"], Hits(diagnostics, "MQ9606"));
-        Assert.Contains("comes from stereotype 'tracked'", diagnostics.Single(d => d.Rule == "MQ9606").Message, StringComparison.Ordinal);
-        Assert.Null(ResolutionKit.Resolve(store.Current!).Processes.Single(p => p.Id == Review).Subjects[0].OwnerAttribute);
+        // stereotype-sets-design.md decision 7 lifts actors-design.md decision 10's limit: the entity carries the stereotype.
+        Assert.Empty(Hits(diagnostics, "MQ9606"));
     }
 
     [Fact]

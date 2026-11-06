@@ -36,9 +36,10 @@ import { clone, jsonEqual } from "@/lib/json";
 import { schemaValidator, describeErrors } from "../contract";
 import { referencesOf, rowResolverOf, subElementIds, type Ref } from "./refs";
 import { syncCodesOf } from "./syncCodes";
+import { Coverage } from "./coverage";
 import { planDelete } from "./cascade";
 import { typedElement } from "./typed";
-import { applyRules, diagnosticKey, validateModel, type ModelEntry } from "./validate";
+import { applyRules, diagnosticKey, enumDrift, validateModel, type ModelEntry } from "./validate";
 import { ModelIndex } from "./modelIndex";
 import { applyCase, foreignKeyMismatches, resolveDatabase } from "./physical";
 import { resolveQueries } from "./queries";
@@ -197,7 +198,22 @@ export class MockModel {
   private withActors(row: ElementSummary, e: Entry): ElementSummary {
     if (row.kind !== "process") return row;
     const actors = [...new Set(referencesOf(e.json).map((r) => r.toId))].filter((id) => this.entries.get(id)?.json.kind === "actor").sort();
-    return actors.length ? { ...row, actors } : row;
+    const withActors = actors.length ? { ...row, actors } : row;
+    return this.withCoverage(withActors, e);
+  }
+
+  private coverageMemo: { version: number; coverage: Coverage } | null = null;
+
+  /** The stereotype entries of a process row (stereotype-sets-design.md section 8): `subjectStereotypes` and `covers`, left out when empty. */
+  private withCoverage(row: ElementSummary, e: Entry): ElementSummary {
+    const entries = subjectsOf(e.json);
+    if (!entries.some((s) => s.stereotype !== undefined)) return row;
+    if (this.coverageMemo?.version !== this.version) this.coverageMemo = { version: this.version, coverage: new Coverage(this.entries.values()) };
+    const { coverage } = this.coverageMemo;
+    const idOf = (key: string) => [...this.entries.values()].find((x) => x.json.kind === "stereotype" && x.json.key === key)?.id;
+    const subjectStereotypes = entries.flatMap((s) => (s.stereotype !== undefined ? (idOf(s.stereotype) ?? []) : []));
+    const covers = [...new Set(entries.flatMap((_, i) => coverage.governed(e.json, i)))];
+    return { ...row, ...(subjectStereotypes.length ? { subjectStereotypes } : {}), ...(covers.length ? { covers } : {}) };
   }
 
   private tagCache: { version: number; tag: string } | null = null;
@@ -789,7 +805,12 @@ export class MockModel {
     if (!existing) return this.notFound(id);
     if (normalizeHash(expectedHash) !== existing.hash)
       return { outcome: "conflict", id, hash: existing.hash, current: this.document(existing), diagnostics: [], referrers: [], changes: null };
-    if (resolution !== "refuse") {
+    // Deleting a stereotype removes the subject entries that name it under either choice (stereotype-sets-design.md decision 11).
+    const entriesOnly =
+      resolution === "refuse" &&
+      existing.json.kind === "stereotype" &&
+      this.referrers(existing, this.sortedEntries(), new Set()).every(({ entry, ref }) => entry.json.kind === "process" && ref.field === "stereotype");
+    if (resolution !== "refuse" || entriesOnly) {
       const { plan, deleted, edited } = planDelete(this.entries, [id], resolution);
       if (plan.refused.length) return this.invalid(id, this.refusals(plan));
       const candidate = new Map(this.entries);
@@ -1028,13 +1049,13 @@ export class MockModel {
       }
       if (op.op === "sync-codes") {
         // Lifecycle-design.md decision 19: the plan's codes and binding written to the process, in the form the file has.
-        const { entity, attribute, stateCodes } = op as { entity?: string; attribute?: string; stateCodes?: Json };
+        const { entity, attribute, stateCodes, stereotype } = op as { entity?: string; attribute?: string; stateCodes?: Json; stereotype?: string };
         const existing = candidate.get(op.id ?? "");
         if (!existing || existing.json.kind !== "process") {
           fail(this.notFound(op.id ?? ""));
           continue;
         }
-        const outcome = syncCodesOf({ entries: candidate }, existing.json, entity, attribute, stateCodes, this.options.newId);
+        const outcome = syncCodesOf({ entries: candidate }, existing.json, entity, attribute, stateCodes, this.options.newId, stereotype);
         if ("problem" in outcome) {
           fail(
             this.invalid(op.id ?? null, [
@@ -1055,6 +1076,24 @@ export class MockModel {
         const entry = this.entryFor(outcome.next, existing);
         candidate.set(entry.id, entry);
         items.push({ outcome: "saved", id: entry.id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
+        continue;
+      }
+      if (op.op === "sync-enum") {
+        const { entity, stereotype } = op as { entity?: string; stereotype?: string };
+        const changed = syncEnumDocs(candidate, op.id ?? "", entity, stereotype, this.options.newId);
+        if (typeof changed === "string") {
+          fail(
+            this.invalid(op.id ?? null, [
+              { rule: "MQ9019", severity: "error", message: changed, elementId: op.id ?? null, filePath: null, jsonPointer: "", line: null, column: null },
+            ]),
+          );
+          continue;
+        }
+        for (const json of changed) {
+          const entry = this.entryFor(json, candidate.get(String(json.id)));
+          candidate.set(entry.id, entry);
+          items.push({ outcome: "saved", id: entry.id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
+        }
         continue;
       }
       if (op.op === "set-initial" || op.op === "set-lifecycle") {
@@ -1419,9 +1458,14 @@ function e5(json: Json): Partial<ElementSummary> {
   if (kind === "process") {
     out.use = json.use === "lifecycle" || json.use === "library" ? json.use : "orchestration";
     // One subject, in either form, is `subject`; two or more are `subjects` (lifecycle-design.md decision 23).
+    // A stereotype entry is no entity: `subject` is left out whenever one exists, and `subjects` lists the entity entries (when there is one or more).
     const subjects = subjectsOf(json);
-    if (subjects.length === 1) out.subject = subjects[0].entity;
-    else if (subjects.length > 1) out.subjects = subjects.map((s) => s.entity);
+    const entities = subjects.flatMap((s) => s.entity ?? []);
+    const hasStereotype = subjects.some((s) => s.stereotype !== undefined);
+    if (hasStereotype) {
+      if (entities.length) out.subjects = entities;
+    } else if (subjects.length === 1 && entities.length === 1) out.subject = entities[0];
+    else if (entities.length > 1) out.subjects = entities;
     const count = (states: unknown): number => (Array.isArray(states) ? (states as Json[]).reduce((n, s) => n + 1 + count(s.states), 0) : 0);
     out.stateCount = count(json.states);
   }
@@ -1673,6 +1717,40 @@ function subjectsFormOf(json: Json, entryId: string): Json {
   return out;
 }
 
+const modelEntries = (entries: Map<string, { json: unknown }>): ModelEntry[] => [...entries].map(([id, e]) => ({ id, path: id, json: e.json as Json }));
+
+/**
+ * `sync-enum` (phase-3-design.md 4.4; stereotype-sets-design.md decision 10): the bound enum's members become the bound states, in
+ * document order, keeping what kept members have. `entity` or `stereotype` picks the entry, else the lifecycle's one enum binding.
+ */
+function syncEnumDocs(
+  entries: Map<string, { json: unknown }>,
+  id: string,
+  entity: string | undefined,
+  stereotype: string | undefined,
+  newId: () => string,
+): Json[] | string {
+  const get = (key: unknown) => (typeof key === "string" ? (entries.get(key)?.json as Json | undefined) : undefined);
+  const process = get(id);
+  if (process?.kind !== "process" || process.use !== "lifecycle") return `Process ${id} is not a lifecycle bound to an enum attribute.`;
+  const docs = [...entries.values()].map((e) => e.json as Json);
+  const byKey = (key: string) => docs.find((d) => d.kind === "stereotype" && d.key === key);
+  if (stereotype !== undefined && !subjectsOf(process).some((e) => e.stereotype === stereotype))
+    return `Stereotype '${stereotype}' is not a subject of process '${String(process.name)}'.`;
+  const drift = enumDrift(
+    process,
+    (key) => (entries.has(key) ? { id: key, path: key, json: entries.get(key)!.json as Json } : undefined),
+    entity,
+    byKey,
+    stereotype,
+  );
+  if (!drift) return [];
+  const enumDoc = clone(get(drift.enumId)!);
+  const members = (enumDoc.members as Json[] | undefined) ?? [];
+  enumDoc.members = drift.states.map((s) => members.find((m) => m.name === s) ?? { id: newId(), name: s });
+  return [enumDoc];
+}
+
 /**
  * `set-lifecycle` (lifecycle-design.md decision 9): binds entity `id` and process `target`, and treats the entity's other
  * lifecycles as the engine does. A demoted lifecycle keeps its subjects and loses their bindings.
@@ -1701,7 +1779,9 @@ function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, t
       // An entry covers its entity and the entities derived from it, so a listed base is enough (decision 5).
       const chain = new Set<unknown>([id]);
       for (let base = entity.base; typeof base === "string" && !chain.has(base); base = get(base)?.base) chain.add(base);
-      if (!(next.subjects as Json[]).some((e) => chain.has(e.entity))) next.subjects = [...(next.subjects as Json[]), { id: newId(), entity: id }];
+      // A stereotype entry that covers the entity counts as listing it (stereotype-sets-design.md decision 9).
+      const covered = (next.subjects as Json[]).some((e) => typeof e.stereotype === "string") && new Coverage(modelEntries(entries)).governs(next, id);
+      if (!covered && !(next.subjects as Json[]).some((e) => chain.has(e.entity))) next.subjects = [...(next.subjects as Json[]), { id: newId(), entity: id }];
     } else if (typeof next.subject === "string") {
       const partner = get(next.subject);
       if (partner && partner.id !== id && partner.lifecycle === target) delete edit(partner).lifecycle;

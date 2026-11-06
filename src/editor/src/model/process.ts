@@ -101,7 +101,10 @@ export interface ExpressionDoc {
 /** One thing a process governs (lifecycle-design.md decision 5). */
 export interface SubjectDoc {
   id: string;
-  entity: string;
+  /** An entity's id; absent on a stereotype entry. */
+  entity?: string;
+  /** A stereotype's key, in place of `entity` (stereotype-sets-design.md decision 2). */
+  stereotype?: string;
   boundAttribute?: string;
   /** Where the object's owner is held (actors-design.md decision 10); the `subjects` form only. */
   owner?: string;
@@ -875,11 +878,11 @@ export function subjectsOf(doc: { id?: unknown; subjects?: unknown; subject?: un
   if (!doc) return [];
   if (Array.isArray(doc.subjects)) {
     return (doc.subjects as Record<string, unknown>[]).flatMap((e) =>
-      e && typeof e.entity === "string"
+      e && (typeof e.entity === "string" || typeof e.stereotype === "string")
         ? [
             {
               id: typeof e.id === "string" ? e.id : "",
-              entity: e.entity,
+              ...(typeof e.entity === "string" ? { entity: e.entity } : { stereotype: e.stereotype as string }),
               ...(typeof e.boundAttribute === "string" ? { boundAttribute: e.boundAttribute } : {}),
               ...(typeof e.owner === "string" ? { owner: e.owner } : {}),
             },
@@ -895,6 +898,12 @@ export function subjectsOf(doc: { id?: unknown; subjects?: unknown; subject?: un
       ...(typeof doc.boundAttribute === "string" ? { boundAttribute: doc.boundAttribute } : {}),
     },
   ];
+}
+
+/** Whether a stereotype applies to entities: its `appliesTo` is unset, empty or lists entity (MQ9211 refuses one that does not). */
+export function stereotypeAppliesToEntities(stereotype: { appliesTo?: unknown } | null | undefined): boolean {
+  const list = stereotype?.appliesTo;
+  return !Array.isArray(list) || list.length === 0 || list.includes("entity");
 }
 
 /** The one subject of a process with exactly one, in either form; undefined with none or with two or more. */

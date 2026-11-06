@@ -108,6 +108,27 @@ public sealed class PlanCauseTests
     }
 
     [Fact]
+    public void Stereotype_coverage_keys_are_worded_as_inputs()
+    {
+        // stereotype-sets-design.md section 6: cs:<stereotype key> (the carrier set) and sn:subjects (the naming).
+        IReadOnlyList<string> keys = ["cs:approvable", "sn:subjects"];
+        var stored = new Maquettiste.Engine.Pipeline.UnitState("docs/entity", "old", keys, [])
+        {
+            KeyHashes = Maquettiste.Engine.Planning.KeyHashes.Of(keys, k => "then:" + k),
+        };
+        var unit = new PlanUnit("docs/entity", "new", keys, false, []);
+
+        var (reason, causes) = Maquettiste.Engine.Generation.PlanExplainer.Explain(unit, stored, false, "/repo", _ => true, currentHash: k => "now:" + k);
+
+        Assert.Equal("inputs", reason);
+        Assert.Equal(
+        [
+            ("inputs", "cs:approvable", "The entities that carry stereotype approvable changed"),
+            ("inputs", "sn:subjects", "The stereotypes the processes' subjects name changed"),
+        ], causes.Select(c => (c.Kind, c.Key, c.Detail)));
+    }
+
+    [Fact]
     public async Task A_check_plan_gives_its_units_the_check_reason()
     {
         await using var repo = Create();

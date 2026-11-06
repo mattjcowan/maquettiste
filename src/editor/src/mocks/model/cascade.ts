@@ -220,6 +220,13 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
     for (const target of [...queue]) {
       for (const { doc, ref } of refsTo.get(target) ?? []) {
         if (deletedSet.has(doc.id)) continue;
+        // Deleting a stereotype removes the process entries that name it, under either choice (stereotype-sets-design.md decision 11).
+        if (doc.json.kind === "process" && ref.field === "stereotype" && ref.removeItem !== undefined) {
+          const mine = ops.get(doc.id) ?? [];
+          if (!mine.some((o) => o.pointer === ref.removeItem)) mine.push({ pointer: ref.removeItem, item: true, remove: false, ref });
+          ops.set(doc.id, mine);
+          continue;
+        }
         plan.refused.push({
           id: doc.id,
           kind: String(doc.json.kind),

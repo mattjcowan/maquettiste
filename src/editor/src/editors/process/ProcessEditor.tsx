@@ -37,7 +37,7 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
   const view = useEditor(store, (s) => s.editors.view.process) ?? "chart";
   const focus = useProcessFocus(id);
   const [node, setNode] = useState<{ tab: ProcessTab; node: string | null } | null>(null);
-  const { members, codeKind } = useBinding(soleSubject(process)?.entity, soleSubject(process)?.boundAttribute);
+  const { members, codeKind } = useBinding(soleSubject(process)?.entity, soleSubject(process)?.boundAttribute, soleSubject(process)?.stereotype);
   const subjectMembers = useSubjectMembers(process);
 
   // A row of the Processes explorer asked for a tab and a node: show them, then clear the request.

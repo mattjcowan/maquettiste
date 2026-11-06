@@ -170,8 +170,13 @@ public sealed class ProcessExpressions
         if (!conditions.Any(c => c.ReadsSubject))
             return null;
         var defaults = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);
+        // A stereotype's attribute joins only when a condition reads one (stereotype-sets-design.md section 6), so the defaults stay as
+        // they were otherwise.
+        var stereotypeReads = ExprSites.StereotypeAttributesRead(model, process);
         foreach (var attribute in ExprSites.SubjectMembers(model, process).Attributes)
         {
+            if (!stereotypeReads.Contains(attribute.Id) && ExprSites.IsStereotypeAttribute(model, attribute.Id))
+                continue;
             if (!defaults.ContainsKey(attribute.Name))
                 defaults[attribute.Name] = attribute.Default is { ValueKind: not JsonValueKind.Undefined } value ? value : NullValue;
         }

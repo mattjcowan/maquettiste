@@ -96,7 +96,7 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
   const diagramId = useMemo(() => processDiagramId(lookup.rows, processId), [lookup, processId]);
   const diagram = useDraftDocument(diagramId);
   const diagramJson = diagram.json as DiagramDoc | undefined;
-  const binding = useBinding(soleSubject(process)?.entity, soleSubject(process)?.boundAttribute).members;
+  const binding = useBinding(soleSubject(process)?.entity, soleSubject(process)?.boundAttribute, soleSubject(process)?.stereotype).members;
   // The member names by value: the binding reads them into a new list on every render.
   const membersKey = binding ? JSON.stringify(binding) : null;
   const members = useMemo(() => (membersKey === null ? null : (JSON.parse(membersKey) as string[])), [membersKey]);

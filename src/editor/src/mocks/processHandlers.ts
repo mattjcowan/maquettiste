@@ -503,8 +503,11 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       if (wanted && !subjectsOf(entry.json).some((e) => e.entity === wanted))
         return refusal(`Entity ${wanted} is not a subject of process '${String(entry.json.name)}'.`);
       const stereotypes = (key: string) => [...model.entries.values()].map((e) => e.json).find((d) => d.kind === "stereotype" && d.key === key);
-      const enumBinding = (e: { entity: string; boundAttribute?: string }) => {
-        const attribute = bindableAttributes(lookup(e.entity)?.json, (id) => lookup(id)?.json, stereotypes).find((a) => a.id === e.boundAttribute);
+      const enumBinding = (e: { entity?: string; stereotype?: string; boundAttribute?: string }) => {
+        const attribute =
+          e.stereotype !== undefined
+            ? arr(stereotypes(e.stereotype)?.attributes).find((a) => a.id === e.boundAttribute)
+            : bindableAttributes(lookup(e.entity!)?.json, (id) => lookup(id)?.json, stereotypes).find((a) => a.id === e.boundAttribute);
         const ref = (attribute?.type as Json | undefined)?.ref;
         return typeof ref === "string" && lookup(ref)?.json.kind === "enum" ? { attribute: attribute!, enumId: ref } : null;
       };
@@ -512,7 +515,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       if (entry.json.use !== "lifecycle" || !binding) return refusal("The process is not a lifecycle bound to an enum attribute.");
       if (typeof value.expectedHash === "string" && value.expectedHash !== entry.hash)
         return kit.problem(409, "conflict" as never, "The process changed since you loaded it.");
-      const drift = enumDrift(entry.json, (id) => lookup(id), binding.entity);
+      const drift = enumDrift(entry.json, (id) => lookup(id), binding.entity, stereotypes, binding.stereotype);
       const enumId = enumBinding(binding)!.enumId;
       const enumEntry = lookup(enumId);
       if (!enumEntry) return refusal("The bound attribute's type is not an enum.");

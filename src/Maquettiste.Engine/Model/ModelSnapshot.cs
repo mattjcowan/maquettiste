@@ -532,5 +532,8 @@ public sealed class ModelSnapshot
 
     /// <summary>Returns a summary of every element, ordinal by path.</summary>
     /// <returns>The summaries.</returns>
-    public IReadOnlyList<ElementSummary> Summaries() => _summaries;
+    public IReadOnlyList<ElementSummary> Summaries() => _rows ??= ModelIndexer.WithSubjectCoverage(this, _summaries);
+
+    /// <summary>The rows with the process rows' subject coverage (stereotype-sets-design.md section 8), worked out on first read.</summary>
+    private IReadOnlyList<ElementSummary>? _rows;
 }

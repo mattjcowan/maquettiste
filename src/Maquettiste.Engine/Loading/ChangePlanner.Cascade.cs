@@ -204,8 +204,9 @@ internal sealed partial class ChangePlanner
             }
         }
 
-        // An entity a process lists in subjects (lifecycle-design.md decision 5): its entry goes in either resolution, the way an entity's
-        // binding does, and a list left empty goes whole, so a lifecycle is left with no subject (MQ9201), as when its one subject goes.
+        // An entity or a stereotype a process lists in subjects (lifecycle-design.md decision 5, stereotype-sets-design.md decision 11): its
+        // entry goes in either resolution, the way an entity's binding does, and a list left empty goes whole, so a lifecycle is left with no
+        // subject (MQ9201), as when its one subject goes.
         if (referrer.Element is Process && SubjectEntry(reference.JsonPointer) is { } subjectEntry)
         {
             var part = subjectEntry;
@@ -764,10 +765,11 @@ internal sealed partial class ChangePlanner
         return JsonPointer.Build(segments[..2]);
     }
 
-    /// <summary>The <c>subjects</c> entry (<c>/subjects/2</c>) whose <c>entity</c> a pointer is; <see langword="null"/> for any other pointer.</summary>
+    /// <summary>The <c>subjects</c> entry (<c>/subjects/2</c>) whose <c>entity</c> or <c>stereotype</c> (stereotype-sets-design.md decision 11) a
+    /// pointer is; <see langword="null"/> for any other pointer.</summary>
     private static string? SubjectEntry(string pointer) =>
         pointer.StartsWith("/subjects/", StringComparison.Ordinal) && JsonPointer.TryParse(pointer, out var segments) && segments.Length == 3
-            && segments[2] == "entity" && JsonPointer.TryIndex(segments[1], out _)
+            && segments[2] is "entity" or "stereotype" && JsonPointer.TryIndex(segments[1], out _)
             ? JsonPointer.Build(segments[..2])
             : null;
 

@@ -68,8 +68,9 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="StepCount">The number of steps, on scenario rows.</param>
 /// <param name="Effect">The operation's effect, <c>read</c> or <c>change</c>, on operation rows (next-phase-2-design.md section 4.1).</param>
 /// <param name="Type">The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2).</param>
-/// <param name="Subjects">The entities a process governs, in entry order, on process rows with two or more subjects; such a row has no
-/// <paramref name="Subject"/> (lifecycle-design.md decision 23).</param>
+/// <param name="Subjects">The entities a process's entity entries name, in entry order, on process rows with two or more entity entries; such a
+/// row has no <paramref name="Subject"/> (lifecycle-design.md decision 23). Stereotype entries are not counted, but a row with one lists
+/// its entity entries from one on (stereotype-sets-design.md section 8).</param>
 /// <param name="Actors">The actors a process names anywhere in its document (events, gates, invokes, custom properties), as ids sorted
 /// ordinally, on process rows (libraries too) that name at least one. Only ids whose element is an actor count, so the row can change
 /// when an actor file appears or goes; that file's own row changes with it, so the index tag still follows.</param>
@@ -78,6 +79,11 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// <param name="Relative">How an actor from the object is worked out, <c>owner</c>, <c>path</c>, <c>members-of</c> or <c>none</c>
 /// (actors-design.md decision 9), on actor rows whose file has <c>relative</c>.</param>
 /// <param name="Participants">The number of participants, on scenario rows that have at least one (actors-design.md decision 14).</param>
+/// <param name="SubjectStereotypes">The ids of the stereotypes a process's subject entries name, in entry order, on process rows that have such
+/// an entry (stereotype-sets-design.md section 8); an unknown key is left out. Such a row has no <paramref name="Subject"/>.</param>
+/// <param name="Covers">The ids of the carriers a process's stereotype entries govern (decision 4), each entry's by qualified name, in entry
+/// order, on process rows that have such an entry and a carrier. Worked out per snapshot, since package defaults, implied stereotypes and
+/// bases decide them.</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
 /// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
@@ -105,7 +111,9 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Actors = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? MemberOf = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Relative = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Participants = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Participants = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? SubjectStereotypes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Covers = null)
 {
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>
@@ -140,7 +148,10 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && (ReferenceEquals(Actors, other.Actors) || (Actors is not null && other.Actors is not null && Actors.SequenceEqual(other.Actors, StringComparer.Ordinal)))
         && (ReferenceEquals(MemberOf, other.MemberOf) || (MemberOf is not null && other.MemberOf is not null && MemberOf.SequenceEqual(other.MemberOf, StringComparer.Ordinal)))
         && string.Equals(Relative, other.Relative, StringComparison.Ordinal)
-        && Participants == other.Participants;
+        && Participants == other.Participants
+        && (ReferenceEquals(SubjectStereotypes, other.SubjectStereotypes)
+            || (SubjectStereotypes is not null && other.SubjectStereotypes is not null && SubjectStereotypes.SequenceEqual(other.SubjectStereotypes, StringComparer.Ordinal)))
+        && (ReferenceEquals(Covers, other.Covers) || (Covers is not null && other.Covers is not null && Covers.SequenceEqual(other.Covers, StringComparer.Ordinal)));
 
     /// <inheritdoc/>
     public override int GetHashCode() => HashCode.Combine(

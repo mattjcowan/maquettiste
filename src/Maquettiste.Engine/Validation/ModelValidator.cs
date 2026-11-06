@@ -1143,6 +1143,68 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             }
         }
 
+        // A stereotype that stands for a set of types (stereotype-sets-design.md section 5): an entity's stereotypes, base or package, a
+        // package's defaults or parent, or a stereotype's implies or appliesTo may change which entities a stereotype entry covers. While an
+        // entry names a stereotype, such a change re-checks the processes that have one (MQ9201, MQ9202, MQ9211, the guard scope), the
+        // entities whose lifecycle names one (MQ9201) and, below, those processes' scenarios. None without a stereotype entry.
+        var coverage = Processes.SubjectCoverage.Of(model);
+        var coverageMatters = coverage.Any && element is Entity or Package or Stereotype;
+        if (coverageMatters)
+        {
+            foreach (var listing in model.All<Process>())
+            {
+                if (!ReferenceEquals(listing, element) && Processes.SubjectCoverage.NamesStereotype(listing) && model.GetDocument(listing.Id) is { } peer)
+                    yield return peer;
+            }
+
+            foreach (var governed in model.All<Entity>())
+            {
+                if (!ReferenceEquals(governed, element) && governed.Lifecycle is { } named && model.Get<Process>(named) is { } lifecycle
+                    && Processes.SubjectCoverage.NamesStereotype(lifecycle) && model.GetDocument(governed.Id) is { } peer)
+                    yield return peer;
+            }
+        }
+
+        // Without a stereotype entry too: a guard, owner field or actor path that reads a stereotype's attribute, and a scenario object's
+        // value for one, depend on which stereotypes an entity carries. Only the processes, actors' processes and scenarios that name an
+        // attribute declared on a stereotype are picked, so it costs nothing when nothing reads one.
+        var stereotypeReaders = new HashSet<string>(StringComparer.Ordinal);
+        if (element is Entity or Package or Stereotype)
+        {
+            foreach (var declaring in model.All<Stereotype>())
+            {
+                foreach (var attribute in declaring.Attributes)
+                {
+                    foreach (var reference in model.ReferencesTo(attribute.Id))
+                    {
+                        switch (model.GetDocument(reference.FromElementId)?.Element)
+                        {
+                            case Process reader when reader.Use != ProcessUse.Library:
+                                stereotypeReaders.Add(reader.Id);
+                                break;
+                            case Scenario scenario:
+                                stereotypeReaders.Add(scenario.Id);
+                                break;
+                            case Actor { Relative: not null } actor:
+                                foreach (var use in model.ReferencesTo(actor.Id))
+                                {
+                                    if (model.Get<Process>(use.FromElementId) is not null)
+                                        stereotypeReaders.Add(use.FromElementId);
+                                }
+
+                                break;
+                        }
+                    }
+                }
+            }
+
+            foreach (var id in stereotypeReaders.Order(StringComparer.Ordinal))
+            {
+                if (model.GetDocument(id) is { } peer && !ReferenceEquals(peer.Element, element))
+                    yield return peer;
+            }
+        }
+
         // MQ93xx and MQ95xx on scenarios replay their process, the sub-processes it invokes and the types of its attributes: a process
         // change re-checks its own scenarios and those of the processes that invoke it; an enum or subject change re-checks the
         // scenarios of the processes that use it.
@@ -1152,6 +1214,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             var affected = element switch
             {
                 Process changed => string.Equals(candidate.Id, changed.Id, StringComparison.Ordinal) || ProcessRules.Callees(candidate).Contains(changed.Id),
+                // While an entry names a stereotype, the change may move the carriers (stereotype-sets-design.md section 5); a process
+                // whose guard reads a stereotype's attribute replays too.
+                Entity or Package or Stereotype when (coverageMatters && Processes.SubjectCoverage.NamesStereotype(candidate)) || stereotypeReaders.Contains(candidate.Id) => true,
                 // A sub-process's guard that reads subject sees its own subjects' defaults (lifecycle-design.md decision 22).
                 Entity entity => Governs(model, candidate, entity.Id)
                     || ExprSites.InvokedProcesses(model, candidate).Any(p => Governs(model, p, entity.Id) && ExprSites.SubjectDepth(model, p) is not null),

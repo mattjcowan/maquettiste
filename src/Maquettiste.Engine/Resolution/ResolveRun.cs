@@ -180,10 +180,11 @@ internal sealed partial class ResolveRun
         FinishConceptual();
         ResolveShared();
         ResolveSeedsAndUsages(resolvedDatabases);
+        var stereotypes = ResolveStereotypeDefinitions(); // before processes: a subject entry may name a stereotype
         ResolveProcesses();
         ResolveOperations();
         ResolveCustomElements();
-        var (stereotypes, vocabularies, trees) = ResolveDefinitions();
+        var (vocabularies, trees) = ResolveDefinitions(stereotypes);
         LinkOperationRequires(); // last: an id of any kind resolves, whatever registered it
 
         var result = new ResolvedModel
@@ -228,32 +229,13 @@ internal sealed partial class ResolveRun
     /// scope, the global one first, then by (package qualified name, id). Each depends on its own file; a tree also completes the
     /// shared <see cref="RCategory"/> instances (parent, children, order, description, rationale, decision, status) the conceptual pass created.
     /// </summary>
-    private (List<RStereotypeDefinition> Stereotypes, List<RTagVocabulary> Vocabularies, List<RCategoryTree> Trees) ResolveDefinitions()
+    private (List<RTagVocabulary> Vocabularies, List<RCategoryTree> Trees) ResolveDefinitions(List<RStereotypeDefinition> stereotypes)
     {
-        var stereotypes = new List<RStereotypeDefinition>();
-        foreach (var key in Model.All<Stereotype>().Select(s => s.Key).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        // A stereotype's errors last, after the operations that carry it, as before the definitions moved ahead of the processes.
+        foreach (var r in stereotypes)
         {
-            if (Model.GetStereotype(key) is not { } stereotype)
-                continue;
-            var r = new RStereotypeDefinition();
-            var deps = DepsOf(r);
-            FillCommon(r, stereotype, deps);
-            r.Package = PackageOf(stereotype.Package);
-            r.Key = stereotype.Key;
-            r.AppliesTo = [.. stereotype.AppliesTo];
-            var attributes = StableByOrder(stereotype.Attributes.DistinctBy(a => a.Id, StringComparer.Ordinal), a => a.Order)
-                .Select(a => MakeAttribute(a, r, r.Package, null, false, stereotype, stereotype.Id))
-                .ToList();
-            SetOrder(attributes);
-            r.Attributes = new RList<RAttribute>(attributes, deps.ToList());
-            r.DefaultProperties = stereotype.DefaultProperties.Count == 0
-                ? FrozenDictionary<string, object?>.Empty
-                : ResolutionValues.PlainMap(stereotype.DefaultProperties);
-            r.Errors = StereotypeErrors(stereotype, r);
-            r.Icon = stereotype.Icon;
-            r.Color = stereotype.Color;
-            Register(r);
-            stereotypes.Add(r);
+            if (Model.GetStereotype(r.Key) is { } stereotype)
+                r.Errors = StereotypeErrors(stereotype, r);
         }
 
         var vocabularies = new List<RTagVocabulary>();
@@ -279,7 +261,45 @@ internal sealed partial class ResolveRun
             trees.Add(r);
         }
 
-        return (stereotypes, ScopeOrder(vocabularies), ScopeOrder(trees));
+        return (ScopeOrder(vocabularies), ScopeOrder(trees));
+    }
+
+    /// <summary>The stereotype definitions by key (<see cref="ResolveStereotypeDefinitions"/>), for the subject entries that name one.</summary>
+    private readonly Dictionary<string, RStereotypeDefinition> _stereotypeDefinitions = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The stereotype of each key (the one <see cref="ModelSnapshot.GetStereotype"/> gives), by key, each depending on its own file; their
+    /// errors come after the operations (<see cref="ResolveDefinitions"/>).
+    /// </summary>
+    private List<RStereotypeDefinition> ResolveStereotypeDefinitions()
+    {
+        var stereotypes = new List<RStereotypeDefinition>();
+        foreach (var key in Model.All<Stereotype>().Select(s => s.Key).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        {
+            if (Model.GetStereotype(key) is not { } stereotype)
+                continue;
+            var r = new RStereotypeDefinition();
+            var deps = DepsOf(r);
+            FillCommon(r, stereotype, deps);
+            r.Package = PackageOf(stereotype.Package);
+            r.Key = stereotype.Key;
+            r.AppliesTo = [.. stereotype.AppliesTo];
+            var attributes = StableByOrder(stereotype.Attributes.DistinctBy(a => a.Id, StringComparer.Ordinal), a => a.Order)
+                .Select(a => MakeAttribute(a, r, r.Package, null, false, stereotype, stereotype.Id))
+                .ToList();
+            SetOrder(attributes);
+            r.Attributes = new RList<RAttribute>(attributes, deps.ToList());
+            r.DefaultProperties = stereotype.DefaultProperties.Count == 0
+                ? FrozenDictionary<string, object?>.Empty
+                : ResolutionValues.PlainMap(stereotype.DefaultProperties);
+            r.Icon = stereotype.Icon;
+            r.Color = stereotype.Color;
+            Register(r);
+            stereotypes.Add(r);
+            _stereotypeDefinitions[r.Key] = r;
+        }
+
+        return stereotypes;
     }
 
     /// <summary>The global definition first (no <c>package</c>), then by (package qualified name, id), ordinal.</summary>
