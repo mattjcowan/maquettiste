@@ -73,7 +73,8 @@ public sealed partial class HandlerRegistry
     {
         ArgumentNullException.ThrowIfNull(registrar);
 {{- for p in model.processes }}
-        registrar.Add(services => new {{ p_name(p) }}CommandHandler(Resolve<{{ p_name(p) }}Machine>(services), Resolve<I{{ p_name(p) }}Store>(services)));
+        registrar.Add(services => new {{ p_name(p) }}CommandHandler(Resolve<{{ p_name(p) }}Machine>(services), Resolve<I{{ p_name(p) }}Store>(services){{ if model.rights_lifecycles.size > 0 }},
+            services.GetService(typeof(ICallerHoldings)) as ICallerHoldings{{ end }}));
 {{- end }}
     }
 

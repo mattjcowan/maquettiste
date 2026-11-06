@@ -692,6 +692,31 @@ internal sealed class PackRepo : IDisposable
     }
 
     /// <summary>
+    /// The csharp-dapper pack's <c>rights</c> case (rights-design.md section 9): a document lifecycle that denies by default, with inline
+    /// rights (one on <c>sign</c> to a role) and a named right with a condition and an exception taken from the object; a records lifecycle
+    /// over the same entity that uses the same named right and could say no to <c>modify</c>, so the document lifecycle's handlers ask its
+    /// states. csharp-dapper writes to <c>out</c>, with the scenario tests under out/Tests.
+    /// </summary>
+    /// <returns>The repo.</returns>
+    public static PackRepo Rights()
+    {
+        var repo = new PackRepo();
+        var source = Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "rights");
+        CopyTree(Path.Combine(source, "model"), Path.Combine(repo.Repo.ModelRoot, "model"));
+        CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper"), Path.Combine(repo.Repo.ModelRoot, "templates", "csharp-dapper"));
+        repo.Write(".maquettiste/maquettiste.json", """
+            {
+              "formatVersion": 1,
+              "name": "rights",
+              "outputs": { "allow": [ { "path": "out" } ] },
+              "packs": { "csharp-dapper": { "output": "out", "parameters": { "testsFolder": "Tests" } } }
+            }
+
+            """);
+        return repo;
+    }
+
+    /// <summary>
     /// The gate 3 fixture (<c>tests/fixtures/models/processes</c>, phase-3-design.md section 8.1) with every example pack its settings
     /// name that exists under <c>packs/</c>. With <paramref name="sources"/> the fixture's C# solution comes along (its isolation files,
     /// projects, the committed companions under <c>src/Processes.Data/Custom</c> and the test host), so the generated code can be built

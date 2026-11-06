@@ -309,6 +309,13 @@ public sealed class ResolvedModel
     /// </summary>
     public RList<RRight> Rights { get; internal init; } = RList<RRight>.Empty;
 
+    /// <summary>
+    /// The lifecycles that state rights or a default (rights-design.md decision 28), by name then id: the ones that can answer for a verb.
+    /// Empty in a project that uses no rights, so a template asks <c>model.rights_lifecycles.size &gt; 0</c> to learn whether the project
+    /// uses rights. The list keys only on the rights naming key (<c>rn:rights</c>), whose hash never changes in a project without rights.
+    /// </summary>
+    public RList<RProcess> RightsLifecycles { get; internal init; } = RList<RProcess>.Empty;
+
     /// <summary>Operations, by (package qualified name, subject name with none first, name, id) (next-phase-2-design.md section 4.1).</summary>
     public RList<ROperation> Operations { get; internal init; } = RList<ROperation>.Empty;
 

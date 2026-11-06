@@ -11,6 +11,70 @@ p = s.process
 name = p_name(p)
 ctx = name + "Context"
 test = (pascal s.name) + "Tests"
+rights = uses_rights()
+# The refusal a refused step asserts: the one the file expects, else the engine's replay's.
+func refusal_of(step)
+  if step.expect && step.expect.refusal
+    ret step.expect.refusal
+  end
+  ret step.trace ? step.trace.refusal : null
+end
+# The actor a verb step acts as: the replay's, else the step's, else the participant's actor or first holding with no context.
+func verb_actor(step)
+  if step.acts_as
+    ret step.acts_as
+  end
+  if step.actor
+    ret step.actor
+  end
+  if step.participant
+    if step.participant.actor
+      ret step.participant.actor
+    end
+    for h in step.participant.holds
+      if !h.within
+        ret h.actor
+      end
+    end
+  end
+  ret null
+end
+# What a step's participant holds with no context (rights-design.md decision 24): its actor and its holdings without a within.
+func held(step)
+  $out = []
+  if step.participant
+    if step.participant.actor
+      $out[$out.size] = "Actors." + actor_member(step.participant.actor)
+    end
+    for h in step.participant.holds
+      if !h.within
+        $out[$out.size] = "Actors." + actor_member(h.actor)
+      end
+    end
+  end
+  ret "[" + ($out | array.join ", ") + "]"
+end
+# The scenario subject's states in the other lifecycles that could say no (process.may_refuse), by lifecycle name, for verb steps.
+other_states = {}
+other_names = []
+if rights && s.subject
+  for m in p.may_refuse
+    $ids = {}
+    for x in m.lifecycle.all_states
+      $ids[x.id] = true
+    end
+    $l = []
+    for st in s.subject.states
+      if $ids[st.id]
+        $l[$l.size] = st.path
+      end
+    end
+    if $l.size > 0
+      other_states[m.lifecycle.name] = $l
+      other_names[other_names.size] = m.lifecycle.name
+    end
+  end
+end
 func has(map, key)
   ret map | object.has_key key
 end
@@ -63,7 +127,9 @@ func command(step)
 end
 func step_text(step)
   $by = step.participant ? (" by " + step.participant.name + (step.acts_as ? " as " + step.acts_as.name : "")) : (step.actor ? " by " + step.actor.name : "")
-  if step.input == "time"
+  if step.input == "verb"
+    ret (step.verb ? step.verb.key : "a verb") + (step.end ? " through " + step.end.name : "") + $by
+  else if step.input == "time"
     ret "time +" + step.after
   else if step.input == "invoke-done" || step.input == "invoke-error"
     ret step.input + " " + step.invoke.name + $by
@@ -81,6 +147,9 @@ if pack.params.testsFolder != ""
 {{- capture content -}}
 {{ header() }}
 using System;
+{{- if rights }}
+using System.Collections.Generic;
+{{- end }}
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -108,17 +177,75 @@ public sealed class {{ test }}
 {{- for step in s.steps }}
 
         // Step {{ step.index + 1 }}: {{ cs_line step_text(step) }}.{{ if step.description }} {{ cs_line step.description | string.strip }}{{ end }}
+{{- if step.input == "verb" }}
+{{- if rights }}
+{{- $actor = verb_actor(step) }}
+        var decision{{ step.index + 1 }} = Rights.Check(new RightRequest
+        {
+            Verb = {{ step.verb ? ("global::" + base_ns + ".Verb." + (pascal step.verb.key)) : "null" }},
+{{- if p.use == "lifecycle" }}
+            Lifecycle = {{ json p.name }},
+{{- end }}
+{{- if s.subject }}
+            Subject = typeof(global::{{ ns(s.subject.entity) }}.{{ type_name(s.subject.entity) }}),
+{{- end }}
+{{- if $actor }}
+            Actor = Actors.{{ actor_member $actor }},
+{{- end }}
+            Held = {{ held(step) }},
+            States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+                [{{ json p.name }}] = result.States ?? [],
+{{- for n in other_names }}
+                [{{ json n }}] = [{{ for x in other_states[n] }}{{ for.first ? "" : ", " }}{{ json x }}{{ end }}],
+{{- end }}
+            },
+{{- if step.end }}
+            End = {{ json step.end.name }},
+{{- end }}
+        });
+{{- if step.expect }}
+{{- if step.expect.accepted }}
+        Assert.True(decision{{ step.index + 1 }}.Allowed, decision{{ step.index + 1 }}.Refusal);
+{{- else }}
+        Assert.False(decision{{ step.index + 1 }}.Allowed);
+{{- if refusal_of(step) }}
+        Assert.Equal({{ json refusal_of(step) }}, decision{{ step.index + 1 }}.Refusal);
+{{- end }}
+{{- if step.expect.refused_by }}
+        Assert.Equal({{ json step.expect.refused_by }}, decision{{ step.index + 1 }}.RefusedBy);
+{{- end }}
+{{- end }}
+{{- end }}
+{{- else }}
+        // Nothing in the model can refuse this verb: no lifecycle states rights or a default.
+{{- end }}
+{{- else }}
 {{- if step.input == "time" }}
         clock.Advance(TimeSpan.FromTicks({{ step.after_ticks }}));
 {{- end }}
+{{- $holds = rights && step.participant && step.input != "time" }}
+{{- if $holds }}
+        ScenarioHoldings.Current = {{ held(step) }};
+{{- end }}
         result = await host.Dispatcher.SendAsync({{ command(step) }}, cancellationToken);
+{{- if $holds }}
+        var asked{{ step.index + 1 }} = ScenarioHoldings.Asked;
+        ScenarioHoldings.Current = null;
+{{- if refusal_of(step) != "actor" && refusal_of(step) != "validation" && refusal_of(step) != "instance" }}
+        Assert.True(asked{{ step.index + 1 }}, "The command handlers did not ask ScenarioHoldings for the participant's held actors: register it in ScenarioHost in place of the CallerHoldings stub.");
+{{- end }}
+{{- end }}
 {{- if step.expect }}
 {{- if step.expect.accepted }}
         Assert.True(result.Accepted, result.Refusal);
 {{- else }}
         Assert.False(result.Accepted);
-{{- if step.trace && step.trace.refusal }}
-        Assert.Equal({{ json step.trace.refusal }}, result.Refusal);
+{{- if refusal_of(step) }}
+        Assert.Equal({{ json refusal_of(step) }}, result.Refusal);
+{{- end }}
+{{- if rights && step.expect.refused_by }}
+        Assert.Equal({{ json step.expect.refused_by }}, result.RefusedBy);
 {{- end }}
 {{- end }}
 {{- if step.trace && step.trace.audit.size > 0 }}
@@ -132,6 +259,7 @@ public sealed class {{ test }}
         Assert.Equal<string>([{{ for a in changed }}{{ if !for.first }}, {{ end }}{{ json a.name }}{{ end }}], result.Changed);
 {{- for a in changed }}
         Assert.Equal({{ cs_literal(step.expect.context[a.name], a) }}, (({{ ctx }})result.Context!).{{ prop_name(a, ctx) }});
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

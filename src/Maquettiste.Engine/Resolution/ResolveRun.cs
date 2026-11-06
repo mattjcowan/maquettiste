@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Planning;
 using Maquettiste.Engine.Text;
 using Maquettiste.Engine.Validation;
 
@@ -206,6 +207,7 @@ internal sealed partial class ResolveRun
             Actors = new RList<RActor>(_actorOrder, [ActorKind]),
             Scenarios = new RList<RScenario>(_scenarioOrder, [ScenarioKind]),
             Rights = new RList<RRight>(_rightOrder, [RightKind]),
+            RightsLifecycles = new RList<RProcess>(_rightsLifecycles, [RightsNaming.Key]),
             Operations = new RList<ROperation>(_operationOrder, [OperationKind]),
             CustomElements = new RList<RCustom>(_customOrder, [CustomKind]),
             Constraints = new RList<RConstraint>(_constraintOrder, ["k:constraint"]),

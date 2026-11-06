@@ -24,6 +24,14 @@ for a in model.actors
   end
 end
 has_relative = relative_names.size > 0
+# Whether the project uses rights (rights-design.md decision 28): only then are the rights checks, Refusals.Right and Default, and
+# RefusedBy written. model.rights_lifecycles keys only on the rights naming key.
+rights = model.rights_lifecycles.size > 0
+rights_ns = "global::" + base_ns + ".Processes"
+verb_keys = {}
+for v in model.verbs
+  verb_keys[v.key] = true
+end
 # The check that an acting actor taken from the object is the caller, appended to each actor check.
 func resolves(snapshot, actor, envelope)
   ret has_relative ? (" || !Resolves(" + snapshot + ", " + actor + ", " + envelope + ")") : ""
@@ -131,6 +139,14 @@ public static class Refusals
 
     /// <summary>The gate requires a reason.</summary>
     public const string GateReason = "gate-reason";
+{{- if rights }}
+
+    /// <summary>A right denies the verb (rights-design.md decision 12).</summary>
+    public const string Right = "right";
+
+    /// <summary>No right allows the verb and a lifecycle denies by default.</summary>
+    public const string Default = "default";
+{{- end }}
 
     /// <summary>The command's payload is not valid (dispatch).</summary>
     public const string Validation = "validation";
@@ -393,10 +409,17 @@ public sealed class ChartDefinition
     /// <param name="invokes">The invokes.</param>
     /// <param name="gates">The gates.</param>
     /// <param name="actorIds">The ids of the actors the process names, by name (audit records hold ids, as the engine's do).</param>
+{{- if rights }}
+    /// <param name="rights">What the process states for rights: its rights and default, and the ids a refusal names.</param>
+{{- end }}
     public ChartDefinition(string processId, string processName, StateDefinition[] states, TransitionDefinition[] transitions, EventDefinition[] events,
-        ActionDefinition[] actions, InvokeDefinition[] invokes, GateDefinition[] gates, IReadOnlyDictionary<string, string>? actorIds = null)
+        ActionDefinition[] actions, InvokeDefinition[] invokes, GateDefinition[] gates, IReadOnlyDictionary<string, string>? actorIds = null{{ if rights }},
+        {{ rights_ns }}.ProcessRights? rights = null{{ end }})
     {
         _actorIds = actorIds ?? new Dictionary<string, string>(StringComparer.Ordinal);
+{{- if rights }}
+        Rights = rights;
+{{- end }}
         ArgumentNullException.ThrowIfNull(states);
         ArgumentNullException.ThrowIfNull(transitions);
         ArgumentNullException.ThrowIfNull(events);
@@ -467,6 +490,11 @@ public sealed class ChartDefinition
 
     /// <summary>The process name.</summary>
     public string ProcessName { get; }
+{{- if rights }}
+
+    /// <summary>What the process states for rights, or null.</summary>
+    public {{ rights_ns }}.ProcessRights? Rights { get; }
+{{- end }}
 
     /// <summary>The states, the root first, in document order.</summary>
     public IReadOnlyList<StateDefinition> States { get; }
@@ -699,6 +727,23 @@ public interface IActorResolver<TContext>
 }
 {{- end }}
 
+{{ if rights -}}
+/// <summary>
+/// The object's states in the other lifecycles that could say no to a verb an event names (rights-design.md decision 29): generated code
+/// can't read another lifecycle's state for the same object, so a process's Handlers class implements this when one could. A lifecycle
+/// missing from the answer, or with no states, reads as its initial state.
+/// </summary>
+/// <typeparam name="TContext">The process's context type.</typeparam>
+public interface ILifecycleStates<TContext>
+    where TContext : class
+{
+    /// <summary>The object's active state paths, by lifecycle name.</summary>
+    /// <param name="call">The current call.</param>
+    /// <returns>The states.</returns>
+    IReadOnlyDictionary<string, IReadOnlyList<string>> StatesIn(StatechartCall<TContext> call);
+}
+
+{{ end -}}
 /// <summary>The clock the interpreter reads (an extension point; ProcessHost implements it).</summary>
 public interface IProcessClock
 {
@@ -800,6 +845,12 @@ public sealed class StepResult<TContext>
 
     /// <summary>Why it was refused (<see cref="Refusals"/>).</summary>
     public string? Refusal { get; init; }
+{{- if rights }}
+
+    /// <summary>The id of the element that refused it: the event or invoke, the right, the lifecycle whose default denies, the guard or the
+    /// gate; null when accepted, and for no-transition.</summary>
+    public string? RefusedBy { get; init; }
+{{- end }}
 
     /// <summary>The input: the event name, "invoke-done:&lt;invoke&gt;", "invoke-error:&lt;invoke&gt;", ":time" or ":start".</summary>
     public string Input { get; init; } = "";
@@ -911,17 +962,32 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
     /// <param name="envelope">The envelope.</param>
     /// <param name="payload">The payload by attribute name.</param>
     /// <param name="audit">Gate audit attribute values by name.</param>
+{{- if rights }}
+    /// <param name="held">The actors the caller holds with no context, besides the one it acts as (ICallerHoldings).</param>
+{{- end }}
     /// <returns>The result.</returns>
     public StepResult<TContext> Send(ProcessSnapshot<TContext> snapshot, string name, ProcessEnvelope envelope, IReadOnlyDictionary<string, object?>? payload = null,
-        IReadOnlyDictionary<string, object?>? audit = null)
+        IReadOnlyDictionary<string, object?>? audit = null{{ if rights }}, IReadOnlyList<string>? held = null{{ end }})
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(envelope);
-        var run = new Run(this, snapshot, name, envelope) { AuditValues = audit ?? new Dictionary<string, object?>() };
+        var run = new Run(this, snapshot, name, envelope) { AuditValues = audit ?? new Dictionary<string, object?>(){{ if rights }}, Held = held ?? []{{ end }} };
         if (run.Done || Chart.Event(name) is not { } ev)
             return run.Refuse(Refusals.NoTransition);
         if (ev.Actors.Count > 0 && (envelope.Actor is null || !{{ has_members ? (actors_type + ".Allows(ev.Actors, envelope.Actor)") : "ev.Actors.Contains(envelope.Actor, StringComparer.Ordinal)" }}{{ resolves("snapshot", "envelope.Actor", "envelope") }}))
-            return run.Refuse(Refusals.Actor);
+            return run.Refuse(Refusals.Actor{{ if rights }}, Chart.Rights?.Id("event:" + name){{ end }});
+{{- if rights }}
+
+        // Rights on the event's verb, before any guard (rights-design.md decision 12): the event's list, and the signers of the gates on the
+        // transitions it can take, count as allows of this lifecycle.
+        var allowed = new List<string>();
+        if (ev.Actors.Count > 0)
+            allowed.Add(Chart.Rights?.Id("event:" + name) ?? name);
+        if (envelope.Actor is { } signer)
+            allowed.AddRange(run.GateSigners(name, signer));
+        if (run.CheckRights(ev.Verb, allowed) is { Allowed: false } denied)
+            return run.Refuse(denied.Refusal!, denied.RefusedBy);
+{{- end }}
         run.Event = new ProcessEvent(name, envelope.Actor, payload ?? new Dictionary<string, object?>());
         run.Macrostep(() =>
         {
@@ -944,16 +1010,26 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
     /// <param name="invoke">The invoke name.</param>
     /// <param name="failed">True for an error, false for done.</param>
     /// <param name="actor">The actor reporting it (checked for human tasks).</param>
+{{- if rights }}
+    /// <param name="held">The actors the caller holds with no context, besides the one it acts as (ICallerHoldings).</param>
+{{- end }}
     /// <returns>The result.</returns>
-    public StepResult<TContext> Complete(ProcessSnapshot<TContext> snapshot, string invoke, bool failed, string? actor)
+    public StepResult<TContext> Complete(ProcessSnapshot<TContext> snapshot, string invoke, bool failed, string? actor{{ if rights }}, IReadOnlyList<string>? held = null{{ end }})
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(invoke);
-        var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor));
+        var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor)){{ if rights }} { Held = held ?? [] }{{ end }};
         if (Chart.Invoke(invoke) is not { } found || !run.Pending.Contains(found))
             return run.Refuse(Refusals.NoTransition);
         if (found.Kind == InvokeKind.HumanTask && found.Actors.Count > 0 && (actor is null || !{{ has_members ? (actors_type + ".Allows(found.Actors, actor)") : "found.Actors.Contains(actor, StringComparer.Ordinal)" }}{{ resolves("snapshot", "actor", "new ProcessEnvelope(snapshot.Instance, actor)") }}))
-            return run.Refuse(Refusals.Actor);
+            return run.Refuse(Refusals.Actor{{ if rights }}, Chart.Rights?.Id("invoke:" + invoke){{ end }});
+{{- if rights }}
+
+        // A human task's completion, done or error, is checked as complete; its actors count as an allow of this lifecycle.
+        if (found.Kind == InvokeKind.HumanTask
+            && run.CheckRights({{ verb_keys["complete"] ? ("global::" + base_ns + ".Verb.Complete") : "null" }}, found.Actors.Count > 0 ? [Chart.Rights?.Id("invoke:" + invoke) ?? invoke] : []) is { Allowed: false } denied)
+            return run.Refuse(denied.Refusal!, denied.RefusedBy);
+{{- end }}
         run.Event = new ProcessEvent(null, actor, new Dictionary<string, object?>());
         run.Macrostep(() =>
         {
@@ -1008,7 +1084,11 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
     public StepResult<TContext> Refused(ProcessSnapshot<TContext> snapshot, string refusal, string input)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+{{- if rights }}
+        return new Run(this, snapshot, input, null).Refuse(refusal, refusal == Refusals.Actor ? Chart.Rights?.Id("event:" + input) : null);
+{{- else }}
         return new Run(this, snapshot, input, null).Refuse(refusal);
+{{- end }}
     }
 
     private sealed record Selection(List<TransitionDefinition> Transitions, bool Consumed, string Reason);
@@ -1051,6 +1131,10 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         private int _micro;
         private string? _refusal;
         private string? _failure;
+{{- if rights }}
+        private string? _refusedBy;
+        private string? _by; // the id that decides the refusal being worked out
+{{- end }}
 
         public Run(Statechart<TContext> owner, ProcessSnapshot<TContext> snapshot, string input, ProcessEnvelope? envelope)
         {
@@ -1116,7 +1200,25 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 
         public List<InvokeDefinition> Pending { get; } = [];
 
+{{ if rights ~}}
+        public IReadOnlyList<string> Held { get; init; } = [];
+
+        public void SetRefusal(string reason)
+        {
+            if (_refusal is not null)
+                return;
+            _refusal = reason;
+            _refusedBy = reason == Refusals.NoTransition ? null : _by;
+        }
+
+        public StepResult<TContext> Refuse(string reason, string? by)
+        {
+            _by = by;
+            return Refuse(reason);
+        }
+{{ else ~}}
         public void SetRefusal(string reason) => _refusal ??= reason;
+{{ end ~}}
 
         public void EnterRoot() => _config.Add(_chart.Root);
 
@@ -1148,6 +1250,9 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             var consumed = false;
             var reason = Refusals.NoTransition;
             var rank = 0;
+{{- if rights }}
+            _by = null;
+{{- end }}
             foreach (var leaf in Leaves())
             {
                 var found = false;
@@ -1171,7 +1276,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                         tried[t] = false;
                         if (!Guard(t))
                         {
-                            Fail(Refusals.Guard, 1);
+                            Fail(Refusals.Guard, 1{{ if rights }}, GuardId(t){{ end }});
                             continue;
                         }
 
@@ -1179,13 +1284,13 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                         {
                             if (!external)
                             {
-                                Fail(Refusals.GateSigner, 2);
+                                Fail(Refusals.GateSigner, 2{{ if rights }}, gate.Id{{ end }});
                                 continue;
                             }
 
                             if (CheckSigner(t, gate) is { } refusal)
                             {
-                                Fail(refusal, 2);
+                                Fail(refusal, 2{{ if rights }}, refusal == Refusals.Right ? _signRefusedBy : gate.Id{{ end }});
                                 continue;
                             }
                         }
@@ -1210,12 +1315,15 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             });
             return new Selection(selected, consumed, reason);
 
-            void Fail(string why, int level)
+            void Fail(string why, int level{{ if rights }}, string? by{{ end }})
             {
                 if (level > rank)
                 {
                     rank = level;
                     reason = why;
+{{- if rights }}
+                    _by = by;
+{{- end }}
                 }
             }
         }
@@ -1223,11 +1331,17 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         public Selection SelectAt(StateDefinition source, TriggerKind trigger, string key)
         {
             var reason = Refusals.NoTransition;
+{{- if rights }}
+            _by = null;
+{{- end }}
             foreach (var t in _chart.Candidates(source, trigger, key))
             {
                 if (Guard(t))
                     return new Selection([t], false, reason);
                 reason = Refusals.Guard;
+{{- if rights }}
+                _by ??= GuardId(t);
+{{- end }}
             }
 
             return new Selection([], false, reason);
@@ -1297,6 +1411,13 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             string? refusal = null;
             if (actor is null || string.IsNullOrEmpty(signer) || !{{ has_members ? (actors_type + ".Allows(gate.Signers, actor)") : "gate.Signers.Contains(actor, StringComparer.Ordinal)" }}{{ resolves("_snapshot", "actor", "_envelope!") | string.replace "!Resolves(" "!_owner.Resolves(" }})
                 refusal = Refusals.GateSigner;
+{{- if rights && verb_keys["sign"] }}
+            else if (CheckRights(global::{{ base_ns }}.Verb.Sign, [gate.Id]) is { Allowed: false } denied)
+            {
+                refusal = denied.Refusal;
+                _signRefusedBy = denied.RefusedBy;
+            }
+{{- end }}
             else if (!gate.AllowRepeatSigner && signatures.Any(s => string.Equals(s.Signer, signer, StringComparison.Ordinal)))
                 refusal = Refusals.GateRepeat;
             else if (gate.ReasonRequired && string.IsNullOrWhiteSpace(_envelope?.Reason))
@@ -1307,6 +1428,55 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         }
 
         private string? Meaning(GateDefinition gate) => _envelope?.Meaning ?? (gate.Meanings.Count == 1 ? gate.Meanings[0] : null);
+{{- if rights }}
+
+        // The right that refused the last signature, for the refusal's id.
+        private string? _signRefusedBy;
+
+        private string? GuardId(TransitionDefinition t) => t.Guard is { } guard ? _chart.Rights?.Id("guard:" + guard) ?? guard : null;
+
+        // The gates whose signers count as an allow of this lifecycle for an event: those on the transitions it can take from the active
+        // states, whose signers the actor is one of (rights-design.md decision 14).
+        public IEnumerable<string> GateSigners(string name, string actor)
+        {
+            foreach (var s in _config.OrderBy(s => s.Index))
+            {
+                foreach (var t in _chart.Candidates(s, TriggerKind.Event, name))
+                {
+                    if (t.Gate is { } gate && {{ has_members ? (actors_type + ".Allows(gate.Signers, actor)") : "gate.Signers.Contains(actor, StringComparer.Ordinal)" }})
+                        yield return gate.Id;
+                }
+            }
+        }
+
+        // Asks the rights check for a verb of this run: this process's states, and for an object, link or own verb the other lifecycles'
+        // states its behaviour gives (ILifecycleStates).
+        public {{ rights_ns }}.RightDecision CheckRights(global::{{ base_ns }}.Verb? verb, IReadOnlyList<string> allowed)
+        {
+            var states = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { [_chart.ProcessName] = [.. Leaves().Select(s => s.Path)] };
+            if (verb is { } v && {{ rights_ns }}.Rights.SpeaksOfObject(v) && _owner._behaviour is ILifecycleStates<TContext> others)
+            {
+                foreach (var (lifecycle, paths) in others.StatesIn(Call()))
+                    states[lifecycle] = paths;
+            }
+
+            var envelope = _envelope ?? new ProcessEnvelope(_snapshot.Instance);
+            return {{ rights_ns }}.Rights.Check(new {{ rights_ns }}.RightRequest
+            {
+                Verb = verb,
+                Lifecycle = _chart.Rights is { Lifecycle: true } ? _chart.ProcessName : null,
+                Subject = _chart.Rights?.Subject,
+                Actor = envelope.Actor,
+                Envelope = envelope,
+                Held = Held,
+                States = states,
+                Allowed = allowed,
+{{- if has_relative }}
+                Resolves = actor => _owner.Resolves(_snapshot, actor, envelope),
+{{- end }}
+            });
+        }
+{{- end }}
 
         private bool Sign(TransitionDefinition t, GateDefinition gate)
         {
@@ -1664,6 +1834,9 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             {
                 Accepted = _refusal is null,
                 Refusal = _refusal,
+{{- if rights }}
+                RefusedBy = _refusedBy,
+{{- end }}
                 Input = _input,
                 From = _from,
                 States = states,

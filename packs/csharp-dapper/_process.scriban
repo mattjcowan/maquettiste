@@ -10,6 +10,35 @@ func sets_text(a)
   ret $parts | array.join ", "
 end
 
+# Whether the project uses rights (rights-design.md decision 28): a lifecycle states rights or a default. model.rights_lifecycles keys
+# only on the rights naming key, so a unit that asks pays nothing in a project without rights.
+func uses_rights()
+  ret model.rights_lifecycles.size > 0
+end
+
+# The other lifecycles whose states a process's event checks need (rights-design.md decision 29): the entries of process.may_refuse
+# that an event's verb reaches, each a StatesIn<Lifecycle> hook in the team's half of the handlers.
+func states_hooks(p)
+  $out = []
+  for m in p.may_refuse
+    if m.by_events
+      $out[$out.size] = m.lifecycle
+    end
+  end
+  ret $out
+end
+
+# A process's inline rights that have a condition: one static partial method each in <Process>RightConditions.
+func inline_conditions(p)
+  $out = []
+  for u in p.rights
+    if !u.right.named && u.right.condition_text != null
+      $out[$out.size] = u.right
+    end
+  end
+  ret $out
+end
+
 # The C# name of a process (and the prefix of its types).
 func p_name(p)
   ret pascal p.name
@@ -275,6 +304,30 @@ func relative_actors(p)
   $out = []
   for a in p.actors
     if a.relative
+      $out[$out.size] = a
+    end
+  end
+  # In a project that uses rights, the process's resolver also answers for the actors taken from the object that its rights name, and
+  # those that the rights of another lifecycle that could say no name (rights-design.md decision 29), each once, by name.
+  if uses_rights()
+    $rights = []
+    for u in p.rights
+      $rights[$rights.size] = u.right
+    end
+    for m in p.may_refuse
+      for u in m.lifecycle.rights
+        $rights[$rights.size] = u.right
+      end
+    end
+    $extra = []
+    for r in $rights
+      for a in r.actors | array.concat r.except
+        if a.relative && !($out | array.contains a) && !($extra | array.contains a)
+          $extra[$extra.size] = a
+        end
+      end
+    end
+    for a in $extra | array.sort "name"
       $out[$out.size] = a
     end
   end

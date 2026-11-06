@@ -1,0 +1,103 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JRT000000000000000000C01",
+  "name": "Editing",
+  "process": "01JRT000000000000000000Q01",
+  "objects": [
+    {
+      "id": "01JRT000000000000000000J01",
+      "name": "spec",
+      "entity": "01JRT000000000000000000E01",
+      "values": {
+        "01JRT000000000000000000A02": "Pump spec",
+        "01JRT000000000000000000A03": "secret",
+        "01JRT000000000000000000A04": false
+      },
+      "states": [
+        "01JRT000000000000000000S11"
+      ],
+      "owner": "01JRT000000000000000000W01"
+    }
+  ],
+  "subject": "01JRT000000000000000000J01",
+  "participants": [
+    {
+      "id": "01JRT000000000000000000W01",
+      "name": "bea",
+      "holds": [
+        {
+          "id": "01JRT000000000000000000H01",
+          "actor": "01JRT000000000000000000K01"
+        }
+      ]
+    },
+    {
+      "id": "01JRT000000000000000000W02",
+      "name": "carl",
+      "holds": [
+        {
+          "id": "01JRT000000000000000000H02",
+          "actor": "01JRT000000000000000000K01"
+        }
+      ]
+    },
+    {
+      "id": "01JRT000000000000000000W03",
+      "name": "dan",
+      "holds": [
+        {
+          "id": "01JRT000000000000000000H03",
+          "actor": "01JRT000000000000000000K02"
+        },
+        {
+          "id": "01JRT000000000000000000H04",
+          "actor": "01JRT000000000000000000K03"
+        }
+      ]
+    },
+    {
+      "id": "01JRT000000000000000000W04",
+      "name": "eve",
+      "holds": [
+        {
+          "id": "01JRT000000000000000000H05",
+          "actor": "01JRT000000000000000000K02"
+        }
+      ]
+    }
+  ],
+  "description": "Carl submits the document; Eve, who is no author, may not submit it; Eve signs its approval.",
+  "steps": [
+    {
+      "id": "01JRT000000000000000000Y11",
+      "event": "01JRT000000000000000000V01",
+      "participant": "01JRT000000000000000000W02",
+      "expect": {
+        "states": [
+          "01JRT000000000000000000S02"
+        ]
+      }
+    },
+    {
+      "id": "01JRT000000000000000000Y12",
+      "event": "01JRT000000000000000000V01",
+      "participant": "01JRT000000000000000000W04",
+      "expect": {
+        "accepted": false,
+        "refusal": "actor",
+        "refusedBy": "01JRT000000000000000000V01"
+      }
+    },
+    {
+      "id": "01JRT000000000000000000Y13",
+      "event": "01JRT000000000000000000V02",
+      "participant": "01JRT000000000000000000W04",
+      "expect": {
+        "states": [
+          "01JRT000000000000000000S03"
+        ]
+      }
+    }
+  ]
+}

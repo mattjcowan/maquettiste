@@ -20,6 +20,8 @@ internal sealed partial class ResolveRun
 
     /// <summary>Every right: the named rights in <c>model.rights</c> order, then the inline rights in process order and file order.</summary>
     private List<RRight> _allRights = [];
+    // The lifecycles that state rights or a default, by name then id (model.rights_lifecycles); empty in a project without rights.
+    private List<RProcess> _rightsLifecycles = [];
 
     /// <summary>
     /// Verb lists waiting for <c>model.verbs</c>, which is resolved after the processes: each takes the verb of a key and the keys of the
@@ -215,6 +217,7 @@ internal sealed partial class ResolveRun
         // The lifecycles that state rights or a default, by name then id: the others always say yes.
         var stating = _processOrder.Where(p => sources[p.Id] is { Use: ProcessUse.Lifecycle } l && (l.Rights.Count > 0 || l.RightsDefault is not null))
             .OrderBy(p => p.Name, StringComparer.Ordinal).ThenBy(p => p.Id, StringComparer.Ordinal).ToList();
+        _rightsLifecycles = stating;
         var coverage = SubjectCoverage.Of(Model);
         List<string> throughKeys = coverage.Any ? [SubjectCoverage.NamingKey, .. coverage.Keys.Select(SubjectCoverage.CarrierSetKey)] : [SubjectCoverage.NamingKey];
         foreach (var r in _processOrder)

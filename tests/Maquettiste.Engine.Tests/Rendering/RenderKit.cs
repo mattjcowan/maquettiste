@@ -188,6 +188,7 @@ internal static class Adhoc
         Actors = model.Actors,
         Scenarios = model.Scenarios,
         Rights = model.Rights,
+        RightsLifecycles = model.RightsLifecycles,
         Operations = model.Operations,
         CustomElements = model.CustomElements,
         Constraints = model.Constraints,

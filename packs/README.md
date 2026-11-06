@@ -145,7 +145,8 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
   the process's events or rights name: `lifecycle`, `verbs`, `by_events`). A right has `kind` (`right` for a named right,
   `process-right` for an inline one), `name`, `display_name`, `description` (why), `access` (`allow` or `deny`), `actors`
   (`everyone` when empty), `except`, `verbs`, `ends`, `condition_text`, `named`, `package` and `uses`. `model.rights` lists the
-  named rights, used or not.
+  named rights, used or not, and `model.rights_lifecycles` the lifecycles that state rights or a default, by name (empty in a project
+  without rights, and keyed only on the rights naming key, so `model.rights_lifecycles.size > 0` asks whether the project uses rights).
 - `schema_diff.<database>` when the pack sets `"usesSchemaDiff": true`: `from_revision`, `to_revision`, `is_empty` and ordered
   `tables` (`kind` added/renamed/altered/dropped, `columns`, constraint and index changes).
 - Definitions: `model.stereotypes` (one per key, by key: `key`, `name`, `applies_to`, the `attributes` it adds,
