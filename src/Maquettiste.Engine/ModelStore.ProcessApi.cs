@@ -114,9 +114,25 @@ public sealed partial class ModelStore
         var document = new JsonObject { ["kind"] = "scenario", ["id"] = ids.NewId(), ["name"] = request.Name, ["process"] = processId };
         if (request.Objects is { Count: > 0 } objects)
         {
-            // The cast as given (lifecycle-design.md decision 22): its ids are the subject's and the links' references.
-            document["objects"] = new JsonArray(objects.Select(o => JsonNode.Parse(o.GetRawText())).ToArray());
-            document["subject"] = request.Subject;
+            // The cast as given (lifecycle-design.md decision 22), each object under a new id so a scenario's objects can be recorded
+            // again; the subject and the links follow their objects to the new ids.
+            var nodes = objects.Select(o => JsonNode.Parse(o.GetRawText())!.AsObject()).ToArray();
+            var newIds = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var node in nodes)
+            {
+                var newId = ids.NewId();
+                newIds[node["id"]!.GetValue<string>()] = newId;
+                node["id"] = newId;
+            }
+
+            foreach (var link in nodes.Select(n => n["links"]).OfType<JsonArray>().SelectMany(a => a).OfType<JsonObject>())
+            {
+                if (link["object"] is JsonValue target && target.TryGetValue<string>(out var old) && newIds.TryGetValue(old, out var mapped))
+                    link["object"] = mapped;
+            }
+
+            document["objects"] = new JsonArray(nodes);
+            document["subject"] = request.Subject is { } given && newIds.TryGetValue(given, out var subjectId) ? subjectId : request.Subject;
         }
 
         if (request.Start is { ValueKind: JsonValueKind.Object } start)

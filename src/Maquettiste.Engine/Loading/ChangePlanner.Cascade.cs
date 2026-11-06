@@ -753,8 +753,8 @@ internal sealed partial class ChangePlanner
 
     /// <summary>
     /// The part of a scenario a reference's loss drops (lifecycle-design.md decision 22): the object (<c>/objects/2</c>) whose
-    /// <c>entity</c> a pointer is, or the link (<c>/objects/2/links/0</c>) whose <c>object</c> it is; <see langword="null"/> for any
-    /// other pointer.
+    /// <c>entity</c> a pointer is, or the link (<c>/objects/2/links/0</c>) whose <c>object</c> or <c>end</c> (its relation going) it is;
+    /// <see langword="null"/> for any other pointer.
     /// </summary>
     private static string? ScenarioObjectPart(string pointer)
     {
@@ -763,7 +763,7 @@ internal sealed partial class ChangePlanner
             return null;
         if (segments.Length == 3 && segments[2] == "entity")
             return JsonPointer.Build(segments[..2]);
-        if (segments.Length == 5 && segments[2] == "links" && JsonPointer.TryIndex(segments[3], out _) && segments[4] == "object")
+        if (segments.Length == 5 && segments[2] == "links" && JsonPointer.TryIndex(segments[3], out _) && segments[4] is "object" or "end")
             return JsonPointer.Build(segments[..4]);
         return null;
     }

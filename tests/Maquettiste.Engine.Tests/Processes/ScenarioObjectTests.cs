@@ -48,7 +48,7 @@ public sealed class ScenarioObjectTests
         """;
 
     // Customer, RushOrder (derived from Order), OrderCustomer, and a scenario of OrderLifecycle with an order and its customer.
-    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(string status = "Draft", Action<LoaderHarness>? prepare = null)
+    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(string status = "Draft", Action<LoaderHarness>? prepare = null, bool errors = false)
     {
         var harness = new LoaderHarness();
         harness.CopyFixture("models", "process-basics");
@@ -66,7 +66,8 @@ public sealed class ScenarioObjectTests
         prepare?.Invoke(harness);
         var store = new ModelStore(harness.Options, harness.Services() with { Validator = EngineServices.Create(harness.Options).Validator });
         await store.LoadAsync(Ct);
-        Assert.DoesNotContain(store.Current!.LoadDiagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        if (!errors)
+            Assert.DoesNotContain(store.Current!.LoadDiagnostics, d => d.Severity == DiagnosticSeverity.Error);
         return (harness, store);
     }
 
@@ -302,18 +303,18 @@ public sealed class ScenarioObjectTests
         var model = store.Current!;
         var scenario = model.Get<Scenario>(Sc)!;
 
-        var row = ScenarioObjects.Row(model, scenario.Objects, scenario.Subject);
+        var row = ScenarioObjects.Row(model, scenario.Objects, scenario.Subject, 1);
         Assert.Equal("""{"customer":{"id":null,"kind":"anon","name":"Ada"},"id":null,"status":"Draft"}""", row.GetRawText());
-        // The customer as the subject: its orders are a list.
-        Assert.Equal("""{"id":null,"kind":"anon","name":"Ada","orders":[{"id":null,"status":"Draft"}]}""",
-            ScenarioObjects.Row(model, scenario.Objects, CustomerObject).GetRawText());
-        Assert.Equal("{}", ScenarioObjects.Row(model, [], null).GetRawText());
+        // The customer as the subject: its orders, a to-many end no condition can read, are left out.
+        Assert.Equal("""{"id":null,"kind":"anon","name":"Ada"}""", ScenarioObjects.Row(model, scenario.Objects, CustomerObject, 1).GetRawText());
+        Assert.Equal("{}", ScenarioObjects.Row(model, [], null, 1).GetRawText());
 
-        // The replay's interpreter sees the row; a scenario without objects gives an empty one.
+        // The replay's interpreter sees the row; no condition of the process reads the object, so it holds no links. A scenario without
+        // objects gives an empty one.
         using var runtime = new ProcessRuntime(model, 1, Ct);
         var chart = runtime.Chart(P)!;
         var seen = Assert.Single(ScenarioReplayer.Interpreter(scenario, chart, runtime).SubjectsSeen);
-        Assert.Equal((P, row.GetRawText()), (seen.Process, seen.Subject.GetRawText()));
+        Assert.Equal((P, """{"id":null,"status":"Draft"}"""), (seen.Process, seen.Subject.GetRawText()));
         Assert.Equal("{}", Assert.Single(ScenarioReplayer.Interpreter(model.Get<Scenario>(HappyPath)!, chart, runtime).SubjectsSeen).Subject.GetRawText());
         Assert.True(ScenarioReplayer.Replay(scenario, runtime)!.Complete);
     }
@@ -422,7 +423,221 @@ public sealed class ScenarioObjectTests
         foreach (var id in new[] { Order, RushOrder, Customer, Party, Relation })
             Assert.Contains(step.Dependencies, k => k.Contains(id, StringComparison.Ordinal));
         var plain = resolved.Scenarios.Single(x => x.Id == HappyPath).Steps[0];
-        Assert.Contains(plain.Dependencies, k => k.Contains(Order, StringComparison.Ordinal)); // the process's subject
         Assert.DoesNotContain(plain.Dependencies, k => k.Contains(Customer, StringComparison.Ordinal));
+    }
+
+    // ---- what a project that uses none of this keeps, and how far the reads reach ----
+
+    private const string ProcessFile = "model/processes/order-lifecycle.json";
+    private const string SubjectReader = "01JPRX00000000000000000098";
+
+    // A guard of OrderLifecycle, on no transition, whose condition is the text given.
+    private static void Guard(LoaderHarness x, string text)
+    {
+        var process = File(x, ProcessFile);
+        process["guards"]!.AsArray().Add(new JsonObject { ["id"] = SubjectReader, ["name"] = "readsObject", ["condition"] = new JsonObject { ["text"] = text } });
+        x.Write(ProcessFile, process.ToJsonString());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("amount > 0")]
+    [InlineData("subject.id is not null")]
+    public async Task A_scenario_without_objects_reads_the_subjects_entity_only_when_a_condition_reads_the_object(string? condition)
+    {
+        var (h, store) = await OpenAsync(prepare: x =>
+        {
+            if (condition is not null)
+                Guard(x, condition);
+        });
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+        var reads = condition?.StartsWith("subject.", StringComparison.Ordinal) == true;
+        Assert.Equal(reads ? 0 : null, Maquettiste.Engine.Validation.ExprSites.SubjectDepth(model, model.Get<Process>(P)!));
+
+        // Today's keys: the scenario's and its process's, and nothing of the subject's entity unless a condition reads the object.
+        var plain = ResolutionKit.Resolve(model).Scenarios.Single(x => x.Id == HappyPath);
+        foreach (var step in plain.Steps)
+        {
+            Assert.Equal(reads, step.Dependencies.Any(k => k.Contains(Order, StringComparison.Ordinal)));
+            Assert.DoesNotContain(step.Dependencies, k => k.Contains(RushOrder, StringComparison.Ordinal) || k.Contains(Customer, StringComparison.Ordinal));
+        }
+    }
+
+    // OrderCustomer navigable both ways, and two orders of one customer: the customer's orders link back to them.
+    private static string CrossLinked => $$"""
+        [{"id":"{{OrderObject}}","name":"order","entity":"{{RushOrder}}","links":[{"end":"{{CustomerEnd}}","object":"{{CustomerObject}}"}]},
+         {"id":"{{CustomerObject}}","name":"customer","entity":"{{Customer}}","values":{"{{CustomerName}}":"Ada"},
+          "links":[{"end":"{{OrdersEnd}}","object":"{{OrderObject}}"},{"end":"{{OrdersEnd}}","object":"01JXBJ00000000000000000003"}]},
+         {"id":"01JXBJ00000000000000000003","name":"other","entity":"{{Order}}","links":[{"end":"{{CustomerEnd}}","object":"{{CustomerObject}}"}]}]
+        """;
+
+    [Theory]
+    [InlineData(null, """{"id":null,"status":"Draft"}""")]
+    [InlineData("subject.id is not null", """{"id":null,"status":"Draft"}""")]
+    [InlineData("subject.customer.name = 'Ada'", """{"customer":{"id":null,"name":"Ada"},"id":null,"status":"Draft"}""")]
+    public async Task The_row_nests_to_one_links_only_as_deep_as_a_condition_reads(string? condition, string expected)
+    {
+        var (h, store) = await OpenAsync(prepare: x =>
+        {
+            Navigable(x);
+            Objects(x, CrossLinked);
+            if (condition is not null)
+                Guard(x, condition);
+        });
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+        var scenario = model.Get<Scenario>(Sc)!;
+
+        Assert.Equal(expected, ScenarioObjects.Row(model, model.Get<Process>(P)!, scenario.Objects, scenario.Subject).GetRawText());
+        using var runtime = new ProcessRuntime(model, 1, Ct);
+        Assert.Equal(expected, Assert.Single(ScenarioReplayer.Interpreter(scenario, runtime.Chart(P)!, runtime).SubjectsSeen).Subject.GetRawText());
+
+        // However deep, a to-many end (the customer's orders) is never nested, and an object already on the path is not nested again.
+        Assert.Equal("""{"id":null,"name":"Ada"}""", ScenarioObjects.Row(model, scenario.Objects, CustomerObject, 9).GetRawText());
+        Assert.Equal("""{"customer":{"id":null,"name":"Ada"},"id":null,"status":"Draft"}""", ScenarioObjects.Row(model, scenario.Objects, OrderObject, 9).GetRawText());
+    }
+
+    [Fact]
+    public async Task Recording_twice_from_one_scenarios_objects_gives_each_recording_its_own_object_ids()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        var objects = JsonDocument.Parse(File(h, ScenarioFile)["objects"]!.ToJsonString()).RootElement.EnumerateArray().Select(o => o.Clone()).ToList();
+        var steps = new[] { JsonDocument.Parse("""{ "input": "event", "event": "01JPRX00000000000000000001" }""").RootElement.Clone() };
+
+        var seen = new HashSet<string>(StringComparer.Ordinal) { OrderObject, CustomerObject };
+        foreach (var name in new[] { "Again", "OnceMore" })
+        {
+            var call = await store.RecordScenarioAsync(P, new RecordScenarioRequest { Name = name, Objects = objects, Subject = OrderObject, Steps = steps },
+                dryRun: false, ChangeSource.Editor, Ct);
+            Assert.True(call.Status == ProcessCallStatus.Ok, call.Detail + " " + string.Join(" | ", call.Diagnostics.Select(d => d.Rule + " " + d.JsonPointer + " " + d.Message)));
+            var recorded = store.Current!.Get<Scenario>(call.Value!.Id)!;
+            var order = recorded.Objects.Single(o => o.Name == "order");
+            var customer = recorded.Objects.Single(o => o.Name == "customer");
+            Assert.True(seen.Add(order.Id) && seen.Add(customer.Id), "each recording mints its own object ids");
+            Assert.Equal(order.Id, recorded.Subject);
+            var link = Assert.Single(order.Links);
+            Assert.Equal((CustomerEnd, customer.Id), (link.End, link.Object));
+            Assert.Equal("Ada", customer.Values[CustomerName].GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData(DeleteResolution.RemoveReferences)]
+    [InlineData(DeleteResolution.DeleteDependents)]
+    public async Task Deleting_a_relation_a_link_goes_through_drops_the_link(DeleteResolution resolution)
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+
+        var plan = await store.GetDeletePlanAsync([Relation], resolution, Ct);
+        Assert.True(plan.Outcome == SaveOutcome.Saved, string.Join(" | ", plan.Refused.Select(r => r.Rule + " " + r.Pointer + " " + r.Why)));
+        Assert.Contains(plan.Removes, r => r.Id == Sc && r.Pointer == "/objects/0/links/0");
+        Assert.DoesNotContain(plan.Deletes, d => d.Id == Sc);
+
+        var hash = (await store.GetElementAsync(Relation, Ct))!.Hash;
+        Assert.Equal(SaveOutcome.Saved, (await store.DeleteAsync(Relation, hash, resolution, ChangeSource.Editor, Ct)).Outcome);
+        var file = File(h, ScenarioFile);
+        Assert.Equal(2, file["objects"]!.AsArray().Count);
+        Assert.False(file["objects"]![0]!.AsObject().ContainsKey("links"));
+        Assert.Equal(OrderObject, file["subject"]!.GetValue<string>());
+    }
+
+    [Theory]
+    [InlineData("subject")] // the customer, whose entity is no subject of OrderLifecycle
+    [InlineData("end")] // the order links to the customer through the end that leads to orders
+    [InlineData("name")] // two objects named order
+    public async Task A_cast_that_does_not_fit_its_process_or_its_relations_is_a_finding(string what)
+    {
+        var (h, store) = await OpenAsync(prepare: x =>
+        {
+            var file = File(x, ScenarioFile);
+            if (what == "subject")
+                file["subject"] = CustomerObject;
+            else if (what == "end")
+                file["objects"]![0]!["links"]![0]!["end"] = OrdersEnd;
+            else
+                file["objects"]![1]!["name"] = "order";
+            x.Write(ScenarioFile, file.ToJsonString());
+        }, errors: what == "name");
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+
+        var findings = (await EngineServices.Create(h.Options).Validator.ValidateAsync(model, ValidationScope.All, null, Ct)).Diagnostics
+            .Where(d => d.ElementId is Sc or OrderObject or CustomerObject).ToList();
+        var (rule, pointer) = what switch
+        {
+            "subject" => ("MQ9305", "/subject"),
+            "end" => ("MQ9305", "/objects/0/links/0/end"),
+            _ => ("MQ3001", "/objects/1/name"),
+        };
+        var finding = Assert.Single(findings, d => d.Rule == rule);
+        Assert.Equal(pointer, finding.JsonPointer);
+        if (what == "name")
+            return;
+        using var runtime = new ProcessRuntime(model, 1, Ct);
+        Assert.False(ScenarioReplayer.Replay(model.Get<Scenario>(Sc)!, runtime)!.Complete);
+    }
+
+    [Fact]
+    public async Task A_change_to_a_reference_type_an_objects_attribute_has_replays_the_scenario()
+    {
+        const string Tier = "01JRFT00000000000000000001";
+        var (h, store) = await OpenAsync(prepare: x =>
+        {
+            x.Write("model/reference-types/tier.json", $$"""
+                {"$schema":"../../.schema/v1/reference-type.json","kind":"reference-type","id":"{{Tier}}","name":"Tier","package":"{{Package}}",
+                 "code":{"id":"01JATT00000000000000000081","length":8},"label":{"id":"01JATT00000000000000000082","length":32} }
+                """);
+            var customer = File(x, "model/entities/customer.json");
+            customer["attributes"]!.AsArray().Add(new JsonObject { ["id"] = "01JATT00000000000000000083", ["name"] = "tier", ["type"] = new JsonObject { ["ref"] = Tier } });
+            x.Write("model/entities/customer.json", customer.ToJsonString());
+        });
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+
+        var peers = Maquettiste.Engine.Validation.ModelValidator.ProcessPeers(model, model.Get<ReferenceType>(Tier)!).Select(d => d.Element.Id).ToList();
+        Assert.Contains(Sc, peers);
+        Assert.DoesNotContain(HappyPath, peers);
+    }
+
+    [Fact]
+    public async Task A_sub_process_whose_condition_reads_its_subject_brings_its_subjects_entity_into_the_parents_replays()
+    {
+        const string Child = "01JPRC00000000000000000002";
+        var (h, store) = await OpenAsync(prepare: x =>
+        {
+            Based(x);
+            x.Write("model/processes/customer-check.json", $$"""
+                {"$schema":"../../.schema/v1/process.json","kind":"process","id":"{{Child}}","name":"CustomerCheck","package":"{{Package}}","use":"lifecycle",
+                 "subjects":[{"id":"01JPSB00000000000000000002","entity":"{{Customer}}"}],
+                 "events":[{"id":"01JPRX00000000000000000201","name":"check"}],
+                 "guards":[{"id":"01JPRX00000000000000000202","name":"named","condition":{"text":"subject.name = 'Ada'"} }],
+                 "states":[{"id":"01JSTA00000000000000000201","name":"Open"},{"id":"01JSTA00000000000000000202","name":"Done","type":"final"}],
+                 "initial":"01JSTA00000000000000000201",
+                 "transitions":[{"id":"01JTRN00000000000000000201","source":"01JSTA00000000000000000201","event":"01JPRX00000000000000000201","guard":"01JPRX00000000000000000202","targets":["01JSTA00000000000000000202"]}]}
+                """);
+            var process = File(x, ProcessFile);
+            process["states"]![0]!["invoke"] = JsonNode.Parse($$"""[{"id":"01JPRX00000000000000000203","name":"check","type":"process","process":"{{Child}}"}]""");
+            x.Write(ProcessFile, process.ToJsonString());
+        });
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+
+        // A change to the sub-process's subject entity, or the base that declares its defaults, replays the parent's scenarios.
+        foreach (var changed in new[] { Customer, Party })
+            Assert.Contains(Maquettiste.Engine.Validation.ModelValidator.ProcessPeers(model, model.Get<Entity>(changed)!), d => d.Element.Id == HappyPath);
+        var steps = ResolutionKit.Resolve(model).Scenarios.Single(x => x.Id == HappyPath).Steps;
+        Assert.All(steps, step => Assert.Contains(step.Dependencies, k => k.Contains(Customer, StringComparison.Ordinal)));
+        Assert.All(steps, step => Assert.Contains(step.Dependencies, k => k.Contains(Party, StringComparison.Ordinal)));
+        Assert.All(steps, step => Assert.DoesNotContain(step.Dependencies, k => k.Contains(Order, StringComparison.Ordinal))); // the parent reads no object
     }
 }

@@ -1055,7 +1055,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     // The process rules that read other files: MQ9106 on actors depends on every process, MQ9015 on the sub-processes a process
     // reaches, MQ9202 to MQ9208 and MQ9210 on the subject's attributes, the bound enum and every other use of it, the other lifecycles that
     // bind one attribute, and the bound reference or scalar type with its seeds.
-    private static IEnumerable<ElementDocument> ProcessPeers(ModelSnapshot model, Element element)
+    internal static IEnumerable<ElementDocument> ProcessPeers(ModelSnapshot model, Element element)
     {
         if (element is Process process)
         {
@@ -1109,7 +1109,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             var affected = element switch
             {
                 Process changed => string.Equals(candidate.Id, changed.Id, StringComparison.Ordinal) || ProcessRules.Callees(candidate).Contains(changed.Id),
-                Entity entity => Governs(model, candidate, entity.Id),
+                // A sub-process's guard that reads subject sees its own subjects' defaults (lifecycle-design.md decision 22).
+                Entity entity => Governs(model, candidate, entity.Id)
+                    || ExprSites.InvokedProcesses(model, candidate).Any(p => Governs(model, p, entity.Id) && ExprSites.SubjectDepth(model, p) is not null),
                 EnumType or ValueObject or ScalarType => UsesType(candidate, element.Id),
                 _ => false,
             };
@@ -1118,8 +1120,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         }
 
         // A scenario's objects (lifecycle-design.md decision 22) read their entities and the bases that declare their attributes and
-        // defaults, the types their values must fit, and the relations whose ends name their links' navigations.
-        var objectsReached = element is Entity or Relation or EnumType or ValueObject or ScalarType;
+        // defaults, the types (reference types too) their values must fit, and the relations whose ends name their links' navigations.
+        var objectsReached = element is Entity or Relation or EnumType or ValueObject or ScalarType or ReferenceType;
         if (replayed.Count == 0 && !objectsReached)
             yield break;
         foreach (var scenario in model.All<Scenario>())

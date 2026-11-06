@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Expressions;
@@ -689,10 +690,20 @@ internal static class ExprSites
     /// <param name="process">The process.</param>
     /// <param name="typed">The guard's typed condition.</param>
     /// <returns>Whether it reads the object.</returns>
-    internal static bool ReadsSubject(Process process, TypedExpr typed)
+    internal static bool ReadsSubject(Process process, TypedExpr typed) => SubjectPathDepth(process, typed) is not null;
+
+    /// <summary>
+    /// The most navigations a path of a typed condition follows under <c>subject</c>: 0 for a path to the object's own attribute,
+    /// <see langword="null"/> when the condition does not read the object (<see cref="ReadsSubject"/>).
+    /// </summary>
+    /// <param name="process">The process.</param>
+    /// <param name="typed">The guard's typed condition.</param>
+    /// <returns>The depth, or <see langword="null"/>.</returns>
+    internal static int? SubjectPathDepth(Process process, TypedExpr typed)
     {
         if (process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
-            return false;
+            return null;
+        int? depth = null;
         var pending = new Stack<TypedExpr>();
         pending.Push(typed);
         while (pending.Count > 0)
@@ -700,13 +711,74 @@ internal static class ExprSites
             var t = pending.Pop();
             if (t.Node.Path is not null && (t.Through.Count > 0 ? t.Through[0].Prefix : t.Member?.Prefix) is { } prefix
                 && (prefix == SubjectPrefix || prefix.StartsWith(SubjectPrefix + ".", StringComparison.Ordinal)))
-                return true;
+                depth = Math.Max(depth ?? 0, t.Through.Count);
             foreach (var arg in t.Args)
                 pending.Push(arg);
         }
 
-        return false;
+        return depth;
     }
+
+    private static readonly ConditionalWeakTable<ModelSnapshot, ConditionalWeakTable<Process, StrongBox<int?>>> SubjectDepths = new();
+
+    /// <summary>
+    /// The longest path under <c>subject</c> any guard condition of a process reads (<see cref="SubjectPathDepth"/>): <see langword="null"/>
+    /// when no condition that types reads the object, as <see cref="Processes.ProcessExpressions"/> then has no subject defaults. Typed once
+    /// per model.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process.</param>
+    /// <returns>The depth, or <see langword="null"/>.</returns>
+    internal static int? SubjectDepth(ModelSnapshot model, Process process)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(process);
+        if (process.Guards.All(g => g.Condition is null))
+            return null;
+        return SubjectDepths.GetValue(model, static _ => new()).GetValue(process, p =>
+        {
+            int? depth = null;
+            foreach (var guard in p.Guards)
+            {
+                if (guard.Condition is not null && ExprResolution.Type(model, p, guard.Id) is { } typed && SubjectPathDepth(p, typed.Typed) is { } d)
+                    depth = Math.Max(depth ?? 0, d);
+            }
+
+            return new StrongBox<int?>(depth);
+        }).Value;
+    }
+
+    /// <summary>The processes a process invokes, directly or through the processes it invokes, each once and never itself, in walk order.</summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process.</param>
+    /// <returns>The invoked processes found in the model.</returns>
+    internal static IEnumerable<Process> InvokedProcesses(ModelSnapshot model, Process process)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal) { process.Id };
+        var pending = new Stack<Process>();
+        pending.Push(process);
+        while (pending.Count > 0)
+        {
+            foreach (var id in ProcessRules.Callees(pending.Pop()))
+            {
+                if (seen.Add(id) && model.Get<Process>(id) is { } callee)
+                {
+                    yield return callee;
+                    pending.Push(callee);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// How deep a scenario's subject row nests its links (lifecycle-design.md decision 22): the longest path under <c>subject</c> any guard
+    /// condition of the process, or of a process it invokes, reads; 0, attributes only, when none reads the object.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process.</param>
+    /// <returns>The depth.</returns>
+    internal static int SubjectRowDepth(ModelSnapshot model, Process process) =>
+        InvokedProcesses(model, process).Prepend(process).Max(p => SubjectDepth(model, p) ?? 0);
 }
 
 /// <summary>

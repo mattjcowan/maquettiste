@@ -64,7 +64,7 @@ internal sealed partial class ModelTools
     /// <param name="ct">Cancellation.</param>
     /// <returns>The scenario.</returns>
     [McpServerTool(Name = "record_scenario", Title = "Record scenario", Destructive = false, OpenWorld = false)]
-    [Description("Records a scenario of a process: the engine replays start and steps and fills each step's expect (accepted, states, changed context; refusals as accepted false) and the outcome from the replay, gives new ids and saves the scenario under model/scenarios/<process>/. dryRun true returns the scenario without writing it. Inputs that cannot be replayed to the last step are refused with diagnostics. objects and subject are written as the scenario's cast.")]
+    [Description("Records a scenario of a process: the engine replays start and steps and fills each step's expect (accepted, states, changed context; refusals as accepted false) and the outcome from the replay, gives new ids and saves the scenario under model/scenarios/<process>/. dryRun true returns the scenario without writing it. Inputs that cannot be replayed to the last step are refused with diagnostics. objects and subject are written as the scenario's cast, each object under a new id that subject and the links follow.")]
     public Task<CallToolResult> RecordScenario(
         [Description("The process id, name or model path; required.")] string? process = null,
         [Description("The scenario name (an identifier); required.")] string? name = null,

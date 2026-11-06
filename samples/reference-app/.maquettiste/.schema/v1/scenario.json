@@ -63,6 +63,7 @@
       "items": {
         "$ref": "#/$defs/object"
       },
+      "minItems": 1,
       "default": []
     },
     "subject": {

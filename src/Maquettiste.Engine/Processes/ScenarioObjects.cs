@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Processes;
 
@@ -14,16 +15,38 @@ internal static class ScenarioObjects
     private static readonly JsonElement NoObject = JsonDocument.Parse("{}").RootElement.Clone();
 
     /// <summary>
+    /// The subject's row as a run of a process sees it: <see cref="Row(ModelSnapshot, IReadOnlyList{ScenarioObject}, string?, int)"/>
+    /// nested as deep as the longest path under <c>subject</c> any guard condition of the process, or of a process it invokes, reads
+    /// (<see cref="ExprSites.SubjectRowDepth"/>), so a row holds no links when no condition reads the object.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process the run is of.</param>
+    /// <param name="objects">The objects.</param>
+    /// <param name="subject">The id of the subject among them.</param>
+    /// <returns>The row.</returns>
+    public static JsonElement Row(ModelSnapshot model, Process process, IReadOnlyList<ScenarioObject> objects, string? subject)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(objects);
+        if (subject is null || objects.Count == 0)
+            return NoObject;
+        return Row(model, objects, subject, ExprSites.SubjectRowDepth(model, process));
+    }
+
+    /// <summary>
     /// The subject's row: the attributes of its entity and its bases by name (the most derived declaration of a name wins), each the value
-    /// given, else the declaring attribute's default, else null; then each link nested by its end's navigation name, an object for a to-one
-    /// end (the first link wins) and a list in link order for a to-many one. A link whose end has no navigation, whose object is not one of
-    /// the objects, or whose object is already on the path is left out. An empty object when there is no subject.
+    /// given, else the declaring attribute's default, else null; then, while <paramref name="depth"/> allows, each link through a to-one
+    /// end nested by the end's navigation name (the first link wins). A link through a to-many end, which no condition can read, or whose
+    /// end has no navigation, whose object is not one of the objects, or whose object is already on the path is left out. An empty object
+    /// when there is no subject.
     /// </summary>
     /// <param name="model">The model.</param>
     /// <param name="objects">The objects.</param>
     /// <param name="subject">The id of the subject among them.</param>
+    /// <param name="depth">How many links deep the row nests: 0 for the subject's attributes alone.</param>
     /// <returns>The row.</returns>
-    public static JsonElement Row(ModelSnapshot model, IReadOnlyList<ScenarioObject> objects, string? subject)
+    internal static JsonElement Row(ModelSnapshot model, IReadOnlyList<ScenarioObject> objects, string? subject, int depth)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(objects);
@@ -32,21 +55,31 @@ internal static class ScenarioObjects
         var byId = new Dictionary<string, ScenarioObject>(StringComparer.Ordinal);
         foreach (var obj in objects)
             byId.TryAdd(obj.Id, obj);
-        return byId.TryGetValue(subject, out var root) ? RowOf(model, root, byId, new HashSet<string>(StringComparer.Ordinal)) : NoObject;
+        return byId.TryGetValue(subject, out var root) ? RowOf(model, root, byId, new HashSet<string>(StringComparer.Ordinal), depth) : NoObject;
     }
 
-    /// <summary>Why a value an object gives is bad (a key that is not an attribute of its entity or its bases, or a value that does not
-    /// fit its attribute), with the value's pointer under the object, or <see langword="null"/>. An object whose entity is not in the model
-    /// is left to MQ2001.</summary>
+    /// <summary>
+    /// Why a run's objects are bad, with the pointer of the first problem, or <see langword="null"/>: a value an object gives that is not
+    /// an attribute of its entity or its bases, or that does not fit its attribute; a link through an end that does not lead from the
+    /// object's entity (or a base) to the linked object's entity (or a base); or a subject whose entity is not one of the process's
+    /// subjects or derived from one. An object, an end or a subject that is not in the model is left to MQ2001.
+    /// </summary>
     /// <param name="model">The model.</param>
+    /// <param name="process">The process the run is of.</param>
     /// <param name="objects">The objects.</param>
+    /// <param name="subject">The id of the subject among them.</param>
     /// <param name="fits">Why a value does not fit an attribute, or <see langword="null"/>.</param>
     /// <returns>The first problem: its message and its pointer.</returns>
-    public static (string Message, string Pointer)? Check(ModelSnapshot model, IReadOnlyList<ScenarioObject> objects, Func<ModelAttribute, JsonElement, string?> fits)
+    public static (string Message, string Pointer)? Check(ModelSnapshot model, Process process, IReadOnlyList<ScenarioObject> objects, string? subject,
+        Func<ModelAttribute, JsonElement, string?> fits)
     {
         ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(process);
         ArgumentNullException.ThrowIfNull(objects);
         ArgumentNullException.ThrowIfNull(fits);
+        var byId = new Dictionary<string, ScenarioObject>(StringComparer.Ordinal);
+        foreach (var obj in objects)
+            byId.TryAdd(obj.Id, obj);
         for (var i = 0; i < objects.Count; i++)
         {
             var obj = objects[i];
@@ -55,17 +88,58 @@ internal static class ScenarioObjects
             var attributes = new Dictionary<string, ModelAttribute>(StringComparer.Ordinal);
             foreach (var attribute in Attributes(model, entity))
                 attributes.TryAdd(attribute.Id, attribute);
-            var pointer = "/objects/" + i.ToString(CultureInfo.InvariantCulture) + "/values";
+            var pointer = "/objects/" + i.ToString(CultureInfo.InvariantCulture);
             foreach (var (id, value) in obj.Values.OrderBy(p => p.Key, StringComparer.Ordinal))
             {
                 if (!attributes.TryGetValue(id, out var attribute))
-                    return ($"Object '{obj.Name}' gives a value for '{id}', which is not an attribute of entity '{entity.Name}' or its bases; remove it or name one of the entity's attributes.", pointer);
+                    return ($"Object '{obj.Name}' gives a value for '{id}', which is not an attribute of entity '{entity.Name}' or its bases; remove it or name one of the entity's attributes.", pointer + "/values");
                 if (fits(attribute, value) is { } why)
-                    return ($"Object '{obj.Name}': the value of '{attribute.Name}' does not fit its type ({why}); give a value of the attribute's type.", pointer);
+                    return ($"Object '{obj.Name}': the value of '{attribute.Name}' does not fit its type ({why}); give a value of the attribute's type.", pointer + "/values");
+            }
+
+            var chain = Chain(model, entity);
+            for (var k = 0; k < obj.Links.Count; k++)
+            {
+                var link = obj.Links[k];
+                if (!model.TryGetEntry(link.End, out var entry) || model.Get<Relation>(entry.OwnerId) is not { } relation
+                    || relation.Ends.FirstOrDefault(e => string.Equals(e.Id, link.End, StringComparison.Ordinal)) is not { } end)
+                    continue;
+                var target = byId.GetValueOrDefault(link.Object);
+                var targetEntity = target is null ? null : model.Get<Entity>(target.Entity);
+                var from = relation.Ends.Any(e => !string.Equals(e.Id, end.Id, StringComparison.Ordinal) && chain.Contains(e.Entity));
+                if (!from || (targetEntity is not null && !Chain(model, targetEntity).Contains(end.Entity)))
+                {
+                    var endName = relation.Name + "." + (string.IsNullOrEmpty(end.Role) ? end.Id : end.Role);
+                    return (from
+                        ? $"Object '{obj.Name}' links to '{target!.Name}' through end '{endName}', which leads to entity '{model.Get<Entity>(end.Entity)?.Name ?? end.Entity}', not to entity '{targetEntity!.Name}' or one of its bases; link to an object of that entity, or through an end that leads to '{targetEntity.Name}'."
+                        : $"Object '{obj.Name}' links through end '{endName}', which does not lead from entity '{entity.Name}' or one of its bases; use an end of a relation of '{entity.Name}'.",
+                        pointer + "/links/" + k.ToString(CultureInfo.InvariantCulture) + "/end");
+                }
             }
         }
 
+        if (subject is not null && byId.GetValueOrDefault(subject) is { } root && model.Get<Entity>(root.Entity) is { } rootEntity
+            && !process.Subjects.Any(x => Chain(model, rootEntity).Contains(x.Entity)))
+        {
+            var names = process.Subjects.Select(x => model.Get<Entity>(x.Entity)?.Name ?? x.Entity).Distinct(StringComparer.Ordinal).ToList();
+            return (names.Count == 0
+                ? $"The subject '{root.Name}' is an object of entity '{rootEntity.Name}', but process '{process.Name}' has no subject; leave subject and objects out, or give the process a subject."
+                : $"The subject '{root.Name}' is an object of entity '{rootEntity.Name}', which is not a subject of process '{process.Name}' ({string.Join(", ", names)}) or derived from one; make an object of a subject's entity the subject.",
+                "/subject");
+        }
+
         return null;
+    }
+
+    // The ids of an entity and its bases.
+    private static HashSet<string> Chain(ModelSnapshot model, Entity entity)
+    {
+        var chain = new HashSet<string>(StringComparer.Ordinal);
+        for (var current = entity; current is not null && chain.Add(current.Id); current = current.Base is { } b ? model.Get<Entity>(b) : null)
+        {
+        }
+
+        return chain;
     }
 
     /// <summary>The attributes of an entity and its bases, most derived first, each base once.</summary>
@@ -82,7 +156,7 @@ internal static class ScenarioObjects
         }
     }
 
-    private static JsonElement RowOf(ModelSnapshot model, ScenarioObject obj, Dictionary<string, ScenarioObject> byId, HashSet<string> path)
+    private static JsonElement RowOf(ModelSnapshot model, ScenarioObject obj, Dictionary<string, ScenarioObject> byId, HashSet<string> path, int depth)
     {
         path.Add(obj.Id);
         var row = new SortedDictionary<string, object>(StringComparer.Ordinal);
@@ -92,27 +166,12 @@ internal static class ScenarioObjects
                 row.TryAdd(attribute.Name, obj.Values.TryGetValue(attribute.Id, out var given) ? given : attribute.Default ?? Null);
         }
 
-        var many = new Dictionary<string, List<JsonElement>>(StringComparer.Ordinal);
-        foreach (var link in obj.Links)
+        foreach (var link in depth > 0 ? obj.Links : [])
         {
-            if (End(model, link.End) is not { Navigation.Length: > 0 } end || !byId.TryGetValue(link.Object, out var target) || path.Contains(target.Id))
+            if (End(model, link.End) is not { Navigation.Length: > 0, Max: MaxCardinality.One } end || row.ContainsKey(end.Navigation)
+                || !byId.TryGetValue(link.Object, out var target) || path.Contains(target.Id))
                 continue;
-            if (end.Max == MaxCardinality.One)
-            {
-                if (!row.ContainsKey(end.Navigation))
-                    row[end.Navigation] = RowOf(model, target, byId, path);
-                continue;
-            }
-
-            if (!many.TryGetValue(end.Navigation, out var list))
-            {
-                if (row.ContainsKey(end.Navigation))
-                    continue;
-                many[end.Navigation] = list = [];
-                row[end.Navigation] = list;
-            }
-
-            list.Add(RowOf(model, target, byId, path));
+            row[end.Navigation] = RowOf(model, target, byId, path, depth - 1);
         }
 
         path.Remove(obj.Id);

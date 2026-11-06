@@ -11,7 +11,8 @@ namespace Maquettiste.Engine.Tests.Integration;
 /// The acceptance case of "Lifecycles any implementation can follow" (lifecycle-design.md section 14), on an invented model: one
 /// lifecycle, Fulfilment, governs orders, whose state is bound to the reference type OrderStatus, and return notes, with no binding; both
 /// derive from Document, which holds <c>total</c>. Its state codes resolve as the output templates read them, its guard reads
-/// <c>subject.total &gt; 0</c> in simulation, and a scenario with an order and its customer replays.
+/// <c>subject.total &gt; 0</c> in simulation, a scenario with an order and its customer replays, and csharp-dapper writes the codes and
+/// leaves the guard to a person.
 /// </summary>
 public sealed class LifecycleAcceptanceTests
 {
@@ -96,7 +97,9 @@ public sealed class LifecycleAcceptanceTests
         return repo;
     }
 
-    private static async Task<bool> ShipsAsync(ModelStore store, string? objects)
+    private static async Task<bool> ShipsAsync(ModelStore store, string? objects) => (await ShipAsync(store, objects)).Accepted;
+
+    private static async Task<StepTrace> ShipAsync(ModelStore store, string? objects)
     {
         var list = objects is null ? null : JsonDocument.Parse(objects).RootElement.EnumerateArray().Select(o => o.Clone()).ToList();
         var request = new SimulateRequest
@@ -107,7 +110,7 @@ public sealed class LifecycleAcceptanceTests
         };
         var call = await store.SimulateProcessAsync(Fulfilment, request, Ct);
         Assert.True(call.Status == ProcessCallStatus.Ok, call.Detail);
-        return call.Value!.Trace[^1].Accepted;
+        return call.Value!.Trace[^1];
     }
 
     private static string One(string entity, decimal total) =>
@@ -137,12 +140,54 @@ public sealed class LifecycleAcceptanceTests
         Assert.True(await ShipsAsync(store, One(Order, 12.5m)));
         Assert.False(await ShipsAsync(store, One(Order, 0m)));
         Assert.True(await ShipsAsync(store, One(ReturnNote, 3m)));
-        Assert.False(await ShipsAsync(store, null));
+        var none = await ShipAsync(store, null);
+        var evaluated = Assert.Single(none.Guards, g => g.Guard == Positive);
+        Assert.Equal((false, GuardSource.Expression), (evaluated.Result, evaluated.Source));
+        Assert.Empty(none.Diagnostics);
+        Assert.False(none.Accepted);
 
         // The scenario with an order and its customer replays.
         var verified = await store.VerifyScenariosAsync(Fulfilment, null, Ct);
         Assert.True(verified.Status == ProcessCallStatus.Ok, verified.Detail);
         var result = Assert.Single(verified.Value!.Results);
         Assert.True(result.Passed, result.Failure?.Message);
+
+        // csharp-dapper: the state codes as constants with the moves between them and FromCode, no ToOrderStatus (a reference binding
+        // has no enum to map to), and the guard that reads the object left to a person as a partial method, its condition in the summary.
+        PackCopy(repo);
+        await using var generating = new ModelStore(repo.Options);
+        var generated = await new GenerationService(generating, repo.Options).RunAsync(new GenerationRequest { Packs = ["csharp-dapper"] }, progress: null, Ct);
+        var problems = generated.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => $"{d.Rule} {d.FilePath} {d.Message}").ToList();
+        Assert.True(generated.Outcome == RunOutcome.Succeeded && problems.Count == 0, string.Join("\n", problems));
+        var states = repo.ReadFile("out/Processes/Fulfilment/FulfilmentStates.cs");
+        Assert.Contains("public static partial class FulfilmentStateCodes\n", states, StringComparison.Ordinal);
+        Assert.Contains("    public const string Open = \"OPEN\";\n", states, StringComparison.Ordinal);
+        Assert.Contains("    public const string Shipped = \"SHIP\";\n", states, StringComparison.Ordinal);
+        Assert.Contains("Moves { get; } =\n    [\n        (Open, Shipped, \"event\", \"ship\"),\n    ];\n", states, StringComparison.Ordinal);
+        Assert.Contains("public static IReadOnlyList<string> FromCode(string code) => code switch\n    {\n        Open => [FulfilmentStates.Open],\n", states, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToOrderStatus", states, StringComparison.Ordinal);
+        var handlers = repo.ReadFile("out/Processes/Fulfilment/FulfilmentHandlers.g.cs");
+        Assert.Contains("    /// <summary>Guard positive: <c>subject.total &gt; 0</c> (implemented in FulfilmentHandlers.cs).</summary>\n"
+            + "    private partial bool GuardPositive(StatechartCall<FulfilmentContext> call);\n", handlers, StringComparison.Ordinal);
+        Assert.Contains("private partial bool GuardPositive(StatechartCall<FulfilmentContext> call) =>\n        throw new NotImplementedException(",
+            repo.ReadFile("out/Processes/Fulfilment/FulfilmentHandlers.cs"), StringComparison.Ordinal);
+    }
+
+    // The csharp-dapper pack, writing to out.
+    private static void PackCopy(TempRepo repo)
+    {
+        var from = Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper");
+        foreach (var file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(from, file).Replace('\\', '/');
+            if (!relative.StartsWith("tests/", StringComparison.Ordinal))
+                repo.WriteBytes(".maquettiste/templates/csharp-dapper/" + relative, File.ReadAllBytes(file));
+        }
+
+        Edit(repo, ".maquettiste/maquettiste.json", settings =>
+        {
+            settings["outputs"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "allow": [ { "path": "out" } ] }""");
+            settings["packs"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "csharp-dapper": { "output": "out" } }""");
+        });
     }
 }

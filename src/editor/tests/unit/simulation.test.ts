@@ -463,26 +463,42 @@ describe("scenario objects", () => {
     expect(setStartValue(loaded, "01JQATT0000000000000000201", 1).start.subject).toBe(OBJ_A);
   });
 
-  it("records the objects into the new scenario, minting missing ids, and simulates with them", async () => {
+  it("records the objects with new ids, remaps the subject and links, and simulates with them", async () => {
     seedEntities(mock.backend.model);
-    const request = {
-      name: "WithCast",
-      steps: scenario(BUDGET_REJECTED).steps.slice(0, 1),
-      objects: [
-        { name: "order", entity: ENTITY },
-        { name: "customer", entity: OTHER },
-      ],
-      subject: "order",
-    };
+    const request = { name: "WithCast", steps: scenario(BUDGET_REJECTED).steps.slice(0, 1), objects: objects(), subject: OBJ_A };
     const recorded = await post(`/api/processes/${PURCHASE_APPROVAL}/scenarios`, request);
     expect(recorded.status).toBe(201);
-    const { element } = (await recorded.json()) as { element: { objects: { id: string; name: string }[]; subject: string } };
-    expect(element.objects.every((o) => /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(o.id))).toBe(true);
-    expect(element.subject).toBe(element.objects[0].id);
+    const { element } = (await recorded.json()) as {
+      element: { objects: { id: string; name: string; links?: { end: string; object: string }[] }[]; subject: string };
+    };
+    const [order, customer] = element.objects;
+    expect(element.objects.map((o) => o.name)).toEqual(["order", "customer"]);
+    for (const o of element.objects) {
+      expect(o.id).toMatch(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
+      expect([OBJ_A, OBJ_B]).not.toContain(o.id);
+    }
+    expect(element.subject).toBe(order.id);
+    expect(order.links).toEqual([{ end: END, object: customer.id }]);
     expect((await post(`/api/processes/${PURCHASE_APPROVAL}/simulate`, { scenario: "WithCast" })).status).toBe(200);
-    // Objects need a subject that names one of them.
-    expect((await post(`/api/processes/${PURCHASE_APPROVAL}/simulate`, { objects: objects() })).status).toBe(400);
-    expect((await post(`/api/processes/${PURCHASE_APPROVAL}/simulate`, { objects: objects(), subject: "nobody" })).status).toBe(400);
+    expect((await post(`/api/processes/${PURCHASE_APPROVAL}/simulate`, { objects: objects(), subject: OBJ_A })).status).toBe(200);
+  });
+
+  it("refuses a cast with a missing id, a subject by name, a repeated id, an unknown link or a repeated name", async () => {
+    seedEntities(mock.backend.model);
+    const steps = scenario(BUDGET_REJECTED).steps.slice(0, 1);
+    const bad: [string, object][] = [
+      ["objects without ids", { objects: [{ name: "order", entity: ENTITY }], subject: OBJ_A }],
+      ["a subject by name", { objects: objects(), subject: "order" }],
+      ["no subject", { objects: objects() }],
+      ["a subject that is no object", { objects: objects(), subject: "01JQ0B10000000000000000099" }],
+      ["a repeated id", { objects: [objects()[0], { ...objects()[1], id: OBJ_A }], subject: OBJ_A }],
+      ["a repeated name", { objects: [objects()[0], { ...objects()[1], name: "order" }], subject: OBJ_A }],
+      ["an unknown link", { objects: [{ ...objects()[0], links: [{ end: END, object: "01JQ0B10000000000000000099" }] }], subject: OBJ_A }],
+    ];
+    for (const [label, cast] of bad) {
+      expect((await post(`/api/processes/${PURCHASE_APPROVAL}/simulate`, cast)).status, `simulate: ${label}`).toBe(400);
+      expect((await post(`/api/processes/${PURCHASE_APPROVAL}/scenarios`, { name: "Bad", steps, ...cast })).status, `record: ${label}`).toBe(400);
+    }
   });
 
   it("drops an object and the links to it when its entity goes, and refuses when the subject would go", () => {

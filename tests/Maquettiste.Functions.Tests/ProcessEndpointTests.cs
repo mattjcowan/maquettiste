@@ -140,13 +140,20 @@ public sealed class ProcessEndpointTests
             ["steps"] = new JsonArray(new JsonObject { ["event"] = "01JQPRX0000000000000000014", ["actor"] = "01JQACT0000000000000000008" }),
         };
 
-        // record writes the cast into the new scenario, which verifies.
+        // record writes the cast into the new scenario, which verifies: each object under a new id, which the subject follows.
         var created = await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/scenarios", Recording("WithRequest", 2500));
         Assert.Equal(201, created.Status);
         Contract.AssertResponse(created, "/api/processes/{id}/scenarios");
         var file = JsonNode.Parse(File.ReadAllText(host.PathOf(".maquettiste/model/scenarios/purchase-approval/with-request.json")))!.AsObject();
-        Assert.Equal(Objects(2500).ToJsonString(), file["objects"]!.ToJsonString());
-        Assert.Equal(Request, file["subject"]!.GetValue<string>());
+        var written = file["objects"]!.AsArray();
+        var newIds = written.Select(o => o!["id"]!.GetValue<string>()).ToList();
+        Assert.DoesNotContain(Request, newIds);
+        Assert.DoesNotContain(Other, newIds);
+        var expected = Objects(2500);
+        for (var i = 0; i < expected.Count; i++)
+            expected[i]!["id"] = newIds[i];
+        Assert.Equal(expected.ToJsonString(), written.ToJsonString());
+        Assert.Equal(newIds[0], file["subject"]!.GetValue<string>());
         Assert.Equal(["kind", "id", "name", "process", "objects", "subject", "start", "steps"], file.Where(p => !p.Key.StartsWith('$')).Select(p => p.Key));
         var scenario = created.Json["id"]!.GetValue<string>();
         var verify = await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/verify", new { scenarios = new[] { scenario } });
@@ -166,7 +173,7 @@ public sealed class ProcessEndpointTests
         Assert.Equal(400, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new JsonObject { ["objects"] = Objects(2500) })).Status);
         var replayed = await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new { scenario });
         Assert.Equal(200, replayed.Status);
-        Assert.Equal(200, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new { scenario, subject = Other })).Status);
+        Assert.Equal(200, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new { scenario, subject = newIds[1] })).Status);
         Assert.Equal(400, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new { scenario, subject = "01JQXBJ0000000000000000009" })).Status);
         Assert.Equal(400, (await host.SendJsonAsync("POST", $"/api/processes/{Purchase}/simulate", new { subject = Other })).Status);
     }

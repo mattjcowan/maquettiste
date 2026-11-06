@@ -486,7 +486,7 @@ public static class ProcessApi
         ArgumentNullException.ThrowIfNull(inputs);
         var interpreter = new StatechartInterpreter(chart, runtime.Options("simulation") with
         {
-            Subject = ScenarioObjects.Row(runtime.Model, objects ?? [], subject),
+            Subject = ScenarioObjects.Row(runtime.Model, chart.Process, objects ?? [], subject),
         });
         DateTimeOffset? at = null;
         if (start?.At is { } text && TryParseAt(text, out var parsed))

@@ -814,15 +814,20 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>
-    /// What a step's replay (<c>step.trace</c>) reads beyond the scenario and its process (lifecycle-design.md decision 22): the entities of
-    /// the process's subjects and of the scenario's objects with their bases, which declare the attributes and their defaults, and the
-    /// relations the objects' links go through. In first-seen order, each once.
+    /// What a step's replay (<c>step.trace</c>) reads beyond the scenario and its process (lifecycle-design.md decision 22): the subjects'
+    /// entities of the process and of each process it invokes whose guard conditions read <c>subject</c> (their defaults are what such a
+    /// condition sees for a value the object lacks), the entities of the scenario's objects, all with their bases, which declare the
+    /// attributes and their defaults, and the relations the objects' links go through. In first-seen order, each once; none for a scenario
+    /// without objects whose processes' conditions do not read the object.
     /// </summary>
     private List<string> TraceInputs(Scenario scenario)
     {
         var ids = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var entities = (Model.Get<Process>(scenario.Process)?.Subjects ?? []).Select(x => x.Entity).Concat(scenario.Objects.Select(o => o.Entity));
+        var subjects = Model.Get<Process>(scenario.Process) is { } process
+            ? ExprSites.InvokedProcesses(Model, process).Prepend(process).Where(p => ExprSites.SubjectDepth(Model, p) is not null).SelectMany(p => p.Subjects)
+            : [];
+        var entities = subjects.Select(x => x.Entity).Concat(scenario.Objects.Select(o => o.Entity));
         foreach (var start in entities)
         {
             for (var id = start; id is not null && seen.Add(id); id = Model.Get<Entity>(id)?.Base)

@@ -3759,9 +3759,10 @@ paths:
       summary: Record a scenario from a list of inputs
       description: |
         phase-3-design.md section 4.4. The engine replays `start` and `steps` and fills each step's `expect` (refusals recorded as
-        `accepted: false`) and the `outcome` (unless the request gives one) from the replay, gives the scenario and its steps new ids,
-        and saves it as one change under `model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing
-        it. Inputs that cannot be replayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.
+        `accepted: false`) and the `outcome` (unless the request gives one) from the replay, gives the scenario, its steps and its
+        objects new ids (`subject` and each link follow their objects), and saves it as one change under
+        `model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing it. Inputs that cannot be
+        replayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.
       x-maquettiste-role: editor
       parameters:
         - name: dryRun
