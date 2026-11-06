@@ -88,6 +88,9 @@ export class ModelIndex {
     // MQ9203 reads a lifecycle's subject entity and bound enum, which do not reference the process: re-check processes.
     if (all.some((e) => e.json.kind === "enum" || e.json.kind === "entity"))
       for (const [id, entry] of this.snapshot) if (entry.json.kind === "process") affected.add(id);
+    // MQ9201 on an entity reads its lifecycle process and the entity's bases, which the index holds no reference for.
+    if (all.some((e) => e.json.kind === "process" || e.json.kind === "entity"))
+      for (const [id, entry] of this.snapshot) if (entry.json.kind === "entity" && typeof entry.json.lifecycle === "string") affected.add(id);
     const ctx = this.context();
     for (const id of affected) {
       const entry = this.snapshot.get(id);

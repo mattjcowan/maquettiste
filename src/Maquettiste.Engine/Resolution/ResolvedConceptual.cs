@@ -90,6 +90,12 @@ public sealed class REntity : RElement
     /// <summary>The lifecycle process the entity names, or <see langword="null"/>.</summary>
     public RProcess? Lifecycle { get; internal set; }
 
+    /// <summary>
+    /// The lifecycles that govern the entity: those that list it or a base of it as a subject, in either form, by name then id
+    /// (lifecycle-design.md section 7).
+    /// </summary>
+    public RList<RProcess> Lifecycles { get; internal set; } = RList<RProcess>.Empty;
+
     /// <summary>The operations whose subject is the entity, in <see cref="ResolvedModel.Operations"/> order.</summary>
     public RList<ROperation> Operations { get; internal set; } = RList<ROperation>.Empty;
 }

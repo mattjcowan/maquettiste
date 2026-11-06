@@ -6,8 +6,13 @@
   "displayName": "Sales order lifecycle",
   "package": "01JQPKG0000000000000000001",
   "use": "lifecycle",
-  "subject": "01JQENT0000000000000000001",
-  "boundAttribute": "01JQATT0000000000000000002",
+  "subjects": [
+    {
+      "id": "01M6Q0KV191MQ003ZG6KPZSM74",
+      "entity": "01JQENT0000000000000000001",
+      "boundAttribute": "01JQATT0000000000000000002"
+    }
+  ],
   "description": "From draft through a credit check and fulfilment to completion.",
   "context": [
     {

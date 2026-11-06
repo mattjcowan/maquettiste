@@ -14,14 +14,33 @@ public sealed class RProcess : RElement
     /// <summary><c>lifecycle</c> or <c>orchestration</c>.</summary>
     public string Use { get; internal set; } = "orchestration";
 
-    /// <summary>The subject entity, when set and resolved.</summary>
+    /// <summary>The subject entity, when the process has exactly one subject, in either form, and it resolves.</summary>
     public REntity? Subject { get; internal set; }
 
-    /// <summary>The bound attribute: the subject's (flattened) attribute that holds the lifecycle state.</summary>
+    /// <summary>The bound attribute: the one subject's (flattened) attribute that holds the lifecycle state.</summary>
     public RAttribute? BoundAttribute { get; internal set; }
 
     /// <summary>The enum typing the bound attribute.</summary>
     public REnum? BoundEnum { get; internal set; }
+
+    /// <summary>
+    /// Every subject whose entity resolves, in file order, whatever the file's form (lifecycle-design.md section 7): the entries of
+    /// <c>subjects</c>, or one entry, with the process's id, for the one-subject form.
+    /// </summary>
+    public RList<RSubject> Subjects { get; internal set; } = RList<RSubject>.Empty;
+
+    /// <summary>
+    /// Whether the states' codes form a map (lifecycle-design.md decision 4): some state has a code, no two coded states sit on one path
+    /// from the root, none sits inside a parallel region, and the codes are unique and of one kind, so any configuration has at most one
+    /// code and output may map states to codes and back.
+    /// </summary>
+    public bool CodesMap { get; internal set; }
+
+    /// <summary>Whether the file lists its subjects in <c>subjects</c> (records show the list only then).</summary>
+    internal bool ListsSubjects { get; set; }
+
+    /// <summary>Whether some state has a code (records show <see cref="CodesMap"/> only then).</summary>
+    internal bool HasCodes { get; set; }
 
     /// <summary>The context attributes (the running instance's data), stably sorted by order.</summary>
     public RList<RAttribute> Context { get; internal set; } = RList<RAttribute>.Empty;
@@ -90,6 +109,25 @@ public abstract class RProcessNode : RObject
     public bool HasStereotype(string key) => Stereotypes.Any(s => string.Equals(s.Key, key, StringComparison.Ordinal));
 }
 
+/// <summary>
+/// A subject of a process (lifecycle-design.md section 7): an entity it governs, with the entities derived from it, and the attribute
+/// that holds its state.
+/// </summary>
+public sealed class RSubject : RObject
+{
+    /// <inheritdoc/>
+    public override string Kind => "subject";
+
+    /// <summary>The entity.</summary>
+    public REntity Entity { get; internal set; } = null!;
+
+    /// <summary>The bound attribute: the entity's (flattened) attribute that holds the state, when set and resolved.</summary>
+    public RAttribute? BoundAttribute { get; internal set; }
+
+    /// <summary>The enum typing the bound attribute.</summary>
+    public REnum? BoundEnum { get; internal set; }
+}
+
 /// <summary>A state of a process.</summary>
 public sealed class RState : RProcessNode
 {
@@ -98,6 +136,9 @@ public sealed class RState : RProcessNode
 
     /// <summary>The name, unique among siblings.</summary>
     public string Name { get; internal set; } = "";
+
+    /// <summary>The state's own code (lifecycle-design.md decision 1): a <see cref="string"/> or a <see cref="long"/>, or <see langword="null"/>.</summary>
+    public object? Code { get; internal set; }
 
     /// <summary>The dotted name path from the root, for example <c>Fulfilment.Shipping.Packed</c>.</summary>
     public string Path { get; internal set; } = "";

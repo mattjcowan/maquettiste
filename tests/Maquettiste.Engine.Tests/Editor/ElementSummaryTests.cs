@@ -67,6 +67,23 @@ public sealed class ElementSummaryTests
     }
 
     [Fact]
+    public void A_process_row_carries_its_subjects_only_when_it_has_two_or_more()
+    {
+        // lifecycle-design.md decision 23: subject for exactly one subject, in either form; subjects for two or more.
+        var one = new Maquettiste.Engine.Model.ElementSummary("01JPRC00000000000000000001", "process", "P", null, [], "h", "p.json", null, [], Use: "lifecycle",
+            Subject: "01JENT00000000000000000001");
+        var two = one with { Subject = null, Subjects = ["01JENT00000000000000000001", "01JENT00000000000000000002"] };
+
+        Assert.False(JsonSerializer.SerializeToNode(one, Web)!.AsObject().ContainsKey("subjects"));
+        Assert.Equal(["01JENT00000000000000000001", "01JENT00000000000000000002"],
+            JsonSerializer.SerializeToNode(two, Web)!["subjects"]!.AsArray().Select(n => n!.GetValue<string>()));
+        Assert.False(JsonSerializer.SerializeToNode(two, Web)!.AsObject().ContainsKey("subject"));
+        Assert.Equal(two, two with { Subjects = ["01JENT00000000000000000001", "01JENT00000000000000000002"] }); // compared by items
+        Assert.NotEqual(two, two with { Subjects = ["01JENT00000000000000000002", "01JENT00000000000000000001"] });
+        Assert.NotEqual(one, two);
+    }
+
+    [Fact]
     public async Task A_custom_row_carries_type_and_member_count()
     {
         // next-phase-2-design.md section 4.2: ElementSummary.Type, and MemberCount counts the members.

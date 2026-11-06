@@ -7772,8 +7772,14 @@ components:
           type: string
           enum: [lifecycle, orchestration, library]
         subject:
-          description: The entity whose lifecycle the process is, on process rows that have one; the entity an operation acts on, on operation rows that have one.
+          description: The entity a process governs, on process rows with exactly one subject in either form (`subject`, or one `subjects` entry; lifecycle-design.md decision 23); the entity an operation acts on, on operation rows that have one.
           $ref: '#/components/schemas/Ulid'
+        subjects:
+          description: The entities a process governs in entry order, on process rows with two or more subjects (lifecycle-design.md decision 23); such a row has no `subject`.
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/Ulid'
         stateCount:
           type: integer
           minimum: 0
@@ -8347,11 +8353,20 @@ components:
         keeping the ids, codes and descriptions of kept members; refused with MQ9019 when a removed member is still used by a
         default, allowed values, a seed cell or a scenario value, or when another operation of the batch writes the process or
         the enum), `set-lifecycle` (`id` an entity, `target` a
-        process: binds both sides in one change and unbinds the previous partners; without `target` it clears the entity's
-        lifecycle and turns the bound process back into an orchestration), `set-initial` (`id` a process or a compound
-        state, `target` one of its direct children) and `refresh-scenario` (`id` a scenario: every step's `expect` and the
+        process: it becomes the entity's named lifecycle (lifecycle-design.md decision 9). A target in the one-subject form, or
+        with no subject, takes the entity as its one subject (a target with no subject gets `subjects` with one entry) and the
+        entity's previous lifecycle in the one-subject form becomes an orchestration, as before; a target that uses `subjects`
+        gains an entry for the entity when it has none, the entity's previous lifecycle in the one-subject form still becomes an
+        orchestration, and its other lifecycles that use `subjects` are left alone. Without `target` it clears the entity's
+        lifecycle: its lifecycles in the one-subject form become orchestrations, the entity leaves the `subjects` of the others,
+        and one left with no subject becomes an orchestration; an orchestration keeps its subjects and loses its bindings),
+        `set-initial` (`id` a process or a compound
+        state, `target` one of its direct children), `refresh-scenario` (`id` a scenario: every step's `expect` and the
         `outcome` are rewritten from a replay in the engine interpreter; refused when the replay cannot reach the last step,
-        or when another operation of the batch writes the scenario or its process). They expand into updates the same way, and a refusal is MQ9019 at
+        or when another operation of the batch writes the scenario or its process) and `use-subjects` (lifecycle-design.md
+        decision 6: each process `elementIds` lists, or without it every process, that is in the one-subject form is rewritten
+        with a `subjects` list of one entry, with a new id, holding its `subject` and `boundAttribute`; a listed process
+        already using `subjects`, or with no subject, is left as it is, and nothing to convert writes nothing). They expand into updates the same way, and a refusal is MQ9019 at
         `/operations/<n>`. The materialize operations (erratum E43) act on `database`: `materialize-tables` (`entities`, optional
         `schema`: a designed table per entity with the shape its projection has and a binding of the entity to it; the overlay
         folds into the table, the entity's mapping to the database is deleted, relation mappings name the foreign keys, and the
@@ -8409,7 +8424,7 @@ components:
         `expectedHashes`, refactor a type once per batch, and a refusal (an unknown or scripted code, a code taken or former, a
         code that does not fit, mismatched code types, a binding or scripted rows on the merged type, a field the target lacks,
         seeds of one name that differ in environments or apply, a second refactor of a type) is MQ7020 at `/operations/<n>`.
-      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, materialize-attributes, materialize-columns, sync-enum, set-lifecycle, set-initial, refresh-scenario, retag, tags-to-property, names-to-ids, fold-into-stereotype, map-by-name, resync-binding, rename-code, retire-code, merge-reference-types, rename-reference-type, upsert]
+      enum: [create, update, delete, translate, add-schema, rename-schema, remove-schema, set-default-schema, materialize-tables, materialize-entities, materialize-attributes, materialize-columns, sync-enum, set-lifecycle, set-initial, refresh-scenario, use-subjects, retag, tags-to-property, names-to-ids, fold-into-stereotype, map-by-name, resync-binding, rename-code, retire-code, merge-reference-types, rename-reference-type, upsert]
     BatchOperation:
       x-engine-record: Maquettiste.Engine.BatchOperation
       description: |
@@ -8508,8 +8523,8 @@ components:
             type: string
         elementIds:
           description: >-
-            The elements `names-to-ids` and `tags-to-property` act on, each an id, a qualified name or a placeholder; absent means
-            every element they apply to.
+            The elements `names-to-ids`, `tags-to-property` and `use-subjects` act on, each an id, a qualified name or a
+            placeholder; absent means every element they apply to.
           type: [array, 'null']
           items:
             type: string
@@ -8651,7 +8666,7 @@ components:
           description: Whether validation.rules may set the rule to off (false for MQ1xxx).
         quickFix:
           type: string
-          enum: [sync-enum, set-lifecycle, set-initial, refresh-scenario, text-to-trees]
+          enum: [sync-enum, set-lifecycle, set-initial, refresh-scenario, text-to-trees, use-subjects]
           description: The batch operation that fixes a finding of the rule, applied to the finding's element (phase-3-design.md section 3); absent when the rule has none.
     Diagnostic:
       x-engine-record: Maquettiste.Engine.Diagnostics.Diagnostic
@@ -9032,6 +9047,13 @@ components:
           lifecycle:
             type: [string, 'null']
             description: The id of the process that is its lifecycle.
+          lifecycles:
+            type: array
+            description: >-
+              The ids of the lifecycles that govern the entity or a base of it, ordered by name then id (lifecycle-design.md section 7);
+              absent unless one of them lists its subjects in the `subjects` form.
+            items:
+              type: string
           bindings:
             type: array
             description: The entity's bindings (erratum E43), one per database it is bound to, by database name. A bound entity has no mapping in that database.
@@ -9789,10 +9811,21 @@ components:
             type: string
           subject:
             type: [string, 'null']
+            description: The subject entity's id when the process has exactly one subject, in either form.
           boundAttribute:
             type: [string, 'null']
+            description: The one subject's bound attribute, when the process has exactly one subject.
           boundEnum:
             type: [string, 'null']
+            description: The one subject's bound enum, when the process has exactly one subject.
+          subjects:
+            type: array
+            description: The entries of `subjects` in file order (lifecycle-design.md section 7); absent for a process in the one-subject form or with no subject.
+            items:
+              $ref: '#/components/schemas/SubjectRecord'
+          codesMap:
+            type: boolean
+            description: Whether the states' codes form a map (lifecycle-design.md decision 4); absent when no state has a code.
           initial:
             type: [string, 'null']
           context:
@@ -9835,6 +9868,24 @@ components:
             type: array
             items:
               type: string
+    SubjectRecord:
+      x-engine-record: Maquettiste.Engine.SubjectRecord
+      description: An entry of a process's `subjects` (lifecycle-design.md decision 5).
+      type: object
+      required: [id, entity, boundAttribute, boundEnum]
+      properties:
+        id:
+          type: string
+          description: The entry's id.
+        entity:
+          type: string
+          description: The entity's id.
+        boundAttribute:
+          type: [string, 'null']
+          description: The bound attribute's id.
+        boundEnum:
+          type: [string, 'null']
+          description: The bound attribute's enum's id.
     StateRecord:
       x-engine-record: Maquettiste.Engine.StateRecord
       description: A state.
@@ -9883,6 +9934,9 @@ components:
             type: integer
           boundMember:
             type: [string, 'null']
+          code:
+            description: The state's code, a string or an integer (lifecycle-design.md decision 1); absent when it has none.
+            type: [string, integer]
           transitionsOut:
             type: array
             items:
@@ -14235,7 +14289,9 @@ components:
           type: [string, 'null']
           enum: [lifecycle, orchestration, null]
         subject:
-          description: The subject entity (id or name).
+          description: >-
+            The subject entity (id or name). A new process lists it as the one entry of `subjects`, unless the config carries the
+            one-subject form (an exported file); a re-import keeps the form the process has (lifecycle-design.md decision 7).
           type: [string, 'null']
         into:
           description: A process (id or name) to re-import over, keeping its ids.

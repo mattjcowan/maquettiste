@@ -1,7 +1,7 @@
 // The Processes explorer's dialogs (phase-3-design.md 6.1): New process, New actor, New scenario, Import XState, and
 // the delete of a process with its scenarios. Each saves as one batch: one change, one undo entry.
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { applyBatchResult, elementQuery, keys, useElements, useProject } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
 import type { ElementSummary, ModelJson } from "@/api/types";
@@ -126,6 +126,20 @@ function NewProcessDialog({ domain, forest, onClose }: { domain: string | null; 
   const previousId = use === "lifecycle" ? (subjectDoc.data?.json as Json | undefined)?.lifecycle : undefined;
   const previousDoc = useQuery({ ...elementQuery(typeof previousId === "string" ? previousId : ""), enabled: typeof previousId === "string" });
   const previousName = typeof previousId === "string" ? (forest.byId.get(previousId)?.name ?? previousId) : null;
+  // The other lifecycles listing the entity (the index row says `subject` for one subject, `subjects` for more).
+  const peerIds = useMemo(
+    () =>
+      use === "lifecycle" && subject
+        ? [...forest.byId.values()]
+            .filter((r) => r.kind === "process" && r.use === "lifecycle" && (r.subject === subject || r.subjects?.includes(subject)))
+            .map((r) => r.id)
+        : [],
+    [forest, use, subject],
+  );
+  const peers = useQueries({ queries: peerIds.map((id) => elementQuery(id)) });
+  const peerDocs = peers.flatMap((q) => (q.data ? [{ json: q.data.json as Json, hash: q.data.hash }] : []));
+  const keepable = peerDocs.filter((d) => Array.isArray(d.json.subjects));
+  const [keepOthers, setKeepOthers] = useState(false);
   const members = ((enumDoc.data?.json as Json | undefined)?.members as Json[] | undefined)?.map((m) => String(m.name)) ?? [];
   const takenTypeNames = new Set(
     [...forest.byId.values()].filter((r) => ["entity", "enum", "value-object", "scalar-type"].includes(r.kind)).map((r) => r.name.toLowerCase()),
@@ -139,6 +153,9 @@ function NewProcessDialog({ domain, forest, onClose }: { domain: string | null; 
     attribute: use === "lifecycle" ? chosen : null,
     members,
     previousDoc: previousDoc.data ? { json: previousDoc.data.json as Json, hash: previousDoc.data.hash } : null,
+    peerDocs,
+    keepOthers,
+    peersPending: peers.some((q) => q.isPending),
     takenTypeNames,
   };
   const problem = processProblem(input);
@@ -154,7 +171,7 @@ function NewProcessDialog({ domain, forest, onClose }: { domain: string | null; 
             ? (subjectDoc.data.json as Json)
             : previousDoc.data && o.id === previousId
               ? (previousDoc.data.json as Json)
-              : null,
+              : (peerDocs.find((d) => d.json.id === o.id)?.json ?? null),
       );
       const failed = await commit(`New process ${name.trim()}`, ops, before);
       if (failed) setError(failed);
@@ -243,6 +260,12 @@ function NewProcessDialog({ domain, forest, onClose }: { domain: string | null; 
                 <p className="text-12 text-secondary" data-testid="new-process-previous">
                   {`${forest.byId.get(subject)?.name ?? "The entity"}'s lifecycle is ${previousName}; it becomes an orchestration.`}
                 </p>
+              ) : null}
+              {keepable.length ? (
+                <label className="flex items-center gap-1 text-12" data-testid="new-process-keep">
+                  <input type="checkbox" checked={keepOthers} onChange={(e) => setKeepOthers(e.target.checked)} />
+                  {`Keep the entity's other lifecycles (${keepable.map((d) => String(d.json.name)).join(", ")})`}
+                </label>
               ) : null}
             </>
           ) : null}

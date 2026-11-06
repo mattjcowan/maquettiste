@@ -12,6 +12,7 @@
     "pluralName",
     "package",
     "use",
+    "subjects",
     "subject",
     "boundAttribute",
     "description",
@@ -67,12 +68,19 @@
       ],
       "default": "orchestration"
     },
+    "subjects": {
+      "description": "The entities the process governs, each entry with its own id; an entry covers its entity and the entities derived from it. A lifecycle lists at least one (MQ9201). Not written together with subject or boundAttribute.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/subject"
+      }
+    },
     "subject": {
-      "description": "The entity whose lifecycle this is; required when use is lifecycle.",
+      "description": "The one-subject form, deprecated (MQ9209): use subjects. The entity whose lifecycle this is; required when use is lifecycle and subjects is absent.",
       "$ref": "common.json#/$defs/id"
     },
     "boundAttribute": {
-      "description": "An enum-typed attribute of the subject that holds the state (lifecycle only).",
+      "description": "The one-subject form, deprecated (MQ9209): use subjects. An enum-typed attribute of the subject that holds the state (lifecycle only).",
       "$ref": "common.json#/$defs/id"
     },
     "description": {
@@ -187,7 +195,52 @@
     "name"
   ],
   "additionalProperties": false,
+  "not": {
+    "description": "subjects is not written together with the one-subject form (subject, boundAttribute).",
+    "anyOf": [
+      {
+        "required": [
+          "subjects",
+          "subject"
+        ]
+      },
+      {
+        "required": [
+          "subjects",
+          "boundAttribute"
+        ]
+      }
+    ]
+  },
   "$defs": {
+    "subject": {
+      "title": "Subject",
+      "description": "An entity the process governs, with the entities derived from it.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "entity",
+        "boundAttribute"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "entity": {
+          "description": "The entity.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "boundAttribute": {
+          "description": "An attribute of the entity that holds the state (lifecycle only).",
+          "$ref": "common.json#/$defs/id"
+        }
+      },
+      "required": [
+        "id",
+        "entity"
+      ],
+      "additionalProperties": false
+    },
     "state": {
       "title": "State",
       "description": "A state of the process; the root is implicit (the process is the root compound state).",
@@ -197,6 +250,7 @@
         "name",
         "displayName",
         "type",
+        "code",
         "initial",
         "history",
         "defaultTarget",
@@ -228,6 +282,14 @@
             "choice"
           ],
           "default": "atomic"
+        },
+        "code": {
+          "description": "The state's stable stored value, however the state is stored: a string or an integer. Codes are unique in the process (1 and \"1\" are one code) and all of one kind; a history or choice state has none (MQ9206).",
+          "type": [
+            "string",
+            "integer"
+          ],
+          "minLength": 1
         },
         "initial": {
           "description": "Compound only: the initial child, a direct child (MQ9001); absent means the first child.",

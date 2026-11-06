@@ -6,6 +6,7 @@
 // with real hashes.
 import { applySchemaOperation, SCHEMA_OPS, type SchemaOp } from "@/model/databaseSchemas";
 import { DATABASE_MEMBER_KINDS } from "@/model/model";
+import { subjectsOf } from "@/model/process";
 import type {
   BatchResult,
   BatchParseResult,
@@ -631,10 +632,19 @@ export class MockModel {
   }
 
   private entryFor(json: Json, existing?: Entry): Entry {
+    this.mintSubjectIds(json);
     const path = this.conventionalPath(json, existing);
     const withSchema = this.withSchemaPath(json, path);
     const text = serialize(withSchema);
     return { id: String(json.id), path, json: withSchema, text, hash: sha256Hex(text) };
+  }
+
+  /** The engine mints the id of every `subjects` entry that has none (lifecycle-design.md decision 5). It keeps an empty list as written. */
+  private mintSubjectIds(json: Json): void {
+    if (json.kind !== "process" || !Array.isArray(json.subjects)) return;
+    json.subjects = json.subjects.map((e: unknown) =>
+      e && typeof e === "object" && typeof (e as Json).id !== "string" ? { id: this.options.newId(), ...(e as Json) } : e,
+    );
   }
 
   create(input: Json): SaveResult {
@@ -750,7 +760,11 @@ export class MockModel {
       if (plan.refused.length) return this.invalid(id, this.refusals(plan));
       const candidate = new Map(this.entries);
       for (const gone of deleted) candidate.delete(gone);
+      dropEmptySubjects(edited.values());
       for (const [refId, json] of edited) candidate.set(refId, this.entryFor(json, this.entries.get(refId)));
+      // A lifecycle left with no subject fails MQ9201, which the engine refuses (decision 5).
+      const emptied = this.check(candidate, [...edited.keys()]).introduced.filter((d) => d.rule === "MQ9201");
+      if (emptied.length) return this.invalid(id, emptied);
       const changes = this.commit(candidate);
       return { outcome: "saved", id, hash: null, current: null, diagnostics: [], referrers: [], changes };
     }
@@ -792,6 +806,7 @@ export class MockModel {
         removeAt(json, ref.removeItem ?? ref.pointer, ref.removeItem !== undefined);
         edited.set(entry.id, json);
       }
+      dropEmptySubjects(edited.values());
       for (const [refId, json] of edited) candidate.set(refId, this.entryFor(json, this.entries.get(refId)));
     }
     const changes = this.commit(candidate);
@@ -945,10 +960,43 @@ export class MockModel {
         items.push({ outcome: "saved", id: existing.id, hash: existing.hash, current: null, diagnostics: [], referrers: [], changes: null });
         continue;
       }
+      if (op.op === "use-subjects") {
+        // Lifecycle-design.md decision 6: each listed process (without `elementIds`, every process) in the one-subject form
+        // gets a `subjects` list of one entry holding its `subject` and `boundAttribute`; anything else is left as it is.
+        const listed = (op as { elementIds?: string[] }).elementIds;
+        const pool = listed ? listed.map((id) => candidate.get(id)).filter((e): e is Entry => !!e) : [...candidate.values()];
+        const missing = (listed ?? []).find((m) => candidate.get(m)?.json.kind !== "process");
+        if (missing !== undefined) {
+          fail(
+            this.invalid(missing, [
+              {
+                rule: "MQ9019",
+                severity: "error",
+                message: candidate.has(missing) ? `${missing} is not a process.` : `No process ${missing}.`,
+                elementId: missing,
+                filePath: null,
+                jsonPointer: "",
+                line: null,
+                column: null,
+              },
+            ]),
+          );
+          continue;
+        }
+        for (const existing of pool) {
+          const json = existing.json as Json;
+          if (json.kind !== "process" || Array.isArray(json.subjects) || typeof json.subject !== "string") continue;
+          const entry = this.entryFor(subjectsFormOf(json, this.options.newId()), existing);
+          candidate.set(entry.id, entry);
+          items.push({ outcome: "saved", id: entry.id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
+        }
+        continue;
+      }
       if (op.op === "set-initial" || op.op === "set-lifecycle") {
         // The process quick fixes (phase-3-design.md 3): expanded into updates of the documents they change.
         const target = (op as { target?: string }).target;
-        const changed = op.op === "set-initial" ? setInitialDocs(candidate, op.id ?? "", target) : setLifecycleDocs(candidate, op.id ?? "", target);
+        const changed =
+          op.op === "set-initial" ? setInitialDocs(candidate, op.id ?? "", target) : setLifecycleDocs(candidate, op.id ?? "", target, this.options.newId);
         if (typeof changed === "string") {
           fail(
             this.invalid(op.id ?? null, [
@@ -1068,7 +1116,10 @@ export class MockModel {
       if (introduced.length) {
         failure = "invalid";
         for (let i = 0; i < items.length; i++) {
-          const mine = introduced.filter((d) => d.elementId === items[i].id);
+          // A finding about a `subjects` entry names the entry, so it belongs to the process that holds it.
+          const mine = introduced.filter(
+            (d) => d.elementId === items[i].id || ((candidate.get(items[i].id!)?.json.subjects as Json[] | undefined) ?? []).some((e) => e.id === d.elementId),
+          );
           if (mine.length) items[i] = this.invalid(items[i].id, mine);
         }
         if (!items.some((i) => i.outcome === "invalid")) items[0] = this.invalid(items[0].id, introduced);
@@ -1302,7 +1353,10 @@ function e5(json: Json): Partial<ElementSummary> {
   // Phase 3 (phase-3-design.md 2.1): a process's use, subject and state count; an actor's type; a scenario's process and steps.
   if (kind === "process") {
     out.use = json.use === "lifecycle" ? "lifecycle" : "orchestration";
-    if (typeof json.subject === "string") out.subject = json.subject;
+    // One subject, in either form, is `subject`; two or more are `subjects` (lifecycle-design.md decision 23).
+    const subjects = subjectsOf(json);
+    if (subjects.length === 1) out.subject = subjects[0].entity;
+    else if (subjects.length > 1) out.subjects = subjects.map((s) => s.entity);
     const count = (states: unknown): number => (Array.isArray(states) ? (states as Json[]).reduce((n, s) => n + 1 + count(s.states), 0) : 0);
     out.stateCount = count(json.states);
   }
@@ -1328,6 +1382,11 @@ export function report(diagnostics: Diagnostic[]): ValidationReport {
   const warnings = diagnostics.filter((d) => d.severity === "warning").length;
   const infos = diagnostics.filter((d) => d.severity === "info").length;
   return { diagnostics, errors, warnings, infos, truncated: false, hasErrors: errors > 0, suppressed: [] };
+}
+
+/** As the engine does, a `subjects` list that a delete empties goes (lifecycle-design.md decision 5). */
+function dropEmptySubjects(docs: Iterable<Json>): void {
+  for (const json of docs) if (Array.isArray(json.subjects) && json.subjects.length === 0) delete json.subjects;
 }
 
 function removeAt(json: Json, pointer: string, isItem: boolean): void {
@@ -1519,8 +1578,32 @@ function setInitialDocs(entries: Map<string, { json: unknown }>, id: string, tar
   return `No process or compound state ${id}.`;
 }
 
-/** `set-lifecycle`: binds entity `id` and process `target` in one change and unbinds their previous partners. */
-function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, target: string | undefined): Json[] | string {
+/** The process in the `subjects` form: one entry (the given id) holding its `subject` and `boundAttribute`. */
+function subjectsFormOf(json: Json, entryId: string): Json {
+  const out: Json = {};
+  const entry: Json = { id: entryId, entity: json.subject, ...(typeof json.boundAttribute === "string" ? { boundAttribute: json.boundAttribute } : {}) };
+  let placed = false;
+  for (const [key, value] of Object.entries(json)) {
+    if (key === "subject" || key === "boundAttribute") continue;
+    if (!placed && ["context", "events", "guards", "actions", "states"].includes(key)) {
+      out.subjects = [entry];
+      placed = true;
+    }
+    out[key] = value;
+    if (!placed && key === "use") {
+      out.subjects = [entry];
+      placed = true;
+    }
+  }
+  if (!placed) out.subjects = [entry];
+  return out;
+}
+
+/**
+ * `set-lifecycle` (lifecycle-design.md decision 9): binds entity `id` and process `target`, and treats the entity's other
+ * lifecycles as the engine does. A demoted lifecycle keeps its subjects and loses their bindings.
+ */
+function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, target: string | undefined, newId: () => string): Json[] | string {
   const get = (key: unknown) => (typeof key === "string" ? (entries.get(key)?.json as Json | undefined) : undefined);
   const entity = get(id);
   if (entity?.kind !== "entity") return `No entity ${id}.`;
@@ -1531,18 +1614,45 @@ function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, t
   const orchestrate = (json: Json) => {
     const next = edit(json);
     next.use = "orchestration";
-    delete next.subject;
     delete next.boundAttribute;
+    if (Array.isArray(next.subjects)) next.subjects = (next.subjects as Json[]).map(({ boundAttribute: _unbound, ...entry }) => entry);
   };
+  const oneSubjectForm = (json: Json) => !Array.isArray(json.subjects) && typeof json.subject === "string";
   const previous = get(entity.lifecycle);
-  if (previous && previous.id !== target) orchestrate(previous);
+  if (previous && previous.id !== target && oneSubjectForm(previous)) orchestrate(previous);
   if (process) {
-    const partner = get(process.subject);
-    if (partner && partner.id !== id && partner.lifecycle === target) delete edit(partner).lifecycle;
     const next = edit(process);
     next.use = "lifecycle";
-    next.subject = id;
+    if (Array.isArray(next.subjects)) {
+      // An entry covers its entity and the entities derived from it, so a listed base is enough (decision 5).
+      const chain = new Set<unknown>([id]);
+      for (let base = entity.base; typeof base === "string" && !chain.has(base); base = get(base)?.base) chain.add(base);
+      if (!(next.subjects as Json[]).some((e) => chain.has(e.entity))) next.subjects = [...(next.subjects as Json[]), { id: newId(), entity: id }];
+    } else if (typeof next.subject === "string") {
+      const partner = get(next.subject);
+      if (partner && partner.id !== id && partner.lifecycle === target) delete edit(partner).lifecycle;
+      if (next.subject !== id) delete next.boundAttribute;
+      next.subject = id;
+    } else next.subjects = [{ id: newId(), entity: id }];
     edit(entity).lifecycle = target;
-  } else delete edit(entity).lifecycle;
+  } else {
+    delete edit(entity).lifecycle;
+    // The one-subject lifecycles of the entity become orchestrations; it leaves the `subjects` of the others, and one left
+    // with none becomes an orchestration.
+    for (const other of entries.values()) {
+      const json = other.json as Json;
+      if (json.kind !== "process" || json.use !== "lifecycle") continue;
+      if (oneSubjectForm(json) && json.subject === id) orchestrate(json);
+      else if (Array.isArray(json.subjects) && (json.subjects as Json[]).some((e) => e.entity === id)) {
+        const next = edit(json);
+        const rest = (next.subjects as Json[]).filter((e) => e.entity !== id);
+        if (rest.length) next.subjects = rest;
+        else {
+          delete next.subjects;
+          next.use = "orchestration";
+        }
+      }
+    }
+  }
   return [...changed.values()];
 }

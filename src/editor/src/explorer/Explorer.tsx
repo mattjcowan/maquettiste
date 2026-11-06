@@ -86,6 +86,7 @@ import {
   schemaNameOf,
 } from "./tree";
 import { schemasOf } from "@/model/databaseSchemas";
+import { soleSubject } from "@/model/process";
 import { TreeRow } from "./TreeRow";
 import { RowMenu, type RowMenuState } from "./RowMenu";
 import { menuFor, isMovable, isRenamable, type MenuActionId, type MenuTarget } from "./menus";
@@ -497,7 +498,7 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       todo.map(async ({ node, row }) => {
         done.add(node.key);
         const doc = await queryClient.fetchQuery(elementQuery(row.id)).catch(() => null);
-        const bound = (doc?.json as { boundAttribute?: string } | undefined)?.boundAttribute;
+        const bound = soleSubject(doc?.json)?.boundAttribute;
         if (!bound || !row.subject) return false;
         const subject = await queryClient.fetchQuery(elementQuery(row.subject)).catch(() => null);
         const attribute = ((subject?.json as { attributes?: { id?: string; name?: string }[] } | undefined)?.attributes ?? []).find(
@@ -637,12 +638,12 @@ export function Explorer({ id, pinned = false }: { id: ExplorerId; pinned?: bool
       const cached = queryClient.getQueryData<ElementDocument>(keys.element(id));
       const doc = cached && (!hash || cached.hash === hash) ? cached : await queryClient.fetchQuery({ ...elementQuery(id), staleTime: 0 });
       // A lifecycle row says Subject.attribute: the attribute's name is in the subject's document.
-      const json = doc.json as { subject?: string; boundAttribute?: string };
+      const sole = node.kind === "process" ? soleSubject(doc.json) : undefined;
       let attribute: string | undefined;
-      if (node.kind === "process" && json.subject && json.boundAttribute) {
-        const subject = await queryClient.fetchQuery(elementQuery(json.subject)).catch(() => null);
+      if (sole?.boundAttribute) {
+        const subject = await queryClient.fetchQuery(elementQuery(sole.entity)).catch(() => null);
         const list = ((subject?.json as { attributes?: { id?: string; name?: string }[] } | undefined)?.attributes ?? []).filter(Boolean);
-        attribute = list.find((a) => a.id === json.boundAttribute)?.name;
+        attribute = list.find((a) => a.id === sole.boundAttribute)?.name;
       }
       documentChildren(f, key, doc, attribute);
     },

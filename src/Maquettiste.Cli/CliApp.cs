@@ -210,7 +210,8 @@ public sealed class CliApp(CliEnvironment environment)
           process export <process>
                                 The process as an XState machine config: --format xstate, --out <file>
           process import <file> Preview an XState config import: --domain <package> (new process), --name, --use,
-                                  --subject, or --into <process> (keeps its ids); --apply writes it, --format text|json
+                                  --subject (listed in subjects), or --into <process> (keeps its ids and its subjects' form);
+                                  --apply writes it, --format text|json
           process sync-enum <process>
                                 Preview syncing a lifecycle's bound enum with its states; --apply, --check, --format text|json
           model export          The model as data: canonical documents, or with --resolved the resolved model's records

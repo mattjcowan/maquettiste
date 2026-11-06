@@ -137,6 +137,46 @@ internal sealed partial class ResolveRun
             r.Lifecycle = _processes.GetValueOrDefault(lifecycle);
             DepsOf(r).Add(ProcessKind); // the named process appearing or disappearing
         }
+
+        ResolveEntityLifecycles(sources);
+    }
+
+    /// <summary>
+    /// <c>entity.lifecycles</c> (lifecycle-design.md section 7): the lifecycles that list the entity or a base of it, in either form, by
+    /// name then id. The list is keyed on the process kind and on the referrers of the entity and of each base, since a lifecycle may
+    /// list a base; only a template that reads it pays for those keys.
+    /// </summary>
+    private void ResolveEntityLifecycles(Dictionary<string, Process> sources)
+    {
+        var governing = new Dictionary<string, List<RProcess>>(StringComparer.Ordinal);
+        foreach (var r in _processOrder)
+        {
+            if (r.Use != "lifecycle")
+                continue;
+            foreach (var entity in sources[r.Id].Subjects.Select(s => s.Entity).Distinct(StringComparer.Ordinal))
+            {
+                if (!governing.TryGetValue(entity, out var list))
+                    governing[entity] = list = [];
+                list.Add(r);
+            }
+        }
+
+        foreach (var id in _entitySources.Keys)
+        {
+            if (!_entities.TryGetValue(id, out var r) || r.Id.Length == 0)
+                continue;
+            var keys = new List<string> { ProcessKind };
+            var found = new List<RProcess>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var current = r; current is not null && seen.Add(current.Id); current = current.Base)
+            {
+                keys.Add(Keys.Referrers(current.Id));
+                if (governing.TryGetValue(current.Id, out var list))
+                    found.AddRange(list);
+            }
+
+            r.Lifecycles = new RList<RProcess>(found.Distinct().OrderBy(p => p.Name, StringComparer.Ordinal).ThenBy(p => p.Id, StringComparer.Ordinal), keys);
+        }
     }
 
     private IReadOnlyList<RProcessNode> LibraryUsers(RProcessNode member) => _libraryUsers.TryGetValue(member, out var users) ? users : [];
@@ -149,29 +189,52 @@ internal sealed partial class ResolveRun
         _processLookups[process.Id] = lookup;
         var deps = DepsOf(r);
 
-        if (process.Subject is { } subjectId && _entities.TryGetValue(subjectId, out var subject) && subject.Id.Length > 0)
+        // Every subject in one list, whatever the file's form (lifecycle-design.md decision 6); the one-subject form's entry has the
+        // process's id. Subject, BoundAttribute and BoundEnum are set only when there is exactly one subject.
+        var listed = process.Subjects;
+        var subjects = new List<RSubject>();
+        foreach (var entry in listed)
         {
-            r.Subject = subject;
-            deps.Element(subjectId);
-            if (process.BoundAttribute is { } boundId)
+            if (!_entities.TryGetValue(entry.Entity, out var entity) || entity.Id.Length == 0)
+                continue;
+            deps.Element(entry.Entity);
+            var subject = new RSubject { Id = entry.Id, Entity = entity };
+            if (entry.BoundAttribute is { } boundId)
             {
-                r.BoundAttribute = subject.Attributes.FirstOrDefault(a => string.Equals(a.Id, boundId, StringComparison.Ordinal));
-                r.BoundEnum = r.BoundAttribute?.Type.Enum;
-                if (r.BoundEnum is { } enumType)
+                subject.BoundAttribute = entity.Attributes.FirstOrDefault(a => string.Equals(a.Id, boundId, StringComparison.Ordinal));
+                subject.BoundEnum = subject.BoundAttribute?.Type.Enum;
+                if (subject.BoundEnum is { } enumType)
                     deps.Element(enumType.Id);
             }
+
+            subjects.Add(subject);
         }
 
-        // Every node of the process reads its file, the subject and bound enum (a bound state's member), and the libraries it names (a
+        if (listed.Count == 1 && subjects.Count == 1)
+        {
+            r.Subject = subjects[0].Entity;
+            r.BoundAttribute = subjects[0].BoundAttribute;
+            r.BoundEnum = subjects[0].BoundEnum;
+        }
+
+        r.ListsSubjects = process.SubjectList is { Count: > 0 } && process.Subject is null;
+
+        // Every node of the process reads its file, the subjects and bound enums (a bound state's member), and the libraries it names (a
         // transition's label holds a library guard's name).
         var baseKeys = new DependencySet(Keys).Element(process.Id);
         foreach (var use in libraryUses)
             baseKeys.Element(use.Library.Id);
-        if (r.Subject is { } s)
-            baseKeys.Element(s.Id);
-        if (r.BoundEnum is { } e)
-            baseKeys.Element(e.Id);
+        foreach (var subject in subjects)
+        {
+            baseKeys.Element(subject.Entity.Id);
+            if (subject.BoundEnum is { } e)
+                baseKeys.Element(e.Id);
+        }
+
         var nodeKeys = baseKeys.ToList();
+        foreach (var subject in subjects)
+            DepsOf(subject).AddRange(nodeKeys);
+        r.Subjects = new RList<RSubject>(subjects, nodeKeys);
         var actorListKeys = new DependencySet(Keys).AddRange(nodeKeys).Add(ActorKind).ToList();
 
         T Node<T>(T node, string id) where T : RProcessNode
@@ -297,6 +360,7 @@ internal sealed partial class ResolveRun
         {
             var state = Node(new RState { Name = cs.Name, Path = cs.Path, Type = ResolutionValues.Kebab(cs.Type), Depth = cs.Depth }, cs.Id);
             var source = cs.State!;
+            state.Code = ProcessCodes.Value(source.Code);
             FillNode(state, source.DisplayName ?? source.Name, source.Description, source.Stereotypes, source.Properties);
             states[cs] = state;
             lookup.States.TryAdd(cs.Id, state);
@@ -486,6 +550,9 @@ internal sealed partial class ResolveRun
         r.Gates = new RList<RGate>(gates, nodeKeys);
         r.Invokes = new RList<RInvoke>(invokes, nodeKeys);
         r.Initial = StateOf(chart.Root.InitialChild);
+        var codes = ProcessCodes.Of(process);
+        r.HasCodes = codes.Coded.Count > 0;
+        r.CodesMap = codes.IsMap && codes.IsSound;
 
         // Every actor the process names, and what names each one.
         var referenced = new List<RActor>();

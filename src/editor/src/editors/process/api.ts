@@ -5,8 +5,9 @@ import type { QueryClient } from "@tanstack/react-query";
 import { api, ApiProblem } from "@/api/client";
 import type { components } from "@/api/schema";
 import * as endpoints from "@/api/endpoints";
-import { applyBatchResult, applySaveResult, keys } from "@/api/queries";
+import { applyBatchResult, applySaveResult, indexQuery, keys } from "@/api/queries";
 import type { ModelJson } from "@/api/types";
+import { subjectsOf } from "@/model/process";
 import { recordVerify, type VerifyResult } from "@/explorer/processApi";
 import { applyQuickFix } from "@/problems/applyQuickFix";
 import type { EditorStore } from "@/state/store";
@@ -94,7 +95,116 @@ export async function setLifecycle(
   const process = (await endpoints.getElement(change.process)).json as Record<string, unknown>;
   const entity = (await endpoints.getElement(change.entity)).json as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === "string" ? v : null);
-  const ids = [...new Set([change.process, change.entity, str(entity.lifecycle), str(process.subject)].filter((x): x is string => !!x))];
+  // Every document the batch may rewrite: the process, the entity, the entity's named lifecycle, the entities the process
+  // governs, and every other process that lists the entity (it may lose the entry, or become an orchestration).
+  const rows = await qc.ensureQueryData(indexQuery);
+  const peers = rows.filter((r) => r.kind === "process" && (r.subject === change.entity || r.subjects?.includes(change.entity))).map((r) => r.id);
+  const ids = [
+    ...new Set([change.process, change.entity, str(entity.lifecycle), ...subjectsOf(process).map((e) => e.entity), ...peers].filter((x): x is string => !!x)),
+  ];
   for (const id of ids.slice(2)) await drafts.flush(id);
   return applyQuickFix(qc, store, { kind: "operation", op: "set-lifecycle", id: change.entity, target: change.target, label: change.label, ids });
+}
+
+/**
+ * Makes a lifecycle that uses `subjects` an orchestration (lifecycle-design.md decision 10): its subjects stay and their
+ * bindings go. An entity that names it as its lifecycle lets go of it, so it does not name an orchestration (MQ9201). One
+ * batch, one undo step. Null when saved, else the refusal's message.
+ */
+export async function demoteLifecycle(
+  qc: QueryClient,
+  store: EditorStore,
+  drafts: { flush(id: string): Promise<unknown> },
+  change: { process: string; label: string },
+): Promise<string | null> {
+  await drafts.flush(change.process);
+  const before = await endpoints.getElement(change.process);
+  const process = structuredClone(before.json) as Record<string, unknown>;
+  delete process.use;
+  delete process.boundAttribute;
+  if (Array.isArray(process.subjects))
+    process.subjects = (process.subjects as Record<string, unknown>[]).map(({ boundAttribute: _unbound, ...entry }) => entry);
+  const docs = [{ id: change.process, before: before.json as ModelJson, hash: before.hash, json: process as ModelJson }];
+  for (const entity of subjectsOf(before.json as Record<string, unknown>).map((e) => e.entity)) {
+    await drafts.flush(entity);
+    const doc = await endpoints.getElement(entity);
+    if ((doc.json as Record<string, unknown>).lifecycle !== change.process) continue;
+    const json = structuredClone(doc.json) as Record<string, unknown>;
+    delete json.lifecycle;
+    docs.push({ id: entity, before: doc.json as ModelJson, hash: doc.hash, json: json as ModelJson });
+  }
+  const result = await endpoints.applyBatch({
+    operations: docs.map((d) => ({ op: "update", id: d.id, expectedHash: d.hash, element: d.json })),
+  } as never);
+  if (!endpoints.isBatchResult(result)) return result.diagnostics[0]?.message ?? "The batch did not parse.";
+  if (result.outcome !== "saved") {
+    const refused = result.items.find((i) => i.outcome !== "saved");
+    return refused?.diagnostics[0]?.message ?? `The change was refused (${result.outcome}).`;
+  }
+  applyBatchResult(qc, result);
+  store.getState().pushUndo({
+    label: change.label,
+    ids: docs.map((d) => d.id),
+    before: docs.map((d) => d.before),
+    after: docs.map((d) => d.json),
+    afterHashes: docs.map((_, i) => result.items[i]?.hash ?? null),
+  });
+  void qc.invalidateQueries({ queryKey: keys.index });
+  void qc.invalidateQueries({ queryKey: keys.validation });
+  return null;
+}
+
+/**
+ * Changes the Subject of a lifecycle that has one entry in the `subjects` form: edits the entry in place, drops
+ * `lifecycle` from the old entity when it names this process, and gives the new entity this process as its lifecycle when
+ * it names none. One batch, one undo step. Null when saved, else the refusal's message.
+ */
+export async function replaceSoleSubject(
+  qc: QueryClient,
+  store: EditorStore,
+  drafts: { flush(id: string): Promise<unknown> },
+  change: { process: string; entity: string; label: string },
+): Promise<string | null> {
+  await drafts.flush(change.process);
+  const before = await endpoints.getElement(change.process);
+  const process = structuredClone(before.json) as Record<string, unknown>;
+  const entries = (process.subjects as Record<string, unknown>[] | undefined) ?? [];
+  const old = typeof entries[0]?.entity === "string" ? (entries[0].entity as string) : undefined;
+  process.subjects = [{ id: entries[0]?.id, entity: change.entity }];
+  const docs = [{ id: change.process, before: before.json as ModelJson, hash: before.hash, json: process as ModelJson }];
+  if (old && old !== change.entity) {
+    await drafts.flush(old);
+    const doc = await endpoints.getElement(old);
+    if ((doc.json as Record<string, unknown>).lifecycle === change.process) {
+      const json = structuredClone(doc.json) as Record<string, unknown>;
+      delete json.lifecycle;
+      docs.push({ id: old, before: doc.json as ModelJson, hash: doc.hash, json: json as ModelJson });
+    }
+  }
+  await drafts.flush(change.entity);
+  const next = await endpoints.getElement(change.entity);
+  if (!(next.json as Record<string, unknown>).lifecycle) {
+    const json = structuredClone(next.json) as Record<string, unknown>;
+    json.lifecycle = change.process;
+    docs.push({ id: change.entity, before: next.json as ModelJson, hash: next.hash, json: json as ModelJson });
+  }
+  const result = await endpoints.applyBatch({
+    operations: docs.map((d) => ({ op: "update", id: d.id, expectedHash: d.hash, element: d.json })),
+  } as never);
+  if (!endpoints.isBatchResult(result)) return result.diagnostics[0]?.message ?? "The batch did not parse.";
+  if (result.outcome !== "saved") {
+    const refused = result.items.find((i) => i.outcome !== "saved");
+    return refused?.diagnostics[0]?.message ?? `The change was refused (${result.outcome}).`;
+  }
+  applyBatchResult(qc, result);
+  store.getState().pushUndo({
+    label: change.label,
+    ids: docs.map((d) => d.id),
+    before: docs.map((d) => d.before),
+    after: docs.map((d) => d.json),
+    afterHashes: docs.map((_, i) => result.items[i]?.hash ?? null),
+  });
+  void qc.invalidateQueries({ queryKey: keys.index });
+  void qc.invalidateQueries({ queryKey: keys.validation });
+  return null;
 }

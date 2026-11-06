@@ -128,6 +128,11 @@ export function referencesOf(doc: Json): Ref[] {
     case "process": {
       push("/subject", "subject", doc.subject, false);
       push("/boundAttribute", "boundAttribute", doc.boundAttribute, false);
+      // A deleted entity takes its entry with it, under either delete choice (lifecycle-design.md decision 5).
+      arr(doc.subjects).forEach((e, i) => {
+        push(`/subjects/${i}/entity`, "entity", e.entity, false, `/subjects/${i}`);
+        push(`/subjects/${i}/boundAttribute`, "boundAttribute", e.boundAttribute, false);
+      });
       arr(doc.events).forEach((e, i) =>
         arr(e.actors).forEach((_, j) => push(`/events/${i}/actors/${j}`, "actors", (e.actors as unknown[])[j], false, `/events/${i}/actors/${j}`)),
       );
@@ -217,6 +222,7 @@ export function subElementIds(doc: Json): string[] {
   if (doc.kind === "entity" || doc.kind === "reference-type") collect(doc.bindings);
   if (doc.kind === "enum") collect(doc.members);
   if (doc.kind === "process") {
+    collect(doc.subjects);
     collect(doc.context);
     collect(doc.events);
     collect(doc.guards);

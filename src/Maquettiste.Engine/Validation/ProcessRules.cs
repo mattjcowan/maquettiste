@@ -71,6 +71,7 @@ internal static partial class ProcessRules
         var analysis = new ProcessAnalysis(process);
         var locals = Locals.Of(process);
         CheckStates(context, analysis, locals, report);
+        CheckCodes(process, report);
         CheckTransitions(context, analysis, locals, report);
         CheckReachability(analysis, report);
         CheckUnused(process, locals, report);
@@ -99,6 +100,8 @@ internal static partial class ProcessRules
             Holds("a subject", "/subject");
         if (process.BoundAttribute is not null)
             Holds("a bound attribute", "/boundAttribute");
+        if (process.SubjectList is { Count: > 0 })
+            Holds("subjects", "/subjects");
         for (var i = 0; i < process.Actions.Count; i++)
         {
             if (process.Actions[i].Raises.Count > 0)
@@ -744,14 +747,38 @@ internal static partial class ProcessRules
         }
     }
 
-    // MQ9201 (process side), MQ9202, MQ9203, MQ9204, MQ9205.
+    // MQ9209, MQ9201 (process side), MQ9202, MQ9203, MQ9204, MQ9205.
     private static void CheckLifecycle(ValidationContext context, Process process, ProcessAnalysis analysis, Report report)
     {
         var model = context.Model;
+        // The one-subject form is deprecated on lifecycles and orchestrations alike (lifecycle-design.md decision 6). It warns only where
+        // there is a subject, since that is what use-subjects converts; a boundAttribute with no subject keeps its own findings (MQ9201, MQ9202).
+        if (process.Subject is not null)
+        {
+            report.Add("MQ9209", $"Process '{process.Name}' names its subject in the one-subject form (subject and boundAttribute), which is deprecated; list it in subjects instead.",
+                "/subject");
+        }
+
+        var entries = process.Subject is null ? process.SubjectList : null; // the subjects form
         if (process.Use == ProcessUse.Orchestration)
         {
             if (process.BoundAttribute is not null)
                 report.Add("MQ9202", $"Process '{process.Name}' is an orchestration but binds an attribute; only a lifecycle binds its states to an attribute. Remove boundAttribute or set use to lifecycle.", "/boundAttribute");
+            for (var i = 0; i < (entries?.Count ?? 0); i++)
+            {
+                if (entries![i].BoundAttribute is not null)
+                {
+                    report.Add("MQ9202", $"Process '{process.Name}' is an orchestration but its subject {SubjectLabel(model, entries[i])} binds an attribute; only a lifecycle binds its states to an attribute. Remove the subject's boundAttribute or set use to lifecycle.",
+                        "/subjects/" + N(i) + "/boundAttribute", entries[i].Id);
+                }
+            }
+
+            return;
+        }
+
+        if (entries is not null)
+        {
+            CheckSubjects(context, process, analysis, entries, report);
             return;
         }
 
@@ -769,12 +796,49 @@ internal static partial class ProcessRules
             report.Add("MQ9201", $"Process '{process.Name}' is the lifecycle of entity '{subject.Name}', but the entity's lifecycle {current}; set the entity's lifecycle to this process.", "/subject");
         }
 
-        if (process.BoundAttribute is null)
+        if (process.BoundAttribute is not null)
+            CheckBinding(context, process, analysis, subject, process.BoundAttribute, "/boundAttribute", null, report);
+    }
+
+    // The subjects form (lifecycle-design.md decisions 5 and 8): a lifecycle lists at least one entity, each once. An entity need not name
+    // the lifecycle back, since several may govern it. Each entry's binding is judged as the one-subject form's is.
+    private static void CheckSubjects(ValidationContext context, Process process, ProcessAnalysis analysis, IReadOnlyList<ProcessSubject> entries, Report report)
+    {
+        var model = context.Model;
+        if (entries.Count == 0)
+        {
+            report.Add("MQ9201", $"Process '{process.Name}' is a lifecycle with no subjects; add an entry to subjects for each entity it governs.", "/subjects");
             return;
-        var flat = context.Flatten(subject).FirstOrDefault(f => string.Equals(f.Attribute.Id, process.BoundAttribute, StringComparison.Ordinal));
+        }
+
+        var listed = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            if (!listed.Add(entry.Entity))
+            {
+                report.Add("MQ9201", $"Process '{process.Name}' lists {SubjectLabel(model, entry)} more than once in subjects; remove the repeated entry.",
+                    "/subjects/" + N(i) + "/entity", entry.Id);
+                continue;
+            }
+
+            if (entry.BoundAttribute is not null && model.Get<Entity>(entry.Entity) is { } entity) // else MQ2001 or MQ2002
+                CheckBinding(context, process, analysis, entity, entry.BoundAttribute, "/subjects/" + N(i) + "/boundAttribute", entry.Id, report);
+        }
+    }
+
+    private static string SubjectLabel(ModelSnapshot model, ProcessSubject entry) =>
+        model.Get<Entity>(entry.Entity) is { } entity ? "entity '" + entity.Name + "'" : "'" + entry.Entity + "'";
+
+    // MQ9202 to MQ9205 for one subject's binding, at its pointer (and, for a subjects entry, under the entry's id).
+    private static void CheckBinding(ValidationContext context, Process process, ProcessAnalysis analysis, Entity subject, string boundAttribute, string pointer,
+        string? entryId, Report report)
+    {
+        var model = context.Model;
+        var flat = context.Flatten(subject).FirstOrDefault(f => string.Equals(f.Attribute.Id, boundAttribute, StringComparison.Ordinal));
         if (flat is null)
         {
-            report.Add("MQ9202", $"The bound attribute of process '{process.Name}' is not an attribute of entity '{subject.Name}' (own, inherited or from a stereotype); bind one of the subject's enum attributes.", "/boundAttribute");
+            report.Add("MQ9202", $"The bound attribute of process '{process.Name}' is not an attribute of entity '{subject.Name}' (own, inherited or from a stereotype); bind one of the subject's enum attributes.", pointer, entryId);
             return;
         }
 
@@ -783,7 +847,7 @@ internal static partial class ProcessRules
         if (enumType is null || attribute.Collection || enumType.Flags)
         {
             var why = enumType is null ? "is not enum-typed" : attribute.Collection ? "is a collection" : $"is typed by the flags enum '{enumType.Name}', which holds several members at once";
-            report.Add("MQ9202", $"The bound attribute '{attribute.Name}' of process '{process.Name}' {why}; bind a single-valued enum attribute of '{subject.Name}'.", "/boundAttribute");
+            report.Add("MQ9202", $"The bound attribute '{attribute.Name}' of process '{process.Name}' {why}; bind a single-valued enum attribute of '{subject.Name}'.", pointer, entryId);
             return;
         }
 
@@ -800,20 +864,46 @@ internal static partial class ProcessRules
                 parts.Add("extra " + Names(extra));
             if (parts.Count == 0)
                 parts.Add("out of order");
-            report.Add("MQ9203", $"The members of enum '{enumType.Name}' differ from the states of process '{process.Name}' ({Names(states)}): {string.Join("; ", parts)}. Sync the enum from the process.", "/boundAttribute");
+            report.Add("MQ9203", $"The members of enum '{enumType.Name}' differ from the states of process '{process.Name}' ({Names(states)}): {string.Join("; ", parts)}. Sync the enum from the process.", pointer, entryId);
         }
 
         var others = model.ReferencesTo(enumType.Id)
             .Where(r => r.JsonPointer.EndsWith("/type/ref", StringComparison.Ordinal) && !string.Equals(r.FromId, attribute.Id, StringComparison.Ordinal))
             .Select(r => AttributeLabel(model, r)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         if (others.Count > 0)
-            report.Add("MQ9204", $"Enum '{enumType.Name}', bound by process '{process.Name}', is also used by {Names(others.Select(o => "'" + o + "'"))}: syncing it from the process changes them too. Give the lifecycle its own enum if they should not follow.", "/boundAttribute");
+            report.Add("MQ9204", $"Enum '{enumType.Name}', bound by process '{process.Name}', is also used by {Names(others.Select(o => "'" + o + "'"))}: syncing it from the process changes them too. Give the lifecycle its own enum if they should not follow.", pointer, entryId);
 
         if (analysis.InitialOf(null) is { Type: not (StateType.History or StateType.Choice) } initial
             && !(attribute.Default is { ValueKind: JsonValueKind.String } value && string.Equals(value.GetString(), initial.State.Name, StringComparison.Ordinal)))
         {
             var current = attribute.Default is { } d ? $"is {d.GetRawText()}" : "is not set";
-            report.Add("MQ9205", $"The default of bound attribute '{attribute.Name}' {current}, but process '{process.Name}' starts in '{initial.State.Name}'; set the default to '{initial.State.Name}'.", "/boundAttribute");
+            report.Add("MQ9205", $"The default of bound attribute '{attribute.Name}' {current}, but process '{process.Name}' starts in '{initial.State.Name}'; set the default to '{initial.State.Name}'.", pointer, entryId);
+        }
+    }
+
+    // MQ9206 (lifecycle-design.md decision 1): codes unique within the process, of one kind, and none on a history or choice state. Codes
+    // need no binding, so every process that runs is judged.
+    private static void CheckCodes(Process process, Report report)
+    {
+        var codes = ProcessCodes.Of(process);
+        if (codes.Coded.Count == 0)
+            return;
+        foreach (var coded in codes.OnHistoryOrChoice)
+        {
+            report.Add("MQ9206", $"State '{coded.State.Name}' of process '{process.Name}' is a {(coded.State.Type == StateType.History ? "history" : "choice")} state, which nothing rests in, so it has no code; remove its code.",
+                coded.Pointer + "/code", coded.State.Id);
+        }
+
+        foreach (var (first, second) in codes.Duplicates)
+        {
+            report.Add("MQ9206", $"States '{first.State.Name}' and '{second.State.Name}' of process '{process.Name}' share code {ProcessCodes.Text(second.State.Code!.Value)} (1 and \"1\" are one code); give each state its own code.",
+                second.Pointer + "/code", second.State.Id);
+        }
+
+        foreach (var coded in codes.OtherKind)
+        {
+            report.Add("MQ9206", $"State '{coded.State.Name}' of process '{process.Name}' has {(coded.IsInteger ? "an integer" : "a string")} code, but the process's first code is {(coded.IsInteger ? "a string" : "an integer")}; write every code of a process as strings, or every one as integers.",
+                coded.Pointer + "/code", coded.State.Id);
         }
     }
 
@@ -851,6 +941,13 @@ internal static partial class ProcessRules
             return;
         if (process.Use != ProcessUse.Lifecycle)
             report.Add("MQ9201", $"Entity '{entity.Name}' names process '{process.Name}' as its lifecycle, but that process is {(process.Use == ProcessUse.Library ? "a library" : "an orchestration")}; name a lifecycle process, or set its use to lifecycle.", "/lifecycle");
+        else if (process.Subject is null && process.SubjectList is { } entries)
+        {
+            // The subjects form (lifecycle-design.md decision 8): the named lifecycle lists the entity, or a base of it.
+            var chain = context.Ancestors(entity).Select(a => a.Id).Prepend(entity.Id).ToHashSet(StringComparer.Ordinal);
+            if (!entries.Any(e => chain.Contains(e.Entity)))
+                report.Add("MQ9201", $"Entity '{entity.Name}' names process '{process.Name}' as its lifecycle, but that process does not list it, or an entity it derives from, in its subjects; add the entity to the process's subjects, or name another lifecycle.", "/lifecycle");
+        }
         else if (!string.Equals(process.Subject, entity.Id, StringComparison.Ordinal))
             report.Add("MQ9201", $"Entity '{entity.Name}' names process '{process.Name}' as its lifecycle, but that process's subject is {(process.Subject is not null && context.Model.Get<Entity>(process.Subject) is { } other ? "entity '" + other.Name + "'" : "not this entity")}; set the process's subject to this entity, or name its own lifecycle.", "/lifecycle");
     }

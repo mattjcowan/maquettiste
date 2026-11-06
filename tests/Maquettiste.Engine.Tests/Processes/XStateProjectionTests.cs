@@ -54,6 +54,26 @@ public sealed class XStateProjectionTests
 
     private static string[] Rules(IEnumerable<Diagnostic> diagnostics) => [.. diagnostics.Select(d => d.Rule).Distinct().Order(StringComparer.Ordinal)];
 
+    // ---- the subjects' form (lifecycle-design.md decision 7) ----
+
+    [Fact]
+    public void A_new_process_lists_its_subject_and_a_carried_one_subject_form_is_kept()
+    {
+        const string entity = "01JENT00000000000000000009";
+        var fresh = Import("""{"id":"Fresh","initial":"a","states":{"a":{}}}""", new XStateImportOptions { Subject = entity });
+        var created = JsonNode.Parse(fresh.File!)!.AsObject();
+        Assert.False(created.ContainsKey("subject"));
+        var entry = Assert.Single(created["subjects"]!.AsArray())!;
+        Assert.Equal(entity, entry["entity"]!.GetValue<string>());
+        Assert.Contains(entry["id"]!.GetValue<string>(), fresh.Created);
+
+        // An exported one-subject file keeps its form when imported again, even with a subject given.
+        var carried = Import(Export(Read(File.ReadAllBytes(ProcessFile("process-basics", "order-lifecycle.json")))).Json, new XStateImportOptions { Subject = entity });
+        var kept = JsonNode.Parse(carried.File!)!.AsObject();
+        Assert.Equal(entity, kept["subject"]!.GetValue<string>());
+        Assert.False(kept.ContainsKey("subjects"));
+    }
+
     // ---- round trip (gate 3 criterion 7) and determinism (criterion 6) ----
 
     [Theory]

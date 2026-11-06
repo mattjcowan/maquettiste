@@ -9,6 +9,7 @@ import { EMPTY_DATABASE_HINT } from "@/model/databaseMapping";
 import type { Diagnostic, ElementDocument, ElementSummary, ExplorerFolder, TableSummary, TableView } from "@/api/types";
 import type { AttributeDoc } from "@/api/types";
 import { attributesOf, typeLabel } from "@/model/model";
+import { soleSubject } from "@/model/process";
 import { tableKeyOf } from "@/search/engine";
 import type { TablePart, TablePartKind } from "@/workspaces/database/tableParts";
 import { patchesBetween, type IndexPatch } from "@/api/indexPatch";
@@ -326,7 +327,11 @@ function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row): string | undefine
   if (r.kind === "diagram" && r.process) return CHART_LABELS.statechartOf(nameOf(r.process) ?? "?");
   if (r.kind === "diagram") return plural(r.memberCount ?? 0, "member", "members");
   if (r.kind === "seed" && r.rowCount != null) return plural(r.rowCount, "row", "rows");
-  if (r.kind === "process") return processSecondary(r, r.subject ? nameOf(r.subject) : undefined, undefined);
+  if (r.kind === "process") {
+    // One subject is `subject`, two or more are `subjects` (lifecycle-design.md decision 23); the row names them all.
+    const names = r.subjects?.length ? r.subjects.map((e) => nameOf(e) ?? e).join(", ") : r.subject ? nameOf(r.subject) : undefined;
+    return processSecondary(r, names, undefined);
+  }
   if (r.kind === "actor") return actorSecondary(r);
   if (r.kind === "operation") return [r.subject ? nameOf(r.subject) : undefined, r.effect].filter(Boolean).join(" · ");
   return undefined;
@@ -1792,7 +1797,7 @@ type StateDoc = { id?: string; name?: string; type?: string; states?: StateDoc[]
 /** A process row's States (nested) and Events folders from its document, before its Scenarios folder (6.1). */
 function processChildren(forest: Forest, node: TreeNode, doc: ElementDocument, attribute: string | undefined): readonly string[] {
   const key = node.key;
-  const json = doc.json as { states?: StateDoc[]; events?: { id?: string; name?: string; actors?: string[] }[]; boundAttribute?: string; subject?: string };
+  const json = doc.json as { states?: StateDoc[]; events?: { id?: string; name?: string; actors?: string[] }[] };
   const rest = childKeys(forest, key).filter((k) => k !== `${key}/states` && k !== `${key}/events`);
   const stateItems = (holder: string, list: StateDoc[] | undefined): TreeNode[] =>
     (list ?? []).map((st, i) => {
@@ -1821,8 +1826,9 @@ function processChildren(forest: Forest, node: TreeNode, doc: ElementDocument, a
   const eventFolder = navFolder(forest, node, "events", PROCESS_LABELS.events, "event", events.sort(byLabel), fmt(events.length));
   // The bound attribute's name is in the subject's document (the caller reads it); the row then says Subject.attribute.
   const row = node.id ? forest.byId.get(node.id) : undefined;
-  if (row && json.subject && attribute) {
-    const subject = forest.byId.get(json.subject);
+  const sole = soleSubject(doc.json);
+  if (row && sole && attribute) {
+    const subject = forest.byId.get(sole.entity);
     node.secondary = processSecondary(row, subject ? subject.displayName || subject.name : undefined, attribute);
   }
   node.children = [states.key, eventFolder.key, ...rest];

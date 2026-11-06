@@ -129,13 +129,13 @@ internal sealed partial class ModelTools
     /// <param name="ct">Cancellation.</param>
     /// <returns>The preview or the saved import.</returns>
     [McpServerTool(Name = "import_process", Title = "Import process", Destructive = true, OpenWorld = false)]
-    [Description("Imports an XState v5 machine config as a process: a new one (package, name, use, subject), or into an existing process keeping the ids of the nodes it matches (removed lists what it drops). A dry run (the default) returns the process document, the diagnostics (MQ9401 to MQ9406) and the ids created; apply true saves it as one change, refused when it has errors or when into changed since expectedHash.")]
+    [Description("Imports an XState v5 machine config as a process: a new one (package, name, use, subject; a new process lists its subject in subjects), or into an existing process keeping the ids of the nodes it matches and the form its subjects are written in (removed lists what it drops). A dry run (the default) returns the process document, the diagnostics (MQ9401 to MQ9406) and the ids created; apply true saves it as one change, refused when it has errors or when into changed since expectedHash.")]
     public Task<CallToolResult> ImportProcess(
         [Description("The XState machine config, as an object or a string holding one; required.")] JsonElement? config = null,
         [Description("The package (id or name) of a new process.")] string? package = null,
         [Description("The name of a new process; the config's id when absent.")] string? name = null,
         [Description("lifecycle or orchestration.")] string? use = null,
-        [Description("The subject entity (id or name).")] string? subject = null,
+        [Description("The subject entity (id or name); a new process lists it as the one entry of subjects.")] string? subject = null,
         [Description("A process (id or name) to re-import over.")] string? into = null,
         [Description("The hash of into from get_element; a changed process is a conflict.")] string? expectedHash = null,
         [Description("true writes the import; false or absent only previews it.")] bool apply = false,

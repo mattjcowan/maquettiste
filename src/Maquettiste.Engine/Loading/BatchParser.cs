@@ -59,6 +59,7 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     "set-lifecycle" => BatchOp.SetLifecycle,
                     "set-initial" => BatchOp.SetInitial,
                     "refresh-scenario" => BatchOp.RefreshScenario,
+                    "use-subjects" => BatchOp.UseSubjects,
                     "materialize-tables" => BatchOp.MaterializeTables,
                     "materialize-entities" => BatchOp.MaterializeEntities,
                     "materialize-attributes" => BatchOp.MaterializeAttributes,

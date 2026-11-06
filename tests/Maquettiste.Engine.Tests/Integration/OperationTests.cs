@@ -91,8 +91,9 @@ public sealed class OperationTests
     private static async Task<ResolvedModel> ResolveAsync(E2ERepo repo) =>
         await repo.Store.Services.Resolver.ResolveAsync(await repo.Store.GetSnapshotAsync(Ct), null, Ct);
 
+    // The fixture's lifecycle names its subject in the deprecated one-subject form (MQ9209, lifecycle-design.md decision 6); it is not converted.
     private static async Task<IReadOnlyList<Diagnostic>> DiagnosticsAsync(E2ERepo repo) =>
-        (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics;
+        [.. (await repo.Store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics.Where(d => d.Rule != "MQ9209")];
 
     private static string Describe(IEnumerable<Diagnostic> diagnostics) =>
         string.Join("\n", diagnostics.Select(d => $"{d.Rule} {d.FilePath} {d.JsonPointer} {d.Message}"));

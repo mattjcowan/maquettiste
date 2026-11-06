@@ -5,6 +5,7 @@
 // scenario but those processSeed.ts lists as failing.
 import { http as rawHttp, HttpResponse, type HttpHandler } from "msw";
 import { newId } from "@/lib/ids";
+import { subjectsOf } from "@/model/process";
 import { sha256Hex } from "@/lib/sha256";
 import type { MockBackend } from "./backend";
 import { mentions, replayable, type Recording } from "./recorded";
@@ -347,13 +348,14 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
           },
           { status: 422 },
         );
-      if (entry.json.use !== "lifecycle" || typeof entry.json.boundAttribute !== "string")
-        return refusal("The process is not a lifecycle bound to an enum attribute.");
+      // The lifecycle's one enum binding, in either form (lifecycle-design.md decision 15).
+      const binding = subjectsOf(entry.json).find((e) => e.boundAttribute !== undefined);
+      if (entry.json.use !== "lifecycle" || !binding) return refusal("The process is not a lifecycle bound to an enum attribute.");
       if (typeof value.expectedHash === "string" && value.expectedHash !== entry.hash)
         return kit.problem(409, "conflict" as never, "The process changed since you loaded it.");
       const drift = enumDrift(entry.json, (id) => lookup(id));
-      const subject = lookup(String(entry.json.subject));
-      const attribute = arr(subject?.json.attributes).find((a) => a.id === entry.json.boundAttribute);
+      const subject = lookup(binding.entity);
+      const attribute = arr(subject?.json.attributes).find((a) => a.id === binding.boundAttribute);
       const enumId = String(((attribute?.type as Json | undefined)?.ref as string | undefined) ?? "");
       const enumEntry = lookup(enumId);
       if (!enumEntry) return refusal("The bound attribute's type is not an enum.");

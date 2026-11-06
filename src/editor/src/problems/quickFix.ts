@@ -5,10 +5,11 @@
 // `fixDocuments` names and applies the result as one batch that undo reverts.
 import type { Diagnostic, ModelJson } from "@/api/types";
 import { atPointer, clone } from "@/lib/json";
+import { subjectsOf, type SubjectDoc } from "@/model/process";
 
 type Json = Record<string, unknown>;
 
-export type QuickFixOperation = "set-initial" | "set-lifecycle" | "refresh-scenario" | "text-to-trees";
+export type QuickFixOperation = "set-initial" | "set-lifecycle" | "refresh-scenario" | "text-to-trees" | "use-subjects";
 
 export type QuickFix =
   /** A named batch operation; `ids` are every document it may change (the undo step's before and after). */
@@ -19,7 +20,7 @@ export type QuickFix =
   | { kind: "update"; id: string; json: ModelJson; label: string };
 
 /** The rules whose fix is built in the editor as a plain update (the derivation table's last row) or needs two findings of MQ9201. */
-const EDITOR_FIXES = new Set(["MQ9013", "MQ9016", "MQ9102", "MQ9105", "MQ9205", "MQ9201"]);
+const EDITOR_FIXES = new Set(["MQ9013", "MQ9016", "MQ9102", "MQ9105", "MQ9205", "MQ9201", "MQ9209"]);
 
 /** True when the diagnostic's rule has a quick fix: a catalog `quickFix` or one the editor builds. */
 export function hasQuickFix(rule: string, catalogFix: string | null | undefined): boolean {
@@ -30,12 +31,21 @@ const str = (value: unknown): string | undefined => (typeof value === "string" &
 const parent = (pointer: string) => pointer.slice(0, pointer.lastIndexOf("/"));
 const last = (pointer: string) => pointer.slice(pointer.lastIndexOf("/") + 1);
 
+/** The subject entry a finding of a process is about: the `/subjects/<n>` its pointer names, else the first (the one-subject form has one). */
+function entryOf(element: Json, pointer: string): SubjectDoc | undefined {
+  const all = subjectsOf(element);
+  const at = /^\/subjects\/(\d+)(\/|$)/.exec(pointer);
+  return at ? all[Number(at[1])] : all[0];
+}
+
 /** The documents a fix reads: the diagnostic's element and, for MQ9201 and MQ9205, the partner on the other side. */
 export function fixDocuments(d: Diagnostic, element: ModelJson | undefined): string[] {
   if (!d.elementId) return [];
   const related =
-    d.rule === "MQ9205" || (d.rule === "MQ9201" && d.jsonPointer === "/subject")
-      ? str(element?.subject)
+    d.rule === "MQ9205" || (d.rule === "MQ9201" && (d.jsonPointer === "/subject" || d.jsonPointer?.startsWith("/subjects")))
+      ? element
+        ? entryOf(element, d.jsonPointer ?? "")?.entity
+        : undefined
       : d.rule === "MQ9201" && d.jsonPointer === "/lifecycle"
         ? str(element?.lifecycle)
         : undefined;
@@ -85,12 +95,16 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
   const element = d.elementId ? doc(d.elementId) : undefined;
   const pointer = d.jsonPointer ?? "";
   if (!element || !d.elementId) return null;
-  const id = d.elementId;
+  // A finding of a `subjects` entry names the entry, not the process: the fetched document is the process.
+  const id = typeof element.id === "string" ? element.id : d.elementId;
   if (catalogFix === "sync-enum") return element.kind === "process" ? { kind: "sync-enum", process: id, label: "Sync enum" } : null;
   if (catalogFix === "refresh-scenario")
     return element.kind === "scenario" ? { kind: "operation", op: "refresh-scenario", id, label: "Update expectations from replay", ids: [id] } : null;
   // MQ3108: every expression the element holds as text becomes its tree (next-phase-3-design.md decision 4).
   if (catalogFix === "text-to-trees") return { kind: "operation", op: "text-to-trees", id, label: "Convert expressions to trees", ids: [id] };
+  // MQ9209: the one-subject form becomes `subjects`, for this process only (lifecycle-design.md decision 6).
+  if (catalogFix === "use-subjects" || d.rule === "MQ9209")
+    return element.kind === "process" ? { kind: "operation", op: "use-subjects", id, label: "Convert to subjects", ids: [id] } : null;
   if (catalogFix === "set-initial") {
     if (!pointer.endsWith("/initial")) return null;
     const at = parent(pointer);
@@ -135,11 +149,12 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
       return json ? { kind: "update", id, json, label: "Add the signer to the event's actors" } : null;
     }
     case "MQ9205": {
-      const subject = str(element.subject);
+      const entry = entryOf(element, pointer);
+      const subject = entry?.entity;
       const entity = subject ? doc(subject) : undefined;
       const state = str(initialState(element)?.name);
       const attributes = (entity?.attributes as Json[] | undefined) ?? [];
-      const index = attributes.findIndex((a) => a.id === element.boundAttribute);
+      const index = attributes.findIndex((a) => a.id === entry?.boundAttribute);
       // An inherited or stereotype-virtual bound attribute is not in the entity's own list: no fix here.
       if (!entity || !subject || !state || index < 0) return null;
       const json = clone(entity);
@@ -149,8 +164,8 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
     case "MQ9201": {
       // Two of its four findings are fixable (the derivation table): a subject whose lifecycle does not name this
       // process, and an entity whose lifecycle names an orchestration.
-      if (pointer === "/subject" && element.kind === "process") {
-        const subject = str(element.subject);
+      if ((pointer === "/subject" || pointer.startsWith("/subjects")) && element.kind === "process") {
+        const subject = entryOf(element, pointer)?.entity;
         const entity = subject ? doc(subject) : undefined;
         if (!subject || !entity) return null;
         const ids = [...new Set([subject, id, str(entity.lifecycle)].filter((x): x is string => !!x))];
@@ -160,7 +175,7 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
         const target = str(element.lifecycle);
         const process = target ? doc(target) : undefined;
         if (!target || !process || process.use === "lifecycle") return null;
-        const ids = [...new Set([id, target, str(process.subject)].filter((x): x is string => !!x))];
+        const ids = [...new Set([id, target, ...subjectsOf(process).map((e) => e.entity)].filter((x): x is string => !!x))];
         return { kind: "operation", op: "set-lifecycle", id, target, label: "Make it this entity's lifecycle", ids };
       }
       return null;

@@ -201,8 +201,9 @@ public sealed class ScenarioReplayTests
         Assert.Equal(original, h.Read(SmallOrderFile));
         var again = await store.ApplyBatchAsync(new ModelBatch([new BatchOperation(BatchOp.RefreshScenario, SmallOrder, null, null)]), ChangeSource.Editor, Ct);
         Assert.True(again.Outcome == SaveOutcome.Saved, string.Join(" | ", again.Items.SelectMany(i => i.Diagnostics).Select(d => d.Rule + " " + d.Message)));
+        // The fixture's processes name their subjects in the one-subject form, deprecated with MQ9209 (lifecycle-design.md decision 6).
         Assert.DoesNotContain((await EngineServices.Create(h.Options).Validator.ValidateAsync(store.Current!, ValidationScope.All, null, Ct)).Diagnostics,
-            d => d.Severity != DiagnosticSeverity.Info);
+            d => d.Severity != DiagnosticSeverity.Info && d.Rule != "MQ9209");
     }
 
     [Theory]

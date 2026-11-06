@@ -9,8 +9,8 @@ using Maquettiste.Engine.Validation;
 namespace Maquettiste.Engine;
 
 /// <summary>
-/// The process operations of a batch (phase-3-design.md sections 3 and 4.4): <c>sync-enum</c>, <c>set-lifecycle</c> and
-/// <c>set-initial</c> and <c>refresh-scenario</c>. Each expands into updates of the documents it touches (the enum, the entity and the processes of a lifecycle
+/// The process operations of a batch (phase-3-design.md sections 3 and 4.4): <c>sync-enum</c>, <c>set-lifecycle</c>,
+/// <c>set-initial</c>, <c>refresh-scenario</c> and <c>use-subjects</c> (lifecycle-design.md decision 6). Each expands into updates of the documents it touches (the enum, the entity and the processes of a lifecycle
 /// binding, or the process holding a compound state); the updates run with the batch's other operations, all or nothing, and a
 /// refused operation reports MQ9019 on its pointer.
 /// </summary>
@@ -18,7 +18,8 @@ public sealed partial class ModelStore
 {
     /// <summary>Whether an operation is a process operation.</summary>
     /// <param name="op">The operation kind.</param>
-    public static bool IsProcessOperation(BatchOp op) => op is BatchOp.SyncEnum or BatchOp.SetLifecycle or BatchOp.SetInitial or BatchOp.RefreshScenario;
+    public static bool IsProcessOperation(BatchOp op) =>
+        op is BatchOp.SyncEnum or BatchOp.SetLifecycle or BatchOp.SetInitial or BatchOp.RefreshScenario or BatchOp.UseSubjects;
 
     /// <summary>
     /// What <c>sync-enum</c> on a lifecycle would change, without writing: the dry run the Problems quick fix and the process
@@ -55,6 +56,7 @@ public sealed partial class ModelStore
             BatchOp.SyncEnum => Sync(o),
             BatchOp.SetLifecycle => SetLifecycle(o),
             BatchOp.RefreshScenario => RefreshScenario(o),
+            BatchOp.UseSubjects => UseSubjects(o),
             _ => SetInitial(o),
         };
 
@@ -92,11 +94,15 @@ public sealed partial class ModelStore
             SyncEnumPlan Problem(string message, string? enumId = null) => new(processId, enumId, [], [], false, [], message);
             if (snapshot.Get<Process>(processId) is not { } process)
                 return Problem($"'{processId}' is not a process; pass the id of a lifecycle process.");
-            if (process.Use != ProcessUse.Lifecycle || process.BoundAttribute is null)
+            // The bindings of every subject, in either form (lifecycle-design.md decision 6).
+            var bindings = process.Subjects.Select(s => s.BoundAttribute).OfType<string>().ToList();
+            if (process.Use != ProcessUse.Lifecycle || bindings.Count == 0)
                 return Problem(process.Use == ProcessUse.Library
                     ? $"Process '{process.Name}' is a library, which has no states to sync; pass the id of a lifecycle process."
                     : $"Process '{process.Name}' binds no attribute; set use to lifecycle and bind an enum attribute of the subject, then sync.");
-            if (AttributeNode(process.BoundAttribute) is not { } attribute
+            if (bindings.Count > 1)
+                return Problem($"Process '{process.Name}' binds an attribute of each of several subjects; sync-enum syncs a lifecycle with one binding.");
+            if (AttributeNode(bindings[0]) is not { } attribute
                 || attribute["type"] is not JsonObject { } type || type["ref"]?.GetValue<string>() is not { } enumId
                 || snapshot.Get<EnumType>(enumId) is not { } enumType)
             {
@@ -295,6 +301,9 @@ public sealed partial class ModelStore
 
         // ---- set-lifecycle ----
 
+        // lifecycle-design.md decision 9: today's behaviour for a target in the one-subject form or with no subject; a target that lists
+        // its subjects gains the entity and leaves the entity's other lifecycles that list theirs alone. A process with no subject gets
+        // subjects, never the one-subject form (decision 7).
         private string? SetLifecycle(BatchOperation o)
         {
             if (o.Id is null || snapshot.Get<Entity>(o.Id) is not { } entity)
@@ -309,8 +318,24 @@ public sealed partial class ModelStore
                 foreach (var process in snapshot.All<Process>())
                 {
                     var node = Node(process.Id, null, track: false);
-                    if (string.Equals(process.Id, current, StringComparison.Ordinal)
-                        || (node["use"]?.GetValue<string>() == "lifecycle" && node["subject"]?.GetValue<string>() == entity.Id))
+                    var isCurrent = string.Equals(process.Id, current, StringComparison.Ordinal);
+                    if (Listed(node) is { } entries)
+                    {
+                        // The entity leaves the subjects of its lifecycles; one left with none becomes an orchestration.
+                        if (!isCurrent && node["use"]?.GetValue<string>() != "lifecycle")
+                            continue;
+                        var at = entries.FindIndex(e => e["entity"]?.GetValue<string>() == entity.Id);
+                        if (at < 0)
+                            continue;
+                        var listed = (JsonArray)Node(process.Id, null)["subjects"]!;
+                        listed.RemoveAt(at);
+                        if (listed.Count == 0)
+                        {
+                            Node(process.Id, null).Remove("subjects");
+                            Unbind(process.Id);
+                        }
+                    }
+                    else if (isCurrent || (node["use"]?.GetValue<string>() == "lifecycle" && node["subject"]?.GetValue<string>() == entity.Id))
                     {
                         Unbind(process.Id);
                     }
@@ -325,7 +350,7 @@ public sealed partial class ModelStore
             if (!string.Equals(current, target.Id, StringComparison.Ordinal))
                 Node(entity.Id, o.ExpectedHash)["lifecycle"] = target.Id;
 
-            // The entity's previous lifecycle turns back into an orchestration.
+            // The entity's previous lifecycle in the one-subject form turns back into an orchestration, which it would otherwise fail MQ9201.
             if (current is not null && !string.Equals(current, target.Id, StringComparison.Ordinal) && snapshot.Get<Process>(current) is not null
                 && Node(current, null, track: false)["subject"]?.GetValue<string>() == entity.Id)
             {
@@ -333,6 +358,22 @@ public sealed partial class ModelStore
             }
 
             var processNode = Node(target.Id, null, track: false);
+            if (!OneSubjectForm(processNode) && Listed(processNode) is { } targetEntries)
+            {
+                // The target lists its subjects: it gains the entity unless the entity, or an entity it derives from, is listed.
+                var chain = Chain(entity);
+                var covered = targetEntries.Any(e => e["entity"]?.GetValue<string>() is { } listed && chain.Contains(listed));
+                if (processNode["use"]?.GetValue<string>() != "lifecycle" || !covered)
+                {
+                    var node = Node(target.Id, null);
+                    node["use"] = "lifecycle";
+                    if (!covered)
+                        ((JsonArray)node["subjects"]!).Add(new JsonObject { ["id"] = ids.NewId(), ["entity"] = entity.Id });
+                }
+
+                return null;
+            }
+
             var previousSubject = processNode["subject"]?.GetValue<string>();
             if (processNode["use"]?.GetValue<string>() != "lifecycle" || previousSubject != entity.Id)
             {
@@ -340,8 +381,16 @@ public sealed partial class ModelStore
                 node["use"] = "lifecycle";
                 if (previousSubject != entity.Id)
                 {
-                    node["subject"] = entity.Id;
                     node.Remove("boundAttribute"); // an attribute of the previous subject
+                    if (OneSubjectForm(processNode))
+                    {
+                        node["subject"] = entity.Id; // the form the file has
+                    }
+                    else
+                    {
+                        node.Remove("subjects"); // an empty list
+                        node["subjects"] = new JsonArray(new JsonObject { ["id"] = ids.NewId(), ["entity"] = entity.Id });
+                    }
                 }
             }
 
@@ -355,11 +404,64 @@ public sealed partial class ModelStore
             return null;
         }
 
+        // Demoting a lifecycle to an orchestration clears its bindings and keeps its subjects, in either form.
         private void Unbind(string processId)
         {
             var node = Node(processId, null);
             node.Remove("use");
             node.Remove("boundAttribute");
+            foreach (var entry in (node["subjects"] as JsonArray ?? []).OfType<JsonObject>())
+                entry.Remove("boundAttribute");
+        }
+
+        // A process document's subjects entries, when it lists any.
+        private static List<JsonObject>? Listed(JsonObject process) =>
+            process["subjects"] is JsonArray { Count: > 0 } entries ? [.. entries.OfType<JsonObject>()] : null;
+
+        // Whether a process document is in the one-subject form.
+        private static bool OneSubjectForm(JsonObject process) => process["subject"] is not null || process["boundAttribute"] is not null;
+
+        // An entity and the entities it derives from, by id; an inheritance cycle is cut at the first repeat.
+        private HashSet<string> Chain(Entity entity)
+        {
+            var chain = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
+            for (var next = entity.Base; next is not null && chain.Add(next) && snapshot.Get<Entity>(next) is { } ancestor; next = ancestor.Base)
+            {
+            }
+
+            return chain;
+        }
+
+        // ---- use-subjects ----
+
+        // lifecycle-design.md decision 6: the one-subject form converts only on request, each process to a subjects list of one entry.
+        private string? UseSubjects(BatchOperation o)
+        {
+            var processes = new List<Process>();
+            foreach (var id in o.ElementIds ?? [.. snapshot.All<Process>().Select(p => p.Id)])
+            {
+                if (snapshot.Get<Process>(id) is not { } process)
+                    return $"'{id}' is not a process; list the processes to convert in elementIds.";
+                processes.Add(process);
+            }
+
+            foreach (var process in processes)
+            {
+                var node = Node(process.Id, null, track: false);
+                if (node["subject"]?.GetValue<string>() is not { } subject)
+                    continue; // already in the subjects form, or no subject to list
+                if (_staged.ContainsKey(process.Id))
+                    return $"'{process.Name}' is also written by another operation of this batch; convert it in a batch of its own.";
+                var entry = new JsonObject { ["id"] = ids.NewId(), ["entity"] = subject };
+                if (node["boundAttribute"]?.GetValue<string>() is { } bound)
+                    entry["boundAttribute"] = bound;
+                var changed = Node(process.Id, null);
+                changed.Remove("subject");
+                changed.Remove("boundAttribute");
+                changed["subjects"] = new JsonArray(entry);
+            }
+
+            return null;
         }
 
         // ---- set-initial ----
