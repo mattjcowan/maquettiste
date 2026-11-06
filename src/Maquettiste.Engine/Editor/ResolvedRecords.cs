@@ -706,9 +706,28 @@ public sealed record ActorRecord(string Id, string Kind, string Name, string? Pa
 /// <param name="Stereotypes">As <see cref="PackageRecord.Stereotypes"/>.</param>
 /// <param name="Properties">As <see cref="PackageRecord.Properties"/>.</param>
 /// <param name="Generation">As <see cref="PackageRecord.Generation"/>.</param>
+/// <param name="Objects">The objects (lifecycle-design.md decision 22); <see langword="null"/>, and left out of the JSON, for a scenario with no
+/// objects.</param>
+/// <param name="Subject">The id of the object the process runs for; <see langword="null"/>, and left out of the JSON, for a scenario with no
+/// objects.</param>
 public sealed record ScenarioRecord(string Id, string Kind, string Name, string? Package, string Process, ScenarioStartRecord Start, IReadOnlyList<StepRecord> Steps,
     string Outcome, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category, IReadOnlyList<string> Stereotypes,
-    IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ScenarioObjectRecord>? Objects = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Subject = null);
+
+/// <summary>An object of a scenario (lifecycle-design.md decision 22).</summary>
+/// <param name="Id">The object's id.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Entity">The entity's id.</param>
+/// <param name="Values">The values given, by attribute name (by id when the entity has no such attribute).</param>
+/// <param name="Links">The links to other objects.</param>
+public sealed record ScenarioObjectRecord(string Id, string Name, string Entity, IReadOnlyDictionary<string, object?> Values, IReadOnlyList<ScenarioLinkRecord> Links);
+
+/// <summary>A link from a scenario object to another object of the scenario.</summary>
+/// <param name="End">The relation end's id.</param>
+/// <param name="Object">The linked object's id.</param>
+public sealed record ScenarioLinkRecord(string End, string Object);
 
 /// <summary>Where a scenario's run starts.</summary>
 /// <param name="Context">The starting context values.</param>
@@ -1364,7 +1383,10 @@ public static class ResolvedRecords
             [.. s.Steps.Select(t => new StepRecord(t.Id, t.Index, t.Input, t.Event?.Id, t.Invoke?.Id, t.After, t.AfterMs, t.AfterTicks, t.Actor?.Id, t.Signer, t.Meaning?.Id,
                 t.Reason, Plain(t.Payload), Plain(t.Assume),
                 t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context)) : null, t.Description))],
-            s.Outcome, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation);
+            s.Outcome, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation,
+            s.Objects.Count == 0 ? null : [.. s.Objects.Select(o => new ScenarioObjectRecord(o.Id, o.Name, o.Entity.Id, Plain(o.Values),
+                [.. o.Links.Select(l => new ScenarioLinkRecord(l.End.Id, l.Object.Id))]))],
+            s.Objects.Count == 0 ? null : s.Subject?.Id);
 
         public OperationRecord Operation(ROperation o) => new(o.Id, "operation", o.Name, o.Package?.Id, o.Subject?.Id, o.Level, o.Effect,
             [.. o.Input.Select(OperationMember)],

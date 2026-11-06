@@ -14,6 +14,8 @@ export interface Ref {
   required: boolean;
   /** How remove-references clears it: drop the array item at `removeItem`, or delete the field. */
   removeItem?: string;
+  /** A required reference that remove-references answers by dropping the item at `removeItem` (a scenario object whose entity goes). */
+  drops?: boolean;
 }
 
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -219,6 +221,19 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
     }
     case "scenario":
       push("/process", "process", doc.process, true);
+      // Objects (lifecycle-design.md decision 22): the entity an object is an instance of, the attributes its values name and
+      // the relation ends its links navigate. The subject and a link's object name objects of the same file (no reference leaves it).
+      arr(doc.objects).forEach((o, i) => {
+        const at = `/objects/${i}`;
+        const holder = str(o.id) ?? id;
+        const add = (pointer: string, field: string, to: unknown, required: boolean, removeItem?: string, drops?: boolean) => {
+          const t = str(to);
+          if (t) out.push({ fromId: holder, pointer, field, toId: t, required, removeItem, ...(drops ? { drops } : {}) });
+        };
+        add(`${at}/entity`, "entity", o.entity, true, at, true);
+        if (o.values && typeof o.values === "object") for (const key of Object.keys(o.values as Json)) add(`${at}/values/${key}`, "values", key, false);
+        arr(o.links).forEach((l, j) => add(`${at}/links/${j}/end`, "end", l.end, false, `${at}/links/${j}`));
+      });
       break;
     case "sequence":
     case "view":
@@ -303,7 +318,10 @@ export function subElementIds(doc: Json): string[] {
       if (gate) collect(gate.meanings);
     });
   }
-  if (doc.kind === "scenario") collect(doc.steps);
+  if (doc.kind === "scenario") {
+    collect(doc.steps);
+    collect(doc.objects);
+  }
   // A seed's rows hold ids: a lifecycle's state code under a reference binding is a use of its row.
   if (doc.kind === "seed") collect(doc.rows);
   return ids;

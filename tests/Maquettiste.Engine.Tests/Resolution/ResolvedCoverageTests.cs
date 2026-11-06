@@ -92,6 +92,8 @@ public sealed class ResolvedCoverageTests
         new("actor", "actor.json", "", typeof(RActor)),
         new("scenario", "scenario.json", "", typeof(RScenario)),
         new("step", "scenario.json", "$defs/step", typeof(RStep)),
+        new("scenario object", "scenario.json", "$defs/object", typeof(RScenarioObject)),
+        new("scenario link", "scenario.json", "$defs/link", typeof(RScenarioLink)),
 
         // Vocabularies, mappings and diagrams.
         new("stereotype", "stereotype.json", "", typeof(RStereotypeDefinition)),

@@ -454,6 +454,9 @@ export const SIMULATION_LABELS = {
   fromScenarioPlaceholder: "From scenario…",
   loadedScenario: (name: string) => `Loaded the start and steps of ${name}.`,
   noContext: "The process has no context attributes.",
+  objects: "Objects",
+  objectSubject: "subject",
+  objectsHint: "The scenario's objects; edit them in the JSON view of the scenario.",
   // Enabled
   raise: "Raise",
   raiseRow: (label: string, n: number | null) => (n ? `Raise ${label} (${n})` : `Raise ${label}`),

@@ -80,6 +80,9 @@ public sealed class ResolvedNullContractTests
         ["RFormerCode"] = "former codes: ReferenceDataResolutionTests",
         // A query's case branches; QueryTests resolves them.
         ["RQueryWhen"] = "case expressions: QueryTests",
+        // A scenario's objects and their links (lifecycle-design.md decision 22); no fixture has them, ScenarioObjectTests resolves them.
+        ["RScenarioObject"] = "scenario objects: ScenarioObjectTests",
+        ["RScenarioLink"] = "scenario objects: ScenarioObjectTests",
         // A reference type bound to a table; ReferenceBindingTests resolves it.
         ["RReferenceTypeBinding"] = "reference type bindings: ReferenceBindingTests",
         ["RReferenceBindingField"] = "reference type bindings: ReferenceBindingTests",

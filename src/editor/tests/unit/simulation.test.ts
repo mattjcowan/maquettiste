@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, createApiClient, setApiClient } from "@/api/client";
 import { clone } from "@/lib/json";
 import { MockBackend } from "@/mocks/backend";
+import type { MockModel } from "@/mocks/model/store";
 import { simulate } from "@/mocks/model/stepper";
 import { APPROVER, BUDGET_HOLDER, BUDGET_REJECTED, PURCHASE_APPROVAL, QUICK_APPROVAL } from "@/mocks/model/processSeed";
 import type { ProcessDoc, ScenarioDoc } from "@/model/process";
@@ -27,6 +28,7 @@ import {
   withAnswer,
   withResult,
 } from "@/editors/process/simulation/session";
+import { useMockApi } from "./harness";
 import { SIMULATE_DEBOUNCE_MS, SimulationRunner } from "@/editors/process/simulation/useSimulation";
 import {
   changesText,
@@ -419,5 +421,99 @@ describe("the explorer's request", () => {
     expect(simulationRequest()).toBe(second);
     consumeSimulationRequest(second);
     expect(simulationRequest()).toBeNull();
+  });
+});
+
+describe("scenario objects", () => {
+  const mock = useMockApi();
+  const OBJ_A = "01JQ0B10000000000000000001";
+  const OBJ_B = "01JQ0B10000000000000000002";
+  const ENTITY = "01JQ0B100000000000000000E1";
+  const OTHER = "01JQ0B100000000000000000E2";
+  const ATTR = "01JQ0B100000000000000000A1";
+  const END = "01JQ0B100000000000000000D1";
+  const objects = () => [
+    { id: OBJ_A, name: "order", entity: ENTITY, values: { [ATTR]: 5 }, links: [{ end: END, object: OBJ_B }] },
+    { id: OBJ_B, name: "customer", entity: OTHER },
+  ];
+  const withObjects = () => ({ ...scenario(BUDGET_REJECTED), objects: objects(), subject: OBJ_A }) as ScenarioDoc;
+  const THIRD = "01JQ0B100000000000000000E3";
+  const seedEntities = (model: MockModel) => {
+    const entity = (id: string, name: string, extra: object = {}) =>
+      expect(model.create({ kind: "entity", id, name, abstract: true, ...extra }).diagnostics.map((d) => d.message)).toEqual([]);
+    entity(ENTITY, "Order", { attributes: [{ id: ATTR, name: "total", type: "int32" }] });
+    entity(OTHER, "Customer");
+    entity(THIRD, "Region");
+    const ends = [
+      { id: END, entity: OTHER, role: "parent", navigation: "region", min: 1, max: 1, onDelete: "restrict" },
+      { id: "01JQ0B100000000000000000D2", entity: THIRD, role: "children", navigation: "customers" },
+    ];
+    expect(model.create({ kind: "relation", id: "01JQ0B100000000000000000R1", name: "inRegion", ends }).diagnostics.map((d) => d.message)).toEqual([]);
+  };
+  const post = (path: string, body: unknown) =>
+    fetch(mock.url(path), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+  it("copies objects and subject into the session and the request", () => {
+    const loaded = loadScenario(newSession(PURCHASE_APPROVAL), withObjects());
+    expect(loaded.start.objects).toEqual(objects());
+    expect(loaded.start.subject).toBe(OBJ_A);
+    expect(requestOf(loaded)).toMatchObject({ objects: objects(), subject: OBJ_A });
+    // A scenario without objects adds nothing to the request, and a start edit keeps the cast.
+    expect(requestOf(loadScenario(newSession(PURCHASE_APPROVAL), scenario(BUDGET_REJECTED)))).not.toHaveProperty("objects");
+    expect(setStartValue(loaded, "01JQATT0000000000000000201", 1).start.subject).toBe(OBJ_A);
+  });
+
+  it("records the objects into the new scenario, minting missing ids, and simulates with them", async () => {
+    seedEntities(mock.backend.model);
+    const request = {
+      name: "WithCast",
+      steps: scenario(BUDGET_REJECTED).steps.slice(0, 1),
+      objects: [
+        { name: "order", entity: ENTITY },
+        { name: "customer", entity: OTHER },
+      ],
+      subject: "order",
+    };
+    const recorded = await post(`/api/processes/${PURCHASE_APPROVAL}/scenarios`, request);
+    expect(recorded.status).toBe(201);
+    const { element } = (await recorded.json()) as { element: { objects: { id: string; name: string }[]; subject: string } };
+    expect(element.objects.every((o) => /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(o.id))).toBe(true);
+    expect(element.subject).toBe(element.objects[0].id);
+    expect((await post(`/api/processes/${PURCHASE_APPROVAL}/simulate`, { scenario: "WithCast" })).status).toBe(200);
+    // Objects need a subject that names one of them.
+    expect((await post(`/api/processes/${PURCHASE_APPROVAL}/simulate`, { objects: objects() })).status).toBe(400);
+    expect((await post(`/api/processes/${PURCHASE_APPROVAL}/simulate`, { objects: objects(), subject: "nobody" })).status).toBe(400);
+  });
+
+  it("drops an object and the links to it when its entity goes, and refuses when the subject would go", () => {
+    const model = mock.backend.model;
+    seedEntities(model);
+    const cast = (id: string, subject: string) => ({
+      kind: "scenario",
+      id,
+      name: `Cast${id.slice(-1)}`,
+      process: PURCHASE_APPROVAL,
+      steps: scenario(BUDGET_REJECTED).steps.slice(0, 1),
+      objects: [
+        { id: OBJ_A, name: "order", entity: ENTITY },
+        { id: OBJ_B, name: "customer", entity: OTHER, links: [{ end: END, object: OBJ_A }] },
+      ],
+      subject,
+    });
+    const keptId = "01JQ0B10000000000000000S01";
+    expect(model.create(cast(keptId, OBJ_B)).outcome).toBe("saved");
+    const plan = model.deletePlan([ENTITY], "remove-references");
+    expect(plan.outcome).toBe("saved");
+    expect(plan.removes.map((r) => r.subKind).sort()).toEqual(["link", "object"]);
+    expect(model.delete(ENTITY, model.get(ENTITY)!.hash, "remove-references").outcome).toBe("saved");
+    const after = model.get(keptId)!.json as { objects: { name: string; links?: unknown[] }[] };
+    expect(after.objects.map((o) => o.name)).toEqual(["customer"]);
+    expect(after.objects[0].links ?? []).toEqual([]);
+
+    // The other entity's object is now the subject of a second scenario: its delete is refused.
+    expect(model.create({ ...cast("01JQ0B10000000000000000S02", OBJ_B), objects: [{ id: OBJ_B, name: "customer", entity: OTHER }] }).outcome).toBe("saved");
+    const refused = model.deletePlan([OTHER], "remove-references");
+    expect(refused.refused.map((r) => [r.pointer, r.rule])).toContainEqual(["/subject", "MQ2001"]);
+    expect(model.delete(OTHER, model.get(OTHER)!.hash, "remove-references").outcome).not.toBe("saved");
   });
 });

@@ -557,6 +557,13 @@ public sealed record Scenario : Element, IPackaged
     [ElementRef(ElementKind.Process, Owning = true)]
     public required string Process { get; init; }
 
+    /// <summary>The scenario's cast (lifecycle-design.md decision 22): the object its process runs for and the objects they link to.</summary>
+    public IReadOnlyList<ScenarioObject> Objects { get; init; } = [];
+
+    /// <summary>The object the process runs for; required once there are <see cref="Objects"/>.</summary>
+    [ElementRef(IndexKinds = ["object"])]
+    public string? Subject { get; init; }
+
     /// <summary>The starting point; <see langword="null"/> means the attribute defaults and the fixed start instant.</summary>
     public ScenarioStart? Start { get; init; }
 
@@ -565,6 +572,42 @@ public sealed record Scenario : Element, IPackaged
 
     /// <summary>Whether the root is final after the last step.</summary>
     public ScenarioOutcome Outcome { get; init; } = ScenarioOutcome.Active;
+}
+
+/// <summary>
+/// An object of a scenario (lifecycle-design.md decision 22): an instance of an entity, with its values and its links to other objects of
+/// the scenario. A value not given reads as the attribute's default, then null.
+/// </summary>
+public sealed record ScenarioObject : IProcessNode
+{
+    /// <inheritdoc/>
+    public required string Id { get; init; }
+
+    /// <summary>The name, unique in the scenario.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>The entity the object is an instance of.</summary>
+    [ElementRef(ElementKind.Entity)]
+    public required string Entity { get; init; }
+
+    /// <summary>Values by attribute id.</summary>
+    [ElementRef(IndexKinds = ["attribute"])]
+    public IReadOnlyDictionary<string, JsonElement> Values { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
+
+    /// <summary>The objects this object links to, each through a relation end.</summary>
+    public IReadOnlyList<ScenarioLink> Links { get; init; } = [];
+}
+
+/// <summary>A link from a scenario object to another object of the scenario, through a relation end.</summary>
+public sealed record ScenarioLink
+{
+    /// <summary>The relation end navigated from the object.</summary>
+    [ElementRef(IndexKinds = ["end"])]
+    public required string End { get; init; }
+
+    /// <summary>The linked object.</summary>
+    [ElementRef(IndexKinds = ["object"])]
+    public required string Object { get; init; }
 }
 
 /// <summary>A scenario's starting point.</summary>

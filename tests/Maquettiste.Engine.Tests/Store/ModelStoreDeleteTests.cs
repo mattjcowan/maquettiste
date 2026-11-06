@@ -142,6 +142,43 @@ public sealed class ModelStoreDeleteTests
         """;
 
     [Fact]
+    public async Task Remove_references_drops_a_scenario_object_whose_entity_goes_with_the_links_to_it()
+    {
+        // lifecycle-design.md decision 22: the object and the links to it go; the subject stays, and losing it refuses remove-references.
+        const string InvoiceObject = "01K9XRF00000000000000000A1";
+        const string ScratchObject = "01K9XRF00000000000000000A2";
+        await using var s = await BillingStore.OpenAsync();
+        var scratch = await s.Store.CreateAsync("{\"kind\":\"entity\",\"name\":\"Scratch\"}"u8.ToArray(), ChangeSource.Editor, Ct);
+        var end = s.Model.All<Relation>().OrderBy(r => r.Id, StringComparer.Ordinal).First().Ends[0].Id;
+        var process = await s.Store.CreateAsync(Encoding.UTF8.GetBytes("""
+            { "kind": "process", "name": "Review", "states": [ { "id": "01K9XRF00000000000000000B1", "name": "Open" } ],
+              "events": [ { "id": "01K9XRF00000000000000000B2", "name": "close" } ] }
+            """), ChangeSource.Editor, Ct);
+        var scenario = await s.Store.CreateAsync(Encoding.UTF8.GetBytes($$"""
+            { "kind": "scenario", "name": "reviewed", "process": "{{process.Id}}",
+              "objects": [ { "id": "{{InvoiceObject}}", "name": "invoice", "entity": "{{s.Id("entity", "Invoice")}}", "links": [ { "end": "{{end}}", "object": "{{ScratchObject}}" } ] },
+                           { "id": "{{ScratchObject}}", "name": "scratch", "entity": "{{scratch.Id}}" } ],
+              "subject": "{{InvoiceObject}}",
+              "steps": [ { "event": "01K9XRF00000000000000000B2" } ] }
+            """), ChangeSource.Editor, Ct);
+        Assert.True(scenario.Outcome == SaveOutcome.Saved, string.Join("; ", scenario.Diagnostics.Select(d => d.Message)));
+
+        var plan = await s.Store.GetDeletePlanAsync([scratch.Id!], DeleteResolution.RemoveReferences, Ct);
+
+        Assert.Equal(SaveOutcome.Saved, plan.Outcome);
+        var removes = plan.Removes.Where(r => r.Id == scenario.Id).ToList();
+        Assert.Equal(["/objects/0/links/0", "/objects/1"], removes.Select(r => r.Pointer));
+        Assert.Equal(("object scratch", ScratchObject, "object"), (removes[1].What, removes[1].SubId, removes[1].SubKind));
+        Assert.StartsWith("link", removes[0].What, StringComparison.Ordinal);
+        var deleted = await s.Store.DeleteAsync(scratch.Id!, scratch.Hash!, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
+        Assert.Equal(SaveOutcome.Saved, deleted.Outcome);
+        var kept = s.Store.Current!.Get<Scenario>(scenario.Id!)!;
+        Assert.Equal([InvoiceObject], kept.Objects.Select(o => o.Id));
+        Assert.Empty(kept.Objects[0].Links);
+        Assert.Equal(InvoiceObject, kept.Subject);
+    }
+
+    [Fact]
     public async Task Remove_references_drops_diagram_members_and_a_delete_removes_the_sidecar()
     {
         await using var s = await BillingStore.OpenAsync();

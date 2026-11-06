@@ -178,6 +178,40 @@ public sealed class QualifiedNameTests
     }
 
     [Fact]
+    public async Task Scenario_objects_take_their_scenario_forms_and_a_placeholder_names_the_subject()
+    {
+        // lifecycle-design.md decision 22: <scenario form>.<object>. A same-batch qualified name of a new object does not resolve at a form
+        // site such as /subject, so the batch names the subject with a placeholder.
+        await using var s = await BillingStore.OpenAsync();
+        var parsed = s.Store.ParseBatch(Encoding.UTF8.GetBytes("""
+            { "operations": [
+              { "op": "create", "as": "$p", "element": { "kind": "process", "name": "InvoiceApproval", "package": "@package:Billing",
+                  "states": [ { "as": "$draft", "name": "Draft" }, { "name": "Done", "type": "final" } ],
+                  "events": [ { "as": "$finish", "name": "finish" } ] } },
+              { "op": "create", "element": { "kind": "scenario", "name": "happy", "process": "$p",
+                  "objects": [ { "as": "$invoice", "name": "invoice", "entity": "@entity:Billing.Invoice" },
+                               { "as": "$customer", "name": "customer", "entity": "@entity:Billing.Customer" } ],
+                  "subject": "$invoice",
+                  "steps": [ { "event": "$finish" } ] } }
+            ] }
+            """));
+        Assert.True(parsed.Batch is not null, string.Join("; ", parsed.Diagnostics.Select(d => $"{d.Rule} {d.JsonPointer} {d.Message}")));
+        var result = await s.Store.ApplyBatchAsync(parsed.Batch, ChangeSource.Cli, Ct);
+        Assert.True(result.Outcome == SaveOutcome.Saved, string.Join("; ", result.Items.SelectMany(i => i.Diagnostics).Select(d => $"{d.Rule} {d.JsonPointer} {d.Message}")));
+        var model = s.Model;
+        var scenario = model.Get<Scenario>(result.Items[1].Id!)!;
+        var invoice = scenario.Objects[0].Id;
+
+        Assert.Equal(invoice, scenario.Subject);
+        Assert.Equal(invoice, result.Ids.Names["$invoice"]);
+        Assert.Equal(invoice, Resolve(model, "@object:happy.invoice"));
+        Assert.Equal(invoice, Resolve(model, "@object:InvoiceApproval.happy.invoice"));
+        Assert.Equal(scenario.Objects[1].Id, Resolve(model, "@object:Billing.InvoiceApproval.happy.customer"));
+        Assert.Equal("Billing.InvoiceApproval.happy.invoice", model.Names("object").Get(invoice)!.Longest);
+        Assert.Empty(Find(model, "@object:invoice"));
+    }
+
+    [Fact]
     public async Task Rows_and_categories_take_their_longer_forms()
     {
         await using var s = await BillingStore.OpenAsync();

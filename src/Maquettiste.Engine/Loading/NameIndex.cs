@@ -167,6 +167,11 @@ internal sealed class NameIndex
             case Process process when forms is not null:
                 AddProcess(process, forms, Add);
                 break;
+            case Scenario scenario when forms is not null:
+                // A scenario's objects (lifecycle-design.md decision 22): <scenario form>.<object name>.
+                foreach (var obj in scenario.Objects)
+                    Add("object", obj.Id, forms.Then(obj.Name));
+                break;
             case Table table when forms is not null:
                 foreach (var column in table.Columns)
                     Add("column", column.Id, forms.Then(column.Name));
@@ -223,6 +228,7 @@ internal sealed class NameIndex
         "parameter" => [ElementKind.Constraint],
         "error" => [ElementKind.Operation, ElementKind.Stereotype],
         "member" => [ElementKind.Custom],
+        "object" => [ElementKind.Scenario],
         _ => KindInfo.TryGet(kind, out var info) ? [info.Kind] : [],
     };
 

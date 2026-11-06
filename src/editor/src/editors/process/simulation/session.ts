@@ -4,7 +4,7 @@
 // from the start and nothing is kept on the server. Selecting a trace entry shows the state after it from the trace
 // the last call already returned (no second call). Pure: no React, no I/O.
 import type { Diagnostic } from "@/api/types";
-import type { ScenarioDoc } from "@/model/process";
+import type { ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
 import type { SimInput, SimulateRequest, SimulationResult, StepTrace } from "./api";
 import type { SimulationView } from "./view";
 
@@ -13,6 +13,9 @@ export interface SimStart {
   context: Record<string, unknown>;
   /** The clock's start (ISO 8601); the engine's fixed instant when absent. */
   at?: string;
+  /** The scenario's objects, and the one the process runs for (read-only in the panel; edited in the JSON view). */
+  objects?: ScenarioObjectDoc[];
+  subject?: string;
 }
 
 export interface Session {
@@ -69,7 +72,14 @@ export function resetSession(s: Session): Session {
 
 /** A new start restarts the session: its inputs are dropped. */
 export function restart(s: Session, start: SimStart): Session {
-  return changed(s, { start: { context: { ...start.context }, ...(start.at ? { at: start.at } : {}) }, inputs: [] });
+  return changed(s, {
+    start: {
+      context: { ...start.context },
+      ...(start.at ? { at: start.at } : {}),
+      ...(start.objects?.length ? { objects: start.objects, ...(start.subject ? { subject: start.subject } : {}) } : {}),
+    },
+    inputs: [],
+  });
 }
 
 /** Sets one context value of the start (undefined: back to the default), which restarts the session. */
@@ -81,8 +91,12 @@ export function setStartValue(s: Session, attribute: string, value: unknown): Se
 }
 
 /** Loads a scenario's start and steps as the session's start and inputs (From scenario…). */
-export function loadScenario(s: Session, scenario: Pick<ScenarioDoc, "start" | "steps">): Session {
-  const start: SimStart = { context: { ...(scenario.start?.context ?? {}) }, ...(scenario.start?.at ? { at: scenario.start.at } : {}) };
+export function loadScenario(s: Session, scenario: Pick<ScenarioDoc, "start" | "steps" | "objects" | "subject">): Session {
+  const start: SimStart = {
+    context: { ...(scenario.start?.context ?? {}) },
+    ...(scenario.start?.at ? { at: scenario.start.at } : {}),
+    ...(scenario.objects?.length ? { objects: scenario.objects, ...(scenario.subject ? { subject: scenario.subject } : {}) } : {}),
+  };
   return changed(s, { start, inputs: scenario.steps.map((step) => clean(step as SimInput)) });
 }
 
@@ -126,7 +140,8 @@ export function clean(input: SimInput & { expect?: unknown }): SimInput {
 /** The simulate request for the session: the whole input list from the start, with the draft when there is one. */
 export function requestOf(s: Session, document?: unknown): SimulateRequest {
   const start = { context: s.start.context, ...(s.start.at ? { at: s.start.at } : {}) };
-  return { ...(document ? { document: document as never } : {}), start, steps: s.inputs, from: -1 };
+  const objects = s.start.objects?.length ? { objects: s.start.objects, ...(s.start.subject ? { subject: s.start.subject } : {}) } : {};
+  return { ...(document ? { document: document as never } : {}), start, ...objects, steps: s.inputs, from: -1 };
 }
 
 /** The trace entry shown: the selected one, else the last one the engine ran (null before the first answer). */

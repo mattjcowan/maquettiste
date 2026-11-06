@@ -465,8 +465,8 @@ public sealed partial class ModelStore
 
         /// <summary>
         /// The literals that attributes typed by an enum hold, with who holds them: defaults and allowed values (the attribute),
-        /// seed cells in their columns (the seed), and scenario values keyed by them in <c>start.context</c>, a step's
-        /// <c>payload</c> or <c>expect.context</c> (the scenario). Documents the batch writes are read as the batch leaves them.
+        /// seed cells in their columns (the seed), and scenario values keyed by them in <c>start.context</c>, an object's
+        /// <c>values</c> (lifecycle-design.md decision 22), a step's <c>payload</c> or <c>expect.context</c> (the scenario). Documents the batch writes are read as the batch leaves them.
         /// </summary>
         private List<(string By, List<JsonNode?> Values)> Uses(string enumId)
         {
@@ -506,6 +506,8 @@ public sealed partial class ModelStore
             {
                 var values = new List<JsonNode?>();
                 Keyed((node["start"] as JsonObject)?["context"], values);
+                foreach (var obj in (node["objects"] as JsonArray ?? []).OfType<JsonObject>())
+                    Keyed(obj["values"], values);
                 foreach (var step in (node["steps"] as JsonArray ?? []).OfType<JsonObject>())
                 {
                     Keyed(step["payload"], values);

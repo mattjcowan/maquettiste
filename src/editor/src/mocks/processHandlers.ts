@@ -79,6 +79,29 @@ export function exportConfig(doc: Json): Json {
   };
 }
 
+/**
+ * The objects a run carries (lifecycle-design.md decision 22): the request's, else the scenario's. Missing object ids are
+ * minted, as the engine mints a part's; `subject` names an object by id or name and is required with objects.
+ */
+function castOf(value: Json, scenario: Json | undefined): { objects: Json[]; subject: string } | { error: string } | null {
+  const own = value.objects !== undefined && value.objects !== null;
+  if (own && !Array.isArray(value.objects)) return { error: "objects must be an array." };
+  const list = own ? arr(value.objects) : arr(scenario?.objects);
+  if (!list.length) return null;
+  const objects: Json[] = list.map((o) => ({ ...o, id: typeof o.id === "string" && o.id ? o.id : newId() }));
+  const names = new Set<string>();
+  for (const o of objects) {
+    if (typeof o.name !== "string" || !o.name || typeof o.entity !== "string" || !o.entity) return { error: "each object needs a name and an entity." };
+    if (names.has(o.name)) return { error: `the scenario has two objects named ${o.name}.` };
+    names.add(o.name);
+  }
+  const wanted = own ? value.subject : scenario?.subject;
+  if (typeof wanted !== "string" || !wanted) return { error: "subject is required with objects." };
+  const subject = objects.find((o) => o.id === wanted || o.name === wanted);
+  if (!subject) return { error: `subject ${wanted} is not one of the objects.` };
+  return { objects, subject: subject.id as string };
+}
+
 /** A process document from a statechart config: one state per config state, one event per `on` key (import dry run). */
 export function importDocument(config: Json, name: string, pkg: string | null, id: string = newId()): { document: Json; created: string[] } {
   const created: string[] = [];
@@ -182,6 +205,8 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       if (value.steps !== undefined && value.steps !== null && !Array.isArray(value.steps)) return bad("steps must be an array of inputs.");
       const start = value.start && typeof value.start === "object" ? (value.start as Json) : null;
       if (readAt(start?.at) === "invalid") return bad(`start.at is not an ISO 8601 instant: ${String(start?.at)}.`);
+      const cast = castOf(value, scenarioEntry?.json);
+      if (cast && "error" in cast) return bad(cast.error);
       let doc = entry.json;
       if (value.document && typeof value.document === "object") {
         doc = value.document as Json;
@@ -215,6 +240,8 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         return bad("outcome must be 'final' or 'active'.");
       const start = value.start && typeof value.start === "object" ? (value.start as Json) : null;
       if (readAt(start?.at) === "invalid") return bad(`start.at is not an ISO 8601 instant: ${String(start?.at)}.`);
+      const cast = castOf(value, undefined);
+      if (cast && "error" in cast) return bad(cast.error);
       const dryRun = new URL(request.url).searchParams.get("dryRun") === "true";
       // The expectations come from a replay of the inputs, as the engine's record fills them (refusals as accepted: false).
       const replayed = replay(entry.json, start as never, value.steps as Json[], actorLookup());
@@ -242,6 +269,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         name: value.name.trim(),
         process: entry.id,
         ...(start && (start.context || start.at) ? { start } : {}),
+        ...(cast ? { objects: cast.objects, subject: cast.subject } : {}),
         steps,
         ...(outcome === "final" ? { outcome } : {}),
       };

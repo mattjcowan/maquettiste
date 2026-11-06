@@ -681,6 +681,7 @@ internal sealed partial class ResolveRun
                 At = scenario.Start?.At ?? ScenarioStart.DefaultStart,
             };
             var keys = deps.ToList();
+            ResolveScenarioObjects(s, scenario, keys);
             var steps = new List<RStep>();
             for (var i = 0; i < scenario.Steps.Count; i++)
             {
@@ -741,6 +742,58 @@ internal sealed partial class ResolveRun
             process.Scenarios = new RList<RScenario>(_scenarioOrder.Where(s => ReferenceEquals(s.Process, process)),
                 [ScenarioKind, Keys.Referrers(process.Id)]);
         }
+    }
+
+    /// <summary>
+    /// A scenario's objects and subject (lifecycle-design.md decision 22). An object whose entity does not resolve is left out, and so is a
+    /// link whose end or object does not resolve. An object's values are keyed by the names of its entity's attributes, so it also reads
+    /// its entity and that entity's bases.
+    /// </summary>
+    private void ResolveScenarioObjects(RScenario s, Scenario scenario, IReadOnlyList<string> keys)
+    {
+        if (scenario.Objects.Count == 0)
+            return;
+        var objects = new List<RScenarioObject>();
+        var byId = new Dictionary<string, RScenarioObject>(StringComparer.Ordinal);
+        var listKeys = new DependencySet(Keys).AddRange(keys);
+        foreach (var obj in scenario.Objects)
+        {
+            listKeys.Element(obj.Entity);
+            if (!_entities.TryGetValue(obj.Entity, out var entity) || entity.Id.Length == 0)
+                continue;
+            var r = new RScenarioObject { Id = obj.Id, Name = obj.Name, Entity = entity };
+            var deps = DepsOf(r).AddRange(keys);
+            var names = new Dictionary<string, string>(StringComparer.Ordinal);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var e = entity; e is not null && seen.Add(e.Id); e = e.Base)
+                deps.Element(e.Id);
+            foreach (var attribute in entity.Attributes)
+                names.TryAdd(attribute.Id, attribute.Name);
+            r.Values = ByName(obj.Values, names);
+            objects.Add(r);
+            byId.TryAdd(obj.Id, r);
+            Register(r);
+        }
+
+        foreach (var obj in scenario.Objects)
+        {
+            if (!byId.TryGetValue(obj.Id, out var r))
+                continue;
+            var links = new List<RScenarioLink>();
+            foreach (var link in obj.Links)
+            {
+                // Whether the end resolves is its relation's file.
+                if (Model.TryGetEntry(link.End, out var entry))
+                    DepsOf(r).Element(entry.OwnerId);
+                if (_byId.GetValueOrDefault(link.End) is REnd end && byId.TryGetValue(link.Object, out var target))
+                    links.Add(new RScenarioLink { End = end, Object = target });
+            }
+
+            r.Links = links;
+        }
+
+        s.Objects = new RList<RScenarioObject>(objects, listKeys.ToList());
+        s.Subject = scenario.Subject is { } subject ? byId.GetValueOrDefault(subject) : null;
     }
 
     /// <summary>The engine interpreter's result of each step of a scenario that ran (empty when the replay could not start).</summary>
