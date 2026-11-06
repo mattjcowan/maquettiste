@@ -114,7 +114,7 @@ export function ChipsEditor({
             {options.find((o) => o.value === v)?.label ?? v}
             <button
               type="button"
-              {...iconLabel(`Remove ${v} from ${label}`)}
+              {...iconLabel(`Remove ${options.find((o) => o.value === v)?.label ?? v} from ${label}`)}
               onClick={() => onChange(values.filter((x) => x !== v))}
               className="rounded-[3px] text-secondary hover:text-primary"
             >

@@ -575,7 +575,8 @@ export const SIMULATION_LABELS = {
   noParticipant: "(no participant)",
   fromParticipant: "(from the participant)",
   actsAs: (actor: string) => `acts as ${actor}`,
-  asParticipant: (participant: string) => `as ${participant}`,
+  asParticipant: (participant: string) => `by ${participant}`,
+  actingAs: (actor: string) => `acting as ${actor}`,
   /** A step by a participant: the actor the engine worked out for it, or that it satisfied none of the list. */
   actsAsLine: (participant: string, actor: string | null) =>
     actor ? `${participant} acted as ${actor}` : `${participant} satisfies none of the actors the step needs`,
@@ -628,7 +629,14 @@ export type ActorType = (typeof ACTOR_TYPES)[number];
 /** The types that may have members and be named in another actor's memberOf. */
 export const MEMBER_HOLDER_TYPES: readonly ActorType[] = ["role", "group", "organization"];
 /** The type picker's option text in the actor editor; the system actor is spelled out. */
-export const ACTOR_TYPE_OPTION_LABELS: Record<ActorType, string> = { ...ACTOR_TYPE_LABELS, system: "Automatic (the system itself)" };
+export const ACTOR_TYPE_OPTION_LABELS: Record<ActorType, string> = {
+  person: "Person",
+  role: "Role",
+  group: "Group",
+  organization: "Organization",
+  "external-system": "External system",
+  system: "Automatic (the system itself)",
+};
 
 /** The actor editor's membership text. */
 export const ACTOR_MEMBER_LABELS = {
@@ -643,6 +651,10 @@ export const ACTOR_MEMBER_LABELS = {
   addTitle: (name: string) => `Add members to ${name}`,
   addApply: (n: number) => (n ? `Add ${n}` : "Add"),
   addUndo: (name: string) => `Add members to ${name}`,
+  missingActor: "(missing actor)",
+  removeMember: (name: string) => `Remove ${name} from the members`,
+  removeUndo: (name: string) => `Remove ${name} from the members`,
+  search: "Search actors",
 } as const;
 
 /** The actor editor's "Taken from the object" section (actors-design.md section 9). */
@@ -656,8 +668,9 @@ export const ACTOR_RELATIVE_LABELS = {
     "members-of": "Members of a role within a context",
   },
   fieldsOf: "Fields of",
-  noSubjects: "No process that uses this actor has a subject yet. Choose an entity to pick fields from.",
+  noSubjects: "No process that uses this actor has a subject yet. Choose the kind of object whose fields you want to pick from.",
   pick: "(choose)",
+  pickEntity: "(choose an entity)",
   then: "(then…)",
   role: "Role",
   noRoles: "There is no plain role, group or organization yet.",
@@ -693,16 +706,31 @@ export const PARTICIPANT_LABELS = {
   grid: (scenario: string) => `Participants of ${scenario}`,
   name: "Name",
   displayName: "Display name",
-  identity: "Identity",
-  actor: "Stands for",
-  holds: "Holds",
+  identity: "Signs as",
+  identityHint: "The name this participant signs with, when a step names no signer.",
+  actor: "Is",
+  actorHint: "The person, external system or automatic actor this participant is.",
+  holds: "Holds roles",
+  editHolds: (name: string) => `Edit the roles ${name} holds`,
+  holdsTitle: (name: string) => `Roles held by ${name}`,
+  holdsRole: "Role, group or organization",
+  holdsPickRole: "(choose a role)",
+  holdsContext: "Within object",
+  holdsAnywhere: "(anywhere)",
+  within: "within",
+  addHolding: "Add role",
+  removeHolding: "Remove this role",
+  noRoles: "The model has no role, group or organization to hold yet.",
+  noObjects: "No objects yet. Add one to give the scenario something to run on, a record to point to or a context to hold roles in.",
+  addObjectTitle: "Add object",
+  objectNameTaken: "The scenario already has an object with this name.",
   object: "Record object",
   step: "Participant",
   owner: "Owner",
   entity: "Entity",
   none: "(none)",
   automatic: "Automatic",
-  holdsHint: "A role, group or organization, optionally followed by 'in' and an object of the scenario, comma-separated: Reviewer in Project1, Admin",
+  holdsHint: "The roles, groups and organizations this participant holds, each optionally within one object of the scenario, such as Reviewer within Project1.",
   ownerLocked: "The process names where this object's owner is held, so the owner comes from its values and links.",
   holdsUnknown: (text: string) => `'${text}' is not a role, group or organization, or not an object of the scenario.`,
   /** Show the row's step text in the simulation panel and the trace. */

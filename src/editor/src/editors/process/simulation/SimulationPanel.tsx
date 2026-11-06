@@ -358,7 +358,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
                 <option value="">{L.fromScenarioPlaceholder}</option>
                 {scenarios.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {s.displayName || s.name}
                   </option>
                 ))}
               </Select>,
@@ -411,7 +411,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
             {replay
               ? section(
                   "replay",
-                  L.replayOf(replay.scenario.name),
+                  L.replayOf(scenarios.find((s) => s.name === replay.scenario.name)?.displayName || replay.scenario.name),
                   <ReplaySection replay={replay} names={names} onSelect={(i) => setReplay({ ...replay, selected: i })} />,
                   <Button variant="ghost" size="icon-row" label={L.replayClose} onClick={closeReplay} data-testid="replay-close">
                     <X />
@@ -491,14 +491,30 @@ function Section({
   );
 }
 
-function Note({ children, testid, tone = "secondary" }: { children: ReactNode; testid?: string; tone?: "secondary" | "danger" | "warning" }) {
+function Note({
+  children,
+  testid,
+  tone = "secondary",
+  wrap = false,
+}: {
+  children: ReactNode;
+  testid?: string;
+  tone?: "secondary" | "danger" | "warning";
+  wrap?: boolean;
+}) {
   return (
     <p
-      className={cn(ROW, "truncate", tone === "secondary" && "text-secondary", tone === "danger" && "text-danger", tone === "warning" && "text-warning")}
+      className={cn(
+        ROW,
+        wrap ? "h-auto min-h-[var(--mq-row-h)] items-start whitespace-normal break-words py-0.5" : "truncate",
+        tone === "secondary" && "text-secondary",
+        tone === "danger" && "text-danger",
+        tone === "warning" && "text-warning",
+      )}
       data-testid={testid}
       title={typeof children === "string" ? children : undefined}
     >
-      <span className="truncate">{children}</span>
+      <span className={wrap ? "min-w-0" : "truncate"}>{children}</span>
     </p>
   );
 }
@@ -913,10 +929,10 @@ function TimeSection({ result, live, names, onAdvance }: { result: SimulationRes
     <div>
       <Note testid="time-row">{next ? L.nextTimer(names.transition(next.transition), next.dueAt) : L.noTimers}</Note>
       <div className={ROW} data-testid="time-row">
-        <span className="text-secondary" data-testid="simulation-clock">
+        <span className="min-w-0 flex-1 truncate text-secondary" title={L.clock(result.clock)} data-testid="simulation-clock">
           {L.clock(result.clock)}
         </span>
-        <label htmlFor="sim-advance" className="ml-auto text-secondary">
+        <label htmlFor="sim-advance" className="shrink-0 text-secondary">
           {L.advanceBy}
         </label>
         <input
@@ -1080,12 +1096,13 @@ function TraceSection({
             )}
             onClick={() => onSelect(r.index)}
             onKeyDown={(e) => onKey(e, r.index)}
+            title={r.states ? `${r.label} → ${r.states}` : r.label}
             data-testid="trace-row"
             data-index={r.index}
             data-accepted={r.ran ? String(r.accepted) : undefined}
           >
             <span className="w-4 shrink-0 text-right text-11 text-secondary">{r.index >= 0 ? r.index + 1 : ""}</span>
-            <span className="min-w-0 flex-1 truncate" title={r.label}>
+            <span className="min-w-[7rem] flex-1 truncate" title={r.label}>
               {r.label}
             </span>
             {!r.ran ? (
@@ -1134,7 +1151,7 @@ function ReplaySection({ replay, names, onSelect }: { replay: ReplayState; names
   const failure = replay.verification.failure;
   return (
     <div data-testid="replay-panel" data-passed={replay.verification.passed ? "true" : "false"}>
-      <Note testid="replay-summary" tone={replay.verification.passed ? "secondary" : "danger"}>
+      <Note testid="replay-summary" wrap tone={replay.verification.passed ? "secondary" : "danger"}>
         {replaySummary(replay.verification, rows.length)}
       </Note>
       <ul aria-label={L.replay}>
@@ -1155,11 +1172,12 @@ function ReplaySection({ replay, names, onSelect }: { replay: ReplayState; names
                 onSelect(Math.min(rows.length - 1, Math.max(0, r.index + (e.key === "ArrowDown" ? 1 : -1))));
               }
             }}
+            title={`${r.label}: ${r.verdict}${r.states ? ` → ${r.states}` : ""}`}
             data-testid="replay-row"
             data-verdict={r.verdict}
           >
             <span className="w-4 shrink-0 text-right text-11 text-secondary">{r.index + 1}</span>
-            <span className="min-w-0 flex-1 truncate" title={r.label}>
+            <span className="min-w-[7rem] flex-1 truncate" title={r.label}>
               {r.label}
             </span>
             <Badge tone={r.verdict === "passed" ? "success" : r.verdict === "failed" ? "danger" : "neutral"} data-testid="replay-verdict">
@@ -1262,7 +1280,7 @@ function ReplayDialog({
   onReplay,
   onClose,
 }: {
-  scenarios: { id: string; name: string }[];
+  scenarios: { id: string; name: string; displayName?: string }[];
   busy: boolean;
   onReplay: (scenario: string) => Promise<string | null>;
   onClose: () => void;
@@ -1286,7 +1304,7 @@ function ReplayDialog({
               <Select id="replay-scenario" autoFocus value={scenario} onChange={(e) => setScenario(e.target.value)}>
                 {scenarios.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {s.displayName || s.name}
                   </option>
                 ))}
               </Select>

@@ -339,8 +339,14 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const people = participantsOf(value, undefined, true, objectIds);
       if (people && "error" in people) return bad(people.error);
       const dryRun = new URL(request.url).searchParams.get("dryRun") === "true";
+      // A step names its participant by name or id; the replay and the record work with the request's participant ids.
+      const requestPeople = arr(value.participants);
+      const rawSteps = (value.steps as Json[]).map((st) => {
+        const hit = typeof st.participant === "string" ? requestPeople.find((x) => x.id === st.participant || x.name === st.participant) : undefined;
+        return hit ? { ...st, participant: hit.id } : st;
+      });
       // The expectations come from a replay of the inputs, as the engine's record fills them (refusals as accepted: false).
-      const replayed = replay(entry.json, start as never, value.steps as Json[], {
+      const replayed = replay(entry.json, start as never, rawSteps, {
         ...actorLookup(),
         ...(cast ? { objects: cast.objects, subject: cast.subject } : {}),
         // The steps name the request's participants: the replay runs before the fresh ids are given.
@@ -349,7 +355,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       // The engine refuses inputs that cannot be replayed to the last step (422 with the replay's findings).
       if (!replayed.complete && value.steps.length) return HttpResponse.json(report(replayed.diagnostics.length ? replayed.diagnostics : []), { status: 422 });
       const lookup = actorLookup();
-      const steps = (value.steps as Json[]).map((raw, i) => {
+      const steps = rawSteps.map((raw, i) => {
         // Names resolve to ids as the engine's record resolves them; defaults are left out (the canonical form).
         const s = normalizeInput(raw, i, { doc: entry.json }, lookup.actorId) as unknown as Json;
         const step: Json = { id: newId() };

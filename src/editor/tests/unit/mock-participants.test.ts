@@ -47,8 +47,8 @@ describe("the stepper's participants", () => {
     const t = run([{ event: "submit", participant: "pAnn" }]).trace[1];
     // submit lists [Bob, Ann]: Ann is the first one the participant satisfies.
     expect(t).toMatchObject({ accepted: true, actsAs: "Ann", input: { participant: "pAnn" } });
-    // The echo is what was raised: the actor the engine worked out is not written into it.
-    expect(t.input?.actor).toBeNull();
+    // The echo is the filled-in step: the actor the engine worked out, and the signer defaulting to the identity.
+    expect(t.input).toMatchObject({ actor: "Ann", signer: "ann@x" });
   });
 
   it("uses a gate's signers over the event's actors, and a signature's signer defaults to the identity", () => {
@@ -77,7 +77,7 @@ describe("the stepper's participants", () => {
       { event: "approve", participant: "pWithin" },
     ]).trace[2];
     // Reviewer within o1 does not count for a plain Reviewer (decision 13).
-    expect(within).toMatchObject({ accepted: false, refusal: "gate-signer", actsAs: null });
+    expect(within).toMatchObject({ accepted: false, refusal: "gate-signer" });
     expect(unsatisfiedLists.get(within)).toEqual(["Reviewer"]);
   });
 
@@ -94,7 +94,7 @@ describe("the stepper's participants", () => {
     const objects = [{ id: "o1", name: "inv", entity: "E", owner: "pAnn" }];
     const base = { membership: members, participants: people, objects, subject: "o1", ownerActors: new Set(["Owner"]) };
     expect(simulate(owned, null, [{ event: "submit", participant: "pAnn" }], base).trace[1]).toMatchObject({ accepted: true, actsAs: "Owner" });
-    expect(simulate(owned, null, [{ event: "submit", participant: "pBob" }], base).trace[1]).toMatchObject({ accepted: false, actsAs: null });
+    expect(simulate(owned, null, [{ event: "submit", participant: "pBob" }], base).trace[1]).toMatchObject({ accepted: false });
   });
 
   it("leaves steps without a participant as they were", () => {

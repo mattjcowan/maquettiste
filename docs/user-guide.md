@@ -1945,20 +1945,26 @@ A scenario names who takes part in its run. A **participant** is a person in the
 participants never reach generated production code. Open the scenario and use its **Participants** tab. A participant has:
 
 - a **Name**, and optionally a display name;
-- an **Identity**, the value the team's system would hold for them, such as a login (the name when left empty);
-- **Stands for**, the person, external system or Automatic actor they are, with that actor's memberships;
-- **Holds**, the roles, groups and organizations they hold, each optionally followed by "in" and an object of the scenario:
-  `Reviewer in Project1, Admin`;
+- **Signs as**, the value the team's system would hold for them, such as a login (the name when left empty);
+- **Is**, the person, external system or Automatic actor they are, with that actor's memberships;
+- **Holds roles**, the roles, groups and organizations they hold, each optionally within an object of the scenario, such as
+  "Reviewer within Project1". Pick them from the pencil button in the cell: a role, then an optional object;
 - **Record object**, the scenario object that is their own record, such as an employee.
 
 On the **Objects** tab, an object may also name its **Owner** participant. It may do so only when the process names no
 owner field for that object. Otherwise the owner comes from the object's own values and links, and naming both is MQ9305.
 
-A step names its **Participant**. The engine then works out the step's actor from the model alone: the participant acts as
-the first actor that both lists accept. The first list is the gate's signers for a gated move, else the event's or the
-task's actors. The second is the actors the participant satisfies. The step shows it as "acts as" that actor. If the step
-names an actor too, the participant must satisfy it (MQ9305). The signer defaults to the participant's identity. A step
-with no participant works as before.
+A step names its **Participant**. The engine then works out which actor the step acts as, from the moves the event can
+make at that moment:
+
+- For a move that needs signatures, the participant acts as a required actor of that move that has not signed yet, if
+  they can be that actor. Otherwise they act as a signer they can be that the event's actors also accept, and otherwise
+  as the first signer they can be. A move whose signers they can be none of is skipped.
+- For a move without signatures, or a task, they act as the first of the event's or the task's actors they can be.
+- If that list is empty, they act as the actor they stand for.
+
+The step shows it as "acting as" that actor. If the step names an actor too, the participant must be able to be it
+(MQ9305). The signer defaults to the participant's identity. A step with no participant works as before.
 
 A participant satisfies:
 
@@ -1968,7 +1974,9 @@ A participant satisfies:
 - members of a role within a context, when they hold the role, or one of its members, within the object the path reaches.
 
 In the simulation panel, **Enabled** has a **Participant** picker beside the actor. Pick one, and the panel shows the actor
-it acts as, or says the participant satisfies none of the actors the move needs. A recorded step keeps the participant.
+it acts as (the engine's answer, shown as "acting as"), or says the participant can be none of the actors the move
+needs. The step's row reads like "approve by SalesApprover, acting as Approver, signed by erin". A recorded step keeps the
+participant, and recording turns the participant names you give into ids.
 `simulate_process` and `record_scenario` take `participants` and a step's `participant`. When the participant satisfies
 none of the list, the step is refused, and MQ9301 names the participant and the list. "Participants" is a working name,
 and the owner will confirm it before release.
@@ -2392,7 +2400,7 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9208 | warning | Values the bound attribute can hold that no state's code covers | |
 | MQ9209 | warning | The deprecated one-subject form (`subject` and `boundAttribute` on the process); list it in `subjects`. Can be turned off | **Use subjects** |
 | MQ9210 | warning | Under a reference-type or plain binding, states a configuration rests in have no code; one finding per binding names them | **Sync codes** |
-| MQ9301 | error | A scenario step accepted while it expects a refusal, or refused while it expects to be accepted; a refusal by actor names the participant and the list it did not satisfy | |
+| MQ9301 | error | A scenario step accepted while it expects a refusal, or refused while it expects to be accepted; a refusal by actor names the participant and the list of actors the moves the event can make then accept, none of which the participant can be | |
 | MQ9302 | error | The active states after a step differ from what the step expects | **Update expectations from replay** |
 | MQ9303 | error | The context attributes a step changed differ from what the step expects | **Update expectations from replay** |
 | MQ9304 | error | Whether the process is final after the last step differs from the scenario's outcome | **Update expectations from replay** |

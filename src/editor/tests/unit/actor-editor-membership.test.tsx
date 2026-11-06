@@ -59,14 +59,14 @@ describe("actor editor membership", () => {
       expect(api.backend.model.create(a).outcome).toBe("saved");
     const editor = await open(ID.ann, "Ann");
     const type = within(editor).getByLabelText("Type") as HTMLSelectElement;
-    expect([...type.options].map((o) => o.text)).toEqual(["person", "role", "group", "organization", "external system", "Automatic (the system itself)"]);
+    expect([...type.options].map((o) => o.text)).toEqual(["Person", "Role", "Group", "Organization", "External system", "Automatic (the system itself)"]);
 
     // Member of lists roles, groups and organizations with their type, never the actor itself.
     const add = within(editor).getByLabelText("Add to Member of") as HTMLSelectElement;
     const choices = [...add.options].map((o) => o.text);
-    expect(choices).toContain("Reviewer (role)");
+    expect(choices).toContain("Reviewer (Role)");
     expect(choices.some((c) => c.startsWith("Ann"))).toBe(false);
-    expect(choices.every((c) => c === "add…" || /\((role|group|organization)\)$/.test(c))).toBe(true);
+    expect(choices.every((c) => c === "add…" || /\((Role|Group|Organization)\)$/.test(c))).toBe(true);
     await act(async () => {
       await userEvent.selectOptions(add, ID.reviewer);
     });

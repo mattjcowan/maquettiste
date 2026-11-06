@@ -276,7 +276,7 @@ export interface StepTraceJson {
   incomplete: boolean;
   /** The system actor when it made the move: the initial entry, time steps and invoke completions that are not human tasks, naming no actor. */
   actor?: string;
-  /** With a participant on the input: the actor the step acted as, null when the participant satisfies none of the list. */
+  /** With a participant on the input: the actor the step acted as; left out when the participant satisfies none of the list. */
   actsAs?: string | null;
 }
 
@@ -394,7 +394,7 @@ interface Signature {
 
 interface Scope {
   input: SimInputJson | null;
-  /** The input as the trace echoes it: what was raised, before a participant's actor and signer were filled in. */
+  /** The input as the trace echoes it: with a participant's actor and signer filled in, as the engine echoes it. */
   echo: SimInputJson | null;
   actsAs?: string | null;
   list?: string[];
@@ -474,6 +474,7 @@ class Interpreter {
     const before = { ...this.context };
     input = this.withParticipant(input);
     this.scope.input = input;
+    if (this.scope.actsAs) this.scope.echo = input;
     if (input.input === "time") this.handleTime(input);
     else if (input.input === "invoke-done" || input.input === "invoke-error") this.handleInvoke(input);
     else this.handleEvent(input);
@@ -498,12 +499,12 @@ class Interpreter {
     return held.some((a) => !!a && this.membership.accepts(listed, a));
   }
 
-  /** The list a participant's step is checked against: a gated move's signers, else the event's or the human task's actors. */
+  /** The list a participant's step is checked against when it names no move: the event's or the human task's actors. */
   private firstList(input: SimInputJson): string[] {
     if (input.input === "event") {
       const ev = input.event ? this.chart.events.get(input.event) : undefined;
       if (!ev) return [];
-      const gated = activeTransitions(this).find((t) => t.trigger === "event" && t.key === ev.id && t.gate && ids(t.gate.signers).length);
+      const gated = this.eventMoves(input).find((t) => t.gate && ids(t.gate.signers).length);
       return gated ? ids(gated.gate!.signers) : ids(ev.actors);
     }
     if (input.input === "invoke-done" || input.input === "invoke-error") {
@@ -511,6 +512,32 @@ class Interpreter {
       return found && found.invoke.type === "human-task" ? ids(found.invoke.actors) : [];
     }
     return [];
+  }
+
+  private eventMoves(input: SimInputJson): Edge[] {
+    return input.event ? activeTransitions(this).filter((t) => t.trigger === "event" && t.key === input.event) : [];
+  }
+
+  /** The actor a participant acts as, read from the moves the event can make now (decision 15); null when it satisfies none. */
+  private actingActor(input: SimInputJson, p: Json): string | null {
+    const fallback = str(p.actor) ?? null;
+    const firstOf = (list: string[]) => (list.length ? (list.find((l) => this.satisfies(p, l)) ?? null) : fallback);
+    if (input.input !== "event") return firstOf(this.firstList(input));
+    const ev = input.event ? this.chart.events.get(input.event) : undefined;
+    if (!ev) return fallback;
+    const eventActors = ids(ev.actors);
+    const moves = this.eventMoves(input);
+    if (!moves.length) return firstOf(eventActors);
+    for (const t of moves) {
+      const signers = t.gate ? ids(t.gate.signers) : [];
+      if (!t.gate || !signers.length) return firstOf(eventActors);
+      const signed = this.signatures.get(t.id) ?? [];
+      const required = ids(t.gate.requiredActors).find((a) => !signed.some((s) => this.membership.accepts(a, s.actor)) && this.satisfies(p, a));
+      const mine = signers.filter((x) => this.satisfies(p, x));
+      const found = required ?? mine.find((x) => !eventActors.length || this.membership.allows(eventActors, x)) ?? mine[0];
+      if (found) return found;
+    }
+    return null;
   }
 
   /** The input with the actor the participant acts as and its identity as signer (decision 15); the trace carries `actsAs`. */
@@ -527,7 +554,7 @@ class Interpreter {
       actsAs = input.actor;
       if (!this.satisfies(p, input.actor))
         this.problem("MQ9305", PARTICIPANT_TEXTS.actorNotSatisfied(String(p.name), this.actorName(input.actor) ?? input.actor));
-    } else actsAs = first.length ? (first.find((l) => this.satisfies(p, l)) ?? null) : (str(p.actor) ?? null);
+    } else actsAs = this.actingActor(input, p);
     this.scope.actsAs = actsAs;
     this.scope.list = first;
     const identity = p.identity !== undefined && p.identity !== null ? String(p.identity) : String(p.name);
@@ -1065,7 +1092,7 @@ class Interpreter {
       incomplete: this.scope.guards.some((g) => g.source === "missing") || diagnostics.some((d) => d.rule === "MQ9305" || d.rule === "MQ9507"),
       // A refused step moved nothing, so it names no actor.
       ...(this.scope.actor && this.scope.refusal === null ? { actor: this.scope.actor } : {}),
-      ...(this.scope.actsAs !== undefined ? { actsAs: this.scope.actsAs } : {}),
+      ...(this.scope.actsAs ? { actsAs: this.scope.actsAs } : {}),
     };
     if (this.scope.list) unsatisfiedLists.set(trace, this.scope.list);
     return trace;

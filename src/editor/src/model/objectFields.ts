@@ -13,6 +13,10 @@ export interface ObjectField {
   many: boolean;
   /** An attribute typed by a value object, which is several fields and holds no single actor. */
   valueObject: boolean;
+  /** An attribute's built-in type, directly or through a scalar type; unset for an end, or when it does not resolve. */
+  scalar?: string;
+  /** An attribute that comes from a stereotype. */
+  fromStereotype?: boolean;
 }
 
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -42,14 +46,36 @@ export function objectFields(entity: string, src: FieldSources): ObjectField[] {
   const out: ObjectField[] = [];
   const seen = new Set<string>();
   for (const level of chain) {
-    const held = [...arr(level.attributes), ...((level.stereotypes as string[] | undefined) ?? []).flatMap((k) => arr(src.stereotype(k)?.attributes))];
-    for (const a of held) {
+    const own = arr(level.attributes).map((a) => ({ a, fromStereotype: false }));
+    const stereo = ((level.stereotypes as string[] | undefined) ?? [])
+      .flatMap((k) => arr(src.stereotype(k)?.attributes))
+      .map((a) => ({ a, fromStereotype: true }));
+    for (const { a, fromStereotype } of [...own, ...stereo]) {
       const id = typeof a.id === "string" ? a.id : "";
       if (!id || seen.has(id)) continue;
       seen.add(id);
       const type = a.type as { ref?: unknown } | string | undefined;
       const ref = type && typeof type === "object" && typeof type.ref === "string" ? type.ref : undefined;
-      out.push({ id, name: String(a.name ?? id), kind: "attribute", many: a.collection === true, valueObject: !!ref && src.kindOf(ref) === "value-object" });
+      let scalar = typeof type === "string" ? type : undefined;
+      for (let at = ref, hops = 0; at && hops < 8; hops++) {
+        const d = src.doc(at);
+        if (d?.kind !== "scalar-type") break;
+        const base = d.base;
+        if (typeof base === "string" && !src.doc(base)) {
+          scalar = base;
+          break;
+        }
+        at = typeof base === "string" ? base : undefined;
+      }
+      out.push({
+        id,
+        name: String(a.name ?? id),
+        kind: "attribute",
+        many: a.collection === true,
+        valueObject: !!ref && src.kindOf(ref) === "value-object",
+        ...(scalar ? { scalar } : {}),
+        ...(fromStereotype ? { fromStereotype } : {}),
+      });
     }
   }
   const mine = new Set(chain.map((c) => String(c.id)));
@@ -76,6 +102,14 @@ export function commonFields(lists: readonly (readonly ObjectField[])[]): Object
 
 /** Whether a field can be where one actor is named: single-valued, and an attribute that is no value object, or a to-one end. */
 export const holdsOneActor = (f: ObjectField): boolean => !f.many && !f.valueObject;
+
+const PERSON_TYPES = new Set(["string", "text", "guid", "int16", "int32", "int64"]);
+
+/** Whether a field can name a person: a to-one end, or a single-valued attribute typed string, text, guid or a whole number. Guidance only. */
+export const canNamePerson = (f: ObjectField): boolean => holdsOneActor(f) && (f.kind === "end" || (!!f.scalar && PERSON_TYPES.has(f.scalar.toLowerCase())));
+
+/** The fields an Owner picker offers: those that can name a person, and no attribute of a stereotype (MQ9606). */
+export const canBeOwner = (f: ObjectField): boolean => canNamePerson(f) && !f.fromStereotype;
 
 /**
  * Why `steps` cannot be worked out from `entity`, or null. A path follows to-one ends and may finish at a single-valued

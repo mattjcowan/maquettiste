@@ -172,7 +172,7 @@ test("Replay scenario… steps through QuickApproval and stops at the failing st
   const { panel } = await openPurchase(page);
   await panel.getByTestId("simulation-replay").click();
   const dialog = page.getByTestId("replay-dialog");
-  await dialog.getByLabel("Scenario").selectOption({ label: "QuickApproval" });
+  await dialog.getByLabel("Scenario").selectOption({ label: "Quick approval" });
   await dialog.getByTestId("replay-run").click();
   await expect(dialog).toHaveCount(0);
   const replay = panel.getByTestId("replay-panel");
@@ -194,14 +194,14 @@ test("Replay scenario… steps through QuickApproval and stops at the failing st
   await panel.getByTestId("replay-close").click();
   await expect(rowsOf(panel, "trace-row")).toHaveCount(1);
   await panel.getByTestId("simulation-replay").click();
-  await page.getByTestId("replay-dialog").getByLabel("Scenario").selectOption({ label: "BudgetRejected" });
+  await page.getByTestId("replay-dialog").getByLabel("Scenario").selectOption({ label: "Budget rejected" });
   await page.getByTestId("replay-run").click();
   await expect(panel.getByTestId("replay-verdict")).toHaveText(["passed", "passed", "passed"]);
   await expect(panel.getByTestId("replay-row").last()).toContainText("Review.Budget.BudgetRejected, Review.Compliance.Cleared");
 
   // From scenario… loads a scenario's start and steps as the session's inputs.
   await panel.getByTestId("replay-close").click();
-  await panel.getByTestId("simulation-from-scenario").selectOption({ label: "BudgetRejected" });
+  await panel.getByTestId("simulation-from-scenario").selectOption({ label: "Budget rejected" });
   await expect(rowsOf(panel, "trace-row")).toHaveCount(4);
   await expect(panel.locator('[data-testid="start-row"][data-attribute="amount"] input')).toHaveValue("25000");
   await expect(paths(panel)).toHaveText(["Review.Budget.BudgetRejected", "Review.Compliance.Cleared"]);

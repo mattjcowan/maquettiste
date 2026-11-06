@@ -8,7 +8,7 @@ import { SectionTitle } from "@/components/ui/misc";
 import { memberOfChoices, type ActorRow } from "@/model/actors";
 import { indexLookup } from "@/model/index";
 import { ACTOR_RELATIVE_LABELS as L } from "@/model/labels";
-import { holdsOneActor, relativeForms, relativeMeaning, type RelativeDoc, type RelativeForm } from "@/model/objectFields";
+import { canNamePerson, relativeForms, relativeMeaning, spaced, type RelativeDoc, type RelativeForm } from "@/model/objectFields";
 import type { EditorContext } from "../EditorFrame";
 import { useObjectFields } from "./useObjectFields";
 
@@ -35,7 +35,7 @@ function PathPicker({
 }) {
   const { fields } = useObjectFields(entities);
   useEffect(() => onNames(Object.fromEntries(fields.map((f) => [f.id, f.name]))), [fields, onNames]);
-  const options = fields.filter((f) => (finish === "end" ? f.kind === "end" && !f.many : holdsOneActor(f)));
+  const options = fields.filter((f) => (finish === "end" ? f.kind === "end" && !f.many : canNamePerson(f)));
   const chosen = fields.find((f) => f.id === value[0]);
   const next = chosen?.kind === "end" && !chosen.many && chosen.target ? chosen.target : undefined;
   return (
@@ -81,6 +81,43 @@ function useUsedSubjects(actor: string): string[] {
     }
     return out;
   }, [index.data, actor]);
+}
+
+/** Collects the names of the fields a path walks over, entity by entity, for the summary (it renders nothing). */
+function PathNames({ entities, path, onNames }: { entities: string[]; path: string[]; onNames: (names: Record<string, string>) => void }) {
+  const { fields } = useObjectFields(entities);
+  useEffect(() => onNames(Object.fromEntries(fields.map((f) => [f.id, f.name]))), [fields, onNames]);
+  const step = fields.find((f) => f.id === path[0]);
+  return step?.kind === "end" && step.target && path.length > 1 ? <PathNames entities={[step.target]} path={path.slice(1)} onNames={onNames} /> : null;
+}
+
+/** "Taken from the object" read-only, for the inspector: what the actor means, in plain words; nothing for a plain actor. */
+export function RelativeSummary({ ctx }: { ctx: Pick<EditorContext, "id" | "json"> }) {
+  const rec = ctx.json as Rec;
+  const relative = rec.relative && typeof rec.relative === "object" ? (rec.relative as RelativeDoc) : undefined;
+  const index = useIndex();
+  const lookup = indexLookup(index.data);
+  const used = useUsedSubjects(ctx.id);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const onNames = useMemo(
+    () => (next: Record<string, string>) => setNames((prev) => (Object.entries(next).every(([k, v]) => prev[k] === v) ? prev : { ...prev, ...next })),
+    [],
+  );
+  if (!relative) return null;
+  const forms = relativeForms(relative);
+  const walk = forms[0] === "path" ? (relative.path ?? []) : forms[0] === "members-of" ? (relative.within ?? []) : [];
+  const meaning = relativeMeaning(relative, {
+    subject: used.length === 1 ? lookup.byId.get(used[0])?.name : undefined,
+    field: (id) => names[id] ?? id,
+    actor: (id) => lookup.byId.get(id)?.name ?? id,
+  });
+  return (
+    <section className="flex flex-col gap-1" aria-label={L.title} data-testid="actor-relative-summary">
+      <SectionTitle>{L.title}</SectionTitle>
+      <p className="text-12">{meaning ? L.means(meaning) : L.forms.none}</p>
+      {used.length && walk.length ? <PathNames entities={used} path={walk} onNames={onNames} /> : null}
+    </section>
+  );
 }
 
 export function RelativeSection({ ctx }: { ctx: Ctx }) {
@@ -160,12 +197,12 @@ export function RelativeSection({ ctx }: { ctx: Ctx }) {
         <Field label={L.fieldsOf} htmlFor="actor-relative-entity">
           {used.length ? (
             <span className="text-12" data-testid="actor-relative-subjects">
-              {used.map((e) => lookup.byId.get(e)?.name ?? e).join(", ")}
+              {used.map((e) => `a ${spaced(lookup.byId.get(e)?.name ?? e)}`).join(", ")}
             </span>
           ) : (
             <>
               <Select id="actor-relative-entity" value={chosen} onChange={(e) => setChosen(e.target.value)} data-testid="actor-relative-entity">
-                <option value="">{L.pick}</option>
+                <option value="">{L.pickEntity}</option>
                 {lookup.ofKind("entity").map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.name}

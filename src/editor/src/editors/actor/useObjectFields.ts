@@ -21,7 +21,8 @@ export function useObjectFields(entities: readonly string[]): { fields: ObjectFi
     .filter((r) => (r.ends ?? []).some((e) => chainSet.has(e.entity)))
     .map((r) => r.id);
   const stereotypeIds = chain.some((id) => (lookup.byId.get(id)?.stereotypes ?? []).length > 0) ? lookup.ofKind("stereotype").map((s) => s.id) : [];
-  const held = useElements([...chain, ...relationIds, ...stereotypeIds]);
+  const scalarIds = lookup.ofKind("scalar-type").map((s) => s.id);
+  const held = useElements([...chain, ...relationIds, ...stereotypeIds, ...scalarIds]);
   const docs = held.byId;
   const doc = (id: string) => docs.get(id)?.json as Rec | undefined;
   const sources = {
