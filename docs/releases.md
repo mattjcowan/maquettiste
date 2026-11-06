@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.14.0 (unreleased)
+## 0.14.0 (2026-11-06)
 
 - **Actors: more types, membership, and actors taken from the object.** An actor may now be a group, an organization, or
   Automatic (the system itself, at most one per project). Any role, group or organization may have members, and a list that
