@@ -137,7 +137,8 @@ internal sealed partial class ChangePlanner
         {
             if (mode != DeleteResolution.DeleteDependents)
             {
-                var what = referrer.Element is Process && holder.StartsWith("/actions/", StringComparison.Ordinal) ? "the set" : "the check or guard";
+                var what = referrer.Element is Right || holder.StartsWith("/rights/", StringComparison.Ordinal) ? "the right"
+                    : referrer.Element is Process && holder.StartsWith("/actions/", StringComparison.Ordinal) ? "the set" : "the check or guard";
                 _cascadeRefused.Add((index, referrerId, reference,
                     $"an expression names {Label(target)}, and remove-references does not rewrite an expression; delete with delete-dependents to remove {what} that holds it."));
                 return;
@@ -162,6 +163,34 @@ internal sealed partial class ChangePlanner
 
             MarkCascadeDeleted(index, referrerId, "needs " + Label(target), mode);
             return;
+        }
+
+        // A right's actors, states and ends, and a use's named right (rights-design.md section 8), in either resolution: the entry is dropped
+        // from its list, but the last one left takes the right with it, since an empty list would widen the right to everyone, every state or
+        // the whole object; an inline right goes from its lifecycle's rights, a named right is deleted, and a use goes with its named right.
+        // An actor in except is cleared as any reference is below, and the right stays.
+        if (RightPart(referrer.Element, reference.JsonPointer) is { } rightPart)
+        {
+            var whole = rightPart.List is not { } list || Remaining(referrer.Json, list, ops) <= 1;
+            if (whole && rightPart.Entry.Length == 0)
+            {
+                MarkCascadeDeleted(index, referrerId, "names no other " + Noun(rightPart.List![1..]) + " than " + Label(target), mode);
+                return;
+            }
+
+            var part = whole ? rightPart.Entry : reference.JsonPointer;
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
+                {
+                    if (pointer.Length > 0 && (pointer == part || IsUnder(pointer, part)))
+                        _cascadeQueue.Enqueue((index, subId, mode));
+                }
+
+                return;
+            }
         }
 
         // Links to a member of a deleted stereotype (next-phase-2-design.md sections 3.1 and 4.1): a table's or an operation's redefinition
@@ -825,6 +854,39 @@ internal sealed partial class ChangePlanner
         return readable;
     }
 
+    /// <summary>
+    /// Where a reference sits in a right (rights-design.md section 8): <c>List</c> is the actors, states or ends list it is an item of
+    /// (<c>/rights/0/actors</c> in a lifecycle, <c>/actors</c> in a named right), or <see langword="null"/> for a use's <c>right</c>; <c>Entry</c>
+    /// is the lifecycle's entry (<c>/rights/0</c>), or <c>""</c> for the named right itself. <see langword="null"/> for any other pointer,
+    /// <c>except</c> included.
+    /// </summary>
+    private static (string? List, string Entry)? RightPart(Element element, string pointer)
+    {
+        if (!JsonPointer.TryParse(pointer, out var segments))
+            return null;
+        if (element is Process && segments.Length >= 3 && segments[0] == "rights" && JsonPointer.TryIndex(segments[1], out _))
+        {
+            var entry = JsonPointer.Build(segments[..2]);
+            if (segments.Length == 3 && segments[2] == "right")
+                return (null, entry);
+            if (segments.Length == 4 && segments[2] is "actors" or "states" or "ends" && JsonPointer.TryIndex(segments[3], out _))
+                return (JsonPointer.Build(segments[..3]), entry);
+        }
+
+        if (element is Right && segments.Length == 2 && segments[0] is "actors" or "ends" && JsonPointer.TryIndex(segments[1], out _))
+            return ("/" + segments[0], "");
+        return null;
+    }
+
+    /// <summary>The items a list holds once the planned edits that drop one of its items are applied.</summary>
+    private static int Remaining(JsonElement json, string list, IReadOnlyList<CascadeOp> ops)
+    {
+        if (!JsonPointer.TryGet(json, list, out var items) || items.ValueKind != JsonValueKind.Array)
+            return 0;
+        var dropped = ops.Select(o => o.Pointer).Where(p => IsUnder(p, list) && p.IndexOf('/', list.Length + 1) < 0).Distinct(StringComparer.Ordinal).Count();
+        return items.GetArrayLength() - dropped;
+    }
+
     /// <summary>Applies the edits to a copy of the referrer; null when it is valid after them, else why not.</summary>
     private string? TryOps(Working referrer, IReadOnlyList<CascadeOp> ops, bool narrow, out bool widening)
     {
@@ -885,7 +947,8 @@ internal sealed partial class ChangePlanner
     }
 
     /// <summary>
-    /// The part that holds the expression tree a pointer is inside: a check or guard (<c>/checks/0</c>, <c>/guards/2</c>), a derived value
+    /// The part that holds the expression tree a pointer is inside: a check, guard or inline right (<c>/checks/0</c>, <c>/guards/2</c>,
+    /// <c>/rights/1</c>, rights-design.md section 8), a derived value
     /// (<c>/attributes/1/derived</c>), an action's set (<c>/actions/0/sets/1</c>, its value, object-effects-design.md section 8), or
     /// <c>""</c> for a constraint's condition, which needs the whole element; <see langword="null"/> when the pointer is in no tree.
     /// </summary>
@@ -897,7 +960,7 @@ internal sealed partial class ChangePlanner
         {
             if (segments[k] == "condition" && k == 0)
                 return "";
-            if (segments[k] == "condition" && k >= 2 && segments[k - 2] is "checks" or "guards")
+            if (segments[k] == "condition" && k >= 2 && segments[k - 2] is "checks" or "guards" or "rights")
                 return JsonPointer.Build(segments[..k]);
             if (segments[k] == "value" && k >= 1 && segments[k - 1] == "derived")
                 return JsonPointer.Build(segments[..k]);
@@ -1176,7 +1239,7 @@ internal sealed partial class ChangePlanner
             return owner;
         if (!snapshot.TryGetEntry(id, out var entry))
             return id;
-        return $"{entry.Kind} {SubName(document.Json, entry.JsonPointer) ?? id} of {owner}";
+        return $"{PartNoun(entry.Kind)} {SubName(document.Json, entry.JsonPointer) ?? id} of {owner}";
     }
 
     /// <summary>The name of an element or sub-element alone, without its owner.</summary>
@@ -1209,13 +1272,19 @@ internal sealed partial class ChangePlanner
             return pointer;
         var last = segments[^1];
         var item = JsonPointer.TryIndex(last, out _) && segments.Length > 1;
-        var noun = subKind ?? Noun(item ? segments[^2] : last);
+        var noun = subKind is not null ? PartNoun(subKind) : Noun(item ? segments[^2] : last);
         var name = SubName(json, pointer) ?? (item ? fallback : null);
         return name is null ? noun : noun + " " + name;
     }
 
+    /// <summary>A part kind as a delete plan words it: an entry of a lifecycle's rights is a right (rights-design.md section 8).</summary>
+    private static string PartNoun(string kind) => kind == "process-right" ? "right" : kind;
+
     private static string Noun(string property) => property switch
     {
+        "rights" => "right",
+        "actors" => "actor",
+        "verbs" => "verb",
         "attributes" => "attribute",
         "redefines" => "redefinition",
         "ends" => "end",

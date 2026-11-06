@@ -8,8 +8,9 @@ namespace Maquettiste.Engine;
 /// <summary>
 /// The verb operations of a batch (verbs-design.md decision 9): <c>rename-verb</c> renames the project's own verb and rewrites every use, or
 /// merges it into another own verb or a built-in verb; <c>remove-verb</c> removes it and clears every use. Each expands into updates of the
-/// verb vocabulary and of the processes and operations that name the verb, all or nothing, as <c>retag</c> does. A verb that goes takes its
-/// translations with it, since the save removes its sub-element.
+/// verb vocabulary and of the processes, operations and named rights that name the verb, all or nothing, as <c>retag</c> does. A verb that
+/// goes takes its translations with it, since the save removes its sub-element. A right whose last verb is removed goes (rights-design.md
+/// section 8): an inline right leaves its lifecycle's rights, and a named right is deleted with its uses.
 /// </summary>
 public sealed partial class ModelStore
 {
@@ -19,7 +20,7 @@ public sealed partial class ModelStore
 
     /// <summary>
     /// Plans a verb operation: adds the updates to <paramref name="changes"/>; returns why it is refused, or <see langword="null"/>. Uses are
-    /// found by key in every event, transition and operation. <c>rename-verb</c> and <c>remove-verb</c> of an own verb whose key a built-in
+    /// found by key in every event, transition, operation and right. <c>rename-verb</c> and <c>remove-verb</c> of an own verb whose key a built-in
     /// verb has (MQ9702) leave the uses, which name the built-in verb: they write only the vocabulary.
     /// </summary>
     private string? VerbOperation(ModelSnapshot snapshot, BatchOperation o, List<PlannedChange> changes)
@@ -75,9 +76,38 @@ public sealed partial class ModelStore
                 holder["verb"] = to;
         }
 
+        // A right's verbs (rights-design.md section 8): the key is renamed in place, or dropped when the list already names the new key; on
+        // a remove it is dropped. Whether the list keeps a verb.
+        bool RewriteList(JsonObject holder)
+        {
+            if (holder["verbs"] is not JsonArray verbs)
+                return true;
+            for (var i = verbs.Count - 1; i >= 0; i--)
+            {
+                if (verbs[i] is not JsonValue value || !value.TryGetValue<string>(out var named) || !string.Equals(named, key, StringComparison.Ordinal))
+                    continue;
+                if (to is null || verbs.Any(v => v is JsonValue other && other.TryGetValue<string>(out var listed) && string.Equals(listed, to, StringComparison.Ordinal)))
+                    verbs.RemoveAt(i);
+                else
+                    verbs[i] = to;
+            }
+
+            return verbs.Count > 0;
+        }
+
         // An own verb that shadows a built-in key (MQ9702) has no uses: they name the built-in verb, so a rename or a remove leaves them, and
         // adopting the built-in (to the same key) writes only the vocabulary. A write that would change nothing is skipped.
         var rewriteUses = !BuiltInVerbs.IsBuiltIn(key) && !string.Equals(to, key, StringComparison.Ordinal);
+        // The named rights a remove leaves with no verb: each is deleted, and its uses leave their lifecycles' rights.
+        var goneRights = new SortedSet<string>(StringComparer.Ordinal);
+        if (rewriteUses && to is null)
+        {
+            foreach (var named in snapshot.All<Right>())
+            {
+                if (named.Verbs.Count > 0 && named.Verbs.All(v => string.Equals(v, key, StringComparison.Ordinal)))
+                    goneRights.Add(named.Id);
+            }
+        }
         foreach (var document in snapshot.Documents)
         {
             if (!rewriteUses || !ReferenceEquals(snapshot.GetDocument(document.Element.Id), document))
@@ -97,9 +127,23 @@ public sealed partial class ModelStore
                             Rewrite(t);
                     }
 
+                    // From the last entry, so a removed one leaves the indexes of those before it.
+                    for (var i = process.Rights.Count - 1; i >= 0; i--)
+                    {
+                        var entry = process.Rights[i];
+                        var useGoes = entry.Right is { } used && goneRights.Contains(used);
+                        if (!useGoes && !entry.Verbs.Contains(key, StringComparer.Ordinal))
+                            continue;
+                        if (Working(document)["rights"] is JsonArray rights && rights[i] is JsonObject r && (useGoes || !RewriteList(r)))
+                            rights.RemoveAt(i);
+                    }
+
                     break;
                 case Operation operation when string.Equals(operation.Verb, key, StringComparison.Ordinal):
                     Rewrite(Working(document));
+                    break;
+                case Right named when !goneRights.Contains(named.Id) && named.Verbs.Contains(key, StringComparer.Ordinal):
+                    RewriteList(Working(document));
                     break;
             }
         }
@@ -118,6 +162,13 @@ public sealed partial class ModelStore
                 return failure.Diagnostics.FirstOrDefault()?.Message ?? $"The rewritten '{id}' is not valid.";
             var expected = o.ExpectedHashes is { } read ? read.GetValueOrDefault(id) ?? "unread" : hash;
             changes.Add(new PlannedChange(BatchOp.Update, id, expected, parsed, DeleteResolution.Refuse));
+        }
+
+        foreach (var id in goneRights)
+        {
+            var hash = snapshot.GetDocument(id)!.Hash;
+            var expected = o.ExpectedHashes is { } read ? read.GetValueOrDefault(id) ?? "unread" : hash;
+            changes.Add(new PlannedChange(BatchOp.Delete, id, expected, null, DeleteResolution.Refuse));
         }
 
         return null;

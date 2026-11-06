@@ -915,6 +915,9 @@ public sealed class LocalizationIndex
             return null;
         if (!Json.JsonPointer.TryGet(document.Json, entry.JsonPointer, out var node) || node.ValueKind != JsonValueKind.Object)
             return null;
+        // A use of a named right says nothing of its own: the named right holds the texts (rights-design.md decision 7).
+        if (entry.Kind == "process-right" && node.TryGetProperty("right", out _))
+            return null;
         if (ProcessNodeKinds.Contains(entry.Kind) || OperationNodeKinds.Contains(entry.Kind))
             return ProcessNode(entry, scope, node);
         var name = String(node, "name") ?? String(node, "role");
@@ -975,9 +978,10 @@ public sealed class LocalizationIndex
         return texts.ToImmutable();
     }
 
-    /// <summary>The sub-elements of processes and scenarios (phase-3-design.md section 2.6).</summary>
+    /// <summary>The sub-elements of processes and scenarios (phase-3-design.md section 2.6), and a lifecycle's inline rights (rights-design.md
+    /// section 8).</summary>
     private static readonly FrozenSet<string> ProcessNodeKinds =
-        FrozenSet.Create(StringComparer.Ordinal, "state", "transition", "event", "guard", "action", "invoke", "gate", "meaning", "step");
+        FrozenSet.Create(StringComparer.Ordinal, "state", "transition", "event", "guard", "action", "invoke", "gate", "meaning", "step", "process-right");
 
     /// <summary>The sub-elements of operations (next-phase-2-design.md section 4.1): input and returns members, outcomes and own
     /// errors, and a stereotype's errors, in the stereotype's shard. Each localizes its display name and description, as a process
