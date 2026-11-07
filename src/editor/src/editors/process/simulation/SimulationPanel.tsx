@@ -164,6 +164,18 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
   const setContext = useSetContext(process);
   const subjectAttribute = (attribute: string) =>
     [...castLabels.values()].find((m) => m.has(attribute))?.get(attribute) ?? setContext.names.name(attribute) ?? attribute;
+  // The attributes a right names, by the id a refusal carries (a use of a named right says its own).
+  const rightAttributes = (right: string): string[] => {
+    const own = (process.rights ?? []).find((r) => r.id === right || r.right === right);
+    const doc = (own?.right ? namedRights.get(own.right)?.json : own) as { attributes?: unknown } | undefined;
+    return Array.isArray(doc?.attributes) ? doc.attributes.filter((a): a is string => typeof a === "string") : [];
+  };
+  // What Do... can name for read and modify: the subject's attributes (a modify sets the value the subject holds). With no subject
+  // object in the cast, the process's own subjects name them, as they do for sets.
+  const subjectObject = cast.objects.find((o) => o.id === cast.subject);
+  const doAttributes = subjectObject
+    ? [...(castLabels.get(subjectObject.entity) ?? new Map<string, string>())].map(([value, label]) => ({ value, label }))
+    : setContext.choices.map((a) => ({ value: a.id, label: a.name }));
   useEffect(() => {
     let active = true;
     const wanted = castEntities ? castEntities.split(",") : [];
@@ -324,7 +336,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
       aria-label={L.panelOf(process.name)}
       data-testid="simulation-panel"
       data-busy={busy ? "true" : "false"}
-      className={cn("flex shrink-0 flex-col border-t border-default bg-surface text-12 outline-none", collapsed ? "h-auto" : "h-[45%] min-h-40")}
+      className={cn("flex shrink-0 flex-col border-t border-default bg-surface text-12 outline-none", collapsed ? "h-auto" : "h-[45%] min-h-72")}
       onKeyDown={onPanelKey}
     >
       <div className="flex h-[var(--mq-row-h)] shrink-0 items-center gap-2 border-b border-default px-1.5" data-testid="simulation-toolbar">
@@ -423,7 +435,19 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
                   participants={participants}
                   actors={allActors}
                   disabled={!result || !live || !!result.final || !!replay}
-                  onDo={(verb, who) => update((s) => addInput(s, { input: "verb", verb, ...who }))}
+                  attributes={doAttributes}
+                  onDo={(verb, who, attribute) =>
+                    update((s) =>
+                      addInput(s, {
+                        input: "verb",
+                        verb,
+                        ...who,
+                        // Read names the attribute; modify sets it to the value the subject holds.
+                        ...(attribute && verb === "read" ? { attributes: [attribute] } : {}),
+                        ...(attribute && verb === "modify" ? { values: { [attribute]: subjectObject?.values?.[attribute] ?? null } } : {}),
+                      }),
+                    )
+                  }
                 />
               ) : undefined,
             )}
@@ -456,9 +480,13 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
             {section(
               "configuration",
               L.configuration,
-              <ConfigurationSection configuration={entry?.configuration ?? []} final={!!entry?.final} names={names} />,
+              <ConfigurationSection configuration={entry?.configuration ?? []} final={!!entry?.final} frozen={!!entry?.frozen} names={names} />,
             )}
-            {section("lastStep", L.lastStep, <LastStepSection entry={entry} names={names} subjectAttribute={subjectAttribute} onOpen={openRefuser} />)}
+            {section(
+              "lastStep",
+              L.lastStep,
+              <LastStepSection entry={entry} names={names} subjectAttribute={subjectAttribute} rightAttributes={rightAttributes} onOpen={openRefuser} />,
+            )}
           </div>
           <div className="min-h-0 overflow-auto">
             {replay
@@ -549,18 +577,20 @@ function DoMenu({
   participants,
   actors,
   disabled,
+  attributes,
   onDo,
 }: {
   participants: readonly ParticipantDoc[];
   actors: readonly { id: string; name: string }[];
   disabled: boolean;
-  onDo: (verb: string, who: { participant?: string; actor?: string }) => void;
+  attributes: readonly { value: string; label: string }[];
+  onDo: (verb: string, who: { participant?: string; actor?: string }, attribute: string) => void;
 }) {
   const verbs = useVerbs();
   const [who, setWho] = useState("");
+  const [attribute, setAttribute] = useState("");
   const groups = verbGroups("right", verbs.own, verbs.hidden)
     .filter((g) => g.id !== "move" && g.id !== "signature" && g.id !== "task")
-    .map((g) => ({ ...g, options: g.options.filter((o) => o.key !== "freeze" && o.key !== "thaw") }))
     .filter((g) => g.options.length);
   const pick = (): { participant?: string; actor?: string } =>
     who.startsWith("p:") ? { participant: who.slice(2) } : who.startsWith("a:") ? { actor: who.slice(2) } : {};
@@ -579,6 +609,23 @@ function DoMenu({
           </option>
         ))}
       </Select>
+      {attributes.length ? (
+        <Select
+          aria-label={RL.doAttribute}
+          title={RL.doAttributeTip}
+          className={cn(FIELD, "w-24")}
+          value={attribute}
+          onChange={(e) => setAttribute(e.target.value)}
+          data-testid="do-attribute"
+        >
+          <option value="">{RL.doAttributeNone}</option>
+          {attributes.map((a) => (
+            <option key={a.value} value={a.value}>
+              {a.label}
+            </option>
+          ))}
+        </Select>
+      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="secondary" size="sm" className={SMALL} disabled={disabled} title={RL.doMenuTip} data-testid="do-menu">
@@ -590,7 +637,11 @@ function DoMenu({
             <div key={g.id}>
               <DropdownMenuLabel>{g.label}</DropdownMenuLabel>
               {g.options.map((o) => (
-                <DropdownMenuItem key={o.key} onSelect={() => onDo(o.key, pick())} data-testid={`do-${o.key}`}>
+                <DropdownMenuItem
+                  key={o.key}
+                  onSelect={() => onDo(o.key, pick(), o.key === "read" || o.key === "modify" ? attribute : "")}
+                  data-testid={`do-${o.key}`}
+                >
                   {o.label}
                 </DropdownMenuItem>
               ))}
@@ -1127,18 +1178,23 @@ function PendingSection({
   );
 }
 
-function ConfigurationSection({ configuration, final, names }: { configuration: readonly string[]; final: boolean; names: Names }) {
+function ConfigurationSection({ configuration, final, frozen, names }: { configuration: readonly string[]; final: boolean; frozen: boolean; names: Names }) {
   const rows = configurationRows(configuration, names);
   if (!rows.length) return <Note>{L.noConfiguration}</Note>;
   return (
     <ul aria-label={L.configuration} data-final={final ? "true" : "false"}>
-      {rows.map((r) => (
+      {rows.map((r, i) => (
         <li key={r.id} className={ROW} data-testid="configuration-row" data-state={r.id}>
           <span className="size-2 shrink-0 rounded-full bg-accent" aria-hidden />
           <span className="truncate" title={r.path}>
             {r.path}
           </span>
           {final ? <Badge tone="success">{L.final}</Badge> : null}
+          {frozen && i === 0 ? (
+            <Badge tone="warning" title={RL.frozenBadgeTip} data-testid="frozen-badge">
+              {RL.frozenBadge}
+            </Badge>
+          ) : null}
         </li>
       ))}
     </ul>
@@ -1149,15 +1205,17 @@ function LastStepSection({
   entry,
   names,
   subjectAttribute,
+  rightAttributes,
   onOpen,
 }: {
   entry: ReturnType<typeof shownEntry>;
   names: Names;
   subjectAttribute: (id: string) => string;
+  rightAttributes: (right: string) => string[];
   onOpen: (id: string) => void;
 }) {
   if (!entry || (entry.index < 0 && !entry.microsteps.some((m) => m.actions.length) && !entry.diagnostics.length)) return <Note>{L.noLastStep}</Note>;
-  const lines = lastStepLines(entry, names, subjectAttribute);
+  const lines = lastStepLines(entry, names, subjectAttribute, rightAttributes);
   return (
     <ul aria-label={L.lastStep}>
       {entry.index < 0 ? (
@@ -1284,8 +1342,15 @@ function TraceSection({
                 {r.refusal}
               </Badge>
             ) : (
-              <span className="max-w-[45%] truncate text-11 text-secondary" title={r.states}>
-                {r.states}
+              <span className="flex max-w-[55%] items-center gap-1">
+                {r.froze ? (
+                  <Badge tone="accent" data-testid="trace-froze">
+                    {r.froze}
+                  </Badge>
+                ) : null}
+                <span className="truncate text-11 text-secondary" title={r.states}>
+                  {r.states}
+                </span>
               </span>
             )}
             {r.index >= 0 ? (
@@ -1326,6 +1391,11 @@ function ReplaySection({ replay, names, onSelect }: { replay: ReplayState; names
       <Note testid="replay-summary" wrap tone={replay.verification.passed ? "secondary" : "danger"}>
         {replaySummary(replay.verification, rows.length)}
       </Note>
+      {(replay.verification.warnings ?? []).map((w, i) => (
+        <Note key={i} testid="replay-warning" wrap tone="warning">
+          {L.replayWarning(w.message)}
+        </Note>
+      ))}
       <ul aria-label={L.replay}>
         {rows.map((r) => (
           <li

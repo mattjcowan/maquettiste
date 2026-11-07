@@ -138,15 +138,21 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
   with `accepted`, `states`, `state_paths`, `context`, and `trace`: what the engine's interpreter did with the step when it
   replayed the scenario, read once per scenario on first use, with `accepted`, `refusal`, `audit` (the audit records' outcomes),
   `state_paths` and `final`, null when the replay stopped before the step) and `outcome`. A verb step also has `verb`, `values`
-  (by attribute name), `end` and `object`, and an expectation of a refused step `refusal` and `refused_by` (the refusing element's id).
+  (by attribute name), `attributes` (the attributes a `read` step reads, empty when it names none), `end` and `object`, and an
+  expectation of a refused step `refusal` and `refused_by` (the refusing element's id). A scenario object, and each of its `links`,
+  has `frozen`: whether it starts frozen.
 - Rights (empty lists in a project that states none): a lifecycle's `rights` (its entries in file order, each a use with `right`,
   `states`, empty for every state, and `condition`, the right's condition typed for this lifecycle's subjects), `rights_default`
   (`allow` or `deny`) and `may_refuse` (the other lifecycles that govern a subject and could say no to an object, link or own verb
   the process's events or rights name: `lifecycle`, `verbs`, `by_events`). A right has `kind` (`right` for a named right,
   `process-right` for an inline one), `name`, `display_name`, `description` (why), `access` (`allow` or `deny`), `actors`
-  (`everyone` when empty), `except`, `verbs`, `ends`, `condition_text`, `named`, `package` and `uses`. `model.rights` lists the
+  (`everyone` when empty), `except`, `verbs`, `ends`, `attributes` (the attributes whose reading or modifying it speaks of,
+  empty for the object as a whole), `while_frozen` (it holds only while the object, or with `ends` the link, is frozen),
+  `condition_text`, `named`, `package` and `uses`. `model.rights` lists the
   named rights, used or not, and `model.rights_lifecycles` the lifecycles that state rights or a default, by name (empty in a project
   without rights, and keyed only on the rights naming key, so `model.rights_lifecycles.size > 0` asks whether the project uses rights).
+  `model.freezing.used` says whether the project uses freezing (an event, a transition or a right names `freeze` or `thaw`, or a right has
+  `while_frozen`); it keys only on the freezing naming key, whose hash never changes in a project that doesn't freeze.
 - `schema_diff.<database>` when the pack sets `"usesSchemaDiff": true`: `from_revision`, `to_revision`, `is_empty` and ordered
   `tables` (`kind` added/renamed/altered/dropped, `columns`, constraint and index changes).
 - Definitions: `model.stereotypes` (one per key, by key: `key`, `name`, `applies_to`, the `attributes` it adds,

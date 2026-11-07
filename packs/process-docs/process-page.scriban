@@ -171,11 +171,13 @@ The audit record, one per signature attempt and per outcome of the gate:
 {{ p.rights_default == "deny" ? "Anything not stated here is denied." : "Anything not stated here is allowed." }} Each lifecycle that governs an
 object answers on its own, and any no wins.
 {{- if p.rights.size > 0 }}
+{{- with_attributes = false }}{{ with_frozen = false }}
+{{- for u in p.rights }}{{ if u.right.attributes.size > 0 }}{{ with_attributes = true }}{{ end }}{{ if u.right.while_frozen }}{{ with_frozen = true }}{{ end }}{{ end }}
 
-| Right | Allows or denies | Who | Except | Does | In states | When | Why |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+| Right | Allows or denies | Who | Except | Does |{{ if with_attributes }} Attributes |{{ end }} In states |{{ if with_frozen }} While frozen |{{ end }} When | Why |
+| --- | --- | --- | --- | --- |{{ if with_attributes }} --- |{{ end }} --- |{{ if with_frozen }} --- |{{ end }} --- | --- |
 {{- for u in p.rights }}{{ r = u.right }}
-| {{ md_code r.name }}{{ if r.named }} ([named](../rights.md)){{ end }} | {{ r.access == "deny" ? "denies" : "allows" }} | {{ right_who(r, "../") }} | {{ actor_links(r.except, "../") }} | {{ right_does(r) }} | {{ u.states.size == 0 ? "all states" : code_paths(u.states) }} | {{ r.condition_text ? (md_code r.condition_text) : "" }} | {{ md_inline(r.description) }} |
+| {{ md_code r.name }}{{ if r.named }} ([named](../rights.md)){{ end }} | {{ r.access == "deny" ? "denies" : "allows" }} | {{ right_who(r, "../") }} | {{ actor_links(r.except, "../") }} | {{ right_does(r) }} |{{ if with_attributes }} {{ right_attributes(r) }} |{{ end }} {{ u.states.size == 0 ? "all states" : code_paths(u.states) }} |{{ if with_frozen }} {{ r.while_frozen ? "yes" : "" }} |{{ end }} {{ r.condition_text ? (md_code r.condition_text) : "" }} | {{ md_inline(r.description) }} |
 {{- end }}
 {{- end }}
 {{- if p.access_grid.size > 0 }}

@@ -208,6 +208,7 @@ internal sealed partial class ResolveRun
             Scenarios = new RList<RScenario>(_scenarioOrder, [ScenarioKind]),
             Rights = new RList<RRight>(_rightOrder, [RightKind]),
             RightsLifecycles = new RList<RProcess>(_rightsLifecycles, [RightsNaming.Key]),
+            Freezing = RFreezing.Of(Model),
             Operations = new RList<ROperation>(_operationOrder, [OperationKind]),
             CustomElements = new RList<RCustom>(_customOrder, [CustomKind]),
             Constraints = new RList<RConstraint>(_constraintOrder, ["k:constraint"]),

@@ -30,7 +30,9 @@ export function WhoCanDo({ pc, named }: { pc: ProcessContext; named: ReadonlyMap
   const verbs = useVerbs();
   const hash = useElement(pc.id).data?.hash;
   const lookup = indexLookup(useIndex().data);
-  const answer = useQuery({ queryKey: ["rights", pc.id, hash], queryFn: ({ signal }) => getRights(pc.id, signal), staleTime: 5_000 });
+  // The Frozen switch asks for the answers of a frozen object (decisions 17 and 18).
+  const [frozen, setFrozen] = useState(false);
+  const answer = useQuery({ queryKey: ["rights", pc.id, hash, frozen], queryFn: ({ signal }) => getRights(pc.id, signal, frozen), staleTime: 5_000 });
   const rows = answer.data?.rows ?? [];
   const states = rightStateOptions(process);
   const stateName = new Map(states.map((s) => [s.value, s.label]));
@@ -101,6 +103,10 @@ export function WhoCanDo({ pc, named }: { pc: ProcessContext; named: ReadonlyMap
             </Select>
           </Field>
         ) : null}
+        <label className="flex h-6 items-center gap-1 text-12" title={L.whoFrozenTip}>
+          <input type="checkbox" checked={frozen} onChange={(e) => (setFrozen(e.target.checked), setCellKey(null))} data-testid="who-frozen" />
+          {L.whoFrozenSwitch}
+        </label>
         <p className="pb-1 text-11 text-secondary">{L.whoSaved}</p>
       </div>
       <div className="mq-scroll overflow-auto">
@@ -171,7 +177,7 @@ export function WhoCanDo({ pc, named }: { pc: ProcessContext; named: ReadonlyMap
             </p>
           ))}
           {cell.grey ? <p className="text-secondary">{L.whoByDefault}</p> : null}
-          {!why.length ? <p className="text-secondary">{L.whoNothing}</p> : null}
+          {!why.length ? <p className="text-secondary">{frozen && cell.answer === "denied" ? L.whoFrozenReason : L.whoNothing}</p> : null}
           {why.length ? (
             <p className="flex flex-wrap items-center gap-1">
               <span className="text-secondary">{cell.by.length ? L.whoDecidedBy : L.whoDependsOn}:</span>

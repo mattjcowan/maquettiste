@@ -2579,7 +2579,7 @@ A **right** says who may do which verbs to the object while it is in which state
 **Rights** tab. Rights are optional. A project that states none keeps its files, output, findings and tool answers.
 
 Only lifecycles hold rights. An orchestration or a library with `rights` or `rightsDefault` is MQ9901. Rights on types with
-no lifecycle are not available.
+no lifecycle are not available. Freezing and rights on attributes are described below.
 
 **The default.** At the top of the Rights tab, **When nothing is said** sets what the lifecycle answers when none of its rights
 speaks: **Allowed** (the usual choice, and what a lifecycle without the key does) or **Denied**. In the file it is
@@ -2596,6 +2596,8 @@ speaks: **Allowed** (the usual choice, and what a lifecycle without the key does
 | **Does** | `verbs` | The verbs it speaks of, at least one. Built-in or your own |
 | **In states** | `states` | The states where it holds. Empty means every state. A compound state counts when any state inside it is active |
 | **Links** | `ends` | Only the links through these relation ends. The column shows only when a right uses it |
+| **Attributes** | `attributes` | Only reading or changing these attributes, with `read` and `modify`. Empty means every attribute. The column shows only when a right uses it |
+| **While frozen** | `whileFrozen` | The right holds only while the object (with **Links**, the link) is frozen |
 | **When** | `condition` | It holds only when this is true, for example `subject.classification = 'secret'` |
 | **Why** | `description` | Shown with every refusal |
 
@@ -2650,6 +2652,8 @@ Each answers on its own so that one lifecycle's allow cannot cancel another life
 
 **The order of checks.** The first check that fails names the refusal, so two scenarios cannot disagree about the reason:
 
+0. Freezing, before everything else: a frozen object or link refuses `modify`, `connect`, `disconnect` and `delete`. The refusal is `frozen`.
+   See Freezing below.
 1. The closed lists: an event's or task's actors. The refusal is `actor`, by the event or invoke.
 2. The denies of every answering lifecycle, the acting one first, in file order, then the others by name. The refusal is `right`,
    by the right (inline, or the named right).
@@ -2665,11 +2669,46 @@ the guard or the gate. A deny on the gated event's verb also stops signing, sinc
 **In a run, a right applies to a participant who satisfies any of its actors and none of its `except`,** not only the actor
 the step acts as. A deny on Owner applies to Bea even when she acts as Author. An `except` that names Owner leaves Bea out.
 
+**Freezing.** An object or a link is frozen or it is not. It starts thawed.
+
+- **Freeze and thaw take effect.** An accepted `freeze` freezes the subject, and an accepted `thaw` thaws it. It makes no difference
+  whether a verb step does it or an event that names the verb. A `freeze` or `thaw` step may also name a link (**Link end** and
+  **Linked object**), and then it freezes or thaws that link. Freezing what is frozen, or thawing what is not, changes nothing and adds a note.
+- **Naming `freeze` is the opt-in.** There is no separate switch. Since 0.14.0 an event may name `freeze`, and did nothing in a run.
+  Now it freezes the subject in simulation and replay.
+- **While frozen, `modify`, `connect`, `disconnect` and `delete` are refused before any right,** and no allow lifts it. The refusal is
+  `frozen`, with no `refusedBy`. A frozen object cannot be modified or deleted, and its links cannot be added or removed. A frozen
+  link cannot be disconnected or have its attributes modified. The objects at its ends are not frozen by it.
+- **Nothing else is stopped.** Moves are not stopped, so a frozen released item may still become obsolete. Nor are `revise`,
+  `change-owner`, `change-type`, `change-lifecycle`, `lock`, `unlock`, `copy`, `read` and your own verbs. A move's sets on a frozen
+  object still apply, and the trace adds a note. Revising is how a frozen item changes.
+- **`whileFrozen` rights.** To stop more while frozen, add a right with **While frozen** on. It holds only while the object is frozen
+  (with **Links**, while the link is). "No change of owner while frozen" is one deny on `change-owner` with **While frozen**. A deny
+  on a move's verb with **While frozen** stops that move.
+- **Scenarios start frozen.** In a scenario's objects grid, **Frozen** starts the subject frozen. **Frozen links** starts some of the
+  subject's links frozen. Only the subject's flags are read. In the file they are `frozen: true` on the object and on a link.
+- **Warning MQ9309.** A step is refused as frozen because an earlier step froze the subject or the link, and the step did not expect that refusal. The
+  warning names the step that froze it. Thaw in between, or expect the refusal. `verify_scenarios` gives it under the scenario's
+  `warnings`, and the scenario still passes.
+- **Where "frozen" lives is your system's business.** The model holds no frozen field. Generated `csharp-dapper` code asks one host
+  interface, `IFrozenState`, and writes your stub of it once, `Dispatch/FrozenState.cs` (see the pack's README, the section on freezing).
+  Until you write it, it answers "not frozen", so nothing is refused for freezing and the project still builds.
+
+**Rights on attributes.** A right with **Attributes** speaks of reading or changing only those attributes. It works only with `read`
+and `modify`, and not beside **Links** (MQ9903).
+
+- **Each attribute is checked on its own,** by the usual rule. The rights that apply to attribute A are those that name A and those that
+  name no attributes. A modify step that changes several attributes is refused when any one is refused. An allow that names only
+  `salary` says nothing about any other attribute.
+- **Unknown attributes fail closed.** An event that names `modify`, or a `read` or `modify` step with no attributes, does not say
+  which attributes it touches. A deny that names attributes still holds, and an allow that names attributes grants nothing.
+- A right with no attributes is checked once, as before, so a project whose rights name none answers as it did.
+
 **Who can do what.** The Rights tab has two views, **Rights** and **Who can do what**. The second shows one state at a time, with
 actors as rows and verbs as columns. Each cell says **Allowed**, **Denied** or **Depends**, greyed when the lifecycle's default
 decides it. Click a cell to list what decides it, each as a link. **Depends** means a condition or an actor from the object
 decides, or that another lifecycle may also refuse, shown as "May also be refused by". With subjects that differ, an **Entity**
-picker appears. The view reads the saved lifecycle, so it updates when you save. The MCP tool `get_rights` and
+picker appears. A `read` or `modify` cell that a right with attributes would change says **Depends** and names that right. The **Frozen** switch shows the answers for a frozen object: changing it, deleting it and connecting or disconnecting its links are Denied, with the reason "Freezing refuses it before any right.", and a frozen object shows a **Frozen** badge. The view reads the saved lifecycle, so it updates when you save. The MCP tool `get_rights` and
 `maquettiste process rights <lifecycle>` give the same rows (`--state`, `--actor`, `--verb` and `--entity` narrow them). Each
 row has the state, the actor (null for everyone else), the verb, the answer (`allowed`, `denied` or `depends`), whether the default
 decided it, the ids that decide it (`by`) and the other lifecycles involved (`dependsOn`). It reads the model and never resolves all of it.
@@ -2678,12 +2717,12 @@ decided it, the ids that decide it (`by`) and the other lifecycles involved (`de
 **Verb**. Its keys: `verb`, `values` (for `modify` on the subject, **Set values**, attribute id to value, such as `amount=5`), and
 `end` and `object` for a link (**Link end** and **Linked object**). The step acts as its actor, or as its participant. Object verbs,
 link verbs and your own verbs may be steps. Moves, signatures and task completion keep their own steps. `override`,
-`set-state`, `reject`, `ignore`, `withdraw`, `delegate`, `route` and `claim` are not steps yet, and nor are `freeze` and `thaw` (MQ9305).
-A step that does not fit is MQ9305.
+`set-state`, `reject`, `ignore`, `withdraw`, `delegate`, `route` and `claim` are not steps yet (MQ9305). `freeze` and `thaw` are steps.
+A step that does not fit is MQ9305. A `read` step may also name **Attributes**, the attributes it reads.
 
 - An accepted `modify` applies its values to the object, and later guards and sets read them. They show in `valuesChanged` and in
   the step's expected values. An accepted `delete` removes the object and the chart stops: later steps are refused as
-  `no-transition`. The other verbs are checked and recorded only, and a note says the run did not apply them.
+  `no-transition`. An accepted `freeze` or `thaw` changes the frozen flag. The other verbs are checked and recorded only, and a note says the run did not apply them.
 - Other lifecycles answer too, in the states the scenario gives their objects (see "Object states and expected values"). A scenario
   with no objects asks the lifecycles that govern every subject of its process, each in its initial state.
 
@@ -2756,9 +2795,10 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9302 | error | The active states after a step differ from what the step expects | **Update expectations from replay** |
 | MQ9303 | error | The context attributes a step changed differ from what the step expects | **Update expectations from replay** |
 | MQ9304 | error | Whether the process is final after the last step differs from the scenario's outcome | **Update expectations from replay** |
-| MQ9305 | error | A step whose fields do not fit: an unknown event, a time step without a duration, an invoke that is not pending, a payload value of the wrong type. With participants: a holding that is not a role, group or organization; a `within` or `object` that is not one of the scenario's objects; a participant's actor that is a role, group, organization or actor from the object; a step's participant that is not the scenario's; a step's actor its participant does not satisfy; an object's owner beside an owner field. With object states: an object's `states` that name a state of a lifecycle that cannot govern it, two states of one lifecycle that cannot be active together, the state of the process the scenario runs on its subject, or a state that disagrees with the bound value the object gives | |
+| MQ9305 | error | A step whose fields do not fit: an unknown event, a time step without a duration, an invoke that is not pending, a payload value of the wrong type. With participants: a holding that is not a role, group or organization; a `within` or `object` that is not one of the scenario's objects; a participant's actor that is a role, group, organization or actor from the object; a step's participant that is not the scenario's; a step's actor its participant does not satisfy; an object's owner beside an owner field. With object states: an object's `states` that name a state of a lifecycle that cannot govern it, two states of one lifecycle that cannot be active together, the state of the process the scenario runs on its subject, or a state that disagrees with the bound value the object gives. With freezing: `attributes` beside a verb other than `read`, or `frozen` on a link of an object other than the subject | |
 | MQ9306 | warning | A guard without an expression is evaluated and the step has no assumption for it, so the replay stops there | |
 | MQ9307 | error | The values a step changed on the object differ from its `expect.values`, keyed by attribute name | **Update expectations from replay** |
+| MQ9309 | warning | A step is refused as frozen because an earlier step froze the subject or the link (an event that names `freeze`, or a `freeze` step), and it does not expect that refusal. Names the freezing step | **Update expectations from replay** |
 | MQ9308 | error | A refused step's `refusal` or `refusedBy` differs from the replay's: the first check that fails names both | **Update expectations from replay** |
 | MQ9401 | warning | Imported configuration with no place in the model, kept as opaque data and written back on export | |
 | MQ9402 | warning | An inline function in an imported configuration became a named stub (its text kept in the description, never run) | |
@@ -2785,7 +2825,7 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9803 | error | One action sets one attribute twice | **Remove the second set** |
 | MQ9901 | error | A rights entry that is both an inline right and a use, or neither (an inline right needs a name, an access and a verb); a use that names something other than a named right; or `rights` or `rightsDefault` on an orchestration or a library | **Remove the entry** |
 | MQ9902 | error | A right's states name something that is not a state of its lifecycle: another process's state, a history state or a choice state | **Remove the state** |
-| MQ9903 | error | A right's links are not ends every subject holds, or stand beside a verb that cannot act on a link (only `connect`, `disconnect`, `read`, `modify`, `freeze` and `thaw` can). For a named right, reported at the use | **Remove the entry** |
+| MQ9903 | error | A right's links are not ends every subject holds, or stand beside a verb that cannot act on a link (only `connect`, `disconnect`, `read`, `modify`, `freeze` and `thaw` can). Also attributes that not every subject holds, attributes beside a verb other than `read` and `modify`, or attributes beside links. For a named right, reported at the use | **Remove the entry** |
 | MQ9904 | warning | An allow right in a lifecycle that allows by default: it cannot change any answer | **Remove the right** |
 | MQ9905 | warning | Under a default of Denied, an event or human task no one can ever do: no actors, no gate signers and no allow right that names its verb; or an event with no verb, actors or signers | **Add an allow right** |
 | MQ9906 | warning | An Except entry that the same right's Who also names, so the right never applies to it | **Remove it from Except** |

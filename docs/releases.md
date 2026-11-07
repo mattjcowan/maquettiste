@@ -5,6 +5,32 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.16.0 (unreleased)
+
+- **Rights, part 2: freezing.** An object or a link is frozen or not. An accepted `freeze` freezes it and an accepted `thaw` thaws it, whether
+  a verb step does it or an event that names the verb. While frozen, `modify`, `connect`, `disconnect` and `delete` are refused before any
+  right, and no allow lifts that. A frozen link can't be disconnected or have its attributes modified. Moves, `revise` and the other verbs are
+  not stopped, and a move's sets on a frozen object apply, with a note. A right with **While frozen** (`whileFrozen`) holds only while the
+  object, or its link, is frozen, so a team can stop more. A scenario's subject and its links may start frozen (**Frozen** and **Frozen links**,
+  `frozen: true`). The refusal is `frozen`.
+- **Rights, part 2: rights on attributes.** A right may name `attributes`, with `read` and `modify`. Each attribute is checked on its own,
+  and one refused attribute refuses the step. An event or step that does not say which attributes it touches fails closed: a deny that names
+  attributes holds, and an allow that names attributes grants nothing. A `read` step may name `attributes`. In **Who can do what**, a cell
+  that such a right would change says Depends, and a **Frozen** switch shows the answers for a frozen object.
+- **Events that name `freeze` now freeze in runs.** An event that names the `freeze` verb (allowed since 0.14.0) now freezes the subject in
+  simulation and replay. Steps that then modify, connect, disconnect or delete it are refused. `verify_scenarios` names those steps in each
+  scenario's `warnings` (MQ9309). Naming `freeze` is the only opt-in: there is no separate switch.
+- **The `csharp-dapper` frozen state.** Generated code asks one host interface for "is it frozen", `IFrozenState`
+  (`Processes/Freezing.cs`), as it asks `ICallerHoldings` for held actors. The pack writes the team's stub once, `Dispatch/FrozenState.cs`.
+  It answers "not frozen" until the team writes it, so such a project keeps building, and nothing is refused for freezing until then.
+  Scenario tests register `ScenarioFrozen`, so a step refused as frozen is refused by the dispatcher. The pack's README, in its freezing
+  section, says more.
+- **New rules.** MQ9309 (warning) for the steps above. MQ9903 now also covers attributes that not every subject holds, attributes beside
+  a verb other than `read` and `modify`, and attributes beside links. MQ9305 now also covers `attributes` beside a verb other than `read`.
+- **The upgrade.** Teams upgrade together: new files use shapes an older engine cannot read (`whileFrozen`, `attributes` and `frozen`). The file
+  format version stays 1. The schema copies and the `maquettiste-modeling` skill change, so update the copies your repository holds. A project
+  with neither freezing nor attribute rights is unchanged.
+
 ## 0.15.0 (2026-11-06)
 
 - **Rights, part 1.** A lifecycle may list rights: who may do which verbs, in which states, under a condition. Each right allows or

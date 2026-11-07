@@ -132,7 +132,7 @@ internal static class ScenarioObjects
     /// <summary>
     /// Why a run's objects are bad, with the pointer of the first problem, or <see langword="null"/>: a value an object gives that is not
     /// an attribute of its entity or its bases, or of a stereotype they carry (stereotype-sets-design.md decision 7), or that does not fit
-    /// its attribute; a link through an end that does not lead from the
+    /// its attribute; a frozen link of an object other than the subject; a link through an end that does not lead from the
     /// object's entity (or a base) to the linked object's entity (or a base); or a subject whose entity the process does not govern (it, a
     /// base, or a stereotype it or a base carries is not listed; <see cref="SubjectCoverage.Governs"/>). An object, an end or a subject that is not in the model is left to MQ2001.
     /// </summary>
@@ -173,6 +173,13 @@ internal static class ScenarioObjects
             for (var k = 0; k < obj.Links.Count; k++)
             {
                 var link = obj.Links[k];
+                // Only the subject's links freeze until scenarios span objects (rights-design.md section 5).
+                if (link.Frozen && !string.Equals(obj.Id, subject, StringComparison.Ordinal))
+                {
+                    return ($"Object '{obj.Name}' has a frozen link, but only the subject's links can be frozen in a scenario; remove frozen, or link from the subject.",
+                        pointer + "/links/" + k.ToString(CultureInfo.InvariantCulture) + "/frozen");
+                }
+
                 if (!model.TryGetEntry(link.End, out var entry) || model.Get<Relation>(entry.OwnerId) is not { } relation
                     || relation.Ends.FirstOrDefault(e => string.Equals(e.Id, link.End, StringComparison.Ordinal)) is not { } end)
                     continue;

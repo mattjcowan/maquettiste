@@ -736,6 +736,13 @@ public sealed record ScenarioObject : IProcessNode
     [ElementRef(IndexKinds = ["state"])]
     public IReadOnlyList<string> States { get; init; } = [];
 
+    /// <summary>
+    /// Whether the object starts frozen (rights-design.md decision 16): <c>modify</c> and <c>delete</c> are refused, and so are
+    /// <c>connect</c> and <c>disconnect</c> on its links, until a <c>thaw</c>. Only the subject's is read. Left out of the JSON when false.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Frozen { get; init; }
+
     /// <summary>The objects this object links to, each through a relation end.</summary>
     public IReadOnlyList<ScenarioLink> Links { get; init; } = [];
 
@@ -809,6 +816,13 @@ public sealed record ScenarioLink
     /// <summary>The linked object.</summary>
     [ElementRef(IndexKinds = ["object"])]
     public required string Object { get; init; }
+
+    /// <summary>
+    /// Whether the link starts frozen (rights-design.md decision 16): it cannot be disconnected or have its attributes modified until a
+    /// <c>thaw</c>, and the objects at its ends are not frozen by it. Only on a link of the subject (MQ9305). Left out of the JSON when false.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Frozen { get; init; }
 }
 
 /// <summary>A scenario's starting point.</summary>
@@ -895,6 +909,14 @@ public sealed record ScenarioStep : IProcessNode
     [ElementRef(IndexKinds = ["attribute"])]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyDictionary<string, JsonElement>? Values { get; init; }
+
+    /// <summary>
+    /// For a <c>read</c> verb step on the subject: the attributes it reads (rights-design.md decision 25), each checked against the rights
+    /// that name attributes (decision 21). <see langword="null"/>, and left out of a trace's echo, when absent: the read is of the object.
+    /// </summary>
+    [ElementRef(IndexKinds = ["attribute"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Attributes { get; init; }
 
     /// <summary>For a verb step on a link: the subject's relation end the link goes through; <see langword="null"/> for the subject itself.</summary>
     [ElementRef(IndexKinds = ["end"])]

@@ -535,6 +535,10 @@ public sealed record ProcessRecord(string Id, string Kind, string Name, string? 
 /// <param name="Except">The ids of the actors an inline right does not apply to; left out for a use.</param>
 /// <param name="Verbs">An inline right's verb keys in file order; left out for a use.</param>
 /// <param name="Ends">The ids of the relation ends whose links an inline right speaks of; left out for a use.</param>
+/// <param name="Attributes">The ids of the attributes whose reading or modifying an inline right speaks of (rights-design.md decision 21); left out
+/// when it names none, and for a use.</param>
+/// <param name="WhileFrozen">Whether an inline right holds only while the object, or with <paramref name="Ends"/> the link, is frozen
+/// (rights-design.md decision 18): <see langword="true"/>, or left out.</param>
 public sealed record ProcessRightRecord(string Id, string Right, bool Named, IReadOnlyList<string> States,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? Condition = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Name = null,
@@ -544,7 +548,9 @@ public sealed record ProcessRightRecord(string Id, string Right, bool Named, IRe
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Actors = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Except = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Verbs = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Ends = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Ends = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Attributes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? WhileFrozen = null);
 
 /// <summary>A named right (rights-design.md decision 7), with what it says and the lifecycles that use it.</summary>
 /// <param name="Id">The id.</param>
@@ -566,10 +572,16 @@ public sealed record ProcessRightRecord(string Id, string Right, bool Named, IRe
 /// <param name="Stereotypes">The stereotype keys.</param>
 /// <param name="Properties">The custom properties.</param>
 /// <param name="Generation">The generation hints.</param>
+/// <param name="Attributes">The ids of the attributes whose reading or modifying it speaks of (rights-design.md decision 21); left out when it names
+/// none.</param>
+/// <param name="WhileFrozen">Whether it holds only while the object, or with <paramref name="Ends"/> the link, is frozen (rights-design.md decision
+/// 18): <see langword="true"/>, or left out.</param>
 public sealed record RightRecord(string Id, string Kind, string Name, string? Package, string Access, IReadOnlyList<string> Actors, IReadOnlyList<string> Except,
     IReadOnlyList<string> Verbs, IReadOnlyList<string> Ends, string? ConditionText, IReadOnlyList<string> Processes, string DisplayName, string PluralName,
     string? Description, IReadOnlyList<string> Tags, string? Category, IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties,
-    IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyDictionary<string, GenerationHints> Generation,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Attributes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? WhileFrozen = null);
 
 /// <summary>An entry of a process's <c>subjects</c> (lifecycle-design.md decision 5), or one subject a stereotype entry gives
 /// (stereotype-sets-design.md decision 12).</summary>
@@ -857,14 +869,18 @@ public sealed record HoldingRecord(string Id, string Actor, [property: JsonIgnor
 /// <param name="Owner">The id of the participant that owns the object (actors-design.md decision 16); left out when there is none.</param>
 /// <param name="States">The ids of the object's states in other lifecycles, as given (object-effects-design.md decision 10); left out when
 /// the file gives none.</param>
+/// <param name="Frozen">Whether the object starts frozen (rights-design.md decision 16): <see langword="true"/>, or left out.</param>
 public sealed record ScenarioObjectRecord(string Id, string Name, string Entity, IReadOnlyDictionary<string, object?> Values, IReadOnlyList<ScenarioLinkRecord> Links,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Owner = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? States = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? States = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Frozen = null);
 
 /// <summary>A link from a scenario object to another object of the scenario.</summary>
 /// <param name="End">The relation end's id.</param>
 /// <param name="Object">The linked object's id.</param>
-public sealed record ScenarioLinkRecord(string End, string Object);
+/// <param name="Frozen">Whether the link starts frozen (rights-design.md decision 16): <see langword="true"/>, or left out.</param>
+public sealed record ScenarioLinkRecord(string End, string Object,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Frozen = null);
 
 /// <summary>Where a scenario's run starts.</summary>
 /// <param name="Context">The starting context values.</param>
@@ -895,6 +911,8 @@ public sealed record ScenarioStartRecord(IReadOnlyDictionary<string, object?> Co
 /// <param name="Values">The values a modify verb step sets, by attribute name; left out when it gives none.</param>
 /// <param name="End">The id of the subject's relation end a verb step's link goes through; left out when it names none.</param>
 /// <param name="Object">The id of the scenario object at the other end of a verb step's link; left out when it names none.</param>
+/// <param name="Attributes">The ids of the attributes a read verb step reads (rights-design.md decision 25), as written; left out when it names
+/// none.</param>
 public sealed record StepRecord(string Id, int Index, string Input, string? Event, string? Invoke, string? After, long? AfterMs, long? AfterTicks, string? Actor,
     string? Signer, string? Meaning, string? Reason, IReadOnlyDictionary<string, object?> Payload, IReadOnlyDictionary<string, object?> Assume,
     ExpectationRecord? Expect, string? Description,
@@ -903,7 +921,8 @@ public sealed record StepRecord(string Id, int Index, string Input, string? Even
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, object?>? Values = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? End = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Object = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Object = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Attributes = null);
 
 /// <summary>What a step expects.</summary>
 /// <param name="Accepted">Whether the input is accepted.</param>
@@ -1579,7 +1598,8 @@ public static class ResolvedRecords
                 return new ProcessRightRecord(u.Id, r.Id, true, Ids(u.States), Expression(u.Condition));
             var entry = model.Source.Get<Model.Process>(u.Process.Id)?.Rights.FirstOrDefault(e => e.Id == u.Id);
             return new ProcessRightRecord(u.Id, r.Id, false, Ids(u.States), Expression(u.Condition), r.Name, entry?.DisplayName, r.Description, r.Access,
-                Ids(r.Actors), Ids(r.Except), [.. r.Verbs.Select(v => v.Key)], Ids(r.Ends));
+                Ids(r.Actors), Ids(r.Except), [.. r.Verbs.Select(v => v.Key)], Ids(r.Ends), r.Attributes.Count == 0 ? null : Ids(r.Attributes),
+                r.WhileFrozen ? true : null);
         }
 
         public RightRecord Right(RRight r)
@@ -1589,7 +1609,7 @@ public static class ResolvedRecords
                 r.ConditionText, [.. r.Uses.Select(u => u.Process.Id).Distinct(StringComparer.Ordinal)], r.DisplayName, r.PluralName, r.Description,
                 source?.Tags ?? [], source?.Category, source?.Stereotypes ?? [],
                 new SortedDictionary<string, object?>((source?.Properties ?? new Dictionary<string, System.Text.Json.JsonElement>()).ToDictionary(kv => kv.Key, kv => (object?)kv.Value), StringComparer.Ordinal),
-                source?.Generation ?? new Dictionary<string, GenerationHints>());
+                source?.Generation ?? new Dictionary<string, GenerationHints>(), r.Attributes.Count == 0 ? null : Ids(r.Attributes), r.WhileFrozen ? true : null);
         }
 
         public ActorRecord Actor(RActor a) => new(a.Id, "actor", a.Name, a.Package?.Id, a.Type, Ids(a.Processes), Ids(a.Events), Ids(a.Gates),
@@ -1602,10 +1622,12 @@ public static class ResolvedRecords
                 t.Reason, Plain(t.Payload), Plain(t.Assume),
                 t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context), x.Values.Count == 0 ? null : Plain(x.Values),
                     x.Refusal, x.RefusedBy) : null, t.Description,
-                t.Participant?.Id, t.Participant is null ? null : t.ActsAs?.Id, t.Verb?.Key, t.Values.Count == 0 ? null : Plain(t.Values), t.End?.Id, t.Object?.Id))],
+                t.Participant?.Id, t.Participant is null ? null : t.ActsAs?.Id, t.Verb?.Key, t.Values.Count == 0 ? null : Plain(t.Values), t.End?.Id, t.Object?.Id,
+                t.Attributes.Count == 0 ? null : Ids(t.Attributes)))],
             s.Outcome, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation,
             s.Objects.Count == 0 ? null : [.. s.Objects.Select(o => new ScenarioObjectRecord(o.Id, o.Name, o.Entity.Id, Plain(o.Values),
-                [.. o.Links.Select(l => new ScenarioLinkRecord(l.End.Id, l.Object.Id))], o.Owner?.Id, o.States.Count == 0 ? null : Ids(o.States)))],
+                [.. o.Links.Select(l => new ScenarioLinkRecord(l.End.Id, l.Object.Id, l.Frozen ? true : null))], o.Owner?.Id, o.States.Count == 0 ? null : Ids(o.States),
+                o.Frozen ? true : null))],
             s.Objects.Count == 0 ? null : s.Subject?.Id,
             s.Participants.Count == 0 ? null : [.. s.Participants.Select(p => new ParticipantRecord(p.Id, p.Name, p.Identity,
                 [.. p.Holds.Select(h => new HoldingRecord(h.Id, h.Actor.Id, h.Within?.Id))], p.DisplayName, p.Actor?.Id, p.Object?.Id))]);

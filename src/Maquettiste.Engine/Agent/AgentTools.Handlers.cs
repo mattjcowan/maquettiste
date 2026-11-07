@@ -195,6 +195,7 @@ public sealed partial class AgentTools
         {
             States = args.Strings("states") ?? [], Actors = args.Strings("actors") ?? [], Verbs = args.Strings("verbs") ?? [],
             Entity = args.String("entity") is { Length: > 0 } entity ? entity : null,
+            Frozen = args.Bool("frozen") ?? false,
         };
         var call = await _store.GetRightsAsync(matches[0].Id, filter, args.String("cursor"), args.Int("limit") ?? ModelPages.DefaultLimit, ct).ConfigureAwait(false);
         return call.Status switch

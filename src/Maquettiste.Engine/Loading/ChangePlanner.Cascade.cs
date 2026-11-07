@@ -165,9 +165,9 @@ internal sealed partial class ChangePlanner
             return;
         }
 
-        // A right's actors, states and ends, and a use's named right (rights-design.md section 8), in either resolution: the entry is dropped
-        // from its list, but the last one left takes the right with it, since an empty list would widen the right to everyone, every state or
-        // the whole object; an inline right goes from its lifecycle's rights, a named right is deleted, and a use goes with its named right.
+        // A right's actors, states, ends and attributes, and a use's named right (rights-design.md section 8), in either resolution: the entry
+        // is dropped from its list, but the last one left takes the right with it, since an empty list would widen the right to everyone, every
+        // state or the whole object; an inline right goes from its lifecycle's rights, a named right is deleted, and a use goes with its named right.
         // An actor in except is cleared as any reference is below, and the right stays.
         if (RightPart(referrer.Element, reference.JsonPointer) is { } rightPart)
         {
@@ -855,7 +855,7 @@ internal sealed partial class ChangePlanner
     }
 
     /// <summary>
-    /// Where a reference sits in a right (rights-design.md section 8): <c>List</c> is the actors, states or ends list it is an item of
+    /// Where a reference sits in a right (rights-design.md section 8): <c>List</c> is the actors, states, ends or attributes list it is an item of
     /// (<c>/rights/0/actors</c> in a lifecycle, <c>/actors</c> in a named right), or <see langword="null"/> for a use's <c>right</c>; <c>Entry</c>
     /// is the lifecycle's entry (<c>/rights/0</c>), or <c>""</c> for the named right itself. <see langword="null"/> for any other pointer,
     /// <c>except</c> included.
@@ -869,11 +869,11 @@ internal sealed partial class ChangePlanner
             var entry = JsonPointer.Build(segments[..2]);
             if (segments.Length == 3 && segments[2] == "right")
                 return (null, entry);
-            if (segments.Length == 4 && segments[2] is "actors" or "states" or "ends" && JsonPointer.TryIndex(segments[3], out _))
+            if (segments.Length == 4 && segments[2] is "actors" or "states" or "ends" or "attributes" && JsonPointer.TryIndex(segments[3], out _))
                 return (JsonPointer.Build(segments[..3]), entry);
         }
 
-        if (element is Right && segments.Length == 2 && segments[0] is "actors" or "ends" && JsonPointer.TryIndex(segments[1], out _))
+        if (element is Right && segments.Length == 2 && segments[0] is "actors" or "ends" or "attributes" && JsonPointer.TryIndex(segments[1], out _))
             return ("/" + segments[0], "");
         return null;
     }

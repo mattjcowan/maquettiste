@@ -16,6 +16,8 @@
     "except",
     "verbs",
     "ends",
+    "attributes",
+    "whileFrozen",
     "condition",
     "description",
     "rationale",
@@ -71,6 +73,14 @@
     "ends": {
       "$ref": "common.json#/$defs/rightBody/properties/ends",
       "default": []
+    },
+    "attributes": {
+      "$ref": "common.json#/$defs/rightBody/properties/attributes",
+      "default": []
+    },
+    "whileFrozen": {
+      "$ref": "common.json#/$defs/rightBody/properties/whileFrozen",
+      "default": false
     },
     "condition": {
       "description": "The right holds only when this is true. Its scope is what every subject of every lifecycle that uses the right holds under one id; it is typed at each use, where a failure is reported. With no use there is no scope, so text written for it stays text (MQ3108) until a lifecycle uses the right.",

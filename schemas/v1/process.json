@@ -294,6 +294,8 @@
         "except",
         "verbs",
         "ends",
+        "attributes",
+        "whileFrozen",
         "condition",
         "states",
         "description"
@@ -333,6 +335,14 @@
         "ends": {
           "$ref": "common.json#/$defs/rightBody/properties/ends",
           "default": []
+        },
+        "attributes": {
+          "$ref": "common.json#/$defs/rightBody/properties/attributes",
+          "default": []
+        },
+        "whileFrozen": {
+          "$ref": "common.json#/$defs/rightBody/properties/whileFrozen",
+          "default": false
         },
         "condition": {
           "$ref": "common.json#/$defs/rightBody/properties/condition"

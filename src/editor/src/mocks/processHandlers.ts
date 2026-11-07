@@ -86,6 +86,24 @@ export function exportConfig(doc: Json): Json {
  * id (none are minted for a run), ids are unique, `subject` is an object id (never a name), and each link names a known
  * object. Recording mints a fresh id for every object and remaps `subject` and the links' `object`.
  */
+/** The step that froze what step `at` was refused for: the last accepted freeze before it that no accepted thaw followed; null when none. */
+export function freezingStep(
+  doc: Json,
+  trace: { index: number; accepted: boolean; input: { verb?: string; event?: string | null } | null }[],
+  at: number,
+): number | null {
+  const verbOf = (t: (typeof trace)[number]): string | null =>
+    t.input?.verb ?? (t.input?.event ? ((arr(doc.events).find((e) => e.id === t.input?.event)?.verb as string | undefined) ?? null) : null);
+  for (let i = at - 1; i >= 0; i--) {
+    const t = trace.find((x) => x.index === i);
+    if (!t?.accepted) continue;
+    const verb = verbOf(t);
+    if (verb === "thaw") return null;
+    if (verb === "freeze") return i;
+  }
+  return null;
+}
+
 function castOf(value: Json, scenario: Json | undefined, mint = false): { objects: Json[]; subject: string } | { error: string } | null {
   const own = value.objects !== undefined && value.objects !== null;
   if (own && !Array.isArray(value.objects)) return { error: "objects must be an array." };
@@ -265,14 +283,17 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
     arr(scenario.steps).some(
       (st) => st.verb !== undefined || (st.expect as Json | undefined)?.refusal !== undefined || (st.expect as Json | undefined)?.refusedBy !== undefined,
     );
+  // An event that names freeze or thaw takes effect in a run (the opt-in, decision 16), so such a scenario is replayed for real.
+  const namesFreeze = (doc: Json) => arr(doc.events).some((e) => e.verb === "freeze" || e.verb === "thaw");
   const sameValues = (a: Json, b: Json) => {
     const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
     return [...keys].every((k) => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null)) && Object.keys(a).length === Object.keys(b).length;
   };
   // A scenario with participants is replayed for real: a step refused while it expects to be accepted (or the reverse) fails
   // with MQ9301, and a refusal by actor names the participant and the list it did not satisfy.
-  const participantFailure = (doc: Json, scenario: Json) => {
-    if (!arr(scenario.participants).length && !hasExpectedValues(scenario) && !hasRightsSteps(scenario)) return null;
+  const participantReplay = (doc: Json, scenario: Json): { failure: Json | null; warnings: Json[] } => {
+    if (!arr(scenario.participants).length && !hasExpectedValues(scenario) && !hasRightsSteps(scenario) && !namesFreeze(doc))
+      return { failure: null, warnings: [] };
     const cast = castOf({}, scenario);
     const result = simulate(doc, scenario.start as never, arr(scenario.steps), {
       ...actorLookup(),
@@ -282,11 +303,38 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       refusedBy: true,
     });
     const steps = arr(scenario.steps);
+    // MQ9309 is a warning: a step refused as frozen after an earlier step froze it, with no refusal frozen expected (a missing
+    // expect counts as not expecting it). The scenario still passes; the warning names the step that froze it.
+    const warnings: Json[] = [];
+    for (const t of result.trace) {
+      if (t.index < 0 || t.accepted || t.refusal !== "frozen") continue;
+      if ((steps[t.index].expect as Json | undefined)?.refusal === "frozen") continue;
+      const by = freezingStep(doc, result.trace, t.index);
+      if (by === null) continue;
+      warnings.push({
+        rule: "MQ9309",
+        severity: "warning",
+        message: `Step ${t.index + 1} is refused as frozen because step ${by + 1} froze it; thaw it in between, or expect the refusal (update the expectations from a replay).`,
+        elementId: String(scenario.id),
+        filePath: null,
+        jsonPointer: `/steps/${t.index}/expect`,
+        line: null,
+        column: null,
+      });
+    }
+    const unexpected = (index: number) => {
+      const expect = steps[index].expect as Json | undefined;
+      return expect?.accepted === undefined && warnings.some((w) => w.jsonPointer === `/steps/${index}/expect`);
+    };
+    const failure = participantFailure(scenario, result, steps, unexpected);
+    return { failure, warnings };
+  };
+  const participantFailure = (scenario: Json, result: ReturnType<typeof simulate>, steps: Json[], unexpected: (index: number) => boolean) => {
     for (const t of result.trace) {
       if (t.index < 0) continue;
       const step = steps[t.index];
       const expected = (step.expect as Json | undefined)?.accepted !== false;
-      if (t.accepted === expected) continue;
+      if (t.accepted === expected || unexpected(t.index)) continue;
       const people = arr(scenario.participants);
       const p = people.find((x) => x.id === step.participant);
       const message =
@@ -365,7 +413,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
           ownerActors: lookup.ownerActors,
           entitiesOf: (l) => subjectsOf(l).flatMap((x) => (x.entity ? [x.entity] : [])),
         },
-        { states: idList(q.get("states")), actors: idList(q.get("actors")), verbs: idList(q.get("verbs")) },
+        { states: idList(q.get("states")), actors: idList(q.get("actors")), verbs: idList(q.get("verbs")), frozen: q.get("frozen") === "true" },
       );
       const page = rows.slice(start, start + limit);
       return HttpResponse.json({
@@ -529,8 +577,16 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         list = list.filter((s) => wanted.includes(s.id) || wanted.includes(String(s.json.name)));
       }
       const results = list.map((s) => {
-        const failure = MOCK_FAILURES[s.id] ?? participantFailure(entry.json, s.json) ?? null;
-        return { scenario: s.id, name: String(s.json.name), passed: !failure, steps: arr(s.json.steps).length, failure };
+        const replayed = participantReplay(entry.json, s.json);
+        const failure = MOCK_FAILURES[s.id] ?? replayed.failure ?? null;
+        return {
+          scenario: s.id,
+          name: String(s.json.name),
+          passed: !failure,
+          steps: arr(s.json.steps).length,
+          failure,
+          ...(replayed.warnings.length ? { warnings: replayed.warnings } : {}),
+        };
       });
       return HttpResponse.json({ process: entry.id, results, passed: results.every((r) => r.passed) });
     }),

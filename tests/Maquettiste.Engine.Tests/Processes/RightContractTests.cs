@@ -107,8 +107,11 @@ public sealed class RightContractTests
         Invalid("process.json", Lifecycle($$"""[{"id":"{{Inline}}","name":"R","access":"deny","verbs":["Delete"]}]"""), "/rights/0/verbs");
         Invalid("process.json", Lifecycle($$"""[{"name":"R","access":"deny","verbs":["delete"]}]"""), "/rights/0");
         Invalid("process.json", Lifecycle("[]", ""","rightsDefault":"sometimes" """), "/rightsDefault");
-        // Part 2's keys are not part 1's.
-        Invalid("process.json", Lifecycle($$"""[{"id":"{{Inline}}","name":"R","access":"deny","verbs":["delete"],"whileFrozen":true}]"""), "/rights/0");
+        // Part 2's keys: whileFrozen and attributes (decisions 18 and 21).
+        Valid("process.json", Lifecycle($$"""[{"id":"{{Inline}}","name":"R","access":"deny","verbs":["change-owner"],"whileFrozen":true}]"""));
+        Valid("process.json", Lifecycle($$"""[{"id":"{{Inline}}","name":"R","access":"deny","verbs":["read"],"attributes":["{{Clerk}}"]}]"""));
+        Invalid("process.json", Lifecycle($$"""[{"id":"{{Inline}}","name":"R","access":"deny","verbs":["read"],"whileFrozen":"yes"}]"""), "/rights/0/whileFrozen");
+        Invalid("process.json", Lifecycle($$"""[{"id":"{{Inline}}","name":"R","access":"deny","verbs":["read"],"attributes":["{{Clerk}}","{{Clerk}}"]}]"""), "/rights/0/attributes");
     }
 
     [Fact]
@@ -139,10 +142,21 @@ public sealed class RightContractTests
         Invalid("scenario.json", Step("""  "input":"verb","verb":"Modify" """), "/steps/0/verb");
         Invalid("scenario.json", Step("""  "input":"verb","verb":"modify","values":{"title":"x"} """), "/steps/0/values");
         Invalid("scenario.json", Step("""  "input":"verb","verb":"connect","end":"components" """), "/steps/0/end");
-        // freeze is part 2's refusal.
-        Invalid("scenario.json", Step("""  "expect":{"accepted":false,"refusal":"frozen"} """), "/steps/0/expect/refusal");
+        // Part 2: the frozen refusal, a read step's attributes, and frozen objects and links.
+        Valid("scenario.json", Step("""  "expect":{"accepted":false,"refusal":"frozen"} """));
+        Valid("scenario.json", Step($$"""  "input":"verb","verb":"read","attributes":["{{Clerk}}"] """));
+        Invalid("scenario.json", Step("""  "expect":{"accepted":false,"refusal":"thawed"} """), "/steps/0/expect/refusal");
         Invalid("scenario.json", Step("""  "expect":{"accepted":false,"refusedBy":"SecretOnlyOwner"} """), "/steps/0/expect/refusedBy");
-        Invalid("scenario.json", Step("""  "input":"verb","verb":"modify","attributes":[] """), "/steps/0");
+        Invalid("scenario.json", Step("""  "input":"verb","verb":"read","attributes":["salary"] """), "/steps/0/attributes");
+        Valid("scenario.json", $$"""
+            {"kind":"scenario","id":"{{Scenario}}","name":"S","process":"{{P}}","subject":"{{Order}}",
+             "objects":[{"id":"{{Order}}","name":"o","entity":"{{Clerk}}","frozen":true,"links":[{"end":"{{Draft}}","object":"{{Order}}","frozen":true}]}],
+             "steps":[{"id":"{{ModifyStep}}"}]}
+            """);
+        Invalid("scenario.json", $$"""
+            {"kind":"scenario","id":"{{Scenario}}","name":"S","process":"{{P}}","subject":"{{Order}}",
+             "objects":[{"id":"{{Order}}","name":"o","entity":"{{Clerk}}","frozen":1}],"steps":[{"id":"{{ModifyStep}}"}]}
+            """, "/objects/0/frozen");
     }
 
     // ---- loading ----
@@ -255,7 +269,7 @@ public sealed class RightContractTests
             """), json["rights"]), json["rights"]!.ToJsonString());
 
         // The engine's list of refusals, in the order the checks run: what expect.refusal may name.
-        Assert.Equal(["actor", "right", "default", "no-transition", "guard", "gate-signer", "gate-repeat", "gate-reason"], Refusals.All);
+        Assert.Equal(["frozen", "actor", "right", "default", "no-transition", "guard", "gate-signer", "gate-repeat", "gate-reason"], Refusals.All);
         var schema = JsonNode.Parse(TestServices.Schemas.GetFileBytes("scenario.json").Span)!["$defs"]!["step"]!["properties"]!["expect"]!["properties"]!["refusal"]!["enum"]!;
         Assert.Equal(Refusals.All.Order(StringComparer.Ordinal), schema.AsArray().Select(n => n!.GetValue<string>()).Order(StringComparer.Ordinal));
     }

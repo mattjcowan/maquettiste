@@ -59,7 +59,12 @@ export function useScenarioReplay(scenario: ScenarioDoc) {
   const statuses = useScenarioStatuses();
   const st = statuses.get(scenario.id);
   const steps = stepStatuses(scenario.steps.length, st ? (st.passed ? null : st.step - 1) : undefined);
-  return { status: !st ? ("not-run" as const) : st.passed ? ("passed" as const) : ("failed" as const), failedAt: st && !st.passed ? st.step : null, steps };
+  return {
+    status: !st ? ("not-run" as const) : st.passed ? ("passed" as const) : ("failed" as const),
+    failedAt: st && !st.passed ? st.step : null,
+    warnings: st?.passed ? (st.warnings ?? []) : [],
+    steps,
+  };
 }
 
 export function ScenarioHeader({ ctx }: { ctx: EditorContext }) {
@@ -182,8 +187,9 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const rows = stepRows(scenario, processDoc, actorNames, valueNames, more);
   const verbOptions: GridOption[] = verbGroups("right", verbs.own, verbs.hidden)
     .filter((g) => g.id !== "move" && g.id !== "signature" && g.id !== "task")
-    .flatMap((g) => g.options.filter((o) => o.key !== "freeze" && o.key !== "thaw").map((o) => ({ value: o.key, label: o.label })));
+    .flatMap((g) => g.options.map((o) => ({ value: o.key, label: o.label })));
   const endOptions: GridOption[] = objectFields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: f.name }));
+  const attributeOptions: GridOption[] = objectFields.fields.filter((f) => f.kind === "attribute").map((f) => ({ value: f.id, label: f.name }));
   const objectOptions: GridOption[] = (scenario.objects ?? []).map((o) => ({ value: o.id, label: o.name }));
   const verbSteps = rows.some((r) => r.input === "verb");
   const refusals = rows.some((r) => r.refusal || r.refusedBy) || verbSteps || !!processDoc?.rights?.length;
@@ -282,6 +288,18 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
             value: (r: StepRow) => r.setValues,
           },
           {
+            key: "attributes",
+            label: RL.stepAttributes,
+            tooltip: RL.stepAttributesTip,
+            kind: "pick" as const,
+            width: "min-w-24",
+            value: (r: StepRow) => r.attributes,
+            editValue: (r: StepRow) => (step(r)?.attributes ?? []).join(","),
+            options: () => attributeOptions,
+            // Only a read step names attributes (MQ9305).
+            locked: (r: StepRow) => r.verb !== "read",
+          },
+          {
             key: "end",
             label: RL.linkEnd,
             kind: "select" as const,
@@ -369,11 +387,14 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         if (v !== "verb") {
           delete s.verb;
           delete s.values;
+          delete s.attributes;
           delete s.end;
           delete s.object;
         } else if (!s.verb && verbOptions[0]) s.verb = verbOptions.find((o) => o.value === "modify")?.value ?? verbOptions[0].value;
-      } else if (key === "on") setOpt(s, row.input === "event" ? "event" : row.input === "time" ? "after" : row.input === "verb" ? "verb" : "invoke", v.trim());
-      else if (key === "refusal" || key === "refusedBy") {
+      } else if (key === "on") {
+        setOpt(s, row.input === "event" ? "event" : row.input === "time" ? "after" : row.input === "verb" ? "verb" : "invoke", v.trim());
+        if (row.input === "verb" && v.trim() !== "read") delete s.attributes;
+      } else if (key === "refusal" || key === "refusedBy") {
         // A refusal expected is a refused step: the reason or the refuser also says so.
         const expect = { ...(s.expect ?? {}) } as NonNullable<StepDoc["expect"]>;
         if (v) {
@@ -382,6 +403,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         } else delete expect[key];
         setOpt(s, "expect", expect);
       } else if (key === "end" || key === "object") setOpt(s, key, v.trim());
+      else if (key === "attributes") setOpt(s, "attributes", v.split(",").filter(Boolean));
       else if (key === "setValues") setOpt(s, "values", parseValuesText(v, valueNames).values);
       else if (key === "participant" || key === "actor" || key === "meaning" || key === "signer" || key === "reason") setOpt(s, key, v.trim());
       else if (key === "payload") setOpt(s, "payload", parseMapText(v, names.attrs));
@@ -446,7 +468,12 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         <Button size="sm" onClick={() => void replayNow()} disabled={busy} data-testid="scenario-editor-replay">
           <Play /> Replay
         </Button>
-        <ScenarioStatusBadge status={replay.status} failedAt={replay.failedAt} />
+        <ScenarioStatusBadge status={replay.status} failedAt={replay.failedAt} warnings={replay.warnings.length} />
+        {!failure && replay.warnings.length ? (
+          <span className="min-w-0 flex-1 whitespace-normal break-words text-12 text-warning" role="status" data-testid="replay-warnings">
+            {replay.warnings.join(" ")}
+          </span>
+        ) : null}
         {failure ? (
           <>
             <span className="min-w-0 flex-1 whitespace-normal break-words text-12 text-danger" role="status" data-testid="replay-failure">

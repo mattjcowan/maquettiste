@@ -70,13 +70,13 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Rights set separately for the owner, for everyone and for named people or roles | E | Yes: `actors` takes the owner, everyone (empty) or named people, roles and groups (built for 0.15.0, part 1) |
 | **A rule that allows or forbids operations when a condition holds,** over the object's data and the current user. For example: forbid changing, deleting or reassigning an item classified secret unless you own it | E Own | Yes: a right's `condition` reads the object and `current_actor()`, with `except` for the owner (built for 0.15.0, part 1). It checks scenarios and generated code, and stops nothing in a system the team does not build |
 | A named access rule, reused across things | E | Part: a named right, used by many lifecycles (built for 0.15.0, part 1). Types with no lifecycle are a later item |
-| Rights on one attribute in one state (hide a salary from everyone outside HR) | N | **No** |
+| Rights on one attribute in one state (hide a salary from everyone outside HR) | N | Yes: a right's `attributes`, each attribute checked on its own (built for 0.16.0, part 2) |
 | Rights passed along containment (a project's rights reach its items) | N | **No** |
 | Role membership valid for a period | N | **No** |
 | Several rights combined: any deny wins, then any allow, then a default | N | Yes: each lifecycle answers on its own, its denies, then its allows, then its default, and any lifecycle's "no" wins (built for 0.15.0, part 1) |
 | An access rule for every state | E | Yes: a right with no states holds in every state (built for 0.15.0, part 1) |
 | The object can't be edited in this state | A | **No**: 4.4 |
-| **Any item can be frozen, and can't be edited until it is thawed:** an object, a relation's instance (it can't be disconnected or have its attributes edited), and others such as rules and processes. Freezing and thawing are operations with their own triggers, so automation can run on them | E Own | **No** |
+| **Any item can be frozen, and can't be edited until it is thawed:** an object, a relation's instance (it can't be disconnected or have its attributes edited), and others such as rules and processes. Freezing and thawing are operations with their own triggers, so automation can run on them | E Own | Part: objects and links freeze and thaw, and while frozen they can't be modified, connected, disconnected or deleted (built for 0.16.0, part 2). Rules and processes can't be frozen, and triggers on freezing are later |
 | Fields required to enter or to leave a state | O | **No**: 4.4 |
 | What may be done with the object in this state (allowed and forbidden operations) | P | Part: an operation can `require` a state |
 | How relationships behave in this state (fixed or floating) | A | No |

@@ -368,7 +368,7 @@ export function ScenarioInspectorSection(props: FormProps) {
         <dd>{scenario.steps?.length ?? 0}</dd>
         <dt className="text-secondary">Status</dt>
         <dd>
-          <ScenarioStatusBadge status={replay.status} failedAt={replay.failedAt} />
+          <ScenarioStatusBadge status={replay.status} failedAt={replay.failedAt} warnings={replay.warnings.length} />
         </dd>
       </dl>
     </section>

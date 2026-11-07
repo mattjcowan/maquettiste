@@ -51,13 +51,14 @@ internal sealed partial class ResolveRun
                 Description = right.Description is { } d ? d.Text ?? (d.File is null ? null : Model.GetDocument(right.Id)?.SidecarText) : null,
                 Access = AccessName(right.Access),
                 Everyone = right.Actors.Count == 0,
+                WhileFrozen = right.WhileFrozen,
                 Package = PackageOf(right.Package),
             };
             var deps = DepsOf(r).Element(right.Id);
             if (right.Package is { } package)
                 deps.Element(package);
             IReadOnlyList<string> own = [Keys.Element(right.Id)];
-            FillRight(r, right.Actors, right.Except, right.Verbs, right.Ends, own);
+            FillRight(r, right.Actors, right.Except, right.Verbs, right.Ends, right.Attributes, own);
             if (right.Condition is { } condition)
             {
                 // Printed in the scope of every use (decision 7): which lifecycles use it, and what their subjects hold.
@@ -110,9 +111,10 @@ internal sealed partial class ResolveRun
                     Description = entry.Description?.Text,
                     Access = AccessName(access),
                     Everyone = entry.Actors.Count == 0,
+                    WhileFrozen = entry.WhileFrozen,
                 };
                 DepsOf(right).AddRange(nodeKeys);
-                FillRight(right, entry.Actors, entry.Except, entry.Verbs, entry.Ends, nodeKeys);
+                FillRight(right, entry.Actors, entry.Except, entry.Verbs, entry.Ends, entry.Attributes, nodeKeys);
                 if (entry.Condition is { } tree)
                 {
                     hasCondition = true;
@@ -158,9 +160,9 @@ internal sealed partial class ResolveRun
         return new RList<RRightUse>(uses, listKeys.ToList());
     }
 
-    /// <summary>A right's actors, exceptions and ends, each list keyed on <paramref name="ownerKeys"/> and what decides it; its verbs later.</summary>
+    /// <summary>A right's actors, exceptions, ends and attributes, each list keyed on <paramref name="ownerKeys"/> and what decides it; its verbs later.</summary>
     private void FillRight(RRight r, IReadOnlyList<string> actors, IReadOnlyList<string> except, IReadOnlyList<string> verbs, IReadOnlyList<string> ends,
-        IReadOnlyList<string> ownerKeys)
+        IReadOnlyList<string> attributes, IReadOnlyList<string> ownerKeys)
     {
         var actorKeys = new DependencySet(Keys).AddRange(ownerKeys).Add(ActorKind).ToList();
         r.Actors = new RList<RActor>(ActorsByIds(actors), actorKeys);
@@ -175,6 +177,19 @@ internal sealed partial class ResolveRun
         }
 
         r.Ends = new RList<REnd>(ends.Select(id => _byId.GetValueOrDefault(id)).OfType<REnd>().Distinct(), endKeys.ToList());
+
+        // Whether an attribute resolves is its holder's file (decision 21).
+        if (attributes.Count > 0)
+        {
+            var attributeKeys = new DependencySet(Keys).AddRange(ownerKeys);
+            foreach (var id in attributes)
+            {
+                if (Model.TryGetEntry(id, out var entry))
+                    attributeKeys.Element(entry.OwnerId);
+            }
+
+            r.Attributes = new RList<RAttribute>(attributes.Select(id => _byId.GetValueOrDefault(id)).OfType<RAttribute>().Distinct(), attributeKeys.ToList());
+        }
         _verbKeysNamed.UnionWith(verbs);
         _verbFills.Add((verbOf, vocabularyKeys) =>
             r.Verbs = new RList<RVerb>(verbs.Distinct(StringComparer.Ordinal).Select(verbOf).OfType<RVerb>(), [.. ownerKeys, .. vocabularyKeys]));

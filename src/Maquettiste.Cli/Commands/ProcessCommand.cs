@@ -61,7 +61,7 @@ internal static class ProcessCommand
                 line.Expect("process sync-codes", 5, "--apply", "--check", "--format");
                 break;
             case "rights":
-                line.Expect("process rights", 3, "--state", "--actor", "--verb", "--entity", "--format");
+                line.Expect("process rights", 3, "--state", "--actor", "--verb", "--entity", "--frozen", "--format");
                 break;
             default:
                 throw new UsageException($"Unknown process verb '{verb}': use {Verbs}.");
@@ -200,6 +200,9 @@ internal static class ProcessCommand
                     if (s.Failure is { } f)
                         text.Append(string.Create(CultureInfo.InvariantCulture, $": {f.Rule} at {(f.Step < 0 ? "outcome" : "step " + f.Step)}: {f.Message}"));
                     text.Append('\n');
+                    // A scenario that passes may still warn, such as MQ9309 for a step refused as frozen after an earlier step froze it.
+                    foreach (var w in s.Warnings ?? [])
+                        text.Append("  warn  ").Append(w.Rule).Append(w.JsonPointer is { } at ? " at " + at : "").Append(": ").Append(w.Message).Append('\n');
                 }
             }
 
@@ -471,12 +474,13 @@ internal static class ProcessCommand
     /// <summary>Reports a call that failed and returns its exit code, or null when it succeeded.</summary>
     /// <summary>
     /// <c>process rights &lt;lifecycle&gt;</c>: who can do what (rights-design.md decision 31), every row; <c>--state</c>, <c>--actor</c>,
-    /// <c>--verb</c> (each repeatable) and <c>--entity</c> narrow it as <c>get_rights</c> does.
+    /// <c>--verb</c> (each repeatable) and <c>--entity</c> narrow it as <c>get_rights</c> does, and <c>--frozen</c> answers for a frozen object.
     /// </summary>
     private static async Task<int> RightsAsync(GlobalContext context, ModelStore store, Process process, bool json, CancellationToken ct)
     {
         var line = context.Line;
-        var filter = new RightsFilter { States = line.Values("--state"), Actors = line.Values("--actor"), Verbs = line.Values("--verb"), Entity = line.Value("--entity") };
+        var filter = new RightsFilter { States = line.Values("--state"), Actors = line.Values("--actor"), Verbs = line.Values("--verb"), Entity = line.Value("--entity"),
+            Frozen = line.Has("--frozen") };
         var rows = new List<RightsRow>();
         string? cursor = null;
         RightsPage page;

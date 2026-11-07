@@ -5,9 +5,15 @@
 # which the interpreter calls for events, human tasks and signatures and a team calls from its own code (an edit endpoint, an
 # operation's handler). Each answering lifecycle answers on its own, its denies, then its allows, then its default; any "no" wins. A
 # condition is a static partial method the team writes; an actor taken from the object is answered by the request's resolver.
+# When the project uses freezing (decision 28), freezing answers first (Freezing.cs and IFrozenState) and the request carries the
+# frozen flags; a right with whileFrozen holds only while frozen. When a right names attributes, the request carries the attributes
+# and each is checked on its own (decision 21).
 include "_csharp.scriban"
 include "_process.scriban"
 if model.rights_lifecycles.size > 0
+  freezing = uses_freezing()
+  attribute_rights = uses_attribute_rights()
+  while_frozen = uses_while_frozen()
   has_members = false
   for a in model.actors
     if a.member_of.size > 0
@@ -65,6 +71,16 @@ public sealed record RightDefinition(string Id, string Name, RightAccess Access,
 {
     /// <summary>Whether the right has a condition.</summary>
     public bool HasCondition => Condition is not null;
+{{- if while_frozen }}
+
+    /// <summary>Whether it holds only while the object, or with <see cref="Ends"/> the link, is frozen (rights-design.md decision 18).</summary>
+    public bool WhileFrozen { get; init; }
+{{- end }}
+{{- if attribute_rights }}
+
+    /// <summary>The names of the subject's attributes whose reading or modifying it speaks of (rights-design.md decision 21); empty for the object as a whole.</summary>
+    public IReadOnlyList<string> Attributes { get; init; } = [];
+{{- end }}
 }
 
 /// <summary>A right as one lifecycle states it.</summary>
@@ -120,6 +136,22 @@ public sealed record RightRequest
 
     /// <summary>The closed lists the caller passed (an event's or human task's actors, a gate's signers), by id: each counts as an allow of the acting lifecycle.</summary>
     public IReadOnlyList<string> Allowed { get; init; } = [];
+{{- if freezing }}
+
+    /// <summary>Whether the object is frozen, when the caller knows; null asks <see cref="FrozenState"/>.</summary>
+    public bool? Frozen { get; init; }
+
+    /// <summary>Whether the link through <see cref="End"/> is frozen (with no end known, whether a link of the object is), when the caller knows; null asks <see cref="FrozenState"/>.</summary>
+    public bool? LinkFrozen { get; init; }
+
+    /// <summary>The frozen state the flags left null are asked of (<see cref="IFrozenState"/>); the team's FrozenState when null.</summary>
+    public IFrozenState? FrozenState { get; init; }
+{{- end }}
+{{- if attribute_rights }}
+
+    /// <summary>The names of the attributes the verb reads or modifies: each is checked on its own, and one refused refuses the verb. Null or empty when not known, such as for an event that names modify: then a deny that names attributes holds, and an allow that names attributes grants nothing.</summary>
+    public IReadOnlyList<string>? Attributes { get; init; }
+{{- end }}
 {{- if relative_names.size > 0 }}
 
     /// <summary>Whether the caller is an actor taken from the object, by name (the process's resolver); null answers no.</summary>
@@ -129,8 +161,13 @@ public sealed record RightRequest
 
 /// <summary>The answer of a rights check.</summary>
 /// <param name="Allowed">Whether the verb is allowed.</param>
+{{- if freezing }}
+/// <param name="Refusal">Why not: <see cref="Refusals.Frozen"/>, <see cref="Refusals.Right"/> or <see cref="Refusals.Default"/>; null when allowed.</param>
+/// <param name="RefusedBy">The id of the right, or of the lifecycle whose default denies; null when allowed, and for frozen, which no element refused.</param>
+{{- else }}
 /// <param name="Refusal">Why not: <see cref="Refusals.Right"/> or <see cref="Refusals.Default"/>; null when allowed.</param>
 /// <param name="RefusedBy">The id of the right, or of the lifecycle whose default denies; null when allowed.</param>
+{{- end }}
 public sealed record RightDecision(bool Allowed, string? Refusal = null, string? RefusedBy = null)
 {
     /// <summary>The allowed answer.</summary>
@@ -174,6 +211,15 @@ public static class Rights
     public static RightDecision Check(RightRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+{{- if freezing }}
+
+        // Freezing first (rights-design.md decision 17): built in, so no element refused it, and no allow lifts it. A flag the request
+        // leaves null is asked of the frozen state; the team's FrozenState answers "not frozen" until the team writes it.
+        var frozen = new FrozenFlags(new FrozenQuery { Process = request.Lifecycle, Subject = request.Subject, Envelope = request.Envelope, End = request.End },
+            request.Frozen, request.LinkFrozen, request.FrozenState);
+        if (request.Verb is { } frozenVerb && frozen.Refuses(frozenVerb))
+            return new(false, Refusals.Frozen);{{ "\n" }}
+{{- end }}
         var acting = request.Lifecycle is { } name ? Lifecycles.FirstOrDefault(c => string.Equals(c.ProcessName, name, StringComparison.Ordinal)) : null;
         var answering = new List<ChartDefinition>();
         if (acting is not null)
@@ -193,11 +239,43 @@ public static class Rights
         {
             var rights = chart.Rights!;
             var states = Configuration(chart, request);
+{{- if attribute_rights }}
+
+            // Each attribute on its own (rights-design.md decision 21): the rights that name it and those that name none, then the
+            // default; one refused attribute refuses the verb. With the attributes not known, they are checked once, as none. The right that
+            // refuses is the first deny, in file order, that holds for any attribute, as the engine names it.
+            IReadOnlyList<string?> attributes = request.Attributes is { Count: > 0 } known ? [.. known.Distinct(StringComparer.Ordinal)] : [null];
+            var denies = new HashSet<RightUse>(ReferenceEqualityComparer.Instance);
+            foreach (var attribute in attributes)
+            {
+                var denied = false;
+                var allowed = chart == acting && request.Allowed.Count > 0;
+                foreach (var use in rights.Uses)
+                {
+                    if (!Holds(use, request, states, attribute{{ if while_frozen }}, frozen{{ end }}))
+                        continue;
+                    if (use.Right.Access == RightAccess.Deny)
+                    {
+                        denied = true;
+                        denies.Add(use);
+                    }
+                    else
+                    {
+                        allowed = true;
+                    }
+                }
+
+                if (!denied && !allowed && rights.Default == RightAccess.Deny)
+                    byDefault ??= chart;
+            }
+
+            deniedBy ??= rights.Uses.FirstOrDefault(denies.Contains)?.Right.Id;
+{{- else }}
             var denied = false;
             var allowed = chart == acting && request.Allowed.Count > 0;
             foreach (var use in rights.Uses)
             {
-                if (!Holds(use, request, states))
+                if (!Holds(use, request, states{{ if while_frozen }}, frozen{{ end }}))
                     continue;
                 if (use.Right.Access == RightAccess.Deny)
                 {
@@ -212,6 +290,7 @@ public static class Rights
 
             if (!denied && !allowed && rights.Default == RightAccess.Deny)
                 byDefault ??= chart;
+{{- end }}
         }
 
         if (deniedBy is not null)
@@ -242,7 +321,7 @@ public static class Rights
 
     private static bool Accepts(string listed, string actor) => {{ has_members ? "Actors.Accepts(listed, actor)" : "string.Equals(listed, actor, StringComparison.Ordinal)" }};
 
-    private static bool Holds(RightUse use, RightRequest request, HashSet<string> states)
+    private static bool Holds(RightUse use, RightRequest request, HashSet<string> states{{ if attribute_rights }}, string? attribute{{ end }}{{ if while_frozen }}, FrozenFlags frozen{{ end }})
     {
         var right = use.Right;
         if (request.Verb is not { } verb || !right.Verbs.Contains(verb))
@@ -253,6 +332,15 @@ public static class Rights
                 ? request.End is null ? right.Access != RightAccess.Deny || !LinkVerbs.Contains(verb) : !right.Ends.Contains(request.End, StringComparer.Ordinal)
                 : request.End is not null && !LinkVerbs.Contains(verb))
             return false;
+{{- if attribute_rights }}
+        // A right that names attributes speaks of those only; with the attributes not known, a deny holds and an allow grants nothing.
+        if (right.Attributes.Count > 0 && (attribute is null ? right.Access != RightAccess.Deny : !right.Attributes.Contains(attribute, StringComparer.Ordinal)))
+            return false;
+{{- end }}
+{{- if while_frozen }}
+        if (right.WhileFrozen && !(right.Ends.Count > 0 ? frozen.Link : frozen.Object))
+            return false;
+{{- end }}
         if (right.Actors.Count > 0 && !right.Actors.Any(a => Satisfies(request, a)))
             return false;
         if (right.Except.Any(a => Satisfies(request, a)))

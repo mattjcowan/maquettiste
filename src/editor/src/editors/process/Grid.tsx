@@ -407,6 +407,7 @@ export function Grid<R extends { id: string }>({
                             {kind === "toggle" ? (
                               <span
                                 aria-label={column.on?.(row) ? "yes" : "no"}
+                                onClick={() => startEdit(r, c)}
                                 className={cn("inline-block size-3 rounded-[3px] border border-input", column.on?.(row) && "border-accent bg-accent")}
                               />
                             ) : column.render ? (
@@ -500,6 +501,19 @@ function PickEditor({
         .join(","),
     );
   };
+  // A click anywhere outside the checklist saves it, as Enter does (a blur alone is not raised by every click); once.
+  const settled = useRef(false);
+  const done = useRef(onDone);
+  done.current = onDone;
+  useEffect(() => {
+    const outside = (e: PointerEvent) => {
+      if (settled.current || box.current?.contains(e.target as Node | null)) return;
+      settled.current = true;
+      done.current("blur");
+    };
+    document.addEventListener("pointerdown", outside, true);
+    return () => document.removeEventListener("pointerdown", outside, true);
+  }, []);
   // The checklist sits in a portal at the cell's corner, so the grid's scrolling box never clips it.
   const box = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState<{ top: number; left: number } | null>(null);
@@ -526,14 +540,18 @@ function PickEditor({
         e.stopPropagation();
         if (e.key === "Escape") {
           e.preventDefault();
+          settled.current = true;
           onCancel();
         } else if (e.key === "Enter") {
           e.preventDefault();
+          settled.current = true;
           onDone("none");
         }
       }}
       onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onDone("blur");
+        if (settled.current || e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        settled.current = true;
+        onDone("blur");
       }}
     >
       {!options.length ? <span className="px-1 text-secondary">Nothing to pick.</span> : null}

@@ -212,7 +212,11 @@ must equal its bound enum's members, in order (MQ9203).
   Each answering lifecycle: its denies, then allows, then default; any no wins. Event actors, task actors and gate signers count as allows of their own lifecycle. Checks run
   in order: lists (`actor`), denies (`right`), defaults (`default`), no move, guards, gate checks; the trace has `refusal` and `refusedBy`. A scenario step may be `{ verb, values?, end?, object? }`
   and a refused step may expect `refusal` and `refusedBy` (MQ9308; MQ9305 when a step does not fit; `freeze` and `thaw` steps not yet). Warnings MQ9904 (allow where the default allows), MQ9905, MQ9906.
-  `get_rights` (`process`, `states`, `actors`, `verbs`, `entity`) answers allowed, denied or depends per state, actor and verb. Never add rights unasked. Freezing is not available.
+  `get_rights` (`process`, `states`, `actors`, `verbs`, `entity`) answers allowed, denied or depends per state, actor and verb. Never add rights unasked.
+  Freezing: an accepted `freeze` event or step freezes the subject (or a link, with `end` and `object`), `thaw` thaws it; `frozen: true` on a scenario object or link starts it frozen.
+  While frozen, `modify`, `connect`, `disconnect`, `delete` are refused before any right (`refusal: "frozen"`, no `refusedBy`); moves, `revise` and the rest are not. A right's `whileFrozen: true` holds only while frozen.
+  MQ9309 warns when a step is refused as frozen after an earlier freeze; `verify_scenarios` gives it in `warnings`. Naming `freeze` is the opt-in; never add it unasked.
+  Attributes: a right's `attributes` (ids every subject holds, only with `read` and `modify`, never with `ends`, MQ9903) speak of those attributes, each checked on its own; unknown attributes fail closed. A `read` step may name `attributes` (MQ9305 beside other verbs).
 
 - Tools: `simulate_process` runs inputs through the engine's interpreter and keeps no state (send the whole input list each
   time; `enabled` says what can happen next); `record_scenario` saves a run as a scenario with every step's expectations

@@ -115,7 +115,7 @@ public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOn
 {
     /// <summary>
     /// Whether the project uses rights (rights-design.md decision 28): then a refused step's expectations record its refusal and the element
-    /// that refused it. Otherwise they record them only where the scenario already expects them.
+    /// that refused it. Otherwise they record them only where the scenario already expects them, and a refusal as frozen (decision 16).
     /// </summary>
     public bool UsesRights { get; init; }
 
@@ -132,7 +132,7 @@ public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOn
                 {
                     Accepted = t.Accepted, States = t.Configuration, Context = t.Changed,
                     Values = t.ValuesChanged ?? ImmutableDictionary<string, JsonElement>.Empty,
-                    Refusal = !t.Accepted && (UsesRights || expected?.Refusal is not null) ? t.Refusal : null,
+                    Refusal = !t.Accepted && (UsesRights || expected?.Refusal is not null || t.Refusal == Refusals.Frozen) ? t.Refusal : null,
                     RefusedBy = !t.Accepted && (UsesRights || expected?.RefusedBy is not null) ? t.RefusedBy : null,
                 };
             })],
@@ -221,6 +221,15 @@ public static class ScenarioReplayer
 
             if (failure is null && step.Expect is { } expect)
                 failure = Compare(chart, scenario, i, step, expect, trace, pointer);
+
+            // An earlier step froze what refused this one, and it doesn't expect that (MQ9309; rights-design.md decision 16): naming freeze
+            // now takes effect, so the finding names the step that froze it. A step with no expect doesn't expect frozen either.
+            if (!string.Equals(step.Expect?.Refusal, Refusals.Frozen, StringComparison.Ordinal)
+                && FrozenAfter(chart, scenario, trace) is { } froze)
+            {
+                Add(RuleCatalog.Create("MQ9309", $"{At(i)}{Describe(chart, step)} was refused as frozen{froze}; an accepted freeze takes effect, so modify, connect, disconnect and delete are refused until a thaw. Thaw in between, or expect refusal frozen (update the expectations from a replay).",
+                    scenario.Id, null, step.Expect is null ? pointer : pointer + "/expect"));
+            }
         }
 
         if (complete && failure is null)
@@ -257,6 +266,8 @@ public static class ScenarioReplayer
             {
                 var message = trace.Accepted
                     ? $"{At(i)}{Describe(c, step)} was accepted, but expect.accepted is false; fix the step's input, or set accepted to true."
+                    : FrozenAfter(c, s, trace) is { } froze
+                        ? $"{At(i)}{Describe(c, step)} was refused (frozen){froze}, but expect.accepted is true; thaw in between, or set accepted to false."
                     : RefusedAs(step) is { } refusedAs
                         ? $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}): {refusedAs}, but expect.accepted is true; fix the step's participant, or set accepted to false."
                         : $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}), but expect.accepted is true; fix the step's input (event, actor, signer, reason or assume), or set accepted to false.";
@@ -269,7 +280,7 @@ public static class ScenarioReplayer
                     || (expect.RefusedBy is { } refusedBy && !string.Equals(refusedBy, trace.RefusedBy, StringComparison.Ordinal))))
             {
                 var field = expect.Refusal is not null && !string.Equals(expect.Refusal, trace.Refusal, StringComparison.Ordinal) ? "refusal" : "refusedBy";
-                var message = $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}{(trace.RefusedBy is { } by ? " by " + Named(runtime.Model, by) : "")}), but expect gives "
+                var message = $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}{(trace.RefusedBy is { } by ? " by " + Named(runtime.Model, by) : "")}){FrozenAfter(c, s, trace)}, but expect gives "
                     + $"{(expect.Refusal is { } r ? "refusal " + r : "")}{(expect.Refusal is not null && expect.RefusedBy is not null ? " and " : "")}"
                     + $"{(expect.RefusedBy is { } b ? "refusedBy " + Named(runtime.Model, b) : "")}; fix the step, the chart or the rights, or update the expectations from a replay.";
                 first ??= Fail("MQ9308", message, new { refusal = expect.Refusal, refusedBy = expect.RefusedBy }, new { refusal = trace.Refusal, refusedBy = trace.RefusedBy },
@@ -350,6 +361,12 @@ public static class ScenarioReplayer
     }
 
     private static string At(int index) => index < 0 ? "Initial entry: " : "Step " + N(index + 1) + ": ";
+
+    // For a step refused as frozen after an earlier step froze the subject or the link: " after step N (what it did) froze it", else null.
+    private static string? FrozenAfter(StatechartModel chart, Scenario scenario, StepTrace trace) =>
+        trace.Refusal == Refusals.Frozen && trace.FrozenBy is { } by && by >= 0 && by < scenario.Steps.Count
+            ? $" after step {N(by + 1)} ({Describe(chart, scenario.Steps[by])}) froze it"
+            : null;
 
     private static string N(int value) => value.ToString(CultureInfo.InvariantCulture);
 

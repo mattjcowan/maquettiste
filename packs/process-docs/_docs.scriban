@@ -94,6 +94,15 @@ func right_does(r)
   ret $text
 end
 
+# The attributes a right speaks of (rights-design.md decision 21), as code; empty for the object as a whole.
+func right_attributes(r)
+  $text = ""
+  for $a in r.attributes
+    $text = $text + (for.first ? "" : ", ") + (md_code $a.name)
+  end
+  ret $text
+end
+
 # A cell of "who can do what" (rights-design.md decision 31): its answer, the default when it decides, the lifecycles it depends on.
 func cell_answer(c)
   if c.depends_on.size > 0

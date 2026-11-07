@@ -23,6 +23,18 @@ internal sealed record RunCheck
     /// <summary>The subject's relation end, for a verb on a link; <see langword="null"/> for the object.</summary>
     public string? End { get; init; }
 
+    /// <summary>Whether the subject is frozen as the input runs (rights-design.md decisions 16 to 18).</summary>
+    public bool Frozen { get; init; }
+
+    /// <summary>Whether the link the verb acts on is frozen; with no end known, whether a link of the subject is.</summary>
+    public bool LinkFrozen { get; init; }
+
+    /// <summary>
+    /// The attributes the verb reads or modifies (decision 21): a <c>modify</c> step's <c>values</c>, a <c>read</c> step's <c>attributes</c>;
+    /// <see langword="null"/> when not known, such as for an event that names <c>modify</c>.
+    /// </summary>
+    public IReadOnlyList<string>? Attributes { get; init; }
+
     /// <summary>The step as it runs: its actor is the one it acts as.</summary>
     public required ScenarioStep Step { get; init; }
 
@@ -88,6 +100,16 @@ internal sealed class RunRights
     /// <summary>Whether the project uses rights (decision 28).</summary>
     public bool Uses => Evaluator.Uses;
 
+    /// <summary>Whether the subject starts frozen (rights-design.md decision 16): the scenario's subject object gives <c>frozen</c>.</summary>
+    public bool StartsFrozen => SubjectObject?.Frozen == true;
+
+    /// <summary>The subject's links that start frozen (decision 16), each by its relation end and linked object, in document order.</summary>
+    public IEnumerable<(string End, string Object)> FrozenLinks =>
+        SubjectObject?.Links.Where(l => l.Frozen).Select(l => (l.End, l.Object)) ?? [];
+
+    private ScenarioObject? SubjectObject =>
+        _cast.Subject is { } id ? _cast.Objects.FirstOrDefault(o => string.Equals(o.Id, id, StringComparison.Ordinal)) : null;
+
     /// <summary>MQ9305 on a verb step's fields (<see cref="VerbStepFields"/>), or <see langword="null"/>.</summary>
     /// <param name="step">The step.</param>
     /// <returns>The message, without the step's number, and the field.</returns>
@@ -113,6 +135,7 @@ internal sealed class RunRights
         var query = new RightsQuery
         {
             Verb = check.Verb, Process = _process, Entity = entity, Caller = caller, End = check.End, Closed = check.Closed, Signers = check.Signers,
+            Frozen = check.Frozen, LinkFrozen = check.LinkFrozen, Attributes = check.Attributes,
         };
 
         // The states each answering lifecycle reads: the running chart's live states, else the object's from the scenario (decision 27). With no

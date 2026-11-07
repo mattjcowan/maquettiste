@@ -29,7 +29,7 @@ internal sealed class CommandLine
     {
         "--version", "--help", "--quiet", "--no-color", "--hooks", "--gitignore", "--force", "--watch", "--dry-run", "--diff", "--check", "--keep", "--no-wait",
         "--no-example-packs", "--mcp", "--skill", "--agent-setup", "--apply", "--resolved", "--keep-hints", "--packs", "--all", "--keep-names", "--library",
-        "--update",
+        "--update", "--frozen",
     };
 
     /// <summary>Short aliases.</summary>

@@ -187,6 +187,8 @@ public sealed class ResolvedCoverageTests
         [("process right", "verbs")] = "on use.right (the inline right target)",
         [("process right", "ends")] = "on use.right (the inline right target)",
         [("process right", "description")] = "on use.right (the inline right target)",
+        [("process right", "attributes")] = "on use.right (the inline right target)",
+        [("process right", "whileFrozen")] = "on use.right (the inline right target)",
         [("inline right", "right")] = "a use's named right: RRightUse.Right (the process right target)",
         [("inline right", "states")] = "where the right holds: RRightUse.States (the process right target)",
     });

@@ -48,7 +48,13 @@ const listeners = new Set<() => void>();
 
 export function recordVerify(result: VerifyResult): void {
   const next = new Map(statuses);
-  for (const r of result.results) next.set(r.scenario, r.passed ? { passed: true } : { passed: false, step: (r.failure?.step ?? -1) + 1 });
+  for (const r of result.results)
+    next.set(
+      r.scenario,
+      r.passed
+        ? { passed: true, ...(r.warnings?.length ? { warnings: r.warnings.map((w) => w.message) } : {}) }
+        : { passed: false, step: (r.failure?.step ?? -1) + 1 },
+    );
   statuses = next;
   for (const l of listeners) l();
 }
@@ -79,10 +85,11 @@ export function verifyLines(name: string, result: VerifyResult): string[] {
   const head = `${name}: ${passed} of ${result.results.length} scenarios passed`;
   return [
     head,
-    ...result.results.map((r) =>
+    ...result.results.flatMap((r) => [
       r.passed
         ? `  ✓ ${r.name}`
         : `  ✗ ${r.name}: failed at step ${(r.failure?.step ?? -1) + 1}${r.failure ? ` (${r.failure.rule}) ${r.failure.message}` : ""}`,
-    ),
+      ...(r.warnings ?? []).map((w) => `    warning: ${w.message}`),
+    ]),
   ];
 }

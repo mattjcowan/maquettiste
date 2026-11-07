@@ -148,7 +148,7 @@ export type IndexRow = Omit<ElementSummary, "kind"> & {
 type Row = IndexRow;
 
 /** A scenario's last verify result (phase-3-design.md 6.2): passed, or the 1-based step it failed at (0: the outcome). */
-export type ScenarioStatus = { passed: true } | { passed: false; step: number };
+export type ScenarioStatus = { passed: true; warnings?: string[] } | { passed: false; step: number };
 /** The E5c addendum `enumId`, read when present. */
 type Summary = TableSummary & { enumId?: string | null };
 
@@ -407,7 +407,8 @@ export function actorSecondary(r: Pick<Row, "actorType" | "stereotypes" | "relat
 /** A scenario's status words: "passed", "failed at step 2", "not run". */
 export function scenarioStatusText(status: ScenarioStatus | undefined): string {
   if (!status) return PROCESS_LABELS.notRun;
-  return status.passed ? PROCESS_LABELS.passed : PROCESS_LABELS.failedAt(status.step);
+  if (!status.passed) return PROCESS_LABELS.failedAt(status.step);
+  return status.warnings?.length ? PROCESS_LABELS.passedWarnings(status.warnings.length) : PROCESS_LABELS.passed;
 }
 
 /** An element's own row (not registered in any map). */

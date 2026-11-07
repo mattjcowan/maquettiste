@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
@@ -39,7 +40,7 @@ public sealed class RightReferenceTests
          {"id":"{{Use}}","right":"{{Named}}"}]
         """;
 
-    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(string? defaultAccess = "deny")
+    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(string? defaultAccess = "deny", Action<LoaderHarness>? prepare = null)
     {
         var h = new LoaderHarness();
         h.CopyFixture("models", "process-basics");
@@ -57,6 +58,7 @@ public sealed class RightReferenceTests
             {"kind":"right","id":"{{Named}}","name":"GuestsDoNotEscalate","displayName":"Guests do not escalate","access":"deny","actors":["{{Guest}}"],
              "verbs":["escalate"],"description":"Only staff escalate."}
             """, "right.json", "model/rights/guests-do-not-escalate.json"));
+        prepare?.Invoke(h);
         var store = new ModelStore(h.Options, h.Services() with { Validator = EngineServices.Create(h.Options).Validator });
         await store.LoadAsync(Ct);
         return (h, store);
@@ -106,6 +108,49 @@ public sealed class RightReferenceTests
         Assert.Equal([Writer], rights[0].Actors);
         Assert.Empty(rights[1].Except);
         Assert.Equal([Guest], rights[1].Actors);
+    }
+
+    [Theory]
+    [InlineData(DeleteResolution.RemoveReferences)]
+    [InlineData(DeleteResolution.DeleteDependents)]
+    public async Task Attributes_a_right_names_are_references_and_the_last_one_takes_its_right_with_it(DeleteResolution resolution)
+    {
+        const string Record = "01JRRE00000000000000000001"; // a base of Order
+        const string Title = "01JRRT00000000000000000001";
+        const string OrderId = "01JATT00000000000000000001";
+        const string HideTitle = "01JRRN00000000000000000021";
+        const string NoEdits = "01JRRN00000000000000000022";
+        var (h, store) = await OpenAsync(prepare: h =>
+        {
+            h.Write("model/entities/record.json", Canonical($$"""
+                {"kind":"entity","id":"{{Record}}","name":"Record","attributes":[{"id":"{{Title}}","name":"title","type":"string","length":80}]}
+                """, "entity.json", "model/entities/record.json"));
+            var order = JsonNode.Parse(h.Read("model/entities/order.json"))!.AsObject();
+            order["base"] = Record;
+            h.Write("model/entities/order.json", Canonical(order.ToJsonString(), "entity.json", "model/entities/order.json"));
+            var process = JsonNode.Parse(h.Read(ProcessFile))!.AsObject();
+            process["rights"] = JsonNode.Parse($$"""
+                [{"id":"{{HideTitle}}","name":"HideTitle","access":"deny","actors":["{{Guest}}"],"verbs":["read"],"attributes":["{{Title}}"]},
+                 {"id":"{{NoEdits}}","name":"NoEdits","access":"deny","actors":["{{Guest}}"],"verbs":["modify"],"attributes":["{{Title}}","{{OrderId}}"],"whileFrozen":true}]
+                """);
+            h.Write(ProcessFile, Canonical(process.ToJsonString(), "process.json", ProcessFile));
+        });
+        using var _ = h;
+        await using var __ = store;
+        Assert.DoesNotContain((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule is "MQ9901" or "MQ9903");
+
+        var references = await store.GetReferencesAsync(Title, Ct);
+        Assert.Contains(references, r => (r.FromElementId, r.FromId, r.JsonPointer) == (P, HideTitle, "/rights/0/attributes/0"));
+        Assert.Contains(references, r => (r.FromElementId, r.FromId, r.JsonPointer) == (P, NoEdits, "/rights/1/attributes/0"));
+
+        var removed = await DeleteAsync(store, Record, resolution);
+
+        Assert.True(removed.Outcome == SaveOutcome.Saved, string.Join("; ", removed.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        // An empty attributes list would mean the whole object: HideTitle goes, and NoEdits keeps the attribute that remains.
+        var rights = Lifecycle(store).Rights;
+        Assert.Equal([NoEdits], rights.Select(r => r.Id));
+        Assert.Equal([OrderId], rights[0].Attributes);
+        Assert.True(rights[0].WhileFrozen);
     }
 
     [Theory]

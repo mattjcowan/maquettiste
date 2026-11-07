@@ -28,6 +28,8 @@ export interface Names {
   element(id: string): string;
   /** The Why text of a right, by the id a refusal names; "" when it has none. */
   why(id: string): string;
+  /** The verb an event names, when it names one. */
+  eventVerb?(id: string): string | undefined;
 }
 
 /** Display names for the ids an answer carries: state paths, event, invoke, actor, guard, action and gate names. */
@@ -71,6 +73,7 @@ export function namesOf(
     action: (id) => actions.get(id) ?? id,
     transition: (id) => transitions.get(id) ?? id,
     attribute: (id) => attributes.get(id) ?? id,
+    eventVerb: (id) => (process.events ?? []).find((e) => e.id === id)?.verb ?? undefined,
     meaning: of(meanings),
     gate: (id) => gates.get(id) ?? id,
     why: (id) => {
@@ -350,7 +353,13 @@ export interface LastStepLine {
 }
 
 /** What one trace entry did, line by line, in the order the engine reports it. */
-export function lastStepLines(entry: StepTrace, names: Names, subjectAttribute: (id: string) => string = (id) => id): LastStepLine[] {
+export function lastStepLines(
+  entry: StepTrace,
+  names: Names,
+  subjectAttribute: (id: string) => string = (id) => id,
+  /** The attribute ids a right names (a use of a named right says its own). */
+  rightAttributes: (right: string) => readonly string[] = () => [],
+): LastStepLine[] {
   const subjectText = (map: Record<string, unknown>) =>
     Object.entries(map)
       .map(([k, v]) => `${subjectAttribute(k)} = ${valueText(v)}`)
@@ -376,6 +385,12 @@ export function lastStepLines(entry: StepTrace, names: Names, subjectAttribute: 
       tone: "danger",
       ...(by ? { element: by, why: names.why(by.id) || undefined } : {}),
     });
+  }
+  // A read or modify that named no attribute is refused by a right that names some: unknown attributes fail closed.
+  if (entry.refusal === "right" && entry.refusedBy && entry.input?.input === "verb" && (entry.input.verb === "read" || entry.input.verb === "modify")) {
+    const named = entry.input.verb === "read" ? (entry.input.attributes ?? []) : Object.keys(entry.input.values ?? {});
+    const held = rightAttributes(entry.refusedBy);
+    if (!named.length && held.length) lines.push({ kind: "note", text: L.unknownAttributesRefused(held.map(subjectAttribute).join(", ")), tone: "neutral" });
   }
   // A verb that was done: said as an event step is (the trace row's words).
   if (entry.accepted && entry.input?.input === "verb")
@@ -468,6 +483,8 @@ export interface TraceRow {
   /** The element that refused it, by name. */
   refusedBy: string | null;
   states: string;
+  /** An accepted input whose verb is freeze or thaw says so: "froze" or "thawed". */
+  froze: "froze" | "thawed" | null;
 }
 
 /** The start, then one row per input, with what the engine answered for it. */
@@ -483,7 +500,14 @@ export function traceRows(inputs: readonly SimInput[], result: SimulationResult 
       refusal: t?.refusal ?? null,
       refusedBy: t?.refusedBy ? names.element(t.refusedBy) : null,
       states: (t?.configuration ?? []).map(names.state).join(", "),
+      froze: t?.accepted === false ? null : frozeOf(index),
     };
+  };
+  // The verb of an input: a verb step's own, or the verb its event names.
+  const frozeOf = (index: number): TraceRow["froze"] => {
+    const input = inputs[index] as { input?: string; verb?: string; event?: string } | undefined;
+    const verb = input?.input === "verb" ? input.verb : input?.event ? names.eventVerb?.(input.event) : undefined;
+    return verb === "freeze" ? "froze" : verb === "thaw" ? "thawed" : null;
   };
   // A participant's step also shows the actor the engine worked out for it (`actsAs`) and the signer it filled in.
   const label = (input: SimInput, i: number) => {

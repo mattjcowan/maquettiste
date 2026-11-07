@@ -38,19 +38,25 @@ Who acts: the value the team's system holds for them, the actor they stand for, 
 {{- end }}
 {{- end }}
 {{- with_states = false }}{{ for o in sc.objects }}{{ if o.states.size > 0 }}{{ with_states = true }}{{ end }}{{ end }}
-{{- if with_states }}
+{{- with_frozen = false }}{{ for o in sc.objects }}{{ if o.frozen }}{{ with_frozen = true }}{{ end }}{{ for l in o.links }}{{ if l.frozen }}{{ with_frozen = true }}{{ end }}{{ end }}{{ end }}
+{{- if with_states || with_frozen }}
 
 ## Object states
 
 The states objects are in, in lifecycles other than the one the scenario runs. A lifecycle not given takes the state the object's
 bound value maps to, else its initial state.
+{{- if with_frozen }} Frozen says whether the object, or a link of it, starts frozen: it can't be modified or deleted, and its links
+can't be connected or disconnected, until a thaw.
+{{- end }}
 
-| Object | Entity | States |
-| --- | --- | --- |
+| Object | Entity | States |{{ if with_frozen }} Frozen |{{ end }}
+| --- | --- | --- |{{ if with_frozen }} --- |{{ end }}
 {{- for o in sc.objects }}
-{{- if o.states.size > 0 }}
+{{- frozen = [] }}{{ if o.frozen }}{{ frozen[frozen.size] = "yes" }}{{ end }}
+{{- for l in o.links }}{{ if l.frozen }}{{ frozen[frozen.size] = "the link through " + (md_code l.end.name) + " to " + (md_code l.object.name) }}{{ end }}{{ end }}
+{{- if o.states.size > 0 || frozen.size > 0 }}
 {{- states = [] }}{{ for st in o.states }}{{ states[states.size] = md_code (st.path) }}{{ end }}
-| {{ md_code o.name }} | {{ md_code o.entity.name }} | {{ states | array.join ", " }} |
+| {{ md_code o.name }} | {{ md_code o.entity.name }} | {{ states | array.join ", " }} |{{ if with_frozen }} {{ frozen | array.join ", " }} |{{ end }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -72,6 +78,7 @@ One row per step: who acts{{ if cast }} and the actor they act as{{ end }}, the 
 {{- if st.expect }}{{ for kv in st.expect.context }}{{ notes[notes.size] = (md_code kv.key) + " becomes " + (md_code (json kv.value)) }}{{ end }}{{ end }}
 {{- if st.expect }}{{ for kv in st.expect.values }}{{ notes[notes.size] = "sets " + (md_code kv.key) + " to " + (md_code (json kv.value)) }}{{ end }}{{ end }}
 {{- for kv in st.values }}{{ notes[notes.size] = "value " + (md_code kv.key) + " = " + (md_code (json kv.value)) }}{{ end }}
+{{- for a in st.attributes }}{{ notes[notes.size] = "attribute " + (md_code a.name) }}{{ end }}
 {{- if st.expect && st.expect.refused_by }}{{ notes[notes.size] = "refused by " + refuser(st.expect.refused_by, p) }}{{ else if st.expect && st.expect.refusal }}{{ notes[notes.size] = "refused: " + (md_code st.expect.refusal) }}{{ end }}
 {{- input = st.input }}
 {{- if st.input == "event" }}{{ input = "event " + (st.event ? (md_code st.event.name) : "`?`") }}

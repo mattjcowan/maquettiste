@@ -179,7 +179,7 @@ function rightFix(rule: string, element: ModelJson, pointer: string): { json: Mo
     case "MQ9903":
       if (!entry) return null;
       if (pointer === entry) return done(removeAndTidy(element, entry, "rights"), "Remove the entry");
-      return /\/ends(\/\d+)?$/.test(pointer) ? done(removeAndTidy(element, pointer, "list"), "Remove the entry") : null;
+      return /\/(ends|attributes)(\/\d+)?$/.test(pointer) ? done(removeAndTidy(element, pointer, "list"), "Remove the entry") : null;
     case "MQ9904":
       return entry ? done(removeAndTidy(element, entry, "rights"), "Remove the right") : null;
     case "MQ9906":

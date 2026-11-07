@@ -53,18 +53,24 @@ public sealed partial class {{ name }}Machine
     /// <param name="command">The command.</param>
 {{- if uses_rights() }}
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as.</param>
+{{- if uses_freezing() }}
+    /// <param name="frozen">Whether the object, or a link of it, is frozen; the team's FrozenState when null.</param>
+{{- end }}
     /// <returns>The result.</returns>
-    public {{ res }} {{ pascal e.name }}({{ snap }} snapshot, {{ cmd }} command, IReadOnlyList<string>? held = null)
+    public {{ res }} {{ pascal e.name }}({{ snap }} snapshot, {{ cmd }} command, IReadOnlyList<string>? held = null{{ if uses_freezing() }}, {{ frozen_state_type() }}? frozen = null{{ end }})
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Send(snapshot, {{ json e.name }}, command.Envelope, command.Payload(), command.AuditValues(), held);
+        return _chart.Send(snapshot, {{ json e.name }}, command.Envelope, command.Payload(), command.AuditValues(), held{{ if uses_freezing() }}, frozen{{ end }});
     }
 {{- else }}
+{{- if uses_freezing() }}
+    /// <param name="frozen">Whether the object, or a link of it, is frozen; the team's FrozenState when null.</param>
+{{- end }}
     /// <returns>The result.</returns>
-    public {{ res }} {{ pascal e.name }}({{ snap }} snapshot, {{ cmd }} command)
+    public {{ res }} {{ pascal e.name }}({{ snap }} snapshot, {{ cmd }} command{{ if uses_freezing() }}, {{ frozen_state_type() }}? frozen = null{{ end }})
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Send(snapshot, {{ json e.name }}, command.Envelope, command.Payload(), command.AuditValues());
+        return _chart.Send(snapshot, {{ json e.name }}, command.Envelope, command.Payload(), command.AuditValues(){{ if uses_freezing() }}, frozen: frozen{{ end }});
     }
 {{- end }}
 {{- end }}
@@ -74,18 +80,24 @@ public sealed partial class {{ name }}Machine
     /// <param name="command">The command.</param>
 {{- if uses_rights() }}
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as.</param>
+{{- if uses_freezing() }}
+    /// <param name="frozen">Whether the object, or a link of it, is frozen; the team's FrozenState when null.</param>
+{{- end }}
     /// <returns>The result.</returns>
-    public {{ res }} Complete({{ snap }} snapshot, {{ name }}InvokeResultControl command, IReadOnlyList<string>? held = null)
+    public {{ res }} Complete({{ snap }} snapshot, {{ name }}InvokeResultControl command, IReadOnlyList<string>? held = null{{ if uses_freezing() }}, {{ frozen_state_type() }}? frozen = null{{ end }})
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor, held);
+        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor, held{{ if uses_freezing() }}, frozen{{ end }});
     }
 {{- else }}
+{{- if uses_freezing() }}
+    /// <param name="frozen">Whether the object, or a link of it, is frozen; the team's FrozenState when null.</param>
+{{- end }}
     /// <returns>The result.</returns>
-    public {{ res }} Complete({{ snap }} snapshot, {{ name }}InvokeResultControl command)
+    public {{ res }} Complete({{ snap }} snapshot, {{ name }}InvokeResultControl command{{ if uses_freezing() }}, {{ frozen_state_type() }}? frozen = null{{ end }})
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor);
+        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor{{ if uses_freezing() }}, frozen: frozen{{ end }});
     }
 {{- end }}
 

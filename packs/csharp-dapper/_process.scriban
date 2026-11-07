@@ -16,6 +16,56 @@ func uses_rights()
   ret model.rights_lifecycles.size > 0
 end
 
+# Whether the project uses freezing (rights-design.md decision 28): an event, a transition or a right names freeze or thaw, or a right
+# has whileFrozen. Only then are the interpreter's frozen check, Freezing.cs (IFrozenState), the FrozenState stub, Refusals.Frozen and
+# the request's frozen flags written. model.freezing keys only on the freezing naming key, so asking renders a unit again on nothing else.
+func uses_freezing()
+  ret model.freezing.used
+end
+
+# The host interface of the frozen state (Freezing.cs) and the team's stub of it (Dispatch/FrozenState.cs), qualified.
+func frozen_state_type()
+  ret "global::" + actors_ns() + ".IFrozenState"
+end
+func frozen_state_stub()
+  ret "global::" + dispatch_ns() + ".FrozenState"
+end
+
+# Whether the project uses attribute rights (rights-design.md decision 28): a right names attributes. Only then do the request and the
+# rights table carry them.
+func uses_attribute_rights()
+  for $r in model.rights
+    if $r.attributes.size > 0
+      ret true
+    end
+  end
+  for $l in model.rights_lifecycles
+    for $u in $l.rights
+      if $u.right.attributes.size > 0
+        ret true
+      end
+    end
+  end
+  ret false
+end
+
+# Whether any right of the project has whileFrozen: only then does RightDefinition carry it.
+func uses_while_frozen()
+  for $r in model.rights
+    if $r.while_frozen
+      ret true
+    end
+  end
+  for $l in model.rights_lifecycles
+    for $u in $l.rights
+      if $u.right.while_frozen
+        ret true
+      end
+    end
+  end
+  ret false
+end
+
 # The other lifecycles whose states a process's event checks need (rights-design.md decision 29): the entries of process.may_refuse
 # that an event's verb reaches, each a StatesIn<Lifecycle> hook in the team's half of the handlers.
 func states_hooks(p)

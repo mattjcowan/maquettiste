@@ -154,6 +154,80 @@ func step_text(step)
   end
   ret step.event.name + $by + (signer(step) ? ", signed by " + signer(step) : "")
 end
+# Freezing (rights-design.md decisions 16 to 19 and 28). A scenario's frozen keys reach only its own test. Whether the subject, and
+# each link of it, is frozen before a step is worked out from the file: the start, then each accepted freeze or thaw, from a verb
+# step (with end and object, of that link) or an event that names the verb (of the subject).
+func verb_key_of(step)
+  if step.input == "verb"
+    ret step.verb ? step.verb.key : null
+  end
+  ret step.event && step.event.verb ? step.event.verb.key : null
+end
+func link_key(step)
+  ret step.end && step.object ? step.end.id + "/" + step.object.id : null
+end
+freezes = false
+link_frozen = {}
+frozen_now = false
+if s.subject
+  frozen_now = s.subject.frozen
+  for l in s.subject.links
+    link_frozen[l.end.id + "/" + l.object.id] = l.frozen
+    if l.frozen
+      freezes = true
+    end
+  end
+end
+if frozen_now
+  freezes = true
+end
+frozen_before = []
+link_before = []
+any_link_before = []
+for step in s.steps
+  fz_key = verb_key_of(step)
+  if fz_key == "freeze" || fz_key == "thaw" || refusal_of(step) == "frozen"
+    freezes = true
+  end
+  frozen_before[step.index] = frozen_now
+  fz_any = false
+  for kv in link_frozen
+    if kv.value
+      fz_any = true
+    end
+  end
+  any_link_before[step.index] = fz_any
+  fz_link = link_key(step)
+  link_before[step.index] = fz_link ? link_frozen[fz_link] == true : fz_any
+  fz_accepted = step.expect ? step.expect.accepted : (step.trace ? step.trace.accepted : false)
+  if fz_accepted && (fz_key == "freeze" || fz_key == "thaw")
+    if step.input == "verb" && fz_link
+      link_frozen[fz_link] = fz_key == "freeze"
+    else
+      frozen_now = fz_key == "freeze"
+    end
+  end
+end
+# Whether generated code holds freezing (Freezing.cs): asked only when the test calls the rights check or the scenario freezes.
+freezing = (rights || freezes) && uses_freezing()
+# Whether each send sets ScenarioFrozen from the replay: only when the scenario freezes, so other tests are left as they were.
+frozen_sends = freezes && freezing
+attribute_rights = rights && uses_attribute_rights()
+# The names of the attributes a verb step reads or modifies, for a request's Attributes.
+func step_attributes(step)
+  $names = []
+  for a in step.attributes
+    $names[$names.size] = a.name
+  end
+  for kv in step.values
+    $names[$names.size] = kv.key
+  end
+  ret $names
+end
+# The frozen query of a step, for FrozenFlags.
+func frozen_query(step)
+  ret "new FrozenQuery { Process = " + (json p.name) + ", Envelope = new ProcessEnvelope(Instance)" + (step.end ? ", End = " + (json step.end.name) : "") + " }"
+end
 start = ""
 for a in p.context
   if has(s.start.context, a.name)
@@ -221,6 +295,13 @@ public sealed class {{ test }}
 {{- if step.end }}
             End = {{ json step.end.name }},
 {{- end }}
+{{- if freezing }}
+            Frozen = {{ frozen_before[step.index] ? "true" : "false" }},
+            LinkFrozen = {{ link_before[step.index] ? "true" : "false" }},
+{{- end }}
+{{- if attribute_rights && step_attributes(step).size > 0 }}
+            Attributes = [{{ for n in step_attributes(step) }}{{ for.first ? "" : ", " }}{{ json n }}{{ end }}],
+{{- end }}
 {{- $from = object_actors(step) }}
 {{- if $from.size > 0 }}
             Resolves = actor => actor is {{ for a in $from }}{{ for.first ? "" : " or " }}Actors.{{ actor_member a }}{{ end }},
@@ -239,9 +320,15 @@ public sealed class {{ test }}
 {{- end }}
 {{- end }}
 {{- end }}
+{{- else if freezing && step.verb && step.expect }}
+        // No lifecycle states rights or a default, so only freezing can refuse this verb; the subject's and the link's frozen flags are the replay's.
+        Assert.{{ !step.expect.accepted && refusal_of(step) == "frozen" ? "True" : "False" }}(new FrozenFlags({{ frozen_query(step) }}, {{ frozen_before[step.index] ? "true" : "false" }}, {{ link_before[step.index] ? "true" : "false" }}).Refuses(global::{{ base_ns }}.Verb.{{ pascal step.verb.key }}));
 {{- else }}
         // Nothing in the model can refuse this verb: no lifecycle states rights or a default.
 {{- end }}
+{{- else if refusal_of(step) == "frozen" && step.event && !(freezing && step.event.verb) }}
+        // Refused as frozen in the replay. Nothing in generated code holds freezing until the project uses it (an event, a transition or a
+        // right that names freeze or thaw, or a right with whileFrozen), so the step is not sent, and a refused step changes nothing.
 {{- else }}
 {{- if step.input == "time" }}
         clock.Advance(TimeSpan.FromTicks({{ step.after_ticks }}));
@@ -250,7 +337,19 @@ public sealed class {{ test }}
 {{- if $holds }}
         ScenarioHoldings.Current = {{ held(step) }};
 {{- end }}
+{{- if frozen_sends }}
+        ScenarioFrozen.Current = ({{ frozen_before[step.index] ? "true" : "false" }}, {{ any_link_before[step.index] ? "true" : "false" }});
+{{- end }}
         result = await host.Dispatcher.SendAsync({{ command(step) }}, cancellationToken);
+{{- if frozen_sends }}
+{{- if refusal_of(step) == "frozen" }}
+        var frozenAsked{{ step.index + 1 }} = ScenarioFrozen.Asked;
+        ScenarioFrozen.Current = null;
+        Assert.True(frozenAsked{{ step.index + 1 }}, "The command handlers did not ask ScenarioFrozen whether the object is frozen: register it in ScenarioHost in place of the FrozenState stub.");
+{{- else }}
+        ScenarioFrozen.Current = null;
+{{- end }}
+{{- end }}
 {{- if $holds }}
 {{- if depends_on_holdings(step) && refusal_of(step) != "actor" && refusal_of(step) != "validation" && refusal_of(step) != "instance" }}
         var asked{{ step.index + 1 }} = ScenarioHoldings.Asked;

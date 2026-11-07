@@ -1,0 +1,96 @@
+{{-
+# Freezing (rights-design.md decisions 16 to 19), written only when the project uses freezing (uses_freezing): an event, a transition
+# or a right names freeze or thaw, or a right has whileFrozen. While the object is frozen, modify, connect, disconnect and delete are
+# refused before any right, and no allow lifts it. Where "frozen" is held is the team's system's business, so whether an object or
+# a link is frozen comes from one host interface, IFrozenState, as ICallerHoldings does for held actors. The team's stub,
+# Dispatch/FrozenState.cs (unit frozen-state, written once), answers "not frozen" until the team writes it.
+include "_csharp.scriban"
+include "_process.scriban"
+if uses_freezing()
+  verb_type = "global::" + base_ns + ".Verb"
+  capture content
+-}}
+{{ header() }}
+using System;
+using {{ runtime_ns() }};
+
+namespace {{ actors_ns() }};
+
+/// <summary>What the frozen state is asked: whether the object, or one of its links, is frozen. Its members are init properties, so later versions add members without breaking the hook.</summary>
+public sealed record FrozenQuery
+{
+    /// <summary>The name of the process that asks, or null for a check outside a run (an edit endpoint, an operation's handler).</summary>
+    public string? Process { get; init; }
+
+    /// <summary>The entity of the object, when it is known.</summary>
+    public Type? Subject { get; init; }
+
+    /// <summary>The envelope of the command, when there is one: its instance names the object.</summary>
+    public ProcessEnvelope? Envelope { get; init; }
+
+    /// <summary>Whether it asks about a link of the object rather than the object itself.</summary>
+    public bool Link { get; init; }
+
+    /// <summary>With <see cref="Link"/>, the name of the subject's relation end the link goes through; null when it isn't known, which asks whether any link of the object is frozen.</summary>
+    public string? End { get; init; }
+}
+
+/// <summary>
+/// Whether an object, or one of its links, is frozen (rights-design.md decisions 16 to 19): the host's answer, as <c>ICallerHoldings</c> is
+/// for held actors. A frozen object can't be modified or deleted, and its links can't be connected or disconnected; a frozen link can't
+/// be disconnected or modified. It is refused before any right, and no allow lifts it. Freezing stops nothing else: a right with
+/// whileFrozen holds only while the object (with ends, the link) is frozen. The team's FrozenState (Dispatch/FrozenState.cs) is the
+/// default; each command handler takes another, and so does a rights request.
+/// </summary>
+public interface IFrozenState
+{
+    /// <summary>Whether the object, or a link of it, is frozen. It may be asked more than once for one command.</summary>
+    /// <param name="query">What is asked.</param>
+    /// <returns>Whether it is frozen.</returns>
+    bool IsFrozen(FrozenQuery query);
+}
+
+/// <summary>The frozen flags of one check: each given, or asked of the frozen state at most once, and only when the check needs it.</summary>
+public sealed class FrozenFlags
+{
+    private readonly FrozenQuery _query;
+    private readonly IFrozenState _state;
+    private bool? _object;
+    private bool? _link;
+
+    /// <summary>Creates the flags of one check.</summary>
+    /// <param name="query">What the frozen state is asked; its <see cref="FrozenQuery.End"/> is the end of the link the verb acts on, or null for the object.</param>
+    /// <param name="frozen">Whether the object is frozen, when the caller knows; null asks the frozen state.</param>
+    /// <param name="linkFrozen">Whether the link is frozen, when the caller knows; null asks the frozen state.</param>
+    /// <param name="state">The frozen state to ask; the team's FrozenState when null.</param>
+    public FrozenFlags(FrozenQuery query, bool? frozen = null, bool? linkFrozen = null, IFrozenState? state = null)
+    {
+        _query = query ?? throw new ArgumentNullException(nameof(query));
+        _object = frozen;
+        _link = linkFrozen;
+        _state = state ?? new {{ frozen_state_stub() }}();
+    }
+
+    /// <summary>Whether the object is frozen.</summary>
+    public bool Object => _object ??= _state.IsFrozen(_query with { Link = false, End = null });
+
+    /// <summary>Whether the link the verb acts on is frozen; with no end known, whether a link of the object is.</summary>
+    public bool Link => _link ??= _state.IsFrozen(_query with { Link = true });
+
+    /// <summary>Whether freezing refuses a verb (rights-design.md decision 17), the first check, which no allow lifts.</summary>
+    /// <param name="verb">The verb.</param>
+    /// <returns>Whether it is refused as frozen.</returns>
+    public bool Refuses({{ verb_type }} verb) => global::{{ base_ns }}.Verbs.Key(verb) switch
+    {
+        "modify" => _query.End is null ? Object : Link,
+        "delete" => _query.End is null && Object,
+        "connect" => Object,
+        "disconnect" => Object || Link,
+        _ => false,
+    };
+}
+{{ end -}}
+{{-
+  file (join_path pack.params.generatedFolder "Processes" "Freezing.cs") content
+end
+-}}
