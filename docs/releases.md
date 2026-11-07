@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.15.0 (unreleased)
+## 0.15.0 (2026-11-06)
 
 - **Rights, part 1.** A lifecycle may list rights: who may do which verbs, in which states, under a condition. Each right allows or
   denies (`access`), names who it applies to (`actors`, empty for everyone), who it does not (`except`, which never grants), the
