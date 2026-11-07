@@ -298,6 +298,37 @@ right, step 3 is accepted and the replay fails with MQ9308 for the refusal it no
 A lifecycle that denies by default works the other way: set **When nothing is said** to **Denied**, then add allow rights. An allow in a lifecycle
 that allows by default can change nothing, so it is MQ9904. See [Rights](../user-guide.md#rights).
 
+## 16. Freeze a released document, and keep salary private
+
+Harbor Labs keeps a `Document` with a lifecycle `DocumentFlow` and the states `Draft`, `Released` and `Obsolete`. Documents are released
+and then must not change. A new revision is how a released document changes. Say there are two actors: `Author`, a role, and `Hr`, a role.
+
+**A frozen document.** Freezing refuses changes before any right, so no right is needed for the rule itself.
+
+1. In a scenario, add an object `doc1`, a `Document` that is the subject. Turn its **Frozen** switch on in the objects grid.
+2. Add a participant `ann`, who stands for an `Author`. Add a verb step: **Verb** `modify`, **Set values** `title=Plan B`, by `ann`.
+   The step is refused. Its **Refusal** is `frozen`, and there is nothing under **Refused by**.
+3. Add a verb step: **Verb** `revise`, by `ann`. The step is accepted. Freezing does not stop `revise`.
+4. Add an event step `Obsolete` by `ann`. The move is accepted: freezing does not stop moves.
+5. Add a verb step `thaw` by `ann`, then the `modify` step again. It is accepted.
+
+Open **Who can do what**, pick `Released` and turn on **Frozen**. Modify and Delete read **Denied**, with "Freezing refuses it before any
+right." Revise stays **Allowed**. To stop more while frozen, add a right with **While frozen** on, such as a deny of `change-owner`.
+
+If a scenario sends an event that names `freeze` and later a step that modifies the document, the later step is refused as frozen and
+`verify_scenarios` warns with MQ9309. Thaw in between, or **Update expectations from replay** so the step expects the refusal.
+
+**Nobody but HR reads salary.** Say `Employee` has the attribute `salary`, and its lifecycle is `EmployeeFlow`.
+
+1. Open `EmployeeFlow` and its **Rights** tab. Add a right named `SalaryIsHr`, set **Allows or denies** to **Deny**, and pick `Read` in **Does**.
+2. In **Attributes**, pick `salary`. Pick `Hr` in **Except**. In **Why**, write "Only HR reads salary."
+3. In **Who can do what**, the Read cell of an ordinary actor says **Depends**, naming `SalaryIsHr`: it denies only for the attribute.
+4. A scenario step with **Verb** `read` and **Attributes** `salary`, by a participant who is not in HR, is refused with refusal `right`,
+   refused by `SalaryIsHr`. The same step reading `name` is accepted, since `SalaryIsHr` says nothing about `name`.
+
+An event that names `modify` cannot say which attributes it changes. A deny that names attributes still holds for it. See
+[Rights](../user-guide.md#rights).
+
 ## See also
 
 - [Processes, actors and scenarios](../user-guide.md#processes-actors-and-scenarios), including
