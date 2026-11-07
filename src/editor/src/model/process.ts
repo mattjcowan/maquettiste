@@ -774,7 +774,7 @@ export function newGate(process: ProcessDoc, signer: string | undefined): GateDo
 
 // ------------------------------------------------------------------ scenarios
 
-export type ScenarioStatus = { passed: true } | { passed: false; step: number };
+export type ScenarioStatus = { passed: true; warnings?: string[] } | { passed: false; step: number };
 
 export interface ScenarioRow {
   id: string;
@@ -783,6 +783,8 @@ export interface ScenarioRow {
   status: "passed" | "failed" | "not-run";
   /** The failing step (1-based) when failed. */
   failedAt: number | null;
+  /** How many warnings the last replay gave a passing scenario. */
+  warnings: number;
 }
 
 /** The Scenarios tab's rows: the process's scenarios with their last verify result. */
@@ -798,6 +800,7 @@ export function scenarioRows(
       steps: s.stepCount ?? 0,
       status: !st ? "not-run" : st.passed ? "passed" : "failed",
       failedAt: st && !st.passed ? st.step : null,
+      warnings: st?.passed ? (st.warnings?.length ?? 0) : 0,
     };
   });
 }

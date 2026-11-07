@@ -59,7 +59,12 @@ export function useScenarioReplay(scenario: ScenarioDoc) {
   const statuses = useScenarioStatuses();
   const st = statuses.get(scenario.id);
   const steps = stepStatuses(scenario.steps.length, st ? (st.passed ? null : st.step - 1) : undefined);
-  return { status: !st ? ("not-run" as const) : st.passed ? ("passed" as const) : ("failed" as const), failedAt: st && !st.passed ? st.step : null, steps };
+  return {
+    status: !st ? ("not-run" as const) : st.passed ? ("passed" as const) : ("failed" as const),
+    failedAt: st && !st.passed ? st.step : null,
+    warnings: st?.passed ? (st.warnings ?? []) : [],
+    steps,
+  };
 }
 
 export function ScenarioHeader({ ctx }: { ctx: EditorContext }) {
@@ -463,7 +468,12 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         <Button size="sm" onClick={() => void replayNow()} disabled={busy} data-testid="scenario-editor-replay">
           <Play /> Replay
         </Button>
-        <ScenarioStatusBadge status={replay.status} failedAt={replay.failedAt} />
+        <ScenarioStatusBadge status={replay.status} failedAt={replay.failedAt} warnings={replay.warnings.length} />
+        {!failure && replay.warnings.length ? (
+          <span className="min-w-0 flex-1 whitespace-normal break-words text-12 text-warning" role="status" data-testid="replay-warnings">
+            {replay.warnings.join(" ")}
+          </span>
+        ) : null}
         {failure ? (
           <>
             <span className="min-w-0 flex-1 whitespace-normal break-words text-12 text-danger" role="status" data-testid="replay-failure">

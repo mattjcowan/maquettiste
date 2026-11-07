@@ -129,12 +129,16 @@ export function answerLifecycle(lifecycle: Json, f: Facts): Answer {
   if (answers.length === 1) return answers[0];
   const holding = [...new Map(answers.flatMap((a) => a.holding).map((h) => [`${h.lifecycle}|${h.right}|${h.access}`, h])).values()];
   const uncertain = answers.some((a) => a.uncertain);
-  const pick =
-    answers.find((a) => a.verdict === "deny" && !a.byDefault) ??
-    answers.find((a) => a.verdict === "deny") ??
-    answers.find((a) => a.verdict === "depends") ??
-    answers.find((a) => !a.byDefault) ??
-    answers[0];
+  // Several attributes denied by rights: name the first deny in file order, whichever attribute it came from.
+  const byRight = answers.filter((a) => a.verdict === "deny" && !a.byDefault);
+  if (byRight.length) {
+    const held = new Set(byRight.flatMap((a) => a.by));
+    const first = arr(lifecycle.rights)
+      .map(entryId)
+      .find((id) => held.has(id));
+    return { ...byRight[0], by: first ? [first, ...byRight[0].by.filter((b) => b !== first)] : byRight[0].by, holding, uncertain };
+  }
+  const pick = answers.find((a) => a.verdict === "deny") ?? answers.find((a) => a.verdict === "depends") ?? answers.find((a) => !a.byDefault) ?? answers[0];
   if (pick.verdict === "depends") return { ...pick, by: [...new Set(answers.filter((a) => a.verdict === "depends").flatMap((a) => a.by))], holding, uncertain };
   return { ...pick, holding, uncertain };
 }

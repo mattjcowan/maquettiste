@@ -406,6 +406,7 @@ export const PROCESS_LABELS = {
   notRun: "not run",
   passed: "passed",
   failedAt: (step: number) => `failed at step ${step}`,
+  passedWarnings: (n: number) => `passed, ${n} warning${n === 1 ? "" : "s"}`,
   passedCount: (n: number) => `✓ ${n.toLocaleString("en-US")} passed`,
   failedCount: (n: number) => `✗ ${n.toLocaleString("en-US")} failed`,
   /** A library part listed under a process that uses it. */
@@ -584,6 +585,8 @@ export const SIMULATION_LABELS = {
   setsLine: (sets: string) => `Sets: ${sets}`,
   valuesLine: (values: string) => `Values: ${values}`,
   noteLine: (note: string) => `Note: ${note}`,
+  unknownAttributesRefused: (attributes: string) =>
+    `No attribute was picked, and unknown attributes are refused because the right names attribute ${attributes}. Pick an attribute under Do.`,
   transitionLine: (transitions: string) => `Took ${transitions}`,
   auditLine: (gate: string, outcome: string, signer: string, actor: string, meaning: string) =>
     `${gate}: ${outcome}${signer ? ` by ${signer}` : ""}${actor ? ` as ${actor}` : ""}${meaning ? ` (${meaning})` : ""}`,
@@ -631,6 +634,7 @@ export const SIMULATION_LABELS = {
   replayPassed: "passed",
   replayFailed: "failed",
   replayNotRun: "not run",
+  replayWarning: (message: string) => `Warning: ${message}`,
   replayAllPassed: (n: number) => `All ${n.toLocaleString("en-US")} steps passed.`,
   replayFailedAt: (step: string, rule: string, message: string) => `${step} failed (${rule}): ${message}`,
   replayStep: (n: number) => `Step ${n}`,
@@ -766,6 +770,11 @@ export const RIGHT_LABELS = {
   add: "Add right",
   addDialog: "Add right…",
   addDescription: "Say what it does. Everyone and every state are the defaults; the rest can be set in the grid.",
+  doAttribute: "Attribute for read and modify",
+  doAttributeTip: "Read and Modify name this attribute. With none picked they name no attribute, and a right that names attributes refuses",
+  doAttributeNone: "No attribute",
+  everyAttribute: "every attribute",
+  showColumn: (name: string) => `+ ${name}`,
   addNeedsVerb: "Pick at least one verb; a right without a verb says nothing.",
   unknownActors: (names: string[]) =>
     `${names.map((n) => `"${n}"`).join(", ")} ${names.length === 1 ? "is not an actor" : "are not actors"} of this project, so nothing changed. Leave the cell empty to mean Everyone.`,

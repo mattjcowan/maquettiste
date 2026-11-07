@@ -23,6 +23,7 @@ import {
   freeRightName,
   hasAttributes,
   hasEnds,
+  hasWhileFrozen,
   removeRight,
   rightRows,
   rightStateOptions,
@@ -65,6 +66,8 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
     verb: (key) => describeVerb(key, verbs.own)?.label ?? key,
     condition: (tree) => treeText(tree, setContext.names),
   });
+  // Attributes and While frozen show when a right uses them, or when asked for here.
+  const [asked, setAsked] = useState<{ attributes: boolean; whileFrozen: boolean }>({ attributes: false, whileFrozen: false });
   const [picked, setPicked] = useState<string | null>(null);
   const [view, setView] = useState<"rights" | "who">("rights");
   // An edit the grid refused (an actor no one has), said at the grid; the cell keeps what it had.
@@ -159,7 +162,7 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
           } satisfies GridColumn<RightRow>,
         ]
       : []),
-    ...(hasAttributes(rows)
+    ...(hasAttributes(rows) || asked.attributes
       ? [
           {
             key: "attributes",
@@ -176,7 +179,7 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
           } satisfies GridColumn<RightRow>,
         ]
       : []),
-    ...(rows.length
+    ...(hasWhileFrozen(rows) || asked.whileFrozen
       ? [
           {
             key: "whileFrozen",
@@ -269,28 +272,40 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
             ) : null
           }
           toolbar={
-            <Select
-              aria-label={L.useNamed}
-              className="h-6 w-44"
-              data-testid="use-named-right"
-              value=""
-              disabled={!free.length}
-              title={free.length ? undefined : L.noNamed}
-              onChange={(e) => {
-                const id = e.target.value;
-                if (!id) return;
-                const created: string[] = [];
-                change((p) => void created.push(addRightUse(p, id)));
-                if (created[0]) setPicked(created[0]);
-              }}
-            >
-              <option value="">{L.useNamed}</option>
-              {free.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.name}
-                </option>
-              ))}
-            </Select>
+            <>
+              {!(hasAttributes(rows) || asked.attributes) ? (
+                <Button size="sm" title={L.tips.attributes} onClick={() => setAsked((a) => ({ ...a, attributes: true }))} data-testid="show-attributes">
+                  {L.showColumn(L.columns.attributes)}
+                </Button>
+              ) : null}
+              {!(hasWhileFrozen(rows) || asked.whileFrozen) ? (
+                <Button size="sm" title={L.tips.whileFrozen} onClick={() => setAsked((a) => ({ ...a, whileFrozen: true }))} data-testid="show-while-frozen">
+                  {L.showColumn(L.columns.whileFrozen)}
+                </Button>
+              ) : null}
+              <Select
+                aria-label={L.useNamed}
+                className="h-6 w-44"
+                data-testid="use-named-right"
+                value=""
+                disabled={!free.length}
+                title={free.length ? undefined : L.noNamed}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) return;
+                  const created: string[] = [];
+                  change((p) => void created.push(addRightUse(p, id)));
+                  if (created[0]) setPicked(created[0]);
+                }}
+              >
+                <option value="">{L.useNamed}</option>
+                {free.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.name}
+                  </option>
+                ))}
+              </Select>
+            </>
           }
         />
       ) : null}
@@ -302,6 +317,7 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
           actors={actorOptions.map((a) => ({ value: a.id, label: a.name }))}
           verbs={verbOptions}
           states={states}
+          attributes={attributeOptions}
           onClose={() => setAdding(null)}
           onAdd={(init) => {
             const created: string[] = [];
@@ -340,6 +356,7 @@ function AddRightDialog({
   actors,
   verbs,
   states,
+  attributes,
   onAdd,
   onClose,
 }: {
@@ -348,6 +365,7 @@ function AddRightDialog({
   actors: { value: string; label: string }[];
   verbs: { value: string; label: string }[];
   states: { value: string; label: string }[];
+  attributes: { value: string; label: string }[];
   onAdd: (init: NewRight) => void;
   onClose: () => void;
 }) {
@@ -356,6 +374,8 @@ function AddRightDialog({
   const [who, setWho] = useState<string[]>([]);
   const [does, setDoes] = useState<string[]>([]);
   const [where, setWhere] = useState<string[]>([]);
+  const [attrs, setAttrs] = useState<string[]>([]);
+  const [frozen, setFrozen] = useState(false);
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent title={L.add} description={L.addDescription}>
@@ -364,7 +384,7 @@ function AddRightDialog({
           data-testid="add-right-dialog"
           onSubmit={(e) => {
             e.preventDefault();
-            if (does.length && name.trim()) onAdd({ name, access, verbs: does, actors: who, states: where });
+            if (does.length && name.trim()) onAdd({ name, access, verbs: does, actors: who, states: where, attributes: attrs, whileFrozen: frozen });
           }}
         >
           <div className="grid grid-cols-[1fr_auto] items-end gap-2">
@@ -381,6 +401,13 @@ function AddRightDialog({
           <ChipsEditor label={L.columns.does} values={does} options={verbs} allowFree={false} onChange={setDoes} />
           <ChipsEditor label={`${L.columns.who} (${EVERYONE})`} values={who} options={actors} allowFree={false} onChange={setWho} />
           <ChipsEditor label={`${L.columns.states} (${ALL_STATES})`} values={where} options={states} allowFree={false} onChange={setWhere} />
+          {takesAttributes(does) ? (
+            <ChipsEditor label={`${L.columns.attributes} (${L.everyAttribute})`} values={attrs} options={attributes} allowFree={false} onChange={setAttrs} />
+          ) : null}
+          <label className="flex items-center gap-2 text-12" title={L.tips.whileFrozen}>
+            <input type="checkbox" checked={frozen} onChange={(e) => setFrozen(e.target.checked)} data-testid="add-right-while-frozen" />
+            {L.columns.whileFrozen}
+          </label>
           {!does.length ? <p className="text-12 text-secondary">{L.addNeedsVerb}</p> : null}
           <div className="flex justify-end gap-2">
             <Button type="button" onClick={onClose}>

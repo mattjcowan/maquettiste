@@ -503,6 +503,10 @@ class Interpreter {
   /** Whether the subject is frozen, and the links that are, as `end|object` (rights-design.md decisions 16 and 17). */
   frozenObject = false;
   frozenLinks = new Set<string>();
+  /** The linked object the step in hand names, so a `whileFrozen` right with ends asks about that link's own flag. */
+  /** Whether the event in hand is a thaw: its own move's sets carry no frozen note. */
+  private thawing = false;
+  private checkObject: string | null = null;
   subjectEntity: string | undefined;
   lifecycles: Json[] = [];
   private auditSeq = 0;
@@ -724,12 +728,14 @@ class Interpreter {
     ];
     if (this.checkRights(str(ev.verb), closed)) return;
     this.scope.event = this.eventObject(String(ev.name), input.actor, arr(ev.payload), input.payload);
+    this.thawing = ev.verb === "thaw";
     this.macrostep(() => {
       const selection = this.select("event", String(ev.id), true);
       if (!selection.transitions.length && !selection.consumed) return this.refuse(selection.reason, selection.by);
       if (selection.transitions.length) this.microstep(selection.transitions);
       this.runToCompletion();
     });
+    this.thawing = false;
     // Naming `freeze` or `thaw` is the opt-in: the accepted event freezes or thaws the subject.
     if (this.scope.refusal === null && (ev.verb === "freeze" || ev.verb === "thaw")) this.applyFreeze(ev.verb, null, null);
   }
@@ -834,7 +840,7 @@ class Interpreter {
       closed: l.id === this.chart.doc.id ? closed : [],
       attributes,
       frozenObject: this.frozenObject,
-      frozenLink: (e) => this.linkFrozen(e),
+      frozenLink: (e) => this.linkFrozen(e, this.checkObject),
     };
   }
 
@@ -856,9 +862,17 @@ class Interpreter {
   }
 
   /** Rows 3 and 4: the denies, then the defaults. True when refused; the trace then names the right or the lifecycle. */
-  private checkRights(verb: string | null, closed: string[], end: string | null = null, create = false, attributes: string[] | null = null): boolean {
+  private checkRights(
+    verb: string | null,
+    closed: string[],
+    end: string | null = null,
+    create = false,
+    attributes: string[] | null = null,
+    object: string | null = null,
+  ): boolean {
     const lifecycles = this.answering(verb);
     if (!lifecycles.some(takesPart)) return false;
+    this.checkObject = object;
     const result = checkAll(lifecycles, (l) => this.factsFor(l, verb, closed, end, create, attributes));
     this.scope.rights.push(...result.rights);
     if (!result.refused) return false;
@@ -887,7 +901,7 @@ class Interpreter {
     const known = this.attributesOf(entity);
     const toId = (k: string) => known.find((a) => a.id === k)?.id ?? known.find((a) => a.name === k)?.id ?? k;
     const named = verb === "read" ? (input.attributes ?? []) : verb === "modify" && !input.end ? Object.keys(input.values ?? {}) : [];
-    if (this.checkRights(verb, [], input.end ?? null, verb === "create", named.length ? named.map(toId) : null)) return;
+    if (this.checkRights(verb, [], input.end ?? null, verb === "create", named.length ? named.map(toId) : null, input.object ?? null)) return;
     if (verb === "freeze" || verb === "thaw") return this.applyFreeze(verb, input.end ?? null, input.object ?? null);
     if (verb === "modify" && !input.end) {
       const attributes = this.attributesOf(entity);
@@ -1124,7 +1138,7 @@ class Interpreter {
       }
     }
     const setOut: Json = {};
-    if (worked.some((w) => w.value !== UNKNOWN) && this.frozenObject)
+    if (worked.some((w) => w.value !== UNKNOWN) && this.frozenObject && !this.thawing)
       this.scope.notes.push("The object is frozen, and the move's sets were applied anyway; freezing does not stop moves.");
     for (const w of worked) {
       if (w.value === UNKNOWN) continue;

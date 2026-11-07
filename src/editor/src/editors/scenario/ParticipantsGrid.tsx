@@ -537,7 +537,14 @@ function AddObjectDialog({
           }}
         >
           <Field label={L.name} htmlFor="add-object-name">
-            <Input id="add-object-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-invalid={clash} />
+            <Input
+              id="add-object-name"
+              autoFocus
+              onFocus={(e) => e.currentTarget.select()}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-invalid={clash}
+            />
             {clash ? <p className="text-11 text-danger">{L.objectNameTaken}</p> : null}
           </Field>
           <Field label={L.entity} htmlFor="add-object-entity">

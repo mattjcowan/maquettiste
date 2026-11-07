@@ -17,8 +17,12 @@ import { Grid, type GridColumn } from "./Grid";
 import { useGridTargets } from "./shared";
 import { deleteScenario, refreshScenario, verifyScenario } from "./api";
 
-export function ScenarioStatusBadge({ status, failedAt }: { status: ScenarioRow["status"]; failedAt: number | null }) {
-  return status === "passed" ? (
+export function ScenarioStatusBadge({ status, failedAt, warnings = 0 }: { status: ScenarioRow["status"]; failedAt: number | null; warnings?: number }) {
+  return status === "passed" && warnings > 0 ? (
+    <Badge tone="warning" data-testid="scenario-status" data-status="passed-warnings">
+      {PROCESS_LABELS.passedWarnings(warnings)}
+    </Badge>
+  ) : status === "passed" ? (
     <Badge tone="success" data-testid="scenario-status" data-status="passed">
       {PROCESS_LABELS.passed}
     </Badge>
@@ -66,7 +70,7 @@ export function ScenariosTab({ process, name, focus }: { process: string; name: 
       kind: "readonly",
       width: "w-32",
       value: (r) => r.status,
-      render: (r) => <ScenarioStatusBadge status={r.status} failedAt={r.failedAt} />,
+      render: (r) => <ScenarioStatusBadge status={r.status} failedAt={r.failedAt} warnings={r.warnings} />,
     },
   ];
   const open = (row: ScenarioRow) => {

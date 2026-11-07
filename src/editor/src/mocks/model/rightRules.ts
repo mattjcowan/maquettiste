@@ -156,6 +156,14 @@ export function rightDiagnostics(json: Json, all: () => Iterable<ModelEntry>, em
           use ? at : `${at}/attributes`,
           id,
         );
+      if (ends.length)
+        emit(
+          "MQ9903",
+          "error",
+          `${label} names attributes beside ends: with ends it speaks of links, which hold none of the subject's attributes. Remove the attributes or the ends, or split the right.`,
+          use ? at : `${at}/attributes`,
+          id,
+        );
       const have = subjectAttributes();
       attributes.forEach((a, j) => {
         if (!have.has(a))
@@ -178,7 +186,7 @@ export function rightDiagnostics(json: Json, all: () => Iterable<ModelEntry>, em
       exceptFindings(source, nameOf, at, emit, id ?? "", label);
     }
     if (source.access === "allow") {
-      for (const v of verbs) allowing.add(v);
+      if (attributes.length === 0) for (const v of verbs) allowing.add(v);
       if (!denies)
         emit(
           "MQ9904",
