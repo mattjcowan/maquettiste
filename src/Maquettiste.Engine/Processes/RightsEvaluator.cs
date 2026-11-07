@@ -53,6 +53,12 @@ internal sealed record RightRule(Process Lifecycle, ProcessRight Entry, Right? N
     /// <summary>The relation ends whose links it speaks of; empty for the object.</summary>
     public IReadOnlyList<string> Ends => Named?.Ends ?? Entry.Ends;
 
+    /// <summary>The attributes whose reading or modifying it speaks of (decision 21); empty for the object as a whole.</summary>
+    public IReadOnlyList<string> Attributes => Named?.Attributes ?? Entry.Attributes;
+
+    /// <summary>Whether it holds only while the object, or with <see cref="Ends"/> the link, is frozen (decision 18).</summary>
+    public bool WhileFrozen => Named?.WhileFrozen ?? Entry.WhileFrozen;
+
     /// <summary>Its condition, or <see langword="null"/>.</summary>
     public Expr? Condition => Named?.Condition ?? Entry.Condition;
 

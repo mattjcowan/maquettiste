@@ -3921,6 +3921,16 @@ paths:
           description: An entity id, one of the lifecycle's subjects; only the rows that hold for it.
           schema:
             $ref: '#/components/schemas/Ulid'
+        - name: frozen
+          in: query
+          description: |
+            Whether the cells answer for a frozen object (rights-design.md decisions 17 and 18). Without it, or false, they answer for
+            a thawed object, and rights with `whileFrozen` hold nowhere. With true, `modify`, `connect`, `disconnect` and `delete`
+            are denied by freezing before any right: `answer` is `denied`, `byDefault` false and `by` empty, since no element
+            decides it; and rights with `whileFrozen` hold.
+          schema:
+            type: boolean
+            default: false
         - $ref: '#/components/parameters/PageCursor'
         - $ref: '#/components/parameters/PageLimit'
       responses:
@@ -10236,6 +10246,15 @@ components:
           description: The ids of the subject's relation ends whose links an inline right speaks of; left out for a use.
           items:
             type: string
+        attributes:
+          type: array
+          description: The ids of the subject's attributes whose reading or modifying an inline right speaks of (rights-design.md decision 21); left out when it names none, and for a use.
+          items:
+            type: string
+        whileFrozen:
+          type: boolean
+          const: true
+          description: Whether an inline right holds only while the object, or with `ends` the link, is frozen (rights-design.md decision 18); left out when false, and for a use.
     RightRecord:
       x-engine-record: Maquettiste.Engine.RightRecord
       description: |
@@ -10278,6 +10297,15 @@ components:
             description: The ids of the relation ends whose links it speaks of.
             items:
               type: string
+          attributes:
+            type: array
+            description: The ids of the attributes whose reading or modifying it speaks of (rights-design.md decision 21); left out when it names none.
+            items:
+              type: string
+          whileFrozen:
+            type: boolean
+            const: true
+            description: Whether it holds only while the object, or with `ends` the link, is frozen (rights-design.md decision 18); left out when false.
           conditionText:
             type: [string, 'null']
             description: Its condition's text, printed from current names, or as stored for a right no lifecycle uses; null when it has none. Each use's record has the condition typed for its lifecycle.
@@ -10774,6 +10802,10 @@ components:
           description: The ids of the object's states in other lifecycles, as given (object-effects-design.md decision 10); absent when the file gives none.
           items:
             type: string
+        frozen:
+          type: boolean
+          const: true
+          description: Whether the object starts frozen (rights-design.md decision 16); absent when false.
     ParticipantRecord:
       x-engine-record: Maquettiste.Engine.ParticipantRecord
       description: A participant of a scenario (actors-design.md decision 14).
@@ -10826,6 +10858,10 @@ components:
         object:
           type: string
           description: The linked object's id.
+        frozen:
+          type: boolean
+          const: true
+          description: Whether the link starts frozen (rights-design.md decision 16); absent when false.
     ScenarioStartRecord:
       x-engine-record: Maquettiste.Engine.ScenarioStartRecord
       description: Where a scenario's run starts.
@@ -10889,6 +10925,11 @@ components:
           type: object
           description: The values a modify verb step sets, by attribute name (by id when no subject has such an attribute), as written; absent when the step gives none.
           additionalProperties: true
+        attributes:
+          type: array
+          description: The ids of the attributes a read verb step reads (rights-design.md decision 25), as written; absent when the step names none.
+          items:
+            type: string
         end:
           type: string
           description: The id of the subject's relation end a verb step's link goes through; absent when the step names none.
@@ -10930,7 +10971,7 @@ components:
         refusal:
           type: string
           description: The refusal the step expects (rights-design.md decision 26); absent when the file gives none.
-          enum: [no-transition, guard, actor, gate-signer, gate-repeat, gate-reason, right, default]
+          enum: [no-transition, guard, actor, gate-signer, gate-repeat, gate-reason, right, default, frozen]
         refusedBy:
           type: string
           description: The id of the element the step expects to refuse it (rights-design.md decision 26); absent when the file gives none.
@@ -14585,6 +14626,13 @@ components:
           description: For a `modify` verb step on the subject, the values it sets, by attribute id; later guards and sets read them. Left out of a trace's echo when absent.
           type: object
           additionalProperties: true
+        attributes:
+          description: |
+            For a `read` verb step on the subject (rights-design.md decision 25), the ids of the attributes it reads, each checked against
+            the rights that name attributes (decision 21). Absent, the read is of the object as a whole. Left out of a trace's echo when absent.
+          type: array
+          items:
+            type: string
         end:
           description: For a verb step on a link, the id of the subject's relation end the link goes through. Left out of a trace's echo when absent.
           type: string
@@ -14689,6 +14737,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Ulid'
+        frozen:
+          description: |
+            Whether the object starts frozen (rights-design.md decision 16): `modify` and `delete` are refused, and so are `connect`
+            and `disconnect` on its links, until a `thaw`. Only the subject's is read. False when absent.
+          type: boolean
+          default: false
         links:
           type: array
           items:
@@ -14749,6 +14803,12 @@ components:
         object:
           description: The id of the linked object.
           type: string
+        frozen:
+          description: |
+            Whether the link starts frozen (rights-design.md decision 16): it cannot be disconnected or have its attributes modified
+            until a `thaw`, and the objects at its ends are not frozen by it. Only on a link of the subject (MQ9305). False when absent.
+          type: boolean
+          default: false
       additionalProperties: false
     StepTrace:
       x-engine-record: Maquettiste.Engine.Processes.StepTrace
@@ -14768,7 +14828,7 @@ components:
         refusal:
           description: Why the input was refused, the first check that failed (rights-design.md decision 12); null when accepted.
           type: [string, 'null']
-          enum: [no-transition, guard, actor, gate-signer, gate-repeat, gate-reason, right, default, null]
+          enum: [no-transition, guard, actor, gate-signer, gate-repeat, gate-reason, right, default, frozen, null]
         microsteps:
           type: array
           items:
@@ -14829,7 +14889,8 @@ components:
             object's lifecycle because the scenario gave none (decision 10), an identity that did not convert to the type `current_actor()` met
             (decision 5), sets an invoked sub-process ran, which change nothing (decision 4). With rights (rights-design.md section
             7), also a verb the run checked but did not apply, a delete that stopped the chart, and the other lifecycles a scenario with
-            no objects assumed in their initial states or did not ask. Left out when empty.
+            no objects assumed in their initial states or did not ask. With freezing, also a freeze of what is already frozen or a
+            thaw of what is not, which changes nothing, and a move whose sets applied to a frozen object. Left out when empty.
           type: array
           items:
             type: string
@@ -14838,7 +14899,7 @@ components:
             The id of the element that refused the input (rights-design.md decision 12): the event or invoke whose actors leave the actor
             out, the right (an inline right, or the named right), the lifecycle whose default denies, the guard, or the gate or gate
             policy. Written for a refused input in a project that uses rights, and for a step that expects it; left out otherwise, and
-            for `no-transition`, which no element refused.
+            for `no-transition` and `frozen`, which no element refused.
           $ref: '#/components/schemas/Ulid'
         rights:
           description: |
@@ -14847,6 +14908,12 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RightEvaluation'
+        frozen:
+          description: |
+            Whether the subject is frozen after the input (rights-design.md section 7): true from an accepted `freeze`, or a start with
+            the subject `frozen`, until an accepted `thaw`. Left out when false.
+          type: boolean
+          const: true
     RightEvaluation:
       x-engine-record: Maquettiste.Engine.Processes.RightEvaluation
       description: A right that answered for an input; a named right used by several lifecycles answers once for each lifecycle that asked.

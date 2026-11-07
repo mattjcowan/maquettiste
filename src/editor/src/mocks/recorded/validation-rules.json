@@ -2826,7 +2826,7 @@
   {
     "id": "MQ9305",
     "defaultSeverity": "error",
-    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit, or an owner beside its subject's owner field or that is not one of the scenario's participants, or states that name a state of a lifecycle that cannot govern the object, two states of one lifecycle that cannot be active together, the subject's state in the process the scenario runs, or a state that disagrees with the state the object's bound value maps to; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; or a verb step is inconsistent: no verb, a verb that is not an object, link or own verb (a move, signature or task verb), freeze or thaw, values beside a verb other than modify or beside an end, a values attribute a set could not set or a value that does not fit its type, an end that is not the subject's, an object not linked through it (except for connect), or delete on a link; or expect.refusal or expect.refusedBy beside accepted true; fix the step, the object or the participant.",
+    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit or that is frozen on an object other than the subject, or an owner beside its subject's owner field or that is not one of the scenario's participants, or states that name a state of a lifecycle that cannot govern the object, two states of one lifecycle that cannot be active together, the subject's state in the process the scenario runs, or a state that disagrees with the state the object's bound value maps to; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; or a verb step is inconsistent: no verb, a verb that is not an object, link or own verb (a move, signature or task verb), values beside a verb other than modify or beside an end, attributes beside a verb other than read, a values attribute a set could not set or a value that does not fit its type, an end that is not the subject's, an object not linked through it (except for connect), or delete on a link; or expect.refusal or expect.refusedBy beside accepted true; fix the step, the object or the participant.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true
@@ -2852,6 +2852,15 @@
     "id": "MQ9308",
     "defaultSeverity": "error",
     "description": "A refused scenario step's refusal or refusing element differs from expect.refusal or expect.refusedBy (the checks run in a fixed order, and the first that fails names both); fix the step, the chart or the rights, or update the expectations from a replay.",
+    "family": "MQ93xx",
+    "familyLabel": "Scenarios",
+    "canBeOff": true,
+    "quickFix": "refresh-scenario"
+  },
+  {
+    "id": "MQ9309",
+    "defaultSeverity": "warning",
+    "description": "A scenario step is refused as frozen because an earlier step froze the subject or the link (an event that names freeze, or a freeze verb step), and the step does not expect refusal frozen: an accepted freeze takes effect, so modify, connect, disconnect and delete are refused until a thaw. The finding names the step that froze it; thaw in between, or expect the refusal (update the expectations from a replay).",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true,
@@ -3108,7 +3117,7 @@
   {
     "id": "MQ9903",
     "defaultSeverity": "error",
-    "description": "A right's ends are not ends every subject of its lifecycle holds, or stand beside a verb that cannot act on a link (any but connect, disconnect, read, modify, freeze and thaw); a named right's are reported at each use. Remove the entry.",
+    "description": "A right's ends are not ends every subject of its lifecycle holds, or stand beside a verb that cannot act on a link (any but connect, disconnect, read, modify, freeze and thaw); or its attributes are not attributes every subject of its lifecycle holds, or stand beside a verb other than read and modify; a named right's are reported at each use. Remove the entry.",
     "family": "MQ99xx",
     "familyLabel": "Rights",
     "canBeOff": true

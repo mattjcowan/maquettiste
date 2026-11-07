@@ -193,6 +193,7 @@
         "entity",
         "values",
         "states",
+        "frozen",
         "links",
         "owner"
       ],
@@ -223,6 +224,11 @@
           "$ref": "common.json#/$defs/idList",
           "default": []
         },
+        "frozen": {
+          "description": "true: the object starts frozen, so modify and delete are refused, and so are connect and disconnect on its links, until a thaw. Only the subject's freezing is checked; another object's is kept but not read.",
+          "type": "boolean",
+          "default": false
+        },
         "links": {
           "description": "The objects this object links to, each through a relation end.",
           "type": "array",
@@ -249,7 +255,8 @@
       "type": "object",
       "x-order": [
         "end",
-        "object"
+        "object",
+        "frozen"
       ],
       "properties": {
         "end": {
@@ -259,6 +266,11 @@
         "object": {
           "description": "The id of the linked object.",
           "$ref": "common.json#/$defs/id"
+        },
+        "frozen": {
+          "description": "true: the link starts frozen, so it cannot be disconnected or have its attributes modified until a thaw; the objects at its ends are not frozen by it. Only on a link of the subject (MQ9305).",
+          "type": "boolean",
+          "default": false
         }
       },
       "required": [
@@ -366,6 +378,7 @@
         "reason",
         "payload",
         "values",
+        "attributes",
         "end",
         "object",
         "assume",
@@ -439,6 +452,11 @@
             "description": "A value of the attribute's type."
           }
         },
+        "attributes": {
+          "description": "For a read verb step on the subject: the ids of the attributes it reads, each checked against the rights that name attributes (MQ9305 beside another verb). Absent, the read is of the object as a whole.",
+          "$ref": "common.json#/$defs/idList",
+          "uniqueItems": true
+        },
         "end": {
           "description": "For a verb step on a link: the id of the subject's relation end the link goes through. Absent, the verb acts on the subject.",
           "$ref": "common.json#/$defs/id"
@@ -485,7 +503,8 @@
                 "gate-repeat",
                 "gate-reason",
                 "right",
-                "default"
+                "default",
+                "frozen"
               ]
             },
             "refusedBy": {

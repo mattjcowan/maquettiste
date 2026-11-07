@@ -4082,6 +4082,13 @@ export interface components {
             verbs?: string[];
             /** @description The ids of the subject's relation ends whose links an inline right speaks of; left out for a use. */
             ends?: string[];
+            /** @description The ids of the subject's attributes whose reading or modifying an inline right speaks of (rights-design.md decision 21); left out when it names none, and for a use. */
+            attributes?: string[];
+            /**
+             * @description Whether an inline right holds only while the object, or with `ends` the link, is frozen (rights-design.md decision 18); left out when false, and for a use.
+             * @constant
+             */
+            whileFrozen?: true;
         };
         /**
          * @description A named right (rights-design.md decision 7), with what it says and the lifecycles that use it. Right records come with every
@@ -4103,6 +4110,13 @@ export interface components {
             verbs: string[];
             /** @description The ids of the relation ends whose links it speaks of. */
             ends: string[];
+            /** @description The ids of the attributes whose reading or modifying it speaks of (rights-design.md decision 21); left out when it names none. */
+            attributes?: string[];
+            /**
+             * @description Whether it holds only while the object, or with `ends` the link, is frozen (rights-design.md decision 18); left out when false.
+             * @constant
+             */
+            whileFrozen?: true;
             /** @description Its condition's text, printed from current names, or as stored for a right no lifecycle uses; null when it has none. Each use's record has the condition typed for its lifecycle. */
             conditionText: string | null;
             /** @description The ids of the lifecycles that use it. */
@@ -4340,6 +4354,11 @@ export interface components {
             owner?: string;
             /** @description The ids of the object's states in other lifecycles, as given (object-effects-design.md decision 10); absent when the file gives none. */
             states?: string[];
+            /**
+             * @description Whether the object starts frozen (rights-design.md decision 16); absent when false.
+             * @constant
+             */
+            frozen?: true;
         };
         /** @description A participant of a scenario (actors-design.md decision 14). */
         ParticipantRecord: {
@@ -4369,6 +4388,11 @@ export interface components {
             end: string;
             /** @description The linked object's id. */
             object: string;
+            /**
+             * @description Whether the link starts frozen (rights-design.md decision 16); absent when false.
+             * @constant
+             */
+            frozen?: true;
         };
         /** @description Where a scenario's run starts. */
         ScenarioStartRecord: {
@@ -4407,6 +4431,8 @@ export interface components {
             values?: {
                 [key: string]: unknown;
             };
+            /** @description The ids of the attributes a read verb step reads (rights-design.md decision 25), as written; absent when the step names none. */
+            attributes?: string[];
             /** @description The id of the subject's relation end a verb step's link goes through; absent when the step names none. */
             end?: string;
             /** @description The id of the scenario object at the other end of a verb step's link; absent when the step names none. */
@@ -4437,7 +4463,7 @@ export interface components {
              * @description The refusal the step expects (rights-design.md decision 26); absent when the file gives none.
              * @enum {string}
              */
-            refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default";
+            refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen";
             /** @description The id of the element the step expects to refuse it (rights-design.md decision 26); absent when the file gives none. */
             refusedBy?: string;
         };
@@ -6325,6 +6351,11 @@ export interface components {
             values?: {
                 [key: string]: unknown;
             };
+            /**
+             * @description For a `read` verb step on the subject (rights-design.md decision 25), the ids of the attributes it reads, each checked against
+             *     the rights that name attributes (decision 21). Absent, the read is of the object as a whole. Left out of a trace's echo when absent.
+             */
+            attributes?: string[];
             /** @description For a verb step on a link, the id of the subject's relation end the link goes through. Left out of a trace's echo when absent. */
             end?: string;
             /** @description With `end`, the id of the scenario object at the link's other end. Left out of a trace's echo when absent. */
@@ -6395,6 +6426,12 @@ export interface components {
              *     trace notes it. `in_state` reads them.
              */
             states?: components["schemas"]["Ulid"][];
+            /**
+             * @description Whether the object starts frozen (rights-design.md decision 16): `modify` and `delete` are refused, and so are `connect`
+             *     and `disconnect` on its links, until a `thaw`. Only the subject's is read. False when absent.
+             * @default false
+             */
+            frozen?: boolean;
             links?: components["schemas"]["ScenarioLink"][];
             /** @description The id of the participant that owns the object, for a subject whose process entry names no owner field (actors-design.md decision 16). */
             owner?: string;
@@ -6427,6 +6464,12 @@ export interface components {
             end: string;
             /** @description The id of the linked object. */
             object: string;
+            /**
+             * @description Whether the link starts frozen (rights-design.md decision 16): it cannot be disconnected or have its attributes modified
+             *     until a `thaw`, and the objects at its ends are not frozen by it. Only on a link of the subject (MQ9305). False when absent.
+             * @default false
+             */
+            frozen?: boolean;
         };
         StepTrace: {
             /** @description The input's index; -1 for the initial entry. */
@@ -6437,7 +6480,7 @@ export interface components {
              * @description Why the input was refused, the first check that failed (rights-design.md decision 12); null when accepted.
              * @enum {string|null}
              */
-            refusal: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | null;
+            refusal: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen" | null;
             microsteps: components["schemas"]["MicrostepTrace"][];
             guards: components["schemas"]["GuardEvaluation"][];
             audit: components["schemas"]["GateAuditRecord"][];
@@ -6480,14 +6523,15 @@ export interface components {
              *     object's lifecycle because the scenario gave none (decision 10), an identity that did not convert to the type `current_actor()` met
              *     (decision 5), sets an invoked sub-process ran, which change nothing (decision 4). With rights (rights-design.md section
              *     7), also a verb the run checked but did not apply, a delete that stopped the chart, and the other lifecycles a scenario with
-             *     no objects assumed in their initial states or did not ask. Left out when empty.
+             *     no objects assumed in their initial states or did not ask. With freezing, also a freeze of what is already frozen or a
+             *     thaw of what is not, which changes nothing, and a move whose sets applied to a frozen object. Left out when empty.
              */
             notes?: string[];
             /**
              * @description The id of the element that refused the input (rights-design.md decision 12): the event or invoke whose actors leave the actor
              *     out, the right (an inline right, or the named right), the lifecycle whose default denies, the guard, or the gate or gate
              *     policy. Written for a refused input in a project that uses rights, and for a step that expects it; left out otherwise, and
-             *     for `no-transition`, which no element refused.
+             *     for `no-transition` and `frozen`, which no element refused.
              */
             refusedBy?: components["schemas"]["Ulid"];
             /**
@@ -6495,6 +6539,12 @@ export interface components {
              *     held for the actor, the verb and the object's states. Left out when none did.
              */
             rights?: components["schemas"]["RightEvaluation"][];
+            /**
+             * @description Whether the subject is frozen after the input (rights-design.md section 7): true from an accepted `freeze`, or a start with
+             *     the subject `frozen`, until an accepted `thaw`. Left out when false.
+             * @constant
+             */
+            frozen?: true;
         };
         /** @description A right that answered for an input; a named right used by several lifecycles answers once for each lifecycle that asked. */
         RightEvaluation: {
@@ -10138,6 +10188,11 @@ export interface components {
         /** @description What the right speaks of, at least one verb: a built-in verb's key or one of the project's own (MQ9701). A move, signature or task verb speaks of this lifecycle's moves, signatures and human tasks; an object, link or own verb speaks of the object, whichever lifecycle acts. */
         verbs: components["schemas"]["verbRef"][];
         /**
+         * @description true: the right holds only while the object is frozen, or with ends, while the link is. Freezing itself refuses modify, connect, disconnect and delete; a whileFrozen right adds any other verb, such as change-owner or one of the project's own.
+         * @default false
+         */
+        whileFrozen: boolean;
+        /**
          * Invoke
          * @description Work a state starts on entry: a sub-process, a service task or a human task.
          */
@@ -10384,6 +10439,10 @@ export interface components {
             verbs?: components["schemas"]["verbs"];
             /** @default [] */
             ends?: components["schemas"]["idList"];
+            /** @default [] */
+            attributes?: components["schemas"]["idList"];
+            /** @default false */
+            whileFrozen?: components["schemas"]["whileFrozen"];
             condition?: components["schemas"]["expr"];
             /**
              * @description The states of this lifecycle where the right holds (MQ9902); a compound state counts while any state inside it is active, and create is checked in the initial state. Empty: every state.
@@ -10565,6 +10624,10 @@ export interface components {
                     verbs?: components["schemas"]["verbs"];
                     /** @default [] */
                     ends?: components["schemas"]["idList"];
+                    /** @default [] */
+                    attributes?: components["schemas"]["idList"];
+                    /** @default false */
+                    whileFrozen?: components["schemas"]["whileFrozen"];
                     condition?: components["schemas"]["expr"];
                     /**
                      * @description The states of this lifecycle where the right holds (MQ9902); a compound state counts while any state inside it is active, and create is checked in the initial state. Empty: every state.
@@ -10930,6 +10993,11 @@ export interface components {
             end: components["schemas"]["id"];
             /** @description The id of the linked object. */
             object: components["schemas"]["id"];
+            /**
+             * @description true: the link starts frozen, so it cannot be disconnected or have its attributes modified until a thaw; the objects at its ends are not frozen by it. Only on a link of the subject (MQ9305).
+             * @default false
+             */
+            frozen?: boolean;
         };
         /**
          * Holding
@@ -10963,6 +11031,11 @@ export interface components {
              * @default []
              */
             states?: components["schemas"]["idList"];
+            /**
+             * @description true: the object starts frozen, so modify and delete are refused, and so are connect and disconnect on its links, until a thaw. Only the subject's freezing is checked; another object's is kept but not read.
+             * @default false
+             */
+            frozen?: boolean;
             /**
              * @description The objects this object links to, each through a relation end.
              * @default []
@@ -11027,6 +11100,8 @@ export interface components {
             values?: {
                 [key: string]: unknown;
             };
+            /** @description For a read verb step on the subject: the ids of the attributes it reads, each checked against the rights that name attributes (MQ9305 beside another verb). Absent, the read is of the object as a whole. */
+            attributes?: components["schemas"]["idList"];
             /** @description For a verb step on a link: the id of the subject's relation end the link goes through. Absent, the verb acts on the subject. */
             end?: components["schemas"]["id"];
             /** @description With end: the id of the scenario object at the link's other end, linked to the subject through end except for connect (MQ9305). */
@@ -11049,7 +11124,7 @@ export interface components {
                  * @description With accepted false: why the step is refused, the first check that failed (MQ9308).
                  * @enum {unknown}
                  */
-                refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default";
+                refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen";
                 /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy (MQ9308). */
                 refusedBy?: components["schemas"]["id"];
                 /**
@@ -11168,6 +11243,11 @@ export interface components {
                      */
                     states?: components["schemas"]["idList"];
                     /**
+                     * @description true: the object starts frozen, so modify and delete are refused, and so are connect and disconnect on its links, until a thaw. Only the subject's freezing is checked; another object's is kept but not read.
+                     * @default false
+                     */
+                    frozen?: boolean;
+                    /**
                      * @description The objects this object links to, each through a relation end.
                      * @default []
                      */
@@ -11184,6 +11264,11 @@ export interface components {
                     end: components["schemas"]["id"];
                     /** @description The id of the linked object. */
                     object: components["schemas"]["id"];
+                    /**
+                     * @description true: the link starts frozen, so it cannot be disconnected or have its attributes modified until a thaw; the objects at its ends are not frozen by it. Only on a link of the subject (MQ9305).
+                     * @default false
+                     */
+                    frozen?: boolean;
                 };
                 /**
                  * Participant
@@ -11252,6 +11337,8 @@ export interface components {
                     values?: {
                         [key: string]: unknown;
                     };
+                    /** @description For a read verb step on the subject: the ids of the attributes it reads, each checked against the rights that name attributes (MQ9305 beside another verb). Absent, the read is of the object as a whole. */
+                    attributes?: components["schemas"]["idList"];
                     /** @description For a verb step on a link: the id of the subject's relation end the link goes through. Absent, the verb acts on the subject. */
                     end?: components["schemas"]["id"];
                     /** @description With end: the id of the scenario object at the link's other end, linked to the subject through end except for connect (MQ9305). */
@@ -11274,7 +11361,7 @@ export interface components {
                          * @description With accepted false: why the step is refused, the first check that failed (MQ9308).
                          * @enum {unknown}
                          */
-                        refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default";
+                        refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen";
                         /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy (MQ9308). */
                         refusedBy?: components["schemas"]["id"];
                         /**
@@ -12126,6 +12213,10 @@ export interface components {
             verbs: components["schemas"]["verbs"];
             /** @default [] */
             ends?: components["schemas"]["idList"];
+            /** @default [] */
+            attributes?: components["schemas"]["idList"];
+            /** @default false */
+            whileFrozen?: components["schemas"]["whileFrozen"];
             /** @description The right holds only when this is true. Its scope is what every subject of every lifecycle that uses the right holds under one id; it is typed at each use, where a failure is reported. With no use there is no scope, so text written for it stays text (MQ3108) until a lifecycle uses the right. */
             condition?: components["schemas"]["expr"];
             /** @description Why: shown with every refusal, in the rights grid and in the docs. */
@@ -14881,6 +14972,13 @@ export interface operations {
                 verbs?: string;
                 /** @description An entity id, one of the lifecycle's subjects; only the rows that hold for it. */
                 entity?: components["schemas"]["Ulid"];
+                /**
+                 * @description Whether the cells answer for a frozen object (rights-design.md decisions 17 and 18). Without it, or false, they answer for
+                 *     a thawed object, and rights with `whileFrozen` hold nowhere. With true, `modify`, `connect`, `disconnect` and `delete`
+                 *     are denied by freezing before any right: `answer` is `denied`, `byDefault` false and `by` empty, since no element
+                 *     decides it; and rights with `whileFrozen` hold.
+                 */
+                frozen?: boolean;
                 /** @description The `next` of the previous page, as it was returned (opaque; it encodes the last position read). */
                 cursor?: components["parameters"]["PageCursor"];
                 /** @description The page size, 1 to 1000; 100 when absent. Out of range is `bad-request`. */

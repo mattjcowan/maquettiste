@@ -35,8 +35,14 @@ public static class Refusals
     /// <summary>No allow holds in a lifecycle whose default is deny (rights-design.md decision 12): the lifecycle refused it.</summary>
     public const string Default = "default";
 
+    /// <summary>
+    /// The object, or the link, is frozen and the verb is <c>modify</c>, <c>connect</c>, <c>disconnect</c> or <c>delete</c> (rights-design.md
+    /// decision 17): the first check, which no allow lifts. Freezing is built in, so no element refused it and <c>refusedBy</c> is left out.
+    /// </summary>
+    public const string Frozen = "frozen";
+
     /// <summary>Every refusal value, in the order the checks run, then the gate's own: what <c>expect.refusal</c> may name.</summary>
-    public static IReadOnlyList<string> All { get; } = [Actor, Right, Default, NoTransition, Guard, GateSigner, GateRepeat, GateReason];
+    public static IReadOnlyList<string> All { get; } = [Frozen, Actor, Right, Default, NoTransition, Guard, GateSigner, GateRepeat, GateReason];
 }
 
 /// <summary>
@@ -205,6 +211,13 @@ public sealed record StepTrace(
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<RightEvaluation>? Rights { get; init; }
+
+    /// <summary>
+    /// Whether the subject is frozen after the input (rights-design.md section 7): <see langword="true"/> from an accepted <c>freeze</c>, or a
+    /// start with the subject <c>frozen</c>, until an accepted <c>thaw</c>. Left out of the JSON when false.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Frozen { get; init; }
 
     /// <summary>Whether a guard's result was missing (MQ9306): what followed in this input is not meaningful.</summary>
     public bool Incomplete => Guards.Any(g => g.Source == GuardSource.Missing) || Diagnostics.Any(d => d.Rule is "MQ9305" or "MQ9507");

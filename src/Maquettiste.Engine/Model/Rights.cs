@@ -49,6 +49,16 @@ public sealed record Right : Element, IPackaged
     public IReadOnlyList<string> Ends { get; init; } = [];
 
     /// <summary>
+    /// Attributes of the subject: the right then speaks of reading or modifying only those (decision 21), beside only <c>read</c> and
+    /// <c>modify</c> (MQ9903); empty for the object as a whole.
+    /// </summary>
+    [ElementRef(IndexKinds = ["attribute"])]
+    public IReadOnlyList<string> Attributes { get; init; } = [];
+
+    /// <summary>Whether the right holds only while the object, or with <see cref="Ends"/> the link, is frozen (decision 18).</summary>
+    public bool WhileFrozen { get; init; }
+
+    /// <summary>
     /// The condition, or <see langword="null"/>: the right holds only when it is true (decision 6). Its scope is what every subject of every
     /// lifecycle that uses the right holds under one id; with no use, text written for it stays text (MQ3108).
     /// </summary>
@@ -96,6 +106,13 @@ public sealed record ProcessRight : IProcessNode
     /// <summary>The relation ends of the subject whose links an inline right speaks of; empty for none.</summary>
     [ElementRef(IndexKinds = ["end"])]
     public IReadOnlyList<string> Ends { get; init; } = [];
+
+    /// <summary>The attributes of the subject whose reading or modifying an inline right speaks of (decision 21); empty for the object.</summary>
+    [ElementRef(IndexKinds = ["attribute"])]
+    public IReadOnlyList<string> Attributes { get; init; } = [];
+
+    /// <summary>Whether an inline right holds only while the object, or with <see cref="Ends"/> the link, is frozen (decision 18).</summary>
+    public bool WhileFrozen { get; init; }
 
     /// <summary>An inline right's condition, read in its lifecycle's scope; <see langword="null"/> for none.</summary>
     public Expr? Condition { get; init; }

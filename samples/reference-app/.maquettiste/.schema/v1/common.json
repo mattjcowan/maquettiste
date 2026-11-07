@@ -1539,6 +1539,8 @@
         "except",
         "verbs",
         "ends",
+        "attributes",
+        "whileFrozen",
         "condition"
       ],
       "properties": {
@@ -1571,6 +1573,16 @@
         "ends": {
           "description": "Relation ends of the subject: the right then speaks of the links through them, for connect, disconnect, read, modify, freeze and thaw. Ends every subject holds, beside only those verbs (MQ9903).",
           "$ref": "#/$defs/idList"
+        },
+        "attributes": {
+          "description": "Attributes of the subject: the right then speaks of reading or modifying only those. Attributes every subject holds, beside only read and modify (MQ9903). A modify that changes several attributes is checked per attribute against the rights that name attributes, and one no refuses it; a right without attributes is checked once, as before.",
+          "$ref": "#/$defs/idList",
+          "uniqueItems": true
+        },
+        "whileFrozen": {
+          "description": "true: the right holds only while the object is frozen, or with ends, while the link is. Freezing itself refuses modify, connect, disconnect and delete; a whileFrozen right adds any other verb, such as change-owner or one of the project's own.",
+          "type": "boolean",
+          "default": false
         },
         "condition": {
           "description": "The right holds only when this is true; false or unknown means it says nothing. It reads the object under subject (to-one paths too), current_actor(), in_state and now(), not the context or a payload.",
