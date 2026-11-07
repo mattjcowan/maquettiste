@@ -13,6 +13,7 @@ import {
   addTransition,
   expressionError,
   actionIdsOfNames,
+  dropTriggerPointRefs,
   idsOfNames,
   namedRows,
   newGate,
@@ -240,7 +241,12 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
           change((p) => void created.push(addTransition(p, source, after?.id)));
           if (created[0]) select(created[0]);
         }}
-        onRemove={(row) => change((p) => void (p.transitions = (p.transitions ?? []).filter((t) => t.id !== row.id)))}
+        onRemove={(row) =>
+          change((p) => {
+            p.transitions = (p.transitions ?? []).filter((t) => t.id !== row.id);
+            dropTriggerPointRefs(p, { transitions: new Set([row.id]) });
+          })
+        }
         onKey={(e, row) => {
           // Ctrl+G (Cmd+G) adds or removes the gate of an event transition, as the row's gate button does.
           if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "g") return false;

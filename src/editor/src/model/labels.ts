@@ -728,8 +728,55 @@ export const PROCESS_TAB_LABELS = {
   events: "Events",
   gates: "Gates",
   rights: "Rights",
+  triggerPoints: "Trigger points",
   context: "Context",
   scenarios: "Scenarios",
+} as const;
+
+/** The Trigger points tab (trigger-points-design.md section 11). */
+export const TRIGGER_LABELS = {
+  columns: {
+    name: "Name",
+    does: "Does",
+    type: "Type",
+    timing: "When it runs",
+    severity: "Severity",
+    where: "Where",
+    when: "Only if",
+    what: "What",
+    outside: "Outside systems",
+    why: "Why",
+  },
+  tips: {
+    name: "Unique among this lifecycle's trigger points and its guards; a refusal and a scenario step's assume name it",
+    does: "The verbs it runs on. It runs wherever one of them happens to this lifecycle's subjects",
+    type: "A check judges the change and refuses or warns with a message. An action does something at a moment of the verb. A replace takes the place of the verb's built-in effect (delete, disconnect, copy and revise only)",
+    timing:
+      "Actions only. Before checks prepares the values and can't refuse. With the change runs in the same unit of work, so a failure undoes the verb. After commit runs once the change is saved, and may run late or twice",
+    severity: "Checks only. An error refuses the step; a warning lets it through and lists the check",
+    where: "Narrow where it runs: states, the states a move enters, moves, types, attributes or links. Empty means everywhere its verbs happen",
+    when: "It runs only when this is true; empty means always",
+    what: "A check's condition (only true passes), or what an action or a replace sets. Empty means the team's code does it",
+    outside: "The team's code reaches outside systems. Only a point written by the team may say so",
+    why: "For a check, the message shown when it refuses or warns",
+  },
+  order: "Trigger points run in this order at each moment. Drag the handle or press Alt+Up or Alt+Down to move one.",
+  empty: "No trigger points yet. Nothing runs when a verb happens beyond the built-in steps.",
+  add: "Add trigger point",
+  whereTitle: (name: string) => `Where ${name} runs`,
+  whereHint: "Leave a list empty for everywhere. Each list narrows where the trigger point runs.",
+  whereNone: "No place to narrow on yet: pick a verb under Does first.",
+  everywhere: "Everywhere",
+  whenTitle: (name: string) => `Only if, for ${name}`,
+  whenHint: "It runs only when this is true. It may read the object under subject, the object as it was under old, now() and current_actor().",
+  conditionTitle: (name: string) => `Condition of ${name}`,
+  conditionHint: "Only true passes. Leave it empty when the team writes the check.",
+  setsTitle: (name: string) => `What ${name} sets`,
+  noReplace: "A replace is only for delete, disconnect, copy and revise.",
+  lostWithState: (state: string, points: string[]) =>
+    `Deleted ${state}. ${points.length === 1 ? "The trigger point" : "The trigger points"} ${points.join(", ")} named only ${points.length === 1 ? "it" : "such states"}, so ${points.length === 1 ? "it goes" : "they go"} too.`,
+  messageHint: "Say why: it is the message shown when a check refuses or warns.",
+  noMessage: "The message is the name until you say why.",
 } as const;
 
 /** The Rights tab and the named right's editor (rights-design.md section 10). */

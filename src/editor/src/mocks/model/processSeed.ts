@@ -37,6 +37,11 @@ export const MOCK_FAILURES: Record<string, { step: number; rule: string; message
 const S = (n: number) => `01JQSTA0000000000000000${String(n).padStart(3, "0")}`;
 const X = (n: number) => `01JQPRX00000000000000000${String(n).padStart(2, "0")}`;
 const T = (n: number) => `01JQTRN00000000000000000${String(n).padStart(2, "0")}`;
+const TGP = (n: number) => `01JQTGP0000000000000000${String(n).padStart(3, "0")}`;
+const INVOICE_NUMBER = "01J92P0V0R3VSP7D5238DTNZX1";
+const INVOICE_ISSUED_ON = "01J92P0V0SNXS6PZ42VDK42HP9";
+const INVOICE_TOTAL = "01J92P0V0T6EA0XM025XQX8GBW";
+const INVOICE_NOTES = "01J92P0V0WKRGKH7YBKA2V30NC";
 const M = (n: number) => `01JQMCK0000000000000000${String(n).padStart(3, "0")}`;
 
 const actors: Json[] = [
@@ -202,6 +207,75 @@ const invoiceLifecycle: Json = {
       description: "An issued invoice is voided, not deleted.",
     },
     { id: "01JQRGT0000000000000000012", right: PAID_IS_READ_ONLY, states: [M(203)] },
+  ],
+  // Trigger points (trigger-points-design.md): a few of each type, in run order. The names clash with no guard, and every key fits its
+  // verbs, so the model has no findings.
+  triggerPoints: [
+    {
+      id: TGP(1),
+      name: "AssignNumber",
+      type: "action",
+      timing: "before",
+      verbs: ["create"],
+      sets: [{ id: TGP(51), attribute: INVOICE_NUMBER, value: { text: "'DRAFT'" } }],
+      description: "Gives a new invoice a draft number until it is issued.",
+    },
+    {
+      id: TGP(2),
+      name: "TotalNotNegative",
+      type: "check",
+      verbs: ["modify"],
+      attributes: [INVOICE_TOTAL],
+      condition: { text: "subject.total >= 0" },
+      description: "An invoice total can't be negative.",
+    },
+    {
+      id: TGP(3),
+      name: "LargeTotalDrop",
+      type: "check",
+      severity: "warning",
+      verbs: ["modify"],
+      attributes: [INVOICE_TOTAL],
+      condition: { text: "coalesce(old.total, 0) = 0 or subject.total >= old.total * 0.9" },
+      description: "The total dropped by more than a tenth.",
+    },
+    {
+      id: TGP(4),
+      name: "CreditLimit",
+      type: "check",
+      verbs: ["create"],
+      outside: true,
+      description: "The customer's credit limit, asked of the finance system.",
+    },
+    {
+      id: TGP(5),
+      name: "StampIssuedOn",
+      type: "action",
+      timing: "with-change",
+      verbs: ["modify"],
+      states: [M(202)],
+      when: { text: "subject.issuedOn = null" },
+      sets: [{ id: TGP(52), attribute: INVOICE_ISSUED_ON, value: { text: "date_of(now())" } }],
+    },
+    {
+      id: TGP(6),
+      name: "PublishToPortal",
+      type: "action",
+      timing: "after-commit",
+      verbs: ["modify"],
+      states: [M(203)],
+      outside: true,
+      description: "Sends the paid invoice to the customer portal.",
+    },
+    {
+      id: TGP(7),
+      name: "Archive",
+      type: "replace",
+      verbs: ["delete"],
+      sets: [{ id: TGP(53), attribute: INVOICE_NOTES, value: { text: "'archived'" } }],
+      description: "Invoices are archived, never removed.",
+    },
+    { id: TGP(8), name: "CopyInvoice", type: "replace", verbs: ["copy"], description: "The team decides what a copy carries over." },
   ],
 };
 

@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useElements, useIndex } from "@/api/queries";
-import { setPreviewRequest } from "@/api/expressionPreview";
+import { setPreviewRequest, type ExpressionPreviewRequest } from "@/api/expressionPreview";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/input";
@@ -74,20 +74,33 @@ interface Draft {
   stored: Json | null;
 }
 
+/** What a holder other than an action (a trigger point) says: its name and sets, and how its set values are previewed. */
+export interface SetsHolder {
+  name: string;
+  sets: SetDoc[];
+  /** The preview request of a set: stored (no text), or the text in the box. */
+  request: (set: { id: string; attribute: string; text?: string }) => ExpressionPreviewRequest;
+}
+
 export function SetsDialog({
   process,
   action,
+  holder,
   context,
   onApply,
   onClose,
 }: {
   process: ProcessDoc;
   action: string;
+  /** Sets of something that is not an action of the process; `action` is then unused. */
+  holder?: SetsHolder;
   context: SetContext;
   onApply: (sets: SetDoc[]) => void;
   onClose: () => void;
 }) {
-  const doc = process.actions?.find((a) => a.id === action);
+  const doc = holder ? { name: holder.name, sets: holder.sets } : process.actions?.find((a) => a.id === action);
+  const preview = (set: { id: string; attribute: string; text?: string }) =>
+    holder ? holder.request(set) : setPreviewRequest({ action, set: set.id, attribute: set.attribute, text: set.text });
   const [rows, setRows] = useState<Draft[]>(() =>
     (doc?.sets ?? []).map((s) => {
       const text = treeText(s.value, context.names);
@@ -162,10 +175,10 @@ export function SetsDialog({
                   request={(text) =>
                     text === undefined
                       ? storedIds.has(r.id)
-                        ? setPreviewRequest({ action, set: r.id, attribute: r.attribute })
+                        ? preview({ id: r.id, attribute: r.attribute })
                         : null
                       : text.trim() && r.attribute
-                        ? setPreviewRequest({ action, set: r.id, attribute: r.attribute, text })
+                        ? preview({ id: r.id, attribute: r.attribute, text })
                         : null
                   }
                 />

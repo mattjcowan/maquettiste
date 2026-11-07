@@ -62,9 +62,17 @@ export function previewExpression(entries: Iterable<Entry>, req: Request) {
       return { preview: null, diagnostics: [diagnostic("MQ3101", "The expression does not parse: the parentheses do not match.", element)] };
   } else {
     // A stored set, by its id.
-    const found = all.flatMap((e) => arr(e.json.actions).flatMap((a) => arr(a.sets).filter((s) => s.id === element)));
-    if (!found.length) return { preview: null, diagnostics: [diagnostic("MQ3101", `No expression is stored at ${element}.`, element)] };
-    tree = found[0].value;
+    // A stored set of an action or of a trigger point, by its id, or a stored expression of an element at a pointer (a trigger point's `when`).
+    const found = all.flatMap((e) => [...arr(e.json.actions), ...arr(e.json.triggerPoints)].flatMap((a) => arr(a.sets).filter((s) => s.id === element)));
+    const holder = req.at ? all.find((e) => e.id === element)?.json : undefined;
+    const stored = holder
+      ? req
+          .at!.split("/")
+          .slice(1)
+          .reduce<unknown>((node, part) => (node && typeof node === "object" ? (node as Json)[part] : undefined), holder)
+      : undefined;
+    if (!found.length && !stored) return { preview: null, diagnostics: [diagnostic("MQ3101", `No expression is stored at ${element}.`, element)] };
+    tree = found.length ? found[0].value : stored;
     text = printTree(
       tree,
       (id) => names.get(id) ?? id,

@@ -1568,6 +1568,8 @@ function e5(json: Json): Partial<ElementSummary> {
     if (verbs.length) out.verbs = verbs;
     // The entries of its rights, inline and uses, only when above zero (maquettiste-index/e13).
     if (Array.isArray(json.rights) && json.rights.length) out.rights = json.rights.length;
+    // The count of its trigger points, only when above zero (trigger-points-design.md section 9); its verbs list theirs too.
+    if (Array.isArray(json.triggerPoints) && json.triggerPoints.length) (out as Record<string, unknown>).triggerPoints = json.triggerPoints.length;
   }
   // A named right's access and the verbs it names (maquettiste-index/e13).
   if (kind === "right") {
@@ -1914,6 +1916,7 @@ function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, t
           next.use = "orchestration";
           delete next.rights;
           delete next.rightsDefault;
+          delete next.triggerPoints;
         }
       }
     }

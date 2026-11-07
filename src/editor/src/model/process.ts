@@ -154,6 +154,35 @@ export interface RightDoc {
   description?: unknown;
 }
 
+/**
+ * One entry of a lifecycle's `triggerPoints` (trigger-points-design.md decisions 1 to 12): what runs when one of its verbs
+ * happens, in the places its optional keys name. A check has a `condition`, an action or a replace has `sets`; with neither, the
+ * body is the team's code.
+ */
+export interface TriggerPointDoc {
+  id: string;
+  name: string;
+  displayName?: string;
+  type: "check" | "action" | "replace";
+  /** An action's moment; allowed nowhere else (MQ8101). */
+  timing?: "before" | "with-change" | "after-commit";
+  /** A check's severity; absent is error. */
+  severity?: "error" | "warning";
+  verbs: string[];
+  states?: string[];
+  targets?: string[];
+  transitions?: string[];
+  entities?: string[];
+  attributes?: string[];
+  ends?: string[];
+  /** A tree as stored, or `{ text }` as written. */
+  when?: Json;
+  condition?: Json;
+  sets?: SetDoc[];
+  outside?: boolean;
+  description?: unknown;
+}
+
 export interface ProcessDoc {
   kind: "process";
   id: string;
@@ -174,6 +203,8 @@ export interface ProcessDoc {
   /** What the lifecycle answers where no right says (rights-design.md decision 9); absent allows. Lifecycles only. */
   rightsDefault?: "allow" | "deny";
   rights?: RightDoc[];
+  /** What runs when a verb happens, in run order (trigger-points-design.md decision 19). Lifecycles only. */
+  triggerPoints?: TriggerPointDoc[];
   source?: Json;
   generation?: Json;
 }
@@ -420,6 +451,31 @@ function dropRightStates(process: ProcessDoc, gone: ReadonlySet<string>): void {
   if (!process.rights.length) delete process.rights;
 }
 
+/**
+ * Takes deleted states, or transitions, out of the trigger points that name them (`states` and `targets` for states,
+ * `transitions` for transitions). When the last one named goes, the trigger point goes too: an empty list would widen it to
+ * everywhere (trigger-points-design.md section 9).
+ */
+export function dropTriggerPointRefs(process: ProcessDoc, gone: { states?: ReadonlySet<string>; transitions?: ReadonlySet<string> }): void {
+  if (!process.triggerPoints) return;
+  const lists = [
+    ["states", gone.states],
+    ["targets", gone.states],
+    ["transitions", gone.transitions],
+  ] as const;
+  process.triggerPoints = process.triggerPoints.filter((t) => {
+    let keep = true;
+    for (const [key, ids] of lists) {
+      const list = t[key];
+      if (!ids || !list?.some((x) => ids.has(x))) continue;
+      t[key] = list.filter((x) => !ids.has(x));
+      if (!t[key]!.length) keep = false;
+    }
+    return keep;
+  });
+  if (!process.triggerPoints.length) delete process.triggerPoints;
+}
+
 export type DeleteStateResult = { ok: true } | { ok: false; reason: string };
 
 /** Deletes a state and its subtree with the transitions leaving them; refused while a transition enters it, or for
@@ -446,9 +502,11 @@ export function deleteState(process: ProcessDoc, id: string): DeleteStateResult 
     delete info.parent.states;
     if (info.parent.type === "compound") delete info.parent.type;
   }
+  const leaving = new Set((process.transitions ?? []).filter((t) => inside.has(t.source)).map((t) => t.id));
   if (process.transitions) process.transitions = process.transitions.filter((t) => !inside.has(t.source));
   for (const { state } of stateIndex(process).values()) if (state.defaultTarget && inside.has(state.defaultTarget)) delete state.defaultTarget;
   dropRightStates(process, inside);
+  dropTriggerPointRefs(process, { states: inside, transitions: leaving });
   return { ok: true };
 }
 

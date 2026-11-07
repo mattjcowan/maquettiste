@@ -1,7 +1,7 @@
 // The statechart canvas's process edits (phase-3-design.md 6.3), kept free of React so they can be unit tested:
 // deleting several states at once (a multi-selection) with the transitions that enter them from outside when the
 // user confirms, and drawing a transition from one state to another (T).
-import { addTransition, deleteState, stateIndex, subtreeIds, type ProcessDoc, type TransitionDoc } from "@/model/process";
+import { addTransition, deleteState, dropTriggerPointRefs, stateIndex, subtreeIds, type ProcessDoc, type TransitionDoc } from "@/model/process";
 
 /** The selected states without those inside another selected state (deleting the outer one deletes them). */
 export function outermost(process: ProcessDoc, ids: readonly string[]): string[] {
@@ -37,6 +37,7 @@ export function deleteStates(process: ProcessDoc, ids: readonly string[], alsoTr
   if (!targets.length) return "The states no longer exist.";
   if (targets.length >= process.states.length && targets.every((id) => process.states.some((s) => s.id === id))) return "A process keeps at least one state.";
   const removed = removedStates(process, targets);
+  const before = new Set((process.transitions ?? []).map((t) => t.id));
   if (alsoTransitions.length) {
     const confirmed = new Set(alsoTransitions);
     process.transitions = (process.transitions ?? []).flatMap((t) => {
@@ -55,6 +56,9 @@ export function deleteStates(process: ProcessDoc, ids: readonly string[], alsoTr
     const result = deleteState(process, id);
     if (!result.ok) return result.reason;
   }
+  // The trigger points that name a transition that went lose it, and go with their last one.
+  const left = new Set((process.transitions ?? []).map((t) => t.id));
+  dropTriggerPointRefs(process, { transitions: new Set([...before].filter((t) => !left.has(t))) });
   return null;
 }
 

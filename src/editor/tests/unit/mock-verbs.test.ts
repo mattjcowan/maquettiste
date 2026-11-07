@@ -67,7 +67,7 @@ describe("verb vocabulary in the mock", () => {
     const doc = structuredClone(backend.model.get(process)!.json) as Json;
     (doc.events as Json[])[0].verb = "promote";
     expect(backend.model.save(process, doc, backend.model.get(process)!.hash).outcome).toBe("saved");
-    expect(backend.model.index().find((r) => r.id === process)!.verbs).toEqual(["delete", "promote"]);
+    expect(backend.model.index().find((r) => r.id === process)!.verbs).toEqual(["copy", "create", "delete", "modify", "promote"]);
     expect(backend.model.index().find((r) => r.id === ESCALATE)).toBeUndefined();
   });
 

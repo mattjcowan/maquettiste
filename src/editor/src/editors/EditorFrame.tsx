@@ -74,9 +74,12 @@ export function useEditorContext(id: string, kind: EditorKind): { ctx: EditorCon
 }
 
 /** The editor's layout: header, top controls and sub-tabs. */
-/** Whether a finding belongs to the rights (the rules MQ9901 to MQ9906, or a finding on a rights row). */
+/**
+ * Whether a finding belongs to the rights or the trigger points (the rules MQ9901 to MQ9906 and MQ8101 to MQ8107, or a finding on
+ * a row of either grid): it shows on its row and in Problems, so the summary here does not count it again.
+ */
 export function isRightsFinding(d: { rule: string; jsonPointer?: string | null }): boolean {
-  return /^MQ99\d\d$/.test(d.rule) || /^\/rights\/\d+(\/|$)/.test(d.jsonPointer ?? "");
+  return /^MQ99\d\d$/.test(d.rule) || /^MQ81\d\d$/.test(d.rule) || /^\/(rights|triggerPoints)\/\d+(\/|$)/.test(d.jsonPointer ?? "");
 }
 
 export function EditorLayout({

@@ -9,8 +9,9 @@ import { SectionTitle } from "@/components/ui/misc";
 import { useIndex } from "@/api/queries";
 import { newId } from "@/lib/ids";
 import { indexLookup } from "@/model/index";
-import { CHART_LABELS, RIGHT_LABELS } from "@/model/labels";
+import { CHART_LABELS, RIGHT_LABELS, TRIGGER_LABELS } from "@/model/labels";
 import { rightsLostWithStates } from "@/model/rights";
+import { triggerPointsLostWithStates } from "@/model/triggerPoints";
 import {
   addSiblingState,
   addState,
@@ -211,6 +212,8 @@ export function StatesTab({
           // The rights that name only these states go with them: said by name, as the delete plan of an actor does.
           const lost = rightsLostWithStates(process, subtreeIds(process, row.id));
           if (lost.length) services.store.getState().notify(RIGHT_LABELS.lostWithState(row.name, lost));
+          const lostPoints = triggerPointsLostWithStates(process, subtreeIds(process, row.id));
+          if (lostPoints.length) services.store.getState().notify(TRIGGER_LABELS.lostWithState(row.name, lostPoints));
           if (!diagramId) {
             change((p) => void deleteState(p, row.id));
             return;

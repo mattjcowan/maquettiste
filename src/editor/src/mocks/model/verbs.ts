@@ -18,7 +18,7 @@ export interface VerbUse {
   /** The event, transition or operation that holds it. */
   holder: string | null;
   key: string;
-  owner: "event" | "transition" | "operation" | "right" | "step";
+  owner: "event" | "transition" | "operation" | "right" | "trigger-point" | "step";
 }
 
 /** Every use of a verb in a document (the three places of decisions 11 to 13), in file order. */
@@ -37,6 +37,12 @@ export function verbUses(doc: Json): VerbUse[] {
     arr(doc.rights).forEach((r, i) =>
       (Array.isArray(r.verbs) ? (r.verbs as unknown[]) : []).forEach((key, j) => {
         if (typeof key === "string") out.push({ pointer: `/rights/${i}/verbs/${j}`, holder: str(r.id), key, owner: "right" });
+      }),
+    );
+    // The verbs of its trigger points (trigger-points-design.md section 9).
+    arr(doc.triggerPoints).forEach((t, i) =>
+      (Array.isArray(t.verbs) ? (t.verbs as unknown[]) : []).forEach((key, j) => {
+        if (typeof key === "string") out.push({ pointer: `/triggerPoints/${i}/verbs/${j}`, holder: str(t.id), key, owner: "trigger-point" });
       }),
     );
   } else if (doc.kind === "right") {
@@ -199,7 +205,7 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
       const holder = pointerParent(json, use.pointer);
       if (rename) holder[lastSegment(use.pointer)] = to;
       // A right's verb is an item of its list: marked here, taken out below with the right that has no verb left.
-      else if (use.owner === "right") holder[lastSegment(use.pointer)] = null;
+      else if (use.owner === "right" || use.owner === "trigger-point") holder[lastSegment(use.pointer)] = null;
       else if (use.owner === "step")
         holder.__gone = true; // a verb step goes with its verb
       else delete holder[lastSegment(use.pointer)];
@@ -215,6 +221,7 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
       if (json.kind === "process" && Array.isArray(json.rights))
         json.rights = arr(json.rights).filter((r) => !(typeof r.right === "string" && gone.has(r.right)));
       dropRightsWithoutVerbs(json);
+      dropTriggerPointsWithoutVerbs(json);
     }
   }
   const target = arr(vocabulary.verbs).find((v) => v.key === to);
@@ -244,6 +251,18 @@ function dropRightsWithoutVerbs(json: Json): void {
   });
   if (kept.length) json.rights = kept;
   else delete json.rights;
+}
+
+/** Takes the verbs marked gone out of a lifecycle's trigger points; one whose last verb goes goes too (trigger-points-design.md section 9). */
+function dropTriggerPointsWithoutVerbs(json: Json): void {
+  if (!Array.isArray(json.triggerPoints)) return;
+  const kept = arr(json.triggerPoints).filter((t) => {
+    if (!Array.isArray(t.verbs)) return true;
+    t.verbs = (t.verbs as unknown[]).filter((v) => v !== null);
+    return (t.verbs as unknown[]).length > 0;
+  });
+  if (kept.length) json.triggerPoints = kept;
+  else delete json.triggerPoints;
 }
 
 function lastSegment(pointer: string): string {
