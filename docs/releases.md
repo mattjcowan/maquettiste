@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.16.0 (unreleased)
+## 0.16.0 (2026-11-07)
 
 - **Rights, part 2: freezing.** An object or a link is frozen or not. An accepted `freeze` freezes it and an accepted `thaw` thaws it, whether
   a verb step does it or an event that names the verb. While frozen, `modify`, `connect`, `disconnect` and `delete` are refused before any
