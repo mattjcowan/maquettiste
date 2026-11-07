@@ -371,6 +371,97 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Freezing_and_attribute_rights_compile_and_refuse_as_the_engine_does()
+    {
+        // rights-design.md section 9, part 2: the project names freeze, so Freezing.cs, Refusals.Frozen, the interpreter's frozen check and
+        // the request's frozen flags are written; a right names attributes, so the request and the rights table carry them. The frozen
+        // hook is left unwritten, so the project builds with warnings as errors and nothing is refused for freezing until the team writes
+        // it; the scenario test checks the replay's frozen steps with its frozen flags.
+        using var repo = PackRepo.Freezing();
+        await repo.GenerateCleanlyAsync();
+        Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "freezing", "expected"), repo.PathOf("out"));
+        Assert.Contains("static partial void IsFrozen(FrozenQuery query, ref bool frozen);", repo.Read("out/Processes/Freezing.cs"), StringComparison.Ordinal);
+        Assert.Contains("public const string Frozen = \"frozen\";", repo.Read("out/Runtime/Statechart.g.cs"), StringComparison.Ordinal);
+        var test = repo.Read("out/Tests/EmployeeRecord/FreezingTests.cs");
+        Assert.Contains("Attributes = [\"salary\"],", test, StringComparison.Ordinal);
+        Assert.Contains("Frozen = true,", test, StringComparison.Ordinal);
+        Replace("out/Dispatch/Pipeline.cs", "throw new NotImplementedException(\"Map the caller's principal to the envelope's actor in Pipeline.cs (Authorize).\")", "true");
+
+        var project = Path.Combine(repo.Repo.Root, "freezing");
+        WriteProject(project, repo.PathOf("out"), program: null, web: true);
+        var csproj = Path.Combine(project, "RoundTrip.csproj");
+        File.WriteAllText(csproj, File.ReadAllText(csproj)
+            .Replace("<OutputType>Library</OutputType>", "<OutputType>Exe</OutputType>\n    <IsTestProject>true</IsTestProject>", StringComparison.Ordinal)
+            .Replace("<Compile Include=\"Program.cs\" Condition=\"Exists('Program.cs')\" />",
+                "<Compile Include=\"Host/*.cs\" />\n    <PackageReference Include=\"xunit.v3\" Version=\"3.2.2\" />", StringComparison.Ordinal));
+        Directory.CreateDirectory(Path.Combine(project, "Host"));
+        File.WriteAllText(Path.Combine(project, "Host", "ScenarioHost.cs"), FreezingScenarioHost);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll"), "-noColor"], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("Total: 2, Errors: 0, Failed: 0,", StringComparison.Ordinal), run.Output);
+
+        void Replace(string path, string stub, string with)
+        {
+            var text = repo.Read(path);
+            Assert.Contains(stub, text, StringComparison.Ordinal);
+            repo.Write(path, text.Replace(stub, with, StringComparison.Ordinal));
+        }
+    }
+
+    // The test host of the freezing case: the dispatcher over the lifecycle, with the frozen hook unwritten, and the checks the scenario
+    // can't make: the unwritten hook answers "not frozen", a frozen flag the request gives decides, and one refused attribute refuses.
+    private const string FreezingScenarioHost = """
+        using System;
+        using System.Collections.Generic;
+        using System.Threading;
+        using System.Threading.Tasks;
+        using App.Model.Dispatch;
+        using App.Model.Processes;
+        using App.Model.Runtime;
+        using App.Model.Staff;
+        using Xunit;
+
+        namespace App.Model;
+
+        internal sealed class ScenarioHost : IAsyncDisposable
+        {
+            private ScenarioHost(Dispatcher dispatcher) => Dispatcher = dispatcher;
+
+            public Dispatcher Dispatcher { get; }
+
+            public static Task<ScenarioHost> StartAsync(ManualClock clock, CancellationToken cancellationToken)
+            {
+                var host = new ProcessHost(clock);
+                var records = new EmployeeRecordCommandHandler(new EmployeeRecordMachine(new EmployeeRecordHandlers(), host, host, host),
+                    new EmployeeRecordStore(), new ScenarioHoldings());
+                return Task.FromResult(new ScenarioHost(new Dispatcher(new HandlerRegistry(records), new Pipeline(new InMemoryProcessOutbox()))));
+            }
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+
+        public sealed class FreezingTests
+        {
+            [Fact]
+            public void The_unwritten_hook_answers_not_frozen_and_a_given_flag_decides()
+            {
+                Assert.False(Freezing.Frozen(new FrozenQuery { Process = "EmployeeRecord" }));
+                var edit = new RightRequest { Verb = Verb.Modify, Lifecycle = "EmployeeRecord", Subject = typeof(Employee), Actor = Actors.Clerk, Attributes = ["name"] };
+                Assert.True(Rights.Check(edit).Allowed);
+                var frozen = Rights.Check(edit with { Frozen = true });
+                Assert.Equal((false, Refusals.Frozen, (string?)null), (frozen.Allowed, frozen.Refusal, frozen.RefusedBy));
+                Assert.Equal(Refusals.Right, Rights.Check(edit with { Attributes = ["name", "salary"] }).Refusal);
+                Assert.Equal(Refusals.Right, Rights.Check(edit with { Attributes = null }).Refusal);
+                Assert.True(Rights.Check(edit with { Actor = Actors.HrStaff, Attributes = ["salary"] }).Allowed);
+                var owner = edit with { Verb = Verb.ChangeOwner, Attributes = null };
+                Assert.True(Rights.Check(owner).Allowed);
+                Assert.Equal(Refusals.Right, Rights.Check(owner with { Frozen = true }).Refusal);
+            }
+        }
+        """;
+
+    [Fact]
     public async Task A_lifecycle_that_governs_only_some_subjects_is_asked_only_for_its_objects()
     {
         // rights-design.md decision 10: Filing governs Alpha and Beta, Guard only Alpha and denies by default. For a Beta object the engine

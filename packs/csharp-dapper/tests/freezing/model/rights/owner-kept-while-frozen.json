@@ -1,0 +1,13 @@
+{
+  "$schema": "../../.schema/v1/right.json",
+  "kind": "right",
+  "id": "01JFZ000000000000000000R01",
+  "name": "OwnerKeptWhileFrozen",
+  "package": "01JFZ000000000000000000P01",
+  "access": "deny",
+  "verbs": [
+    "change-owner"
+  ],
+  "whileFrozen": true,
+  "description": "A frozen record keeps its owner."
+}

@@ -463,6 +463,53 @@ public sealed class ResolvedRightsTests
     }
 
     [Fact]
+    public void Attributes_while_frozen_and_frozen_flags_reach_templates_and_records_only_where_present()
+    {
+        // Rights part 2 (rights-design.md section 6): right.attributes, right.while_frozen, step.attributes and object.frozen, and the records'
+        // attributes, whileFrozen and frozen, each left out where absent.
+        static Element Part2(Element e) => e switch
+        {
+            Right r when r.Id == SecretOnlyOwner => r with { WhileFrozen = true },
+            Process p when p.Id == Documents => p with
+            {
+                Rights = [.. p.Rights.Select(x => x.Id == AuthorsEditDrafts ? x with { Verbs = ["read"], Attributes = [Title] } : x)],
+            },
+            Scenario sc when sc.Id == Scenario => sc with
+            {
+                Objects = [.. sc.Objects.Select(o => o with { Frozen = true })],
+                Steps = [.. sc.Steps.Select(st => st with { Verb = "read", Values = null, Attributes = [Title] })],
+            },
+            _ => e,
+        };
+        var model = ResolutionKit.Resolve(Model(edit: Part2));
+        var inline = ProcessOf(model, Documents).Rights.Single(u => u.Id == AuthorsEditDrafts).Right;
+        Assert.Equal([Title], inline.Attributes.Select(a => a.Id));
+        Assert.False(inline.WhileFrozen);
+        Assert.True(model.Rights.Single(r => r.Id == SecretOnlyOwner).WhileFrozen);
+        var scenario = model.Scenarios.Single(x => x.Id == Scenario);
+        Assert.Equal([Title], scenario.Steps[0].Attributes.Select(a => a.Id));
+        Assert.True(scenario.Objects[0].Frozen);
+
+        var documents = (ProcessRecord)ResolvedRecords.Entries(model, "processes", null).Single(e => e.Id == Documents).Project();
+        Assert.Equal([Title], documents.Rights![0].Attributes!);
+        Assert.Null(documents.Rights[0].WhileFrozen);
+        var right = (RightRecord)ResolvedRecords.Entries(model, "all", null).Single(e => e.Id == SecretOnlyOwner).Project();
+        Assert.Null(right.Attributes);
+        Assert.True(right.WhileFrozen);
+        var record = (ScenarioRecord)ResolvedRecords.Entries(model, "scenarios", null).Single(e => e.Id == Scenario).Project();
+        Assert.Equal([Title], record.Steps[0].Attributes!);
+        Assert.True(record.Objects![0].Frozen);
+
+        var plain = ResolutionKit.Resolve(Model());
+        Assert.Empty(ProcessOf(plain, Documents).Rights[0].Right.Attributes);
+        var entries = ResolvedRecords.Entries(plain, "all", null).Where(e => e.Kind is "process" or "right" or "scenario");
+        var json = JsonSerializer.Serialize(entries.Select(e => e.Project()).ToList(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain("\"attributes\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"whileFrozen\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"frozen\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_replay_keys_on_what_a_rights_condition_reads()
     {
         // Projects denies promote while HR has the employee suspended, and its scenario sends only an event that names promote, a move verb.

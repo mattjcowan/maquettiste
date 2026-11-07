@@ -187,6 +187,8 @@ public sealed class ResolvedCoverageTests
         [("process right", "verbs")] = "on use.right (the inline right target)",
         [("process right", "ends")] = "on use.right (the inline right target)",
         [("process right", "description")] = "on use.right (the inline right target)",
+        [("process right", "attributes")] = "on use.right (the inline right target)",
+        [("process right", "whileFrozen")] = "on use.right (the inline right target)",
         [("inline right", "right")] = "a use's named right: RRightUse.Right (the process right target)",
         [("inline right", "states")] = "where the right holds: RRightUse.States (the process right target)",
     });
@@ -258,12 +260,6 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
-
-        // Rights part 2 (rights-design.md section 6): the contract lands first, and the resolved model's round adds right.attributes,
-        // right.while_frozen, step.attributes and the frozen flags of scenario objects and links.
-        ("right", "attributes"), ("right", "whileFrozen"), ("process right", "attributes"), ("process right", "whileFrozen"),
-        ("inline right", "attributes"), ("inline right", "whileFrozen"), ("step", "attributes"), ("scenario object", "frozen"),
-        ("scenario link", "frozen"),
     ];
 
     /// <summary>

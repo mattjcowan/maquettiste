@@ -41,6 +41,15 @@ public sealed class RRight : RObject
     public RList<REnd> Ends { get; internal set; } = RList<REnd>.Empty;
 
     /// <summary>
+    /// The attributes of the subject whose reading or modifying it speaks of, in file order (decision 21); empty when it speaks of the object as
+    /// a whole. An attribute that does not resolve is left out.
+    /// </summary>
+    public RList<RAttribute> Attributes { get; internal set; } = RList<RAttribute>.Empty;
+
+    /// <summary>Whether it holds only while the object, or with <see cref="Ends"/> the link, is frozen (decision 18).</summary>
+    public bool WhileFrozen { get; internal set; }
+
+    /// <summary>
     /// The condition as text, printed from the current names: an inline right's in its lifecycle's scope, a named right's in the scope of
     /// all its uses; the stored text for a named right whose condition is still text. <see langword="null"/> when the right has none.
     /// </summary>

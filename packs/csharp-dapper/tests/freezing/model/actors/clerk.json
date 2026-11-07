@@ -1,0 +1,7 @@
+{
+  "$schema": "../../.schema/v1/actor.json",
+  "kind": "actor",
+  "id": "01JFZ000000000000000000K02",
+  "name": "Clerk",
+  "type": "role"
+}

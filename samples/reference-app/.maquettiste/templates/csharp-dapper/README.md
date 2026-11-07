@@ -367,6 +367,7 @@ For `PurchaseApproval` in package `Purchasing`:
 | `rights` | `overwrite`, file block | `model` | `Processes/Rights.cs`, only when a lifecycle states rights or a default: the rights check (see Rights) |
 | `right-conditions` | `overwrite`, file block | `model` | `<Package>/RightConditions.g.cs`: one static partial method per named right with a condition and a use, however many lifecycles use it |
 | `right-conditions-companion` | `once`, file block | `model` | `<Package>/RightConditions.cs` (in the `partialFolder`): a stub per condition, which throws until written |
+| `freezing` | `overwrite`, file block | `model` | `Processes/Freezing.cs`, only when the project uses freezing: the frozen check and its host hook (see Freezing and attribute rights) |
 | `caller-holdings` | `once`, file block | `model` | `Dispatch/CallerHoldings.cs` (in the `partialFolder`), only when the project uses rights: the team's `ICallerHoldings`, which returns no held actors until written (see Rights) |
 | `scenario-holdings` | `overwrite`, file block | `model` | `<testsFolder>/ScenarioHoldings.cs`, only when the project uses rights and `testsFolder` is set: the held actors of each step's participant |
 | `scenario-tests` | file blocks | `each scenario` | `<testsFolder>/PurchaseApproval/HappyPathTests.cs`: one xunit test per scenario; only when `testsFolder` is set. Each step acts as the actor the engine worked out (`step.acts_as`), and an event step by a participant signs with the participant's identity unless it names a signer |
@@ -536,6 +537,36 @@ writes nothing new.
   step acts as) fails with a message that says so; other steps don't ask. A refused step
   asserts its expected `refusal` and `refusedBy`. A verb step calls `Rights.Check` with the subject object's entity and states, and the
   actors from the object its participant satisfies in the engine's replay (`step.trace.object_actors`) as the resolver, and asserts its answer; without rights it is written as a comment, since nothing in the model can refuse it.
+
+### Freezing and attribute rights
+
+A project uses freezing when an event, a transition or a right names `freeze` or `thaw`, or a right has `whileFrozen` (rights-design.md,
+part 2). A project uses attribute rights when a right names `attributes`. Only then does the pack write what follows; a project that uses
+rights without them gets the same bytes as before.
+
+- **`Processes/Freezing.cs`**, only when the project uses freezing: `FrozenQuery` (the process that asks, the subject's entity, the
+  envelope, and whether it asks about a link and through which end), `Freezing` and `FrozenFlags`. A frozen object can't be modified or
+  deleted, and its links can't be connected or disconnected; a frozen link can't be disconnected or modified. This is refused before any
+  right, with the refusal `frozen` and no `RefusedBy`, and no allow lifts it. Freezing stops nothing else.
+- **The frozen hook.** Where "frozen" is held is your system's business, so generated code asks one hook, a partial method of `Freezing`
+  that you write in your own half of the class, in any file of the processes namespace:
+  `static partial void IsFrozen(FrozenQuery query, ref bool frozen)`. Until you write it, the compiler drops the call and the answer is
+  "not frozen": the project builds, and nothing is refused for freezing. So a project whose events already name `freeze` keeps building,
+  and starts refusing once the hook answers. It may be asked more than once for one command.
+- **The interpreter** asks it for an event whose verb is `modify`, `connect`, `disconnect` or `delete`, before the actor check, and refuses
+  with `Refusals.Frozen`. An accepted `freeze` or `thaw` event changes nothing in generated code: your handler or your system records it.
+- **`Rights.Check`** answers freezing first. `RightRequest` gains `Frozen` and `LinkFrozen`: a team's own call that knows sets them, and
+  a flag left null asks the hook. A right with `whileFrozen` holds only while the object (with `ends`, the link) is frozen, and
+  `RightDefinition` gains `WhileFrozen` when a right has it.
+- **Attribute rights:** `RightDefinition` gains `Attributes` and `RightRequest` gains `Attributes`, the names of the attributes the verb
+  reads or modifies. Each is checked on its own, against the rights that name it and those that name none, and one refused attribute
+  refuses the verb. When the request gives none, as for an event that names `modify`, it fails closed: a deny that names attributes holds,
+  and an allow that names attributes grants nothing.
+- **Scenario tests** work out whether the subject, and each of its links, is frozen before each step from the scenario: its `frozen`
+  flags, then each accepted `freeze` or `thaw`, from a verb step or an event that names the verb. A verb step passes them to
+  `Rights.Check` as `Frozen` and `LinkFrozen`, with the attributes it reads or the values it sets as `Attributes`. Without rights, a verb
+  step checks `FrozenFlags.Refuses`. An event the replay refused as `frozen` isn't sent, since your hook decides it in the dispatcher:
+  the test checks the freezing rule with those flags instead, and a refused step changes nothing.
 
 ### Scenario tests
 

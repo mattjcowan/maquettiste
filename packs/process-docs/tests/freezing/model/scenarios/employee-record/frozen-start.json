@@ -1,0 +1,43 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JFZ000000000000000000C02",
+  "name": "FrozenStart",
+  "process": "01JFZ000000000000000000Q01",
+  "objects": [
+    {
+      "id": "01JFZ000000000000000000J02",
+      "name": "ada",
+      "entity": "01JFZ000000000000000000E01",
+      "values": {
+        "01JFZ000000000000000000A02": "Ada",
+        "01JFZ000000000000000000A03": 100
+      },
+      "frozen": true
+    }
+  ],
+  "subject": "01JFZ000000000000000000J02",
+  "description": "The record starts frozen: HR staff read its name, and a clerk thaws it.",
+  "steps": [
+    {
+      "id": "01JFZ000000000000000000031",
+      "input": "verb",
+      "verb": "read",
+      "actor": "01JFZ000000000000000000K01",
+      "attributes": [
+        "01JFZ000000000000000000A02"
+      ],
+      "expect": {}
+    },
+    {
+      "id": "01JFZ000000000000000000032",
+      "event": "01JFZ000000000000000000V03",
+      "actor": "01JFZ000000000000000000K02",
+      "expect": {
+        "states": [
+          "01JFZ000000000000000000S01"
+        ]
+      }
+    }
+  ]
+}

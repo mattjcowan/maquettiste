@@ -88,6 +88,7 @@ public static class ProcessEndpoints
     /// <param name="actors">Comma-separated actor ids.</param>
     /// <param name="verbs">Comma-separated verb keys.</param>
     /// <param name="entity">An entity id, one of the lifecycle's subjects.</param>
+    /// <param name="frozen"><c>true</c> to answer for a frozen object (rights-design.md decisions 17 and 18); <c>false</c> or absent for a thawed one.</param>
     /// <param name="cursor">The cursor of the page (from the previous page's <c>next</c>).</param>
     /// <param name="limit">The page size, 1 to 1000 (100 by default).</param>
     /// <param name="context">The request.</param>
@@ -95,14 +96,18 @@ public static class ProcessEndpoints
     /// <param name="ct">Cancellation.</param>
     /// <returns>200 with the page, 404 or 400.</returns>
     [HttpGet("/api/processes/{id}/rights")]
-    public static Task<IResult> Rights(string id, string? states, string? actors, string? verbs, string? entity, string? cursor, string? limit, HttpContext context,
-        ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    public static Task<IResult> Rights(string id, string? states, string? actors, string? verbs, string? entity, string? frozen, string? cursor, string? limit,
+        HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
     {
         ArgumentNullException.ThrowIfNull(store);
         if (!ModelPages.TryParseLimit(limit, out var size, out var limitError))
             return Api.BadRequest(limitError!);
+        var isFrozen = false;
+        if (!string.IsNullOrEmpty(frozen) && !bool.TryParse(frozen, out isFrozen))
+            return Api.BadRequest("frozen must be true or false.");
         static IReadOnlyList<string> List(string? text) => string.IsNullOrEmpty(text) ? [] : text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var filter = new RightsFilter { States = List(states), Actors = List(actors), Verbs = List(verbs), Entity = string.IsNullOrEmpty(entity) ? null : entity };
+        var filter = new RightsFilter { States = List(states), Actors = List(actors), Verbs = List(verbs), Entity = string.IsNullOrEmpty(entity) ? null : entity,
+            Frozen = isFrozen };
         return Answer(await store.GetRightsAsync(id, filter, cursor, size, ct).ConfigureAwait(false), "process", id);
     });
 

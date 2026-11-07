@@ -27,6 +27,12 @@ Named rights: each one is stated once, and every lifecycle that uses it says in 
 | Except | {{ actor_links(r.except, "") }} |
 {{- end }}
 | Does | {{ right_does(r) }} |
+{{- if r.attributes.size > 0 }}
+| Attributes | {{ right_attributes(r) }} |
+{{- end }}
+{{- if r.while_frozen }}
+| While frozen | holds only while the object{{ r.ends.size > 0 ? ", or the link," : "" }} is frozen |
+{{- end }}
 {{- if r.condition_text }}
 | When | {{ md_code r.condition_text }} |
 {{- end }}

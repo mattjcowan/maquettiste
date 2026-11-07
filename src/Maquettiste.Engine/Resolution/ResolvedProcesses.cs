@@ -667,6 +667,12 @@ public sealed class RScenarioObject : RObject
 
     /// <summary>The participant that owns the object (actors-design.md decision 16), when the file names one of the scenario's.</summary>
     public RParticipant? Owner { get; internal set; }
+
+    /// <summary>
+    /// Whether the object starts frozen (rights-design.md decision 16): <c>modify</c> and <c>delete</c> are refused, and so are <c>connect</c>
+    /// and <c>disconnect</c> on its links, until a <c>thaw</c>. Only the subject's is read.
+    /// </summary>
+    public bool Frozen { get; internal set; }
 }
 
 /// <summary>A participant of a scenario (actors-design.md decision 14): who acts, with the actor it stands for and what it holds.</summary>
@@ -716,6 +722,12 @@ public sealed class RScenarioLink
 
     /// <summary>The linked object.</summary>
     public RScenarioObject Object { get; internal set; } = null!;
+
+    /// <summary>
+    /// Whether the link starts frozen (rights-design.md decision 16): it cannot be disconnected or have its attributes modified until a
+    /// <c>thaw</c>; the objects at its ends are not frozen by it.
+    /// </summary>
+    public bool Frozen { get; internal set; }
 }
 
 /// <summary>A scenario's starting point.</summary>
@@ -801,6 +813,13 @@ public sealed class RStep : RObject
     /// plain values; empty when the file gives none.
     /// </summary>
     public IReadOnlyDictionary<string, object?> Values { get; internal set; } = FrozenDictionary<string, object?>.Empty;
+
+    /// <summary>
+    /// For a <c>read</c> verb step on the subject: the attributes it reads, in file order (rights-design.md decisions 21 and 25), each checked
+    /// against the rights that name attributes; empty when the file names none, and the read is of the object. An attribute that does not
+    /// resolve is left out.
+    /// </summary>
+    public RList<RAttribute> Attributes { get; internal set; } = RList<RAttribute>.Empty;
 
     /// <summary>For a verb step on a link: the subject's relation end the link goes through; <see langword="null"/> for the subject itself.</summary>
     public REnd? End { get; internal set; }

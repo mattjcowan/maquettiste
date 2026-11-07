@@ -1,0 +1,115 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JFZ000000000000000000C01",
+  "name": "Freezing",
+  "process": "01JFZ000000000000000000Q01",
+  "objects": [
+    {
+      "id": "01JFZ000000000000000000J01",
+      "name": "ada",
+      "entity": "01JFZ000000000000000000E01",
+      "values": {
+        "01JFZ000000000000000000A02": "Ada",
+        "01JFZ000000000000000000A03": 100
+      }
+    }
+  ],
+  "subject": "01JFZ000000000000000000J01",
+  "description": "HR staff may change a name, but a clerk may change a salary neither by a step nor by an edit; HR staff read it. The record is frozen, read by HR staff while frozen and thawed; its owner then changes, and it is archived.",
+  "steps": [
+    {
+      "id": "01JFZ000000000000000000011",
+      "input": "verb",
+      "verb": "modify",
+      "actor": "01JFZ000000000000000000K01",
+      "values": {
+        "01JFZ000000000000000000A02": "Ada L"
+      },
+      "expect": {
+        "values": {
+          "01JFZ000000000000000000A02": "Ada L"
+        }
+      }
+    },
+    {
+      "id": "01JFZ000000000000000000012",
+      "input": "verb",
+      "verb": "modify",
+      "actor": "01JFZ000000000000000000K02",
+      "values": {
+        "01JFZ000000000000000000A03": 120
+      },
+      "expect": {
+        "accepted": false,
+        "refusal": "right",
+        "refusedBy": "01JFZ000000000000000000Y01"
+      }
+    },
+    {
+      "id": "01JFZ000000000000000000013",
+      "event": "01JFZ000000000000000000V01",
+      "actor": "01JFZ000000000000000000K02",
+      "expect": {
+        "accepted": false,
+        "refusal": "right",
+        "refusedBy": "01JFZ000000000000000000Y01"
+      }
+    },
+    {
+      "id": "01JFZ000000000000000000014",
+      "input": "verb",
+      "verb": "read",
+      "actor": "01JFZ000000000000000000K01",
+      "attributes": [
+        "01JFZ000000000000000000A03"
+      ],
+      "expect": {}
+    },
+    {
+      "id": "01JFZ000000000000000000015",
+      "event": "01JFZ000000000000000000V02",
+      "actor": "01JFZ000000000000000000K02",
+      "expect": {
+        "states": [
+          "01JFZ000000000000000000S01"
+        ]
+      }
+    },
+    {
+      "id": "01JFZ000000000000000000016",
+      "input": "verb",
+      "verb": "read",
+      "actor": "01JFZ000000000000000000K01",
+      "attributes": [
+        "01JFZ000000000000000000A02"
+      ],
+      "expect": {}
+    },
+    {
+      "id": "01JFZ000000000000000000017",
+      "input": "verb",
+      "verb": "thaw",
+      "actor": "01JFZ000000000000000000K01",
+      "expect": {}
+    },
+    {
+      "id": "01JFZ000000000000000000018",
+      "input": "verb",
+      "verb": "change-owner",
+      "actor": "01JFZ000000000000000000K01",
+      "expect": {}
+    },
+    {
+      "id": "01JFZ000000000000000000019",
+      "event": "01JFZ000000000000000000V04",
+      "actor": "01JFZ000000000000000000K02",
+      "expect": {
+        "states": [
+          "01JFZ000000000000000000S02"
+        ]
+      }
+    }
+  ],
+  "outcome": "final"
+}

@@ -28,6 +28,28 @@ has_relative = relative_names.size > 0
 # RefusedBy written. model.rights_lifecycles keys only on the rights naming key.
 rights = model.rights_lifecycles.size > 0
 rights_ns = "global::" + base_ns + ".Processes"
+# Whether the project uses freezing (rights-design.md decision 28, as _process.scriban's uses_freezing says): an event, a transition or
+# a right names freeze or thaw, or a right has whileFrozen. Only then are the frozen check of events and Refusals.Frozen written.
+freezing = false
+for v in model.verbs
+  if v.built_in && (v.key == "freeze" || v.key == "thaw") && (v.events.size > 0 || v.transitions.size > 0 || v.rights.size > 0)
+    freezing = true
+  end
+end
+if !freezing
+  for r in model.rights
+    if r.while_frozen
+      freezing = true
+    end
+  end
+  for l in model.rights_lifecycles
+    for u in l.rights
+      if u.right.while_frozen
+        freezing = true
+      end
+    end
+  end
+end
 verb_keys = {}
 for v in model.verbs
   verb_keys[v.key] = true
@@ -146,6 +168,11 @@ public static class Refusals
 
     /// <summary>No right allows the verb and a lifecycle denies by default.</summary>
     public const string Default = "default";
+{{- end }}
+{{- if freezing }}
+
+    /// <summary>The object, or the link, is frozen and the verb is modify, connect, disconnect or delete (rights-design.md decision 17): the first check, which no allow lifts.</summary>
+    public const string Frozen = "frozen";
 {{- end }}
 
     /// <summary>The command's payload is not valid (dispatch).</summary>
@@ -974,6 +1001,13 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         var run = new Run(this, snapshot, name, envelope) { AuditValues = audit ?? new Dictionary<string, object?>(){{ if rights }}, Held = held ?? []{{ end }} };
         if (run.Done || Chart.Event(name) is not { } ev)
             return run.Refuse(Refusals.NoTransition);
+{{- if freezing }}
+
+        // Freezing first (rights-design.md decision 17): a frozen object can't be modified, deleted, connected or disconnected, whatever
+        // the actors and rights say. The frozen hook (Freezing) answers, "not frozen" until the team writes it.
+        if (ev.Verb is { } frozenVerb && new {{ rights_ns }}.FrozenFlags(new {{ rights_ns }}.FrozenQuery { Process = Chart.ProcessName, Envelope = envelope{{ if rights }}, Subject = Chart.Rights?.Subject{{ end }} }).Refuses(frozenVerb))
+            return run.Refuse(Refusals.Frozen);
+{{- end }}
         if (ev.Actors.Count > 0 && (envelope.Actor is null || !{{ has_members ? (actors_type + ".Allows(ev.Actors, envelope.Actor)") : "ev.Actors.Contains(envelope.Actor, StringComparer.Ordinal)" }}{{ resolves("snapshot", "envelope.Actor", "envelope") }}))
             return run.Refuse(Refusals.Actor{{ if rights }}, Chart.Rights?.Id("event:" + name){{ end }});
 {{- if rights }}

@@ -1182,6 +1182,20 @@ internal sealed partial class ResolveRun
 
                 if (step.End is { } endId && Model.TryGetEntry(endId, out var endEntry))
                     stepDeps.Element(endEntry.OwnerId); // whether the end resolves is its relation's file
+                if (step.Attributes is { Count: > 0 } stepAttributes)
+                {
+                    // A read step's attributes (rights-design.md decision 25): whether each resolves is its holder's file.
+                    var attributeKeys = new DependencySet(Keys).AddRange(keys);
+                    foreach (var id in stepAttributes)
+                    {
+                        if (Model.TryGetEntry(id, out var holder))
+                            attributeKeys.Element(holder.OwnerId);
+                    }
+
+                    r.Attributes = new RList<RAttribute>(stepAttributes.Select(id => _byId.GetValueOrDefault(id)).OfType<RAttribute>().Distinct(),
+                        attributeKeys.ToList());
+                }
+
                 if (step.Values is { Count: > 0 } stepValues)
                 {
                     // A modify step's values by name, as an expectation's (object-effects-design.md decision 4).
@@ -1308,7 +1322,7 @@ internal sealed partial class ResolveRun
             listKeys.Element(obj.Entity);
             if (!_entities.TryGetValue(obj.Entity, out var entity) || entity.Id.Length == 0)
                 continue;
-            var r = new RScenarioObject { Id = obj.Id, Name = obj.Name, Entity = entity };
+            var r = new RScenarioObject { Id = obj.Id, Name = obj.Name, Entity = entity, Frozen = obj.Frozen };
             var deps = DepsOf(r).AddRange(keys);
             var names = new Dictionary<string, string>(StringComparer.Ordinal);
             var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -1335,7 +1349,7 @@ internal sealed partial class ResolveRun
                 if (Model.TryGetEntry(link.End, out var entry))
                     DepsOf(r).Element(entry.OwnerId);
                 if (_byId.GetValueOrDefault(link.End) is REnd end && byId.TryGetValue(link.Object, out var target))
-                    links.Add(new RScenarioLink { End = end, Object = target });
+                    links.Add(new RScenarioLink { End = end, Object = target, Frozen = link.Frozen });
             }
 
             r.Links = links;

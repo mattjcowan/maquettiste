@@ -56,7 +56,8 @@ end
                 new(new({{ json r.id }}, {{ json r.name }}, RightAccess.{{ r.access == "deny" ? "Deny" : "Allow" }}, {{ actor_list(r.actors) }}, {{ actor_list(r.except) }},
                     [{{ for v in r.verbs }}{{ for.first ? "" : ", " }}{{ verb_type }}.{{ pascal v.key }}{{ end }}], [{{ for e in r.ends }}{{ for.first ? "" : ", " }}{{ json e.name }}{{ end }}]
 {{- if r.condition_text != null }}, Condition: global::{{ r.named ? (ns(r) + ".RightConditions") : (ns(p) + "." + name + "RightConditions") }}.{{ pascal r.name }}{{ end }}
-{{- if r.description }}, Description: {{ json (r.description | string.strip) }}{{ end }}),
+{{- if r.description }}, Description: {{ json (r.description | string.strip) }}{{ end }})
+{{- if r.while_frozen || r.attributes.size > 0 }} { {{ if r.while_frozen }}WhileFrozen = true{{ end }}{{ if r.while_frozen && r.attributes.size > 0 }}, {{ end }}{{ if r.attributes.size > 0 }}Attributes = [{{ for a in r.attributes }}{{ for.first ? "" : ", " }}{{ json a.name }}{{ end }}]{{ end }} }{{ end }},
                     [{{ for s in u.states }}{{ for.first ? "" : ", " }}{{ json s.path }}{{ end }}]),
 {{- end }}
             ],

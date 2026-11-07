@@ -1,0 +1,12 @@
+{
+  "formatVersion": 1,
+  "name": "freezing",
+  "packs": {
+    "csharp-dapper": {
+      "output": "out",
+      "parameters": {
+        "testsFolder": "Tests"
+      }
+    }
+  }
+}
