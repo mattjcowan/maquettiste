@@ -2,7 +2,8 @@
 // lifecycle's `triggerPoints` in run order, and the edits the grid makes on a process document. Every edit mutates the draft
 // document it is given, so one grid gesture is one draft change and one undo step.
 import { newId } from "@/lib/ids";
-import { uniqueName, type Json, type ProcessDoc, type SetDoc, type TriggerPointDoc } from "./process";
+import type { components } from "@/api/schema";
+import { uniqueName, type CheckWord, type Json, type ProcessDoc, type SetDoc, type StepDoc, type TriggerPointDoc } from "./process";
 import { ATTRIBUTE_VERBS, LINK_VERBS } from "./rights";
 import { builtInVerb } from "./verbList";
 
@@ -306,5 +307,117 @@ export function whereKeysFor(verbs: readonly string[]): WhereKey[] {
     if (key === "attributes") return takesAttributes(verbs);
     if (key === "ends") return takesEnds(verbs);
     return true;
+  });
+}
+
+// ------------------------------------------------------------------ scenarios: assume words, reachable checks, recorded points
+
+export const CHECK_WORDS: readonly CheckWord[] = ["pass", "warning", "error"];
+export const CHECK_WORD_LABELS: Record<CheckWord, string> = { pass: "Pass", warning: "Warning", error: "Error" };
+
+/** A check with no condition: the team writes it, so a step's `assume` says what it does (decision 26). */
+export const isTeamCheck = (t: TriggerPointDoc): boolean => t.type === "check" && !t.condition;
+
+/**
+ * The team-code checks a step can reach, for its Assume cell: those that name the verb the step does (a verb step's, an event's or
+ * its moves', `complete` for a task's end, and `sign` beside a gated move's). A scenario editor has no simulation to ask, so it reads
+ * the lifecycle's own list; another lifecycle's checks reach an object verb through the simulation panel's `checksUnknown`.
+ */
+export function reachableChecks(process: Pick<ProcessDoc, "triggerPoints" | "events" | "transitions">, step: StepDoc): TriggerPointDoc[] {
+  const verbs = new Set<string>();
+  const input = step.input ?? "event";
+  if (input === "verb" && step.verb) verbs.add(step.verb);
+  if (input === "invoke-done" || input === "invoke-error") verbs.add("complete");
+  const moves = (process.transitions ?? []).filter((t) =>
+    input === "event" ? t.event === step.event : input === "time" ? t.trigger === "after" : input === "verb" ? false : t.invoke === step.invoke,
+  );
+  for (const t of moves) {
+    const verb = t.verb ?? (input === "event" ? (process.events ?? []).find((e) => e.id === step.event)?.verb : undefined);
+    if (verb) verbs.add(verb);
+    if (t.gate) verbs.add("sign");
+  }
+  return triggerPointsOf(process).filter((t) => isTeamCheck(t) && t.verbs.some((v) => verbs.has(v)));
+}
+
+/** Parses the Assume cell: `name=true` for a guard, `name=pass`, `warning` or `error` for a check; anything else is left out. */
+export function parseAssume(map: Json, checks: ReadonlySet<string>): Record<string, boolean | CheckWord> {
+  const out: Record<string, boolean | CheckWord> = {};
+  for (const [id, raw] of Object.entries(map)) {
+    if (checks.has(id)) {
+      const word = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+      if ((CHECK_WORDS as readonly string[]).includes(word)) out[id] = word as CheckWord;
+    } else out[id] = raw === true || raw === "true";
+  }
+  return out;
+}
+
+/** The ids a step expects in `expect.triggerPoints` from a trace: those that ran, in order, repeats included, `skipped` ones left out. */
+export const ranPoints = (runs: readonly { triggerPoint: string; outcome: string }[] | undefined): string[] =>
+  (runs ?? []).filter((r) => r.outcome !== "skipped").map((r) => r.triggerPoint);
+
+// ------------------------------------------------------------------ What happens when
+
+/** The built-in steps' words, by the `step` the API gives. */
+export const SEQUENCE_STEP_LABELS: Record<string, string> = {
+  frozen: "A frozen object refuses the change",
+  "closed-lists": "Closed lists of actors",
+  denies: "Rights that deny",
+  defaults: "What the lifecycle answers by default",
+  "no-move": "A move is found",
+  guards: "Guards",
+  signatures: "Who may sign",
+  before: "Before actions",
+  checks: "Checks",
+  effect: "The verb's effect",
+  "with-change": "With the change",
+  "after-commit": "After commit",
+};
+
+export interface SequenceRow {
+  key: string;
+  order: number;
+  /** The moment's words (a built-in step's, or the moment a trigger point runs at). */
+  step: string;
+  /** The trigger point's id and name when the step is one; the built-in step has none. */
+  point: { id: string; name: string; lifecycle: string } | null;
+  /** "Check (error)", "Action, before checks", "Replace": empty for a built-in step. */
+  kind: string;
+  /** The lifecycle's name when the point belongs to another lifecycle than the one asked about. */
+  other: string | null;
+  /** Where it runs, in words, empty for none. */
+  where: string;
+  conditional: boolean;
+  outside: boolean;
+}
+
+/** The rows of the answer `get_trigger_sequence` gave, in its order: the editor lists them, it never works a sequence out. */
+export function sequenceRows(
+  answer: { lifecycle: string; steps: readonly components["schemas"]["TriggerSequenceStep"][] },
+  names: { point(id: string): string; lifecycle(id: string): string; where(key: WhereKey, ids: readonly string[]): string },
+): SequenceRow[] {
+  return answer.steps.map((s, i) => {
+    const kind =
+      s.type === "check"
+        ? `Check (${s.severity === "warning" ? "warning" : "error"})`
+        : s.type === "action"
+          ? `Action, ${TIMING_LABELS[s.timing ?? "before"].toLowerCase()}`
+          : s.type === "replace"
+            ? "Replace"
+            : "";
+    const where = WHERE_KEYS.flatMap((key) => {
+      const ids = s[key] ?? [];
+      return ids.length ? [`${WHERE_LABELS[key].toLowerCase()} ${names.where(key, ids)}`] : [];
+    }).join(" · ");
+    return {
+      key: `${i}:${s.triggerPoint ?? s.step}`,
+      order: s.order,
+      step: SEQUENCE_STEP_LABELS[s.step] ?? s.step,
+      point: s.triggerPoint ? { id: s.triggerPoint, name: names.point(s.triggerPoint), lifecycle: s.lifecycle ?? answer.lifecycle } : null,
+      kind,
+      other: s.lifecycle && s.lifecycle !== answer.lifecycle ? names.lifecycle(s.lifecycle) : null,
+      where,
+      conditional: s.when === true,
+      outside: s.outside === true,
+    };
   });
 }

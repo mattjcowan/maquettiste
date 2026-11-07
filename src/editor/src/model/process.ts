@@ -209,6 +209,9 @@ export interface ProcessDoc {
   generation?: Json;
 }
 
+/** What a step assumes a check the team writes does (trigger-points-design.md decision 26). */
+export type CheckWord = "pass" | "warning" | "error";
+
 export interface StepDoc {
   id: string;
   input?: (typeof STEP_INPUTS)[number];
@@ -222,7 +225,8 @@ export interface StepDoc {
   meaning?: string;
   reason?: string;
   payload?: Json;
-  assume?: Record<string, boolean>;
+  /** A guard with no expression by `true` or `false`; a check the team writes by `pass`, `warning` or `error` (trigger-points-design.md decision 26). */
+  assume?: Record<string, boolean | CheckWord>;
   /** A verb step (rights-design.md decision 25): the verb, for `modify` the values by attribute id, and the link it acts on. */
   verb?: string;
   values?: Json;
@@ -230,7 +234,17 @@ export interface StepDoc {
   attributes?: string[];
   end?: string;
   object?: string;
-  expect?: { accepted?: boolean; states?: string[]; context?: Json; values?: Json; refusal?: string; refusedBy?: string };
+  expect?: {
+    accepted?: boolean;
+    states?: string[];
+    context?: Json;
+    values?: Json;
+    refusal?: string;
+    refusedBy?: string;
+    /** The checks that warned, and the trigger points that ran in order (decision 28). */
+    checkWarnings?: string[];
+    triggerPoints?: string[];
+  };
   description?: unknown;
 }
 
@@ -902,6 +916,9 @@ export interface StepRow {
   /** What the step expects of a refusal: the reason's key and the element's name. */
   refusal: string;
   refusedBy: string;
+  /** The checks the step expects to warn, and the trigger points it expects to run, in order (names). */
+  checkWarnings: string;
+  triggerPoints: string;
 }
 
 /** `name=value` pairs of a map keyed by attribute (or guard) id, names from `names`. */
@@ -936,7 +953,9 @@ export function stepNames(process: ProcessDoc | undefined, actorNames: Map<strin
   const ids = new Map<string, string>(actorNames);
   const attrs = new Map<string, string>();
   const guards = new Map<string, string>();
+  // Guards and the trigger points of the lifecycle: both are named in a step's assume (decision 26).
   if (process) {
+    for (const t of process.triggerPoints ?? []) ids.set(t.id, t.name);
     for (const [id, info] of stateIndex(process)) ids.set(id, info.path);
     for (const e of process.events ?? []) {
       ids.set(e.id, e.name);
@@ -944,6 +963,7 @@ export function stepNames(process: ProcessDoc | undefined, actorNames: Map<strin
     }
     for (const a of process.context ?? []) attrs.set(a.id, a.name);
     for (const g of process.guards ?? []) guards.set(g.id, g.name);
+    for (const t of process.triggerPoints ?? []) guards.set(t.id, t.name);
     for (const { state } of stateIndex(process).values()) for (const i of state.invoke ?? []) ids.set(i.id, i.name);
     for (const t of process.transitions ?? []) for (const m of t.gate?.meanings ?? []) ids.set(m.id, m.name);
   }
@@ -992,6 +1012,8 @@ export function stepRows(
       object: name(s.object),
       refusal: s.expect?.refusal ?? "",
       refusedBy: s.expect?.refusedBy ? name(s.expect.refusedBy) : "",
+      checkWarnings: (s.expect?.checkWarnings ?? []).map(name).join(", "),
+      triggerPoints: (s.expect?.triggerPoints ?? []).map(name).join(", "),
     };
   });
 }

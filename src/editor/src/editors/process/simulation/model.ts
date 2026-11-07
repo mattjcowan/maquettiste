@@ -4,9 +4,10 @@
 // run (configuration, guard results, refusals, gate progress, verdicts) is read from the answer; the document only
 // supplies names and the forms' fields. Pure: no React, no I/O.
 import type { AttributeDoc } from "@/api/types";
-import { RIGHT_LABELS as RL, SIMULATION_LABELS as L } from "@/model/labels";
+import { RIGHT_LABELS as RL, SIMULATION_LABELS as L, TRIGGER_LABELS as TL } from "@/model/labels";
 import { builtInVerb, labelOfKey } from "@/model/verbList";
 import { stateIndex, transitionLabel, type EventDoc, type ProcessDoc, type ScenarioDoc } from "@/model/process";
+import type { CheckWord } from "@/model/process";
 import type { EnabledTrigger, ScenarioVerification, SimInput, SimulationResult, StepTrace } from "./api";
 
 // ------------------------------------------------------------------ names
@@ -122,6 +123,8 @@ export interface EnabledRow {
   gate: { have: number; need: number; meanings: Option[]; reasonRequired: boolean } | null;
   /** The stub guards (no expression) of the candidate transitions, whose results the input assumes. */
   assume: Option[];
+  /** The checks the team writes that the candidates reach (`checksUnknown`), whose outcome the input assumes: Pass, Warning or Error. */
+  checks: Option[];
 }
 
 export interface RowValue {
@@ -132,7 +135,7 @@ export interface RowValue {
   signer: string;
   meaning: string;
   reason: string;
-  assume: Record<string, boolean>;
+  assume: Record<string, boolean | CheckWord>;
   after: string;
 }
 
@@ -181,6 +184,7 @@ export function enabledRows(result: SimulationResult, process: ProcessDoc, names
             }
           : null,
       assume,
+      checks: (e.checksUnknown ?? []).map((id) => ({ id, name: names.element(id) })),
     };
   });
 }
@@ -229,7 +233,7 @@ export function defaultRowValue(row: EnabledRow, result: SimulationResult): RowV
     signer: row.gate ? `signer${row.gate.have + 1}` : "",
     meaning: row.gate?.meanings[0]?.id ?? "",
     reason: "",
-    assume: Object.fromEntries(row.assume.map((g) => [g.id, true])),
+    assume: { ...Object.fromEntries(row.assume.map((g) => [g.id, true])), ...Object.fromEntries(row.checks.map((c) => [c.id, "pass" as const])) },
     after: row.trigger === "time" ? (nextDue(result)?.after ?? "PT1H") : "",
   };
 }
@@ -269,7 +273,9 @@ export function inputOf(row: EnabledRow, value: RowValue): SimInput {
       .filter(([, v]) => v !== "" && v !== undefined),
   );
   if (Object.keys(payload).length) input.payload = payload;
-  const assume = Object.fromEntries(row.assume.map((g) => [g.id, value.assume[g.id] ?? true]));
+  const assume: Record<string, boolean | CheckWord> = {};
+  for (const g of row.assume) assume[g.id] = value.assume[g.id] ?? true;
+  for (const c of row.checks) assume[c.id] = value.assume[c.id] ?? "pass";
   if (Object.keys(assume).length) input.assume = assume;
   return input;
 }
@@ -337,6 +343,7 @@ export interface LastStepLine {
     | "right"
     | "transitions"
     | "guard"
+    | "trigger"
     | "action"
     | "sets"
     | "values"
@@ -350,6 +357,11 @@ export interface LastStepLine {
   /** A refusal: the element that refused it, named once (the panel shows it as a link that opens it), and its Why. */
   element?: { id: string; name: string };
   why?: string;
+  /** The Why of a refusing check is the message it shows. */
+  message?: boolean;
+  /** A trigger point's outcome as a badge, with its flags (assumed, outside). */
+  badge?: { text: string; tone: "neutral" | "danger" | "warning" | "success" };
+  flags?: { text: string; title: string }[];
 }
 
 /** What one trace entry did, line by line, in the order the engine reports it. */
@@ -383,7 +395,7 @@ export function lastStepLines(
       kind: "refusal",
       text: L.refused(by ? `${reason}, ${RL.refusedByWord}` : reason),
       tone: "danger",
-      ...(by ? { element: by, why: names.why(by.id) || undefined } : {}),
+      ...(by ? { element: by, why: names.why(by.id) || undefined, ...(entry.refusal === "check" ? { message: true } : {}) } : {}),
     });
   }
   // A read or modify that named no attribute is refused by a right that names some: unknown attributes fail closed.
@@ -418,6 +430,29 @@ export function lastStepLines(
       ),
       tone: g.source === "missing" ? "warning" : "neutral",
     });
+  // The trigger points that ran, in order, each with its outcome; the flags say whether the outcome was assumed or the code is outside.
+  for (const r of entry.triggerPoints ?? [])
+    lines.push({
+      kind: "trigger",
+      text: TL.panel.ran(names.element(r.triggerPoint), (builtInVerb(r.verb)?.displayName ?? labelOfKey(r.verb)).toLowerCase()),
+      tone: "neutral",
+      element: { id: r.triggerPoint, name: names.element(r.triggerPoint) },
+      badge: {
+        text: TL.panel.outcomes[r.outcome] ?? r.outcome,
+        tone: r.outcome === "refused" ? "danger" : r.outcome === "warned" ? "warning" : r.outcome === "skipped" ? "neutral" : "success",
+      },
+      flags: [
+        ...(r.assumed ? [{ text: TL.panel.assumed, title: TL.panel.assumedTip }] : []),
+        ...(r.outside ? [{ text: TL.panel.outsideFlag, title: TL.panel.outsideTip }] : []),
+      ],
+    });
+  // Check warnings, in amber, each once.
+  if (entry.checkWarnings?.length)
+    lines.push({ kind: "trigger", text: TL.panel.warningLine(entry.checkWarnings.map((id) => names.element(id)).join(", ")), tone: "warning" });
+  // An automatic move a check left out: the step that led to it stays accepted.
+  if (entry.accepted)
+    for (const r of (entry.triggerPoints ?? []).filter((x) => x.outcome === "refused"))
+      lines.push({ kind: "trigger", text: TL.panel.leftOut(names.element(r.triggerPoint)), tone: "warning" });
   for (const m of entry.microsteps)
     for (const a of m.actions) {
       lines.push({

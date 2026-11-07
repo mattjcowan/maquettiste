@@ -40,6 +40,7 @@ import { ValueBox } from "../ValueBox";
 import { Grid, type GridColumn } from "./Grid";
 import { SetsDialog, useSetContext, type SetContext } from "./SetsEditor";
 import { rowProblems, type ProcessContext } from "./shared";
+import { WhatHappensWhen } from "./WhatHappensWhen";
 
 type Open = { kind: "where" | "when" | "what"; id: string };
 
@@ -62,6 +63,8 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
     verb: (key) => describeVerb(key, verbs.own)?.label ?? key,
     expression: (tree) => treeText(tree, setContext.names),
   });
+  // The two sides of the tab: the grid, and What happens when (the answer of get_trigger_sequence).
+  const [view, setView] = useState<"points" | "happens">("points");
   const [picked, setPicked] = useState<string | null>(null);
   // An edit the grid refused (a replace beside a verb that does not allow it), said at the grid; the cell keeps what it had.
   const [refused, setRefused] = useState<string | null>(null);
@@ -185,43 +188,59 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
   ];
   return (
     <div className="flex flex-col gap-3">
-      {/* The toggle between Trigger points and What happens when (wave 2) goes here, above the grid. */}
-      {refused ? (
+      <div role="group" aria-label={L.viewsLabel} className="flex gap-1" data-testid="trigger-views">
+        {(["points", "happens"] as const).map((v) => (
+          <Button
+            key={v}
+            size="sm"
+            variant={view === v ? "primary" : "secondary"}
+            aria-pressed={view === v}
+            onClick={() => setView(v)}
+            data-testid={`trigger-view-${v}`}
+          >
+            {v === "points" ? L.viewPoints : L.viewHappens}
+          </Button>
+        ))}
+      </div>
+      {view === "happens" ? <WhatHappensWhen pc={pc} /> : null}
+      {view === "points" && refused ? (
         <p role="alert" className="text-12 text-danger" data-testid="trigger-refused">
           {refused}
         </p>
       ) : null}
-      <Grid
-        label={`Trigger points of ${process.name}`}
-        testid="trigger-grid"
-        noun="trigger point"
-        rows={rows}
-        columns={columns}
-        rowName={(r) => r.name}
-        selected={current?.id ?? null}
-        onSelect={(r) => setPicked(r.id)}
-        problems={(r) => rowProblems(pc.problems, r.pointer)}
-        empty={L.empty}
-        hint={`${L.order} Enter edits · Ctrl+Enter adds · Ctrl+Delete removes`}
-        onCommit={(r, key, value) => {
-          const ids = String(value).split(",").filter(Boolean);
-          const refuse =
-            (key === "type" && value === "replace" && !allowsReplace(r.verbKeys)) ||
-            (key === "verbs" && r.type === "replace" && ids.length > 0 && !allowsReplace(ids));
-          setRefused(refuse ? L.noReplace : null);
-          if (!refuse) change((p) => void editTriggerPoint(p, r.id, key, value));
-        }}
-        onReorder={(r, to) => change((p) => void moveTriggerPoint(p, r.id, to))}
-        addLabel={L.add}
-        onAdd={(after) => {
-          const created: string[] = [];
-          change((p) => void created.push(addTriggerPoint(p, {}, after?.id)));
-          if (created[0]) setPicked(created[0]);
-        }}
-        onRemove={(r) => change((p) => removeTriggerPoint(p, r.id))}
-      />
-      {current && !current.why && current.type === "check" ? <p className="text-11 text-secondary">{L.noMessage}</p> : null}
-      {dialog ? (
+      {view === "points" ? (
+        <Grid
+          label={`Trigger points of ${process.name}`}
+          testid="trigger-grid"
+          noun="trigger point"
+          rows={rows}
+          columns={columns}
+          rowName={(r) => r.name}
+          selected={current?.id ?? null}
+          onSelect={(r) => setPicked(r.id)}
+          problems={(r) => rowProblems(pc.problems, r.pointer)}
+          empty={L.empty}
+          hint={`${L.order} Enter edits · Ctrl+Enter adds · Ctrl+Delete removes`}
+          onCommit={(r, key, value) => {
+            const ids = String(value).split(",").filter(Boolean);
+            const refuse =
+              (key === "type" && value === "replace" && !allowsReplace(r.verbKeys)) ||
+              (key === "verbs" && r.type === "replace" && ids.length > 0 && !allowsReplace(ids));
+            setRefused(refuse ? L.noReplace : null);
+            if (!refuse) change((p) => void editTriggerPoint(p, r.id, key, value));
+          }}
+          onReorder={(r, to) => change((p) => void moveTriggerPoint(p, r.id, to))}
+          addLabel={L.add}
+          onAdd={(after) => {
+            const created: string[] = [];
+            change((p) => void created.push(addTriggerPoint(p, {}, after?.id)));
+            if (created[0]) setPicked(created[0]);
+          }}
+          onRemove={(r) => change((p) => removeTriggerPoint(p, r.id))}
+        />
+      ) : null}
+      {view === "points" && current && !current.why && current.type === "check" ? <p className="text-11 text-secondary">{L.noMessage}</p> : null}
+      {view === "points" && dialog ? (
         <TriggerDialog
           dialog={dialog}
           process={process}

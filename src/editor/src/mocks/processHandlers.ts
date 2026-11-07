@@ -19,6 +19,8 @@ import { syncCodesOf } from "./model/syncCodes";
 import { report } from "./model/store";
 import { Membership } from "./model/membership";
 import { rightsGrid } from "./model/rightsCheck";
+import { sequenceOf } from "./model/triggerRun";
+import { entityChain } from "@/model/objectFields";
 
 type Json = Record<string, unknown>;
 type StateDoc = { id: string; name: string; type?: string; initial?: string; states?: StateDoc[] };
@@ -275,14 +277,23 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       })),
     namedRights: new Map([...model.entries.values()].filter((e) => e.json.kind === "right").map((e) => [e.id, e.json] as [string, Json])),
     subjectEntity: subjectsOf(doc).find((e) => e.entity)?.entity,
+    entityChain: (entity: string) => entityChain(entity, (id) => model.entries.get(id)?.json).map((d) => String(d.id)),
     lifecycles: [...[...model.entries.values()].map((e) => e.json).filter((j) => j.kind === "process" && j.use === "lifecycle" && j.id !== doc.id), doc],
   });
   const hasExpectedValues = (scenario: Json) => arr(scenario.steps).some((st) => (st.expect as Json | undefined)?.values !== undefined);
   // Verb steps and expected refusals are replayed for real too (rights-design.md decisions 25 and 26).
   const hasRightsSteps = (scenario: Json) =>
-    arr(scenario.steps).some(
-      (st) => st.verb !== undefined || (st.expect as Json | undefined)?.refusal !== undefined || (st.expect as Json | undefined)?.refusedBy !== undefined,
-    );
+    arr(scenario.steps).some((st) => {
+      const expect = st.expect as Json | undefined;
+      return (
+        st.verb !== undefined ||
+        expect?.refusal !== undefined ||
+        expect?.refusedBy !== undefined ||
+        expect?.checkWarnings !== undefined ||
+        expect?.triggerPoints !== undefined ||
+        Object.values((st.assume as Json | undefined) ?? {}).some((v) => typeof v === "string")
+      );
+    });
   // An event that names freeze or thaw takes effect in a run (the opt-in, decision 16), so such a scenario is replayed for real.
   const namesFreeze = (doc: Json) => arr(doc.events).some((e) => e.verb === "freeze" || e.verb === "thaw");
   const sameValues = (a: Json, b: Json) => {
@@ -361,6 +372,24 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         actual: { refusal: t.refusal, refusedBy: t.refusedBy ?? null },
       };
     }
+    // MQ9310: the checks that warned and the trigger points that ran, in order, against what a step expects (skipped ones are left out).
+    for (const t of result.trace) {
+      if (t.index < 0) continue;
+      const expect = (steps[t.index].expect as Json | undefined) ?? {};
+      const ran = (t.triggerPoints ?? []).filter((r) => r.outcome !== "skipped").map((r) => r.triggerPoint);
+      const warned = t.checkWarnings ?? [];
+      const wrong =
+        (expect.checkWarnings !== undefined && JSON.stringify(expect.checkWarnings) !== JSON.stringify(warned)) ||
+        (expect.triggerPoints !== undefined && JSON.stringify(expect.triggerPoints) !== JSON.stringify(ran));
+      if (!wrong) continue;
+      return {
+        step: t.index,
+        rule: "MQ9310",
+        message: `Step ${t.index + 1}: the checks that warned or the trigger points that ran differ from expect.checkWarnings or expect.triggerPoints; fix the trigger points or update the expectations from a replay.`,
+        expected: { checkWarnings: expect.checkWarnings ?? null, triggerPoints: expect.triggerPoints ?? null },
+        actual: { checkWarnings: warned, triggerPoints: ran },
+      };
+    }
     // MQ9307: the values a step set against its expect.values (exactly the attributes the step changed).
     for (const t of result.trace) {
       if (t.index < 0) continue;
@@ -422,6 +451,27 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         rows: page,
         next: start + limit < rows.length ? String(start + limit) : null,
       });
+    }),
+    // What runs, in order, when a verb happens (trigger-points-design.md decision 36). Simpler than the engine's: this lifecycle's points only.
+    rawHttp.get(url("/api/processes/:id/trigger-sequence"), ({ params, request }) => {
+      const entry = find(String(params.id));
+      if (!entry) return missing(String(params.id));
+      const q = new URL(request.url).searchParams;
+      const verb = q.get("verb");
+      if (!verb) return bad("verb is required.");
+      const steps = sequenceOf(
+        entry.json,
+        {
+          verb,
+          ...(q.get("state") ? { state: q.get("state")! } : {}),
+          ...(q.get("entity") ? { entity: q.get("entity")! } : {}),
+          ...(q.get("attributes") ? { attributes: idList(q.get("attributes")) } : {}),
+          ...(q.get("end") ? { end: q.get("end")! } : {}),
+          ...(q.get("transition") ? { transition: q.get("transition")! } : {}),
+        },
+        (id) => entityChain(id, (x) => model.entries.get(x)?.json).map((d) => String(d.id)),
+      );
+      return HttpResponse.json({ lifecycle: entry.id, verb, steps });
     }),
     rawHttp.post(url("/api/processes/:id/simulate"), async ({ params, request }) => {
       const entry = find(String(params.id));
@@ -504,6 +554,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         ...(cast ? { objects: cast.objects, subject: cast.subject } : {}),
         // The steps name the request's participants: the replay runs before the fresh ids are given.
         ...(value.participants ? { participants: arr(value.participants) } : {}),
+        recordTriggerPoints: value.triggerPoints === true,
       });
       // The engine refuses inputs that cannot be replayed to the last step (422 with the replay's findings).
       if (!replayed.complete && value.steps.length) return HttpResponse.json(report(replayed.diagnostics.length ? replayed.diagnostics : []), { status: 422 });

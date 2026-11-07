@@ -573,6 +573,7 @@ export const SIMULATION_LABELS = {
     right: "a right denies it",
     default: "nothing allows it, and the lifecycle denies by default",
     frozen: "it is frozen, and freezing refuses changes until a thaw",
+    check: "a check of a trigger point refuses it",
   } as Record<string, string>,
   verbInput: (verb: string) => `do ${verb}`,
   didVerb: (verb: string, actor: string) => `Did ${verb}${actor ? ` as ${actor}` : ""}`,
@@ -777,6 +778,52 @@ export const TRIGGER_LABELS = {
     `Deleted ${state}. ${points.length === 1 ? "The trigger point" : "The trigger points"} ${points.join(", ")} named only ${points.length === 1 ? "it" : "such states"}, so ${points.length === 1 ? "it goes" : "they go"} too.`,
   messageHint: "Say why: it is the message shown when a check refuses or warns.",
   noMessage: "The message is the name until you say why.",
+  /** The toggle between the grid and What happens when. */
+  viewsLabel: "Trigger points view",
+  viewPoints: "Trigger points",
+  viewHappens: "What happens when",
+  happens: {
+    verb: "When someone does",
+    verbTip: "The verb to ask about. The answer lists what runs, in order, when it happens to this lifecycle's subjects",
+    state: "In state",
+    stateAny: "(any state)",
+    entity: "For type",
+    entityAny: "(any type)",
+    loading: "Reading what runs…",
+    failed: "Could not read what runs when this verb happens.",
+    saved: "Shows the saved lifecycle.",
+    empty: "Pick a verb to see what happens when it is done.",
+    builtIn: "Built in",
+    otherLifecycle: (name: string) => `from ${name}`,
+    conditional: "only if its condition holds",
+    outside: "reaches outside systems",
+    open: (name: string) => `Open ${name}`,
+    list: (verb: string) => `What happens when someone does ${verb}`,
+  },
+  /** The scenario editor's cells (section 11). */
+  checkWarnings: "Check warnings",
+  checkWarningsTip: "The checks the step expects to warn without refusing; filled in by Update expectations",
+  expectedPoints: "Trigger points",
+  expectedPointsTip: "The trigger points the step expects to run, in order; filled in when Also record trigger points is ticked",
+  assumeTip: "A guard with no expression: true or false. A check the team writes: pass, warning or error. For example: Approved=true, CreditLimit=error",
+  alsoRecord: "Also record trigger points",
+  alsoRecordTip:
+    "Update expectations also writes the trigger points that ran at each step. A trigger point added later then fails the scenario until it is updated again",
+  /** The simulation panel's lines. */
+  panel: {
+    ran: (name: string, verb: string) => `${name} (${verb})`,
+    outcomes: { passed: "passed", warned: "warned", refused: "refused", ran: "ran", replaced: "replaced", queued: "queued", skipped: "skipped" } as Record<
+      string,
+      string
+    >,
+    assumed: "assumed",
+    outsideFlag: "outside",
+    outsideTip: "The team's code reaches outside systems; the run does not call it",
+    assumedTip: "The team writes this check; its outcome comes from the step's assumptions, or passes by default",
+    warningLine: (names: string) => `Check warnings: ${names}`,
+    leftOut: (name: string) => `A move was left out by the check ${name}; the step that led to it stays accepted`,
+    message: (text: string) => `Message: ${text}`,
+  },
 } as const;
 
 /** The Rights tab and the named right's editor (rights-design.md section 10). */
@@ -874,7 +921,7 @@ export const RIGHT_LABELS = {
   linkEnd: "Link end",
   linkObject: "Linked object",
   stepValues: "Set values",
-  stepValuesHint: "name=value pairs for modify, for example amount=5",
+  stepValuesHint: "name=value pairs for modify or create, for example amount=5",
   expectedRefusalHint: "Why the step is refused; filled in by Update from replay",
   expectedRefusedByHint: "The element that refused the step; filled in by Update from replay",
   refusalWords: {
@@ -887,6 +934,7 @@ export const RIGHT_LABELS = {
     right: "Right",
     default: "Default",
     frozen: "Frozen",
+    check: "Check",
   } as Record<string, string>,
   /** The simulation panel's Do… menu and its refusal lines. */
   doMenu: "Do…",

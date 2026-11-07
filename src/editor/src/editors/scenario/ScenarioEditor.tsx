@@ -36,13 +36,14 @@ import {
 } from "@/model/process";
 import { domIdOf, EditorLayout, useCodeGenerationTab, useEditorContext, type EditorContext } from "../EditorFrame";
 import { Grid, type GridColumn, type GridOption } from "../process/Grid";
-import { refreshScenario, verifyScenario } from "../process/api";
+import { recordTriggerPoints, refreshScenario, verifyScenario } from "../process/api";
 import { failureSentence } from "./replayFailure";
 import { useActors, useProblems, rowProblems } from "../process/shared";
 import { ScenarioStatusBadge } from "../process/ScenariosTab";
 import { ObjectsGrid, ParticipantsGrid } from "./ParticipantsGrid";
-import { PARTICIPANT_LABELS as PL, RIGHT_LABELS as RL } from "@/model/labels";
+import { PARTICIPANT_LABELS as PL, RIGHT_LABELS as RL, TRIGGER_LABELS as TL } from "@/model/labels";
 import { EFFECT_LABELS as EL } from "@/model/effectLabels";
+import { CHECK_WORD_LABELS, isTeamCheck, parseAssume, reachableChecks } from "@/model/triggerPoints";
 
 type Rec = Record<string, unknown>;
 
@@ -143,6 +144,8 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [expecting, setExpecting] = useState<string | null>(null);
+  // "Also record trigger points": Update expectations then also writes the points that ran at each step.
+  const [alsoRecord, setAlsoRecord] = useState(false);
   // The expected values name the subject's attributes (the file keys them by id): the subject entity and the entities it is based on.
   // A scenario without a subject object still sets the process's own subjects' attributes, so their entities name the values then.
   const lookup = indexLookup(useIndex().data);
@@ -174,6 +177,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
     for (const e of processDoc.events ?? []) refusers.push({ value: e.id, label: e.name });
     for (const t of processDoc.transitions ?? []) if (t.gate) refusers.push({ value: t.gate.id, label: t.gate.displayName || t.gate.name });
     for (const g of processDoc.guards ?? []) refusers.push({ value: g.id, label: g.name });
+    for (const t of processDoc.triggerPoints ?? []) refusers.push({ value: t.id, label: t.name });
   }
   for (const o of refusers) more.set(o.value, o.label);
   // A refusing element that is in none of these and not in the model any more reads "(deleted)".
@@ -192,7 +196,10 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const attributeOptions: GridOption[] = objectFields.fields.filter((f) => f.kind === "attribute").map((f) => ({ value: f.id, label: f.name }));
   const objectOptions: GridOption[] = (scenario.objects ?? []).map((o) => ({ value: o.id, label: o.name }));
   const verbSteps = rows.some((r) => r.input === "verb");
-  const refusals = rows.some((r) => r.refusal || r.refusedBy) || verbSteps || !!processDoc?.rights?.length;
+  const triggers = !!processDoc?.triggerPoints?.length || rows.some((r) => r.checkWarnings || r.triggerPoints);
+  const refusals = rows.some((r) => r.refusal || r.refusedBy) || verbSteps || !!processDoc?.rights?.length || triggers;
+  // The team-code checks a step's Assume cell can set, each with Pass, Warning or Error (decision 26).
+  const teamChecks = new Set((processDoc?.triggerPoints ?? []).filter(isTeamCheck).map((t) => t.id));
   const names = stepNames(processDoc, actorNames);
   const states = processDoc ? [...stateIndex(processDoc).values()].map((i) => ({ id: i.state.id, name: i.path })) : [];
   const events: GridOption[] = (processDoc?.events ?? []).map((e) => ({ value: e.id, label: e.name }));
@@ -276,6 +283,28 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
           },
         ]
       : []),
+    ...(triggers
+      ? [
+          {
+            key: "checkWarnings",
+            label: TL.checkWarnings,
+            tooltip: TL.checkWarningsTip,
+            kind: "pick" as const,
+            width: "min-w-24",
+            value: (r: StepRow) => r.checkWarnings,
+            editValue: (r: StepRow) => (step(r)?.expect?.checkWarnings ?? []).join(","),
+            options: () => (processDoc?.triggerPoints ?? []).filter((t) => t.type === "check").map((t) => ({ value: t.id, label: t.name })),
+          },
+          {
+            key: "triggerPoints",
+            label: TL.expectedPoints,
+            tooltip: TL.expectedPointsTip,
+            kind: "readonly" as const,
+            width: "min-w-28",
+            value: (r: StepRow) => r.triggerPoints,
+          },
+        ]
+      : []),
     ...(verbSteps
       ? [
           {
@@ -349,7 +378,30 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
     },
     { key: "reason", label: "Reason", kind: "text", width: "min-w-20", value: (r) => r.reason },
     { key: "payload", label: "Payload", kind: "text", width: "min-w-28", mono: true, value: (r) => r.payload },
-    { key: "assume", label: "Assumptions", kind: "text", width: "min-w-24", mono: true, value: (r) => r.assume },
+    {
+      key: "assume",
+      label: "Assumptions",
+      tooltip: TL.assumeTip,
+      kind: "text",
+      width: "min-w-24",
+      mono: true,
+      value: (r) => r.assume,
+      // The team-code checks the step can reach and has no entry for: they pass unless the cell says Warning or Error.
+      render: (r) => {
+        const open = processDoc && step(r) ? reachableChecks(processDoc, step(r)!).filter((t) => !(step(r)?.assume && t.id in step(r)!.assume!)) : [];
+        return (
+          <span className="truncate" data-testid="assume-cell">
+            {r.assume}
+            {open.map((t) => (
+              <span key={t.id} className="ml-1 text-secondary" title={`${t.name}: ${Object.values(CHECK_WORD_LABELS).join(", ")}`} data-testid="assume-check">
+                {r.assume || open[0] !== t ? ", " : ""}
+                {t.name}=pass
+              </span>
+            ))}
+          </span>
+        );
+      },
+    },
     {
       key: "status",
       label: "Replay",
@@ -408,8 +460,13 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       else if (key === "participant" || key === "actor" || key === "meaning" || key === "signer" || key === "reason") setOpt(s, key, v.trim());
       else if (key === "payload") setOpt(s, "payload", parseMapText(v, names.attrs));
       else if (key === "assume") {
-        const map = parseMapText(v, names.guards);
-        setOpt(s, "assume", Object.fromEntries(Object.entries(map).map(([k, x]) => [k, x === true || x === "true"])));
+        setOpt(s, "assume", parseAssume(parseMapText(v, names.guards), teamChecks));
+      } else if (key === "checkWarnings") {
+        const expect = { ...(s.expect ?? {}) } as NonNullable<StepDoc["expect"]>;
+        const ids = v.split(",").filter(Boolean);
+        if (ids.length) expect.checkWarnings = ids;
+        else delete expect.checkWarnings;
+        setOpt(s, "expect", expect);
       } else if (key === "states" || key === "context") {
         const expect = { ...(s.expect ?? {}) };
         if (key === "states") {
@@ -433,6 +490,10 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
     try {
       const refused = await refreshScenario(qc, store, scenario.id);
       if (refused) store.getState().notify(`${RL.updateExpectations}: ${refused}`, "error");
+      else if (alsoRecord) {
+        const failed = await recordTriggerPoints(qc, store, scenario.process, scenario.id);
+        if (failed) store.getState().notify(`${TL.alsoRecord}: ${failed}`, "error");
+      }
     } finally {
       setBusy(false);
     }
@@ -475,10 +536,18 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
           </span>
         ) : null}
         {failure ? (
+          <span className="min-w-0 flex-1 whitespace-normal break-words text-12 text-danger" role="status" data-testid="replay-failure">
+            {failure}
+          </span>
+        ) : null}
+        {failure || triggers ? (
           <>
-            <span className="min-w-0 flex-1 whitespace-normal break-words text-12 text-danger" role="status" data-testid="replay-failure">
-              {failure}
-            </span>
+            {triggers ? (
+              <label className="flex h-6 items-center gap-1 text-12" title={TL.alsoRecordTip}>
+                <input type="checkbox" checked={alsoRecord} onChange={(e) => setAlsoRecord(e.target.checked)} data-testid="also-record-points" />
+                {TL.alsoRecord}
+              </label>
+            ) : null}
             <Button
               size="sm"
               disabled={busy}

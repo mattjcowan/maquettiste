@@ -8,6 +8,8 @@ import * as endpoints from "@/api/endpoints";
 import { applyBatchResult, applySaveResult, indexQuery, keys } from "@/api/queries";
 import type { ModelJson } from "@/api/types";
 import { subjectsOf } from "@/model/process";
+import { ranPoints } from "@/model/triggerPoints";
+import { simulateProcess } from "./simulation/api";
 import { recordVerify, type VerifyResult } from "@/explorer/processApi";
 import { applyQuickFix } from "@/problems/applyQuickFix";
 import type { EditorStore } from "@/state/store";
@@ -144,6 +146,40 @@ export async function refreshScenario(qc: QueryClient, store: EditorStore, scena
   const after = await refetch(qc, scenario);
   store.getState().pushUndo({
     label: "Refresh expectations",
+    ids: [scenario],
+    before: [before.json as ModelJson],
+    after: [after.json as ModelJson],
+    afterHashes: [after.hash],
+  });
+  void qc.invalidateQueries({ queryKey: keys.validation });
+  return null;
+}
+
+/**
+ * "Also record trigger points" (trigger-points-design.md decision 28): after Update expectations, writes each step's `expect.triggerPoints`
+ * from a simulation of the saved scenario (the points that ran, in order, `skipped` ones left out). The batch operation that updates the
+ * other expectations has no option for it, so this is a second, separate change; null when saved, else the refusal.
+ */
+export async function recordTriggerPoints(qc: QueryClient, store: EditorStore, process: string, scenario: string): Promise<string | null> {
+  const simulated = await simulateProcess(process, { scenario });
+  if (simulated.kind === "invalid") return simulated.diagnostics[0]?.message ?? "The scenario could not be replayed.";
+  const before = await endpoints.getElement(scenario);
+  const json = structuredClone(before.json) as { steps?: { expect?: Record<string, unknown> }[] };
+  const trace = simulated.result.trace.filter((t) => t.index >= 0);
+  (json.steps ?? []).forEach((step, i) => {
+    const ran = ranPoints(trace.find((t) => t.index === i)?.triggerPoints);
+    const expect = { ...(step.expect ?? {}) };
+    if (ran.length) expect.triggerPoints = ran;
+    else delete expect.triggerPoints;
+    step.expect = expect;
+  });
+  const result = await endpoints.applyBatch({ operations: [{ op: "update", id: scenario, expectedHash: before.hash, element: json }] } as never);
+  if (!endpoints.isBatchResult(result)) return result.diagnostics[0]?.message ?? "The batch did not parse.";
+  if (result.outcome !== "saved") return result.items.find((i) => i.outcome !== "saved")?.diagnostics[0]?.message ?? result.outcome;
+  applyBatchResult(qc, result);
+  const after = await refetch(qc, scenario);
+  store.getState().pushUndo({
+    label: "Record trigger points",
     ids: [scenario],
     before: [before.json as ModelJson],
     after: [after.json as ModelJson],
@@ -349,6 +385,25 @@ export async function stereotypeEnumPlan(process: string, enumId: string): Promi
 }
 
 export type RightsAnswer = { rightsDefault: "allow" | "deny"; rows: components["schemas"]["RightsRow"][] };
+
+export type TriggerSequenceAnswer = components["schemas"]["TriggerSequence"];
+
+/** What runs, in order, when a verb happens in a lifecycle (`get_trigger_sequence`): the answer is shown as given, never worked out here. */
+export async function getTriggerSequence(
+  process: string,
+  query: { verb: string; state?: string; entity?: string },
+  signal?: AbortSignal,
+): Promise<TriggerSequenceAnswer> {
+  const { data, response } = await api().GET("/api/processes/{id}/trigger-sequence", {
+    params: {
+      path: { id: process },
+      query: { verb: query.verb, ...(query.state ? { state: query.state } : {}), ...(query.entity ? { entity: query.entity } : {}) },
+    },
+    signal,
+  });
+  if (!data) throw new ApiProblem(response.status, null, `HTTP ${response.status}`);
+  return data;
+}
 
 /** Who can do what in a lifecycle (`get_rights`): every page of rows, read from the saved lifecycle. */
 export async function getRights(process: string, signal?: AbortSignal, frozen = false): Promise<RightsAnswer> {

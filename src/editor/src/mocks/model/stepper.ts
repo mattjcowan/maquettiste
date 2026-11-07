@@ -9,6 +9,7 @@
 import { Membership } from "./membership";
 import { evalTree, UNKNOWN, type EvalEnv, type Value } from "./effects";
 import { answerLifecycle, checkAll, FROZEN_VERBS, ownLifecycleOnly, takesPart, usesRights, type Facts, type Holding, type Tri } from "./rightsCheck";
+import { assumedWord, CHECK_WORDS, isTeamCode, matchPoint, momentOf, pointsOf, usesTriggers, type Moment, type Place } from "./triggerRun";
 import { subjectsOf } from "@/model/process";
 import { builtInVerbs } from "@/model/verbs";
 
@@ -72,6 +73,8 @@ interface Edge {
   gate: Json | null;
   delay: number | null;
   displayName: string | null;
+  /** The verb of the move: the transition's own, else its event's (trigger-points-design.md decision 4); null runs no trigger points. */
+  verb: string | null;
 }
 
 class Chart {
@@ -129,6 +132,7 @@ class Chart {
         gate: t.gate && typeof t.gate === "object" ? (t.gate as Json) : null,
         delay: trigger === "after" ? durationMs(str(t.after)) : null,
         displayName: str(t.displayName),
+        verb: str(t.verb) ?? (trigger === "event" ? str(this.events.get(key)?.verb) : null),
       };
       this.transitions.push(edge);
       source.transitions.push(edge);
@@ -245,7 +249,8 @@ export interface SimInputJson {
   meaning: string | null;
   reason: string | null;
   payload: Json;
-  assume: Record<string, boolean>;
+  /** A guard's result by its id, or a team-code check's outcome word by its id or name. */
+  assume: Record<string, boolean | "pass" | "warning" | "error">;
   expect: null;
   description: unknown;
   /** The participant that acts (actors-design.md decision 15); written only when the input names one. */
@@ -304,6 +309,23 @@ export interface StepTraceJson {
   rights?: { right: string; lifecycle: string; access: "allow" | "deny" }[];
   /** True while the subject is frozen after the input (rights-design.md section 7); left out when not. */
   frozen?: true;
+  /** The trigger points whose places matched, in run order (trigger-points-design.md decision 28); left out when none. */
+  triggerPoints?: TriggerRunJson[];
+  /** The checks that warned, each once, in the order they first warned; left out when none. */
+  checkWarnings?: string[];
+}
+
+/** A trigger point that ran in a step, and what it did. */
+export interface TriggerRunJson {
+  triggerPoint: string;
+  lifecycle: string;
+  verb: string;
+  type: "check" | "action" | "replace";
+  timing?: "before" | "with-change" | "after-commit";
+  outcome: "passed" | "warned" | "refused" | "ran" | "replaced" | "queued" | "skipped";
+  assumed?: true;
+  outside?: true;
+  sets?: Json;
 }
 
 export interface SimulationJson {
@@ -317,6 +339,7 @@ export interface SimulationJson {
     transitions: string[];
     actors: string[];
     guardUnknown: boolean;
+    checksUnknown?: string[];
     gate: { have: number; need: number } | null;
   }[];
   pending: { invoke: string; state: string }[];
@@ -360,6 +383,10 @@ export interface StepperOptions {
   subjectEntity?: string;
   /** Every lifecycle process document, for in_state. */
   lifecycles?: Json[];
+  /** An entity and the entities it is based on, for a trigger point's `entities` key; the entity alone without it. */
+  entityChain?: (entity: string) => string[];
+  /** Replay also records each step's `expect.triggerPoints` (the record operation's `triggerPoints: true`). */
+  recordTriggerPoints?: boolean;
 }
 
 /** The texts of the participant cases of MQ9301 and MQ9305, as RuleCatalog words them (the engine's rule list). */
@@ -399,8 +426,11 @@ export function normalizeInput(step: Json, index: number, chart: { doc: Json }, 
   const walk = (list: unknown) => arr(list).forEach((s) => (invokes.push(...arr(s.invoke)), walk(s.states)));
   walk(doc.states);
   const guards = arr(doc.guards);
-  const assume: Record<string, boolean> = {};
-  for (const [k, v] of Object.entries((step.assume as Json | undefined) ?? {})) if (typeof v === "boolean") assume[byName(guards, k) ?? k] = v;
+  const assume: SimInputJson["assume"] = {};
+  for (const [k, v] of Object.entries((step.assume as Json | undefined) ?? {})) {
+    if (typeof v === "boolean") assume[byName(guards, k) ?? k] = v;
+    else if (typeof v === "string" && CHECK_WORDS.includes(v)) assume[k] = v as "pass" | "warning" | "error";
+  }
   const actor = str(step.actor);
   return {
     id: str(step.id) ?? `input-${index}`,
@@ -456,6 +486,26 @@ interface Scope {
   notes: string[];
   refusedBy: string | null;
   rights: Holding[];
+  /** The trigger points that ran in the step, in run order; after-commit ones wait in `queued` and come last (decision 28). */
+  triggerRuns: TriggerRunJson[];
+  queued: TriggerRunJson[];
+  checkWarnings: string[];
+}
+
+/** The rows 8 and 9 of a candidate (a move or a verb step), worked out on a scratch copy of the object's values (decisions 18 and 25). */
+interface Prepared {
+  verb: string;
+  /** The values before the verb, null for `create`. */
+  old: Json | null;
+  /** The proposed values: the row, the step's values, then what the before actions set. */
+  proposed: Json;
+  fills: { point: string; sets: Json }[];
+  runs: TriggerRunJson[];
+  warnings: string[];
+  refused: { run: TriggerRunJson; name: string } | null;
+  /** The points of the later moments that matched, in run order. */
+  later: Map<Moment, { lifecycle: Json; point: Json }[]>;
+  listed: boolean;
 }
 
 class Overflow extends Error {}
@@ -474,6 +524,9 @@ const newScope = (input: SimInputJson | null): Scope => ({
   notes: [],
   refusedBy: null,
   rights: [],
+  triggerRuns: [],
+  queued: [],
+  checkWarnings: [],
 });
 
 class Interpreter {
@@ -509,6 +562,10 @@ class Interpreter {
   private checkObject: string | null = null;
   subjectEntity: string | undefined;
   lifecycles: Json[] = [];
+  /** Whether any lifecycle lists trigger points, and the entity and its bases (decision 12). */
+  triggers = false;
+  entityChain: (entity: string) => string[] = (e) => [e];
+  private prep = new Map<Edge, { sign: Prepared | null; move: Prepared | null }>();
   private auditSeq = 0;
   private timerSeq = 0;
   private index = -1;
@@ -731,7 +788,10 @@ class Interpreter {
     this.thawing = ev.verb === "thaw";
     this.macrostep(() => {
       const selection = this.select("event", String(ev.id), true);
-      if (!selection.transitions.length && !selection.consumed) return this.refuse(selection.reason, selection.by);
+      if (!selection.transitions.length && !selection.consumed) {
+        if (selection.run) this.scope.triggerRuns.push(selection.run);
+        return this.refuse(selection.reason, selection.by);
+      }
       if (selection.transitions.length) this.microstep(selection.transitions);
       this.runToCompletion();
     });
@@ -760,6 +820,8 @@ class Interpreter {
       this.timers = this.timers.filter((t) => t !== next);
       this.macrostep(() => {
         if (this.guard(next.edge) !== true) return;
+        const refusing = this.triggerRefusal(next.edge, false);
+        if (refusing) return this.leftOut(refusing);
         this.microstep([next.edge]);
         this.runToCompletion();
       });
@@ -785,10 +847,30 @@ class Interpreter {
     if (found.invoke.type === "human-task" && this.checkRights("complete", actors.length ? [String(found.invoke.id)] : [])) return;
     if (found.invoke.type !== "human-task" && !input.actor) this.scope.actor = this.membership.systemActor;
     this.scope.event = this.eventObject(null, input.actor, [], {});
+    // A human task's end is the verb `complete`: its before actions and checks run first, and a refusing check leaves the task pending (section 8).
+    let completion: Prepared | null = null;
+    if (this.triggers && found.invoke.type === "human-task") {
+      completion = this.prepare("complete", this.placeFor("complete", {}), { ...this.row }, { ...this.row }, false);
+      if (completion.refused) {
+        this.scope.triggerRuns.push(completion.refused.run);
+        return this.refuse("check", completion.refused.run.triggerPoint);
+      }
+    }
     this.macrostep(() => {
       const selection = this.selectAt(found.state, input.input, String(found.invoke.id));
-      if (!selection.transitions.length) return this.refuse(selection.reason, selection.by);
+      if (!selection.transitions.length) {
+        if (selection.run) this.scope.triggerRuns.push(selection.run);
+        return this.refuse(selection.reason, selection.by);
+      }
+      if (completion) {
+        this.list(completion, new Set());
+        this.write(completion, new Set());
+      }
       this.pending = this.pending.filter((p) => p.invoke !== found.invoke);
+      if (completion) {
+        this.runLater(completion, "with-change", new Set());
+        this.runLater(completion, "after-commit", new Set());
+      }
       this.microstep(selection.transitions);
       this.runToCompletion();
     });
@@ -902,21 +984,350 @@ class Interpreter {
     const toId = (k: string) => known.find((a) => a.id === k)?.id ?? known.find((a) => a.name === k)?.id ?? k;
     const named = verb === "read" ? (input.attributes ?? []) : verb === "modify" && !input.end ? Object.keys(input.values ?? {}) : [];
     if (this.checkRights(verb, [], input.end ?? null, verb === "create", named.length ? named.map(toId) : null, input.object ?? null)) return;
-    if (verb === "freeze" || verb === "thaw") return this.applyFreeze(verb, input.end ?? null, input.object ?? null);
-    if (verb === "modify" && !input.end) {
+    // The values a modify (or a create, decision 27) step gives, by attribute id.
+    const values: Json = {};
+    if ((verb === "modify" && !input.end) || verb === "create") {
       const attributes = this.attributesOf(entity);
       for (const [key, value] of Object.entries(input.values ?? {})) {
         const hit = attributes.find((a) => a.id === key) ?? attributes.find((a) => a.name === key);
         if (!hit && attributes.length) {
-          this.problem("MQ9305", `A modify step sets attributes of the subject, and '${key}' is none of them; pick one of its attributes.`);
+          this.problem("MQ9305", `A ${verb} step sets attributes of the subject, and '${key}' is none of them; pick one of its attributes.`);
           continue;
         }
-        this.row[hit?.id ?? key] = value;
+        values[hit?.id ?? key] = value;
       }
+    }
+    // Rows 8 and 9 after rights and freezing (decision 18): matching reads what the step itself names, never what before actions fill.
+    const prepared = this.triggers
+      ? this.prepare(
+          verb,
+          this.placeFor(verb, { attributes: named.length ? named.map(toId) : null, end: input.end ?? null, create: verb === "create" }),
+          { ...this.row, ...values },
+          verb === "create" ? null : { ...this.row },
+          true,
+        )
+      : null;
+    if (prepared?.refused) {
+      this.scope.triggerRuns.push(prepared.refused.run);
+      return this.refuse("check", prepared.refused.run.triggerPoint);
+    }
+    const seen = new Set<string>();
+    if (prepared) {
+      this.list(prepared, seen);
+      // The proposed values are written before the effect once the step is accepted; copy and revise make a new object the run does not hold.
+      if (verb !== "copy" && verb !== "revise") this.write(prepared, new Set(), values);
+    } else Object.assign(this.row, values);
+    // A replace stands in for the effect of a verb step only (decision 16); an event that names the verb keeps its move.
+    const replaced = prepared ? this.replaceEffect(prepared, verb, !!input.end) : false;
+    if (replaced) {
+      // The built-in effect did not run.
+    } else if (verb === "freeze" || verb === "thaw") this.applyFreeze(verb, input.end ?? null, input.object ?? null);
+    else if (verb === "modify" && !input.end) {
+      // The values are written above.
     } else if (verb === "delete" && !input.end) {
       this.deleted = true;
       this.scope.notes.push("The object was deleted, so the run stopped; the outcome is read from the chart as it stood.");
-    } else this.scope.notes.push(`The run checked ${verb} but did not apply it.`);
+    } else if (!(prepared && verb === "create")) this.scope.notes.push(`The run checked ${verb} but did not apply it.`);
+    if (prepared) {
+      this.runLater(prepared, "with-change", seen, { gone: this.deleted && !replaced });
+      this.runLater(prepared, "after-commit", seen);
+    }
+  }
+
+  // ---- trigger points (trigger-points-design.md decisions 10 to 28) ----
+
+  /** The lifecycles whose points a verb reaches, acting one first, then the others by name (decisions 11 and 19). */
+  private lifecyclesFor(verb: string): Json[] {
+    const acting = this.actingLifecycle();
+    return ownLifecycleOnly(verb) ? (acting ? [acting] : []) : this.answering(verb);
+  }
+
+  /** The entity of the object, with its bases: one chain, or one for each subject entity of a run with no object. */
+  private entityChains(): string[][] {
+    const object = this.subjectObject();
+    const entity = str(object?.entity) ?? (object ? undefined : this.subjectEntity);
+    if (entity) return [this.entityChain(entity)];
+    return subjectsOf(this.chart.doc).flatMap((x) => (x.entity ? [this.entityChain(x.entity)] : []));
+  }
+
+  /** The states a move enters, its targets and what they enter by default, with their ancestors. */
+  private enteredIds(t: Edge): Set<string> {
+    const set = new Set<Node>();
+    for (const s of t.targets) this.addDescendants(s, set);
+    for (const s of this.effectiveTargets(t)) this.addAncestors(s, this.domain(t), set);
+    return new Set([...set].map((n) => n.id));
+  }
+
+  private placeFor(verb: string, o: { edge?: Edge; attributes?: string[] | null; end?: string | null; create?: boolean }): Place {
+    const acting = this.chart.doc;
+    const edge = o.edge;
+    return {
+      verb,
+      acting: String(acting.id),
+      ...(edge ? { transition: edge.id, targets: this.enteredIds(edge) } : {}),
+      // For a move, the source of the acting lifecycle; for anything else the object's states in the lifecycle.
+      statesOf: (l) =>
+        edge && l.id === acting.id
+          ? new Set([edge.source, ...ancestorsOf(edge.source)].filter((n) => !n.isRoot).map((n) => n.id))
+          : this.activeOf(l, o.create === true),
+      entities: this.entityChains(),
+      attributes: o.attributes ?? null,
+      end: o.end ?? null,
+    };
+  }
+
+  private subjectEnv(proposed: Json, old: Json | null): EvalEnv {
+    return this.env({ now: proposed, old });
+  }
+
+  /** A point's `when`: true runs it, false skips it; one the mock cannot read runs it, with a note. */
+  private whenHolds(t: Json, env: EvalEnv): boolean {
+    if (t.when === undefined) return true;
+    const v = evalTree(t.when, env);
+    if (v === UNKNOWN) {
+      this.scope.notes.push(
+        `The mock backend could not read the condition of trigger point '${String(t.name)}', so it ran; the engine reads every expression.`,
+      );
+      return true;
+    }
+    return v === true;
+  }
+
+  private runOf(l: Json, t: Json, verb: string, outcome: TriggerRunJson["outcome"], extra: Partial<TriggerRunJson> = {}): TriggerRunJson {
+    return {
+      triggerPoint: String(t.id),
+      lifecycle: String(l.id),
+      verb,
+      type: t.type as TriggerRunJson["type"],
+      ...(t.type === "action" ? { timing: t.timing as TriggerRunJson["timing"] } : {}),
+      outcome,
+      ...(t.outside === true ? { outside: true as const } : {}),
+      ...extra,
+    };
+  }
+
+  /** The sets of a point, every value worked out first and then all applied (object effects decision 4); the values it set, by attribute id. */
+  private applySets(t: Json, env: EvalEnv, into: Json): Json {
+    const worked = arr(t.sets).map((x) => ({ attribute: String(x.attribute), value: evalTree(x.value, env) }));
+    const out: Json = {};
+    for (const w of worked) {
+      if (w.value === UNKNOWN) {
+        this.scope.notes.push(
+          `The mock backend could not work out the value of a set in trigger point '${String(t.name)}', so the set did nothing; the engine reads every expression.`,
+        );
+        continue;
+      }
+      into[w.attribute] = w.value;
+      out[w.attribute] = w.value;
+    }
+    return out;
+  }
+
+  /**
+   * Rows 8 and 9 of decision 18 on a scratch copy: the before actions fill the proposed values, then the checks run. The first refusing
+   * check ends it. A team-code check takes its outcome from the step's `assume`, else passes.
+   */
+  private prepare(verb: string, place: Place, start: Json, old: Json | null, verbStep: boolean): Prepared {
+    const found: { l: Json; t: Json; moment: Moment }[] = [];
+    for (const l of this.lifecyclesFor(verb))
+      for (const t of pointsOf(l)) {
+        const m = matchPoint(t, l, place);
+        if (!m.ok) continue;
+        found.push({ l, t, moment: momentOf(t) });
+        if (m.assumed)
+          this.scope.notes.push(
+            `The step names no ${strsOf(t.ends).length ? "link end" : "attribute"}, so the check '${String(t.name)}' ran as if it applied.`,
+          );
+      }
+    const proposed = { ...start };
+    const prepared: Prepared = { verb, old, proposed, fills: [], runs: [], warnings: [], refused: null, later: new Map(), listed: false };
+    const env = () => this.subjectEnv(proposed, old);
+    for (const { l, t } of found.filter((f) => f.moment === "before")) {
+      if (!this.whenHolds(t, env())) {
+        prepared.runs.push(this.runOf(l, t, verb, "skipped"));
+        continue;
+      }
+      const sets = this.applySets(t, env(), proposed);
+      if (Object.keys(sets).length) prepared.fills.push({ point: String(t.id), sets });
+      prepared.runs.push(this.runOf(l, t, verb, "ran", Object.keys(sets).length ? { sets: sorted(sets) } : {}));
+    }
+    const assume = (this.scope.input?.assume ?? {}) as Record<string, unknown>;
+    for (const { l, t } of found.filter((f) => f.moment === "checks")) {
+      if (!this.whenHolds(t, env())) {
+        prepared.runs.push(this.runOf(l, t, verb, "skipped"));
+        continue;
+      }
+      const warning = t.severity === "warning";
+      let outcome: TriggerRunJson["outcome"] = "passed";
+      let assumed = false;
+      if (t.condition !== undefined) {
+        const v = evalTree(t.condition, env());
+        if (v === UNKNOWN)
+          this.scope.notes.push(`The mock backend could not read the condition of check '${String(t.name)}', so it passed; the engine reads every expression.`);
+        else if (v !== true) outcome = warning ? "warned" : "refused";
+      } else {
+        // A check the team writes: the word the step assumes. A warning check never refuses, so its "error" counts as a warning.
+        const word = assumedWord(assume, t, l);
+        assumed = true;
+        outcome = word === "warning" ? "warned" : word === "error" ? (warning ? "warned" : "refused") : "passed";
+      }
+      const run = this.runOf(l, t, verb, outcome, assumed ? { assumed: true as const } : {});
+      prepared.runs.push(run);
+      if (outcome === "warned") prepared.warnings.push(String(t.id));
+      if (outcome === "refused") {
+        prepared.refused = { run, name: String(t.name) };
+        break;
+      }
+    }
+    // Only a verb step has a replace in its effect; a move keeps its own (decision 16).
+    for (const moment of ["effect", "with-change", "after-commit"] as const) {
+      if (moment === "effect" && !verbStep) continue;
+      prepared.later.set(
+        moment,
+        found.filter((f) => f.moment === moment).map(({ l, t }) => ({ lifecycle: l, point: t })),
+      );
+    }
+    return prepared;
+  }
+
+  /** The first refusing check of a candidate move, or null; it keeps the prepared rows for the microstep (rows 8 and 9 on a scratch copy). */
+  private triggerRefusal(t: Edge, external: boolean): { run: TriggerRunJson; name: string } | null {
+    this.prep.delete(t);
+    if (!this.triggers) return null;
+    const gated = !!t.gate && external;
+    if (!t.verb && !gated) return null;
+    const base = { ...this.row };
+    let sign: Prepared | null = null;
+    let move: Prepared | null = null;
+    let refused: { run: TriggerRunJson; name: string } | null = null;
+    if (gated) {
+      sign = this.prepare("sign", this.placeFor("sign", { edge: t }), base, base, false);
+      refused = sign.refused;
+    }
+    // A gated move's own points run only on the occurrence that completes the gate, and after sign's (decision 18).
+    if (!refused && t.verb && (!t.gate || (external && this.wouldComplete(t)))) {
+      move = this.prepare(t.verb, this.placeFor(t.verb, { edge: t }), sign ? sign.proposed : base, base, false);
+      refused = move.refused;
+    }
+    if (refused) {
+      // A check that refuses the signature completing a gate leaves it uncounted, audited as refused.
+      if (gated && t.gate) {
+        const input = this.scope.input!;
+        this.audit(t.gate, t, input.signer, input.actor, meaningOf(input, t.gate), input.reason, "refused", auditAttributes(input, t.gate));
+      }
+      return refused;
+    }
+    this.prep.set(t, { sign, move });
+    return null;
+  }
+
+  /** Whether this occurrence would complete the gate, worked out without counting it. */
+  private wouldComplete(t: Edge): boolean {
+    const input = this.scope.input!;
+    const signatures = [...(this.signatures.get(t.id) ?? [])];
+    signatures.push({ signer: input.signer!, actor: input.actor!, meaning: meaningOf(input, t.gate!), reason: input.reason });
+    return gateSatisfied(t.gate!, signatures, this.membership);
+  }
+
+  /** An automatic move a check left out: the step that led to it stays accepted, and the trace names the check (decision 18). */
+  private leftOut(refused: { run: TriggerRunJson; name: string }) {
+    this.scope.triggerRuns.push(refused.run);
+    this.scope.notes.push(`An automatic move was not taken: the check '${refused.name}' refused it. The step that led to it is still accepted.`);
+  }
+
+  private warn(ids: string[]) {
+    for (const id of ids) if (!this.scope.checkWarnings.includes(id)) this.scope.checkWarnings.push(id);
+  }
+
+  /** Lists the before actions and checks of a candidate that was taken, once per point (decision 18), with its warnings. */
+  private list(p: Prepared, seen: Set<string>) {
+    if (p.listed) return;
+    p.listed = true;
+    for (const r of p.runs) {
+      if (seen.has(r.triggerPoint)) continue;
+      seen.add(r.triggerPoint);
+      this.scope.triggerRuns.push(r);
+      if (r.outcome === "warned") this.warn([r.triggerPoint]);
+    }
+  }
+
+  /** Writes the proposed values (before actions' sets, over `extra`, the step's own values) once the step is accepted; a point once per microstep. */
+  private write(p: Prepared, seen: Set<string>, extra: Json = {}) {
+    Object.assign(this.row, extra);
+    const sets: Json = {};
+    for (const f of p.fills) {
+      if (seen.has(f.point)) continue;
+      seen.add(f.point);
+      Object.assign(sets, f.sets);
+    }
+    this.setRow(sets);
+  }
+
+  /** What a trigger point sets is part of its verb: freezing never stops it (decision 25). */
+  private setRow(sets: Json) {
+    if (!Object.keys(sets).length) return;
+    Object.assign(this.row, sets);
+    if (this.frozenObject && !this.thawing)
+      this.scope.notes.push("The object is frozen, and a trigger point's sets were applied anyway; freezing does not stop what a trigger point sets.");
+  }
+
+  /** A replace on a verb step takes the place of its effect; at most one applies. True when it did (decision 16). */
+  private replaceEffect(p: Prepared, verb: string, link: boolean): boolean {
+    const entry = (p.later.get("effect") ?? [])[0];
+    if (!entry || !["delete", "disconnect", "copy", "revise"].includes(verb)) return false;
+    const env = this.subjectEnv({ ...this.row }, p.old);
+    if (!this.whenHolds(entry.point, env)) {
+      this.scope.triggerRuns.push(this.runOf(entry.lifecycle, entry.point, verb, "skipped"));
+      return false;
+    }
+    // Copy and revise make a new object the run does not hold: the trace shows the sets and nothing is written.
+    const scratch: Json = {};
+    const sets = this.applySets(entry.point, env, scratch);
+    if (verb !== "copy" && verb !== "revise") this.setRow(sets);
+    void link;
+    this.scope.triggerRuns.push(this.runOf(entry.lifecycle, entry.point, verb, "replaced", Object.keys(sets).length ? { sets: sorted(sets) } : {}));
+    return true;
+  }
+
+  /** Rows 11 and 12: with-the-change actions run now, after-commit ones are queued and listed last. `gone`: the object was deleted. */
+  private runLater(p: Prepared, moment: "with-change" | "after-commit", seen: Set<string>, o: { gone?: boolean } = {}) {
+    for (const { lifecycle, point } of p.later.get(moment) ?? []) {
+      const key = `${moment}:${String(point.id)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const env = this.subjectEnv({ ...this.row }, p.old);
+      if (!this.whenHolds(point, env)) {
+        this.scope.triggerRuns.push(this.runOf(lifecycle, point, p.verb, "skipped"));
+        continue;
+      }
+      if (moment === "after-commit") {
+        this.scope.queued.push(this.runOf(lifecycle, point, p.verb, "queued"));
+        continue;
+      }
+      if (o.gone && arr(point.sets).length) {
+        // A deleted object holds nothing to set (decision 16): without a replace the sets are skipped.
+        this.scope.notes.push(`The sets of trigger point '${String(point.name)}' were skipped: a deleted object holds none.`);
+        this.scope.triggerRuns.push(this.runOf(lifecycle, point, p.verb, "skipped"));
+        continue;
+      }
+      const sets = this.applySets(point, env, {});
+      this.setRow(sets);
+      this.scope.triggerRuns.push(this.runOf(lifecycle, point, p.verb, "ran", Object.keys(sets).length ? { sets: sorted(sets) } : {}));
+    }
+  }
+
+  /** The team-code checks the candidates reach, whose outcome the input takes from `assume` (the trigger's `checksUnknown`). */
+  checksUnknown(edges: Edge[]): string[] {
+    if (!this.triggers) return [];
+    const out = new Set<string>();
+    for (const t of edges)
+      for (const verb of [t.verb, t.gate ? "sign" : null]) {
+        if (!verb) continue;
+        const place = this.placeFor(verb, { edge: t });
+        for (const l of this.lifecyclesFor(verb))
+          for (const p of pointsOf(l)) if (p.type === "check" && isTeamCode(p) && matchPoint(p, l, place).ok) out.add(String(p.id));
+      }
+    return [...out];
   }
 
   // ---- macrostep ----
@@ -960,18 +1371,24 @@ class Interpreter {
 
   // ---- selection ----
 
-  private select(trigger: string, key: string, external: boolean): { transitions: Edge[]; consumed: boolean; reason: string; by?: string } {
+  private select(
+    trigger: string,
+    key: string,
+    external: boolean,
+  ): { transitions: Edge[]; consumed: boolean; reason: string; by?: string; run?: TriggerRunJson } {
     const enabled: Edge[] = [];
     const tried = new Map<Edge, boolean>();
     let consumed = false;
     let reason = "no-transition";
     let by: string | undefined;
+    let run: TriggerRunJson | undefined;
     let rank = 0;
-    const fail = (why: string, level: number, element?: string) => {
+    const fail = (why: string, level: number, element?: string, refusing?: TriggerRunJson) => {
       if (level > rank) {
         rank = level;
         reason = why;
         by = element;
+        run = refusing;
       }
     };
     for (const leaf of this.leaves()) {
@@ -1003,6 +1420,13 @@ class Interpreter {
               continue;
             }
           }
+          // Rows 8 and 9 (decision 18): a check that refuses leaves the candidate out, as a false guard does; a check outranks a gate.
+          const refusing = this.triggerRefusal(t, external);
+          if (refusing) {
+            fail("check", 3, refusing.run.triggerPoint, refusing.run);
+            if (!external) this.leftOut(refusing);
+            continue;
+          }
           tried.set(t, true);
           enabled.push(t);
           found = true;
@@ -1012,22 +1436,48 @@ class Interpreter {
       }
     }
     const selected = this.removeConflicts(enabled, (t) => {
-      if (!t.gate || this.sign(t, t.gate)) return true;
+      if (!t.gate) return true;
+      const prepared = this.prep.get(t);
+      // A signature is a verb of its own around the count (decision 18): its values first, then the count, then its later points.
+      if (prepared?.sign) {
+        this.list(prepared.sign, new Set());
+        this.write(prepared.sign, new Set());
+      }
+      const complete = this.sign(t, t.gate);
+      // On the completing occurrence the move's own points are listed before sign's with-change points.
+      if (complete && prepared?.move) this.list(prepared.move, new Set());
+      if (prepared?.sign) {
+        this.runLater(prepared.sign, "with-change", new Set());
+        this.runLater(prepared.sign, "after-commit", new Set());
+      }
+      if (complete) return true;
       consumed = true; // the occurrence signed an incomplete gate: accepted, and the transition waits for more signatures
       return false;
     });
-    return { transitions: selected, consumed, reason, by };
+    return { transitions: selected, consumed, reason, by, ...(run ? { run } : {}) };
   }
 
-  private selectAt(source: Node, trigger: string, key: string): { transitions: Edge[]; reason: string; by?: string } {
+  /** Selection of the move an invoke finished with (the step's own) or a `done` move (automatic). */
+  private selectAt(source: Node, trigger: string, key: string): { transitions: Edge[]; reason: string; by?: string; run?: TriggerRunJson } {
     let reason = "no-transition";
     let by: string | undefined;
+    let run: TriggerRunJson | undefined;
+    const own = trigger !== "done";
     for (const t of this.chart.candidates(source, trigger, key)) {
-      if (this.guard(t) === true) return { transitions: [t], reason };
+      if (this.guard(t) === true) {
+        const refusing = this.triggerRefusal(t, own);
+        if (!refusing) return { transitions: [t], reason };
+        reason = "check";
+        by = refusing.run.triggerPoint;
+        run = refusing.run;
+        if (!own) this.leftOut(refusing);
+        continue;
+      }
       reason = "guard";
       by = t.guard ? String(t.guard.id) : undefined;
+      run = undefined;
     }
-    return { transitions: [], reason, by };
+    return { transitions: [], reason, by, ...(run ? { run } : {}) };
   }
 
   private removeConflicts(enabled: Edge[], admit: (t: Edge) => boolean): Edge[] {
@@ -1180,11 +1630,14 @@ class Interpreter {
     return object;
   }
 
-  private env(): EvalEnv {
+  /** `over` reads a trigger point's site: `subject.` is the proposed values and `old.` the values before the verb. */
+  private env(over?: { now: Json; old: Json | null }): EvalEnv {
     return {
-      path: (p) => {
+      path: (p, old) => {
         if (p.length === 1) {
-          if (p[0] in this.row) return this.row[p[0]];
+          if (over && old && over.old === null) return null;
+          const src = over ? (old ? over.old! : over.now) : this.row;
+          if (p[0] in src) return src[p[0]];
           return p[0] in this.context ? this.context[p[0]] : UNKNOWN;
         }
         const object = this.objectOf(p.slice(0, -1));
@@ -1293,6 +1746,16 @@ class Interpreter {
     const entered: string[] = [];
     const actions: StepTraceJson["microsteps"][number]["actions"] = [];
 
+    // The points of the moves taken (rows 8 and 9, decision 18): listed once per microstep, their before values written before the exits.
+    const listedPoints = new Set<string>();
+    const writtenPoints = new Set<string>();
+    for (const t of transitions) {
+      const prepared = this.prep.get(t)?.move;
+      if (!prepared) continue;
+      this.list(prepared, listedPoints);
+      this.write(prepared, writtenPoints);
+    }
+
     // Exit, in reverse document order, recording history first.
     const exitSet = new Set<Node>();
     for (const t of transitions) for (const s of this.exitSet(t)) exitSet.add(s);
@@ -1362,6 +1825,15 @@ class Interpreter {
         }
       }
     }
+    // Rows 11 and 12 once the move's own actions have run: with-the-change points now, after-commit ones queued.
+    const laterPoints = new Set<string>();
+    for (const t of transitions) {
+      const prepared = this.prep.get(t)?.move;
+      if (!prepared) continue;
+      this.runLater(prepared, "with-change", laterPoints);
+      this.runLater(prepared, "after-commit", laterPoints);
+    }
+    for (const t of transitions) this.prep.delete(t);
     if (this.done) {
       this.timers = [];
       this.pending = [];
@@ -1497,6 +1969,8 @@ class Interpreter {
       ...(this.scope.refusal !== null && this.scope.refusedBy && this.rightsOn ? { refusedBy: this.scope.refusedBy } : {}),
       ...(this.scope.rights.length ? { rights: uniqueHoldings(this.scope.rights) } : {}),
       ...(this.frozenObject ? { frozen: true as const } : {}),
+      ...(this.scope.triggerRuns.length || this.scope.queued.length ? { triggerPoints: [...this.scope.triggerRuns, ...this.scope.queued] } : {}),
+      ...(this.scope.checkWarnings.length ? { checkWarnings: [...this.scope.checkWarnings] } : {}),
     };
     if (this.scope.list) unsatisfiedLists.set(trace, this.scope.list);
     return trace;
@@ -1575,7 +2049,9 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
   run.subjectEntity = options.subjectEntity;
   run.lifecycles = options.lifecycles ?? [];
   run.named = options.namedRights ?? new Map();
-  run.rightsOn = options.refusedBy === true || usesRights(run.lifecycles);
+  run.triggers = usesTriggers([doc, ...run.lifecycles]);
+  run.entityChain = options.entityChain ?? ((e) => [e]);
+  run.rightsOn = options.refusedBy === true || usesRights(run.lifecycles) || run.triggers;
   const at = readAt(start?.at);
   const traces = [run.start(start?.context, typeof at === "number" ? at : null)];
   let complete = !traces[0].incomplete;
@@ -1655,6 +2131,7 @@ function enabledOf(run: Interpreter, active: Edge[]): SimulationJson["enabled"] 
       transitions: candidates.map((t) => t.id),
       actors: run.membership.withMembers(actors),
       guardUnknown: candidates.some(unknown),
+      ...checksOf(run, candidates),
       gate,
     });
   }
@@ -1668,6 +2145,7 @@ function enabledOf(run: Interpreter, active: Edge[]): SimulationJson["enabled"] 
         transitions: candidates.map((t) => t.id),
         actors: p.invoke.type === "human-task" ? run.membership.withMembers(ids(p.invoke.actors)) : [],
         guardUnknown: candidates.some(unknown),
+        ...checksOf(run, candidates),
         gate: null,
       });
     }
@@ -1679,9 +2157,19 @@ function enabledOf(run: Interpreter, active: Edge[]): SimulationJson["enabled"] 
       transitions: [...run.timers].sort(timerOrder).map((t) => t.edge.id),
       actors: [],
       guardUnknown: active.filter((t) => run.timers.some((x) => x.edge === t)).some(unknown),
+      ...checksOf(
+        run,
+        run.timers.map((t) => t.edge),
+      ),
       gate: null,
     });
   return out;
+}
+
+/** `checksUnknown`, left out when there are none. */
+function checksOf(run: Interpreter, edges: Edge[]): { checksUnknown?: string[] } {
+  const ids = run.checksUnknown(edges);
+  return ids.length ? { checksUnknown: ids } : {};
 }
 
 /** Every state id of a state tree (the states, and the states in them). */
@@ -1747,15 +2235,21 @@ export function replay(doc: Json, start: { context?: Json; at?: string } | null 
     expect.states = t.configuration;
     if (Object.keys(t.changed).length) expect.context = t.changed;
     if (t.valuesChanged && Object.keys(t.valuesChanged).length) expect.values = t.valuesChanged;
-    // A refusal and its element are written when the project uses rights (decision 26), and a frozen refusal always.
-    if (!t.accepted && t.refusal && (usesRights(options.lifecycles ?? []) || t.refusal === "frozen")) {
+    // A refusal and its element are written when the project uses rights or trigger points (decision 26), and a frozen refusal always.
+    if (!t.accepted && t.refusal && (usesRights(options.lifecycles ?? []) || usesTriggers([doc, ...(options.lifecycles ?? [])]) || t.refusal === "frozen")) {
       expect.refusal = t.refusal;
       if (t.refusedBy) expect.refusedBy = t.refusedBy;
     }
+    // The checks that warned are written in a project that uses trigger points; the points that ran only when asked (decision 28).
+    if (t.checkWarnings?.length) expect.checkWarnings = t.checkWarnings;
+    if (options.recordTriggerPoints && t.triggerPoints)
+      expect.triggerPoints = t.triggerPoints.filter((r) => r.outcome !== "skipped").map((r) => r.triggerPoint);
     return expect;
   });
   return { complete, expects, outcome: result.final ? "final" : "active", diagnostics: result.diagnostics };
 }
+
+const strsOf = (v: unknown): string[] => ids(v);
 
 function uniqueHoldings(list: Holding[]): Holding[] {
   const seen = new Set<string>();
