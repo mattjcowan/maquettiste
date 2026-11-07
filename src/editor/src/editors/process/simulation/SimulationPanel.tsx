@@ -170,9 +170,12 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
     const doc = (own?.right ? namedRights.get(own.right)?.json : own) as { attributes?: unknown } | undefined;
     return Array.isArray(doc?.attributes) ? doc.attributes.filter((a): a is string => typeof a === "string") : [];
   };
-  // What Do... can name for read and modify: the subject's attributes (a modify sets the value the subject holds).
+  // What Do... can name for read and modify: the subject's attributes (a modify sets the value the subject holds). With no subject
+  // object in the cast, the process's own subjects name them, as they do for sets.
   const subjectObject = cast.objects.find((o) => o.id === cast.subject);
-  const doAttributes = [...(castLabels.get(subjectObject?.entity ?? "") ?? new Map<string, string>())].map(([value, label]) => ({ value, label }));
+  const doAttributes = subjectObject
+    ? [...(castLabels.get(subjectObject.entity) ?? new Map<string, string>())].map(([value, label]) => ({ value, label }))
+    : setContext.choices.map((a) => ({ value: a.id, label: a.name }));
   useEffect(() => {
     let active = true;
     const wanted = castEntities ? castEntities.split(",") : [];
