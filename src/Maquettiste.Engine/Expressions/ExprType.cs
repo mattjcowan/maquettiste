@@ -3,7 +3,7 @@ using System.Globalization;
 namespace Maquettiste.Engine.Expressions;
 
 /// <summary>
-/// The four kinds of site an expression is written at (next-phase-3-design.md section 3.1, decision 5): the site decides how an
+/// The kinds of site an expression is written at (next-phase-3-design.md section 3.1, decision 5): the site decides how an
 /// unknown answer counts, not the expression.
 /// </summary>
 public enum ExprSiteKind
@@ -25,6 +25,13 @@ public enum ExprSiteKind
     /// and reads what a guard reads (the context, the object under <c>subject</c>, the payload, <c>now()</c>, <c>current_actor()</c>, <c>in_state</c>).
     /// </summary>
     Set,
+
+    /// <summary>
+    /// A right's condition (rights-design.md decision 6): only true holds, as at a guard. It reads the object under <c>subject</c> (to-one
+    /// paths too), <c>now()</c>, <c>current_actor()</c> and <c>in_state</c>; never the context or a payload, since a right is also checked
+    /// outside a run.
+    /// </summary>
+    Right,
 }
 
 /// <summary>

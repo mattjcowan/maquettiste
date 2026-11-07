@@ -1,0 +1,142 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JRT000000000000000000Q01",
+  "name": "DocumentLifecycle",
+  "package": "01JRT000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JRT000000000000000000B01",
+      "entity": "01JRT000000000000000000E01"
+    }
+  ],
+  "rightsDefault": "deny",
+  "events": [
+    {
+      "id": "01JRT000000000000000000V01",
+      "name": "submit",
+      "verb": "promote",
+      "actors": [
+        "01JRT000000000000000000K01"
+      ]
+    },
+    {
+      "id": "01JRT000000000000000000V02",
+      "name": "approve",
+      "verb": "promote"
+    },
+    {
+      "id": "01JRT000000000000000000V03",
+      "name": "edit",
+      "verb": "modify"
+    }
+  ],
+  "rights": [
+    {
+      "id": "01JRT000000000000000000X01",
+      "name": "EveryoneReads",
+      "access": "allow",
+      "verbs": [
+        "read"
+      ]
+    },
+    {
+      "id": "01JRT000000000000000000X02",
+      "name": "AuthorsEditDrafts",
+      "access": "allow",
+      "actors": [
+        "01JRT000000000000000000K01"
+      ],
+      "verbs": [
+        "modify"
+      ],
+      "states": [
+        "01JRT000000000000000000S01"
+      ]
+    },
+    {
+      "id": "01JRT000000000000000000X03",
+      "name": "ReleasedIsReadOnly",
+      "access": "deny",
+      "verbs": [
+        "modify",
+        "delete"
+      ],
+      "states": [
+        "01JRT000000000000000000S03"
+      ],
+      "description": "A released document changes only by revising it."
+    },
+    {
+      "id": "01JRT000000000000000000X04",
+      "name": "NoInternSigns",
+      "access": "deny",
+      "actors": [
+        "01JRT000000000000000000K03"
+      ],
+      "verbs": [
+        "sign"
+      ],
+      "description": "Interns don't sign approvals."
+    },
+    {
+      "id": "01JRT000000000000000000X05",
+      "right": "01JRT000000000000000000R01"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JRT000000000000000000S01",
+      "name": "Draft"
+    },
+    {
+      "id": "01JRT000000000000000000S02",
+      "name": "Review"
+    },
+    {
+      "id": "01JRT000000000000000000S03",
+      "name": "Released"
+    }
+  ],
+  "initial": "01JRT000000000000000000S01",
+  "transitions": [
+    {
+      "id": "01JRT000000000000000000T01",
+      "source": "01JRT000000000000000000S01",
+      "event": "01JRT000000000000000000V01",
+      "targets": [
+        "01JRT000000000000000000S02"
+      ]
+    },
+    {
+      "id": "01JRT000000000000000000T02",
+      "source": "01JRT000000000000000000S02",
+      "event": "01JRT000000000000000000V02",
+      "targets": [
+        "01JRT000000000000000000S03"
+      ],
+      "gate": {
+        "id": "01JRT000000000000000000G01",
+        "name": "approval",
+        "signers": [
+          "01JRT000000000000000000K02"
+        ],
+        "meanings": [
+          {
+            "id": "01JRT000000000000000000M01",
+            "name": "approved"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JRT000000000000000000T03",
+      "source": "01JRT000000000000000000S01",
+      "event": "01JRT000000000000000000V03",
+      "targets": [
+        "01JRT000000000000000000S01"
+      ]
+    }
+  ]
+}

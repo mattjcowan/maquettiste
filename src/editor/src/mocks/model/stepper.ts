@@ -8,6 +8,9 @@
 
 import { Membership } from "./membership";
 import { evalTree, UNKNOWN, type EvalEnv, type Value } from "./effects";
+import { answerLifecycle, checkAll, ownLifecycleOnly, takesPart, usesRights, type Facts, type Holding, type Tri } from "./rightsCheck";
+import { subjectsOf } from "@/model/process";
+import { builtInVerbs } from "@/model/verbs";
 
 type Json = Record<string, unknown>;
 
@@ -247,6 +250,11 @@ export interface SimInputJson {
   description: unknown;
   /** The participant that acts (actors-design.md decision 15); written only when the input names one. */
   participant?: string;
+  /** A verb step's verb, and for `modify` its values (by attribute id) and the link it acts on (rights-design.md decision 25). */
+  verb?: string;
+  values?: Json;
+  end?: string;
+  object?: string;
 }
 
 export interface DiagnosticJson {
@@ -288,6 +296,10 @@ export interface StepTraceJson {
   valuesChanged?: Json;
   /** What a reader should know about the step (assumed states, values the mock could not work out); left out when empty. */
   notes?: string[];
+  /** The element that refused the step (rights-design.md decision 12); written for a refusal in a project that uses rights. */
+  refusedBy?: string;
+  /** The rights that held for the step, in check order; left out when none did. */
+  rights?: { right: string; lifecycle: string; access: "allow" | "deny" }[];
 }
 
 export interface SimulationJson {
@@ -335,7 +347,11 @@ export interface StepperOptions {
   /** The name of the actor that stands for the members of a role within a context, by the role's id (for MQ9305's advice). */
   membersActors?: ReadonlyMap<string, string>;
   /** The attributes of an entity (its own and inherited), for the subject's row: id and default. */
-  attributesOf?: (entity: string) => { id: string; default?: unknown }[];
+  attributesOf?: (entity: string) => { id: string; name?: string; default?: unknown }[];
+  /** The named rights by id (rights-design.md decision 7). */
+  namedRights?: ReadonlyMap<string, Json>;
+  /** Write `refusedBy` for every refusal, not only in a project that uses rights (a step may expect it). */
+  refusedBy?: boolean;
   /** The entity of the process's first subject: the row of a run with no objects. */
   subjectEntity?: string;
   /** Every lifecycle process document, for in_state. */
@@ -397,6 +413,10 @@ export function normalizeInput(step: Json, index: number, chart: { doc: Json }, 
     expect: null,
     description: step.description ?? null,
     ...(str(step.participant) ? { participant: str(step.participant)! } : {}),
+    ...(str(step.verb) ? { verb: str(step.verb)! } : {}),
+    ...(step.values && typeof step.values === "object" && !Array.isArray(step.values) ? { values: { ...(step.values as Json) } } : {}),
+    ...(str(step.end) ? { end: str(step.end)! } : {}),
+    ...(str(step.object) ? { object: str(step.object)! } : {}),
   };
 }
 
@@ -429,6 +449,8 @@ interface Scope {
   audit: Json[];
   diagnostics: DiagnosticJson[];
   notes: string[];
+  refusedBy: string | null;
+  rights: Holding[];
 }
 
 class Overflow extends Error {}
@@ -445,6 +467,8 @@ const newScope = (input: SimInputJson | null): Scope => ({
   audit: [],
   diagnostics: [],
   notes: [],
+  refusedBy: null,
+  rights: [],
 });
 
 class Interpreter {
@@ -465,7 +489,12 @@ class Interpreter {
   cast: { objects: Json[]; subject: string | null } = { objects: [], subject: null };
   /** The subject's row by attribute id: the attributes' defaults, the object's values, then what the actions set. */
   row: Json = {};
-  attributesOf: (entity: string) => { id: string; default?: unknown }[] = () => [];
+  attributesOf: (entity: string) => { id: string; name?: string; default?: unknown }[] = () => [];
+  /** Named rights by id, and whether refusals name their element (a project that uses rights, or a step that expects it). */
+  named: ReadonlyMap<string, Json> = new Map();
+  rightsOn = false;
+  /** A delete stopped the chart: later inputs are refused, timers do not fire (rights-design.md decision 25). */
+  deleted = false;
   subjectEntity: string | undefined;
   lifecycles: Json[] = [];
   private auditSeq = 0;
@@ -520,7 +549,8 @@ class Interpreter {
     input = this.withParticipant(input);
     this.scope.input = input;
     if (this.scope.actsAs) this.scope.echo = input;
-    if (input.input === "time") this.handleTime(input);
+    if (input.input === "verb") this.handleVerb(input);
+    else if (input.input === "time") this.handleTime(input);
     else if (input.input === "invoke-done" || input.input === "invoke-error") this.handleInvoke(input);
     else this.handleEvent(input);
     return this.finish(before, rowBefore);
@@ -621,18 +651,26 @@ class Interpreter {
   // ---- inputs ----
 
   private handleEvent(input: SimInputJson) {
-    if (this.done) return this.refuse("no-transition");
+    if (this.done || this.deleted) return this.refuse("no-transition");
     const ev = input.event ? this.chart.events.get(input.event) : undefined;
     if (!ev) {
       this.problem("MQ9305", `The event '${input.event}' is not an event of process '${String(this.chart.doc.name)}'; pick one of its events.`);
       return this.refuse("no-transition");
     }
     const actors = ids(ev.actors);
-    if (actors.length && (!input.actor || !this.membership.allows(actors, input.actor))) return this.refuse("actor");
+    if (actors.length && (!input.actor || !this.membership.allows(actors, input.actor))) return this.refuse("actor", String(ev.id));
+    // The event's list is an allow of its own lifecycle, and so are the signers of the gates on the moves it can make (decision 14): the acting actor only, never the participant's holdings.
+    const closed = [
+      ...(actors.length ? [String(ev.id)] : []),
+      ...this.eventMoves(input).flatMap((t) =>
+        t.gate && !!input.actor && ids(t.gate.signers).some((x) => this.membership.accepts(x, input.actor!)) ? [String(t.gate.id)] : [],
+      ),
+    ];
+    if (this.checkRights(str(ev.verb), closed)) return;
     this.scope.event = this.eventObject(String(ev.name), input.actor, arr(ev.payload), input.payload);
     this.macrostep(() => {
       const selection = this.select("event", String(ev.id), true);
-      if (!selection.transitions.length && !selection.consumed) return this.refuse(selection.reason);
+      if (!selection.transitions.length && !selection.consumed) return this.refuse(selection.reason, selection.by);
       if (selection.transitions.length) this.microstep(selection.transitions);
       this.runToCompletion();
     });
@@ -645,6 +683,10 @@ class Interpreter {
       return this.refuse("no-transition");
     }
     const end = this.clock + span;
+    if (this.deleted) {
+      this.clock = end;
+      return;
+    }
     if (!input.actor) this.scope.actor = this.membership.systemActor;
     this.scope.event = this.eventObject(null, input.actor, [], {});
     while (!this.done) {
@@ -663,6 +705,7 @@ class Interpreter {
 
   private handleInvoke(input: SimInputJson) {
     const found = this.pending.find((p) => p.invoke.id === input.invoke);
+    if (this.deleted) return this.refuse("no-transition");
     if (!found) {
       const name = input.invoke ? (this.chart.invokes.get(input.invoke)?.invoke.name ?? input.invoke) : input.invoke;
       this.problem(
@@ -672,16 +715,127 @@ class Interpreter {
       return this.refuse("no-transition");
     }
     const actors = ids(found.invoke.actors);
-    if (found.invoke.type === "human-task" && actors.length && (!input.actor || !this.membership.allows(actors, input.actor))) return this.refuse("actor");
+    if (found.invoke.type === "human-task" && actors.length && (!input.actor || !this.membership.allows(actors, input.actor)))
+      return this.refuse("actor", String(found.invoke.id));
+    // A human task's completion, and its error, are checked as `complete` (decisions 14 and 23); other invokes are not checked.
+    if (found.invoke.type === "human-task" && this.checkRights("complete", actors.length ? [String(found.invoke.id)] : [])) return;
     if (found.invoke.type !== "human-task" && !input.actor) this.scope.actor = this.membership.systemActor;
     this.scope.event = this.eventObject(null, input.actor, [], {});
     this.macrostep(() => {
       const selection = this.selectAt(found.state, input.input, String(found.invoke.id));
-      if (!selection.transitions.length) return this.refuse(selection.reason);
+      if (!selection.transitions.length) return this.refuse(selection.reason, selection.by);
       this.pending = this.pending.filter((p) => p.invoke !== found.invoke);
       this.microstep(selection.transitions);
       this.runToCompletion();
     });
+  }
+
+  // ---- rights (rights-design.md decisions 9 to 14 and 25) ----
+
+  /** Whether the caller satisfies a listed actor: the participant holds it, or the step's actor is it or a member of it. */
+  private callerSatisfies(listed: string): Tri {
+    const input = this.scope.input;
+    if (!input) return false;
+    const p = input.participant ? this.participants.find((x) => x.id === input.participant) : undefined;
+    if (p) return this.satisfies(p, listed);
+    return input.actor ? this.membership.accepts(listed, input.actor) : false;
+  }
+
+  /** The running process's own lifecycle document (the draft being run), or null when it is an orchestration. */
+  private actingLifecycle(): Json | null {
+    return this.chart.doc.use === "lifecycle" ? this.chart.doc : null;
+  }
+
+  /** The states active in a lifecycle with their ancestors: the running chart, or the object's states, else the initial ones. */
+  private activeOf(proc: Json, create: boolean): Set<string> {
+    if (proc.id === this.chart.doc.id && !create) return new Set([...this.config].map((n) => n.id));
+    const active = new Set<string>();
+    const object = create ? undefined : this.subjectObject();
+    const own = object ? ids(object.states).filter((x) => stateIds(proc.states).has(x)) : [];
+    if (own.length) for (const x of own) enterState(proc.states, x, active);
+    else {
+      enterInitial(proc.states, str(proc.initial), active);
+      if (!create)
+        this.scope.notes.push(
+          object
+            ? `${String(object.name)} gives no state in ${String(proc.name)}, so its initial state is assumed.`
+            : `No object gives its state in ${String(proc.name)}, so its initial state is assumed.`,
+        );
+    }
+    return active;
+  }
+
+  private factsFor(l: Json, verb: string | null, closed: string[], end: string | null, create: boolean): Facts {
+    return {
+      named: this.named,
+      satisfies: (listed) => this.callerSatisfies(listed),
+      verb,
+      end,
+      active: this.activeOf(l, create),
+      condition: (tree) => evalTree(tree, this.env()) === true,
+      closed: l.id === this.chart.doc.id ? closed : [],
+    };
+  }
+
+  /** The lifecycles that answer for a verb, in check order: the acting one first, then the others by name (decision 10). */
+  private answering(verb: string | null): Json[] {
+    const running = this.chart.doc;
+    const acting = this.actingLifecycle();
+    if (verb && ownLifecycleOnly(verb)) return acting ? [acting] : [];
+    if (!verb) return acting ? [acting] : [];
+    const object = this.subjectObject();
+    const entity = str(object?.entity) ?? this.subjectEntity;
+    const wanted = object ? (entity ? [entity] : []) : subjectsOf(running).flatMap((s) => (s.entity ? [s.entity] : []));
+    const governs = (l: Json) =>
+      wanted.length > 0 && (object ? subjectsOf(l).some((s) => s.entity === wanted[0]) : wanted.every((e) => subjectsOf(l).some((s) => s.entity === e)));
+    const others = this.lifecycles
+      .filter((l) => l.id !== running.id && l.use === "lifecycle" && governs(l))
+      .sort((a, b) => (String(a.name) < String(b.name) ? -1 : String(a.name) > String(b.name) ? 1 : 0));
+    return [...(acting ? [acting] : []), ...others];
+  }
+
+  /** Rows 3 and 4: the denies, then the defaults. True when refused; the trace then names the right or the lifecycle. */
+  private checkRights(verb: string | null, closed: string[], end: string | null = null, create = false): boolean {
+    const lifecycles = this.answering(verb);
+    if (!lifecycles.some(takesPart)) return false;
+    const result = checkAll(lifecycles, (l) => this.factsFor(l, verb, closed, end, create));
+    this.scope.rights.push(...result.rights);
+    if (!result.refused) return false;
+    this.refuse(result.refused.refusal, result.refused.by);
+    return true;
+  }
+
+  /** A verb step (decision 25): rights first, then what the run does with it. */
+  private handleVerb(input: SimInputJson) {
+    if (this.done || this.deleted) return this.refuse("no-transition");
+    const verb = input.verb ?? null;
+    const group = builtInVerbs.find((v) => v.key === verb)?.group;
+    if (!verb || group === "move" || group === "signature" || group === "task" || verb === "freeze" || verb === "thaw") {
+      this.problem(
+        "MQ9305",
+        verb
+          ? `A verb step does an object, link or own verb, and '${verb}' is not one the run can do yet; moves, signatures and tasks have their own steps. Pick another verb.`
+          : "A verb step needs a verb; pick one.",
+      );
+      return this.refuse("no-transition");
+    }
+    if (this.checkRights(verb, [], input.end ?? null, verb === "create")) return;
+    const object = this.subjectObject();
+    const entity = str(object?.entity) ?? this.subjectEntity ?? "";
+    if (verb === "modify" && !input.end) {
+      const attributes = this.attributesOf(entity);
+      for (const [key, value] of Object.entries(input.values ?? {})) {
+        const hit = attributes.find((a) => a.id === key) ?? attributes.find((a) => a.name === key);
+        if (!hit && attributes.length) {
+          this.problem("MQ9305", `A modify step sets attributes of the subject, and '${key}' is none of them; pick one of its attributes.`);
+          continue;
+        }
+        this.row[hit?.id ?? key] = value;
+      }
+    } else if (verb === "delete" && !input.end) {
+      this.deleted = true;
+      this.scope.notes.push("The object was deleted, so the run stopped; the outcome is read from the chart as it stood.");
+    } else this.scope.notes.push(`The run checked ${verb} but did not apply it.`);
   }
 
   // ---- macrostep ----
@@ -725,16 +879,18 @@ class Interpreter {
 
   // ---- selection ----
 
-  private select(trigger: string, key: string, external: boolean): { transitions: Edge[]; consumed: boolean; reason: string } {
+  private select(trigger: string, key: string, external: boolean): { transitions: Edge[]; consumed: boolean; reason: string; by?: string } {
     const enabled: Edge[] = [];
     const tried = new Map<Edge, boolean>();
     let consumed = false;
     let reason = "no-transition";
+    let by: string | undefined;
     let rank = 0;
-    const fail = (why: string, level: number) => {
+    const fail = (why: string, level: number, element?: string) => {
       if (level > rank) {
         rank = level;
         reason = why;
+        by = element;
       }
     };
     for (const leaf of this.leaves()) {
@@ -752,17 +908,17 @@ class Interpreter {
           }
           tried.set(t, false);
           if (this.guard(t) !== true) {
-            fail("guard", 1);
+            fail("guard", 1, t.guard ? String(t.guard.id) : undefined);
             continue;
           }
           if (t.gate) {
             if (!external) {
-              fail("gate-signer", 2);
+              fail("gate-signer", 2, String(t.gate.id));
               continue;
             }
             const refusal = this.checkSigner(t, t.gate);
             if (refusal) {
-              fail(refusal, 2);
+              fail(refusal[0], 2, refusal[1]);
               continue;
             }
           }
@@ -779,16 +935,18 @@ class Interpreter {
       consumed = true; // the occurrence signed an incomplete gate: accepted, and the transition waits for more signatures
       return false;
     });
-    return { transitions: selected, consumed, reason };
+    return { transitions: selected, consumed, reason, by };
   }
 
-  private selectAt(source: Node, trigger: string, key: string): { transitions: Edge[]; reason: string } {
+  private selectAt(source: Node, trigger: string, key: string): { transitions: Edge[]; reason: string; by?: string } {
     let reason = "no-transition";
+    let by: string | undefined;
     for (const t of this.chart.candidates(source, trigger, key)) {
       if (this.guard(t) === true) return { transitions: [t], reason };
       reason = "guard";
+      by = t.guard ? String(t.guard.id) : undefined;
     }
-    return { transitions: [], reason };
+    return { transitions: [], reason, by };
   }
 
   private removeConflicts(enabled: Edge[], admit: (t: Edge) => boolean): Edge[] {
@@ -977,13 +1135,27 @@ class Interpreter {
 
   // ---- gates ----
 
-  private checkSigner(t: Edge, gate: Json): string | null {
+  /** The refusal of a signature and the element that refused it: the gate, or a right that denies `sign` (row 7, decision 12). */
+  private checkSigner(t: Edge, gate: Json): [string, string] | null {
     const input = this.scope.input!;
     const signatures = this.signatures.get(t.id) ?? [];
-    let refusal: string | null = null;
-    if (!input.actor || !input.signer || !this.membership.allows(ids(gate.signers), input.actor)) refusal = "gate-signer";
-    else if (gate.allowRepeatSigner !== true && signatures.some((s) => s.signer === input.signer)) refusal = "gate-repeat";
-    else if (gate.reasonRequired === true && !(input.reason ?? "").trim()) refusal = "gate-reason";
+    let refusal: [string, string] | null = null;
+    const gateId = String(gate.id);
+    const signDeny = () => {
+      const acting = this.actingLifecycle();
+      if (!acting || !takesPart(acting)) return null;
+      const answer = answerLifecycle(acting, this.factsFor(acting, "sign", [], null, false));
+      return answer.verdict === "deny" && !answer.byDefault ? answer : null;
+    };
+    if (!input.actor || !input.signer || !this.membership.allows(ids(gate.signers), input.actor)) refusal = ["gate-signer", gateId];
+    else {
+      const denied = signDeny();
+      if (denied) {
+        this.scope.rights.push(...denied.holding);
+        refusal = ["right", denied.by[0]];
+      } else if (gate.allowRepeatSigner !== true && signatures.some((s) => s.signer === input.signer)) refusal = ["gate-repeat", gateId];
+      else if (gate.reasonRequired === true && !(input.reason ?? "").trim()) refusal = ["gate-reason", gateId];
+    }
     if (refusal) this.audit(gate, t, input.signer, input.actor, meaningOf(input, gate), input.reason, "refused", auditAttributes(input, gate));
     return refusal;
   }
@@ -1239,13 +1411,17 @@ class Interpreter {
       ...(this.scope.actsAs ? { actsAs: this.scope.actsAs } : {}),
       ...(Object.keys(valuesChanged).length ? { valuesChanged: sorted(valuesChanged) } : {}),
       ...(this.scope.notes.length ? { notes: [...new Set(this.scope.notes)] } : {}),
+      ...(this.scope.refusal !== null && this.scope.refusedBy && this.rightsOn ? { refusedBy: this.scope.refusedBy } : {}),
+      ...(this.scope.rights.length ? { rights: uniqueHoldings(this.scope.rights) } : {}),
     };
     if (this.scope.list) unsatisfiedLists.set(trace, this.scope.list);
     return trace;
   }
 
-  private refuse(reason: string) {
-    this.scope.refusal ??= reason;
+  private refuse(reason: string, by?: string) {
+    if (this.scope.refusal !== null) return;
+    this.scope.refusal = reason;
+    if (by) this.scope.refusedBy = by;
   }
 
   private problem(rule: string, message: string, elementId: string | null = null) {
@@ -1314,6 +1490,8 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
   run.attributesOf = options.attributesOf ?? (() => []);
   run.subjectEntity = options.subjectEntity;
   run.lifecycles = options.lifecycles ?? [];
+  run.named = options.namedRights ?? new Map();
+  run.rightsOn = options.refusedBy === true || usesRights(run.lifecycles);
   const at = readAt(start?.at);
   const traces = [run.start(start?.context, typeof at === "number" ? at : null)];
   let complete = !traces[0].incomplete;
@@ -1485,7 +1663,22 @@ export function replay(doc: Json, start: { context?: Json; at?: string } | null 
     expect.states = t.configuration;
     if (Object.keys(t.changed).length) expect.context = t.changed;
     if (t.valuesChanged && Object.keys(t.valuesChanged).length) expect.values = t.valuesChanged;
+    // A refusal and its element are written when the project uses rights (decision 26).
+    if (!t.accepted && usesRights(options.lifecycles ?? []) && t.refusal) {
+      expect.refusal = t.refusal;
+      if (t.refusedBy) expect.refusedBy = t.refusedBy;
+    }
     return expect;
   });
   return { complete, expects, outcome: result.final ? "final" : "active", diagnostics: result.diagnostics };
+}
+
+function uniqueHoldings(list: Holding[]): Holding[] {
+  const seen = new Set<string>();
+  return list.filter((h) => {
+    const key = `${h.right}|${h.lifecycle}|${h.access}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

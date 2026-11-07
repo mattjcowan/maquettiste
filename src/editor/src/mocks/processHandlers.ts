@@ -18,6 +18,7 @@ import { enumDrift, schemaDiagnostics } from "./model/validate";
 import { syncCodesOf } from "./model/syncCodes";
 import { report } from "./model/store";
 import { Membership } from "./model/membership";
+import { rightsGrid } from "./model/rightsCheck";
 
 type Json = Record<string, unknown>;
 type StateDoc = { id: string; name: string; type?: string; initial?: string; states?: StateDoc[] };
@@ -251,12 +252,19 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
     attributesOf: (entity: string) =>
       bindableAttributes(model.entries.get(entity)?.json, (id) => model.entries.get(id)?.json, stereotypeOf).map((a) => ({
         id: String(a.id),
+        name: String(a.name ?? ""),
         default: a.default,
       })),
+    namedRights: new Map([...model.entries.values()].filter((e) => e.json.kind === "right").map((e) => [e.id, e.json] as [string, Json])),
     subjectEntity: subjectsOf(doc).find((e) => e.entity)?.entity,
     lifecycles: [...[...model.entries.values()].map((e) => e.json).filter((j) => j.kind === "process" && j.use === "lifecycle" && j.id !== doc.id), doc],
   });
   const hasExpectedValues = (scenario: Json) => arr(scenario.steps).some((st) => (st.expect as Json | undefined)?.values !== undefined);
+  // Verb steps and expected refusals are replayed for real too (rights-design.md decisions 25 and 26).
+  const hasRightsSteps = (scenario: Json) =>
+    arr(scenario.steps).some(
+      (st) => st.verb !== undefined || (st.expect as Json | undefined)?.refusal !== undefined || (st.expect as Json | undefined)?.refusedBy !== undefined,
+    );
   const sameValues = (a: Json, b: Json) => {
     const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
     return [...keys].every((k) => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null)) && Object.keys(a).length === Object.keys(b).length;
@@ -264,13 +272,14 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
   // A scenario with participants is replayed for real: a step refused while it expects to be accepted (or the reverse) fails
   // with MQ9301, and a refusal by actor names the participant and the list it did not satisfy.
   const participantFailure = (doc: Json, scenario: Json) => {
-    if (!arr(scenario.participants).length && !hasExpectedValues(scenario)) return null;
+    if (!arr(scenario.participants).length && !hasExpectedValues(scenario) && !hasRightsSteps(scenario)) return null;
     const cast = castOf({}, scenario);
     const result = simulate(doc, scenario.start as never, arr(scenario.steps), {
       ...actorLookup(),
       ...effectOptions(doc),
       ...(cast && !("error" in cast) ? { objects: cast.objects, subject: cast.subject } : {}),
       participants: arr(scenario.participants),
+      refusedBy: true,
     });
     const steps = arr(scenario.steps);
     for (const t of result.trace) {
@@ -290,6 +299,20 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
           : `Step ${t.index + 1} is ${t.accepted ? "accepted" : "refused"} while expect.accepted is ${String(expected)}; fix the step's input or set accepted to what the process does.`;
       return { step: t.index, rule: "MQ9301", message, expected, actual: t.accepted };
     }
+    // MQ9308: the refusal a step expects and the element that refused it.
+    for (const t of result.trace) {
+      if (t.index < 0) continue;
+      const expect = (steps[t.index].expect as Json | undefined) ?? {};
+      const wrong = (key: "refusal" | "refusedBy") => expect[key] !== undefined && expect[key] !== (t[key] ?? null);
+      if (!wrong("refusal") && !wrong("refusedBy")) continue;
+      return {
+        step: t.index,
+        rule: "MQ9308",
+        message: `Step ${t.index + 1}: the step's refusal${t.refusedBy ? ` (by ${t.refusedBy})` : ""} differs from expect.refusal or expect.refusedBy; fix the step or update the expectations from a replay.`,
+        expected: { refusal: expect.refusal ?? null, refusedBy: expect.refusedBy ?? null },
+        actual: { refusal: t.refusal, refusedBy: t.refusedBy ?? null },
+      };
+    }
     // MQ9307: the values a step set against its expect.values (exactly the attributes the step changed).
     for (const t of result.trace) {
       if (t.index < 0) continue;
@@ -305,10 +328,53 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
     }
     return null;
   };
+  // Refresh expectations (the batch operation of the store) replays the scenario with the same lookups as a verify.
+  model.scenarioReplay = (doc, scenario) => {
+    const cast = castOf({}, scenario);
+    const replayed = replay(doc, scenario.start as never, arr(scenario.steps), {
+      ...actorLookup(),
+      ...effectOptions(doc),
+      ...(cast && !("error" in cast) ? { objects: cast.objects, subject: cast.subject } : {}),
+      participants: arr(scenario.participants),
+    });
+    return replayed.complete ? { expects: replayed.expects, outcome: replayed.outcome } : null;
+  };
+  const idList = (v: string | null) => (v ? v.split(",").filter(Boolean) : undefined);
   const scenariosOf = (processId: string) =>
     [...model.entries.values()].filter((e) => e.json.kind === "scenario" && e.json.process === processId).sort((a, b) => (a.path < b.path ? -1 : 1));
 
   return [
+    // Who can do what (rights-design.md decision 31): one row per state, actor and verb, never split by entity in the mock.
+    rawHttp.get(url("/api/processes/:id/rights"), ({ params, request }) => {
+      const entry = find(String(params.id));
+      if (!entry) return missing(String(params.id));
+      const q = new URL(request.url).searchParams;
+      const limit = Number(q.get("limit") ?? 100);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 1000) return bad("limit must be 1 to 1000.");
+      const start = q.get("cursor") ? Number(q.get("cursor")) : 0;
+      if (!Number.isInteger(start) || start < 0) return bad("The cursor is not one this answer gave.");
+      const lifecycles = [...model.entries.values()].map((e) => e.json).filter((j) => j.kind === "process" && j.use === "lifecycle");
+      const actors = [...model.entries.values()].filter((e) => e.json.kind === "actor");
+      const lookup = actorLookup();
+      const rows = rightsGrid(
+        entry.json,
+        {
+          lifecycles,
+          named: new Map([...model.entries.values()].filter((e) => e.json.kind === "right").map((e) => [e.id, e.json] as [string, Json])),
+          membership: new Membership(actors),
+          ownerActors: lookup.ownerActors,
+          entitiesOf: (l) => subjectsOf(l).flatMap((x) => (x.entity ? [x.entity] : [])),
+        },
+        { states: idList(q.get("states")), actors: idList(q.get("actors")), verbs: idList(q.get("verbs")) },
+      );
+      const page = rows.slice(start, start + limit);
+      return HttpResponse.json({
+        lifecycle: entry.id,
+        rightsDefault: entry.json.rightsDefault === "deny" ? "deny" : "allow",
+        rows: page,
+        next: start + limit < rows.length ? String(start + limit) : null,
+      });
+    }),
     rawHttp.post(url("/api/processes/:id/simulate"), async ({ params, request }) => {
       const entry = find(String(params.id));
       if (!entry) return missing(String(params.id));
@@ -398,7 +464,23 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         // Names resolve to ids as the engine's record resolves them; defaults are left out (the canonical form).
         const s = normalizeInput(raw, i, { doc: entry.json }, lookup.actorId) as unknown as Json;
         const step: Json = { id: newId() };
-        for (const key of ["input", "event", "invoke", "after", "participant", "actor", "signer", "meaning", "reason", "payload", "assume"]) {
+        for (const key of [
+          "input",
+          "event",
+          "invoke",
+          "after",
+          "verb",
+          "values",
+          "end",
+          "object",
+          "participant",
+          "actor",
+          "signer",
+          "meaning",
+          "reason",
+          "payload",
+          "assume",
+        ]) {
           const v = s[key];
           if (v === undefined || v === null || v === "" || (key === "input" && v === "event")) continue;
           if (typeof v === "object" && !Array.isArray(v) && !Object.keys(v as Json).length) continue;

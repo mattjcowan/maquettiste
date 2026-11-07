@@ -580,17 +580,18 @@ public static class ProcessApi
         ArgumentNullException.ThrowIfNull(runtime);
         ArgumentNullException.ThrowIfNull(inputs);
         var row = ScenarioObjects.Row(runtime.Model, chart.Process, objects ?? [], subject, out var notes);
+        var cast = new ScenarioCast(objects ?? [], subject, participants ?? []);
         var interpreter = new StatechartInterpreter(chart, runtime.Options("simulation") with
         {
             Subject = row,
             StateNotes = notes.Count > 0 ? notes : null,
+            Rights = new RunRights(runtime, chart.Process, cast),
         });
         DateTimeOffset? at = null;
         if (start?.At is { } text && TryParseAt(text, out var parsed))
             at = parsed;
         var traces = new List<StepTrace> { interpreter.Start(start?.Context, at) };
         var complete = !traces[0].Incomplete;
-        var cast = new ScenarioCast(objects ?? [], subject, participants ?? []);
         for (var i = 0; complete && i < inputs.Count; i++)
         {
             var trace = Participants.Run(runtime.Model, interpreter, chart.Process, Participants.Current(cast, interpreter.Values), inputs[i], out _);
@@ -697,6 +698,11 @@ public static class ProcessApi
         var node = new JsonObject();
         if (!expect.Accepted)
             node["accepted"] = false;
+        // Why a refused step was refused, and what refused it (rights-design.md decision 26), when the replay records them.
+        if (expect.Refusal is { } refusal)
+            node["refusal"] = refusal;
+        if (expect.RefusedBy is { } refusedBy)
+            node["refusedBy"] = refusedBy;
         node["states"] = new JsonArray([.. expect.States.Select(s => (JsonNode?)JsonValue.Create(s))]);
         if (expect.Context.Count > 0)
         {

@@ -40,8 +40,20 @@ internal sealed record ExprSite(string Pointer, Expr? Tree, bool Raw, string Sub
     /// <summary>The ids of an operation subject's members, for MQ3111.</summary>
     public HashSet<string>? Subject { get; init; }
 
-    /// <summary>What <c>in_state</c> reads at a guard or set site (object-effects-design.md decisions 7 and 8).</summary>
+    /// <summary>What <c>in_state</c> reads at a guard, set or right site (object-effects-design.md decisions 7 and 8).</summary>
     public IExprLifecycles? Lifecycles { get; init; }
+
+    /// <summary>
+    /// The named right whose condition a lifecycle's use types here, against the lifecycle's subjects (rights-design.md decision 7): the tree
+    /// lives in the named right's file, so nothing writes it here, and a finding is reported at the use. <see langword="null"/> otherwise.
+    /// </summary>
+    public Right? Borrowed { get; init; }
+
+    /// <summary>
+    /// Whether the site has no scope: a named right that no lifecycle uses (rights-design.md decision 7). Its text stays text, nothing types
+    /// it, and MQ3108 is its only finding.
+    /// </summary>
+    public bool Unscoped { get; init; }
 }
 
 /// <summary>
@@ -118,13 +130,34 @@ internal static class ExprSites
                 }
 
                 AddSets(sites, model, process);
+                AddRights(sites, model, process);
                 break;
             case Constraint constraint:
                 sites.Add(new ExprSite("/condition", constraint.Condition, false, constraint.Id, ExprSiteKind.Check, _ => { }) { Constraint = constraint });
                 break;
+            case Right right:
+                sites.Add(NamedRightSite(model, right, null));
+                break;
         }
 
         return sites;
+
+        // A lifecycle's rights (rights-design.md decisions 6 and 7): an inline right's condition reads the lifecycle's subjects; a named
+        // right's is typed at each use against the lifecycle's subjects, though its tree lives in the named right's file. Only lifecycles
+        // hold rights (MQ9901).
+        static void AddRights(List<ExprSite> sites, ModelSnapshot model, Process process)
+        {
+            if (process.Use != ProcessUse.Lifecycle)
+                return;
+            for (var i = 0; i < process.Rights.Count; i++)
+            {
+                var entry = process.Rights[i];
+                if (entry.Right is null)
+                    sites.Add(RightSite(model, process, Ptr.At("/rights", i) + "/condition", entry.Condition, entry.Id, null));
+                else if (model.Get<Right>(entry.Right) is { Condition: { } condition } named)
+                    sites.Add(RightSite(model, process, Ptr.At("/rights", i) + "/right", condition, entry.Id, named));
+            }
+        }
 
         // An action's sets (object-effects-design.md decision 3): typed against the attribute's type, reading what a guard of the action's
         // transitions reads. An action that runs on entering or leaving a state reads no payload, since no one event enters or leaves it.
@@ -184,8 +217,86 @@ internal static class ExprSites
             Lifecycles = new ModelLifecycles(model, process, null),
         },
         (Constraint constraint, ExprSiteKind.Check) => new ExprSite("/condition", null, false, constraint.Id, kind, _ => { }) { Constraint = constraint },
+        (Process { Use: ProcessUse.Lifecycle } lifecycle, ExprSiteKind.Right) => RightSite(model, lifecycle, "", null, lifecycle.Id, null),
+        (Right right, ExprSiteKind.Right) => NamedRightSite(model, right, null) with { Tree = null },
         _ => null,
     };
+
+    /// <summary>
+    /// The site of a named right's condition (rights-design.md decision 7). Its scope is what every subject of every lifecycle that uses the
+    /// right holds under one id, or with <paramref name="lifecycle"/> what that lifecycle's subjects hold, as if the right were used there.
+    /// With no use and no lifecycle the site has no scope (<see cref="ExprSite.Unscoped"/>).
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="right">The named right.</param>
+    /// <param name="lifecycle">A lifecycle to read the condition in, or <see langword="null"/> for the right's uses.</param>
+    /// <returns>The site, with the right's condition.</returns>
+    public static ExprSite NamedRightSite(ModelSnapshot model, Right right, Process? lifecycle)
+    {
+        IReadOnlyList<Process> uses = lifecycle is not null ? [lifecycle] : RightUses(model, right);
+        return new ExprSite("/condition", right.Condition, false, right.Id, ExprSiteKind.Right, s => RightScope(s, model, uses))
+        {
+            MayBeEmpty = true,
+            Unscoped = uses.Count == 0,
+            Lifecycles = uses.Count == 0 ? null : new ModelLifecycles(model, uses.Count == 1 ? uses[0] : null, null) { ForRights = true, Uses = uses },
+        };
+    }
+
+    /// <summary>The lifecycles that use a named right (an entry of their rights names it), by id; a process that is no lifecycle is left out.</summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="right">The named right.</param>
+    /// <returns>The lifecycles.</returns>
+    internal static IReadOnlyList<Process> RightUses(ModelSnapshot model, Right right) =>
+        [.. model.ReferencesTo(right.Id).Select(r => model.Get<Process>(r.FromElementId)).OfType<Process>()
+            .Where(p => p.Use == ProcessUse.Lifecycle && p.Rights.Any(e => string.Equals(e.Right, right.Id, StringComparison.Ordinal)))
+            .DistinctBy(p => p.Id).OrderBy(p => p.Id, StringComparer.Ordinal)];
+
+    private static ExprSite RightSite(ModelSnapshot model, Process lifecycle, string pointer, Expr? tree, string subId, Right? borrowed) =>
+        new(pointer, tree, false, subId, ExprSiteKind.Right, s => RightScope(s, model, [lifecycle]))
+        {
+            MayBeEmpty = true,
+            Lifecycles = new ModelLifecycles(model, lifecycle, null) { ForRights = true },
+            Borrowed = borrowed,
+        };
+
+    /// <summary>
+    /// What a right's condition reads (rights-design.md decisions 6 and 7): the object under <c>subject</c>, what every subject of every one
+    /// of the lifecycles holds under one id (<see cref="RightMembers"/>), and nothing of the context or a payload.
+    /// </summary>
+    private static void RightScope(ExprScope scope, ModelSnapshot model, IReadOnlyList<Process> lifecycles)
+    {
+        List<ModelAttribute>? attributes = null;
+        List<RelationEnd>? navigations = null;
+        foreach (var lifecycle in lifecycles)
+        {
+            var (held, reached) = RightMembers(model, lifecycle);
+            if (attributes is null || navigations is null)
+            {
+                attributes = [.. held];
+                navigations = [.. reached];
+                continue;
+            }
+
+            var heldIds = held.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+            attributes.RemoveAll(a => !heldIds.Contains(a.Id));
+            var reachedIds = reached.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
+            navigations.RemoveAll(e => !reachedIds.Contains(e.Id));
+        }
+
+        AddAttributes(scope.Root, model, attributes ?? [], SubjectPrefix);
+        AddNavigations(scope.Root, model, navigations ?? [], SubjectPrefix);
+    }
+
+    /// <summary>
+    /// What a right of a lifecycle reads on its object (rights-design.md decision 6): what every subject entry holds under one id, as a guard
+    /// reads it under <c>subject</c>, less the subjects' bound attributes; a context attribute named <c>subject</c> hides nothing, since a
+    /// right reads no context.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="lifecycle">The lifecycle.</param>
+    /// <returns>The attributes and the relation ends navigated to.</returns>
+    internal static (IReadOnlyList<ModelAttribute> Attributes, IReadOnlyList<RelationEnd> Navigations) RightMembers(ModelSnapshot model, Process lifecycle) =>
+        Held(model, lifecycle, lifecycle.Subjects.Select(s => s.BoundAttribute).OfType<string>().ToHashSet(StringComparer.Ordinal));
 
     /// <summary>
     /// A site for a value text writes for a set not stored yet (<c>preview_expression</c> with <c>site</c> <c>set</c>): the scope a set of
@@ -462,6 +573,12 @@ internal static class ExprSites
 
         public string? Own => process?.Id;
 
+        /// <summary>Whether the site is a right's condition, which reads no context, so a context attribute named <c>subject</c> hides nothing.</summary>
+        public bool ForRights { get; init; }
+
+        /// <summary>A named right's uses, read together when no one process is given: a lifecycle must be able to govern the object at each.</summary>
+        public IReadOnlyList<Process>? Uses { get; init; }
+
         public ExprState? State(string id) =>
             model.TryGetEntry(id, out var entry) && entry.Kind == "state" && model.Get<Process>(entry.OwnerId) is { } owner
                 ? StatesOf(owner).GetValueOrDefault(id)
@@ -504,9 +621,21 @@ internal static class ExprSites
                     : "The operation is not on one record, so in_state has no object to read; read a lifecycle through a guard of a process.";
             }
 
+            if (process is null && Uses is { Count: > 0 } uses)
+            {
+                foreach (var use in uses)
+                {
+                    if (!string.Equals(use.Id, lifecycle, StringComparison.Ordinal)
+                        && new ModelLifecycles(model, use, null) { ForRights = true }.CannotGovern(lifecycle, through) is { } why)
+                        return why;
+                }
+
+                return null;
+            }
+
             if (process is null)
                 return "in_state has no object to read here.";
-            if (process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
+            if (!ForRights && process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
                 return "A context attribute named subject hides the object, so in_state reads no object; rename the context attribute.";
             if (process.Subjects.Count == 0)
                 return "The process has no subjects, so in_state reads no object; give the process a subject, or name a state of the process's own lifecycle.";
@@ -1134,9 +1263,15 @@ internal static class ExpressionRules
     public static void Validate(ValidationContext context, Report report)
     {
         var element = report.Document.Element;
-        if (element is not (Table or Stereotype or Entity or Operation or Process or Constraint))
+        if (element is not (Table or Stereotype or Entity or Operation or Process or Constraint or Right))
             return;
         var model = context.Model;
+        if (element is Right named)
+        {
+            CheckNamedRight(model, named, report);
+            return;
+        }
+
         var sites = ExprSites.Of(model, element);
         if (sites.Count == 0 && !(element is Entity { Bindings.Count: > 0 } bound && bound.Bindings.Any(b => b.Checks.Count > 0)))
             return;
@@ -1161,6 +1296,15 @@ internal static class ExpressionRules
             var scope = ExprSites.Scope(model, element, report.Document, site, text: false);
             var problems = new List<Diagnostic>();
             var typed = ExprTyper.Type(tree, scope, problems);
+            if (site.Borrowed is { } used)
+            {
+                // A named right's condition typed at a use (rights-design.md decision 7): its findings belong to the use, and MQ3108 to the
+                // named right's own file.
+                foreach (var problem in problems.Where(p => p.Rule != "MQ3108"))
+                    report.Add(problem with { Message = $"Named right '{used.Name}': " + problem.Message, JsonPointer = site.Pointer, ElementId = site.SubId });
+                continue;
+            }
+
             foreach (var problem in problems)
                 report.Add(problem);
             // Read from the stored paths, so a check that does not type because the name read the attribute still says why.
@@ -1220,6 +1364,20 @@ internal static class ExpressionRules
             CheckBindings(model, entity, trees, typedTrees, report);
         if (element is Process { Use: not ProcessUse.Library } owner && ExprSites.SetsData(owner))
             CheckSets(model, owner, report);
+    }
+
+    /// <summary>
+    /// A named right's condition (rights-design.md decision 7): it is typed at each use, against that lifecycle's subjects, where a finding is
+    /// reported; in its own file only text is reported (MQ3108). With no use there is no scope, so text stays text until a lifecycle uses the
+    /// right.
+    /// </summary>
+    private static void CheckNamedRight(ModelSnapshot model, Right right, Report report)
+    {
+        if (!ExprSites.HasText(right.Condition))
+            return;
+        report.Add("MQ3108", ExprSites.RightUses(model, right).Count == 0
+            ? $"Named right '{right.Name}' holds its condition as text, so renames will not follow it; no lifecycle uses the right, so the text stays until one does, then text-to-trees converts it."
+            : $"Named right '{right.Name}' holds its condition as text, so renames will not follow it; convert it with text-to-trees.", "/condition", right.Id);
     }
 
     /// <summary>

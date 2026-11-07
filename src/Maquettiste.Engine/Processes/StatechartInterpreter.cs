@@ -53,6 +53,12 @@ public sealed record InterpreterOptions
     /// <see cref="StateRead.Key"/>: a guard or set whose <c>in_state</c> reads one puts its note in the step's trace.
     /// </summary>
     internal IReadOnlyDictionary<string, string>? StateNotes { get; init; }
+
+    /// <summary>
+    /// The run's rights check (rights-design.md section 7): what a participant may do to the object, which events, human tasks, signatures and
+    /// verb steps of the root process ask. Without it, verb steps are accepted as given and only the closed lists are checked, as before rights.
+    /// </summary>
+    internal RunRights? Rights { get; init; }
 }
 
 /// <summary>
@@ -80,6 +86,8 @@ public sealed class StatechartInterpreter
     private int _index = -1;
     private int _micro;
     private bool _started;
+    // The object was deleted by a verb step (rights-design.md decision 25): the chart stops where it stood.
+    private bool _deleted;
     private Scope _scope = new(null);
 
     /// <summary>Creates an interpreter for one instance of a chart.</summary>
@@ -171,6 +179,9 @@ public sealed class StatechartInterpreter
             case StepInput.InvokeDone or StepInput.InvokeError:
                 HandleInvoke(input);
                 break;
+            case StepInput.Verb:
+                HandleVerb(input);
+                break;
             default:
                 HandleEvent(input);
                 break;
@@ -183,7 +194,7 @@ public sealed class StatechartInterpreter
 
     private void HandleEvent(ScenarioStep input)
     {
-        if (_root.Done)
+        if (_root.Done || _deleted)
         {
             Refuse(Refusals.NoTransition);
             return;
@@ -198,9 +209,20 @@ public sealed class StatechartInterpreter
         }
 
         var ev = target.Chart.Events[input.Event!];
-        if (ev.Actors.Count > 0 && (input.Actor is null || !Allows(ev.Actors, input.Actor)))
+        // The root's events answer to rights before any guard picks a transition (rights-design.md decisions 12 to 14), with the signers of the
+        // gates the event can reach as an allow; an invoked sub-process sees no object, so its events answer to their own actors only.
+        if (ReferenceEquals(target, _root) && _options.Rights is { Uses: true } rights)
         {
-            Refuse(Refusals.Actor);
+            var decision = CheckRights(rights, ev.Verb, [new RightsList(ev.Id, ev.Actors)], GateSigners(target, ev.Id), null);
+            if (decision is { Allowed: false, Refusal: { } refusal })
+            {
+                Refuse(refusal, decision.RefusedBy);
+                return;
+            }
+        }
+        else if (ev.Actors.Count > 0 && (input.Actor is null || !Allows(ev.Actors, input.Actor)))
+        {
+            Refuse(Refusals.Actor, ev.Id);
             return;
         }
 
@@ -210,7 +232,7 @@ public sealed class StatechartInterpreter
             var selection = Select(target, TransitionTrigger.Event, ev.Id, external: true);
             if (selection.Transitions.Count == 0 && !selection.Consumed)
             {
-                Refuse(selection.Reason);
+                Refuse(selection.Reason, selection.By);
                 return false;
             }
 
@@ -232,6 +254,12 @@ public sealed class StatechartInterpreter
         }
 
         var end = Clock + span;
+        if (_deleted)
+        {
+            Clock = end; // the object is gone: no timer fires, and time only moves the clock
+            return;
+        }
+
         _scope.Event = EventObject(null, input.Actor, [], ImmutableDictionary<string, JsonElement>.Empty);
         while (!_root.Done)
         {
@@ -258,6 +286,12 @@ public sealed class StatechartInterpreter
 
     private void HandleInvoke(ScenarioStep input)
     {
+        if (_deleted)
+        {
+            Refuse(Refusals.NoTransition);
+            return;
+        }
+
         var found = AllInstances().SelectMany(i => i.Pending.Select(p => (Instance: i, p.Invoke, p.State)))
             .FirstOrDefault(p => string.Equals(p.Invoke.Id, input.Invoke, StringComparison.Ordinal));
         if (found.Instance is null)
@@ -270,10 +304,19 @@ public sealed class StatechartInterpreter
         }
 
         _scope.HumanTask = found.Invoke.Type == InvokeType.HumanTask;
-        if (found.Invoke.Type == InvokeType.HumanTask && found.Invoke.Actors.Count > 0
-            && (input.Actor is null || !Allows(found.Invoke.Actors, input.Actor)))
+        // A human task of the root answers to rights on complete, done or failed (rights-design.md decision 14).
+        if (_scope.HumanTask && ReferenceEquals(found.Instance, _root) && _options.Rights is { Uses: true } rights)
         {
-            Refuse(Refusals.Actor);
+            var decision = CheckRights(rights, "complete", [new RightsList(found.Invoke.Id, found.Invoke.Actors)], [], null);
+            if (decision is { Allowed: false, Refusal: { } refusal })
+            {
+                Refuse(refusal, decision.RefusedBy);
+                return;
+            }
+        }
+        else if (_scope.HumanTask && found.Invoke.Actors.Count > 0 && (input.Actor is null || !Allows(found.Invoke.Actors, input.Actor)))
+        {
+            Refuse(Refusals.Actor, found.Invoke.Id);
             return;
         }
 
@@ -284,7 +327,7 @@ public sealed class StatechartInterpreter
             var selection = SelectAt(found.Instance, found.State, trigger, found.Invoke.Id);
             if (selection.Transitions.Count == 0)
             {
-                Refuse(selection.Reason);
+                Refuse(selection.Reason, selection.By);
                 return false;
             }
 
@@ -294,6 +337,100 @@ public sealed class StatechartInterpreter
             Propagate(found.Instance);
             return true;
         });
+    }
+
+    // A participant does a verb to the subject or one of its links (rights-design.md decision 25): checked as rights say, then applied. modify
+    // on the subject writes its values to the object's row, so later guards and sets see them; delete removes the object and stops the chart;
+    // the rest are checked and recorded only.
+    private void HandleVerb(ScenarioStep input)
+    {
+        if (_root.Done || _deleted)
+        {
+            Refuse(Refusals.NoTransition);
+            return;
+        }
+
+        var rights = _options.Rights;
+        if (input.Verb is not { } verb || rights?.Fields(input) is { } problem)
+        {
+            var message = input.Verb is null ? "the verb step names no verb; give the verb the participant does." : rights!.Fields(input)!.Value.Message;
+            Problem("MQ9305", char.ToUpperInvariant(message[0]) + message[1..]);
+            Refuse(Refusals.NoTransition);
+            return;
+        }
+
+        if (rights is not null && CheckRights(rights, verb, [], [], input.End) is { Allowed: false, Refusal: { } refusal } decision)
+        {
+            Refuse(refusal, decision.RefusedBy);
+            return;
+        }
+
+        switch (verb)
+        {
+            case "modify" when input.End is null:
+                var values = new SortedDictionary<string, (string Name, JsonElement Value)>(StringComparer.Ordinal);
+                foreach (var (id, value) in input.Values ?? ImmutableDictionary<string, JsonElement>.Empty)
+                {
+                    if (rights?.AttributeName(id) is { } name)
+                        values[id] = (name, value);
+                }
+
+                Apply(values);
+                break;
+            case "delete" when input.End is null:
+                _deleted = true;
+                Note("The step deleted the object, so the process stops where it stood: later events, invokes and verb steps are refused, timers no longer fire, and time steps only move the clock.");
+                break;
+            default:
+                Note(input.End is null
+                    ? $"The run checked verb '{verb}' and recorded it, but did not apply it."
+                    : $"The run checked verb '{verb}' on a link and recorded it, but did not apply it: a scenario's links hold no values and do not change.");
+                break;
+        }
+    }
+
+    // Asks the run's rights check for the root, with the input as it runs, and puts its notes, findings and answering rights in the trace.
+    private RightsDecision CheckRights(RunRights rights, string? verb, IReadOnlyList<RightsList> closed, IReadOnlyList<RightsList> signers, string? end)
+    {
+        var result = rights.Check(new RunCheck
+        {
+            Verb = verb, Closed = closed, Signers = signers, End = end, Step = _scope.Input!,
+            Running = [.. _root.Config.Where(s => !s.IsRoot).OrderBy(s => s.Order).Select(s => s.Id)],
+            Identity = Identity(), Clock = ClockText(), Subject = _current, Values = _values, Seed = Seed(_root),
+        });
+        foreach (var note in result.Notes)
+            Note(note);
+        _scope.Diagnostics.AddRange(result.Diagnostics);
+        foreach (var answered in result.Decision.Rights)
+        {
+            if (!_scope.Rights.Contains(answered))
+                _scope.Rights.Add(answered);
+        }
+
+        return result.Decision;
+    }
+
+    // The gates on the transitions an event can take from the active states, whose signers count as an allow for it (rights-design.md
+    // decision 14); guards are not consulted, since rights are checked before any guard picks a transition.
+    private static List<RightsList> GateSigners(Instance inst, string eventId)
+    {
+        var gates = new List<RightsList>();
+        var seen = new HashSet<ChartTransition>(ReferenceEqualityComparer.Instance);
+        foreach (var leaf in Leaves(inst))
+        {
+            foreach (var s in leaf.Ancestors.Insert(0, leaf))
+            {
+                if (s.IsRoot)
+                    break;
+                foreach (var t in inst.Chart.Candidates(s, TransitionTrigger.Event, eventId))
+                {
+                    if (seen.Add(t) && t.Gate is { } gate && !gates.Any(g => string.Equals(g.Owner, gate.Id, StringComparison.Ordinal)))
+                        gates.Add(new RightsList(gate.Id, gate.Signers));
+                }
+            }
+        }
+
+        return gates;
     }
 
     // ---- the moves an input can make now (actors-design.md decision 15) ----
@@ -423,7 +560,7 @@ public sealed class StatechartInterpreter
 
     // ---- selection ----
 
-    private sealed record Selection(List<ChartTransition> Transitions, bool Consumed, string Reason);
+    private sealed record Selection(List<ChartTransition> Transitions, bool Consumed, string Reason, string? By = null);
 
     private Selection Select(Instance inst, TransitionTrigger trigger, string key, bool external)
     {
@@ -431,6 +568,7 @@ public sealed class StatechartInterpreter
         var tried = new Dictionary<ChartTransition, bool>(ReferenceEqualityComparer.Instance);
         var consumed = false;
         var reason = Refusals.NoTransition;
+        string? by = null;
         var rank = 0;
         foreach (var leaf in Leaves(inst))
         {
@@ -455,7 +593,7 @@ public sealed class StatechartInterpreter
                     tried[t] = false;
                     if (Guard(inst, t) != true)
                     {
-                        Fail(Refusals.Guard, 1);
+                        Fail(Refusals.Guard, 1, t.Guard?.Id ?? t.Transition.Guard);
                         continue;
                     }
 
@@ -463,14 +601,14 @@ public sealed class StatechartInterpreter
                     {
                         if (!external)
                         {
-                            Fail(Refusals.GateSigner, 2);
+                            Fail(Refusals.GateSigner, 2, gate.Id);
                             continue;
                         }
 
                         // Checked now, signed only when the transition survives conflict removal (a preempted gate gets no signature).
                         if (CheckSigner(inst, t, gate) is { } refusal)
                         {
-                            Fail(refusal, 2);
+                            Fail(refusal.Refusal, 2, refusal.By);
                             continue;
                         }
                     }
@@ -494,14 +632,15 @@ public sealed class StatechartInterpreter
             consumed = true; // the occurrence signed an incomplete gate: it is accepted, and the transition waits for more signatures
             return false;
         });
-        return new Selection(selected, consumed, reason);
+        return new Selection(selected, consumed, reason, by);
 
-        void Fail(string why, int level)
+        void Fail(string why, int level, string? refusedBy)
         {
             if (level > rank)
             {
                 rank = level;
                 reason = why;
+                by = refusedBy;
             }
         }
     }
@@ -509,6 +648,7 @@ public sealed class StatechartInterpreter
     private Selection SelectAt(Instance inst, ChartState source, TransitionTrigger trigger, string key)
     {
         var reason = Refusals.NoTransition;
+        string? by = null;
         foreach (var t in inst.Chart.Candidates(source, trigger, key))
         {
             if (Guard(inst, t) == true)
@@ -517,10 +657,12 @@ public sealed class StatechartInterpreter
                 return new Selection([t], false, reason);
             }
 
+            if (reason != Refusals.Guard)
+                by = t.Guard?.Id ?? t.Transition.Guard;
             reason = Refusals.Guard;
         }
 
-        return new Selection([], false, reason);
+        return new Selection([], false, reason, by);
     }
 
     // MQ9506: a later guarded transition of the same source and trigger is also enabled. Unguarded fallbacks (a choice's else) are
@@ -819,14 +961,19 @@ public sealed class StatechartInterpreter
 
     // ---- gates ----
 
-    // Refuses (and audits the refused attempt) when the input cannot sign the gate; null when it can.
-    private string? CheckSigner(Instance inst, ChartTransition t, ProcessGate gate)
+    // Refuses (and audits the refused attempt) when the input cannot sign the gate, with what refused it; null when it can. The order is
+    // rights-design.md decision 12's last row: the gate's signers, then the lifecycle's denies on sign, then a repeat signer, then a reason.
+    private (string Refusal, string? By)? CheckSigner(Instance inst, ChartTransition t, ProcessGate gate)
     {
         var input = _scope.Input!;
         var signatures = inst.Signatures.TryGetValue(t.Id, out var existing) ? existing : [];
         string? refusal = null;
+        var by = gate.Id;
         if (input.Actor is null || string.IsNullOrEmpty(input.Signer) || !Allows(gate.Signers, input.Actor))
             refusal = Refusals.GateSigner;
+        else if (ReferenceEquals(inst, _root) && _options.Rights is { Uses: true } rights
+            && CheckRights(rights, "sign", [], [new RightsList(gate.Id, gate.Signers)], null) is { Refusal: Refusals.Right } denied)
+            (refusal, by) = (Refusals.Right, denied.RefusedBy ?? gate.Id);
         else if (!gate.AllowRepeatSigner && signatures.Any(s => string.Equals(s.Signer, input.Signer, StringComparison.Ordinal)))
             refusal = Refusals.GateRepeat;
         else if (gate.ReasonRequired && string.IsNullOrWhiteSpace(input.Reason))
@@ -835,9 +982,10 @@ public sealed class StatechartInterpreter
         {
             var (meaning, attributes) = AuditFields(input, gate);
             Audit(inst, gate, t, input.Signer, input.Actor, meaning, input.Reason, GateOutcome.Refused, attributes);
+            return (refusal, by);
         }
 
-        return refusal;
+        return null;
     }
 
     private static (string? Meaning, SortedDictionary<string, JsonElement> Attributes) AuditFields(ScenarioStep input, ProcessGate gate)
@@ -1212,6 +1360,9 @@ public sealed class StatechartInterpreter
             Actor = MoveActor(),
             ValuesChanged = values,
             Notes = _scope.Notes.Count > 0 ? [.. _scope.Notes] : null,
+            // Written in a project that uses rights, and for a step that expects it, so today's traces keep their members (decision 26).
+            RefusedBy = _scope.RefusedBy is { } by && (_options.Rights is { Uses: true } || _scope.Input?.Expect?.RefusedBy is not null) ? by : null,
+            Rights = _scope.Rights.Count > 0 ? [.. _scope.Rights] : null,
         };
     }
 
@@ -1246,7 +1397,14 @@ public sealed class StatechartInterpreter
 
     private SortedDictionary<string, JsonElement> Snapshot() => new(_root.Context, StringComparer.Ordinal);
 
-    private void Refuse(string reason) => _scope.Refusal ??= reason;
+    // The first refusal of an input wins, with the element that refused it (rights-design.md decision 12); none for no-transition.
+    private void Refuse(string reason, string? by = null)
+    {
+        if (_scope.Refusal is not null)
+            return;
+        _scope.Refusal = reason;
+        _scope.RefusedBy = by;
+    }
 
     private void Problem(string rule, string message, string? elementId = null) =>
         _scope.Diagnostics.Add(RuleCatalog.Create(rule, message, elementId ?? Chart.Process.Id));
@@ -1352,6 +1510,8 @@ public sealed class StatechartInterpreter
         public ScenarioStep? Input { get; } = input;
         public JsonElement Event { get; set; } = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["name"] = null, ["actor"] = null, ["payload"] = new Dictionary<string, object?>() });
         public string? Refusal { get; set; }
+        public string? RefusedBy { get; set; }
+        public List<RightEvaluation> Rights { get; } = [];
         public bool HumanTask { get; set; }
         public string? Identity { get; init; }
         public Dictionary<string, JsonElement> ValuesBefore { get; } = new(StringComparer.Ordinal);

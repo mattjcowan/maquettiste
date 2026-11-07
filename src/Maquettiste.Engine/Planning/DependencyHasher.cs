@@ -226,6 +226,8 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "sn" => string.Equals(key, Processes.SubjectCoverage.NamingKey, StringComparison.Ordinal) ? Processes.SubjectCoverage.NamingHash(model) : Absent,
             // Which verb keys the model names, with the vocabulary (verbs-design.md section 6): what model.verbs holds.
             "vn" => string.Equals(key, ModelSnapshot.VerbNamingKey, StringComparison.Ordinal) ? model.VerbNamingHash() : Absent,
+            // Which rights the lifecycles state (rights-design.md section 6): a lifecycle's first right, its default, the verbs it can deny.
+            "rn" => string.Equals(key, RightsNaming.Key, StringComparison.Ordinal) ? RightsNaming.Hash(model) : Absent,
             _ => Absent,
         };
     }

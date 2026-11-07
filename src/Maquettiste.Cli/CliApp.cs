@@ -273,9 +273,10 @@ public sealed class CliApp(CliEnvironment environment)
                                   of the check, guard or attribute that holds it: its text, type, nullability, JavaScript and
                                   PostgreSQL text (or why there is none), reading that element only. --at <pointer> (the site,
                                   /checks/0/condition; needed when the element holds several), --database <id|name> (the binding
-                                  an entity's expression lowers through), --values <json|file|-> (the row it reads, by member
+                                  an entity's expression lowers through), --lifecycle <id|name> (a named right's condition read
+                                  as if that lifecycle used the right), --values <json|file|-> (the row it reads, by member
                                   name: also print its answer under the site's mode), --format text|json
-          expression preview --text <text> --on <element> --site check|value|guard|<pointer>
+          expression preview --text <text> --on <element> --site check|value|guard|right|<pointer>
                                 The same for text that is not saved, at a site of that kind or at the site the pointer names
           snapshot create <name>
                                 Take a snapshot of the model (a zip under .maquettiste/model-snapshots/): --description,

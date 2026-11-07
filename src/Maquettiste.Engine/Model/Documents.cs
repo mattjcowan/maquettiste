@@ -85,8 +85,11 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// order, on process rows that have such an entry and a carrier. Worked out per snapshot, since package defaults, implied stereotypes and
 /// bases decide them.</param>
 /// <param name="Verb">The verb an operation names, as its key, on operation rows that name one (verbs-design.md section 7).</param>
-/// <param name="Verbs">The distinct verb keys a process's events and transitions name, sorted ordinally, on process rows that name at least
-/// one (verbs-design.md section 7).</param>
+/// <param name="Verbs">The distinct verb keys a process's events, transitions and inline rights name, sorted ordinally, on process rows that
+/// name at least one (verbs-design.md section 7, rights-design.md section 8); a named right's verbs, on right rows.</param>
+/// <param name="Rights">The number of entries in a lifecycle's rights, inline rights and uses, on process rows that have at least one
+/// (rights-design.md section 8).</param>
+/// <param name="Access">Whether a named right allows or denies, <c>allow</c> or <c>deny</c>, on right rows (rights-design.md section 8).</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
 /// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
@@ -118,8 +121,37 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? SubjectStereotypes = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Covers = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Verbs = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Verbs = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Rights = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Access = null)
 {
+    /// <summary>
+    /// A process row's <c>rightsDefault</c> as its file writes it, <c>allow</c> or <c>deny</c> (rights-design.md section 6); <see langword="null"/>
+    /// when it writes none. For the rights naming key only: never serialized.
+    /// </summary>
+    [JsonIgnore]
+    internal string? RightsDefault { get; init; }
+
+    /// <summary>
+    /// The distinct verb keys a process's inline deny rights name, sorted ordinally (rights-design.md section 6); a named right's row gives its
+    /// own access and verbs. <see langword="null"/> when none. For the rights naming key only: never serialized.
+    /// </summary>
+    [JsonIgnore]
+    internal IReadOnlyList<string>? DenyVerbs { get; init; }
+
+    /// <summary>
+    /// The distinct ids of the named rights a process's rights use, sorted ordinally (rights-design.md section 6); <see langword="null"/> when
+    /// none. For the rights naming key only: never serialized.
+    /// </summary>
+    [JsonIgnore]
+    internal IReadOnlyList<string>? RightUses { get; init; }
+
+    /// <summary>
+    /// Whether the row is a lifecycle that writes <c>rights</c> or <c>rightsDefault</c>, so the project uses rights (rights-design.md decision
+    /// 28). An orchestration that still writes them (MQ9901) uses none, so demoting a lifecycle changes the rights naming key.
+    /// </summary>
+    internal bool UsesRights => string.Equals(Use, "lifecycle", StringComparison.Ordinal) && (Rights is > 0 || RightsDefault is not null);
+
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>
         other is not null
@@ -158,7 +190,12 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
             || (SubjectStereotypes is not null && other.SubjectStereotypes is not null && SubjectStereotypes.SequenceEqual(other.SubjectStereotypes, StringComparer.Ordinal)))
         && (ReferenceEquals(Covers, other.Covers) || (Covers is not null && other.Covers is not null && Covers.SequenceEqual(other.Covers, StringComparer.Ordinal)))
         && string.Equals(Verb, other.Verb, StringComparison.Ordinal)
-        && (ReferenceEquals(Verbs, other.Verbs) || (Verbs is not null && other.Verbs is not null && Verbs.SequenceEqual(other.Verbs, StringComparer.Ordinal)));
+        && (ReferenceEquals(Verbs, other.Verbs) || (Verbs is not null && other.Verbs is not null && Verbs.SequenceEqual(other.Verbs, StringComparer.Ordinal)))
+        && Rights == other.Rights
+        && string.Equals(Access, other.Access, StringComparison.Ordinal)
+        && string.Equals(RightsDefault, other.RightsDefault, StringComparison.Ordinal)
+        && (ReferenceEquals(DenyVerbs, other.DenyVerbs) || (DenyVerbs is not null && other.DenyVerbs is not null && DenyVerbs.SequenceEqual(other.DenyVerbs, StringComparer.Ordinal)))
+        && (ReferenceEquals(RightUses, other.RightUses) || (RightUses is not null && other.RightUses is not null && RightUses.SequenceEqual(other.RightUses, StringComparer.Ordinal)));
 
     /// <inheritdoc/>
     public override int GetHashCode() => HashCode.Combine(

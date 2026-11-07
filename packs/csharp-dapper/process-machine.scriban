@@ -51,6 +51,15 @@ public sealed partial class {{ name }}Machine
     /// <summary>Raises {{ e.name }}{{ if e.description }}: {{ cs_line e.description | string.strip | escape_xml }}{{ end }}.</summary>
     /// <param name="snapshot">The instance.</param>
     /// <param name="command">The command.</param>
+{{- if uses_rights() }}
+    /// <param name="held">The actors the caller holds with no context, besides the one it acts as.</param>
+    /// <returns>The result.</returns>
+    public {{ res }} {{ pascal e.name }}({{ snap }} snapshot, {{ cmd }} command, IReadOnlyList<string>? held = null)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return _chart.Send(snapshot, {{ json e.name }}, command.Envelope, command.Payload(), command.AuditValues(), held);
+    }
+{{- else }}
     /// <returns>The result.</returns>
     public {{ res }} {{ pascal e.name }}({{ snap }} snapshot, {{ cmd }} command)
     {
@@ -58,16 +67,27 @@ public sealed partial class {{ name }}Machine
         return _chart.Send(snapshot, {{ json e.name }}, command.Envelope, command.Payload(), command.AuditValues());
     }
 {{- end }}
+{{- end }}
 
     /// <summary>Reports the result of an invoke.</summary>
     /// <param name="snapshot">The instance.</param>
     /// <param name="command">The command.</param>
+{{- if uses_rights() }}
+    /// <param name="held">The actors the caller holds with no context, besides the one it acts as.</param>
+    /// <returns>The result.</returns>
+    public {{ res }} Complete({{ snap }} snapshot, {{ name }}InvokeResultControl command, IReadOnlyList<string>? held = null)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor, held);
+    }
+{{- else }}
     /// <returns>The result.</returns>
     public {{ res }} Complete({{ snap }} snapshot, {{ name }}InvokeResultControl command)
     {
         ArgumentNullException.ThrowIfNull(command);
         return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor);
     }
+{{- end }}
 
     /// <summary>Fires the timers due at the clock's current instant.</summary>
     /// <param name="snapshot">The instance.</param>

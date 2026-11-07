@@ -15,7 +15,7 @@ import { KindIcon } from "@/app/icons";
 import { useServices } from "@/app/context";
 import { useEditor, type Draft } from "@/state/store";
 import { displayName, KIND_LABELS } from "@/model/model";
-import { EDITOR_LABELS, EDITOR_TAB_LABELS, GROUP_LABELS } from "@/model/labels";
+import { EDITOR_LABELS, EDITOR_TAB_LABELS, GROUP_LABELS, RIGHT_LABELS } from "@/model/labels";
 import { local } from "@/lib/storage";
 import { FindingsSummary } from "@/problems/findings";
 import { entryIdsOf, useProblems } from "./process/shared";
@@ -74,6 +74,11 @@ export function useEditorContext(id: string, kind: EditorKind): { ctx: EditorCon
 }
 
 /** The editor's layout: header, top controls and sub-tabs. */
+/** Whether a finding belongs to the rights (the rules MQ9901 to MQ9906, or a finding on a rights row). */
+export function isRightsFinding(d: { rule: string; jsonPointer?: string | null }): boolean {
+  return /^MQ99\d\d$/.test(d.rule) || /^\/rights\/\d+(\/|$)/.test(d.jsonPointer ?? "");
+}
+
 export function EditorLayout({
   ctx,
   draft,
@@ -133,7 +138,8 @@ export function EditorLayout({
             {draft.error}
           </p>
         ) : null}
-        <FindingsSummary diagnostics={diagnostics} element={id} />
+        {/* A rights finding (MQ99xx, or any finding on a rights row) shows inline and in Problems; the line here would count it again. */}
+        <FindingsSummary diagnostics={diagnostics.filter((d) => !isRightsFinding(d))} element={id} />
         {details ? <HeaderFields {...ctx} translations={translations} /> : null}
       </header>
       {details ? (
@@ -178,6 +184,9 @@ function HeaderFields({ id, kind, json, doc, edit, flush, translations }: Editor
         rec={rec}
         edit={(change) => edit((j) => change(j as Rec))}
         flush={flush}
+        // A right has no plural name, and its description is the Why every refusal shows.
+        noPlural={kind === "right"}
+        descriptionLabel={kind === "right" ? RIGHT_LABELS.columns.why : undefined}
         sidecar={
           typeof description === "object" && description !== null ? { file: (description as { file: string }).file, text: doc?.sidecarText ?? "" } : null
         }

@@ -156,6 +156,7 @@ internal sealed partial class ResolveRun
         _actorOrder = [.. _actors.Values.OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.Id, StringComparer.Ordinal)];
         ResolveMemberships();
         ResolveRelatives();
+        ResolveNamedRights(); // before processes: a lifecycle's rights use them
 
         // Shells first: an invoke names another process.
         var sources = new Dictionary<string, Process>(StringComparer.Ordinal);
@@ -183,6 +184,7 @@ internal sealed partial class ResolveRun
 
         // An in_state names another process's states, which exist once every process is built.
         DrainInStateFills();
+        FinishRights(sources);
 
         // Which transitions and states use a library's member changes when another process starts or stops naming it.
         foreach (var guard in _libraryGuards.Values)
@@ -202,6 +204,7 @@ internal sealed partial class ResolveRun
             actor.Processes = new RList<RProcess>(own?.Processes ?? [], keys);
             actor.Events = new RList<REvent>(own?.Events ?? [], keys);
             actor.Gates = new RList<RGate>(own?.Gates ?? [], keys);
+            actor.Rights = RightsOf(actor);
         }
 
         foreach (var (id, entity) in _entitySources)
@@ -1001,6 +1004,14 @@ internal sealed partial class ResolveRun
         r.HasCodes = codes.Coded.Count > 0;
         r.CodesMap = codes.IsMap && codes.IsSound;
 
+        // Rights (rights-design.md section 6): only lifecycles hold them (MQ9901), and only lifecycles have a default of their own.
+        if (process.Use == ProcessUse.Lifecycle)
+        {
+            r.RightsDefault = process.RightsDefault == RightAccess.Deny ? "deny" : "allow";
+            if (process.Rights.Count > 0)
+                r.Rights = BuildRights(process, r, nodeKeys, lookup.States, BuildCondition);
+        }
+
         // Every actor the process names, and what names each one.
         var referenced = new List<RActor>();
         void Use(RActor actor, Action<ActorUses>? add = null)
@@ -1126,6 +1137,7 @@ internal sealed partial class ResolveRun
             ResolveScenarioObjects(s, scenario, keys);
             var participants = ResolveParticipants(s, scenario, keys);
             var traced = TraceInputs(scenario);
+            var rightsKeys = RightsReplayKeys(scenario);
             var runs = scenario.Participants.Count > 0 ? Model.Get<Process>(scenario.Process) : null;
             // A process that reads current_actor() (object-effects-design.md section 7): the identity comes from each step's signer, participant and
             // actor, and an automatic move's from the system actor, so every step reads the actors as a participant's step does.
@@ -1152,8 +1164,36 @@ internal sealed partial class ResolveRun
                     Payload = ByName(step.Payload, lookup.Payload, lookup.Audit, lookup.Context),
                     Assume = Assumptions(step.Assume, lookup.Guards),
                     Description = step.Description?.Text,
+                    End = step.End is null ? null : _byId.GetValueOrDefault(step.End) as REnd,
+                    Object = step.Object is null ? null : s.Objects.FirstOrDefault(o => string.Equals(o.Id, step.Object, StringComparison.Ordinal)),
                 };
                 var stepDeps = DepsOf(r).AddRange(keys);
+                if (step.Verb is { } verbKey)
+                {
+                    // A verb step (rights-design.md decision 25): its verb waits for model.verbs.
+                    var known = r;
+                    _verbKeysNamed.Add(verbKey);
+                    _verbFills.Add((verbOf, vocabularyKeys) =>
+                    {
+                        known.Verb = verbOf(verbKey);
+                        DepsOf(known).AddRange(vocabularyKeys);
+                    });
+                }
+
+                if (step.End is { } endId && Model.TryGetEntry(endId, out var endEntry))
+                    stepDeps.Element(endEntry.OwnerId); // whether the end resolves is its relation's file
+                if (step.Values is { Count: > 0 } stepValues)
+                {
+                    // A modify step's values by name, as an expectation's (object-effects-design.md decision 4).
+                    valueNames ??= ExprSites.HeldAttributes(Model, Model.Get<Process>(scenario.Process)!).Values
+                        .ToDictionary(a => a.Id, a => a.Name, StringComparer.Ordinal);
+                    r.Values = ByName(stepValues, valueNames);
+                    foreach (var id in stepValues.Keys)
+                    {
+                        if (Model.TryGetEntry(id, out var holder))
+                            stepDeps.Element(holder.OwnerId);
+                    }
+                }
                 if (step.Actor is { } actor)
                     stepDeps.Element(actor);
                 if (step.Participant is { } participantId && runs is not null)
@@ -1198,6 +1238,7 @@ internal sealed partial class ResolveRun
 
                 foreach (var id in traced)
                     stepDeps.Element(id);
+                stepDeps.AddRange(rightsKeys);
                 if (step.Expect is { } expect)
                 {
                     var expected = expect.States.Select(id => lookup.States.GetValueOrDefault(id)).OfType<RState>().ToList();
@@ -1207,6 +1248,8 @@ internal sealed partial class ResolveRun
                         States = new RList<RState>(expected, keys),
                         StatePaths = [.. expected.Select(st => st.Path)],
                         Context = ByName(expect.Context, lookup.Context),
+                        Refusal = expect.Refusal,
+                        RefusedBy = expect.RefusedBy,
                     };
                     if (expect.Values.Count > 0)
                     {
@@ -1231,7 +1274,8 @@ internal sealed partial class ResolveRun
             // The engine's replay, for templates that assert what the interpreter did (a refusal's reason, the audit outcomes): run
             // once per scenario on first read, so a run whose templates never read it pays nothing.
             var model = Model;
-            var replay = new Lazy<IReadOnlyList<RStepTrace>>(() => Replay(model, scenario, lookup), LazyThreadSafetyMode.ExecutionAndPublication);
+            var actorsById = _actors;
+            var replay = new Lazy<IReadOnlyList<RStepTrace>>(() => Replay(model, scenario, lookup, actorsById), LazyThreadSafetyMode.ExecutionAndPublication);
             foreach (var step in steps)
                 step.Replay = replay;
             scenarios.Add(s);
@@ -1513,20 +1557,44 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>The engine interpreter's result of each step of a scenario that ran (empty when the replay could not start).</summary>
-    private static IReadOnlyList<RStepTrace> Replay(ModelSnapshot model, Scenario scenario, ProcessLookup lookup)
+    private static IReadOnlyList<RStepTrace> Replay(ModelSnapshot model, Scenario scenario, ProcessLookup lookup, Dictionary<string, RActor> actors)
     {
         using var runtime = new ProcessRuntime(model, 1, CancellationToken.None);
         if (ScenarioReplayer.Replay(scenario, runtime) is not { } replay)
             return [];
-        return [.. replay.Steps.Select(t => new RStepTrace
+
+        // The actors from the object each participant's step satisfied, read from the cast as that step saw it: the values the run set
+        // before it (Participants.Current), as the run's actor lookup reads them.
+        var process = model.Get<Process>(scenario.Process);
+        var fromObject = scenario.Participants.Count == 0 || process is null ? []
+            : actors.Values.Where(a => a.Relative is not null).OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.Id, StringComparer.Ordinal).ToList();
+        var cast = ScenarioCast.Of(scenario);
+        var values = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        var traces = new List<RStepTrace>(replay.Steps.Count);
+        foreach (var t in replay.Steps)
         {
-            Accepted = t.Accepted,
-            Refusal = t.Refusal,
-            Audit = [.. t.Audit.Select(a => ResolutionValues.Kebab(a.Outcome))],
-            StatePaths = [.. t.Configuration.Select(id => lookup.States.TryGetValue(id, out var state) ? state.Path : id)],
-            Final = t.Final,
-            ActsAs = t.ActsAs,
-        })];
+            IReadOnlyList<RActor> satisfied = [];
+            if (fromObject.Count > 0 && t.Input?.Participant is { } participantId && cast.Participant(participantId) is { } participant)
+            {
+                var current = Participants.Current(cast, values);
+                satisfied = [.. fromObject.Where(a => Participants.Satisfies(model, process!, current, participant, a.Id))];
+            }
+
+            foreach (var (id, value) in t.ValuesChanged ?? ImmutableDictionary<string, JsonElement>.Empty)
+                values[id] = value;
+            traces.Add(new RStepTrace
+            {
+                Accepted = t.Accepted,
+                Refusal = t.Refusal,
+                Audit = [.. t.Audit.Select(a => ResolutionValues.Kebab(a.Outcome))],
+                StatePaths = [.. t.Configuration.Select(id => lookup.States.TryGetValue(id, out var state) ? state.Path : id)],
+                Final = t.Final,
+                ActsAs = t.ActsAs,
+                ObjectActors = satisfied,
+            });
+        }
+
+        return traces;
     }
 
     /// <summary>Guard results keyed by guard name (the id when no guard has it), ordinal.</summary>

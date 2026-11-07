@@ -115,6 +115,7 @@ const FOLDERS: Partial<Record<ElementKind, string>> = {
   process: "model/processes",
   actor: "model/actors",
   scenario: "model/scenarios",
+  right: "model/rights",
 };
 
 /** The folders of a database's element files other than tables (KindInfo: model/databases/{db}/<folder>). */
@@ -147,6 +148,11 @@ export class MockModel {
    * JSON, so this set stands for them: a save or a format (POST /api/model/format) clears a path.
    */
   readonly nonCanonical = new Set<string>();
+  /**
+   * The expectations a replay of a scenario gives (the process handlers set this: the interpreter needs their actor and
+   * object lookups). Null when the replay cannot run to the last step.
+   */
+  scenarioReplay: ((process: Json, scenario: Json) => { expects: Json[]; outcome: "final" | "active" } | null) | null = null;
 
   constructor(
     seed: Seed,
@@ -604,7 +610,8 @@ export class MockModel {
   private schemaCheck(id: string, json: Json, path: string): Diagnostic[] {
     const validate = (() => {
       try {
-        return schemaValidator(String(json.kind));
+        // The contract names a named right's schema `right-2`: `right` is the lifecycle's entry.
+        return schemaValidator(json.kind === "right" ? "right-2" : String(json.kind));
       } catch {
         return null;
       }
@@ -1061,16 +1068,41 @@ export class MockModel {
           candidate.set(id, entry);
           items.push({ outcome: "saved", id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
         }
+        for (const id of outcome.deleted) {
+          candidate.delete(id);
+          items.push({ outcome: "saved", id, hash: null, current: null, diagnostics: [], referrers: [], changes: null });
+        }
         continue;
       }
       if (op.op === "refresh-scenario") {
-        // The mock has no interpreter: the expectations stay as they are (the engine rewrites them from a replay).
+        // The expectations are rewritten from a replay, as the engine does: accepted, states, context, values and, in a project
+        // that uses rights, each refusal and what refused it (rights-design.md decision 26).
         const existing = candidate.get(op.id ?? "");
         if (!existing || existing.json.kind !== "scenario") {
           fail(this.notFound(op.id ?? ""));
           continue;
         }
-        items.push({ outcome: "saved", id: existing.id, hash: existing.hash, current: null, diagnostics: [], referrers: [], changes: null });
+        const scenario = existing.json as Json;
+        const process = candidate.get(String(scenario.process ?? ""))?.json as Json | undefined;
+        const observed = process && this.scenarioReplay ? this.scenarioReplay(process, scenario) : null;
+        if (!observed) {
+          items.push({ outcome: "saved", id: existing.id, hash: existing.hash, current: null, diagnostics: [], referrers: [], changes: null });
+          continue;
+        }
+        const steps = (Array.isArray(scenario.steps) ? scenario.steps : []).map((st, i) => {
+          const expect = observed.expects[i];
+          return expect ? { ...(st as Json), expect } : st;
+        });
+        const next: Json = { ...scenario, steps };
+        if (observed.outcome === "final") next.outcome = "final";
+        else delete next.outcome;
+        if (JSON.stringify(next) === JSON.stringify(scenario)) {
+          items.push({ outcome: "saved", id: existing.id, hash: existing.hash, current: null, diagnostics: [], referrers: [], changes: null });
+          continue;
+        }
+        const entry = this.entryFor(next, existing);
+        candidate.set(entry.id, entry);
+        items.push({ outcome: "saved", id: entry.id, hash: entry.hash, current: null, diagnostics: [], referrers: [], changes: null });
         continue;
       }
       if (op.op === "use-subjects") {
@@ -1534,6 +1566,14 @@ function e5(json: Json): Partial<ElementSummary> {
     // The distinct verbs its events and transitions name, only when there are some (maquettiste-index/e12).
     const verbs = processVerbs(json);
     if (verbs.length) out.verbs = verbs;
+    // The entries of its rights, inline and uses, only when above zero (maquettiste-index/e13).
+    if (Array.isArray(json.rights) && json.rights.length) out.rights = json.rights.length;
+  }
+  // A named right's access and the verbs it names (maquettiste-index/e13).
+  if (kind === "right") {
+    out.access = json.access === "allow" ? "allow" : "deny";
+    const verbs = processVerbs(json);
+    if (verbs.length) out.verbs = verbs;
   }
   if (kind === "actor" && typeof json.type === "string" && (ACTOR_TYPES as readonly string[]).includes(json.type)) {
     out.actorType = json.type as (typeof ACTOR_TYPES)[number];
@@ -1834,6 +1874,7 @@ function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, t
     const next = edit(json);
     next.use = "orchestration";
     delete next.boundAttribute;
+    // Only lifecycles hold rights (MQ9901): a demoted process keeps them, as the engine does, and the finding says to remove them.
     if (Array.isArray(next.subjects)) next.subjects = (next.subjects as Json[]).map(({ boundAttribute: _unbound, ...entry }) => entry);
   };
   const oneSubjectForm = (json: Json) => !Array.isArray(json.subjects) && typeof json.subject === "string";
@@ -1871,6 +1912,8 @@ function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, t
         else {
           delete next.subjects;
           next.use = "orchestration";
+          delete next.rights;
+          delete next.rightsDefault;
         }
       }
     }

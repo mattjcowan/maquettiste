@@ -1,0 +1,10 @@
+{
+  "kind": "actor",
+  "id": "01JRT000000000000000000K02",
+  "name": "DocumentOwner",
+  "package": "01JRT000000000000000000P01",
+  "type": "person",
+  "relative": {
+    "owner": true
+  }
+}

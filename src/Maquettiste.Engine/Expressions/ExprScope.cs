@@ -228,9 +228,9 @@ public sealed class ExprScope
     public ExprScope(ExprSiteKind site)
     {
         Site = site;
-        AllowsNow = site is ExprSiteKind.Guard or ExprSiteKind.Set;
-        AllowsNavigation = site is ExprSiteKind.Guard or ExprSiteKind.Set;
-        AllowsActor = site is ExprSiteKind.Guard or ExprSiteKind.Set;
+        AllowsNow = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right;
+        AllowsNavigation = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right;
+        AllowsActor = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right;
         _sets = new(StringComparer.Ordinal);
         _refs = new(StringComparer.Ordinal);
         _setsByName = new(StringComparer.Ordinal);
@@ -264,14 +264,14 @@ public sealed class ExprScope
     /// <summary>The site's kind.</summary>
     public ExprSiteKind Site { get; }
 
-    /// <summary>Whether <c>now</c> may be read; by default at guard and set sites only (MQ3104).</summary>
+    /// <summary>Whether <c>now</c> may be read; by default at guard, set and right sites only (MQ3104).</summary>
     public bool AllowsNow { get; init; }
 
-    /// <summary>Whether a path may follow navigations; by default at guard and set sites only (MQ3102).</summary>
+    /// <summary>Whether a path may follow navigations; by default at guard, set and right sites only (MQ3102).</summary>
     public bool AllowsNavigation { get; init; }
 
     /// <summary>
-    /// Whether <c>current_actor()</c> and <c>in_state</c> may be read; by default at guard and set sites only, never in a constraint's own condition
+    /// Whether <c>current_actor()</c> and <c>in_state</c> may be read; by default at guard, set and right sites only, never in a constraint's own condition
     /// (MQ3104, object-effects-design.md decisions 5 and 9).
     /// </summary>
     public bool AllowsActor { get; init; }

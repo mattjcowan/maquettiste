@@ -1,0 +1,71 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JRT000000000000000000Q02",
+  "name": "Records",
+  "package": "01JRT000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JRT000000000000000000B02",
+      "entity": "01JRT000000000000000000E01"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JRT000000000000000000V11",
+      "name": "archive",
+      "verb": "promote"
+    }
+  ],
+  "rights": [
+    {
+      "id": "01JRT000000000000000000Y01",
+      "name": "HoldOnLegal",
+      "access": "deny",
+      "verbs": [
+        "delete"
+      ],
+      "condition": {
+        "text": "subject.legalHold = true"
+      },
+      "description": "A document under legal hold is kept."
+    },
+    {
+      "id": "01JRT000000000000000000Y02",
+      "name": "ArchivedIsKept",
+      "access": "deny",
+      "verbs": [
+        "modify"
+      ],
+      "states": [
+        "01JRT000000000000000000S12"
+      ]
+    },
+    {
+      "id": "01JRT000000000000000000Y03",
+      "right": "01JRT000000000000000000R01"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JRT000000000000000000S11",
+      "name": "Open"
+    },
+    {
+      "id": "01JRT000000000000000000S12",
+      "name": "Archived"
+    }
+  ],
+  "initial": "01JRT000000000000000000S11",
+  "transitions": [
+    {
+      "id": "01JRT000000000000000000T11",
+      "source": "01JRT000000000000000000S11",
+      "event": "01JRT000000000000000000V11",
+      "targets": [
+        "01JRT000000000000000000S12"
+      ]
+    }
+  ]
+}

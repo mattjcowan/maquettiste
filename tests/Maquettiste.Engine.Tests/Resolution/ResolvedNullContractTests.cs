@@ -62,6 +62,13 @@ public sealed class ResolvedNullContractTests
         ["RVerb.DisplayName"] = "a built-in verb's fixed label, else the own verb's displayName, else its key with the first letter upper case and hyphens as spaces",
         ["RVerb.Description"] = "a built-in verb's fixed meaning, else the own verb's description, else empty",
         ["RTransition.Verb"] = "the transition's own verb, else its event's (verbs-design.md decision 12)",
+
+        // Rights (rights-design.md section 6): an inline right and a use share one schema object with a named right's use.
+        ["RRight.Name"] = "the named right's name, else the inline entry's; an inline entry without one (MQ9901) resolves as empty",
+        ["RRight.DisplayName"] = "the file's displayName, else the name",
+        ["RRight.Access"] = "the named right's or the inline entry's access; an entry with neither is no right and is left out (MQ9901)",
+        ["RProcess.RightsDefault"] = "a lifecycle's rightsDefault, else allow (rights-design.md decision 9); allow for a process that is no lifecycle",
+        ["RRightUse.Right"] ="the named right a use names, else the inline right the entry states; an entry in neither form is left out (MQ9901)",
     };
 
     private const string Slot =
@@ -115,6 +122,12 @@ public sealed class ResolvedNullContractTests
         // An action's sets (object-effects-design.md section 6): no fixture model sets data, so that their golden output stays as it was;
         // ResolvedObjectEffectsTests resolves them.
         ["RSet"] = "sets: ResolvedObjectEffectsTests",
+        // Rights (rights-design.md section 6): no fixture model states one, so that their golden output stays as it was; ResolvedRightsTests
+        // resolves them.
+        ["RRight"] = "rights: ResolvedRightsTests",
+        ["RRightUse"] = "rights: ResolvedRightsTests",
+        ["RMayRefuse"] = "rights: ResolvedRightsTests",
+        ["RAccessCell"] = "rights: ResolvedRightsTests",
     };
 
     [Fact]

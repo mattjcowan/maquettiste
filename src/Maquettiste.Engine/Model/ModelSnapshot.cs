@@ -307,7 +307,7 @@ public sealed class ModelSnapshot
 
     /// <summary>
     /// The current hash of <see cref="VerbNamingKey"/>: the verb vocabulary in use (its id and dependency hash), then the distinct verb keys
-    /// the events, transitions and operations name, ordinal, read from the index rows. It changes when a key starts or stops being named
+    /// the events, transitions, operations and rights name, ordinal, read from the index rows. It changes when a key starts or stops being named
     /// anywhere, or when the vocabulary changes; not when a process or an operation changes otherwise. A model with no vocabulary and no
     /// verb key keeps one value. Worked out once per snapshot.
     /// </summary>

@@ -19,7 +19,7 @@ import {
 
 const byPath = (a: ModelEntry, b: ModelEntry) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 
-const LIFECYCLE_READS: ReadonlySet<string> = new Set(["enum", "entity", "reference-type", "seed", "scalar-type", "process"]);
+const LIFECYCLE_READS: ReadonlySet<string> = new Set(["enum", "entity", "reference-type", "seed", "scalar-type", "process", "relation", "right"]);
 
 export class ModelIndex {
   /** The entries this index describes, by id (the same objects the model holds). */

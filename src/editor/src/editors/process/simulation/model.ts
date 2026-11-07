@@ -4,7 +4,8 @@
 // run (configuration, guard results, refusals, gate progress, verdicts) is read from the answer; the document only
 // supplies names and the forms' fields. Pure: no React, no I/O.
 import type { AttributeDoc } from "@/api/types";
-import { SIMULATION_LABELS as L } from "@/model/labels";
+import { RIGHT_LABELS as RL, SIMULATION_LABELS as L } from "@/model/labels";
+import { builtInVerb, labelOfKey } from "@/model/verbList";
 import { stateIndex, transitionLabel, type EventDoc, type ProcessDoc, type ScenarioDoc } from "@/model/process";
 import type { EnabledTrigger, ScenarioVerification, SimInput, SimulationResult, StepTrace } from "./api";
 
@@ -23,10 +24,21 @@ export interface Names {
   attribute(id: string): string;
   meaning(id: string | null | undefined): string;
   gate(id: string): string;
+  /** What a refusal points at: a right, a guard, a gate, an event, an invoke or a lifecycle. */
+  element(id: string): string;
+  /** The Why text of a right, by the id a refusal names; "" when it has none. */
+  why(id: string): string;
 }
 
 /** Display names for the ids an answer carries: state paths, event, invoke, actor, guard, action and gate names. */
-export function namesOf(process: ProcessDoc, actorNames: ReadonlyMap<string, string>, participants: readonly { id: string; name: string }[] = []): Names {
+export function namesOf(
+  process: ProcessDoc,
+  actorNames: ReadonlyMap<string, string>,
+  participants: readonly { id: string; name: string }[] = [],
+  elements: ReadonlyMap<string, string> = new Map(),
+  /** The Why text of named rights, by id (the process's own rights say theirs). */
+  whys: ReadonlyMap<string, string> = new Map(),
+): Names {
   const states = new Map([...stateIndex(process)].map(([id, info]) => [id, info.path]));
   const map = (list: { id: string; name: string }[] | undefined) => new Map((list ?? []).map((x) => [x.id, x.name]));
   const events = map(process.events);
@@ -47,6 +59,7 @@ export function namesOf(process: ProcessDoc, actorNames: ReadonlyMap<string, str
       for (const a of t.gate.auditAttributes ?? []) attributes.set(a.id, a.name);
     }
   }
+  const rightNames = new Map((process.rights ?? []).flatMap((r) => (r.name ? [[r.id, r.name] as [string, string]] : [])));
   const of = (m: Map<string, string>) => (id: string | null | undefined) => (id ? (m.get(id) ?? id) : "");
   return {
     state: (id) => states.get(id) ?? id,
@@ -60,6 +73,14 @@ export function namesOf(process: ProcessDoc, actorNames: ReadonlyMap<string, str
     attribute: (id) => attributes.get(id) ?? id,
     meaning: of(meanings),
     gate: (id) => gates.get(id) ?? id,
+    why: (id) => {
+      const own = (process.rights ?? []).find((r) => r.id === id || r.right === id);
+      const text = typeof own?.description === "string" ? own.description : "";
+      return text || (whys.get(own?.right ?? id) ?? "");
+    },
+    element: (id) =>
+      elements.get(id) ??
+      (id === process.id ? process.name : (guards.get(id) ?? gates.get(id) ?? events.get(id) ?? invokes.get(id) ?? rightNames.get(id) ?? id)),
   };
 }
 
@@ -306,9 +327,26 @@ export function pendingRows(result: SimulationResult, process: ProcessDoc, names
 // ------------------------------------------------------------------ the last step
 
 export interface LastStepLine {
-  kind: "actor" | "refusal" | "transitions" | "guard" | "action" | "sets" | "values" | "note" | "context" | "audit" | "diagnostic" | "incomplete";
+  kind:
+    | "actor"
+    | "refusal"
+    | "verb"
+    | "right"
+    | "transitions"
+    | "guard"
+    | "action"
+    | "sets"
+    | "values"
+    | "note"
+    | "context"
+    | "audit"
+    | "diagnostic"
+    | "incomplete";
   text: string;
   tone: "neutral" | "danger" | "warning" | "success";
+  /** A refusal: the element that refused it, named once (the panel shows it as a link that opens it), and its Why. */
+  element?: { id: string; name: string };
+  why?: string;
 }
 
 /** What one trace entry did, line by line, in the order the engine reports it. */
@@ -328,7 +366,30 @@ export function lastStepLines(entry: StepTrace, names: Names, subjectAttribute: 
       text: L.actsAsLine(names.participant(entry.input.participant), actsAs ? names.actor(actsAs) : null),
       tone: actsAs ? "neutral" : "warning",
     });
-  if (entry.refusal) lines.push({ kind: "refusal", text: L.refused(L.refusals[entry.refusal] ?? entry.refusal), tone: "danger" });
+  if (entry.refusal) {
+    const reason = L.refusals[entry.refusal] ?? entry.refusal;
+    // The refusing element is named once: in the refusal line, as a link the panel adds (`element`), with the right's Why.
+    const by = entry.refusedBy ? { id: entry.refusedBy, name: names.element(entry.refusedBy) } : undefined;
+    lines.push({
+      kind: "refusal",
+      text: L.refused(by ? `${reason}, ${RL.refusedByWord}` : reason),
+      tone: "danger",
+      ...(by ? { element: by, why: names.why(by.id) || undefined } : {}),
+    });
+  }
+  // A verb that was done: said as an event step is (the trace row's words).
+  if (entry.accepted && entry.input?.input === "verb")
+    lines.push({
+      kind: "verb",
+      text: L.didVerb(
+        (builtInVerb(entry.input.verb ?? "")?.displayName ?? labelOfKey(entry.input.verb ?? "")).toLowerCase(),
+        names.actor(entry.actsAs ?? entry.input.actor ?? entry.actor),
+      ),
+      tone: "success",
+    });
+  // The rights that answered, in check order, each once (the refusing one is in the line above).
+  for (const r of (entry.rights ?? []).filter((x) => !entry.refusal || x.right !== entry.refusedBy))
+    lines.push({ kind: "right", text: L.rightLine(names.element(r.right), r.access, names.element(r.lifecycle)), tone: "neutral" });
   const taken = entry.microsteps.flatMap((m) => m.transitions);
   if (taken.length) lines.push({ kind: "transitions", text: L.transitionLine(taken.map(names.transition).join(", ")), tone: "success" });
   for (const g of entry.guards)
@@ -378,7 +439,9 @@ export function inputLabel(input: SimInput, names: Names, filled?: { actor?: str
         ? L.invokeDone(names.invoke(input.invoke))
         : kind === "invoke-error"
           ? L.invokeError(names.invoke(input.invoke))
-          : names.event(input.event);
+          : kind === "verb"
+            ? L.verbInput((builtInVerb(input.verb ?? "")?.displayName ?? labelOfKey(input.verb ?? "")).toLowerCase())
+            : names.event(input.event);
   const actor = input.actor || (input.participant ? filled?.actor : undefined);
   const signer = input.signer || (input.participant ? filled?.signer : undefined);
   // A participant's step reads "approve by SalesApprover, acting as Approver, signed by erin".
@@ -402,6 +465,8 @@ export interface TraceRow {
   ran: boolean;
   accepted: boolean;
   refusal: string | null;
+  /** The element that refused it, by name. */
+  refusedBy: string | null;
   states: string;
 }
 
@@ -410,7 +475,15 @@ export function traceRows(inputs: readonly SimInput[], result: SimulationResult 
   const byIndex = new Map((result?.trace ?? []).map((t) => [t.index, t]));
   const row = (index: number, label: string): TraceRow => {
     const t = byIndex.get(index);
-    return { index, label, ran: !!t, accepted: t?.accepted ?? true, refusal: t?.refusal ?? null, states: (t?.configuration ?? []).map(names.state).join(", ") };
+    return {
+      index,
+      label,
+      ran: !!t,
+      accepted: t?.accepted ?? true,
+      refusal: t?.refusal ?? null,
+      refusedBy: t?.refusedBy ? names.element(t.refusedBy) : null,
+      states: (t?.configuration ?? []).map(names.state).join(", "),
+    };
   };
   // A participant's step also shows the actor the engine worked out for it (`actsAs`) and the signer it filled in.
   const label = (input: SimInput, i: number) => {

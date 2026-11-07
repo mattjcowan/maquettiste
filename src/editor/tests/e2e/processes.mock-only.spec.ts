@@ -231,6 +231,15 @@ test("a process is revealed in its new use folder after its use changes", async 
   await ensureOpen(page, side.locator('[data-key$="/use:lifecycle"]'));
   await side.getByTestId("explorer-row-InvoiceLifecycle").dblclick();
   const editor = page.getByTestId("process-editor");
+  // The seeded lifecycle states rights, and an orchestration holds none (MQ9901): take them out first.
+  await editor.getByRole("tab", { name: "Rights", exact: true }).click();
+  const rights = editor.getByTestId("rights-grid-row");
+  while ((await rights.count()) > 0)
+    await rights
+      .first()
+      .getByRole("button", { name: /^Remove right/ })
+      .click();
+  await editor.getByRole("tab", { name: "States", exact: true }).click();
   await editor.getByTestId("editor-details-toggle").click();
   // The orchestrations folder is not open: changing the use moves the row there, and the selection opens the folder.
   await editor.getByLabel("Use").selectOption("orchestration");

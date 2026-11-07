@@ -6,7 +6,8 @@
 import type { Diagnostic, ModelJson } from "@/api/types";
 import { atPointer, clone } from "@/lib/json";
 import { classifyAttribute } from "@/model/binding";
-import { subjectsOf, type SubjectDoc } from "@/model/process";
+import { newId } from "@/lib/ids";
+import { subjectsOf, uniqueName, type SubjectDoc } from "@/model/process";
 import { builtInVerbs } from "@/model/verbs";
 import type { VerbFix } from "@/verbs/verbFixes";
 
@@ -24,7 +25,9 @@ export type QuickFix =
   /** A fix that reaches the project's verb vocabulary (verbFixes.ts). */
   | VerbFix
   /** A plain update of one document. */
-  | { kind: "update"; id: string; json: ModelJson; label: string };
+  | { kind: "update"; id: string; json: ModelJson; label: string }
+  /** Opens a part of a lifecycle on its tab (no change to the model). */
+  | { kind: "open"; process: string; tab: "events"; node: string; label: string };
 
 /** The rules whose fix is built in the editor as a plain update (the derivation table's last row) or needs two findings of MQ9201. */
 const EDITOR_FIXES = new Set([
@@ -47,6 +50,12 @@ const EDITOR_FIXES = new Set([
   "MQ9801",
   "MQ9802",
   "MQ9803",
+  "MQ9901",
+  "MQ9902",
+  "MQ9903",
+  "MQ9904",
+  "MQ9905",
+  "MQ9906",
   "MQ3116",
 ]);
 
@@ -136,6 +145,62 @@ function removeAt(json: ModelJson, pointer: string): ModelJson | null {
     return next;
   }
   return null;
+}
+
+/** Removes `pointer`, then the list or key it leaves empty (`rights`, or the named list), which would otherwise be written as []. */
+function removeAndTidy(json: ModelJson, pointer: string, tidy: "rights" | "list"): ModelJson | null {
+  const next = removeAt(json, pointer);
+  if (!next) return null;
+  const holder = atPointer(next, parent(pointer));
+  if (Array.isArray(holder) && holder.length === 0) {
+    const key = last(parent(pointer));
+    const owner = atPointer(next, parent(parent(pointer))) ?? next;
+    if (tidy === "rights" || key === "except" || key === "ends") delete (owner as Json)[key];
+  }
+  return next;
+}
+
+/** The quick fixes of MQ9901 to MQ9906 (rights-design.md section 10). Every one is a plain update of the lifecycle, or of the named right. */
+function rightFix(rule: string, element: ModelJson, pointer: string): { json: ModelJson; label: string } | null {
+  const entry = /^(\/rights\/\d+)(\/|$)/.exec(pointer)?.[1];
+  const done = (json: ModelJson | null, label: string) => (json ? { json, label } : null);
+  switch (rule) {
+    case "MQ9901":
+      if (pointer === "/rights" || pointer === "/rightsDefault") return done(removeAt(element, pointer), "Remove the entry");
+      return entry ? done(removeAndTidy(element, entry, "rights"), "Remove the entry") : null;
+    case "MQ9902": {
+      // The last state a right names goes with the right: an empty list would widen it to every state.
+      const list = entry ? (atPointer(element, `${entry}/states`) as unknown[] | undefined) : undefined;
+      if (!entry || !/\/states\/\d+$/.test(pointer)) return null;
+      return list && list.length === 1
+        ? done(removeAndTidy(element, entry, "rights"), "Remove the entry")
+        : done(removeAt(element, pointer), "Remove the state");
+    }
+    case "MQ9903":
+      if (!entry) return null;
+      if (pointer === entry) return done(removeAndTidy(element, entry, "rights"), "Remove the entry");
+      return /\/ends(\/\d+)?$/.test(pointer) ? done(removeAndTidy(element, pointer, "list"), "Remove the entry") : null;
+    case "MQ9904":
+      return entry ? done(removeAndTidy(element, entry, "rights"), "Remove the right") : null;
+    case "MQ9906":
+      return /\/except\/\d+$/.test(pointer) ? done(removeAndTidy(element, pointer, "list"), "Remove it from Except") : null;
+    case "MQ9905": {
+      // Add an allow right for the verb the event names, or `complete` for a human task.
+      const part = atPointer(element, pointer) as Json | undefined;
+      const verb = /^\/events\/\d+$/.test(pointer) ? str(part?.verb) : /\/invoke\/\d+$/.test(pointer) ? "complete" : undefined;
+      if (!verb || element.kind !== "process") return null;
+      const next = clone(element);
+      const rights = (Array.isArray(next.rights) ? next.rights : (next.rights = [])) as Json[];
+      const name = uniqueName(
+        rights.flatMap((r) => (typeof r.name === "string" ? [r.name] : [])),
+        `Allow${verb.replace(/(^|-)([a-z])/g, (_, __, c: string) => c.toUpperCase())}`,
+      );
+      rights.push({ id: newId(), name, access: "allow", verbs: [verb] });
+      return { json: next, label: `Add an allow right for ${verb}` };
+    }
+    default:
+      return null;
+  }
 }
 
 /** The pointer of the set a finding sits on or under (`/actions/<n>/sets/<m>`), or null. */
@@ -232,6 +297,26 @@ function verbFix(rule: string, element: ModelJson, pointer: string, id: string):
 }
 
 /**
+ * The other fixes a finding offers beside its first (rights-design.md section 10): MQ9904 may set the default to deny instead of
+ * removing the right, and MQ9905 may open the event instead of adding an allow right.
+ */
+export function extraQuickFixes(d: Diagnostic, doc: (id: string) => ModelJson | undefined): QuickFix[] {
+  const element = d.elementId ? doc(d.elementId) : undefined;
+  if (!element || !d.elementId || element.kind !== "process") return [];
+  const id = typeof element.id === "string" ? element.id : d.elementId;
+  if (d.rule === "MQ9904") {
+    const json = clone(element);
+    json.rightsDefault = "deny";
+    return [{ kind: "update", id, json, label: "Set the default to deny" }];
+  }
+  if (d.rule === "MQ9905" && /^\/events\/\d+$/.test(d.jsonPointer ?? "")) {
+    const event = str((atPointer(element, d.jsonPointer ?? "") as Json | undefined)?.id);
+    return event ? [{ kind: "open", process: id, tab: "events", node: event, label: "Open the event" }] : [];
+  }
+  return [];
+}
+
+/**
  * The quick fix of a diagnostic, or null when it has none or its arguments cannot be read from the documents.
  * `catalogFix` is the rule's `quickFix` from GET /api/validation/rules; `doc` answers the documents `fixDocuments` named.
  */
@@ -311,6 +396,15 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
       if (element.kind !== "process") return null;
       const json = removeCall(element, pointer);
       return json ? { kind: "update", id, json, label: "Remove the in_state call" } : null;
+    }
+    case "MQ9901":
+    case "MQ9902":
+    case "MQ9903":
+    case "MQ9904":
+    case "MQ9905":
+    case "MQ9906": {
+      const fix = rightFix(d.rule, element, pointer);
+      return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;
     }
     case "MQ9016": {
       if (!pointer.endsWith("/element")) return null;

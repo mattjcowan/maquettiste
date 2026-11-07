@@ -138,6 +138,24 @@ internal static partial class ProcessRules
                 Check(invoke.Actors, node.Pointer + "/invoke/" + N(j) + "/actors", invoke.Id, $"invoke '{invoke.Name}' of process '{process.Name}'");
             }
         }
+
+        // A right's actors and except, at its lifecycle; a named right's at each lifecycle that uses it (rights-design.md decision 7).
+        if (process.Use != ProcessUse.Lifecycle)
+            return;
+        for (var i = 0; i < process.Rights.Count; i++)
+        {
+            var entry = process.Rights[i];
+            var at = "/rights/" + N(i);
+            if (entry.Right is null)
+            {
+                Check(entry.Actors, at + "/actors", entry.Id, $"right '{entry.Name}' of lifecycle '{process.Name}'");
+                Check(entry.Except, at + "/except", entry.Id, $"the except of right '{entry.Name}' of lifecycle '{process.Name}'");
+            }
+            else if (model.Get<Right>(entry.Right) is { } named)
+            {
+                Check([.. named.Actors.Concat(named.Except)], at + "/right", entry.Id, $"named right '{named.Name}', used by lifecycle '{process.Name}'", indexed: false);
+            }
+        }
     }
 
     // Whether an actor from the object stands among a list's actors or is the actor, so no model rule can judge the list (MQ9105).

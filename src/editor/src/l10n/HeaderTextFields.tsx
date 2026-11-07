@@ -21,11 +21,16 @@ export interface HeaderTextFieldsProps {
   /** The sidecar description text when the description lives in a file (shown, not edited). */
   sidecar?: { file: string; text: string } | null;
   rows?: number;
+  /** The plural name has no place for this element (a right). */
+  noPlural?: boolean;
+  /** What the description is called here, when it is not "Description" (a right's Why). */
+  descriptionLabel?: string;
 }
 
 const LABELS: Record<HeaderField, string> = { displayName: "Display name", pluralName: "Plural name", description: "Description" };
 
-export function HeaderTextFields({ id, dom, rec, edit, flush, sidecar, rows = 2 }: HeaderTextFieldsProps) {
+export function HeaderTextFields({ id, dom, rec, edit, flush, sidecar, rows = 2, noPlural, descriptionLabel }: HeaderTextFieldsProps) {
+  const labels = { ...LABELS, ...(descriptionLabel ? { description: descriptionLabel } : {}) };
   const { effective } = useContentLocale();
   const results = useOwnerTranslations(id, effective ? [effective] : []);
   const entries = effective ? (results[0]?.data?.entries ?? []) : [];
@@ -53,7 +58,7 @@ export function HeaderTextFields({ id, dom, rec, edit, flush, sidecar, rows = 2 
         else j[name] = v;
       });
     return (
-      <Field label={LABELS[name]} htmlFor={inputId}>
+      <Field label={labels[name]} htmlFor={inputId}>
         {multiline ? (
           <Textarea id={inputId} value={fallback} onChange={(e) => set(e.target.value)} onBlur={flush} rows={rows} />
         ) : (
@@ -64,12 +69,12 @@ export function HeaderTextFields({ id, dom, rec, edit, flush, sidecar, rows = 2 
   };
   return (
     <>
-      <div className="grid grid-cols-2 gap-2">
+      <div className={noPlural ? "grid grid-cols-1 gap-2" : "grid grid-cols-2 gap-2"}>
         {field("displayName", false)}
-        {field("pluralName", false)}
+        {noPlural ? null : field("pluralName", false)}
       </div>
       {sidecar ? (
-        <Field label="Description" hint={`Kept in ${sidecar.file} next to the model file; edit that file on disk.`}>
+        <Field label={labels.description} hint={`Kept in ${sidecar.file} next to the model file; edit that file on disk.`}>
           <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded-control border border-default bg-app p-2 text-12">{sidecar.text}</pre>
         </Field>
       ) : (

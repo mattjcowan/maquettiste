@@ -1,0 +1,33 @@
+{
+  "kind": "process",
+  "id": "01JRT000000000000000000C03",
+  "name": "Projects",
+  "package": "01JRT000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JRT000000000000000000B03",
+      "entity": "01JRT000000000000000000E02"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JRT000000000000000000S21",
+      "name": "Open"
+    }
+  ],
+  "initial": "01JRT000000000000000000S21",
+  "rights": [
+    {
+      "id": "01JRT000000000000000000R31",
+      "name": "NoDeleteWhileOpen",
+      "access": "deny",
+      "verbs": [
+        "delete"
+      ],
+      "states": [
+        "01JRT000000000000000000S21"
+      ]
+    }
+  ]
+}

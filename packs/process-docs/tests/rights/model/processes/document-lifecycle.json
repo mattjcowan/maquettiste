@@ -1,0 +1,86 @@
+{
+  "kind": "process",
+  "id": "01JRT000000000000000000C01",
+  "name": "DocumentLifecycle",
+  "package": "01JRT000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JRT000000000000000000B01",
+      "entity": "01JRT000000000000000000E01"
+    }
+  ],
+  "rightsDefault": "deny",
+  "events": [
+    {
+      "id": "01JRT000000000000000000V01",
+      "name": "release",
+      "verb": "promote",
+      "actors": [
+        "01JRT000000000000000000K01"
+      ]
+    }
+  ],
+  "states": [
+    {
+      "id": "01JRT000000000000000000S01",
+      "name": "Draft"
+    },
+    {
+      "id": "01JRT000000000000000000S02",
+      "name": "Released"
+    }
+  ],
+  "initial": "01JRT000000000000000000S01",
+  "transitions": [
+    {
+      "id": "01JRT000000000000000000T01",
+      "source": "01JRT000000000000000000S01",
+      "event": "01JRT000000000000000000V01",
+      "targets": [
+        "01JRT000000000000000000S02"
+      ]
+    }
+  ],
+  "rights": [
+    {
+      "id": "01JRT000000000000000000R11",
+      "name": "EveryoneReads",
+      "access": "allow",
+      "verbs": [
+        "read"
+      ]
+    },
+    {
+      "id": "01JRT000000000000000000R12",
+      "name": "AuthorsEditDrafts",
+      "access": "allow",
+      "actors": [
+        "01JRT000000000000000000K01"
+      ],
+      "verbs": [
+        "modify"
+      ],
+      "states": [
+        "01JRT000000000000000000S01"
+      ]
+    },
+    {
+      "id": "01JRT000000000000000000R13",
+      "name": "ReleasedIsReadOnly",
+      "access": "deny",
+      "verbs": [
+        "modify",
+        "delete"
+      ],
+      "states": [
+        "01JRT000000000000000000S02"
+      ],
+      "description": "A released document changes only by revising it."
+    },
+    {
+      "id": "01JRT000000000000000000R14",
+      "right": "01JRT000000000000000000R01"
+    }
+  ]
+}

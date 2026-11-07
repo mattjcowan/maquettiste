@@ -89,6 +89,7 @@ public abstract record ElementBase
 [JsonDerivedType(typeof(Constraint))]
 [JsonDerivedType(typeof(Custom))]
 [JsonDerivedType(typeof(VerbVocabulary))]
+[JsonDerivedType(typeof(Right))]
 public abstract record Element : ElementBase
 {
     /// <summary>

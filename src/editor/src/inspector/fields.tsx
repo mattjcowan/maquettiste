@@ -29,7 +29,7 @@ import { AttributeGrid } from "./AttributeGrid";
 import { DatabaseSchemasSection } from "./DatabaseSchemas";
 import { schemasOf } from "@/model/databaseSchemas";
 import type { Diagnostic } from "@/api/types";
-import { GROUP_LABELS, KIND_LABELS } from "@/model/labels";
+import { GROUP_LABELS, KIND_LABELS, RIGHT_LABELS } from "@/model/labels";
 
 export interface FormProps {
   id: string;
@@ -95,6 +95,7 @@ export function ChipsEditor({
   allowFree,
   onChange,
   empty,
+  whenNone,
 }: {
   label: string;
   values: string[];
@@ -103,12 +104,19 @@ export function ChipsEditor({
   onChange: (values: string[]) => void;
   /** Said when there is nothing to add and nothing chosen (where the choices come from). */
   empty?: string;
+  /** Said beside the add control while nothing is chosen (what an empty list means). */
+  whenNone?: string;
 }) {
   const [adding, setAdding] = useState("");
   const remaining = options.filter((o) => !values.includes(o.value));
   return (
     <Field label={label}>
       <div className="flex flex-wrap items-center gap-1">
+        {!values.length && whenNone ? (
+          <span className="inline-flex h-6 items-center rounded-control border border-default bg-app px-1.5 text-12 text-secondary" data-testid="chips-none">
+            {whenNone}
+          </span>
+        ) : null}
         {values.map((v) => (
           <span key={v} className="inline-flex h-6 items-center gap-1 rounded-control border border-default bg-app px-1.5 text-12">
             {options.find((o) => o.value === v)?.label ?? v}
@@ -341,6 +349,8 @@ export function CommonFields({
           edit={(change) => edit((j) => change(j as Rec))}
           flush={flush}
           rows={3}
+          noPlural={kind === "right"}
+          descriptionLabel={kind === "right" ? RIGHT_LABELS.columns.why : undefined}
           sidecar={
             typeof description === "object" && description !== null ? { file: (description as { file: string }).file, text: doc?.sidecarText ?? "" } : null
           }

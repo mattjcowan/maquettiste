@@ -23,6 +23,7 @@ import {
   verbGroups,
   verbSuggestions,
   verbOperationFiles,
+  isUsed,
   verbUsage,
   verbUsers,
   type OwnVerb,
@@ -323,7 +324,7 @@ export function VerbsSettings() {
   const usedByCell = (key: string) => {
     const used = usage.get(key);
     const text = usageText(used);
-    return used && (used.processes > 0 || used.operations > 0) ? (
+    return isUsed(used) ? (
       <button
         type="button"
         className="text-accent underline focus-visible:outline-2 focus-visible:outline-accent"
@@ -370,7 +371,7 @@ export function VerbsSettings() {
           <tbody>
             {verbs.own.map((v, i) => {
               const used = usage.get(v.key);
-              const inUse = !!used && (used.processes > 0 || used.operations > 0);
+              const inUse = isUsed(used);
               const set = (field: "key" | "displayName" | "description", value: string) =>
                 verbs.edit((d) => {
                   const one = d.verbs![i];

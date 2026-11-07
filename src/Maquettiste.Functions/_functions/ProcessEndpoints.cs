@@ -79,6 +79,33 @@ public static class ProcessEndpoints
         return Answer(await store.VerifyScenariosAsync(id, request!.Scenarios, ct).ConfigureAwait(false), "process", id);
     });
 
+    /// <summary>
+    /// Who can do what in a lifecycle, per state, actor and verb (rights-design.md decision 31): one page of rows. It reads the snapshot and
+    /// never resolves the model.
+    /// </summary>
+    /// <param name="id">The lifecycle id.</param>
+    /// <param name="states">Comma-separated state ids.</param>
+    /// <param name="actors">Comma-separated actor ids.</param>
+    /// <param name="verbs">Comma-separated verb keys.</param>
+    /// <param name="entity">An entity id, one of the lifecycle's subjects.</param>
+    /// <param name="cursor">The cursor of the page (from the previous page's <c>next</c>).</param>
+    /// <param name="limit">The page size, 1 to 1000 (100 by default).</param>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the page, 404 or 400.</returns>
+    [HttpGet("/api/processes/{id}/rights")]
+    public static Task<IResult> Rights(string id, string? states, string? actors, string? verbs, string? entity, string? cursor, string? limit, HttpContext context,
+        ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (!ModelPages.TryParseLimit(limit, out var size, out var limitError))
+            return Api.BadRequest(limitError!);
+        static IReadOnlyList<string> List(string? text) => string.IsNullOrEmpty(text) ? [] : text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var filter = new RightsFilter { States = List(states), Actors = List(actors), Verbs = List(verbs), Entity = string.IsNullOrEmpty(entity) ? null : entity };
+        return Answer(await store.GetRightsAsync(id, filter, cursor, size, ct).ConfigureAwait(false), "process", id);
+    });
+
     /// <summary>A process as an XState machine config, in canonical key order; the header counts the MQ9406 notes.</summary>
     /// <param name="id">The process id.</param>
     /// <param name="format">The format: <c>xstate</c> (the default and only one).</param>

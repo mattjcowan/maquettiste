@@ -12,6 +12,7 @@ import { referencesOf, subElementIds } from "./refs";
 import { bindingDiagnostics } from "./lifecycleRules";
 import { verbDiagnostics, verbGlobalsOf, type VerbGlobals } from "./verbs";
 import { relativeUseDiagnostics } from "./relativeRules";
+import { rightDiagnostics } from "./rightRules";
 import { appliesToEntities, Coverage } from "./coverage";
 import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
 
@@ -39,7 +40,8 @@ export function schemaDiagnostics(entry: ModelEntry): Diagnostic[] {
   const kind = String(entry.json.kind ?? "");
   let validate;
   try {
-    validate = schemaValidator(kind);
+    // The contract names a named right's schema `right-2`: `right` is the lifecycle's entry (rights-design.md section 4).
+    validate = schemaValidator(kind === "right" ? "right-2" : kind);
   } catch {
     return [diag("MQ1002", "error", `/kind enum: '${kind}' is not a model kind`, entry, "/kind")];
   }
@@ -355,6 +357,9 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
     relativeUseDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) =>
       out.push(diag(rule, severity as Diagnostic["severity"], message, entry, pointer, elementId)),
     );
+  // MQ9901 to MQ9906 and MQ3001 between a lifecycle's inline rights (rightRules.ts)
+  if ((kind === "process" || kind === "right") && ctx.all)
+    rightDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
   // MQ9601, MQ9602, MQ9603 and MQ9605: an actor's memberOf and relative and the one system actor (actorRules.ts)
   if (kind === "actor" && ctx.all) out.push(...actorDiagnostics(json, entry, ctx.all()));
   // MQ9001 initial and MQ9201 (process side), as ProcessRules.cs reports them

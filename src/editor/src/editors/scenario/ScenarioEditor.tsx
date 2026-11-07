@@ -3,6 +3,7 @@
 // status (passed, failed, not run) from the verify result.
 import { useState } from "react";
 import { Play, Plus } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useElement, useElements, useIndex } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -14,6 +15,9 @@ import { useScenarioStatuses } from "@/explorer/processApi";
 import { TextField } from "@/inspector/fields";
 import { newId } from "@/lib/ids";
 import { parseValuesText } from "@/model/effects";
+import { useObjectFields } from "../actor/useObjectFields";
+import { describeVerb, verbGroups } from "@/model/verbList";
+import { useVerbs } from "@/verbs/useVerbs";
 import { indexLookup } from "@/model/index";
 import {
   idsOfNames,
@@ -32,11 +36,12 @@ import {
 } from "@/model/process";
 import { domIdOf, EditorLayout, useCodeGenerationTab, useEditorContext, type EditorContext } from "../EditorFrame";
 import { Grid, type GridColumn, type GridOption } from "../process/Grid";
-import { verifyScenario } from "../process/api";
+import { refreshScenario, verifyScenario } from "../process/api";
+import { failureSentence } from "./replayFailure";
 import { useActors, useProblems, rowProblems } from "../process/shared";
 import { ScenarioStatusBadge } from "../process/ScenariosTab";
 import { ObjectsGrid, ParticipantsGrid } from "./ParticipantsGrid";
-import { PARTICIPANT_LABELS as PL } from "@/model/labels";
+import { PARTICIPANT_LABELS as PL, RIGHT_LABELS as RL } from "@/model/labels";
 import { EFFECT_LABELS as EL } from "@/model/effectLabels";
 
 type Rec = Record<string, unknown>;
@@ -97,8 +102,8 @@ export function ScenarioHeader({ ctx }: { ctx: EditorContext }) {
             ctx.flush();
           }}
         >
-          <option value="active">active (the process is still running)</option>
-          <option value="final">final (the process finished)</option>
+          <option value="active">active (still running)</option>
+          <option value="final">final (finished)</option>
         </Select>
       </Field>
     </div>
@@ -125,6 +130,7 @@ function ScenarioBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<ty
 
 function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDoc }) {
   const { store } = useServices();
+  const qc = useQueryClient();
   const processDoc = useElement(scenario.process).data?.json as unknown as ProcessDoc | undefined;
   const { actors, actorNames } = useActors();
   const problems = useProblems(ctx.id, ctx.diagnostics);
@@ -143,7 +149,44 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const valueNames = new Map<string, string>();
   for (const id of chain)
     for (const a of (chainDocs.get(id)?.json as { attributes?: { id: string; name: string }[] } | undefined)?.attributes ?? []) valueNames.set(a.id, a.name);
-  const rows = stepRows(scenario, processDoc, actorNames, valueNames);
+  const verbs = useVerbs();
+  const objectFields = useObjectFields(starts);
+  const usedRights = (processDoc?.rights ?? []).flatMap((r) => (r.right ? [r.right] : []));
+  const namedRights = useElements(usedRights).byId;
+  // What a verb step's link and a refusal point at: relation ends, the process's rights (inline or named) and other lifecycles.
+  const more = new Map<string, string>();
+  for (const f of objectFields.fields) more.set(f.id, f.name);
+  for (const r of processDoc?.rights ?? [])
+    more.set(r.right ?? r.id, r.right ? String((namedRights.get(r.right)?.json as Rec | undefined)?.name ?? "?") : (r.name ?? "?"));
+  // What can refuse a step: this lifecycle, its rights, events, gates and guards.
+  const refusers: GridOption[] = [];
+  if (processDoc) {
+    refusers.push({ value: processDoc.id, label: processDoc.name });
+    for (const r of processDoc.rights ?? []) {
+      const rid = r.right ?? r.id;
+      if (more.get(rid)) refusers.push({ value: rid, label: more.get(rid)! });
+    }
+    for (const e of processDoc.events ?? []) refusers.push({ value: e.id, label: e.name });
+    for (const t of processDoc.transitions ?? []) if (t.gate) refusers.push({ value: t.gate.id, label: t.gate.displayName || t.gate.name });
+    for (const g of processDoc.guards ?? []) refusers.push({ value: g.id, label: g.name });
+  }
+  for (const o of refusers) more.set(o.value, o.label);
+  // A refusing element that is in none of these and not in the model any more reads "(deleted)".
+  for (const step of scenario.steps) {
+    const id = step.expect?.refusedBy;
+    if (id && !more.has(id)) {
+      const found = lookup.byId.get(id);
+      more.set(id, found ? found.displayName || found.name : RL.deleted);
+    }
+  }
+  const rows = stepRows(scenario, processDoc, actorNames, valueNames, more);
+  const verbOptions: GridOption[] = verbGroups("right", verbs.own, verbs.hidden)
+    .filter((g) => g.id !== "move" && g.id !== "signature" && g.id !== "task")
+    .flatMap((g) => g.options.filter((o) => o.key !== "freeze" && o.key !== "thaw").map((o) => ({ value: o.key, label: o.label })));
+  const endOptions: GridOption[] = objectFields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: f.name }));
+  const objectOptions: GridOption[] = (scenario.objects ?? []).map((o) => ({ value: o.id, label: o.name }));
+  const verbSteps = rows.some((r) => r.input === "verb");
+  const refusals = rows.some((r) => r.refusal || r.refusedBy) || verbSteps || !!processDoc?.rights?.length;
   const names = stepNames(processDoc, actorNames);
   const states = processDoc ? [...stateIndex(processDoc).values()].map((i) => ({ id: i.state.id, name: i.path })) : [];
   const events: GridOption[] = (processDoc?.events ?? []).map((e) => ({ value: e.id, label: e.name }));
@@ -162,9 +205,16 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       label: "Event",
       kind: (r) => (r.input === "time" ? "text" : "select"),
       width: "min-w-28",
-      value: (r) => r.on,
-      editValue: (r) => (r.input === "event" ? (step(r)?.event ?? "") : r.input === "time" ? (step(r)?.after ?? "") : (step(r)?.invoke ?? "")),
-      options: (r) => (r.input === "event" ? events : invokes),
+      value: (r) => (r.input === "verb" ? (describeVerb(r.verb, verbs.own)?.label ?? r.verb) : r.on),
+      editValue: (r) =>
+        r.input === "event"
+          ? (step(r)?.event ?? "")
+          : r.input === "time"
+            ? (step(r)?.after ?? "")
+            : r.input === "verb"
+              ? (step(r)?.verb ?? "")
+              : (step(r)?.invoke ?? ""),
+      options: (r) => (r.input === "event" ? events : r.input === "verb" ? verbOptions : invokes),
     },
     ...(scenario.participants?.length
       ? [
@@ -188,19 +238,69 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       editValue: (r) => step(r)?.actor ?? "",
       options: () => [none, ...actors.map((a) => ({ value: a.id, label: a.name }))],
     },
-    { key: "signer", label: "Signer", kind: "text", width: "min-w-20", value: (r) => r.signer },
-    {
-      key: "meaning",
-      label: "Meaning",
-      kind: "select",
-      width: "min-w-20",
-      value: (r) => r.meaning,
-      editValue: (r) => step(r)?.meaning ?? "",
-      options: () => [none, ...meanings],
-    },
-    { key: "reason", label: "Reason", kind: "text", width: "min-w-20", value: (r) => r.reason },
-    { key: "payload", label: "Payload", kind: "text", width: "min-w-28", mono: true, value: (r) => r.payload },
-    { key: "assume", label: "Assumptions", kind: "text", width: "min-w-24", mono: true, value: (r) => r.assume },
+    ...(refusals
+      ? [
+          {
+            key: "refusal",
+            label: RL.refusal,
+            tooltip: RL.expectedRefusalHint,
+            kind: "select" as const,
+            width: "w-24",
+            value: (r: StepRow) => (r.refusal ? (RL.refusalWords[r.refusal] ?? r.refusal) : ""),
+            editValue: (r: StepRow) => step(r)?.expect?.refusal ?? "",
+            options: () => [{ value: "", label: RL.refusalNone }, ...Object.entries(RL.refusalWords).map(([value, label]) => ({ value, label }))],
+          },
+          {
+            key: "refusedBy",
+            label: RL.refusedBy,
+            tooltip: RL.expectedRefusedByHint,
+            kind: "select" as const,
+            width: "w-28",
+            value: (r: StepRow) => r.refusedBy,
+            editValue: (r: StepRow) => step(r)?.expect?.refusedBy ?? "",
+            options: (r: StepRow) => {
+              const current = step(r)?.expect?.refusedBy;
+              // A refuser that no longer exists stays in the list, as "(deleted)", until it is changed.
+              return [
+                { value: "", label: RL.refusalNone },
+                ...refusers,
+                ...(current && !refusers.some((o) => o.value === current) ? [{ value: current, label: more.get(current) ?? RL.deleted }] : []),
+              ];
+            },
+          },
+        ]
+      : []),
+    ...(verbSteps
+      ? [
+          {
+            key: "setValues",
+            label: RL.stepValues,
+            tooltip: RL.stepValuesHint,
+            kind: "text" as const,
+            width: "min-w-28",
+            mono: true,
+            value: (r: StepRow) => r.setValues,
+          },
+          {
+            key: "end",
+            label: RL.linkEnd,
+            kind: "select" as const,
+            width: "min-w-24",
+            value: (r: StepRow) => r.end,
+            editValue: (r: StepRow) => step(r)?.end ?? "",
+            options: () => [none, ...endOptions],
+          },
+          {
+            key: "object",
+            label: RL.linkObject,
+            kind: "select" as const,
+            width: "min-w-24",
+            value: (r: StepRow) => r.object,
+            editValue: (r: StepRow) => step(r)?.object ?? "",
+            options: () => [none, ...objectOptions],
+          },
+        ]
+      : []),
     {
       key: "states",
       label: "Expected states",
@@ -219,6 +319,19 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       mono: true,
       value: (r) => r.values,
     },
+    { key: "signer", label: "Signer", kind: "text", width: "min-w-20", value: (r) => r.signer },
+    {
+      key: "meaning",
+      label: "Meaning",
+      kind: "select",
+      width: "min-w-20",
+      value: (r) => r.meaning,
+      editValue: (r) => step(r)?.meaning ?? "",
+      options: () => [none, ...meanings],
+    },
+    { key: "reason", label: "Reason", kind: "text", width: "min-w-20", value: (r) => r.reason },
+    { key: "payload", label: "Payload", kind: "text", width: "min-w-28", mono: true, value: (r) => r.payload },
+    { key: "assume", label: "Assumptions", kind: "text", width: "min-w-24", mono: true, value: (r) => r.assume },
     {
       key: "status",
       label: "Replay",
@@ -253,7 +366,23 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         if (v !== "event") delete s.event;
         if (v !== "time") delete s.after;
         if (v !== "invoke-done" && v !== "invoke-error") delete s.invoke;
-      } else if (key === "on") setOpt(s, row.input === "event" ? "event" : row.input === "time" ? "after" : "invoke", v.trim());
+        if (v !== "verb") {
+          delete s.verb;
+          delete s.values;
+          delete s.end;
+          delete s.object;
+        } else if (!s.verb && verbOptions[0]) s.verb = verbOptions.find((o) => o.value === "modify")?.value ?? verbOptions[0].value;
+      } else if (key === "on") setOpt(s, row.input === "event" ? "event" : row.input === "time" ? "after" : row.input === "verb" ? "verb" : "invoke", v.trim());
+      else if (key === "refusal" || key === "refusedBy") {
+        // A refusal expected is a refused step: the reason or the refuser also says so.
+        const expect = { ...(s.expect ?? {}) } as NonNullable<StepDoc["expect"]>;
+        if (v) {
+          expect[key] = v;
+          expect.accepted = false;
+        } else delete expect[key];
+        setOpt(s, "expect", expect);
+      } else if (key === "end" || key === "object") setOpt(s, key, v.trim());
+      else if (key === "setValues") setOpt(s, "values", parseValuesText(v, valueNames).values);
       else if (key === "participant" || key === "actor" || key === "meaning" || key === "signer" || key === "reason") setOpt(s, key, v.trim());
       else if (key === "payload") setOpt(s, "payload", parseMapText(v, names.attrs));
       else if (key === "assume") {
@@ -276,6 +405,19 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
     ctx.flush();
   };
 
+  // The same as Shift+R on the Scenarios tab: the steps' expectations become what the replay does, then the replay runs again.
+  const updateExpectations = async () => {
+    setBusy(true);
+    try {
+      const refused = await refreshScenario(qc, store, scenario.id);
+      if (refused) store.getState().notify(`${RL.updateExpectations}: ${refused}`, "error");
+    } finally {
+      setBusy(false);
+    }
+    setFailure(null);
+    await replayNow();
+  };
+
   const replayNow = async () => {
     setBusy(true);
     setFailure(null);
@@ -284,7 +426,13 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       const r = result.results[0];
       // The engine words some findings with their own "Step N"; the step is named once, up front.
       if (r?.failure)
-        setFailure(`${r.failure.step < 0 ? "Outcome" : `Step ${r.failure.step + 1}`} (${r.failure.rule}): ${r.failure.message.replace(/^Step \d+:?\s*/i, "")}`);
+        setFailure(
+          failureSentence(
+            r.failure,
+            scenario.steps[r.failure.step],
+            (id) => more.get(id) ?? lookup.byId.get(id)?.displayName ?? lookup.byId.get(id)?.name ?? null,
+          ),
+        );
     } catch (e) {
       store.getState().notify(`Replay ${scenario.name}: ${e instanceof Error ? e.message : String(e)}`, "error");
     } finally {
@@ -300,9 +448,20 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         </Button>
         <ScenarioStatusBadge status={replay.status} failedAt={replay.failedAt} />
         {failure ? (
-          <span className="min-w-0 flex-1 text-12 text-danger" role="status" title={failure} data-testid="replay-failure">
-            {failure}
-          </span>
+          <>
+            <span className="min-w-0 flex-1 whitespace-normal break-words text-12 text-danger" role="status" data-testid="replay-failure">
+              {failure}
+            </span>
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() => void updateExpectations()}
+              title={RL.updateExpectationsTip}
+              data-testid="scenario-update-expectations"
+            >
+              {RL.updateExpectations}
+            </Button>
+          </>
         ) : null}
       </div>
       <Grid

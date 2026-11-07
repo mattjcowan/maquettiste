@@ -1,0 +1,11 @@
+{
+  "$schema": "../../.schema/v1/right.json",
+  "kind": "right",
+  "id": "01JRGT00000000000000009001",
+  "name": "ClosedStaysClosed",
+  "access": "deny",
+  "verbs": [
+    "delete"
+  ],
+  "description": "A closed record is kept as it was."
+}

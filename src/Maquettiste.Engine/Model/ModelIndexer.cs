@@ -115,6 +115,7 @@ internal static class ModelIndexer
         _ when type == typeof(ProcessGate) => "gate",
         _ when type == typeof(GateMeaning) => "meaning",
         _ when type == typeof(ProcessSubject) => "subject",
+        _ when type == typeof(ProcessRight) => "process-right",
         _ when type == typeof(ScenarioStep) => "step",
         _ when type == typeof(ScenarioObject) => "object",
         _ when type == typeof(ScenarioParticipant) => "participant",
@@ -135,7 +136,7 @@ internal static class ModelIndexer
     {
         "attribute", "enum-member", "end", "column", "category", "schema", "reference-field", "row", "state", "transition", "event",
         "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key", "operation-member", "outcome", "error", "member",
-        "parameter", "subject", "object", "participant", "holding", "verb", "set",
+        "parameter", "subject", "object", "participant", "holding", "verb", "set", "process-right",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
@@ -612,7 +613,10 @@ internal static class ModelIndexer
         return map.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
-    /// <summary>The distinct verb keys a process's events and transitions name, sorted ordinally; <see langword="null"/> when none.</summary>
+    /// <summary>
+    /// The distinct verb keys a process's events, transitions and inline rights name (rights-design.md section 8), sorted ordinally;
+    /// <see langword="null"/> when none. A use of a named right adds nothing here: the named right's row lists its verbs.
+    /// </summary>
     internal static IReadOnlyList<string>? VerbsOf(Process process)
     {
         SortedSet<string>? keys = null;
@@ -628,7 +632,39 @@ internal static class ModelIndexer
                 (keys ??= new(StringComparer.Ordinal)).Add(verb);
         }
 
+        foreach (var right in process.Rights)
+        {
+            foreach (var verb in right.Verbs)
+                (keys ??= new(StringComparer.Ordinal)).Add(verb);
+        }
+
         return keys is null ? null : [.. keys];
+    }
+
+    /// <summary>The distinct verb keys a list names, sorted ordinally; <see langword="null"/> when none.</summary>
+    private static IReadOnlyList<string>? SortedKeys(IEnumerable<string> keys)
+    {
+        var sorted = new SortedSet<string>(keys, StringComparer.Ordinal);
+        return sorted.Count == 0 ? null : [.. sorted];
+    }
+
+    /// <summary>A right's access as its file writes it.</summary>
+    internal static string AccessName(RightAccess access) => access == RightAccess.Deny ? "deny" : "allow";
+
+    /// <summary>
+    /// A process row's members for the rights naming key (rights-design.md section 6), each <see langword="null"/> unless the process writes
+    /// <c>rights</c> or <c>rightsDefault</c>: its default as written, the verbs its inline deny rights name, and the named rights its uses name.
+    /// </summary>
+    private static ElementSummary WithRights(ElementSummary row, Element element)
+    {
+        if (element is not Process process || (process.Rights.Count == 0 && process.RightsDefault is null))
+            return row;
+        return row with
+        {
+            RightsDefault = process.RightsDefault is { } written ? AccessName(written) : null,
+            DenyVerbs = SortedKeys(process.Rights.Where(r => !r.IsUse && r.Access == RightAccess.Deny).SelectMany(r => r.Verbs)),
+            RightUses = SortedKeys(process.Rights.Select(r => r.Right).OfType<string>()),
+        };
     }
 
     /// <summary>
@@ -779,7 +815,7 @@ internal static class ModelIndexer
     /// <summary>The index row of an element (E4 and E5 members included; a custom element's type and member count,
     /// next-phase-2-design.md section 4.2).</summary>
     private static ElementSummary Summarize(Element element, string hash, string path, PropertySchemaSet schemas, IReadOnlyList<string>? actors) =>
-        new(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, hash, path, element.Category, element.Stereotypes,
+        WithRights(new(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, hash, path, element.Category, element.Stereotypes,
             DisplayName: element.DisplayName,
             Database: element switch
             {
@@ -843,7 +879,14 @@ internal static class ModelIndexer
             Relative: element is Actor { Relative: { } relative } ? relative.Form : null,
             Participants: element is Scenario { Participants.Count: > 0 } cast ? cast.Participants.Count : null,
             Verb: element is Operation { Verb: { } operationVerb } ? operationVerb : null,
-            Verbs: element is Process verbProcess ? VerbsOf(verbProcess) : null);
+            Verbs: element switch
+            {
+                Process verbProcess => VerbsOf(verbProcess),
+                Right namedRight => SortedKeys(namedRight.Verbs),
+                _ => null,
+            },
+            Rights: element is Process { Rights.Count: > 0 } withRights ? withRights.Rights.Count : null,
+            Access: element is Right access ? AccessName(access.Access) : null), element);
 
     /// <summary>The entities a process's entity entries name, in entry order (a stereotype entry is not counted).</summary>
     private static List<string> EntityEntries(Process process) => [.. process.Subjects.Select(s => s.Entity).OfType<string>()];
@@ -1295,6 +1338,17 @@ internal static class ModelIndexer
                         // An own verb's key is a reference to its id (verbs-design.md decision 7); a built-in or unknown key is none (MQ9701).
                         if (ownVerbs.TryGetValue(verbKey, out var ownVerb))
                             References.Add(new ReferenceInfo(ownerId, fromId, childPointer, property.Name, ownVerb.Id));
+                        break;
+                    case PropertyRole.VerbKey when child is IEnumerable<string> verbKeys:
+                        // A list of verb keys (a right's verbs, rights-design.md decision 5): each own verb's key is a reference, as above.
+                        var v = 0;
+                        foreach (var item in verbKeys)
+                        {
+                            if (ownVerbs.TryGetValue(item, out var listed))
+                                References.Add(new ReferenceInfo(ownerId, fromId, childPointer + "/" + v, property.Name, listed.Id));
+                            v++;
+                        }
+
                         break;
                     case PropertyRole.TypeRef when child is TypeRef { Ref: { } typeId }:
                         References.Add(new ReferenceInfo(ownerId, fromId, childPointer + "/ref", property.Name, typeId));

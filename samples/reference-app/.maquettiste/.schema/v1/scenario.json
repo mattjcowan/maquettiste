@@ -358,12 +358,16 @@
         "event",
         "invoke",
         "after",
+        "verb",
         "participant",
         "actor",
         "signer",
         "meaning",
         "reason",
         "payload",
+        "values",
+        "end",
+        "object",
         "assume",
         "expect",
         "description"
@@ -373,11 +377,13 @@
           "$ref": "common.json#/$defs/id"
         },
         "input": {
+          "description": "event, time, invoke-done, invoke-error, or verb: a participant does a verb to the scenario's subject or to one of its links.",
           "enum": [
             "event",
             "time",
             "invoke-done",
-            "invoke-error"
+            "invoke-error",
+            "verb"
           ],
           "default": "event"
         },
@@ -390,6 +396,10 @@
         "after": {
           "description": "An ISO 8601 duration to advance the clock by, for input time.",
           "type": "string"
+        },
+        "verb": {
+          "description": "For input verb: the verb done, an object, link or own verb (MQ9305). Moves, signatures and task completion are event and invoke-done steps.",
+          "$ref": "common.json#/$defs/verbRef"
         },
         "participant": {
           "description": "The id of the scenario's participant that acts; the engine works out the actor it acts as unless actor is given.",
@@ -419,6 +429,24 @@
           },
           "default": {}
         },
+        "values": {
+          "description": "For a modify verb step on the subject: the values it sets, by attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them.",
+          "type": "object",
+          "propertyNames": {
+            "$ref": "common.json#/$defs/id"
+          },
+          "additionalProperties": {
+            "description": "A value of the attribute's type."
+          }
+        },
+        "end": {
+          "description": "For a verb step on a link: the id of the subject's relation end the link goes through. Absent, the verb acts on the subject.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "object": {
+          "description": "With end: the id of the scenario object at the link's other end, linked to the subject through end except for connect (MQ9305).",
+          "$ref": "common.json#/$defs/id"
+        },
         "assume": {
           "description": "Results for guards without an expression, by guard id.",
           "type": "object",
@@ -435,6 +463,8 @@
           "type": "object",
           "x-order": [
             "accepted",
+            "refusal",
+            "refusedBy",
             "states",
             "context",
             "values"
@@ -444,6 +474,23 @@
               "description": "false records a refusal.",
               "type": "boolean",
               "default": true
+            },
+            "refusal": {
+              "description": "With accepted false: why the step is refused, the first check that failed (MQ9308).",
+              "enum": [
+                "no-transition",
+                "guard",
+                "actor",
+                "gate-signer",
+                "gate-repeat",
+                "gate-reason",
+                "right",
+                "default"
+              ]
+            },
+            "refusedBy": {
+              "description": "With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy (MQ9308).",
+              "$ref": "common.json#/$defs/id"
             },
             "states": {
               "description": "The active atomic states, in document order.",

@@ -457,6 +457,10 @@ internal sealed class ValidationContext
             case Actor actor when actor.Name.Length > 0:
                 yield return ("actor|" + actor.Name, "actors");
                 break;
+            // A named right's name is unique in its package (rights-design.md decision 29).
+            case Right right when right.Name.Length > 0:
+                yield return ("right|" + right.Package + "|" + right.Name, "named rights of the same package");
+                break;
             // A custom element's name is unique among the elements of its type in one package (next-phase-2-design.md section 4.2).
             case Custom custom when custom.Name.Length > 0:
                 yield return ("custom|" + custom.Type + "|" + custom.Package + "|" + custom.Name, "custom elements of type " + custom.Type + " in the same package");

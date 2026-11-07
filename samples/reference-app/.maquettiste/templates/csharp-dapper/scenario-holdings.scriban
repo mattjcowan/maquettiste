@@ -1,0 +1,56 @@
+{{-
+# The held actors of the scenario tests' participants (rights-design.md section 9), written only when the project uses rights and the
+# testsFolder parameter names a folder: ScenarioHoldings answers each command with the actors its step's participant holds with no
+# context. The generated test sets Current before each send and clears it after; ScenarioHost (the team's file) registers it once.
+include "_csharp.scriban"
+include "_process.scriban"
+if uses_rights() && pack.params.testsFolder != ""
+-}}
+{{- capture content -}}
+{{ header() }}
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using {{ dispatch_ns() }};
+using {{ runtime_ns() }};
+
+namespace {{ base_ns }};
+
+/// <summary>
+/// What a scenario step's participant holds: its actor and its holdings with no context. Register it once in ScenarioHost, in place of
+/// the CallerHoldings stub: pass <c>new ScenarioHoldings()</c> to each command handler (or register it as the container's
+/// <see cref="ICallerHoldings"/>). A test whose step depends on a held actor fails until then, and its message says so.
+/// </summary>
+public sealed class ScenarioHoldings : ICallerHoldings
+{
+    private static readonly AsyncLocal<Holder?> Step = new();
+
+    /// <summary>The actors the current step's participant holds; null between steps. Each test sets it before a send and clears it after.</summary>
+    public static IReadOnlyList<string>? Current
+    {
+        get => Step.Value?.Actors;
+        set => Step.Value = value is null ? null : new Holder(value);
+    }
+
+    /// <summary>Whether a command handler asked since <see cref="Current"/> was set.</summary>
+    public static bool Asked => Step.Value?.Asked == true;
+
+    /// <inheritdoc/>
+    public ValueTask<IReadOnlyList<string>> HeldAsync(ProcessEnvelope envelope, CancellationToken cancellationToken)
+    {
+        if (Step.Value is not { } holder)
+            return ValueTask.FromResult<IReadOnlyList<string>>([]);
+        holder.Asked = true;
+        return ValueTask.FromResult(holder.Actors);
+    }
+
+    private sealed class Holder(IReadOnlyList<string> actors)
+    {
+        public IReadOnlyList<string> Actors { get; } = actors;
+
+        public bool Asked { get; set; }
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.testsFolder "ScenarioHoldings.cs") content -}}
+{{- end -}}

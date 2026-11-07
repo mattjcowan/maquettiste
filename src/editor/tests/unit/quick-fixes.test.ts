@@ -199,6 +199,10 @@ describe("the mock's process quick-fix operations", () => {
     // In this scenario the invoice's lifecycle is in the one-subject form, and the entity does not name it.
     expect(run([{ op: "set-lifecycle", id: INVOICE, target: INVOICE_LIFECYCLE }])).toBe("saved");
     expect(model.get(INVOICE_LIFECYCLE)!.json).toMatchObject({ use: "lifecycle", subject: INVOICE });
+    // The seeded lifecycle states rights, and demoting keeps them as the engine does: MQ9901 refuses it until they are removed.
+    expect(run([{ op: "set-lifecycle", id: INVOICE, target: PURCHASE_APPROVAL }])).toBe("invalid");
+    const { rights: _r, rightsDefault: _d, ...plain } = model.get(INVOICE_LIFECYCLE)!.json as Record<string, unknown>;
+    expect(model.save(INVOICE_LIFECYCLE, plain as never, model.get(INVOICE_LIFECYCLE)!.hash).outcome).toBe("saved");
     expect(run([{ op: "set-lifecycle", id: INVOICE, target: PURCHASE_APPROVAL }])).toBe("saved");
     expect(model.get(INVOICE_LIFECYCLE)!.json).toMatchObject({ use: "orchestration", subject: INVOICE });
     expect(model.get(INVOICE_LIFECYCLE)!.json).not.toHaveProperty("boundAttribute");
@@ -239,7 +243,7 @@ describe("applying a quick fix", () => {
     const { queryClient, store, drafts, undo } = api.services;
     const fix = await freshQuickFix(drafts, diag("MQ9001", PURCHASE_APPROVAL, "/initial"), "set-initial");
     expect(fix).toMatchObject({ op: "set-initial", target: "01JQSTA0000000000000000101" });
-    if (!fix || fix.kind === "sync-enum" || fix.kind === "sync-codes" || fix.kind === "verb") throw new Error("expected an operation");
+    if (!fix || fix.kind === "sync-enum" || fix.kind === "sync-codes" || fix.kind === "verb" || fix.kind === "open") throw new Error("expected an operation");
     expect(await applyQuickFix(queryClient, store, fix, "01JQSTA0000000000000000110")).toBeNull();
     expect((api.backend.model.get(PURCHASE_APPROVAL)!.json as Json).initial).toBe("01JQSTA0000000000000000110");
     expect(store.getState().undo.at(-1)?.label).toBe("Set initial");
@@ -250,7 +254,7 @@ describe("applying a quick fix", () => {
   it("refreshes a scenario's expectations as one undo step", async () => {
     const { queryClient, store, drafts } = api.services;
     const fix = await freshQuickFix(drafts, diag("MQ9302", QUICK_APPROVAL, "/steps/1/expect/states"), "refresh-scenario");
-    if (!fix || fix.kind === "sync-enum" || fix.kind === "sync-codes" || fix.kind === "verb") throw new Error("expected an operation");
+    if (!fix || fix.kind === "sync-enum" || fix.kind === "sync-codes" || fix.kind === "verb" || fix.kind === "open") throw new Error("expected an operation");
     expect(await applyQuickFix(queryClient, store, fix)).toBeNull();
     expect(store.getState().undo.at(-1)).toMatchObject({ label: "Update expectations from replay", ids: [QUICK_APPROVAL] });
   });

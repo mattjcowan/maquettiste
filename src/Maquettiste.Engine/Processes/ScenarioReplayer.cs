@@ -113,16 +113,28 @@ public sealed record ScenarioFailure(int Step, string Rule, string Message, Json
 public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOnlyList<StepTrace> Steps, IReadOnlyList<Diagnostic> Diagnostics, bool Complete,
     bool Final, ScenarioFailure? Failure)
 {
+    /// <summary>
+    /// Whether the project uses rights (rights-design.md decision 28): then a refused step's expectations record its refusal and the element
+    /// that refused it. Otherwise they record them only where the scenario already expects them.
+    /// </summary>
+    public bool UsesRights { get; init; }
+
     /// <summary>Whether the scenario ran to the end and every expectation held.</summary>
     public bool Passed => Complete && Failure is null && !Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error);
 
     /// <summary>The expectations the replay gives: one per step that ran, and the outcome.</summary>
     /// <returns>The step expectations and the outcome.</returns>
     public (IReadOnlyList<StepExpectation> Steps, ScenarioOutcome Outcome) Observed() =>
-        ([.. Steps.Select(t => new StepExpectation
+        ([.. Steps.Select((t, i) =>
             {
-                Accepted = t.Accepted, States = t.Configuration, Context = t.Changed,
-                Values = t.ValuesChanged ?? ImmutableDictionary<string, JsonElement>.Empty,
+                var expected = i < Scenario.Steps.Count ? Scenario.Steps[i].Expect : null;
+                return new StepExpectation
+                {
+                    Accepted = t.Accepted, States = t.Configuration, Context = t.Changed,
+                    Values = t.ValuesChanged ?? ImmutableDictionary<string, JsonElement>.Empty,
+                    Refusal = !t.Accepted && (UsesRights || expected?.Refusal is not null) ? t.Refusal : null,
+                    RefusedBy = !t.Accepted && (UsesRights || expected?.RefusedBy is not null) ? t.RefusedBy : null,
+                };
             })],
             Final ? ScenarioOutcome.Final : ScenarioOutcome.Active);
 }
@@ -224,7 +236,7 @@ public static class ScenarioReplayer
             }
         }
 
-        return new ScenarioReplay(scenario, start, steps, diagnostics, complete, interpreter.IsFinal, failure);
+        return new ScenarioReplay(scenario, start, steps, diagnostics, complete, interpreter.IsFinal, failure) { UsesRights = RightsEvaluator.Of(runtime.Model).Uses };
 
         void Report(StepTrace trace, string pointer)
         {
@@ -249,6 +261,19 @@ public static class ScenarioReplayer
                         ? $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}): {refusedAs}, but expect.accepted is true; fix the step's participant, or set accepted to false."
                         : $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}), but expect.accepted is true; fix the step's input (event, actor, signer, reason or assume), or set accepted to false.";
                 first ??= Fail("MQ9301", message, expect.Accepted, trace.Accepted, pointer + "/expect/accepted");
+            }
+
+            // Why it was refused, and what refused it (rights-design.md decision 26): each only when the step expects it.
+            if (!expect.Accepted && !trace.Accepted
+                && ((expect.Refusal is { } refusal && !string.Equals(refusal, trace.Refusal, StringComparison.Ordinal))
+                    || (expect.RefusedBy is { } refusedBy && !string.Equals(refusedBy, trace.RefusedBy, StringComparison.Ordinal))))
+            {
+                var field = expect.Refusal is not null && !string.Equals(expect.Refusal, trace.Refusal, StringComparison.Ordinal) ? "refusal" : "refusedBy";
+                var message = $"{At(i)}{Describe(c, step)} was refused ({trace.Refusal}{(trace.RefusedBy is { } by ? " by " + Named(runtime.Model, by) : "")}), but expect gives "
+                    + $"{(expect.Refusal is { } r ? "refusal " + r : "")}{(expect.Refusal is not null && expect.RefusedBy is not null ? " and " : "")}"
+                    + $"{(expect.RefusedBy is { } b ? "refusedBy " + Named(runtime.Model, b) : "")}; fix the step, the chart or the rights, or update the expectations from a replay.";
+                first ??= Fail("MQ9308", message, new { refusal = expect.Refusal, refusedBy = expect.RefusedBy }, new { refusal = trace.Refusal, refusedBy = trace.RefusedBy },
+                    pointer + "/expect/" + field);
             }
 
             if (expect.States.Count > 0 && !expect.States.SequenceEqual(trace.Configuration, StringComparer.Ordinal))
@@ -291,7 +316,10 @@ public static class ScenarioReplayer
     internal static StatechartInterpreter Interpreter(Scenario scenario, StatechartModel chart, ProcessRuntime runtime)
     {
         var row = ScenarioObjects.Row(runtime.Model, chart.Process, scenario.Objects, scenario.Subject, out var notes);
-        return new(chart, runtime.Options(scenario.Id) with { Subject = row, StateNotes = notes.Count > 0 ? notes : null });
+        return new(chart, runtime.Options(scenario.Id) with
+        {
+            Subject = row, StateNotes = notes.Count > 0 ? notes : null, Rights = new RunRights(runtime, chart.Process, ScenarioCast.Of(scenario)),
+        });
     }
 
     // MQ9305: fields the interpreter cannot judge without the model (payload keys and values, meanings); the interpreter itself reports
@@ -300,6 +328,8 @@ public static class ScenarioReplayer
     {
         if (Participants.CheckStep(runtime.Model, chart.Process, cast, step) is { } participant)
             return (At(index) + participant.Message, participant.Field);
+        if (VerbStepFields.Check(runtime, chart.Process, cast, step) is { } verbStep)
+            return (At(index) + verbStep.Message, verbStep.Field);
         if (step.Input != StepInput.Event || step.Event is null || !chart.Events.TryGetValue(step.Event, out var ev))
             return null;
         var gates = chart.Transitions.Where(t => t.Trigger == TransitionTrigger.Event && string.Equals(t.Transition.Event, step.Event, StringComparison.Ordinal))
@@ -328,8 +358,15 @@ public static class ScenarioReplayer
         StepInput.Time => "advancing the clock by " + step.After,
         StepInput.InvokeDone or StepInput.InvokeError => (step.Input == StepInput.InvokeDone ? "completing " : "failing ")
             + (step.Invoke is not null && chart.Invokes.TryGetValue(step.Invoke, out var i) ? "'" + i.Invoke.Name + "'" : "the invoke"),
+        StepInput.Verb => "verb '" + step.Verb + "'" + (step.End is null ? "" : " on a link"),
         _ => "event " + (step.Event is not null && chart.Events.TryGetValue(step.Event, out var e) ? "'" + e.Name + "'" : "'" + step.Event + "'"),
     };
+
+    // An element's name and id for messages, or the id when the model has no element by it.
+    private static string Named(ModelSnapshot model, string id) =>
+        model.TryGetEntry(id, out var entry) && model.GetDocument(entry.OwnerId) is { } document
+            ? (string.Equals(entry.OwnerId, id, StringComparison.Ordinal) ? document.Element.Name : document.Element.Name + "/" + id) + " (" + id + ")"
+            : id;
 
     private static string Paths(StatechartModel chart, IEnumerable<string> states)
     {

@@ -96,6 +96,43 @@ public sealed class RProcess : RElement
 
     /// <summary>The root's initial state; <see langword="null"/> only for a process without states (invalid).</summary>
     public RState? Initial { get; internal set; }
+
+    /// <summary>
+    /// A lifecycle's rights in file order (rights-design.md section 6): each inline right's entry, which shares the right's id, and each use
+    /// of a named right. An entry in neither form, or a use whose named right does not resolve, is left out (MQ9901, MQ2001). Empty for a
+    /// process that is no lifecycle. The list keys on the process's file and on each named right it uses.
+    /// </summary>
+    public RList<RRightUse> Rights { get; internal set; } = RList<RRightUse>.Empty;
+
+    /// <summary>What the lifecycle answers when no right of its own holds (rights-design.md decision 9): <c>deny</c> when its file says so, else <c>allow</c>.</summary>
+    public string RightsDefault { get; internal set; } = "allow";
+
+    /// <summary>
+    /// The lifecycles, other than this process, that govern one of its subjects and could say no to an object, link or own verb its events
+    /// or rights name (rights-design.md section 6), by name then id. Filled for lifecycles and for orchestrations with subjects, only in a
+    /// project that uses rights; empty otherwise. It keys on the process's file and the rights naming key, and in a project that uses
+    /// rights also on the named rights the process uses and on what decides which lifecycles govern each subject's entity.
+    /// </summary>
+    public RList<RMayRefuse> MayRefuse { get; internal set; } = RList<RMayRefuse>.Empty;
+
+    /// <summary>
+    /// "Who can do what" in a lifecycle (rights-design.md decision 31): for each atomic state in document order, each actor its rights,
+    /// events, human tasks and gates name (by name, then everyone else) and each verb its rights and events name (by key), the answer, with
+    /// one cell per entity where answers differ by entity. Filled for lifecycles only in a project that uses rights; empty otherwise. It keys
+    /// on the process's file and the rights naming key, and in a project that uses rights also on the named rights it uses, every actor
+    /// file, the verb vocabulary, what decides which lifecycles govern each subject's entity, and each lifecycle of <see cref="MayRefuse"/>
+    /// with the named rights it uses. Its rows are worked out on first read, once.
+    /// </summary>
+    public RList<RAccessCell> AccessGrid
+    {
+        get => AccessGridSource?.Value ?? _accessGrid;
+        internal set => _accessGrid = value;
+    }
+
+    private RList<RAccessCell> _accessGrid = RList<RAccessCell>.Empty;
+
+    /// <summary>The grid's rows, worked out on first read (<see cref="AccessGrid"/>); <see langword="null"/> when there are none to work out.</summary>
+    internal Lazy<RList<RAccessCell>>? AccessGridSource { get; set; }
 }
 
 /// <summary>The members common to the nodes of a process: states, transitions, events, guards, actions, invokes, gates, meanings.</summary>
@@ -567,6 +604,12 @@ public sealed class RActor : RElement
 
     /// <summary>The gates the actor may sign, in process order then transition priority.</summary>
     public RList<RGate> Gates { get; internal set; } = RList<RGate>.Empty;
+
+    /// <summary>
+    /// The rights that name the actor directly, in <c>actors</c> or <c>except</c> (rights-design.md section 6): the named rights in
+    /// <see cref="ResolvedModel.Rights"/> order, then the inline rights in process order and file order. It keys on the actor's referrers.
+    /// </summary>
+    public RList<RRight> Rights { get; internal set; } = RList<RRight>.Empty;
 }
 
 /// <summary>A resolved scenario (phase-3-design.md section 2.4): a recorded input sequence of one process.</summary>
@@ -747,6 +790,24 @@ public sealed class RStep : RObject
     /// <summary>Results for guards without an expression, by guard name (by id when the guard does not resolve).</summary>
     public IReadOnlyDictionary<string, object?> Assume { get; internal set; } = FrozenDictionary<string, object?>.Empty;
 
+    /// <summary>
+    /// For a <c>verb</c> step (rights-design.md decision 25): the verb the participant does to the subject or one of its links;
+    /// <see langword="null"/> for other steps, or a key that names no verb.
+    /// </summary>
+    public RVerb? Verb { get; internal set; }
+
+    /// <summary>
+    /// For a <c>modify</c> verb step on the subject: the values it sets, by attribute name (by id when the attribute does not resolve), as
+    /// plain values; empty when the file gives none.
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> Values { get; internal set; } = FrozenDictionary<string, object?>.Empty;
+
+    /// <summary>For a verb step on a link: the subject's relation end the link goes through; <see langword="null"/> for the subject itself.</summary>
+    public REnd? End { get; internal set; }
+
+    /// <summary>With <see cref="End"/>: the scenario object at the link's other end, when the file names one of the scenario's.</summary>
+    public RScenarioObject? Object { get; internal set; }
+
     /// <summary>What is expected after the step; <see langword="null"/> when the step checks nothing.</summary>
     public RExpectation? Expect { get; internal set; }
 
@@ -784,6 +845,13 @@ public sealed class RStepTrace
 
     /// <summary>For a step with a participant, the id of the actor it acted as (<see cref="RStep.ActsAs"/>).</summary>
     internal string? ActsAs { get; set; }
+
+    /// <summary>
+    /// For a step with a participant, the actors from the object it satisfied when the step ran (rights-design.md decision 24), by name then
+    /// id: the object's owner, an actor reached by a path, or a member of a context it holds a role in. Empty otherwise. Generated code that
+    /// asks the rights check for a verb step answers its resolver from these.
+    /// </summary>
+    public IReadOnlyList<RActor> ObjectActors { get; internal set; } = [];
 }
 
 /// <summary>What a scenario step expects.</summary>
@@ -791,6 +859,18 @@ public sealed class RExpectation
 {
     /// <summary>Whether the input is accepted; <see langword="false"/> records a refusal.</summary>
     public bool Accepted { get; internal set; } = true;
+
+    /// <summary>
+    /// For a refused step: why it is expected to be refused (rights-design.md decision 26), such as <c>right</c>, <c>default</c>,
+    /// <c>actor</c> or <c>guard</c>; <see langword="null"/> when the file expects none.
+    /// </summary>
+    public string? Refusal { get; internal set; }
+
+    /// <summary>
+    /// For a refused step: the id of the element expected to refuse it (rights-design.md decision 12), such as a right, a lifecycle, an event
+    /// or a gate; <see langword="null"/> when the file expects none.
+    /// </summary>
+    public string? RefusedBy { get; internal set; }
 
     /// <summary>The expected active atomic states, in document order.</summary>
     public RList<RState> States { get; internal set; } = RList<RState>.Empty;

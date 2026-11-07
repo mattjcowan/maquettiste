@@ -650,7 +650,7 @@
   {
     "id": "MQ3102",
     "defaultSeverity": "error",
-    "description": "An expression's path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a member path outside a rule condition, a payload attribute some using event lacks, a context attribute named event, under which a process guard's condition reads the payload, or an overlay's column named like an attribute of its entity, which text reads as the attribute.",
+    "description": "An expression's path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a member path outside a rule condition, a payload attribute some using event lacks, a context attribute named event, under which a process guard's condition reads the payload, the context or a payload in a right's condition, a path in a named right's condition that the subjects of a lifecycle using it do not hold (reported at the use), or an overlay's column named like an attribute of its entity, which text reads as the attribute.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true
@@ -666,7 +666,7 @@
   {
     "id": "MQ3104",
     "defaultSeverity": "error",
-    "description": "now(), current_actor() or in_state at a check site, a value site or a rule condition, directly or through a constraint (a constraint never reads current_actor() or in_state); only guards and an action's sets read the clock, the identity of whoever acts and a lifecycle's state.",
+    "description": "now(), current_actor() or in_state at a check site, a value site or a rule condition, directly or through a constraint (a constraint never reads current_actor() or in_state); only guards, an action's sets and a right's condition read the clock, the identity of whoever acts and a lifecycle's state.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true
@@ -698,7 +698,7 @@
   {
     "id": "MQ3108",
     "defaultSeverity": "warning",
-    "description": "A file holds an expression as text; renames will not follow it. Convert it to a tree.",
+    "description": "A file holds an expression as text; renames will not follow it. Convert it to a tree. A named right's condition keeps its text until a lifecycle uses the right, since only its uses give it a scope.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true,
@@ -2692,7 +2692,7 @@
   {
     "id": "MQ9106",
     "defaultSeverity": "info",
-    "description": "An actor no process references (event actors, gate signers, human tasks), directly, through a member at any depth, through an actor it is a member of at any depth, or as the membersOf of an actor from the object; use it in a process or remove it.",
+    "description": "An actor no process or right references (event actors, gate signers, human tasks, a right's actors or except), directly, through a member at any depth, through an actor it is a member of at any depth, or as the membersOf of an actor from the object; use it in a process or remove it.",
     "family": "MQ91xx",
     "familyLabel": "Actors and gates",
     "canBeOff": true
@@ -2791,7 +2791,7 @@
   {
     "id": "MQ9301",
     "defaultSeverity": "error",
-    "description": "A scenario step is refused while expect.accepted is true (no transition, a guard false, an actor not allowed, a gate refusal), or accepted while it is false; a refusal by actor names the step's participant and what it failed (the list it satisfies none of, or the list that does not accept the actor it acted as); fix the step's input or set accepted to what the process does.",
+    "description": "A scenario step is refused while expect.accepted is true (no transition, a guard false, an actor not allowed, a right or a lifecycle's default that denies, a gate refusal), or accepted while it is false; a refusal by actor names the step's participant and what it failed (the list it satisfies none of, or the list that does not accept the actor it acted as); fix the step's input or set accepted to what the process does.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true
@@ -2826,7 +2826,7 @@
   {
     "id": "MQ9305",
     "defaultSeverity": "error",
-    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit, or an owner beside its subject's owner field or that is not one of the scenario's participants, or states that name a state of a lifecycle that cannot govern the object, two states of one lifecycle that cannot be active together, the subject's state in the process the scenario runs, or a state that disagrees with the state the object's bound value maps to; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; fix the step, the object or the participant.",
+    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit, or an owner beside its subject's owner field or that is not one of the scenario's participants, or states that name a state of a lifecycle that cannot govern the object, two states of one lifecycle that cannot be active together, the subject's state in the process the scenario runs, or a state that disagrees with the state the object's bound value maps to; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; or a verb step is inconsistent: no verb, a verb that is not an object, link or own verb (a move, signature or task verb), freeze or thaw, values beside a verb other than modify or beside an end, a values attribute a set could not set or a value that does not fit its type, an end that is not the subject's, an object not linked through it (except for connect), or delete on a link; or expect.refusal or expect.refusedBy beside accepted true; fix the step, the object or the participant.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true
@@ -2843,6 +2843,15 @@
     "id": "MQ9307",
     "defaultSeverity": "error",
     "description": "The values of the object a scenario step set differ from expect.values; fix the actions' sets or update the expectations from a replay.",
+    "family": "MQ93xx",
+    "familyLabel": "Scenarios",
+    "canBeOff": true,
+    "quickFix": "refresh-scenario"
+  },
+  {
+    "id": "MQ9308",
+    "defaultSeverity": "error",
+    "description": "A refused scenario step's refusal or refusing element differs from expect.refusal or expect.refusedBy (the checks run in a fixed order, and the first that fails names both); fix the step, the chart or the rights, or update the expectations from a replay.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true,
@@ -2979,7 +2988,7 @@
   {
     "id": "MQ9604",
     "defaultSeverity": "error",
-    "description": "An actor from the object is used where it cannot be worked out: in a process with no subjects, or with a path (or within) that does not resolve on every subject (the subject's own and inherited members and the attributes of the stereotypes it or a base carries for one subject, what every subject holds under one id for several; a stereotype entry holds its stereotype's own attributes and no relation ends, so with one a path is one step to such an attribute and within is empty), that passes through something other than a to-one relation end, or that ends at a many-valued attribute, a value object or a to-many end. Reported at the use; a library's gate or human task at each process that uses it.",
+    "description": "An actor from the object is used where it cannot be worked out: in a process with no subjects, or with a path (or within) that does not resolve on every subject (the subject's own and inherited members and the attributes of the stereotypes it or a base carries for one subject, what every subject holds under one id for several; a stereotype entry holds its stereotype's own attributes and no relation ends, so with one a path is one step to such an attribute and within is empty), that passes through something other than a to-one relation end, or that ends at a many-valued attribute, a value object or a to-many end. Reported at the use; a library's gate or human task at each process that uses it, a named right's actors and except at each lifecycle that uses it.",
     "family": "MQ96xx",
     "familyLabel": "Actors",
     "canBeOff": true
@@ -3003,7 +3012,7 @@
   {
     "id": "MQ9701",
     "defaultSeverity": "error",
-    "description": "A verb that is neither a built-in verb nor one of the project's own (model/vocabularies/verbs.json). Reported at the event, transition or operation; add it to the project's verbs, or clear it.",
+    "description": "A verb that is neither a built-in verb nor one of the project's own (model/vocabularies/verbs.json). Reported at the event, transition, operation or right; add it to the project's verbs, or clear it.",
     "family": "MQ97xx",
     "familyLabel": "Verbs",
     "canBeOff": true
@@ -3078,6 +3087,54 @@
     "description": "One action sets one attribute twice. Remove the second set.",
     "family": "MQ98xx",
     "familyLabel": "Object effects",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9901",
+    "defaultSeverity": "error",
+    "description": "A rights entry is both an inline right and a use (right beside a key of an inline right) or neither (an inline right needs a name, an access and at least one verb); a use's right names something other than a named right; or an orchestration or a library has rights or rightsDefault, which only lifecycles hold. Remove the entry.",
+    "family": "MQ99xx",
+    "familyLabel": "Rights",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9902",
+    "defaultSeverity": "error",
+    "description": "A right's states name something that is not a state of its lifecycle: another process's state, a history state or a choice state. Remove the state.",
+    "family": "MQ99xx",
+    "familyLabel": "Rights",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9903",
+    "defaultSeverity": "error",
+    "description": "A right's ends are not ends every subject of its lifecycle holds, or stand beside a verb that cannot act on a link (any but connect, disconnect, read, modify, freeze and thaw); a named right's are reported at each use. Remove the entry.",
+    "family": "MQ99xx",
+    "familyLabel": "Rights",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9904",
+    "defaultSeverity": "warning",
+    "description": "An allow right in a lifecycle that allows by default: each lifecycle answers on its own, so it cannot change any answer (a deny still wins over it, and without it the default allows). Remove it, or set the lifecycle's rightsDefault to deny.",
+    "family": "MQ99xx",
+    "familyLabel": "Rights",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9905",
+    "defaultSeverity": "warning",
+    "description": "Under rightsDefault deny, an event or a human task no one can ever do: it has no actors, its transitions no gate signers, and no allow right of its lifecycle names its verb (complete for a task); or an event with neither a verb nor actors nor signers. Add actors, or add an allow right.",
+    "family": "MQ99xx",
+    "familyLabel": "Rights",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ9906",
+    "defaultSeverity": "warning",
+    "description": "An except entry that the same right's actors also names, so the right never applies to it. Remove it from except.",
+    "family": "MQ99xx",
+    "familyLabel": "Rights",
     "canBeOff": true
   }
 ]

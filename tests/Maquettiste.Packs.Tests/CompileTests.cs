@@ -318,6 +318,179 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Rights_compile_and_refuse_as_the_engine_does()
+    {
+        // rights-design.md section 9: Rights.cs, the conditions (a named right used by two lifecycles has one), the StatesIn hook (only on
+        // the lifecycle whose event names a verb another lifecycle could refuse), the CallerHoldings stub and the interpreter's checks build
+        // with warnings as errors. The team's half here answers the conditions, the owner and the records lifecycle's states; the host
+        // registers ScenarioHoldings, and the scenario test and the host's checks pass.
+        using var repo = PackRepo.Rights();
+        await repo.GenerateCleanlyAsync();
+        Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "rights", "expected"), repo.PathOf("out"));
+        Assert.Contains("private partial IReadOnlyList<string>? StatesInRecords(", repo.Read("out/Processes/DocumentLifecycle/DocumentLifecycleHandlers.g.cs"), StringComparison.Ordinal);
+        Assert.DoesNotContain("StatesIn", repo.Read("out/Processes/Records/RecordsHandlers.g.cs"), StringComparison.Ordinal);
+        Assert.Contains("return ValueTask.FromResult<IReadOnlyList<string>>([]);", repo.Read("out/Dispatch/CallerHoldings.cs"), StringComparison.Ordinal);
+
+        // Only a step whose participant holds an actor besides the one it acts as asserts that the handlers asked ScenarioHoldings: Dan,
+        // who acts as Approver and holds Intern. Bea's verb steps resolve her as the document's owner, as the engine's replay did.
+        var editing = repo.Read("out/Tests/DocumentLifecycle/EditingTests.cs");
+        Assert.Equal(["asked7"], System.Text.RegularExpressions.Regex.Matches(editing, @"Assert\.True\((asked\d+)").Select(m => m.Groups[1].Value));
+        Assert.Contains("Resolves = actor => actor is Actors.DocumentOwner,", editing, StringComparison.Ordinal);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(editing, "Resolves = ").Count); // her modify and her delete
+
+        Replace("out/Docs/RightConditions.cs", "public static partial bool SecretOnlyOwner(global::App.Model.Processes.RightRequest request) =>\n        throw new NotImplementedException(\"The condition of named right SecretOnlyOwner is not implemented yet.\");",
+            "public static partial bool SecretOnlyOwner(global::App.Model.Processes.RightRequest request) => Secret;\n\n    public static bool Secret { get; set; } = true;");
+        Replace("out/Processes/Records/RecordsHandlers.cs", "public static partial bool HoldOnLegal(global::App.Model.Processes.RightRequest request) =>\n        throw new NotImplementedException(\"The condition of right HoldOnLegal of lifecycle Records is not implemented yet.\");",
+            "public static partial bool HoldOnLegal(global::App.Model.Processes.RightRequest request) => false;");
+        Replace("out/Processes/DocumentLifecycle/DocumentLifecycleHandlers.cs", "private partial global::System.Collections.Generic.IReadOnlyList<string>? StatesInRecords(StatechartCall<DocumentLifecycleContext> call) =>\n        throw new NotImplementedException(\"The states of the object in lifecycle Records are not read yet.\");",
+            "private partial global::System.Collections.Generic.IReadOnlyList<string>? StatesInRecords(StatechartCall<DocumentLifecycleContext> call) => RecordsStates;\n\n    internal static global::System.Collections.Generic.IReadOnlyList<string> RecordsStates { get; set; } = [];");
+        Replace("out/Processes/DocumentLifecycle/DocumentLifecycleHandlers.cs", "private partial bool IsDocumentOwner(ProcessSnapshot<DocumentLifecycleContext> snapshot, ProcessEnvelope envelope) => false;",
+            "private partial bool IsDocumentOwner(ProcessSnapshot<DocumentLifecycleContext> snapshot, ProcessEnvelope envelope) => envelope.Signer == \"bea\";");
+        Replace("out/Dispatch/Pipeline.cs", "throw new NotImplementedException(\"Map the caller's principal to the envelope's actor in Pipeline.cs (Authorize).\")", "true");
+
+        var project = Path.Combine(repo.Repo.Root, "rights");
+        WriteProject(project, repo.PathOf("out"), program: null, web: true);
+        var csproj = Path.Combine(project, "RoundTrip.csproj");
+        File.WriteAllText(csproj, File.ReadAllText(csproj)
+            .Replace("<OutputType>Library</OutputType>", "<OutputType>Exe</OutputType>\n    <IsTestProject>true</IsTestProject>", StringComparison.Ordinal)
+            .Replace("<Compile Include=\"Program.cs\" Condition=\"Exists('Program.cs')\" />",
+                "<Compile Include=\"Host/*.cs\" />\n    <PackageReference Include=\"xunit.v3\" Version=\"3.2.2\" />", StringComparison.Ordinal));
+        Directory.CreateDirectory(Path.Combine(project, "Host"));
+        File.WriteAllText(Path.Combine(project, "Host", "ScenarioHost.cs"), RightsScenarioHost);
+
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll"), "-noColor"], project, TimeSpan.FromMinutes(2));
+        Assert.True(run.ExitCode == 0 && run.Output.Contains("Total: 2, Errors: 0, Failed: 0,", StringComparison.Ordinal), run.Output);
+
+        void Replace(string path, string stub, string with)
+        {
+            var text = repo.Read(path);
+            Assert.Contains(stub, text, StringComparison.Ordinal);
+            repo.Write(path, text.Replace(stub, with, StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public async Task A_lifecycle_that_governs_only_some_subjects_is_asked_only_for_its_objects()
+    {
+        // rights-design.md decision 10: Filing governs Alpha and Beta, Guard only Alpha and denies by default. For a Beta object the engine
+        // doesn't ask Guard and allows edit; the team's StatesInGuard answers null there, so the generated check doesn't ask it either. For an
+        // Alpha object Guard's default refuses.
+        using var repo = PackRepo.SeveralSubjects();
+        await repo.GenerateCleanlyAsync();
+        const string Stub = "private partial global::System.Collections.Generic.IReadOnlyList<string>? StatesInGuard(StatechartCall<FilingContext> call) =>\n        throw new NotImplementedException(\"The states of the object in lifecycle Guard are not read yet.\");";
+        var handlers = repo.Read("out/Processes/Filing/FilingHandlers.cs");
+        Assert.Contains(Stub, handlers, StringComparison.Ordinal);
+        repo.Write("out/Processes/Filing/FilingHandlers.cs", handlers.Replace(Stub,
+            "private partial global::System.Collections.Generic.IReadOnlyList<string>? StatesInGuard(StatechartCall<FilingContext> call) => GuardStates;\n\n    internal static global::System.Collections.Generic.IReadOnlyList<string>? GuardStates { get; set; }",
+            StringComparison.Ordinal));
+
+        var project = Path.Combine(repo.Repo.Root, "subjects");
+        WriteProject(project, repo.PathOf("out"), program: """
+            using System;
+            using App.Model.Docs;
+            using App.Model.Processes;
+            using App.Model.Runtime;
+
+            var machine = new FilingMachine(new FilingHandlers(), new ManualClock(DateTimeOffset.UnixEpoch));
+            var start = machine.Start("f-1").Snapshot;
+            var edit = new FilingEditCommand(new ProcessEnvelope("f-1", Actors.Clerk));
+            FilingHandlers.GuardStates = null; // a Beta object: Guard doesn't govern it
+            var beta = machine.Edit(start, edit);
+            FilingHandlers.GuardStates = []; // an Alpha object, in Guard's initial state
+            var alpha = machine.Edit(start, edit);
+            Console.WriteLine($"beta {beta.Accepted}; alpha {alpha.Accepted} {alpha.Refusal} {alpha.RefusedBy == GuardDefinition.ProcessId}");
+
+            """);
+        await BuildOrSkipAsync(project);
+        var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll")], project, TimeSpan.FromMinutes(1));
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Contains("beta True; alpha False default True", run.Output, StringComparison.Ordinal);
+    }
+
+    // The test host of the rights case: the dispatcher over both lifecycles, with ScenarioHoldings registered in place of the
+    // CallerHoldings stub, and the checks the scenario can't make yet: rights before guards, at signatures and outside a run.
+    private const string RightsScenarioHost = """
+        using System;
+        using System.Collections.Generic;
+        using System.Threading;
+        using System.Threading.Tasks;
+        using App.Model.Dispatch;
+        using App.Model.Docs;
+        using App.Model.Processes;
+        using App.Model.Runtime;
+        using Xunit;
+
+        namespace App.Model;
+
+        internal sealed class ScenarioHost : IAsyncDisposable
+        {
+            private ScenarioHost(Dispatcher dispatcher) => Dispatcher = dispatcher;
+
+            public Dispatcher Dispatcher { get; }
+
+            public static Task<ScenarioHost> StartAsync(ManualClock clock, CancellationToken cancellationToken)
+            {
+                var host = new ProcessHost(clock);
+                var documents = new DocumentLifecycleCommandHandler(new DocumentLifecycleMachine(new DocumentLifecycleHandlers(), host, host, host),
+                    new DocumentLifecycleStore(), new ScenarioHoldings());
+                var records = new RecordsCommandHandler(new RecordsMachine(new RecordsHandlers(), host, host, host), new RecordsStore(), new ScenarioHoldings());
+                return Task.FromResult(new ScenarioHost(new Dispatcher(new HandlerRegistry(documents, records), new Pipeline(new InMemoryProcessOutbox()))));
+            }
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+
+        public sealed class RightsTests
+        {
+            [Fact]
+            public void Rights_refuse_before_guards_at_signatures_and_outside_a_run()
+            {
+                var machine = new DocumentLifecycleMachine(new DocumentLifecycleHandlers(), new ManualClock(DateTimeOffset.UnixEpoch));
+                var start = machine.Start("d-1").Snapshot;
+                DocumentLifecycleEditCommand Edit(string who) => new(new ProcessEnvelope("d-1", Actors.Author, Signer: who));
+
+                // Carl may not change the secret draft: the named right denies, and a deny wins over AuthorsEditDrafts.
+                var carl = machine.Edit(start, Edit("carl"), [Actors.Author]);
+                Assert.Equal((Refusals.Right, "01JRT000000000000000000R01"), (carl.Refusal, carl.RefusedBy));
+
+                // Bea is the owner: the named right says nothing for her, in either lifecycle, and AuthorsEditDrafts allows.
+                Assert.True(machine.Edit(start, Edit("bea")).Accepted);
+
+                // Archived in Records, the document may not be changed: the records lifecycle answers too, from the StatesIn hook.
+                DocumentLifecycleHandlers.RecordsStates = ["Archived"];
+                var archived = machine.Edit(start, Edit("bea"));
+                DocumentLifecycleHandlers.RecordsStates = [];
+                Assert.Equal((Refusals.Right, "01JRT000000000000000000Y02"), (archived.Refusal, archived.RefusedBy));
+
+                // Dan signs as an approver and holds Intern: NoInternSigns refuses at the signature. With no held actors (the stub) he is
+                // checked as Approver only, and signs; a request body can't name held actors.
+                var review = machine.Submit(start, new DocumentLifecycleSubmitCommand(new ProcessEnvelope("d-1", Actors.Author, Signer: "carl"))).Snapshot;
+                var approve = new DocumentLifecycleApproveCommand(new ProcessEnvelope("d-1", Actors.Approver, Signer: "dan"));
+                var dan = machine.Approve(review, approve, [Actors.Approver, Actors.Intern]);
+                Assert.Equal((Refusals.Right, "01JRT000000000000000000X04"), (dan.Refusal, dan.RefusedBy));
+                Assert.True(machine.Approve(review, approve).Accepted);
+
+                // Outside a run: in Released, delete is denied by ReleasedIsReadOnly, read is allowed, and with the document not secret, a
+                // change of owner is denied by the lifecycle's default.
+                var released = new RightRequest
+                {
+                    Lifecycle = "DocumentLifecycle",
+                    Subject = typeof(Document),
+                    Actor = Actors.Author,
+                    States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { ["DocumentLifecycle"] = ["Released"] },
+                };
+                Assert.Equal((Refusals.Right, "01JRT000000000000000000X03"), (Rights.CanDelete(released).Refusal, Rights.CanDelete(released).RefusedBy));
+                Assert.True(Rights.CanRead(released).Allowed);
+                RightConditions.Secret = false;
+                Assert.Equal((Refusals.Default, DocumentLifecycleDefinition.ProcessId), (Rights.CanChangeOwner(released).Refusal, Rights.CanChangeOwner(released).RefusedBy));
+                RightConditions.Secret = true;
+            }
+        }
+
+        """;
+
+    [Fact]
     public async Task A_team_file_that_already_implements_an_action_still_builds_when_the_action_gains_sets()
     {
         // object-effects-design.md decision 12: the companion is written once. A team that implemented recordSubmission before it set data

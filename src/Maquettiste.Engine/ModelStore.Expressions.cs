@@ -79,13 +79,17 @@ public sealed partial class ModelStore
         return problems;
     }
 
-    /// <summary>Replaces each site's text nodes with trees in a document node; true when it changed anything.</summary>
+    /// <summary>
+    /// Replaces each site's text nodes with trees in a document node; true when it changed anything. A named right's condition used by a
+    /// lifecycle is held in the right's own file, so a use converts nothing, and one no lifecycle uses has no scope, so its text stays
+    /// (rights-design.md decision 7).
+    /// </summary>
     private static bool ConvertTexts(ModelSnapshot snapshot, Element element, ElementDocument? document, JsonNode root, List<Diagnostic> problems)
     {
         var changed = false;
         foreach (var site in ExprSites.Of(snapshot, element))
         {
-            if (!ExprSites.HasText(site.Tree))
+            if (!ExprSites.HasText(site.Tree) || site.Borrowed is not null || site.Unscoped)
                 continue;
             var scope = ExprSites.Scope(snapshot, element, document, site, text: true);
             var before = problems.Count;
@@ -132,9 +136,9 @@ public sealed partial class ModelStore
         var edits = new List<(ElementDocument Document, JsonNode Node)>();
         foreach (var document in documents)
         {
-            if (document.Element is not (Table or Stereotype or Entity or Operation or Process or Constraint))
+            if (document.Element is not (Table or Stereotype or Entity or Operation or Process or Constraint or Right))
                 continue;
-            if (!ExprSites.Of(snapshot, document.Element).Any(s => ExprSites.HasText(s.Tree)))
+            if (!ExprSites.Of(snapshot, document.Element).Any(s => ExprSites.HasText(s.Tree) && s.Borrowed is null && !s.Unscoped))
                 continue;
             var node = JsonNode.Parse(document.Json.GetRawText())!;
             if (ConvertTexts(snapshot, document.Element, document, node, problems))

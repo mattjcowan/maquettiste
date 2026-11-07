@@ -9,7 +9,8 @@ using Maquettiste.Engine.Processes;
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// <c>maquettiste process simulate|record|verify|export|import|sync-enum|sync-codes</c> (phase-3-design.md section 4.4; sync-codes, lifecycle-design.md decision 19): the process operations of
+/// <c>maquettiste process simulate|record|verify|export|import|sync-enum|sync-codes|rights</c> (phase-3-design.md section 4.4; sync-codes, lifecycle-design.md decision 19;
+/// rights, rights-design.md section 8): the process operations of
 /// the editor API from the command line. A process is named by id, name or model path; writes preview unless <c>--apply</c>.
 /// </summary>
 /// <remarks>
@@ -18,7 +19,7 @@ namespace Maquettiste.Cli.Commands;
 /// </remarks>
 internal static class ProcessCommand
 {
-    private const string Verbs = "simulate, record, verify, export, import, sync-enum or sync-codes";
+    private const string Verbs = "simulate, record, verify, export, import, sync-enum, sync-codes or rights";
 
     // The API's bodies (every member written, nulls included), indented with \n line ends.
     private static readonly JsonSerializerOptions Output = new(JsonSerializerDefaults.Web)
@@ -59,6 +60,9 @@ internal static class ProcessCommand
             case "sync-codes":
                 line.Expect("process sync-codes", 5, "--apply", "--check", "--format");
                 break;
+            case "rights":
+                line.Expect("process rights", 3, "--state", "--actor", "--verb", "--entity", "--format");
+                break;
             default:
                 throw new UsageException($"Unknown process verb '{verb}': use {Verbs}.");
         }
@@ -83,6 +87,7 @@ internal static class ProcessCommand
                 "verify" => await VerifyAsync(context, store, snapshot, [.. line.Positionals.Skip(2)], json, ct).ConfigureAwait(false),
                 "export" => await ExportAsync(context, store, Resolve(snapshot, line.Positionals[2]), ct).ConfigureAwait(false),
                 "import" => await ImportAsync(context, store, snapshot, line.Positionals[2], json, ct).ConfigureAwait(false),
+                "rights" => await RightsAsync(context, store, Resolve(snapshot, line.Positionals[2]), json, ct).ConfigureAwait(false),
                 "sync-codes" => await SyncCodesAsync(context, store, snapshot, Resolve(snapshot, line.Positionals[2]), json, ct).ConfigureAwait(false),
                 _ => await SyncEnumAsync(context, store, snapshot, Resolve(snapshot, line.Positionals[2]), json, ct).ConfigureAwait(false),
             };
@@ -464,6 +469,56 @@ internal static class ProcessCommand
     }
 
     /// <summary>Reports a call that failed and returns its exit code, or null when it succeeded.</summary>
+    /// <summary>
+    /// <c>process rights &lt;lifecycle&gt;</c>: who can do what (rights-design.md decision 31), every row; <c>--state</c>, <c>--actor</c>,
+    /// <c>--verb</c> (each repeatable) and <c>--entity</c> narrow it as <c>get_rights</c> does.
+    /// </summary>
+    private static async Task<int> RightsAsync(GlobalContext context, ModelStore store, Process process, bool json, CancellationToken ct)
+    {
+        var line = context.Line;
+        var filter = new RightsFilter { States = line.Values("--state"), Actors = line.Values("--actor"), Verbs = line.Values("--verb"), Entity = line.Value("--entity") };
+        var rows = new List<RightsRow>();
+        string? cursor = null;
+        RightsPage page;
+        do
+        {
+            var call = await store.GetRightsAsync(process.Id, filter, cursor, ModelPages.MaxLimit, ct).ConfigureAwait(false);
+            if (await FailedAsync(context, call).ConfigureAwait(false) is { } failed)
+                return failed;
+            page = call.Value!;
+            rows.AddRange(page.Rows);
+            cursor = page.Next;
+        }
+        while (cursor is not null);
+
+        if (json)
+        {
+            await context.Out.WriteLineAsync(JsonSerializer.Serialize(page with { Rows = rows, Next = null }, Output)).ConfigureAwait(false);
+            return Program.ExitCodes.Success;
+        }
+
+        var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        string NameOf(string? id) => id is null ? "everyone else" : snapshot.Get<Element>(id)?.Name ?? id;
+        var states = ProcessLibraries.Chart(snapshot, process).ById;
+        var text = new StringBuilder();
+        text.Append(process.Name).Append(": anything not stated is ").Append(page.RightsDefault == "deny" ? "denied" : "allowed").Append('\n');
+        foreach (var row in rows)
+        {
+            text.Append(states.TryGetValue(row.State, out var state) ? state.Path : row.State).Append("  ").Append(NameOf(row.Actor)).Append("  ").Append(row.Verb);
+            if (row.Entity is { } entity)
+                text.Append(" (").Append(NameOf(entity)).Append(')');
+            text.Append(": ").Append(row.Answer);
+            if (row.ByDefault)
+                text.Append(" by default");
+            if (row.DependsOn.Count > 0)
+                text.Append(", depends on ").Append(string.Join(", ", row.DependsOn.Select(NameOf)));
+            text.Append('\n');
+        }
+
+        await context.Out.WriteAsync(text.ToString()).ConfigureAwait(false);
+        return Program.ExitCodes.Success;
+    }
+
     private static async Task<int?> FailedAsync<T>(GlobalContext context, ProcessCall<T> call)
     {
         switch (call.Status)

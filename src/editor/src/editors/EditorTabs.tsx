@@ -44,6 +44,7 @@ import { TypeEditor } from "./TypeEditor";
 import { DomainEditor } from "./DomainEditor";
 import { ProcessEditor } from "./process/ProcessEditor";
 import { ActorEditor } from "./actor/ActorEditor";
+import { RightEditor } from "./right/RightEditor";
 import { ScenarioEditor } from "./scenario/ScenarioEditor";
 import { TableEditor } from "./database/TableEditor";
 import { ViewEditor } from "./database/ViewEditor";
@@ -367,6 +368,8 @@ export function EditorArea() {
         <ProcessEditor key={tab.id} id={tab.id} />
       ) : tab.kind === "actor" ? (
         <ActorEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "right" ? (
+        <RightEditor key={tab.id} id={tab.id} />
       ) : tab.kind === "scenario" ? (
         <ScenarioEditor key={tab.id} id={tab.id} />
       ) : tab.kind === "table" ? (

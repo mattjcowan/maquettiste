@@ -73,6 +73,84 @@ func actor_links(list, up)
   ret $text
 end
 
+# Who a right applies to (rights-design.md decision 4): links to its actors, or everyone.
+func right_who(r, up)
+  ret r.everyone ? "everyone" : actor_links(r.actors, up)
+end
+
+# What a right does: its verbs as code, and the links it speaks of through its ends.
+func right_does(r)
+  $text = ""
+  for $v in r.verbs
+    $text = $text + (for.first ? "" : ", ") + (md_code $v.key)
+  end
+  if r.ends.size > 0
+    $ends = ""
+    for $e in r.ends
+      $ends = $ends + (for.first ? "" : ", ") + (md_code $e.name)
+    end
+    $text = $text + " on links through " + $ends
+  end
+  ret $text
+end
+
+# A cell of "who can do what" (rights-design.md decision 31): its answer, the default when it decides, the lifecycles it depends on.
+func cell_answer(c)
+  if c.depends_on.size > 0
+    $names = ""
+    for $d in c.depends_on
+      $names = $names + (for.first ? "" : ", ") + (md_cell $d.display_name)
+    end
+    ret "depends on " + $names
+  end
+  ret c.answer + (c.by_default ? " (default)" : "")
+end
+
+# What decides a cell: the rights, events, tasks and gates by name, or the lifecycle whose default answers.
+func cell_by(c)
+  $text = ""
+  for $b in c.by
+    $text = $text + (for.first ? "" : ", ") + ($b.kind == "process" ? "the default of " + (md_cell $b.display_name) : (md_code $b.name))
+  end
+  ret $text
+end
+
+# The element that refused a scenario step (rights-design.md decision 26), by its id: a right with why, a lifecycle's default, an event,
+# a task or a gate of the process; else the id.
+func refuser(id, p)
+  for $r in model.rights
+    if $r.id == id
+      ret (md_code $r.name) + ($r.description ? ": " + (md_inline $r.description) : "")
+    end
+  end
+  for $pr in model.processes
+    if $pr.id == id
+      ret "the default of " + (md_cell $pr.display_name)
+    end
+    for $u in $pr.rights
+      if $u.right.id == id
+        ret (md_code $u.right.name) + ($u.right.description ? ": " + (md_inline $u.right.description) : "")
+      end
+    end
+  end
+  for $e in p.events
+    if $e.id == id
+      ret "event " + (md_code $e.name)
+    end
+  end
+  for $i in p.invokes
+    if $i.id == id
+      ret "task " + (md_code $i.name)
+    end
+  end
+  for $g in p.gates
+    if $g.id == id
+      ret "gate " + (md_code $g.name)
+    end
+  end
+  ret md_code id
+end
+
 # The link to a process's page from a page `up` folders below the output root.
 func process_link(p, up)
   ret "[" + (md_cell p.display_name) + "](" + up + "processes/" + (kebab p.name) + ".md)"

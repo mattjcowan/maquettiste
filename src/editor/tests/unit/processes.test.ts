@@ -33,7 +33,7 @@ describe("Processes explorer", () => {
   it("groups processes by domain, hides domains without processes, then lists Actors", () => {
     const { forest: f } = forest();
     expect(f.headers.processes).toBe("2 processes · 3 actors · 3 scenarios");
-    expect(labels(f, f.roots.processes)).toEqual(["Billing", "Actors"]);
+    expect(labels(f, f.roots.processes)).toEqual(["Billing", "Actors", "Rights"]);
     const billing = child(f, f.roots.processes, "Billing");
     expect(nodeOf(f, billing)!.secondary).toBe("2 processes");
     // Processes sit in a folder per use, and their keys are the ones they always had.

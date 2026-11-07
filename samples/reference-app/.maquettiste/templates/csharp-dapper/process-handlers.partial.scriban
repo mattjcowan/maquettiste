@@ -55,4 +55,33 @@ public sealed partial class {{ name }}Handlers
     // and compare it with the caller (the envelope's Signer for an event, or the host's principal). It refuses until you write it.
     private partial bool Is{{ pascal a.name }}(ProcessSnapshot<{{ ctx }}> snapshot, ProcessEnvelope envelope) => false;
 {{- end }}
+{{- if uses_rights() }}
+{{- for l in states_hooks(p) }}
+{{- if stubs > 0 }}
+{{ end }}
+{{- stubs = stubs + 1 }}
+    // The object's active state paths in lifecycle {{ l.name }}, which could say no to a verb an event names: read them from your
+    // system for the instance's object. None means the initial state; null means {{ l.name }} doesn't govern the object, so it isn't asked
+    // (a process with several subjects). It throws until you write it.
+    private partial global::System.Collections.Generic.IReadOnlyList<string>? StatesIn{{ pascal l.name }}({{ call }} call) =>
+        throw new NotImplementedException("The states of the object in lifecycle {{ l.name }} are not read yet.");
+{{- end }}
+{{- end }}
 }
+{{- if uses_rights() }}
+{{- conditions = inline_conditions(p) }}
+{{- if conditions.size > 0 }}
+
+// The conditions of the rights of lifecycle {{ p.name }}. A right holds only when its condition is true; read the object for the request.
+public static partial class {{ name }}RightConditions
+{
+{{- for r in conditions }}
+{{- if !for.first }}
+{{ end }}
+    // {{ r.name }}: {{ cs_line r.condition_text }}
+    public static partial bool {{ pascal r.name }}(global::{{ actors_ns() }}.RightRequest request) =>
+        throw new NotImplementedException("The condition of right {{ r.name }} of lifecycle {{ p.name }} is not implemented yet.");
+{{- end }}
+}
+{{- end }}
+{{- end }}

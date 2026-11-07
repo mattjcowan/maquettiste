@@ -1,0 +1,46 @@
+{{-
+# The team's half of the named rights' conditions (unit right-conditions-companion, written once per package folder): a stub per
+# condition that throws until written. A named right that gains a condition later is declared in RightConditions.g.cs and fails the
+# build until its method is added here.
+include "_csharp.scriban"
+include "_process.scriban"
+if uses_rights()
+  groups = {}
+  folders = []
+  for r in model.rights
+    if r.condition_text != null && r.uses.size > 0
+      $f = package_folder r
+      if !groups[$f]
+        groups[$f] = []
+        folders[folders.size] = $f
+      end
+      $g = groups[$f]
+      $g[$g.size] = r
+    end
+  end
+  for f in folders
+    rights = groups[f]
+    capture content
+-}}
+using System;
+
+namespace {{ ns(rights[0]) }};
+
+// The hand-written half of RightConditions. Maquettiste wrote this file once and never touches it again. A right holds only when its
+// condition is true; read the object for the request (its Subject, States and Envelope say which).
+public static partial class RightConditions
+{
+{{- for r in rights }}
+{{- if !for.first }}
+{{ end }}
+    // {{ r.name }}: {{ cs_line r.condition_text }}
+    public static partial bool {{ pascal r.name }}(global::{{ actors_ns() }}.RightRequest request) =>
+        throw new NotImplementedException("The condition of named right {{ r.name }} is not implemented yet.");
+{{- end }}
+}
+{{ end -}}
+{{-
+    file (join_path pack.params.partialFolder f "RightConditions.cs") content
+  end
+end
+-}}

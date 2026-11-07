@@ -242,7 +242,7 @@ export function useEditorNavigation() {
     (place: ReturnType<typeof placeOf>, kind?: string) => {
       const e = store.getState().explorer;
       // A process or an actor is also listed in the Processes explorer: when that one shows, it stays.
-      if ((kind === "process" || kind === "actor") && (e.active === "processes" || e.pinned === "processes")) return;
+      if ((kind === "process" || kind === "actor" || kind === "right") && (e.active === "processes" || e.pinned === "processes")) return;
       if (place !== "settings" && e.active !== place && e.pinned !== place) store.getState().setSidebar(place);
     },
     [store],

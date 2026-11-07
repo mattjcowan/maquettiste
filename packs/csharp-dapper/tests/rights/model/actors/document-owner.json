@@ -1,0 +1,11 @@
+{
+  "$schema": "../../.schema/v1/actor.json",
+  "kind": "actor",
+  "id": "01JRT000000000000000000K04",
+  "name": "DocumentOwner",
+  "displayName": "Document owner",
+  "type": "person",
+  "relative": {
+    "owner": true
+  }
+}

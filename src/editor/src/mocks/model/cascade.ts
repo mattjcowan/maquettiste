@@ -48,6 +48,7 @@ const NOUNS: Record<string, string> = {
   holds: "holding",
   sets: "set",
   states: "state",
+  rights: "right",
 };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -93,6 +94,13 @@ function removeAt(json: Json, pointer: string, item: boolean): void {
     parent.splice(Number(last), 1);
     // An actor's memberOf is left out when empty, as the engine writes it.
     if (parts.length === 1 && parts[0] === "memberOf" && parent.length === 0) delete json.memberOf;
+    // A lifecycle left with no rights is written without the key, and an `except` left empty means no exception.
+    if (parts.length === 1 && parts[0] === "rights" && parent.length === 0) delete json.rights;
+    if (parent.length === 0 && parts.length >= 1 && parts[parts.length - 1] === "except") {
+      let holder: unknown = json;
+      for (const p of parts.slice(0, -1)) holder = (holder as Json)[p];
+      if (holder && typeof holder === "object") delete (holder as Json).except;
+    }
     // An action left with no sets, or an object with no states, is written without the key.
     if (parent.length === 0 && parts.length >= 1) {
       const key = parts[parts.length - 1];
@@ -258,6 +266,10 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
       const mine = ops.get(doc.id) ?? [];
       if (mine.some((o) => o.remove && (ref.pointer === o.pointer || ref.pointer.startsWith(`${o.pointer}/`)))) continue;
       if (mine.some((o) => !o.remove && o.ref.pointer === ref.pointer)) continue;
+      if (ref.deletesHolder) {
+        markDeleted(doc.id, `names no other actor or end than ${describe(ref.toId)}`);
+        continue;
+      }
       if (!ref.required || ref.drops) {
         mine.push({ pointer: ref.removeItem ?? ref.pointer, item: ref.removeItem !== undefined, remove: !!ref.drops, ref });
         ops.set(doc.id, mine);
@@ -306,7 +318,10 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
           what: `${noun} ${str(sub?.name) ?? str(sub?.role) ?? shortName(op.ref.toId)}`,
           ...(subId ? { subId } : {}),
           subKind: noun,
-          because: `needs ${describe(op.ref.toId)}`,
+          because:
+            noun === "right"
+              ? `${describe(op.ref.toId)} was the only ${op.ref.field.replace(/s$/, "")} it names; with none it would apply to everything, so it goes too`
+              : `needs ${describe(op.ref.toId)}`,
         });
       } else if (doc.json.kind === "diagram" && op.ref.field === "element") {
         plan.removes.push({
@@ -317,7 +332,16 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
           because: `shows ${describe(op.ref.toId)}`,
         });
       } else {
-        plan.clears.push({ ...base, pointer: op.ref.pointer, field: op.ref.field, target: op.ref.toId, because: `pointed to ${describe(op.ref.toId)}` });
+        // A list of a right names the right, so the plan says which right changes.
+        const inRight = /^\/rights\/(\d+)\/(actors|except|ends|states)\/\d+$/.exec(op.ref.pointer);
+        const rightName = inRight ? str((arr(doc.json.rights)[Number(inRight[1])] as Json | undefined)?.name) : undefined;
+        plan.clears.push({
+          ...base,
+          pointer: op.ref.pointer,
+          field: rightName ? `right ${rightName}, ${inRight![2]}` : op.ref.field,
+          target: op.ref.toId,
+          because: `pointed to ${describe(op.ref.toId)}`,
+        });
       }
     }
   }

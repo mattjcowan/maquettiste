@@ -17,6 +17,7 @@ import { StatesTab } from "./StatesTab";
 import { TransitionsTab } from "./TransitionsTab";
 import { EventsTab } from "./EventsTab";
 import { GatesTab } from "./GatesTab";
+import { RightsTab } from "./RightsTab";
 import { ScenariosTab } from "./ScenariosTab";
 import { ProcessAttributeGrid } from "./AttributeLists";
 import { useProcessContext } from "./shared";
@@ -81,6 +82,8 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
           { value: "transitions", label: PROCESS_TAB_LABELS.transitions, content: <TransitionsTab pc={pc} /> },
           { value: "events", label: PROCESS_TAB_LABELS.events, content: <EventsTab pc={pc} focus={nodeOn("events")} /> },
           { value: "gates", label: PROCESS_TAB_LABELS.gates, content: <GatesTab pc={pc} /> },
+          // Rights belong to lifecycles only (MQ9901).
+          ...(process.use === "lifecycle" ? [{ value: "rights", label: PROCESS_TAB_LABELS.rights, content: <RightsTab pc={pc} /> }] : []),
           {
             value: "context",
             label: PROCESS_TAB_LABELS.context,
