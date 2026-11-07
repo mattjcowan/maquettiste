@@ -11,7 +11,7 @@ import { EFFECT_LABELS as EL } from "@/model/effectLabels";
 import { objectStatesText, parseValuesText, stateChoices, statesOfIds, valuesText, type StateChoiceGroup } from "@/model/effects";
 import { indexLookup } from "@/model/index";
 import { newId } from "@/lib/ids";
-import { PARTICIPANT_LABELS as L } from "@/model/labels";
+import { PARTICIPANT_LABELS as L, RIGHT_LABELS as RL } from "@/model/labels";
 import {
   forgetParticipant,
   holdable,
@@ -25,6 +25,7 @@ import {
 } from "@/model/participants";
 import { subjectsOf, type HoldingDoc, type ProcessDoc, type ScenarioDoc } from "@/model/process";
 import type { EditorContext } from "../EditorFrame";
+import { useObjectFields } from "../actor/useObjectFields";
 import { Grid, type GridColumn, type GridOption } from "../process/Grid";
 import { rowProblems, useActors, useProblems } from "../process/shared";
 
@@ -309,6 +310,9 @@ interface ObjectRow {
   owner: string;
   states: string;
   values: string;
+  frozen: boolean;
+  /** The links that start frozen, as "end: object" names. */
+  frozenLinks: string;
   locked: boolean;
 }
 
@@ -334,6 +338,9 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
   const { drafts, store } = useServices();
   const attributeNames = useAttributeNames([...new Set((scenario.objects ?? []).map((o) => o.entity))]);
   const stateGroups = useLifecycleStates([...new Set((scenario.objects ?? []).map((o) => o.entity))], scenario.process);
+  const objectFields = useObjectFields([...new Set((scenario.objects ?? []).map((o) => o.entity))]);
+  const objectNames = new Map((scenario.objects ?? []).map((o) => [o.id, o.name]));
+  const linkLabel = (l: { end: string; object: string }) => `${objectFields.nameOf(l.end)}: ${objectNames.get(l.object) ?? "?"}`;
   const rows: ObjectRow[] = (scenario.objects ?? []).map((o, i) => ({
     id: o.id,
     index: i,
@@ -343,6 +350,11 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
     owner: participants.find((p) => p.id === o.owner)?.name ?? "",
     states: objectStatesText(o.states, stateGroups.get(o.entity) ?? []),
     values: valuesText(o.values, attributeNames.get(o.entity) ?? new Map()),
+    frozen: o.frozen === true,
+    frozenLinks: (o.links ?? [])
+      .filter((l) => l.frozen)
+      .map((l) => linkLabel(l))
+      .join(", "),
     locked: withOwnerField.has(o.entity),
   }));
   const columns: GridColumn<ObjectRow>[] = [
@@ -375,6 +387,31 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
             group: g.lifecycle,
           })),
         ),
+    },
+    {
+      key: "frozen",
+      label: RL.frozenColumn,
+      tooltip: RL.frozenColumnTip,
+      kind: "toggle",
+      width: "w-14",
+      value: (r) => (r.frozen ? "yes" : ""),
+      on: (r) => r.frozen,
+      locked: (r) => r.id !== scenario.subject,
+    },
+    {
+      key: "frozenLinks",
+      label: RL.frozenLinksColumn,
+      tooltip: RL.frozenLinksTip,
+      kind: "pick",
+      width: "min-w-28",
+      value: (r) => r.frozenLinks,
+      editValue: (r) =>
+        (scenario.objects?.[r.index]?.links ?? [])
+          .filter((l) => l.frozen)
+          .map((l) => `${l.end}|${l.object}`)
+          .join(","),
+      options: (r) => (scenario.objects?.[r.index]?.links ?? []).map((l) => ({ value: `${l.end}|${l.object}`, label: linkLabel(l) })),
+      locked: (r) => r.id !== scenario.subject || !(scenario.objects?.[r.index]?.links ?? []).length,
     },
     {
       key: "values",
@@ -414,7 +451,7 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
         onAdd={() => setAdding(true)}
         problems={(r) => rowProblems(problems, r.pointer)}
         onCommit={(row, key, value) => {
-          if (key !== "owner" && key !== "states" && key !== "values") return;
+          if (key !== "owner" && key !== "states" && key !== "values" && key !== "frozen" && key !== "frozenLinks") return;
           if (key === "values") {
             const entity = scenario.objects?.find((x) => x.id === row.id)?.entity ?? "";
             const parsed = parseValuesText(String(value), attributeNames.get(entity) ?? new Map());
@@ -431,6 +468,15 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
               const parsed = parseValuesText(String(value), attributeNames.get(o.entity) ?? new Map());
               if (Object.keys(parsed.values).length) o.values = parsed.values;
               else delete o.values;
+            } else if (key === "frozen") {
+              if (value === true) o.frozen = true;
+              else delete o.frozen;
+            } else if (key === "frozenLinks") {
+              const chosen = new Set(String(value).split(",").filter(Boolean));
+              for (const l of o.links ?? []) {
+                if (chosen.has(`${l.end}|${l.object}`)) l.frozen = true;
+                else delete l.frozen;
+              }
             } else if (key === "states") {
               const ids = statesOfIds(String(value), stateGroups.get(o.entity) ?? []);
               if (ids.length) o.states = ids;

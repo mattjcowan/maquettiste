@@ -8,7 +8,7 @@
 
 import { Membership } from "./membership";
 import { evalTree, UNKNOWN, type EvalEnv, type Value } from "./effects";
-import { answerLifecycle, checkAll, ownLifecycleOnly, takesPart, usesRights, type Facts, type Holding, type Tri } from "./rightsCheck";
+import { answerLifecycle, checkAll, FROZEN_VERBS, ownLifecycleOnly, takesPart, usesRights, type Facts, type Holding, type Tri } from "./rightsCheck";
 import { subjectsOf } from "@/model/process";
 import { builtInVerbs } from "@/model/verbs";
 
@@ -253,6 +253,8 @@ export interface SimInputJson {
   /** A verb step's verb, and for `modify` its values (by attribute id) and the link it acts on (rights-design.md decision 25). */
   verb?: string;
   values?: Json;
+  /** For a `read` step, the attributes it reads (ids, or names as written). */
+  attributes?: string[];
   end?: string;
   object?: string;
 }
@@ -300,6 +302,8 @@ export interface StepTraceJson {
   refusedBy?: string;
   /** The rights that held for the step, in check order; left out when none did. */
   rights?: { right: string; lifecycle: string; access: "allow" | "deny" }[];
+  /** True while the subject is frozen after the input (rights-design.md section 7); left out when not. */
+  frozen?: true;
 }
 
 export interface SimulationJson {
@@ -415,6 +419,7 @@ export function normalizeInput(step: Json, index: number, chart: { doc: Json }, 
     ...(str(step.participant) ? { participant: str(step.participant)! } : {}),
     ...(str(step.verb) ? { verb: str(step.verb)! } : {}),
     ...(step.values && typeof step.values === "object" && !Array.isArray(step.values) ? { values: { ...(step.values as Json) } } : {}),
+    ...(Array.isArray(step.attributes) && step.attributes.length ? { attributes: step.attributes.filter((x): x is string => typeof x === "string") } : {}),
     ...(str(step.end) ? { end: str(step.end)! } : {}),
     ...(str(step.object) ? { object: str(step.object)! } : {}),
   };
@@ -495,6 +500,9 @@ class Interpreter {
   rightsOn = false;
   /** A delete stopped the chart: later inputs are refused, timers do not fire (rights-design.md decision 25). */
   deleted = false;
+  /** Whether the subject is frozen, and the links that are, as `end|object` (rights-design.md decisions 16 and 17). */
+  frozenObject = false;
+  frozenLinks = new Set<string>();
   subjectEntity: string | undefined;
   lifecycles: Json[] = [];
   private auditSeq = 0;
@@ -535,6 +543,53 @@ class Interpreter {
     const object = this.subjectObject();
     for (const a of this.attributesOf(str(object?.entity) ?? this.subjectEntity ?? "")) this.row[a.id] = a.default ?? null;
     for (const [k, v] of Object.entries((object?.values as Json | undefined) ?? {})) this.row[k] = v;
+    this.frozenObject = object?.frozen === true;
+    for (const l of arr(object?.links)) if (l.frozen === true) this.frozenLinks.add(`${String(l.end)}|${String(l.object)}`);
+  }
+
+  /** Whether a link through an end is frozen; `object` narrows it to one linked object, and a missing end asks about any link. */
+  private linkFrozen(end: string | null, object?: string | null): boolean {
+    return [...this.frozenLinks].some((k) => {
+      const [e, o] = k.split("|");
+      return (!end || e === end) && (!object || !o || o === object);
+    });
+  }
+
+  /** Row 1 (decision 17): freezing refuses modify, connect, disconnect and delete before any right, and no element refused it. */
+  private frozenRefused(verb: string | null, end: string | null, object: string | null): boolean {
+    if (!verb || !FROZEN_VERBS.has(verb)) return false;
+    let frozen: boolean;
+    if (end) {
+      if (verb === "modify") frozen = this.linkFrozen(end, object);
+      else if (verb === "disconnect") frozen = this.frozenObject || this.linkFrozen(end, object);
+      else frozen = verb === "connect" && this.frozenObject;
+    } else if (verb === "disconnect") frozen = this.frozenObject || this.linkFrozen(null);
+    else frozen = this.frozenObject;
+    if (frozen) this.refuse("frozen");
+    return frozen;
+  }
+
+  /** An accepted `freeze` or `thaw`, from a verb step or an event that names it (decision 16). */
+  private applyFreeze(verb: "freeze" | "thaw", end: string | null, object: string | null) {
+    const freeze = verb === "freeze";
+    let was: boolean;
+    if (end) {
+      was = this.linkFrozen(end, object);
+      const linked = arr(this.subjectObject()?.links)
+        .filter((l) => l.end === end && (!object || l.object === object))
+        .map((l) => `${end}|${String(l.object)}`);
+      const keys = linked.length ? linked : [`${end}|${object ?? ""}`];
+      for (const k of keys) {
+        if (freeze) this.frozenLinks.add(k);
+        else this.frozenLinks.delete(k);
+      }
+    } else {
+      was = this.frozenObject;
+      this.frozenObject = freeze;
+    }
+    const what = end ? "The link" : "The object";
+    if (was === freeze)
+      this.scope.notes.push(freeze ? `${what} was already frozen, so freezing it changed nothing.` : `${what} was not frozen, so thawing it changed nothing.`);
   }
 
   private subjectObject(): Json | undefined {
@@ -657,6 +712,7 @@ class Interpreter {
       this.problem("MQ9305", `The event '${input.event}' is not an event of process '${String(this.chart.doc.name)}'; pick one of its events.`);
       return this.refuse("no-transition");
     }
+    if (this.frozenRefused(str(ev.verb), null, null)) return;
     const actors = ids(ev.actors);
     if (actors.length && (!input.actor || !this.membership.allows(actors, input.actor))) return this.refuse("actor", String(ev.id));
     // The event's list is an allow of its own lifecycle, and so are the signers of the gates on the moves it can make (decision 14): the acting actor only, never the participant's holdings.
@@ -674,6 +730,8 @@ class Interpreter {
       if (selection.transitions.length) this.microstep(selection.transitions);
       this.runToCompletion();
     });
+    // Naming `freeze` or `thaw` is the opt-in: the accepted event freezes or thaws the subject.
+    if (this.scope.refusal === null && (ev.verb === "freeze" || ev.verb === "thaw")) this.applyFreeze(ev.verb, null, null);
   }
 
   private handleTime(input: SimInputJson) {
@@ -765,7 +823,7 @@ class Interpreter {
     return active;
   }
 
-  private factsFor(l: Json, verb: string | null, closed: string[], end: string | null, create: boolean): Facts {
+  private factsFor(l: Json, verb: string | null, closed: string[], end: string | null, create: boolean, attributes: string[] | null = null): Facts {
     return {
       named: this.named,
       satisfies: (listed) => this.callerSatisfies(listed),
@@ -774,6 +832,9 @@ class Interpreter {
       active: this.activeOf(l, create),
       condition: (tree) => evalTree(tree, this.env()) === true,
       closed: l.id === this.chart.doc.id ? closed : [],
+      attributes,
+      frozenObject: this.frozenObject,
+      frozenLink: (e) => this.linkFrozen(e),
     };
   }
 
@@ -795,10 +856,10 @@ class Interpreter {
   }
 
   /** Rows 3 and 4: the denies, then the defaults. True when refused; the trace then names the right or the lifecycle. */
-  private checkRights(verb: string | null, closed: string[], end: string | null = null, create = false): boolean {
+  private checkRights(verb: string | null, closed: string[], end: string | null = null, create = false, attributes: string[] | null = null): boolean {
     const lifecycles = this.answering(verb);
     if (!lifecycles.some(takesPart)) return false;
-    const result = checkAll(lifecycles, (l) => this.factsFor(l, verb, closed, end, create));
+    const result = checkAll(lifecycles, (l) => this.factsFor(l, verb, closed, end, create, attributes));
     this.scope.rights.push(...result.rights);
     if (!result.refused) return false;
     this.refuse(result.refused.refusal, result.refused.by);
@@ -810,7 +871,7 @@ class Interpreter {
     if (this.done || this.deleted) return this.refuse("no-transition");
     const verb = input.verb ?? null;
     const group = builtInVerbs.find((v) => v.key === verb)?.group;
-    if (!verb || group === "move" || group === "signature" || group === "task" || verb === "freeze" || verb === "thaw") {
+    if (!verb || group === "move" || group === "signature" || group === "task") {
       this.problem(
         "MQ9305",
         verb
@@ -819,9 +880,15 @@ class Interpreter {
       );
       return this.refuse("no-transition");
     }
-    if (this.checkRights(verb, [], input.end ?? null, verb === "create")) return;
+    if (this.frozenRefused(verb, input.end ?? null, input.object ?? null)) return;
     const object = this.subjectObject();
     const entity = str(object?.entity) ?? this.subjectEntity ?? "";
+    // The attributes a read or modify names, as ids: each is checked on its own (decision 21). None named: not known, so it fails closed.
+    const known = this.attributesOf(entity);
+    const toId = (k: string) => known.find((a) => a.id === k)?.id ?? known.find((a) => a.name === k)?.id ?? k;
+    const named = verb === "read" ? (input.attributes ?? []) : verb === "modify" && !input.end ? Object.keys(input.values ?? {}) : [];
+    if (this.checkRights(verb, [], input.end ?? null, verb === "create", named.length ? named.map(toId) : null)) return;
+    if (verb === "freeze" || verb === "thaw") return this.applyFreeze(verb, input.end ?? null, input.object ?? null);
     if (verb === "modify" && !input.end) {
       const attributes = this.attributesOf(entity);
       for (const [key, value] of Object.entries(input.values ?? {})) {
@@ -1057,6 +1124,8 @@ class Interpreter {
       }
     }
     const setOut: Json = {};
+    if (worked.some((w) => w.value !== UNKNOWN) && this.frozenObject)
+      this.scope.notes.push("The object is frozen, and the move's sets were applied anyway; freezing does not stop moves.");
     for (const w of worked) {
       if (w.value === UNKNOWN) continue;
       this.row[w.attribute] = w.value;
@@ -1413,6 +1482,7 @@ class Interpreter {
       ...(this.scope.notes.length ? { notes: [...new Set(this.scope.notes)] } : {}),
       ...(this.scope.refusal !== null && this.scope.refusedBy && this.rightsOn ? { refusedBy: this.scope.refusedBy } : {}),
       ...(this.scope.rights.length ? { rights: uniqueHoldings(this.scope.rights) } : {}),
+      ...(this.frozenObject ? { frozen: true as const } : {}),
     };
     if (this.scope.list) unsatisfiedLists.set(trace, this.scope.list);
     return trace;
@@ -1663,8 +1733,8 @@ export function replay(doc: Json, start: { context?: Json; at?: string } | null 
     expect.states = t.configuration;
     if (Object.keys(t.changed).length) expect.context = t.changed;
     if (t.valuesChanged && Object.keys(t.valuesChanged).length) expect.values = t.valuesChanged;
-    // A refusal and its element are written when the project uses rights (decision 26).
-    if (!t.accepted && usesRights(options.lifecycles ?? []) && t.refusal) {
+    // A refusal and its element are written when the project uses rights (decision 26), and a frozen refusal always.
+    if (!t.accepted && t.refusal && (usesRights(options.lifecycles ?? []) || t.refusal === "frozen")) {
       expect.refusal = t.refusal;
       if (t.refusedBy) expect.refusedBy = t.refusedBy;
     }

@@ -456,7 +456,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
             {section(
               "configuration",
               L.configuration,
-              <ConfigurationSection configuration={entry?.configuration ?? []} final={!!entry?.final} names={names} />,
+              <ConfigurationSection configuration={entry?.configuration ?? []} final={!!entry?.final} frozen={!!entry?.frozen} names={names} />,
             )}
             {section("lastStep", L.lastStep, <LastStepSection entry={entry} names={names} subjectAttribute={subjectAttribute} onOpen={openRefuser} />)}
           </div>
@@ -560,7 +560,6 @@ function DoMenu({
   const [who, setWho] = useState("");
   const groups = verbGroups("right", verbs.own, verbs.hidden)
     .filter((g) => g.id !== "move" && g.id !== "signature" && g.id !== "task")
-    .map((g) => ({ ...g, options: g.options.filter((o) => o.key !== "freeze" && o.key !== "thaw") }))
     .filter((g) => g.options.length);
   const pick = (): { participant?: string; actor?: string } =>
     who.startsWith("p:") ? { participant: who.slice(2) } : who.startsWith("a:") ? { actor: who.slice(2) } : {};
@@ -1127,18 +1126,23 @@ function PendingSection({
   );
 }
 
-function ConfigurationSection({ configuration, final, names }: { configuration: readonly string[]; final: boolean; names: Names }) {
+function ConfigurationSection({ configuration, final, frozen, names }: { configuration: readonly string[]; final: boolean; frozen: boolean; names: Names }) {
   const rows = configurationRows(configuration, names);
   if (!rows.length) return <Note>{L.noConfiguration}</Note>;
   return (
     <ul aria-label={L.configuration} data-final={final ? "true" : "false"}>
-      {rows.map((r) => (
+      {rows.map((r, i) => (
         <li key={r.id} className={ROW} data-testid="configuration-row" data-state={r.id}>
           <span className="size-2 shrink-0 rounded-full bg-accent" aria-hidden />
           <span className="truncate" title={r.path}>
             {r.path}
           </span>
           {final ? <Badge tone="success">{L.final}</Badge> : null}
+          {frozen && i === 0 ? (
+            <Badge tone="warning" title={RL.frozenBadgeTip} data-testid="frozen-badge">
+              {RL.frozenBadge}
+            </Badge>
+          ) : null}
         </li>
       ))}
     </ul>

@@ -86,6 +86,24 @@ export function exportConfig(doc: Json): Json {
  * id (none are minted for a run), ids are unique, `subject` is an object id (never a name), and each link names a known
  * object. Recording mints a fresh id for every object and remaps `subject` and the links' `object`.
  */
+/** The step that froze what step `at` was refused for: the last accepted freeze before it that no accepted thaw followed; null when none. */
+export function freezingStep(
+  doc: Json,
+  trace: { index: number; accepted: boolean; input: { verb?: string; event?: string | null } | null }[],
+  at: number,
+): number | null {
+  const verbOf = (t: (typeof trace)[number]): string | null =>
+    t.input?.verb ?? (t.input?.event ? ((arr(doc.events).find((e) => e.id === t.input?.event)?.verb as string | undefined) ?? null) : null);
+  for (let i = at - 1; i >= 0; i--) {
+    const t = trace.find((x) => x.index === i);
+    if (!t?.accepted) continue;
+    const verb = verbOf(t);
+    if (verb === "thaw") return null;
+    if (verb === "freeze") return i;
+  }
+  return null;
+}
+
 function castOf(value: Json, scenario: Json | undefined, mint = false): { objects: Json[]; subject: string } | { error: string } | null {
   const own = value.objects !== undefined && value.objects !== null;
   if (own && !Array.isArray(value.objects)) return { error: "objects must be an array." };
@@ -265,6 +283,8 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
     arr(scenario.steps).some(
       (st) => st.verb !== undefined || (st.expect as Json | undefined)?.refusal !== undefined || (st.expect as Json | undefined)?.refusedBy !== undefined,
     );
+  // An event that names freeze or thaw takes effect in a run (the opt-in, decision 16), so such a scenario is replayed for real.
+  const namesFreeze = (doc: Json) => arr(doc.events).some((e) => e.verb === "freeze" || e.verb === "thaw");
   const sameValues = (a: Json, b: Json) => {
     const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
     return [...keys].every((k) => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null)) && Object.keys(a).length === Object.keys(b).length;
@@ -272,7 +292,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
   // A scenario with participants is replayed for real: a step refused while it expects to be accepted (or the reverse) fails
   // with MQ9301, and a refusal by actor names the participant and the list it did not satisfy.
   const participantFailure = (doc: Json, scenario: Json) => {
-    if (!arr(scenario.participants).length && !hasExpectedValues(scenario) && !hasRightsSteps(scenario)) return null;
+    if (!arr(scenario.participants).length && !hasExpectedValues(scenario) && !hasRightsSteps(scenario) && !namesFreeze(doc)) return null;
     const cast = castOf({}, scenario);
     const result = simulate(doc, scenario.start as never, arr(scenario.steps), {
       ...actorLookup(),
@@ -282,6 +302,20 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       refusedBy: true,
     });
     const steps = arr(scenario.steps);
+    // MQ9309: a step refused as frozen after an earlier step froze it, with no refusal frozen expected; it names that step.
+    for (const t of result.trace) {
+      if (t.index < 0 || t.accepted || t.refusal !== "frozen") continue;
+      if ((steps[t.index].expect as Json | undefined)?.refusal === "frozen") continue;
+      const by = freezingStep(doc, result.trace, t.index);
+      if (by === null) continue;
+      return {
+        step: t.index,
+        rule: "MQ9309",
+        message: `Step ${t.index + 1} is refused as frozen because step ${by + 1} froze it; thaw it in between, or expect the refusal (update the expectations from a replay).`,
+        expected: { refusal: (steps[t.index].expect as Json | undefined)?.refusal ?? null },
+        actual: { refusal: "frozen", frozenBy: by },
+      };
+    }
     for (const t of result.trace) {
       if (t.index < 0) continue;
       const step = steps[t.index];
@@ -365,7 +399,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
           ownerActors: lookup.ownerActors,
           entitiesOf: (l) => subjectsOf(l).flatMap((x) => (x.entity ? [x.entity] : [])),
         },
-        { states: idList(q.get("states")), actors: idList(q.get("actors")), verbs: idList(q.get("verbs")) },
+        { states: idList(q.get("states")), actors: idList(q.get("actors")), verbs: idList(q.get("verbs")), frozen: q.get("frozen") === "true" },
       );
       const page = rows.slice(start, start + limit);
       return HttpResponse.json({

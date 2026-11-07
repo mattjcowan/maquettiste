@@ -143,6 +143,10 @@ export interface RightDoc {
   verbs?: string[];
   /** Relation ends of the subject: the right then speaks of the links through them. */
   ends?: string[];
+  /** Attributes of the subject: the right then speaks of reading or modifying only those (read and modify only). */
+  attributes?: string[];
+  /** The right holds only while the object (or, with ends, the link) is frozen. */
+  whileFrozen?: boolean;
   /** A tree as stored, or `{ text }` as written. */
   condition?: Json;
   /** The states where it holds; absent means every state. */
@@ -191,6 +195,8 @@ export interface StepDoc {
   /** A verb step (rights-design.md decision 25): the verb, for `modify` the values by attribute id, and the link it acts on. */
   verb?: string;
   values?: Json;
+  /** For a `read` verb step: the attributes it reads (ids); absent, the object as a whole. */
+  attributes?: string[];
   end?: string;
   object?: string;
   expect?: { accepted?: boolean; states?: string[]; context?: Json; values?: Json; refusal?: string; refusedBy?: string };
@@ -239,7 +245,9 @@ export interface ScenarioObjectDoc {
   values?: Record<string, unknown>;
   /** The states the object is in, in lifecycles other than the one the scenario runs (object-effects-design.md decision 10). */
   states?: string[];
-  links?: { end: string; object: string }[];
+  links?: { end: string; object: string; frozen?: boolean }[];
+  /** The object starts frozen (rights-design.md decision 16); only the subject's is read. */
+  frozen?: boolean;
   /** A participant id; only when the subject entry names no owner field (decision 16). */
   owner?: string;
 }
@@ -826,6 +834,8 @@ export interface StepRow {
   /** A verb step: the verb's key, the values it sets, the link end and the linked object (names). */
   verb: string;
   setValues: string;
+  /** A read step's attributes (names). */
+  attributes: string;
   end: string;
   object: string;
   /** What the step expects of a refusal: the reason's key and the element's name. */
@@ -916,6 +926,7 @@ export function stepRows(
       accepted: s.expect?.accepted !== false,
       verb: s.verb ?? "",
       setValues: mapText(s.values, valueNames),
+      attributes: (s.attributes ?? []).map((a) => valueNames.get(a) ?? a).join(", "),
       end: name(s.end),
       object: name(s.object),
       refusal: s.expect?.refusal ?? "",

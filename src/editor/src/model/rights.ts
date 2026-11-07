@@ -10,6 +10,9 @@ export type RightAccess = "allow" | "deny";
 /** The verbs that can act on a link: `ends` beside any other verb is MQ9903. */
 export const LINK_VERBS: ReadonlySet<string> = new Set(["connect", "disconnect", "read", "modify", "freeze", "thaw"]);
 
+/** The verbs a right can narrow to attributes: `attributes` beside any other verb is MQ9903. */
+export const ATTRIBUTE_VERBS: ReadonlySet<string> = new Set(["read", "modify"]);
+
 export const rightsOf = (process: Pick<ProcessDoc, "rights">): RightDoc[] => process.rights ?? [];
 
 /** Whether the lifecycle says anything about rights: a default (written even as allow) or an entry. */
@@ -21,6 +24,8 @@ export interface RightNames {
   actor(id: string): string;
   state(id: string): string;
   end(id: string): string;
+  /** An attribute's name; the end's when missing. */
+  attribute?(id: string): string;
   verb(key: string): string;
   /** A stored condition as text. */
   condition(tree: Json | undefined): string;
@@ -41,6 +46,8 @@ export interface RightRow {
   verbs: string;
   states: string;
   ends: string;
+  attributes: string;
+  whileFrozen: boolean;
   when: string;
   why: string;
   /** The stored lists, for editors. */
@@ -49,6 +56,7 @@ export interface RightRow {
   verbKeys: string[];
   stateIds: string[];
   endIds: string[];
+  attributeIds: string[];
 }
 
 export const EVERYONE = "Everyone";
@@ -68,6 +76,7 @@ export function rightRows(process: ProcessDoc, named: ReadonlyMap<string, Json>,
     const verbKeys = strings(source.verbs);
     const endIds = strings(source.ends);
     const stateIds = strings(entry.states);
+    const attributeIds = strings(source.attributes);
     return {
       id: entry.id,
       pointer: `/rights/${i}`,
@@ -80,6 +89,8 @@ export function rightRows(process: ProcessDoc, named: ReadonlyMap<string, Json>,
       verbs: join(verbKeys, names.verb),
       states: join(stateIds, names.state, ALL_STATES),
       ends: join(endIds, names.end),
+      attributes: join(attributeIds, names.attribute ?? names.end),
+      whileFrozen: source.whileFrozen === true,
       when: names.condition(source.condition as Json | undefined),
       why: text(entry.description) || text(source.description),
       actorIds,
@@ -87,6 +98,7 @@ export function rightRows(process: ProcessDoc, named: ReadonlyMap<string, Json>,
       verbKeys,
       stateIds,
       endIds,
+      attributeIds,
     };
   });
 }
@@ -206,6 +218,15 @@ export function editRight(process: ProcessDoc, id: string, key: string, value: s
     case "ends":
       setList(doc, "ends", ids);
       return true;
+    case "attributes":
+      // Attributes belong to reading and modifying (MQ9903): a right that does neither takes none.
+      if (ids.length && !(entry.verbs ?? []).some((v) => ATTRIBUTE_VERBS.has(v))) return false;
+      setList(doc, "attributes", ids);
+      return true;
+    case "whileFrozen":
+      if (value === true || raw === "true") doc.whileFrozen = true;
+      else delete doc.whileFrozen;
+      return true;
     case "when": {
       const t = raw.trim();
       if (t) entry.condition = { text: t };
@@ -242,6 +263,13 @@ export function rightsLostWithStates(
     .filter((r) => r.states?.length && r.states.every((s) => gone.has(s)))
     .map((r) => (r.right ? named(r.right) : r.name || "an unnamed right"));
 }
+
+/** Whether a right can narrow to attributes: it names `read` or `modify`. */
+export const takesAttributes = (verbs: readonly string[]): boolean => verbs.some((v) => ATTRIBUTE_VERBS.has(v));
+
+/** The Attributes column shows when some right can use it (it names read or modify) or already does. */
+export const hasAttributes = (rows: readonly Pick<RightRow, "attributeIds" | "verbKeys">[]): boolean =>
+  rows.some((r) => r.attributeIds.length > 0 || takesAttributes(r.verbKeys));
 
 /** The Links column shows only when some right says `ends`. */
 export const hasEnds = (rows: readonly Pick<RightRow, "endIds">[]): boolean => rows.some((r) => r.endIds.length > 0);

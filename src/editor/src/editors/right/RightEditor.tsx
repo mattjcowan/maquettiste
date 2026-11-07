@@ -11,11 +11,13 @@ import { indexLookup } from "@/model/index";
 import { EDITOR_TAB_LABELS, RIGHT_LABELS as L } from "@/model/labels";
 import { treeText } from "@/model/effects";
 import type { Json, ProcessDoc } from "@/model/process";
-import { EVERYONE } from "@/model/rights";
+import { EVERYONE, takesAttributes } from "@/model/rights";
+import { subjectsOf } from "@/model/process";
 import { verbGroups } from "@/model/verbList";
 import { useVerbs } from "@/verbs/useVerbs";
 import { useSetContext } from "../process/SetsEditor";
 import { useActors } from "../process/shared";
+import { useObjectFields } from "../actor/useObjectFields";
 import { ValueBox } from "../ValueBox";
 import { domIdOf, EditorLayout, MarkChips, useEditorContext, type EditorContext } from "../EditorFrame";
 
@@ -64,6 +66,9 @@ function RightBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
       if (values.length) j[key] = values;
       else delete j[key];
     });
+  // Attributes are the ones every subject of the lifecycle it is previewed in holds.
+  const objectFields = useObjectFields(process ? subjectsOf(process).flatMap((s) => s.entity ?? []) : []);
+  const attributeOptions = objectFields.fields.filter((f) => f.kind === "attribute").map((f) => ({ value: f.id, label: f.name }));
   const actorOptions = actors.map((a) => ({ value: a.id, label: a.name }));
   const verbOptions = verbGroups("right", verbs.own, verbs.hidden).flatMap((g) => g.options.map((o) => ({ value: o.key, label: o.label })));
   const condition = rec.condition as Json | undefined;
@@ -122,7 +127,31 @@ function RightBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<typeo
                   allowFree={false}
                   onChange={(v) => v.length && setList("verbs", v)}
                 />
+                {takesAttributes(strings(rec.verbs)) ? (
+                  <ChipsEditor
+                    label={L.columns.attributes}
+                    whenNone="Every attribute"
+                    values={strings(rec.attributes)}
+                    options={attributeOptions}
+                    allowFree={false}
+                    onChange={(v) => setList("attributes", v)}
+                  />
+                ) : null}
               </div>
+              <label className="flex items-center gap-2 text-12" title={L.tips.whileFrozen}>
+                <input
+                  type="checkbox"
+                  checked={rec.whileFrozen === true}
+                  onChange={(e) =>
+                    set((j) => {
+                      if (e.target.checked) j.whileFrozen = true;
+                      else delete j.whileFrozen;
+                    })
+                  }
+                  data-testid="right-while-frozen"
+                />
+                {L.columns.whileFrozen}
+              </label>
               <section className="flex flex-col gap-1" aria-label={L.columns.when}>
                 <SectionTitle>{L.columns.when}</SectionTitle>
                 <div className="flex items-start gap-2">

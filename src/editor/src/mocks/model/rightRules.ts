@@ -7,7 +7,7 @@
 import type { Diagnostic } from "@/api/types";
 import { commonFields, objectFields } from "@/model/objectFields";
 import { subjectsOf } from "@/model/process";
-import { LINK_VERBS } from "@/model/rights";
+import { ATTRIBUTE_VERBS, LINK_VERBS } from "@/model/rights";
 import { fieldSourcesOf } from "./relativeRules";
 import type { ModelEntry } from "./validate";
 
@@ -19,7 +19,7 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
 
 /** The keys that say what an inline right allows or denies: none of them may stand beside `right`. */
-const INLINE_KEYS = ["name", "displayName", "access", "actors", "except", "verbs", "ends", "condition"] as const;
+const INLINE_KEYS = ["name", "displayName", "access", "actors", "except", "verbs", "ends", "attributes", "whileFrozen", "condition"] as const;
 
 /** The ids of the states a right may name: atomic, compound, parallel and final ones, not history or choice (MQ9902). */
 function ownStates(json: Json): Set<string> {
@@ -50,6 +50,7 @@ function exceptFindings(right: Json, nameOf: (id: string) => string, pointer: st
 
 export function rightDiagnostics(json: Json, all: () => Iterable<ModelEntry>, emit: Emit): void {
   const kind = json.kind;
+  if (kind === "scenario") return scenarioDiagnostics(json, emit);
   if (kind !== "process" && kind !== "right") return;
   const entries = [...all()];
   const byId = new Map(entries.map((e) => [e.id, e.json]));
@@ -78,6 +79,13 @@ export function rightDiagnostics(json: Json, all: () => Iterable<ModelEntry>, em
     const src = fieldSourcesOf(entries);
     const lists = subjects.map((s) => (s.entity !== undefined ? objectFields(s.entity, src).filter((f) => f.kind === "end") : []));
     return (held = new Set(subjects.length ? commonFields(lists).map((f) => f.id) : []));
+  };
+  let heldAttributes: Set<string> | null = null;
+  const subjectAttributes = (): Set<string> => {
+    if (heldAttributes) return heldAttributes;
+    const src = fieldSourcesOf(entries);
+    const lists = subjects.map((s) => (s.entity !== undefined ? objectFields(s.entity, src).filter((f) => f.kind === "attribute") : []));
+    return (heldAttributes = new Set(subjects.length ? commonFields(lists).map((f) => f.id) : []));
   };
   const names = new Map<string, number>();
   const allowing = new Set<string>();
@@ -137,6 +145,29 @@ export function rightDiagnostics(json: Json, all: () => Iterable<ModelEntry>, em
           );
       });
     }
+    const attributes = strings(source.attributes);
+    if (attributes.length) {
+      const bad = verbs.filter((v) => !ATTRIBUTE_VERBS.has(v));
+      if (bad.length)
+        emit(
+          "MQ9903",
+          "error",
+          `${label} names attributes, but ${bad.join(", ")} cannot act on attributes; only read and modify can. Remove the attributes.`,
+          use ? at : `${at}/attributes`,
+          id,
+        );
+      const have = subjectAttributes();
+      attributes.forEach((a, j) => {
+        if (!have.has(a))
+          emit(
+            "MQ9903",
+            "error",
+            `${label} names the attribute '${nameOf(a)}', which not every subject of '${name}' holds. Remove it.`,
+            use ? at : `${at}/attributes/${j}`,
+            id,
+          );
+      });
+    }
     if (!use) {
       const key = String(source.name ?? "").toLowerCase();
       if (key) {
@@ -191,4 +222,31 @@ export function rightDiagnostics(json: Json, all: () => Iterable<ModelEntry>, em
       tasks(s.states, `${base}/${i}/states`);
     });
   tasks(json.states, "/states");
+}
+
+/** MQ9305, part 2: `attributes` beside a verb other than `read`, and `frozen` on a link of an object other than the subject. */
+function scenarioDiagnostics(json: Json, emit: Emit): void {
+  const id = str(json.id) ?? undefined;
+  arr(json.objects).forEach((o, i) =>
+    arr(o.links).forEach((l, j) => {
+      if (l.frozen === true && o.id !== json.subject)
+        emit(
+          "MQ9305",
+          "error",
+          `The link of '${String(o.name)}' is frozen, but only the subject's links are read; freeze a link of the subject, or remove frozen.`,
+          `/objects/${i}/links/${j}/frozen`,
+          id,
+        );
+    }),
+  );
+  arr(json.steps).forEach((st, i) => {
+    if (st.input === "verb" && strings(st.attributes).length > 0 && st.verb !== "read")
+      emit(
+        "MQ9305",
+        "error",
+        `Step ${i + 1} names attributes beside the verb '${String(st.verb ?? "")}'; only a read step names attributes. Remove them.`,
+        `/steps/${i}/attributes`,
+        id,
+      );
+  });
 }

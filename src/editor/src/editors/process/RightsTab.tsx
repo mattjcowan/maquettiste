@@ -21,11 +21,13 @@ import {
   defaultAccess,
   editRight,
   freeRightName,
+  hasAttributes,
   hasEnds,
   removeRight,
   rightRows,
   rightStateOptions,
   setRightsDefault,
+  takesAttributes,
   unknownActors,
   ALL_STATES,
   EVERYONE,
@@ -59,6 +61,7 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
     actor: (id) => actorNames.get(id) ?? "?",
     state: (id) => stateName.get(id) ?? "?",
     end: (id) => objectFields.nameOf(id),
+    attribute: (id) => objectFields.nameOf(id),
     verb: (key) => describeVerb(key, verbs.own)?.label ?? key,
     condition: (tree) => treeText(tree, setContext.names),
   });
@@ -72,6 +75,7 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
   const actorOptions = pc.actors.map((a) => ({ id: a.id, name: a.name }));
   const verbOptions = verbGroups("right", verbs.own, verbs.hidden).flatMap((g) => g.options.map((o) => ({ value: o.key, label: o.label, group: g.label })));
   const endOptions = objectFields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: f.name }));
+  const attributeOptions = objectFields.fields.filter((f) => f.kind === "attribute").map((f) => ({ value: f.id, label: f.name }));
   const names = (ids: string[]) => ids.map((a) => actorNames.get(a) ?? "").join(", ");
   const columns: GridColumn<RightRow>[] = [
     { key: "name", label: L.columns.name, kind: "text", width: "w-28", clip: "max-w-28", sticky: true, value: (r) => r.name, locked: (r) => r.use },
@@ -151,6 +155,37 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
             value: (r: RightRow) => r.ends,
             editValue: (r: RightRow) => r.endIds.join(","),
             options: () => endOptions,
+            locked: (r: RightRow) => r.use,
+          } satisfies GridColumn<RightRow>,
+        ]
+      : []),
+    ...(hasAttributes(rows)
+      ? [
+          {
+            key: "attributes",
+            label: L.columns.attributes,
+            tooltip: L.tips.attributes,
+            kind: "pick",
+            width: "w-28",
+            clip: "max-w-28",
+            value: (r: RightRow) => r.attributes,
+            editValue: (r: RightRow) => r.attributeIds.join(","),
+            options: () => attributeOptions,
+            // Only read and modify speak of attributes.
+            locked: (r: RightRow) => r.use || !takesAttributes(r.verbKeys),
+          } satisfies GridColumn<RightRow>,
+        ]
+      : []),
+    ...(rows.length
+      ? [
+          {
+            key: "whileFrozen",
+            label: L.columns.whileFrozen,
+            tooltip: L.tips.whileFrozen,
+            kind: "toggle",
+            width: "w-16",
+            value: (r: RightRow) => (r.whileFrozen ? "yes" : ""),
+            on: (r: RightRow) => r.whileFrozen,
             locked: (r: RightRow) => r.use,
           } satisfies GridColumn<RightRow>,
         ]

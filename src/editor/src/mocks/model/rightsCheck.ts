@@ -2,6 +2,8 @@
 // Each lifecycle answers on its own: its denies, then its allows (an event's, task's or gate's closed list that the caller
 // satisfies counts as one), then its default. Then any "no" wins. A lifecycle that allows by default and says nothing about the
 // verb answers yes. `except` never grants. A condition the mock cannot read says nothing in a run and "depends" in the grid.
+// Part 2: freezing refuses first and no allow lifts it (decisions 17 and 18); a right with `whileFrozen` holds only while frozen; and
+// `read` and `modify` are answered per attribute (decision 21), where attributes not known fail closed.
 import { builtInVerbs } from "@/model/verbs";
 import type { Membership } from "./membership";
 
@@ -24,6 +26,12 @@ export function ownLifecycleOnly(verb: string): boolean {
   const g = GROUPS.get(verb);
   return g === "move" || g === "signature" || g === "task";
 }
+
+/** The verbs freezing refuses before any right (decision 17). */
+export const FROZEN_VERBS: ReadonlySet<string> = new Set(["modify", "connect", "disconnect", "delete"]);
+
+/** The verbs a right can narrow to attributes (MQ9903). */
+export const ATTRIBUTE_VERBS: ReadonlySet<string> = new Set(["read", "modify"]);
 
 export const usesRights = (lifecycles: readonly Json[]): boolean =>
   lifecycles.some((l) => l.use === "lifecycle" && (l.rightsDefault !== undefined || arr(l.rights).length > 0));
@@ -48,6 +56,16 @@ export interface Facts {
   condition(tree: unknown): Tri;
   /** The elements whose closed list lets the caller through: an allow of this lifecycle. */
   closed?: readonly string[];
+  /**
+   * For `read` and `modify`: the attributes the input names, each checked on its own. Missing, null or empty means they are not
+   * known (an event naming the verb, or a step without attributes): the check fails closed.
+   */
+  attributes?: readonly string[] | null;
+  /** Whether the object is frozen, and whether the link through an end (null: not known) is. A right with `whileFrozen` holds only then. */
+  frozenObject?: boolean;
+  frozenLink?(end: string | null): boolean;
+  /** Internal: the one attribute being checked (null: not known); undefined for a verb that has none. */
+  attr?: string | null;
 }
 
 const entryId = (e: Json): string => str(e.right) ?? String(e.id);
@@ -63,6 +81,12 @@ function applies(entry: Json, f: Facts): Tri {
     // A link verb with no end known: a deny with `ends` still holds; an allow with `ends` does not grant.
     if (f.end ? !ends.includes(f.end) : !(link && (str(src.access) ?? "deny") === "deny")) return false;
   } else if (f.end && !link) return false; // a right with no `ends` speaks of the object only, and of every link for a link verb
+  if (src.whileFrozen === true && !(ends.length ? (f.frozenLink?.(f.end ?? null) ?? false) : f.frozenObject === true)) return false;
+  const attrs = strs(src.attributes);
+  if (attrs.length && f.attr !== undefined) {
+    // An attribute not known: a deny naming attributes holds, and an allow naming attributes grants nothing.
+    if (f.attr === null ? (str(src.access) ?? "deny") !== "deny" : !attrs.includes(f.attr)) return false;
+  }
   const states = strs(entry.states);
   if (states.length && f.active && !states.some((s) => f.active!.has(s))) return false;
   const actors = strs(src.actors);
@@ -94,8 +118,28 @@ function decide(lifecycle: Json, f: Facts, maybe: boolean, applied: { entry: Jso
   return { verdict: lifecycle.rightsDefault === "deny" ? "deny" : "allow", byDefault: true, by: [String(lifecycle.id)] };
 }
 
-/** One lifecycle's answer on its own: its denies, then its allows, then its default. */
+/**
+ * One lifecycle's answer on its own: its denies, then its allows, then its default. For `read` and `modify` each attribute is
+ * answered on its own, by the rights that name it and those that name none; then any "no" wins.
+ */
 export function answerLifecycle(lifecycle: Json, f: Facts): Answer {
+  if (!f.verb || !ATTRIBUTE_VERBS.has(f.verb)) return answerOne(lifecycle, { ...f, attr: undefined });
+  const list: (string | null)[] = f.attributes && f.attributes.length ? [...f.attributes] : [null];
+  const answers = list.map((attr) => answerOne(lifecycle, { ...f, attr }));
+  if (answers.length === 1) return answers[0];
+  const holding = [...new Map(answers.flatMap((a) => a.holding).map((h) => [`${h.lifecycle}|${h.right}|${h.access}`, h])).values()];
+  const uncertain = answers.some((a) => a.uncertain);
+  const pick =
+    answers.find((a) => a.verdict === "deny" && !a.byDefault) ??
+    answers.find((a) => a.verdict === "deny") ??
+    answers.find((a) => a.verdict === "depends") ??
+    answers.find((a) => !a.byDefault) ??
+    answers[0];
+  if (pick.verdict === "depends") return { ...pick, by: [...new Set(answers.filter((a) => a.verdict === "depends").flatMap((a) => a.by))], holding, uncertain };
+  return { ...pick, holding, uncertain };
+}
+
+function answerOne(lifecycle: Json, f: Facts): Answer {
   const applied = arr(lifecycle.rights).map((entry) => ({ entry, h: applies(entry, f) }));
   const lo = decide(lifecycle, f, false, applied);
   const hi = decide(lifecycle, f, true, applied);
@@ -111,7 +155,7 @@ export function answerLifecycle(lifecycle: Json, f: Facts): Answer {
 export const takesPart = (l: Json): boolean => l.use === "lifecycle" && (arr(l.rights).length > 0 || l.rightsDefault === "deny");
 
 export interface Refusal {
-  refusal: "right" | "default";
+  refusal: "right" | "default" | "frozen";
   by: string;
 }
 
@@ -201,7 +245,11 @@ function closedLists(doc: Json, active: ReadonlySet<string>, verb: string): { id
 }
 
 /** Who can do what in a lifecycle: one row per state, actor and verb (the mock never splits a row by entity). */
-export function rightsGrid(doc: Json, world: RightsWorld, filter: { states?: string[]; actors?: string[]; verbs?: string[] } = {}): RightsRowJson[] {
+export function rightsGrid(
+  doc: Json,
+  world: RightsWorld,
+  filter: { states?: string[]; actors?: string[]; verbs?: string[]; frozen?: boolean } = {},
+): RightsRowJson[] {
   const lifecycle = doc;
   const named = world.named;
   const rights = arr(lifecycle.rights).map((e) => sourceOf(e, { named } as Facts) ?? {});
@@ -241,7 +289,7 @@ export function rightsGrid(doc: Json, world: RightsWorld, filter: { states?: str
       };
       for (const verb of verbs) {
         if (filter.verbs?.length && !filter.verbs.includes(verb)) continue;
-        rows.push(cell(lifecycle, st, actor, verb, satisfies, world, others));
+        rows.push(cell(lifecycle, st, actor, verb, satisfies, world, others, filter.frozen === true));
       }
     }
   }
@@ -256,9 +304,14 @@ function cell(
   satisfies: (listed: string) => Tri,
   world: RightsWorld,
   others: readonly Json[],
+  frozen: boolean,
 ): RightsRowJson {
   const condition = (tree: unknown): Tri => (tree && typeof tree === "object" ? null : true);
   const base = { state: st.id, actor, verb };
+  // Row 1: freezing refuses before any right, and no element decides it.
+  if (frozen && FROZEN_VERBS.has(verb)) return { ...base, answer: "denied", byDefault: false, by: [], dependsOn: [] };
+  const answerOf = (l: Json, f: Omit<Facts, "named" | "satisfies" | "verb" | "condition">) =>
+    gridAnswer(l, { named: world.named, satisfies, verb, condition, frozenObject: frozen, frozenLink: () => frozen, ...f });
   const lists = closedLists(lifecycle, st.active, verb);
   const passes = lists.map((c) => (c.list.length === 0 && !c.signers ? true : or(c.list.map(satisfies))));
   const events = lists.filter((c) => !c.signers);
@@ -268,7 +321,7 @@ function cell(
   const closed = lists.filter((c) => c.list.length > 0);
   const allowing = closed.filter((c) => or(c.list.map(satisfies)) === true).map((c) => c.id);
   const maybeAllowing = closed.filter((c) => or(c.list.map(satisfies)) === null).map((c) => c.id);
-  const own = answerLifecycle(lifecycle, { named: world.named, satisfies, verb, active: st.active, condition, closed: allowing });
+  const own = answerOf(lifecycle, { active: st.active, closed: allowing });
   let ownVerdict: Answer["verdict"] = own.verdict;
   let by = own.by;
   if (maybeAllowing.length && own.verdict === "deny" && own.byDefault) {
@@ -281,7 +334,7 @@ function cell(
   let deniedBy: Answer | null = null;
   if (!ownLifecycleOnly(verb)) {
     for (const other of others) {
-      const answers = atomicStates(other).map((s) => answerLifecycle(other, { named: world.named, satisfies, verb, active: s.active, condition, closed: [] }));
+      const answers = atomicStates(other).map((s) => answerOf(other, { active: s.active, closed: [] }));
       if (!answers.length) continue;
       if (answers.every((a) => a.verdict === "deny")) {
         deniedBy ??= answers[0];
@@ -291,4 +344,25 @@ function cell(
   if (deniedBy) return { ...base, answer: "denied", byDefault: deniedBy.byDefault, by: deniedBy.by, dependsOn: [] };
   if (ownVerdict === "depends" || dependsOn.length) return { ...base, answer: "depends", byDefault: false, by, dependsOn };
   return { ...base, answer: "allowed", byDefault: own.byDefault, by, dependsOn: [] };
+}
+
+/** The attributes any right of the lifecycle names. */
+function attributesNamed(lifecycle: Json, named: ReadonlyMap<string, Json>): string[] {
+  const out = new Set<string>();
+  for (const e of arr(lifecycle.rights)) strs(sourceOf(e, { named } as Facts)?.attributes).forEach((a) => out.add(a));
+  return [...out];
+}
+
+/**
+ * A cell of "who can do what" for `read` and `modify`: when a right that names attributes would change the answer, the cell
+ * depends, and names that right (decision 21).
+ */
+function gridAnswer(lifecycle: Json, f: Facts): Answer {
+  if (!f.verb || !ATTRIBUTE_VERBS.has(f.verb)) return answerLifecycle(lifecycle, f);
+  const names = attributesNamed(lifecycle, f.named);
+  // An attribute that no right names: only the rights that name none apply.
+  const base = answerLifecycle(lifecycle, { ...f, attributes: [""] });
+  const changed = names.map((n) => answerLifecycle(lifecycle, { ...f, attributes: [n] })).filter((a) => a.verdict !== base.verdict);
+  if (!changed.length) return base;
+  return { verdict: "depends", byDefault: false, by: [...new Set(changed.flatMap((a) => a.by))], holding: base.holding, uncertain: true };
 }
