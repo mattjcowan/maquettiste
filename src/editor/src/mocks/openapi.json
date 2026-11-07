@@ -12017,7 +12017,7 @@
             "type": "string"
           },
           "verbs": {
-            "description": "The distinct verb keys a process's events and transitions name, and those its rights name (rights-design.md section 8),\nsorted ordinally (verbs-design.md section 7), on process rows that name at least one; a named right's verbs, on right rows.\nLeft out when the process names none. The editor's Verbs tab counts uses from these rows.\n",
+            "description": "The distinct verb keys a process's events and transitions name, and those its rights and trigger points name (rights-design.md\nsection 8, trigger-points-design.md section 9),\nsorted ordinally (verbs-design.md section 7), on process rows that name at least one; a named right's verbs, on right rows.\nLeft out when the process names none. The editor's Verbs tab counts uses from these rows.\n",
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
@@ -12041,6 +12041,29 @@
               "allow",
               "deny"
             ]
+          },
+          "triggerPoints": {
+            "description": "The number of a lifecycle's trigger points (trigger-points-design.md section 9), on process rows that have at least one. Left\nout otherwise, so rows of projects without trigger points do not change.\n",
+            "type": "integer",
+            "minimum": 1
+          },
+          "triggerVerbs": {
+            "description": "The distinct verb keys a process's trigger points name, sorted ordinally (trigger-points-design.md section 9), on process rows\nthat have a trigger point. They are in `verbs` too.\n",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "replaces": {
+            "description": "The distinct verb keys a process's replaces name, sorted ordinally (trigger-points-design.md section 9), on process rows that have\na replace.\n",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
           },
           "actors": {
             "description": "The actors a process names anywhere in its document (event senders, gate signers, invokes and so on), as ids sorted\nordinally, on process rows (libraries too) that name at least one. Only ids of actors that exist count. Left out when the\nprocess names none. The explorer reads it to show where an actor acts.\n",

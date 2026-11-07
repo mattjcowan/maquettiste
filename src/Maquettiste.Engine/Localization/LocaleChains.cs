@@ -14,7 +14,7 @@ public static partial class LocaleChains
     public static readonly FrozenSet<string> SubElementKinds =
         FrozenSet.Create(StringComparer.Ordinal, "attribute", "end", "enum-member", "reference-field", "reference-row", "category",
             "state", "transition", "event", "guard", "action", "invoke", "gate", "meaning", "step", "operation-member", "outcome", "error", "member", "verb",
-            "process-right");
+            "process-right", "process-trigger-point");
 
     /// <summary>The element kinds whose standard fields are localizable: every domain-model kind (physical elements, mappings,
     /// diagrams and the two vocabulary containers are out of scope; the categories inside the tree are in).</summary>

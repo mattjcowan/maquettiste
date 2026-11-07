@@ -615,8 +615,9 @@ internal static class ModelIndexer
     }
 
     /// <summary>
-    /// The distinct verb keys a process's events, transitions and inline rights name (rights-design.md section 8), sorted ordinally;
-    /// <see langword="null"/> when none. A use of a named right adds nothing here: the named right's row lists its verbs.
+    /// The distinct verb keys a process's events, transitions, inline rights (rights-design.md section 8) and trigger points
+    /// (trigger-points-design.md section 9) name, sorted ordinally; <see langword="null"/> when none. A use of a named right adds nothing here:
+    /// the named right's row lists its verbs.
     /// </summary>
     internal static IReadOnlyList<string>? VerbsOf(Process process)
     {
@@ -636,6 +637,12 @@ internal static class ModelIndexer
         foreach (var right in process.Rights)
         {
             foreach (var verb in right.Verbs)
+                (keys ??= new(StringComparer.Ordinal)).Add(verb);
+        }
+
+        foreach (var point in process.TriggerPoints)
+        {
+            foreach (var verb in point.Verbs)
                 (keys ??= new(StringComparer.Ordinal)).Add(verb);
         }
 
@@ -669,6 +676,28 @@ internal static class ModelIndexer
             DenyVerbs = SortedKeys(process.Rights.Where(r => !r.IsUse && r.Access == RightAccess.Deny).SelectMany(r => r.Verbs)),
             RightUses = SortedKeys(process.Rights.Select(r => r.Right).OfType<string>()),
             WhileFrozen = process.Rights.Any(r => !r.IsUse && r.WhileFrozen),
+        };
+    }
+
+    /// <summary>
+    /// A process row's trigger point members (trigger-points-design.md sections 7 and 9), each <see langword="null"/> unless the process has
+    /// <c>triggerPoints</c>: the count, the verbs its points name, the verbs its replaces name, and for the trigger points naming key each
+    /// replace's verbs and entities.
+    /// </summary>
+    private static ElementSummary WithTriggerPoints(ElementSummary row, Element element)
+    {
+        if (element is not Process { TriggerPoints.Count: > 0 } process)
+            return row;
+        var replaces = process.TriggerPoints.Where(p => p.Type == TriggerPointType.Replace).ToList();
+        return row with
+        {
+            TriggerPoints = process.TriggerPoints.Count,
+            TriggerVerbs = SortedKeys(process.TriggerPoints.SelectMany(p => p.Verbs)),
+            Replaces = SortedKeys(replaces.SelectMany(p => p.Verbs)),
+            ReplaceScopes = replaces.Count == 0
+                ? null
+                : [.. replaces.Select(p => string.Join(',', p.Verbs.Order(StringComparer.Ordinal)) + "|" + string.Join(',', p.Entities.Order(StringComparer.Ordinal)))
+                    .Order(StringComparer.Ordinal)],
         };
     }
 
@@ -820,7 +849,7 @@ internal static class ModelIndexer
     /// <summary>The index row of an element (E4 and E5 members included; a custom element's type and member count,
     /// next-phase-2-design.md section 4.2).</summary>
     private static ElementSummary Summarize(Element element, string hash, string path, PropertySchemaSet schemas, IReadOnlyList<string>? actors) =>
-        WithRights(new(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, hash, path, element.Category, element.Stereotypes,
+        WithTriggerPoints(WithRights(new(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, hash, path, element.Category, element.Stereotypes,
             DisplayName: element.DisplayName,
             Database: element switch
             {
@@ -891,7 +920,7 @@ internal static class ModelIndexer
                 _ => null,
             },
             Rights: element is Process { Rights.Count: > 0 } withRights ? withRights.Rights.Count : null,
-            Access: element is Right access ? AccessName(access.Access) : null), element);
+            Access: element is Right access ? AccessName(access.Access) : null), element), element);
 
     /// <summary>The entities a process's entity entries name, in entry order (a stereotype entry is not counted).</summary>
     private static List<string> EntityEntries(Process process) => [.. process.Subjects.Select(s => s.Entity).OfType<string>()];

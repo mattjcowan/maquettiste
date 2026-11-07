@@ -3066,7 +3066,8 @@ export interface components {
              */
             verb?: string;
             /**
-             * @description The distinct verb keys a process's events and transitions name, and those its rights name (rights-design.md section 8),
+             * @description The distinct verb keys a process's events and transitions name, and those its rights and trigger points name (rights-design.md
+             *     section 8, trigger-points-design.md section 9),
              *     sorted ordinally (verbs-design.md section 7), on process rows that name at least one; a named right's verbs, on right rows.
              *     Left out when the process names none. The editor's Verbs tab counts uses from these rows.
              */
@@ -3083,6 +3084,21 @@ export interface components {
              * @enum {string}
              */
             access?: "allow" | "deny";
+            /**
+             * @description The number of a lifecycle's trigger points (trigger-points-design.md section 9), on process rows that have at least one. Left
+             *     out otherwise, so rows of projects without trigger points do not change.
+             */
+            triggerPoints?: number;
+            /**
+             * @description The distinct verb keys a process's trigger points name, sorted ordinally (trigger-points-design.md section 9), on process rows
+             *     that have a trigger point. They are in `verbs` too.
+             */
+            triggerVerbs?: string[];
+            /**
+             * @description The distinct verb keys a process's replaces name, sorted ordinally (trigger-points-design.md section 9), on process rows that have
+             *     a replace.
+             */
+            replaces?: string[];
             /**
              * @description The actors a process names anywhere in its document (event senders, gate signers, invokes and so on), as ids sorted
              *     ordinally, on process rows (libraries too) that name at least one. Only ids of actors that exist count. Left out when the
