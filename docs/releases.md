@@ -27,6 +27,8 @@ one.
   section, says more.
 - **New rules.** MQ9309 (warning) for the steps above. MQ9903 now also covers attributes that not every subject holds, attributes beside
   a verb other than `read` and `modify`, and attributes beside links. MQ9305 now also covers `attributes` beside a verb other than `read`.
+- **New names.** Each verify result may carry `warnings`, which holds only MQ9309 and is left out when empty. Templates gain
+  `right.while_frozen`, `right.attributes`, `step.attributes`, `object.frozen` and `model.freezing.used`.
 - **The upgrade.** Teams upgrade together: new files use shapes an older engine cannot read (`whileFrozen`, `attributes` and `frozen`). The file
   format version stays 1. The schema copies and the `maquettiste-modeling` skill change, so update the copies your repository holds. A project
   with neither freezing nor attribute rights is unchanged.
