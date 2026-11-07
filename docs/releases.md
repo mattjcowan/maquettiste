@@ -27,8 +27,9 @@ one.
   `RightConditions` methods and the `StatesIn<Lifecycle>` methods the build asks for. Teams that also use the generated scenario tests
   register `ScenarioHoldings` in their `ScenarioHost`, by passing `new ScenarioHoldings()` as each command handler's last argument (or as the
   container's `ICallerHoldings`). The pack's README has the steps. `process-docs` adds a rights page and a "Who can do what" table.
-- **New names.** `process-right` (the part kind of a right in a lifecycle), `entity` (a row of `get_rights` that differs by entity) and
-  `dependsOn` (the other lifecycles that may also refuse) are new names. The owner will confirm them before release.
+- **New names.** `process-right` is the part kind of a right in a lifecycle. `get_rights` rows gain `entity`, for a row that differs by
+  entity, and `dependsOn`, the other lifecycles that may also refuse. Templates gain `step.trace.object_actors`, the actors taken from the
+  object that a step's participant satisfied.
 - **Teams upgrade together.** New files use shapes an older engine cannot read: a `right` file, and `rights`, `rightsDefault`,
   and the new step keys. The file format version stays 1. A project that uses none of this keeps its files, output, findings and tool
   answers.
