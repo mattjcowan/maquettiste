@@ -216,6 +216,7 @@ internal sealed partial class ResolveRun
         }
 
         ResolveEntityLifecycles(sources);
+        FinishTriggerPoints();
     }
 
     /// <summary>
@@ -719,7 +720,8 @@ internal sealed partial class ResolveRun
                 .ToDictionary(a => a.Id, StringComparer.Ordinal);
             var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, kind,
                 ExprResolution.ApiColumns(Model, siteId, Model.GetDocument(process.Id)?.Path));
-            var readsSubject = ExprSites.ReadsSubject(process, typed.Typed);
+            // A trigger point's site also reads the object through old. (trigger-points-design.md decision 14).
+            var readsSubject = ExprSites.ReadsSubject(process, typed.Typed) || (kind is ExprSiteKind.Trigger or ExprSiteKind.TriggerSet && ReadsOld(typed.Typed));
             var readsStereotype = false;
             var built = ExprResolution.Build(root, m =>
             {
@@ -1010,6 +1012,18 @@ internal sealed partial class ResolveRun
             r.RightsDefault = process.RightsDefault == RightAccess.Deny ? "deny" : "allow";
             if (process.Rights.Count > 0)
                 r.Rights = BuildRights(process, r, nodeKeys, lookup.States, BuildCondition);
+
+            // Trigger points (trigger-points-design.md section 7): only lifecycles hold them (MQ8101). Without any, both lists stay empty,
+            // keyed on the process's file, so its first point renders again what read them.
+            r.TriggerPoints = new RList<RTriggerPoint>([], nodeKeys);
+            r.TriggerVerbs = new RList<RTriggerVerb>([], nodeKeys);
+            if (process.TriggerPoints.Count > 0)
+            {
+                var transitionsById = new Dictionary<string, RTransition>(StringComparer.Ordinal);
+                foreach (var t in transitions)
+                    transitionsById.TryAdd(t.Id, t);
+                BuildTriggerPoints(process, r, nodeKeys, lookup.States, transitionsById, BuildCondition);
+            }
         }
 
         // Every actor the process names, and what names each one.
@@ -1138,6 +1152,9 @@ internal sealed partial class ResolveRun
             var participants = ResolveParticipants(s, scenario, keys);
             var traced = TraceInputs(scenario);
             var rightsKeys = RightsReplayKeys(scenario);
+            // A check the team writes, assumed by a word (trigger-points-design.md decision 26): its key, by trigger point id. Only a scenario
+            // with such a word pays for it.
+            var checkKeys = scenario.Steps.Any(st => st.Assume.Values.Any(v => v.Check is not null)) ? CheckKeys(scenario) : null;
             var runs = scenario.Participants.Count > 0 ? Model.Get<Process>(scenario.Process) : null;
             // A process that reads current_actor() (object-effects-design.md section 7): the identity comes from each step's signer, participant and
             // actor, and an automatic move's from the system actor, so every step reads the actors as a participant's step does.
@@ -1162,7 +1179,7 @@ internal sealed partial class ResolveRun
                     Meaning = step.Meaning is null ? null : lookup.Meanings.GetValueOrDefault(step.Meaning),
                     Reason = step.Reason,
                     Payload = ByName(step.Payload, lookup.Payload, lookup.Audit, lookup.Context),
-                    Assume = Assumptions(step.Assume, lookup.Guards),
+                    Assume = Assumptions(step.Assume, lookup.Guards, checkKeys?.Names),
                     Description = step.Description?.Text,
                     End = step.End is null ? null : _byId.GetValueOrDefault(step.End) as REnd,
                     Object = step.Object is null ? null : s.Objects.FirstOrDefault(o => string.Equals(o.Id, step.Object, StringComparison.Ordinal)),
@@ -1253,6 +1270,10 @@ internal sealed partial class ResolveRun
                 foreach (var id in traced)
                     stepDeps.Element(id);
                 stepDeps.AddRange(rightsKeys);
+                // Another lifecycle's check is keyed by that lifecycle's name, or its id when two lifecycles the scenario reaches share one.
+                if (checkKeys is not null && step.Assume.Any(a => a.Value.Check is not null && _triggerPoints.TryGetValue(a.Key, out var check)
+                        && !string.Equals(check.Process?.Id, scenario.Process, StringComparison.Ordinal)))
+                    stepDeps.AddRange(checkKeys.Keys);
                 if (step.Expect is { } expect)
                 {
                     var expected = expect.States.Select(id => lookup.States.GetValueOrDefault(id)).OfType<RState>().ToList();
@@ -1265,6 +1286,10 @@ internal sealed partial class ResolveRun
                         Refusal = expect.Refusal,
                         RefusedBy = expect.RefusedBy,
                     };
+                    if (expect.CheckWarnings is { Count: > 0 } warnings)
+                        r.Expect.CheckWarnings = ExpectedTriggerPoints(warnings, keys);
+                    if (expect.TriggerPoints is { Count: > 0 } ran)
+                        r.Expect.TriggerPoints = ExpectedTriggerPoints(ran, keys);
                     if (expect.Values.Count > 0)
                     {
                         // The object's values by name (object-effects-design.md decision 4): the names its attributes' holders give.
@@ -1289,7 +1314,8 @@ internal sealed partial class ResolveRun
             // once per scenario on first read, so a run whose templates never read it pays nothing.
             var model = Model;
             var actorsById = _actors;
-            var replay = new Lazy<IReadOnlyList<RStepTrace>>(() => Replay(model, scenario, lookup, actorsById), LazyThreadSafetyMode.ExecutionAndPublication);
+            var triggerPoints = _triggerPoints;
+            var replay = new Lazy<IReadOnlyList<RStepTrace>>(() => Replay(model, scenario, lookup, actorsById, triggerPoints), LazyThreadSafetyMode.ExecutionAndPublication);
             foreach (var step in steps)
                 step.Replay = replay;
             scenarios.Add(s);
@@ -1571,7 +1597,8 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>The engine interpreter's result of each step of a scenario that ran (empty when the replay could not start).</summary>
-    private static IReadOnlyList<RStepTrace> Replay(ModelSnapshot model, Scenario scenario, ProcessLookup lookup, Dictionary<string, RActor> actors)
+    private static IReadOnlyList<RStepTrace> Replay(ModelSnapshot model, Scenario scenario, ProcessLookup lookup, Dictionary<string, RActor> actors,
+        Dictionary<string, RTriggerPoint> triggerPoints)
     {
         using var runtime = new ProcessRuntime(model, 1, CancellationToken.None);
         if (ScenarioReplayer.Replay(scenario, runtime) is not { } replay)
@@ -1605,20 +1632,31 @@ internal sealed partial class ResolveRun
                 Final = t.Final,
                 ActsAs = t.ActsAs,
                 ObjectActors = satisfied,
+                TriggerPoints = t.TriggerPoints is { Count: > 0 } runs ? TriggerRuns(runs, triggerPoints) : [],
+                CheckWarnings = t.CheckWarnings is { Count: > 0 } warned ? [.. warned.Select(id => triggerPoints.GetValueOrDefault(id)).OfType<RTriggerPoint>()] : [],
             });
         }
 
         return traces;
     }
 
-    /// <summary>Guard results keyed by guard name (the id when no guard has it), ordinal.</summary>
-    private static IReadOnlyDictionary<string, object?> Assumptions(IReadOnlyDictionary<string, StepAssumption> values, Dictionary<string, RGuard> guards)
+    /// <summary>
+    /// Guard results keyed by guard name (the id when no guard has it), and check outcomes keyed as <paramref name="checks"/> names them
+    /// (trigger-points-design.md decision 26), ordinal. A boolean entry is keyed as before, whatever its key names.
+    /// </summary>
+    private static IReadOnlyDictionary<string, object?> Assumptions(IReadOnlyDictionary<string, StepAssumption> values, Dictionary<string, RGuard> guards,
+        IReadOnlyDictionary<string, string>? checks)
     {
         if (values.Count == 0)
             return ImmutableSortedDictionary<string, object?>.Empty;
         var map = new SortedDictionary<string, object?>(StringComparer.Ordinal);
         foreach (var (id, value) in values)
-            map.TryAdd(guards.TryGetValue(id, out var guard) ? guard.Name : id, value.ToPlain());
+        {
+            var key = value.Check is not null && checks is not null && checks.TryGetValue(id, out var check) ? check
+                : guards.TryGetValue(id, out var guard) ? guard.Name : id;
+            map.TryAdd(key, value.ToPlain());
+        }
+
         return map.ToImmutableSortedDictionary(StringComparer.Ordinal);
     }
 

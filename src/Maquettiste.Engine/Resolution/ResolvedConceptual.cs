@@ -96,6 +96,14 @@ public sealed class REntity : RElement
     /// </summary>
     public RList<RProcess> Lifecycles { get; internal set; } = RList<RProcess>.Empty;
 
+    /// <summary>
+    /// The lifecycles that govern the entity and have trigger points on object, link or own verbs (trigger-points-design.md section 7), by
+    /// name then id, whatever those points' <c>entities</c>, which a per-type runner tests at run time. Empty in a project without trigger
+    /// points. It keys on the trigger points naming key, and in a project that uses trigger points also on what decides which lifecycles
+    /// govern the entity and on each lifecycle it lists.
+    /// </summary>
+    public RList<RProcess> TriggerLifecycles { get; internal set; } = RList<RProcess>.Empty;
+
     /// <summary>The operations whose subject is the entity, in <see cref="ResolvedModel.Operations"/> order.</summary>
     public RList<ROperation> Operations { get; internal set; } = RList<ROperation>.Empty;
 }

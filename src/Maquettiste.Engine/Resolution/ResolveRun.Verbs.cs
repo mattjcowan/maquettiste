@@ -143,6 +143,7 @@ internal sealed partial class ResolveRun
             verb.Operations = new RList<ROperation>(operations.Where(o => ReferenceEquals(o.Node.Verb, verb)).Select(o => o.Node), usesKeys);
             verb.Used = verb.Events.Count > 0 || verb.Transitions.Count > 0 || verb.Operations.Count > 0;
             verb.Rights = RightsOf(verb);
+            verb.TriggerPoints = TriggerPointsOf(verb);
             if (verb.Id is not null)
                 Register(verb);
         }

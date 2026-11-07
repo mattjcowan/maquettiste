@@ -189,6 +189,7 @@ internal static class Adhoc
         Scenarios = model.Scenarios,
         Rights = model.Rights,
         RightsLifecycles = model.RightsLifecycles,
+        TriggerLifecycles = model.TriggerLifecycles,
         Freezing = model.Freezing,
         Operations = model.Operations,
         CustomElements = model.CustomElements,

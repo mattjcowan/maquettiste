@@ -139,6 +139,13 @@ public sealed class RVerb : IResolvedObject
     /// </summary>
     public RList<RRight> Rights { get; internal set; } = RList<RRight>.Empty;
 
+    /// <summary>
+    /// The trigger points that name it (trigger-points-design.md section 7): those of each lifecycle of <see cref="ResolvedModel.TriggerLifecycles"/>
+    /// in that order, each lifecycle's in file order. It keys on the trigger points naming key, and in a project that uses trigger points also
+    /// on every lifecycle with trigger points; empty in a project without them.
+    /// </summary>
+    public RList<RTriggerPoint> TriggerPoints { get; internal set; } = RList<RTriggerPoint>.Empty;
+
     /// <inheritdoc/>
     public string Kind => "verb";
 
