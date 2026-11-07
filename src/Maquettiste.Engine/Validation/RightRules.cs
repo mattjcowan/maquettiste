@@ -13,6 +13,9 @@ internal static class RightRules
     /// <summary>The verbs that act on a link, the only ones a right with <c>ends</c> may name (rights-design.md decision 20).</summary>
     private static readonly FrozenSet<string> LinkVerbs = new[] { "connect", "disconnect", "read", "modify", "freeze", "thaw" }.ToFrozenSet(StringComparer.Ordinal);
 
+    /// <summary>The verbs that read or modify attributes, the only ones a right with <c>attributes</c> may name (rights-design.md decision 21).</summary>
+    private static readonly FrozenSet<string> AttributeVerbs = new[] { "read", "modify" }.ToFrozenSet(StringComparer.Ordinal);
+
     /// <summary>Checks the rights rules of a document.</summary>
     /// <param name="context">The validation context.</param>
     /// <param name="element">The document's element.</param>
@@ -29,6 +32,7 @@ internal static class RightRules
                 break;
             case Right right:
                 CheckEnds(right.Verbs, right.Ends, "/ends", right.Id, $"Named right '{right.Name}'", report);
+                CheckAttributes(right.Verbs, right.Ends, right.Attributes, "/attributes", right.Id, $"Named right '{right.Name}'", report);
                 CheckExcept(context.Model, right.Actors, right.Except, "/except", right.Id, $"named right '{right.Name}'", report);
                 break;
         }
@@ -49,6 +53,7 @@ internal static class RightRules
         var states = new Dictionary<string, ProcessState>(StringComparer.Ordinal);
         Walk(process.States, "", (state, _) => states[state.Id] = state);
         var held = process.Subjects.Count > 0 ? ExprSites.RightMembers(model, process).Navigations.Select(e => e.Id).ToHashSet(StringComparer.Ordinal) : null;
+        HashSet<string>? heldAttributes = null;
         var allowsByDefault = process.RightsDefault != RightAccess.Deny;
         var allowed = new HashSet<string>(StringComparer.Ordinal);
         for (var i = 0; i < process.Rights.Count; i++)
@@ -74,7 +79,9 @@ internal static class RightRules
             var verbs = named?.Verbs ?? entry.Verbs;
             if (access == RightAccess.Allow)
             {
-                allowed.UnionWith(verbs);
+                // An allow that names attributes grants nothing where the attributes are not known, as for an event (decision 21).
+                if ((named?.Attributes ?? entry.Attributes).Count == 0)
+                    allowed.UnionWith(verbs);
                 if (allowsByDefault)
                 {
                     report.Add("MQ9904", $"{label} allows, and lifecycle '{process.Name}' allows anything no right denies: each lifecycle answers on its own, so this right "
@@ -85,6 +92,7 @@ internal static class RightRules
             if (named is null)
             {
                 CheckEnds(entry.Verbs, entry.Ends, at + "/ends", entry.Id, label, report);
+                CheckAttributes(entry.Verbs, entry.Ends, entry.Attributes, at + "/attributes", entry.Id, label, report);
                 CheckExcept(model, entry.Actors, entry.Except, at + "/except", entry.Id, $"right '{entry.Name}'", report);
             }
 
@@ -97,6 +105,17 @@ internal static class RightRules
                     continue; // MQ2001, or an end every subject holds
                 report.Add("MQ9903", $"{label} names relation end '{EndName(model, ends[k])}' in ends, which not every subject of lifecycle '{process.Name}' holds; "
                     + "remove it, or name an end of the subjects.", named is null ? Ptr.At(at + "/ends", k) : at + "/right", entry.Id);
+            }
+
+            var attributes = named?.Attributes ?? entry.Attributes;
+            if (attributes.Count > 0)
+                heldAttributes ??= ExprSites.RightAttributes(model, process);
+            for (var k = 0; k < attributes.Count; k++)
+            {
+                if (!model.TryGetEntry(attributes[k], out _) || heldAttributes!.Contains(attributes[k]))
+                    continue; // MQ2001, or an attribute every subject holds
+                report.Add("MQ9903", $"{label} names attribute '{AttributeName(model, attributes[k])}' in attributes, which not every subject of "
+                    + $"lifecycle '{process.Name}' holds; remove it, or name an attribute of the subjects.", named is null ? Ptr.At(at + "/attributes", k) : at + "/right", entry.Id);
             }
         }
 
@@ -112,7 +131,7 @@ internal static class RightRules
     private static (Right? Named, string Label)? Form(ModelSnapshot model, Process process, ProcessRight entry, string at, Report report)
     {
         var inline = entry.Name is not null || entry.DisplayName is not null || entry.Description is not null || entry.Access is not null || entry.Actors.Count > 0
-            || entry.Except.Count > 0 || entry.Verbs.Count > 0 || entry.Ends.Count > 0 || entry.Condition is not null;
+            || entry.Except.Count > 0 || entry.Verbs.Count > 0 || entry.Ends.Count > 0 || entry.Attributes.Count > 0 || entry.WhileFrozen || entry.Condition is not null;
         if (entry.Right is { } id)
         {
             if (inline)
@@ -160,6 +179,27 @@ internal static class RightRules
         {
             report.Add("MQ9903", $"{label} names ends beside {(other.Count == 1 ? "verb" : "verbs")} {string.Join(", ", other.Select(v => "'" + v + "'"))}, which can't act on a link; "
                 + "ends go with connect, disconnect, read, modify, freeze and thaw. Remove the ends, or move those verbs to another right.", pointer, id);
+        }
+    }
+
+    // MQ9903: attributes speak of reading or modifying them, so they stand beside read and modify only, and never beside ends, which speak
+    // of links (decision 21).
+    private static void CheckAttributes(IReadOnlyList<string> verbs, IReadOnlyList<string> ends, IReadOnlyList<string> attributes, string pointer, string id,
+        string label, Report report)
+    {
+        if (attributes.Count == 0)
+            return;
+        var other = verbs.Where(v => !AttributeVerbs.Contains(v)).ToList();
+        if (other.Count > 0)
+        {
+            report.Add("MQ9903", $"{label} names attributes beside {(other.Count == 1 ? "verb" : "verbs")} {string.Join(", ", other.Select(v => "'" + v + "'"))}, which "
+                + "don't read or modify attributes; attributes go with read and modify. Remove the attributes, or move those verbs to another right.", pointer, id);
+        }
+
+        if (ends.Count > 0)
+        {
+            report.Add("MQ9903", $"{label} names attributes beside ends: with ends it speaks of links, which hold none of the subject's attributes. Remove the "
+                + "attributes or the ends, or split the right.", pointer, id);
         }
     }
 
@@ -219,6 +259,11 @@ internal static class RightRules
             Walk(states[i].States, at, visit);
         }
     }
+
+    private static string AttributeName(ModelSnapshot model, string id) =>
+        model.TryGetEntry(id, out var entry) && model.Get<Entity>(entry.OwnerId)?.Attributes.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.Ordinal)) is { } attribute
+            ? attribute.Name
+            : id;
 
     private static string EndName(ModelSnapshot model, string id) =>
         model.TryGetEntry(id, out var entry) && model.Get<Relation>(entry.OwnerId)?.Ends.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal)) is { } end

@@ -44,6 +44,13 @@ public sealed record RightsFilter
 
     /// <summary>An entity id, one of the lifecycle's subjects: only the rows that hold for it.</summary>
     public string? Entity { get; init; }
+
+    /// <summary>
+    /// Whether the cells answer for a frozen object (rights-design.md decisions 17 and 18): <c>modify</c>, <c>connect</c>, <c>disconnect</c>
+    /// and <c>delete</c> are denied by freezing, with no element in <c>by</c>, and rights with <c>whileFrozen</c> hold. False answers for a
+    /// thawed object.
+    /// </summary>
+    public bool Frozen { get; init; }
 }
 
 /// <summary>
@@ -58,7 +65,7 @@ internal static class RightsGrid
 {
     // Another lifecycle's answer across its states, by actor ("" for everyone else), verb and lifecycle id: the same in every grid of a
     // snapshot, so a project's grids work each one out once.
-    private static readonly ConditionalWeakTable<ModelSnapshot, ConcurrentDictionary<(string Actor, string Verb, string Lifecycle), Cell?>> OthersByModel = new();
+    private static readonly ConditionalWeakTable<ModelSnapshot, ConcurrentDictionary<(string Actor, string Verb, string Lifecycle, bool Frozen), Cell?>> OthersByModel = new();
 
     /// <summary>The answer of a cell's own lifecycle, or of one cell for one entity.</summary>
     private sealed record Cell(string Answer, bool ByDefault, IReadOnlyList<string> By, IReadOnlyList<string> DependsOn)
@@ -144,7 +151,7 @@ internal static class RightsGrid
                 {
                     if (filter.Verbs.Count > 0 && !filter.Verbs.Contains(verb, StringComparer.Ordinal))
                         continue;
-                    var own = Own(evaluator, lifecycle, state.Id, moves, tasks, verb, caller);
+                    var own = Own(evaluator, lifecycle, state.Id, moves, tasks, verb, caller, filter.Frozen);
                     var cells = new List<(Entity? Entity, Cell Cell)>();
                     if (own.Answer == "denied" || !RightsEvaluator.SpeaksOfObject(verb) || entities.Count == 0)
                     {
@@ -155,7 +162,7 @@ internal static class RightsGrid
                         for (var i = 0; i < entities.Count; i++)
                         {
                             var answers = governing[i].Select(o => (Lifecycle: o,
-                                    Cell: others.GetOrAdd((actor ?? "", verb, o.Id), _ => Other(model, evaluator, o, verb, caller))))
+                                    Cell: others.GetOrAdd((actor ?? "", verb, o.Id, filter.Frozen), _ => Other(model, evaluator, o, verb, caller, filter.Frozen))))
                                 .Where(a => a.Cell is not null).ToList();
                             cells.Add((entities[i], Combine(own, answers!)));
                         }
@@ -228,11 +235,13 @@ internal static class RightsGrid
     /// <summary>
     /// The lifecycle's own answer in a state (decisions 11, 13, 14 and 31): the closed lists of the events naming the verb that can be sent
     /// from it (the caller passes when any one lets it through), its human tasks for <c>complete</c>, and its gates' signers as allows; then
-    /// its rights and default.
+    /// its rights and default. For a frozen object, freezing answers first (decision 17), and no element decides it.
     /// </summary>
     private static Cell Own(RightsEvaluator evaluator, Process lifecycle, string state, List<ChartTransition> moves, List<ProcessInvoke> tasks, string verb,
-        RightsCaller caller)
+        RightsCaller caller, bool frozen)
     {
+        if (RightsEvaluator.RefusedByFreezing(verb, null, frozen, frozen))
+            return new Cell("denied", false, [], []);
         var closed = new List<RightsList>();
         var signers = new List<RightsList>();
         foreach (var t in moves)
@@ -255,6 +264,7 @@ internal static class RightsGrid
             {
                 Verb = verb, Process = lifecycle, Caller = caller, Closed = passing, Signers = signers,
                 States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { [lifecycle.Id] = [state] },
+                Frozen = frozen, LinkFrozen = frozen, AttributesDepend = true,
             }, lifecycle) is { } answer)
             return FromAnswer(answer);
 
@@ -267,7 +277,7 @@ internal static class RightsGrid
     /// Another lifecycle's answer across its atomic states (decision 31): denied when it says no in every one of them (by the first state's
     /// rights or default), <see langword="null"/> when it says yes in all, otherwise depends.
     /// </summary>
-    private static Cell? Other(ModelSnapshot model, RightsEvaluator evaluator, Process other, string verb, RightsCaller caller)
+    private static Cell? Other(ModelSnapshot model, RightsEvaluator evaluator, Process other, string verb, RightsCaller caller, bool frozen)
     {
         var chart = ProcessLibraries.Chart(model, other);
         var answers = new List<LifecycleAnswer>();
@@ -277,6 +287,7 @@ internal static class RightsGrid
                 {
                     Verb = verb, Process = other, Caller = caller,
                     States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { [other.Id] = [state.Id] },
+                    Frozen = frozen, LinkFrozen = frozen, AttributesDepend = true,
                 }, other) is { } answer)
                 answers.Add(answer);
         }

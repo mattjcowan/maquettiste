@@ -3117,7 +3117,7 @@
   {
     "id": "MQ9903",
     "defaultSeverity": "error",
-    "description": "A right's ends are not ends every subject of its lifecycle holds, or stand beside a verb that cannot act on a link (any but connect, disconnect, read, modify, freeze and thaw); or its attributes are not attributes every subject of its lifecycle holds, or stand beside a verb other than read and modify; a named right's are reported at each use. Remove the entry.",
+    "description": "A right's ends are not ends every subject of its lifecycle holds, or stand beside a verb that cannot act on a link (any but connect, disconnect, read, modify, freeze and thaw); or its attributes are not attributes every subject of its lifecycle holds, or stand beside a verb other than read and modify or beside ends; a named right's are reported at each use. Remove the entry.",
     "family": "MQ99xx",
     "familyLabel": "Rights",
     "canBeOff": true

@@ -194,6 +194,41 @@ public sealed class RightRuleTests
         Assert.Contains("'delete'", found.Single(d => d.Rule == "MQ9903" && d.JsonPointer == "/rights/1/ends").Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task MQ9903_takes_attributes_every_subject_holds_beside_read_and_modify_only_and_never_beside_ends()
+    {
+        var found = await ValidateAsync(h =>
+        {
+            h.Write(RightFile, NamedRight($$""","attributes":["{{Classification}}"]"""));
+            Rights(h, $$"""
+                [{"id":"{{R1}}","name":"AmountHidden","access":"deny","verbs":["read","modify"],"attributes":["{{Amount}}","{{Classification}}"]},
+                 {"id":"{{R2}}","name":"Wrong","access":"deny","verbs":["delete","read"],"attributes":["{{Amount}}"]},
+                 {"id":"{{R3}}","name":"OnLinks","access":"deny","verbs":["modify"],"ends":["{{CustomerEnd}}"],"attributes":["{{Amount}}"]}]
+                """);
+            Rights(h, $$"""
+                [{"id":"01JRGT00000000000000000931","name":"NotHeld","access":"deny","verbs":["read"],"attributes":["{{Classification}}","{{Amount}}"]},
+                 {"id":"01JRGT00000000000000000932","right":"{{Named}}"}]
+                """, file: CreditFile);
+        });
+
+        Assert.Equal(["credit.json:/rights/0/attributes/1", "order-lifecycle.json:/rights/1/attributes", "order-lifecycle.json:/rights/2/attributes",
+            "secret-only-owner.json:/attributes"], Hits(found, "MQ9903"));
+        Assert.Contains("'delete'", found.Single(d => d.Rule == "MQ9903" && d.JsonPointer == "/rights/1/attributes").Message, StringComparison.Ordinal);
+        Assert.Contains("beside ends", found.Single(d => d.Rule == "MQ9903" && d.JsonPointer == "/rights/2/attributes").Message, StringComparison.Ordinal);
+
+        // A named right whose attributes not every subject of a use holds is reported at the use.
+        var atUse = await ValidateAsync(h =>
+        {
+            h.Write(RightFile, NamedRight($$""","attributes":["{{Amount}}"]""").Replace("\"modify\",\"delete\"", "\"modify\"", StringComparison.Ordinal));
+            Rights(h, $$"""[{"id":"01JRGT00000000000000000932","right":"{{Named}}"}]""", file: CreditFile);
+        });
+        Assert.Equal(["credit.json:/rights/0/right"], Hits(atUse, "MQ9903"));
+
+        // whileFrozen and attributes are keys of an inline right: beside right they are MQ9901.
+        var both = await ValidateAsync(h => Rights(h, $$"""[{"id":"{{R1}}","right":"{{Named}}","whileFrozen":true}]"""));
+        Assert.Equal(["order-lifecycle.json:/rights/0"], Hits(both, "MQ9901"));
+    }
+
     // ---- MQ9904, MQ9905, MQ9906 ----
 
     [Fact]
@@ -539,7 +574,7 @@ public sealed class RightRuleTests
 
         Assert.Equal("/steps/0/verb", await Field("\"input\":\"verb\",\"actor\":\"" + Clerk + "\""));
         Assert.Equal("/steps/0/verb", await Field("\"input\":\"verb\",\"verb\":\"promote\""));
-        Assert.Equal("/steps/0/verb", await Field("\"input\":\"verb\",\"verb\":\"freeze\""));
+        Assert.Equal("/steps/0/attributes", await Field($$"""  "input":"verb","verb":"modify","attributes":["{{Amount}}"] """));
         Assert.Equal("/steps/0/verb", await Field("\"input\":\"verb\",\"verb\":\"escalate\""));
         Assert.Equal("/steps/0/values", await Field($$"""  "input":"verb","verb":"read","values":{"{{SubmittedBy}}":"ann"} """));
         Assert.Equal("/steps/0/values", await Field($$"""  "input":"verb","verb":"modify","values":{"01JATT00000000000000000002":"Draft"} """));
@@ -555,5 +590,28 @@ public sealed class RightRuleTests
         Assert.Null(await Field($$"""  "input":"verb","verb":"connect","end":"{{CustomerEnd}}","object":"01JXBJ00000000000000000903" """));
         Assert.Null(await Field($$"""  "input":"verb","verb":"disconnect","end":"{{CustomerEnd}}","object":"01JXBJ00000000000000000902" """));
         Assert.Null(await Field("\"event\":\"01JPRX00000000000000000003\",\"expect\":{\"accepted\":false,\"refusal\":\"no-transition\"}"));
+        // Part 2: freeze and thaw are verb steps, and a read step names the attributes it reads.
+        Assert.Null(await Field("\"input\":\"verb\",\"verb\":\"freeze\""));
+        Assert.Null(await Field("\"input\":\"verb\",\"verb\":\"thaw\""));
+        Assert.Null(await Field($$"""  "input":"verb","verb":"read","attributes":["{{Amount}}"] """));
+        Assert.Null(await Field("\"event\":\"01JPRX00000000000000000003\",\"expect\":{\"accepted\":false,\"refusal\":\"frozen\"}"));
+    }
+
+    [Fact]
+    public async Task MQ9305_freezes_only_the_subjects_links()
+    {
+        string Scenario(string from) => $$"""
+            {"kind":"scenario","id":"01JSCN00000000000000000902","name":"Frozen","process":"{{P}}",
+             "objects":[{"id":"01JXBJ00000000000000000911","name":"order","entity":"{{Order}}","frozen":true,
+                         "links":[{"end":"{{CustomerEnd}}","object":"01JXBJ00000000000000000912"{{(from == "order" ? ",\"frozen\":true" : "")}}}]},
+                        {"id":"01JXBJ00000000000000000912","name":"customer","entity":"{{Customer}}","frozen":true,
+                         "links":[{"end":"{{OrdersEnd}}","object":"01JXBJ00000000000000000911"{{(from == "customer" ? ",\"frozen\":true" : "")}}}]}],
+             "subject":"01JXBJ00000000000000000911",
+             "steps":[{"id":"01JSTP00000000000000000911","event":"01JPRX00000000000000000003"}]}
+            """;
+        var subject = await ValidateAsync(h => h.Write("model/scenarios/order-lifecycle/frozen.json", Scenario("order")));
+        Assert.DoesNotContain(subject, d => d.Rule == "MQ9305");
+        var other = await ValidateAsync(h => h.Write("model/scenarios/order-lifecycle/frozen.json", Scenario("customer")));
+        Assert.Equal(["frozen.json:/objects/1/links/0/frozen"], Hits(other, "MQ9305"));
     }
 }

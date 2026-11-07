@@ -352,12 +352,12 @@ public sealed class RightsReplayTests
     }
 
     [Fact]
-    public async Task A_freeze_step_and_values_beside_another_verb_are_MQ9305()
+    public async Task Values_or_attributes_beside_another_verb_are_MQ9305()
     {
         var (h, store) = await OpenAsync();
         using var _ = h;
         await using var __ = store;
-        foreach (var step in new[] { Verb("freeze", "p1"), Verb("read", "p1", $",\"values\":{{\"{Title}\":\"x\"}}") })
+        foreach (var step in new[] { Verb("modify", "p1", $",\"attributes\":[\"{Title}\"]"), Verb("read", "p1", $",\"values\":{{\"{Title}\":\"x\"}}") })
         {
             var result = await SimulateAsync(store, Documents, [step], SpecObjects(), Spec);
             Assert.Contains(result.Diagnostics, d => d.Rule == "MQ9305");

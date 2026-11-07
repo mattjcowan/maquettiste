@@ -201,6 +201,31 @@ internal sealed record RightsQuery
     /// In a run an unknown result is <see langword="false"/>, since a right then says nothing. Absent, every condition is unknown.
     /// </summary>
     public Func<RightRule, bool?>? Condition { get; init; }
+
+    /// <summary>
+    /// Whether the object is frozen (decisions 16 to 18): <c>modify</c> and <c>delete</c> of it, and <c>connect</c> and <c>disconnect</c> of its
+    /// links, are refused before any right, and rights with <c>whileFrozen</c> and no <c>ends</c> hold.
+    /// </summary>
+    public bool Frozen { get; init; }
+
+    /// <summary>
+    /// Whether the link the verb acts on is frozen (decisions 16 to 18): <c>disconnect</c>, and <c>modify</c> with <see cref="End"/>, are refused
+    /// before any right, and rights with <c>whileFrozen</c> and <c>ends</c> hold. With no end known, whether a link of the object may be frozen.
+    /// </summary>
+    public bool LinkFrozen { get; init; }
+
+    /// <summary>
+    /// The attributes the verb reads or modifies (decision 21): each is checked on its own, against the rights that name it and those that
+    /// name no attributes, and one refused attribute refuses the verb. <see langword="null"/> or empty when not known, such as for an event
+    /// that names <c>modify</c>: then a deny that names attributes holds, and an allow that names attributes grants nothing.
+    /// </summary>
+    public IReadOnlyList<string>? Attributes { get; init; }
+
+    /// <summary>
+    /// Whether a right that names attributes makes the answer depend, and is named in it, instead of failing closed: for a cell of who can
+    /// do what, which speaks of no attribute (decision 21). <see cref="Attributes"/> is then not read.
+    /// </summary>
+    public bool AttributesDepend { get; init; }
 }
 
 /// <summary>One answering lifecycle's own answer (rights-design.md decision 11).</summary>
@@ -213,9 +238,10 @@ internal sealed record LifecycleAnswer(Process Lifecycle, RightAnswer Answer, bo
 
 /// <summary>The answer of a check (rights-design.md decisions 11, 12 and 26).</summary>
 /// <param name="Answer">Allowed, denied, or depends.</param>
-/// <param name="Refusal">For a denied answer, the value of <see cref="Refusals"/>: <c>actor</c>, <c>right</c> or <c>default</c>.</param>
+/// <param name="Refusal">For a denied answer, the value of <see cref="Refusals"/>: <c>frozen</c>, <c>actor</c>, <c>right</c> or
+/// <c>default</c>.</param>
 /// <param name="RefusedBy">For a denied answer, the id that refused it: the event or invoke, the right (inline, or the named right), or the
-/// lifecycle whose default denies.</param>
+/// lifecycle whose default denies; <see langword="null"/> for <c>frozen</c>, since freezing is built in.</param>
 /// <param name="Rights">The rights that held, each with its access, in check order: the denies as the third row reads them, then the allows,
 /// lifecycle by lifecycle. Empty when the closed-list check refused.</param>
 /// <param name="Lifecycles">The answering lifecycles that state rights, in check order, each with its own answer.</param>
@@ -274,6 +300,9 @@ internal sealed class RightsEvaluator
                 }
             }
 
+            if (list.Any(r => r.Attributes.Count > 0))
+                NamesAttributes = true;
+
             rules[process.Id] = list;
         }
 
@@ -284,6 +313,12 @@ internal sealed class RightsEvaluator
 
     /// <summary>Whether the project uses rights (decision 28): a lifecycle writes <c>rights</c> or <c>rightsDefault</c>.</summary>
     public bool Uses { get; }
+
+    /// <summary>
+    /// Whether the project uses attribute rights (decision 28): a lifecycle's right names <c>attributes</c>. Without them, a check is one
+    /// check, whatever attributes the query gives, so its answers are part 1's.
+    /// </summary>
+    public bool NamesAttributes { get; }
 
     /// <summary>The evaluator of a snapshot, built on first use and kept as long as the snapshot.</summary>
     /// <param name="model">The snapshot.</param>
@@ -320,6 +355,25 @@ internal sealed class RightsEvaluator
     /// <param name="verb">The verb's key.</param>
     /// <returns><see langword="true"/> for an object, link or own verb.</returns>
     public static bool SpeaksOfObject(string? verb) => GroupOf(verb) is "object" or "link" or BuiltInVerbs.ProjectGroup;
+
+    /// <summary>
+    /// Whether freezing refuses a verb (decision 17), the first check, which no allow lifts: a frozen object can't be modified or deleted,
+    /// and its links can't be connected or disconnected; a frozen link can't be disconnected or modified. Freezing stops nothing else
+    /// (decision 18).
+    /// </summary>
+    /// <param name="verb">The verb's key.</param>
+    /// <param name="end">The relation end of the link the verb acts on, or <see langword="null"/> for the object.</param>
+    /// <param name="objectFrozen">Whether the object is frozen.</param>
+    /// <param name="linkFrozen">Whether the link is frozen; with no end known, whether a link of the object may be.</param>
+    /// <returns>Whether the verb is refused as frozen.</returns>
+    public static bool RefusedByFreezing(string? verb, string? end, bool objectFrozen, bool linkFrozen) => verb switch
+    {
+        "modify" => end is null ? objectFrozen : linkFrozen,
+        "delete" => end is null && objectFrozen,
+        "connect" => objectFrozen,
+        "disconnect" => objectFrozen || linkFrozen,
+        _ => false,
+    };
 
     /// <summary>
     /// The lifecycles that answer a verb (decision 10), in check order, and the notes of a run with no object: the acting lifecycle; and for
@@ -407,13 +461,20 @@ internal sealed class RightsEvaluator
         return Answer(query, lifecycle, acting, out _);
     }
 
-    /// <summary>Checks a verb (decisions 10 to 12): the closed lists, then every answering lifecycle's denies, then their defaults.</summary>
+    /// <summary>
+    /// Checks a verb (decisions 10 to 12): freezing, then the closed lists, then every answering lifecycle's denies, then their defaults.
+    /// With attributes known and attribute rights in the project, each lifecycle answers per attribute, and any no wins (decision 21).
+    /// </summary>
     /// <param name="query">The check.</param>
     /// <returns>The answer.</returns>
     public RightsDecision Check(RightsQuery query)
     {
         ArgumentNullException.ThrowIfNull(query);
         var caller = query.Caller;
+
+        // Freezing (decision 12, first row): built in, so no element refused it.
+        if (RefusedByFreezing(query.Verb, query.End, query.Frozen, query.LinkFrozen))
+            return new RightsDecision(RightAnswer.Denied, Refusals.Frozen, null, [], [], []);
 
         // The closed lists (decision 12, second row): the caller must pass one that names actors; the event's or task's list refuses.
         var named = query.Closed.Where(l => l.Actors.Count > 0).ToList();
@@ -458,14 +519,61 @@ internal sealed class RightsEvaluator
         return new RightsDecision(overall, null, null, rights, answers, notes);
     }
 
-    /// <summary>One lifecycle's answer (decision 11): its denies, then its allows, then its default; and whether each of its rights held.</summary>
+    /// <summary>
+    /// One lifecycle's answer (decision 11), and whether each of its rights held. With attributes known and attribute rights in the project,
+    /// it answers once per attribute (decision 21), and the answers join: denied if one is, by a right if one is, else by its default; else
+    /// depends if one does; else allowed. A right held if it held for one attribute.
+    /// </summary>
     private LifecycleAnswer Answer(RightsQuery query, Process lifecycle, bool acting, out List<(RightRule Rule, bool? Holds)> holding)
+    {
+        if (!NamesAttributes || query.AttributesDepend || query.Attributes is not { Count: > 1 } known)
+        {
+            var attribute = NamesAttributes && !query.AttributesDepend && query.Attributes is { Count: 1 } one ? one[0] : null;
+            return Answer(query, lifecycle, acting, attribute, out holding);
+        }
+
+        var answers = new List<LifecycleAnswer>(known.Count);
+        var held = new Dictionary<RightRule, bool?>(ReferenceEqualityComparer.Instance);
+        foreach (var attribute in known.Distinct(StringComparer.Ordinal))
+        {
+            answers.Add(Answer(query, lifecycle, acting, attribute, out var each));
+            foreach (var (rule, holds) in each)
+            {
+                if (!held.TryGetValue(rule, out var before) || (before != true && holds == true))
+                    held[rule] = holds;
+            }
+        }
+
+        holding = [.. RulesOf(lifecycle).Where(held.ContainsKey).Select(r => (r, held[r]))];
+        static List<string> By(IEnumerable<LifecycleAnswer> some) => [.. some.SelectMany(a => a.By).Distinct(StringComparer.Ordinal)];
+        if (answers.Any(a => a.Answer == RightAnswer.Denied))
+        {
+            var byRight = answers.Where(a => a is { Answer: RightAnswer.Denied, ByDefault: false }).ToList();
+            return byRight.Count > 0 ? new(lifecycle, RightAnswer.Denied, false, By(byRight)) : new(lifecycle, RightAnswer.Denied, true, [lifecycle.Id]);
+        }
+
+        if (answers.Any(a => a.Answer == RightAnswer.Depends))
+            return new(lifecycle, RightAnswer.Depends, false, By(answers.Where(a => a.Answer == RightAnswer.Depends)));
+        return new(lifecycle, RightAnswer.Allowed, answers.All(a => a.ByDefault), By(answers));
+    }
+
+    /// <summary>
+    /// One lifecycle's answer for one attribute, or for the verb as a whole (<paramref name="attribute"/> <see langword="null"/>): its denies,
+    /// then its allows, then its default, over the rights that apply (<see cref="Applies"/>); and whether each of them held.
+    /// </summary>
+    private LifecycleAnswer Answer(RightsQuery query, Process lifecycle, bool acting, string? attribute, out List<(RightRule Rule, bool? Holds)> holding)
     {
         var configuration = Configuration(query, lifecycle);
         holding = [];
         foreach (var rule in RulesOf(lifecycle))
         {
-            if (Holds(query, rule, configuration) is var holds && holds != false)
+            if (!Applies(rule, query, attribute))
+                continue;
+            var holds = Holds(query, rule, configuration);
+            // In a cell of who can do what, a right that names attributes holds only for some of them, so the cell depends on it.
+            if (holds == true && query.AttributesDepend && rule.Attributes.Count > 0)
+                holds = null;
+            if (holds != false)
                 holding.Add((rule, holds));
         }
 
@@ -509,8 +617,21 @@ internal sealed class RightsEvaluator
     }
 
     /// <summary>
-    /// Whether a right holds (decisions 4 to 6 and 20): it names the verb, one of its states is active (empty: every state), it speaks of
-    /// what the verb acts on, the caller satisfies one of its actors (empty: everyone) and none of its exceptions, and its condition is true.
+    /// Whether a right that names attributes applies to a check (decision 21): a right that names none always does; for one attribute, a
+    /// right that names it; with the attributes not known, a deny (it might be one of its attributes) but no allow; in a cell of who can do
+    /// what, every right, and those that name attributes make it depend.
+    /// </summary>
+    private static bool Applies(RightRule rule, RightsQuery query, string? attribute)
+    {
+        if (rule.Attributes.Count == 0 || query.AttributesDepend)
+            return true;
+        return attribute is null ? rule.Access == RightAccess.Deny : rule.Attributes.Contains(attribute, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Whether a right holds (decisions 4 to 6, 18 and 20): it names the verb, one of its states is active (empty: every state), it speaks of
+    /// what the verb acts on, with <c>whileFrozen</c> the object (with <c>ends</c>, the link) is frozen, the caller satisfies one of its actors
+    /// (empty: everyone) and none of its exceptions, and its condition is true.
     /// <see langword="null"/> when an actor from the object or the condition can't be known here.
     /// </summary>
     private static bool? Holds(RightsQuery query, RightRule rule, IReadOnlySet<string> configuration)
@@ -520,6 +641,8 @@ internal sealed class RightsEvaluator
         if (rule.States.Count > 0 && !rule.States.Any(configuration.Contains))
             return false;
         if (!SpeaksOf(rule, verb, query.End))
+            return false;
+        if (rule.WhileFrozen && !(rule.Ends.Count > 0 ? query.LinkFrozen : query.Frozen))
             return false;
         bool? result = true;
         if (rule.Actors.Count > 0)

@@ -5,8 +5,8 @@ namespace Maquettiste.Engine.Processes;
 
 /// <summary>
 /// MQ9305 on a verb step's fields and on an expected refusal (rights-design.md decisions 25 and 26), judged before the step runs, as a
-/// payload is: an object, link or own verb (moves, signatures and tasks are event and invoke-done steps, and freeze and thaw come with
-/// freezing); values only beside modify on the subject, of attributes a set could set and of their types; a link step's end of the
+/// payload is: an object, link or own verb (moves, signatures and tasks are event and invoke-done steps); attributes only beside read;
+/// values only beside modify on the subject, of attributes a set could set and of their types; a link step's end of the
 /// subject's entity and an object linked through it, except for connect; no delete on a link; and a refusal only beside
 /// <c>accepted: false</c>. A step that is no verb step and expects no refusal costs two tests.
 /// </summary>
@@ -40,8 +40,8 @@ internal static class VerbStepFields
                 + "event and invoke-done steps.", "/verb");
         }
 
-        if (verb is "freeze" or "thaw")
-            return ($"the verb step names '{verb}', which no step does yet; freezing takes effect in a later release.", "/verb");
+        if (step.Attributes is { Count: > 0 } && !string.Equals(verb, "read", StringComparison.Ordinal))
+            return ($"the step gives attributes beside verb '{verb}'; only read names the attributes it reads, and modify names them in values. Remove them.", "/attributes");
 
         if (step.Values is { Count: > 0 } values)
         {

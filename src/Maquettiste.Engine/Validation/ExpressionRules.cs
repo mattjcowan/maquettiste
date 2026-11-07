@@ -299,6 +299,16 @@ internal static class ExprSites
         Held(model, lifecycle, lifecycle.Subjects.Select(s => s.BoundAttribute).OfType<string>().ToHashSet(StringComparer.Ordinal));
 
     /// <summary>
+    /// The attributes a right of a lifecycle may name in <c>attributes</c> (rights-design.md decision 21; MQ9903): every attribute each
+    /// subject entry holds under one id, its bound attributes included, by id.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="lifecycle">The lifecycle.</param>
+    /// <returns>The attribute ids.</returns>
+    internal static HashSet<string> RightAttributes(ModelSnapshot model, Process lifecycle) =>
+        Held(model, lifecycle, new HashSet<string>(StringComparer.Ordinal)).Attributes.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
     /// A site for a value text writes for a set not stored yet (<c>preview_expression</c> with <c>site</c> <c>set</c>): the scope a set of
     /// the attribute on the action reads (object-effects-design.md section 8). <see langword="null"/> when the process has no such action.
     /// </summary>
