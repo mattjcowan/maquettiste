@@ -96,6 +96,12 @@ public sealed record Process : Element, IPackaged
     public IReadOnlyList<ProcessRight> Rights { get; init; } = [];
 
     /// <summary>
+    /// The lifecycle's trigger points in file order, which is the order they run in at each moment (trigger-points-design.md decisions 1, 2
+    /// and 19). Lifecycles only (MQ8101).
+    /// </summary>
+    public IReadOnlyList<ProcessTriggerPoint> TriggerPoints { get; init; } = [];
+
+    /// <summary>
     /// The root's children in document order (entry order, priority and the bound enum's member order). A library has none, and any other
     /// process at least one (MQ9020).
     /// </summary>
@@ -904,7 +910,8 @@ public sealed record ScenarioStep : IProcessNode
 
     /// <summary>
     /// For a <c>modify</c> verb step on the subject: the values it sets, by attribute id (rights-design.md decision 25), seen by later guards
-    /// and sets. <see langword="null"/>, and left out of a trace's echo, when absent.
+    /// and sets; for a <c>create</c> verb step: the new object's values, which before actions and checks read and an accepted step writes
+    /// (trigger-points-design.md decision 27). <see langword="null"/>, and left out of a trace's echo, when absent.
     /// </summary>
     [ElementRef(IndexKinds = ["attribute"])]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -928,9 +935,12 @@ public sealed record ScenarioStep : IProcessNode
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Object { get; init; }
 
-    /// <summary>Results for guards without an expression, by guard id.</summary>
-    [ElementRef(IndexKinds = ["guard"])]
-    public IReadOnlyDictionary<string, bool> Assume { get; init; } = ImmutableDictionary<string, bool>.Empty;
+    /// <summary>
+    /// Results for guards without an expression, by guard id, as booleans; and outcomes for checks the team writes, by trigger point id, as
+    /// the words <c>pass</c>, <c>warning</c> and <c>error</c> (trigger-points-design.md decision 26).
+    /// </summary>
+    [ElementRef(IndexKinds = ["guard", "process-trigger-point"])]
+    public IReadOnlyDictionary<string, StepAssumption> Assume { get; init; } = ImmutableDictionary<string, StepAssumption>.Empty;
 
     /// <summary>What is expected after the step; <see langword="null"/> checks nothing.</summary>
     public StepExpectation? Expect { get; init; }
@@ -990,4 +1000,20 @@ public sealed record StepExpectation
     /// <summary>The object's attributes the step set, by attribute id (object-effects-design.md decision 4; MQ9307).</summary>
     [ElementRef(IndexKinds = ["attribute"])]
     public IReadOnlyDictionary<string, JsonElement> Values { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
+
+    /// <summary>
+    /// The ids of exactly the checks that warned (trigger-points-design.md decision 28; MQ9310); <see langword="null"/> checks nothing, and an
+    /// empty list expects none.
+    /// </summary>
+    [ElementRef(IndexKinds = ["process-trigger-point"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? CheckWarnings { get; init; }
+
+    /// <summary>
+    /// The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (trigger-points-design.md
+    /// decision 28; MQ9310); <see langword="null"/> checks nothing, and an empty list expects none.
+    /// </summary>
+    [ElementRef(IndexKinds = ["process-trigger-point"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? TriggerPoints { get; init; }
 }

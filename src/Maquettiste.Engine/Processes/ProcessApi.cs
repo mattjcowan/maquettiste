@@ -101,6 +101,12 @@ public sealed record RecordScenarioRequest
 
     /// <summary><c>final</c> or <c>active</c>; the replay's outcome when absent.</summary>
     public string? Outcome { get; init; }
+
+    /// <summary>
+    /// Whether to also write each step's <c>expect.triggerPoints</c> (trigger-points-design.md decision 28); <see langword="null"/> or
+    /// <see langword="false"/> leaves it out, so a new trigger point does not break the scenario.
+    /// </summary>
+    public bool? TriggerPoints { get; init; }
 }
 
 /// <summary>The body of <c>POST /api/processes/import</c>.</summary>

@@ -256,7 +256,8 @@ export interface paths {
          *       `scenarios`: the matching record.
          *     - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards
          *       (a guard written in the expression language with its `condition`), actions, gates and invokes, actors by id, and a
-         *       lifecycle's `rightsDefault` and `rights` when it has them. Named rights (`RightRecord`) come with `all`, as verbs do.
+         *       lifecycle's `rightsDefault`, `rights` and `triggerPoints` when it has them. Named rights (`RightRecord`) come with `all`, as
+         *       verbs do.
          *     - `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,
          *       `completes`, `returns`), the errors (`code`, `input`), `fires` and `requires` by id, and the `guards` in the order
          *       they are checked, each with its `condition` and the `error` it reports.
@@ -1099,7 +1100,9 @@ export interface paths {
         /**
          * Record a scenario from a list of inputs
          * @description phase-3-design.md section 4.4. The engine replays `start` and `steps` and fills each step's `expect` (refusals recorded as
-         *     `accepted: false`, with `refusal` and `refusedBy` when the project uses rights, rights-design.md decision 26) and the `outcome` (unless the request gives one) from the replay, gives the scenario, its steps and its
+         *     `accepted: false`, with `refusal` and `refusedBy` when the project uses rights or trigger points, rights-design.md decision 26),
+         *     `checkWarnings` when the project uses trigger points and a check warned, `triggerPoints` only when the request asks
+         *     (trigger-points-design.md decision 28), and the `outcome` (unless the request gives one) from the replay, gives the scenario, its steps and its
          *     objects new ids (`subject` and each link follow their objects), and saves it as one change under
          *     `model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing it. Inputs that cannot be
          *     replayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.
@@ -1167,6 +1170,39 @@ export interface paths {
          *     then entity; pass `next` as `cursor` until it is null. The MCP tool `get_rights` answers the same.
          */
         get: operations["getRights"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/processes/{id}/trigger-sequence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What runs, in order, when a verb happens in a lifecycle
+         * @description trigger-points-design.md decision 36 and section 9. The steps of the fixed order (decision 18) for one verb in one lifecycle:
+         *     the built-in steps that apply to the verb, and each trigger point that can run, with its lifecycle, moment and places, in run
+         *     order (decision 19: at each moment the acting lifecycle first, then the others by name, each in its list's order). For an object,
+         *     link or own verb, the other lifecycles that govern the subject add their points. The optional parameters narrow the answer to one
+         *     place; a point narrowed by `attributes` or `ends` is listed when the request gives none of them only if it is a check, as a run
+         *     fails closed. A project without trigger points gets the built-in steps alone. The answer reads the lifecycle and the lifecycles
+         *     that govern its subjects; the model is never resolved, and nothing is written. One page: a verb's sequence is short, so there is
+         *     no cursor. The MCP tool `get_trigger_sequence` answers the same, and the editor's What happens when view shows this answer.
+         */
+        get: operations["getTriggerSequence"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3703,13 +3739,13 @@ export interface components {
         };
         /** @description What `previewExpression` previews: a stored expression (`at`), or `text` at a `site`. */
         ExpressionPreviewRequest: {
-            /** @description The id of the element, or of the check, guard, derived attribute, action, set or right, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for an inline right not yet saved names its lifecycle, with `site` `right`. */
+            /** @description The id of the element, or of the check, guard, derived attribute, action, set or right, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for an inline right not yet saved names its lifecycle, with `site` `right`; text for a trigger point not yet saved names its lifecycle, with `site` `trigger`, or `trigger-set` and `attribute`. */
             element: string;
             /** @description The pointer of a stored expression in the element's file, or of what holds it; omit when the element holds one, and with text. */
             at?: string | null;
             /** @description Text to preview instead of a stored expression; needs `site`. */
             text?: string | null;
-            /** @description With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`) or `right` (a right's condition, which reads the object under `subject`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set and right sites, with no SQL form and no answer. */
+            /** @description With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`) or `trigger-set` (a value a trigger point sets, with `attribute`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form. */
             site?: string | null;
             /** @description With `site` `set`, the id of the attribute the value is for, whose type the value must fit (MQ3103). */
             attribute?: string | null;
@@ -3717,7 +3753,7 @@ export interface components {
             database?: string | null;
             /** @description A lifecycle id or name: a named right's condition, or text for it, previews as if the right were used there (rights-design.md section 8). Absent, it previews in the scope of all the lifecycles that use the right; a named right with no use needs one. */
             lifecycle?: string | null;
-            /** @description The row the expression reads, members by name (a process guard's payload under `event`, an operation's subject under `subject`). */
+            /** @description The row the expression reads, members by name (a process guard's payload under `event`, an operation's subject under `subject`, a trigger point's values before the verb under `old`). */
             values?: {
                 [key: string]: unknown;
             } | null;
@@ -4047,6 +4083,8 @@ export interface components {
             rightsDefault?: "allow" | "deny";
             /** @description The entries of the lifecycle's rights in file order (rights-design.md decisions 1 and 7), inline rights and uses of named rights; left out when it has none. */
             rights?: components["schemas"]["ProcessRightRecord"][];
+            /** @description The lifecycle's trigger points in file order, which is their run order at each moment (trigger-points-design.md decisions 1 and 19); left out when it has none. */
+            triggerPoints?: components["schemas"]["TriggerPointRecord"][];
         };
         /**
          * @description One entry of a lifecycle's rights (rights-design.md decisions 1, 3 and 7): an inline right, which carries what it says and shares
@@ -4089,6 +4127,64 @@ export interface components {
              * @constant
              */
             whileFrozen?: true;
+        };
+        /**
+         * @description One trigger point of a lifecycle (trigger-points-design.md decisions 1 to 12): what runs when one of its verbs happens, in the
+         *     places its keys name. A check has a `condition`, an action or a replace has `sets`; with neither, `teamCode` is true.
+         */
+        TriggerPointRecord: {
+            id: string;
+            name: string;
+            /** @description The display name; left out when it has none. */
+            displayName?: string;
+            /** @description Why; left out when it has none. */
+            description?: string;
+            /** @description What a refusal or a warning shows (decision 1) - the description, else the display name, else the name. */
+            message: string;
+            /** @enum {string} */
+            type: "check" | "action" | "replace";
+            /**
+             * @description An action's moment; left out for a check or a replace.
+             * @enum {string}
+             */
+            timing?: "before" | "with-change" | "after-commit";
+            /**
+             * @description A check's severity, `error` when the file gives none; left out for an action or a replace.
+             * @enum {string}
+             */
+            severity?: "error" | "warning";
+            /** @description The verb keys it runs on, in file order. */
+            verbs: string[];
+            /** @description The ids of the states of the lifecycle the object must be in; left out when it names none. */
+            states?: string[];
+            /** @description The ids of the states a move must enter; left out when it names none. */
+            targets?: string[];
+            /** @description The ids of the transitions a move must be, or for `sign` whose gates are signed; left out when it names none. */
+            transitions?: string[];
+            /** @description The ids of the entities it is narrowed to, as written; left out when it names none. */
+            entities?: string[];
+            /** @description The ids of the attributes a `read` or `modify` step must read or change; left out when it names none. */
+            attributes?: string[];
+            /** @description The ids of the subject's relation ends whose links it speaks of; left out when it names none. */
+            ends?: string[];
+            /** @description It runs only when this is true; left out when it has none or it does not type. */
+            when?: components["schemas"]["ExpressionRecord"];
+            /** @description A check's condition; left out when it has none or it does not type. */
+            condition?: components["schemas"]["ExpressionRecord"];
+            /** @description What an action or a replace sets on the object, in file order; left out when it sets none. */
+            sets?: components["schemas"]["SetRecord"][];
+            /**
+             * @description Whether the team's code reaches outside systems (decision 22); left out when false.
+             * @constant
+             */
+            outside?: true;
+            /**
+             * @description Whether the body is the team's code (a check with no condition, an action or a replace with no sets); left out when false.
+             * @constant
+             */
+            teamCode?: true;
+            /** @description The ids of the entities it runs for, in name order (decision 12) - the entities its lifecycle governs, narrowed by `entities`, each with its derived entities. */
+            covers: string[];
         };
         /**
          * @description A named right (rights-design.md decision 7), with what it says and the lifecycles that use it. Right records come with every
@@ -4418,8 +4514,13 @@ export interface components {
             payload: {
                 [key: string]: unknown;
             };
+            /**
+             * @description The step's assumptions by name (trigger-points-design.md decision 26): `true` or `false` for a guard with no expression; `pass`,
+             *     `warning` or `error` for a check the team writes, another lifecycle's check as `Lifecycle.Name` (the lifecycle's id in place
+             *     of its name when two lifecycles the step reaches share a name).
+             */
             assume: {
-                [key: string]: unknown;
+                [key: string]: true | false | "pass" | "warning" | "error";
             };
             expect: components["schemas"]["ExpectationRecord"] | null;
             description: string | null;
@@ -4427,7 +4528,7 @@ export interface components {
             participant?: string;
             /** @description A verb step's verb key (rights-design.md decision 25); absent for other steps. */
             verb?: string;
-            /** @description The values a modify verb step sets, by attribute name (by id when no subject has such an attribute), as written; absent when the step gives none. */
+            /** @description The values a modify verb step sets, or a create verb step gives the new object (trigger-points-design.md decision 27), by attribute name (by id when no subject has such an attribute), as written; absent when the step gives none. */
             values?: {
                 [key: string]: unknown;
             };
@@ -4463,9 +4564,13 @@ export interface components {
              * @description The refusal the step expects (rights-design.md decision 26); absent when the file gives none.
              * @enum {string}
              */
-            refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen";
+            refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen" | "check";
             /** @description The id of the element the step expects to refuse it (rights-design.md decision 26); absent when the file gives none. */
             refusedBy?: string;
+            /** @description The ids of the checks the step expects to warn (trigger-points-design.md decision 28); absent when the file gives none. */
+            checkWarnings?: string[];
+            /** @description The ids of the trigger points the step expects to run, in run order (trigger-points-design.md decision 28); absent when the file gives none. */
+            triggerPoints?: string[];
         };
         /** @description A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors; the events it fires and what it requires by id. */
         OperationRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -6347,7 +6452,11 @@ export interface components {
              *     an object, link or own verb, by key. Left out of a trace's echo when absent.
              */
             verb?: string;
-            /** @description For a `modify` verb step on the subject, the values it sets, by attribute id; later guards and sets read them. Left out of a trace's echo when absent. */
+            /**
+             * @description For a `modify` verb step on the subject, the values it sets, by attribute id; later guards and sets read them. For a `create`
+             *     verb step, the new object's values (trigger-points-design.md decision 27), which before actions and checks read and an accepted
+             *     step writes. Left out of a trace's echo when absent.
+             */
             values?: {
                 [key: string]: unknown;
             };
@@ -6372,8 +6481,13 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             };
+            /**
+             * @description By guard id, `true` or `false` for a guard with no expression; by trigger point id, `pass`, `warning` or `error` for a check
+             *     the team writes (trigger-points-design.md decision 26), which passes without an entry. A request may name a guard or a check
+             *     of the process instead of its id.
+             */
             assume?: {
-                [key: string]: boolean;
+                [key: string]: true | false | "pass" | "warning" | "error";
             };
             /** @description Ignored in a request; null in a trace. */
             expect?: Record<string, never> | null;
@@ -6480,7 +6594,7 @@ export interface components {
              * @description Why the input was refused, the first check that failed (rights-design.md decision 12); null when accepted.
              * @enum {string|null}
              */
-            refusal: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen" | null;
+            refusal: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen" | "check" | null;
             microsteps: components["schemas"]["MicrostepTrace"][];
             guards: components["schemas"]["GuardEvaluation"][];
             audit: components["schemas"]["GateAuditRecord"][];
@@ -6530,8 +6644,9 @@ export interface components {
             /**
              * @description The id of the element that refused the input (rights-design.md decision 12): the event or invoke whose actors leave the actor
              *     out, the right (an inline right, or the named right), the lifecycle whose default denies, the guard, or the gate or gate
-             *     policy. Written for a refused input in a project that uses rights, and for a step that expects it; left out otherwise, and
-             *     for `no-transition` and `frozen`, which no element refused.
+             *     policy, or the trigger point whose check refused (`check`, trigger-points-design.md decision 28). Written for a refused input
+             *     in a project that uses rights or trigger points, and for a step that expects it; left out otherwise, and for `no-transition`
+             *     and `frozen`, which no element refused.
              */
             refusedBy?: components["schemas"]["Ulid"];
             /**
@@ -6540,11 +6655,56 @@ export interface components {
              */
             rights?: components["schemas"]["RightEvaluation"][];
             /**
+             * @description The trigger points whose places matched, in run order, each with what it did (trigger-points-design.md decision 28): per
+             *     microstep, those of the transitions it took, in the order of decision 19; for a verb step, its points in run order; a check
+             *     that refused the step, once; `sign`'s and a task's `complete` points where they run; after-commit points last, as `queued`.
+             *     Checks run on candidates that were not taken are left out, and so are their warnings. Left out when none matched.
+             */
+            triggerPoints?: components["schemas"]["TriggerPointRun"][];
+            /** @description The ids of the checks that warned, in run order (trigger-points-design.md decision 28); a step's `expect.checkWarnings` is compared with it (MQ9310). Left out when none did. */
+            checkWarnings?: components["schemas"]["Ulid"][];
+            /**
              * @description Whether the subject is frozen after the input (rights-design.md section 7): true from an accepted `freeze`, or a start with
              *     the subject `frozen`, until an accepted `thaw`. Left out when false.
              * @constant
              */
             frozen?: true;
+        };
+        /** @description A trigger point whose places matched in a step, and what it did (trigger-points-design.md decision 28). */
+        TriggerPointRun: {
+            /** @description The trigger point's id. */
+            triggerPoint: components["schemas"]["Ulid"];
+            /** @description The id of the lifecycle whose trigger points list it. */
+            lifecycle: components["schemas"]["Ulid"];
+            /** @description The verb it ran on, by key. */
+            verb: string;
+            /** @enum {string} */
+            type: "check" | "action" | "replace";
+            /**
+             * @description An action's moment; left out for a check or a replace.
+             * @enum {string}
+             */
+            timing?: "before" | "with-change" | "after-commit";
+            /**
+             * @description `passed`, `warned` or `refused` for a check; `ran` for a before or with-change action (a team-code one sets nothing in a run);
+             *     `replaced` for a replace; `queued` for an after-commit action; `skipped` when its `when` was false or unknown.
+             * @enum {string}
+             */
+            outcome: "passed" | "warned" | "refused" | "ran" | "replaced" | "queued" | "skipped";
+            /**
+             * @description Whether a team-code check's outcome came from the step's `assume`, or from its default, pass. Left out when false.
+             * @constant
+             */
+            assumed?: true;
+            /**
+             * @description Whether the trigger point says the team's code reaches outside systems. Left out when false.
+             * @constant
+             */
+            outside?: true;
+            /** @description The values its sets gave the object, by attribute id, every value worked out first and then all applied. Left out when it set nothing. */
+            sets?: {
+                [key: string]: unknown;
+            };
         };
         /** @description A right that answered for an input; a named right used by several lifecycles answers once for each lifecycle that asked. */
         RightEvaluation: {
@@ -6617,6 +6777,11 @@ export interface components {
             actors: components["schemas"]["Ulid"][];
             /** @description A candidate's guard has no expression; the input needs `assume`. */
             guardUnknown: boolean;
+            /**
+             * @description The ids of the checks the team writes (checks with no condition) that the trigger's candidates reach, whose outcome the input
+             *     takes from `assume`, passing without an entry (trigger-points-design.md section 9). Left out when there are none.
+             */
+            checksUnknown?: components["schemas"]["Ulid"][];
             gate: components["schemas"]["GateProgress"] | null;
         };
         GateProgress: {
@@ -6659,6 +6824,70 @@ export interface components {
             clock: string;
             diagnostics: components["schemas"]["Diagnostic"][];
         };
+        /** @description What runs, in order, when a verb happens in a lifecycle (trigger-points-design.md decision 36). */
+        TriggerSequence: {
+            /** @description The id of the lifecycle asked about, the acting one. */
+            lifecycle: components["schemas"]["Ulid"];
+            /** @description The verb, by key. */
+            verb: string;
+            /** @description The steps in run order. A built-in step has no `triggerPoint`; a trigger point's step follows the built-in step of its moment, when that applies. */
+            steps: components["schemas"]["TriggerSequenceStep"][];
+        };
+        /**
+         * @description One step of the fixed order (trigger-points-design.md decision 18): a built-in step that applies to the verb, or a trigger point
+         *     that can run at that moment, with its lifecycle and places.
+         */
+        TriggerSequenceStep: {
+            /** @description The step's row in the fixed order, 1 to 12. */
+            order: number;
+            /**
+             * @description `frozen`, `closed-lists`, `denies`, `defaults`, `no-move`, `guards` and `signatures` (rows 1 to 7, as rights check them),
+             *     `before` (before actions), `checks`, `effect` (the built-in effect, or a replace), `with-change` and `after-commit`.
+             * @enum {string}
+             */
+            step: "frozen" | "closed-lists" | "denies" | "defaults" | "no-move" | "guards" | "signatures" | "before" | "checks" | "effect" | "with-change" | "after-commit";
+            /** @description The trigger point's id; left out for a built-in step. */
+            triggerPoint?: components["schemas"]["Ulid"];
+            /** @description The id of the lifecycle whose trigger points list it; left out for a built-in step. */
+            lifecycle?: components["schemas"]["Ulid"];
+            /**
+             * @description The trigger point's type; left out for a built-in step.
+             * @enum {string}
+             */
+            type?: "check" | "action" | "replace";
+            /**
+             * @description An action's moment; left out otherwise.
+             * @enum {string}
+             */
+            timing?: "before" | "with-change" | "after-commit";
+            /**
+             * @description A check's severity; left out otherwise.
+             * @enum {string}
+             */
+            severity?: "error" | "warning";
+            /** @description The ids of the states it is narrowed to; left out when none. */
+            states?: components["schemas"]["Ulid"][];
+            /** @description The ids of the states a move must enter; left out when none. */
+            targets?: components["schemas"]["Ulid"][];
+            /** @description The ids of the transitions it is narrowed to; left out when none. */
+            transitions?: components["schemas"]["Ulid"][];
+            /** @description The ids of the entities it is narrowed to; left out when none. */
+            entities?: components["schemas"]["Ulid"][];
+            /** @description The ids of the attributes it is narrowed to; left out when none. */
+            attributes?: components["schemas"]["Ulid"][];
+            /** @description The ids of the relation ends it is narrowed to; left out when none. */
+            ends?: components["schemas"]["Ulid"][];
+            /**
+             * @description Whether it runs only when its `when` holds; left out when false.
+             * @constant
+             */
+            when?: true;
+            /**
+             * @description Whether the team's code reaches outside systems; left out when false.
+             * @constant
+             */
+            outside?: true;
+        };
         RecordScenarioRequest: {
             name: string;
             start?: components["schemas"]["SimStart"];
@@ -6674,6 +6903,11 @@ export interface components {
              * @enum {string|null}
              */
             outcome?: "final" | "active" | null;
+            /**
+             * @description true: also write each step's `expect.triggerPoints`, the trigger points that ran (trigger-points-design.md decision 28). Absent
+             *     or false, it is not written, so a new trigger point does not break the scenario.
+             */
+            triggerPoints?: boolean | null;
         };
         RecordScenarioResult: {
             id: components["schemas"]["Ulid"];
@@ -7853,7 +8087,7 @@ export interface components {
         };
         /**
          * Expression
-         * @description A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard, set and right sites only), currentActor (guard, set and right sites only), inState (with of; guard, set and right sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).
+         * @description A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids; with old, the values before the verb, at trigger point sites only), ref (an enum member or reference-type code id), member (rule conditions only), now (guard, set, right and trigger point sites only), currentActor (guard, set, right and trigger point sites only), inState (with of; guard, set, right and trigger point sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).
          */
         expr: {
             /** @description A literal: a string, an integer or a boolean; with type, the value's text, so that digits are kept. */
@@ -7870,21 +8104,26 @@ export interface components {
             null?: true;
             /** @description To-one navigation ids (relation end ids), then one attribute, column, input member, context or payload attribute, or constraint parameter id; attributeId.memberId for a value object member; keyed ids for inherited and contributed members. */
             path?: string[];
+            /**
+             * @description With path: the path reads the object's values before the verb (old.price in text), null on create. Trigger point sites only (when, condition and set values); elsewhere it is MQ3104.
+             * @constant
+             */
+            old?: true;
             /** @description The id of an enum member or of a reference-type code. */
             ref?: string;
             /** @description A member of the selected object in the path syntax of declared rules (properties.retentionDays); rule conditions only. */
             member?: string;
             /**
-             * @description The clock, a datetimeoffset; guard, set and right sites only.
+             * @description The clock, a datetimeoffset; guard, set, right and trigger point sites only.
              * @constant
              */
             now?: true;
             /**
-             * @description The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard, set and right sites only.
+             * @description The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard, set, right and trigger point sites only.
              * @constant
              */
             currentActor?: true;
-            /** @description True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard, set and right sites only. */
+            /** @description True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard, set, right and trigger point sites only. */
             inState?: string[];
             /** @description The to-one relation end ids from the subject to the object whose state inState reads; absent, the subject itself. Only with inState. */
             of?: string[];
@@ -10195,6 +10434,41 @@ export interface components {
          */
         whileFrozen: boolean;
         /**
+         * @description check: judges the change and passes, warns or refuses with its message. action: does something at its timing. replace: takes the place of the verb's built-in effect, only on delete, disconnect, copy and revise (MQ8103); everything around it still runs.
+         * @enum {unknown}
+         */
+        type: "check" | "action" | "replace";
+        /**
+         * @description An action's moment, required on an action and allowed nowhere else (MQ8101). before: fills the proposed values before the checks, and nothing is written until they pass. with-change: after the effect, in the same unit of work, so a failure undoes the verb. after-commit: once the change is saved; it cannot undo it, may run late and may run more than once, and sets nothing (MQ8105).
+         * @enum {unknown}
+         */
+        timing: "before" | "with-change" | "after-commit";
+        /**
+         * @description A check's severity, allowed only on a check (MQ8101). error (also when absent) refuses the step with refusal check; warning lets it through and lists the check in the trace's checkWarnings.
+         * @enum {unknown}
+         */
+        severity: "error" | "warning";
+        /** @description The verbs it runs on, at least one: a built-in verb's key or one of the project's own (MQ9701). A move, signature or task verb runs in this lifecycle's moves, signatures and human tasks; an object, link or own verb runs on the object, whichever lifecycle acts. */
+        "properties-verbs": components["schemas"]["verbRef"][];
+        /**
+         * Set
+         * @description One attribute of the object set to a value when the action runs.
+         */
+        set: {
+            id: components["schemas"]["id"];
+            /** @description The attribute set: an attribute every subject of the process holds under one id (an id, or the keyed id of an inherited or contributed attribute). Not derived, and not one that holds a lifecycle's state (MQ9801, MQ9802); once per action (MQ9803). */
+            attribute: string;
+            /** @description The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), current_actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute. */
+            value: components["schemas"]["expr"];
+        };
+        /** @description What an action or a replace sets on the object, as an action's sets: every value is worked out first, then all are applied. A value reads what when reads. Not on a check (MQ8101) or an after-commit action (MQ8105); without it, an action or a replace is the team's code. */
+        sets: components["schemas"]["set"][];
+        /**
+         * @description true: the team's code reaches outside systems. Simulation never runs the team's code; the trace marks the point, and generated tests record it instead of calling it. Only a point with team code may say so (MQ8101); a with-change one is warned (MQ8106).
+         * @default false
+         */
+        outside: boolean;
+        /**
          * Invoke
          * @description Work a state starts on entry: a sub-process, a service task or a human task.
          */
@@ -10322,17 +10596,6 @@ export interface components {
             properties?: components["schemas"]["properties"];
         };
         /**
-         * Set
-         * @description One attribute of the object set to a value when the action runs.
-         */
-        set: {
-            id: components["schemas"]["id"];
-            /** @description The attribute set: an attribute every subject of the process holds under one id (an id, or the keyed id of an inherited or contributed attribute). Not derived, and not one that holds a lifecycle's state (MQ9801, MQ9802); once per action (MQ9803). */
-            attribute: string;
-            /** @description The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), current_actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute. */
-            value: components["schemas"]["expr"];
-        };
-        /**
          * Subject
          * @description An entity the process governs, with the entities derived from it; or a stereotype, standing for every entity that carries it and the entities derived from them. Names exactly one of entity and stereotype.
          */
@@ -10455,6 +10718,49 @@ export interface components {
             description?: components["schemas"]["description"];
         };
         /**
+         * Trigger point
+         * @description An entry of a lifecycle's triggerPoints (part kind process-trigger-point): what runs when one of its verbs happens to the lifecycle's subjects, narrowed by its optional keys. With no narrowing key it runs wherever its verbs happen.
+         */
+        triggerPoint: {
+            id: components["schemas"]["id"];
+            /** @description Unique among the lifecycle's trigger points, and apart from its process's guards (MQ3001); a refusal and a step's assume name it. */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            type: components["schemas"]["type"];
+            timing?: components["schemas"]["timing"];
+            severity?: components["schemas"]["severity"];
+            verbs: components["schemas"]["properties-verbs"];
+            /**
+             * @description States of this lifecycle the object must be in (for a move, its source); a compound state counts while any state inside it is active, and create is checked in the initial state (MQ8102). Empty: every state.
+             * @default []
+             */
+            states?: components["schemas"]["idList"];
+            /**
+             * @description States of this lifecycle a move must enter; a compound state counts when the move enters it or any state inside it, default states included. Beside move verbs, sign, and own verbs an event of this lifecycle names only (MQ8102). Empty: any.
+             * @default []
+             */
+            targets?: components["schemas"]["idList"];
+            /**
+             * @description Transitions of this lifecycle a move must be; for sign, a signature on their gates. Beside move verbs, sign, and own verbs an event of this lifecycle names only (MQ8102). Empty: any.
+             * @default []
+             */
+            transitions?: components["schemas"]["idList"];
+            /** @default [] */
+            entities?: components["schemas"]["idList"];
+            /** @default [] */
+            attributes?: components["schemas"]["idList"];
+            /** @default [] */
+            ends?: components["schemas"]["idList"];
+            when?: components["schemas"]["expr"];
+            condition?: components["schemas"]["expr"];
+            /** @default [] */
+            sets?: components["schemas"]["sets"];
+            /** @default false */
+            outside?: components["schemas"]["outside"];
+            /** @description Why. For a check, the message shown when it refuses or warns; without one, the display name, else the name. */
+            description?: components["schemas"]["description"];
+        };
+        /**
          * Transition
          * @description A transition; among transitions with one source and one trigger, array order is priority.
          */
@@ -10570,6 +10876,11 @@ export interface components {
              */
             rights?: components["schemas"]["right"][];
             /**
+             * @description The lifecycle's trigger points, in file order, which is the order they run in at each moment: each says what runs when one of its verbs happens, in some places, under an optional when. A check refuses or warns, an action runs before the checks, with the change or after commit, and a replace takes the place of a built-in effect. Lifecycles only (MQ8101).
+             * @default []
+             */
+            triggerPoints?: components["schemas"]["triggerPoint"][];
+            /**
              * @description The root's children, in document order. A process that is not a library has at least one, and a library has none (MQ9020).
              * @default []
              */
@@ -10637,6 +10948,49 @@ export interface components {
                      */
                     states?: components["schemas"]["idList"];
                     /** @description Why: shown with every refusal, in the rights grid and in the docs. */
+                    description?: components["schemas"]["description"];
+                };
+                /**
+                 * Trigger point
+                 * @description An entry of a lifecycle's triggerPoints (part kind process-trigger-point): what runs when one of its verbs happens to the lifecycle's subjects, narrowed by its optional keys. With no narrowing key it runs wherever its verbs happen.
+                 */
+                triggerPoint: {
+                    id: components["schemas"]["id"];
+                    /** @description Unique among the lifecycle's trigger points, and apart from its process's guards (MQ3001); a refusal and a step's assume name it. */
+                    name: components["schemas"]["identifier"];
+                    displayName?: string;
+                    type: components["schemas"]["type"];
+                    timing?: components["schemas"]["timing"];
+                    severity?: components["schemas"]["severity"];
+                    verbs: components["schemas"]["properties-verbs"];
+                    /**
+                     * @description States of this lifecycle the object must be in (for a move, its source); a compound state counts while any state inside it is active, and create is checked in the initial state (MQ8102). Empty: every state.
+                     * @default []
+                     */
+                    states?: components["schemas"]["idList"];
+                    /**
+                     * @description States of this lifecycle a move must enter; a compound state counts when the move enters it or any state inside it, default states included. Beside move verbs, sign, and own verbs an event of this lifecycle names only (MQ8102). Empty: any.
+                     * @default []
+                     */
+                    targets?: components["schemas"]["idList"];
+                    /**
+                     * @description Transitions of this lifecycle a move must be; for sign, a signature on their gates. Beside move verbs, sign, and own verbs an event of this lifecycle names only (MQ8102). Empty: any.
+                     * @default []
+                     */
+                    transitions?: components["schemas"]["idList"];
+                    /** @default [] */
+                    entities?: components["schemas"]["idList"];
+                    /** @default [] */
+                    attributes?: components["schemas"]["idList"];
+                    /** @default [] */
+                    ends?: components["schemas"]["idList"];
+                    when?: components["schemas"]["expr"];
+                    condition?: components["schemas"]["expr"];
+                    /** @default [] */
+                    sets?: components["schemas"]["sets"];
+                    /** @default false */
+                    outside?: components["schemas"]["outside"];
+                    /** @description Why. For a check, the message shown when it refuses or warns; without one, the display name, else the name. */
                     description?: components["schemas"]["description"];
                 };
                 /**
@@ -11098,7 +11452,7 @@ export interface components {
             payload?: {
                 [key: string]: unknown;
             };
-            /** @description For a modify verb step on the subject: the values it sets, by attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them. */
+            /** @description For a modify verb step on the subject: the values it sets; for a create verb step: the new object's values, which before actions and checks read and an accepted step writes. By attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them. */
             values?: {
                 [key: string]: unknown;
             };
@@ -11109,11 +11463,11 @@ export interface components {
             /** @description With end: the id of the scenario object at the link's other end, linked to the subject through end except for connect (MQ9305). */
             object?: components["schemas"]["id"];
             /**
-             * @description Results for guards without an expression, by guard id.
+             * @description Results for guards without an expression, by guard id, as true or false; and outcomes for checks the team writes (checks with no condition), by trigger point id, as pass, warning or error (MQ9305 for a word on any other key). A check with no entry passes.
              * @default {}
              */
             assume?: {
-                [key: string]: boolean;
+                [key: string]: true | false | "pass" | "warning" | "error";
             };
             /** @description What is expected after the step. */
             expect?: {
@@ -11126,8 +11480,8 @@ export interface components {
                  * @description With accepted false: why the step is refused, the first check that failed (MQ9308).
                  * @enum {unknown}
                  */
-                refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen";
-                /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy (MQ9308). */
+                refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen" | "check";
+                /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, or the trigger point whose check refused (MQ9308). */
                 refusedBy?: components["schemas"]["id"];
                 /**
                  * @description The active atomic states, in document order.
@@ -11148,6 +11502,10 @@ export interface components {
                 values?: {
                     [key: string]: unknown;
                 };
+                /** @description The ids of exactly the checks that warned (MQ9310). Absent checks nothing; empty expects none. */
+                checkWarnings?: components["schemas"]["idList"];
+                /** @description The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked. */
+                triggerPoints?: components["schemas"]["idList"];
             };
             description?: components["schemas"]["description"];
         };
@@ -11335,7 +11693,7 @@ export interface components {
                     payload?: {
                         [key: string]: unknown;
                     };
-                    /** @description For a modify verb step on the subject: the values it sets, by attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them. */
+                    /** @description For a modify verb step on the subject: the values it sets; for a create verb step: the new object's values, which before actions and checks read and an accepted step writes. By attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them. */
                     values?: {
                         [key: string]: unknown;
                     };
@@ -11346,11 +11704,11 @@ export interface components {
                     /** @description With end: the id of the scenario object at the link's other end, linked to the subject through end except for connect (MQ9305). */
                     object?: components["schemas"]["id"];
                     /**
-                     * @description Results for guards without an expression, by guard id.
+                     * @description Results for guards without an expression, by guard id, as true or false; and outcomes for checks the team writes (checks with no condition), by trigger point id, as pass, warning or error (MQ9305 for a word on any other key). A check with no entry passes.
                      * @default {}
                      */
                     assume?: {
-                        [key: string]: boolean;
+                        [key: string]: true | false | "pass" | "warning" | "error";
                     };
                     /** @description What is expected after the step. */
                     expect?: {
@@ -11363,8 +11721,8 @@ export interface components {
                          * @description With accepted false: why the step is refused, the first check that failed (MQ9308).
                          * @enum {unknown}
                          */
-                        refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen";
-                        /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy (MQ9308). */
+                        refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen" | "check";
+                        /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, or the trigger point whose check refused (MQ9308). */
                         refusedBy?: components["schemas"]["id"];
                         /**
                          * @description The active atomic states, in document order.
@@ -11385,6 +11743,10 @@ export interface components {
                         values?: {
                             [key: string]: unknown;
                         };
+                        /** @description The ids of exactly the checks that warned (MQ9310). Absent checks nothing; empty expects none. */
+                        checkWarnings?: components["schemas"]["idList"];
+                        /** @description The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked. */
+                        triggerPoints?: components["schemas"]["idList"];
                     };
                     description?: components["schemas"]["description"];
                 };
@@ -15036,6 +15398,87 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["RightsPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getTriggerSequence: {
+        parameters: {
+            query: {
+                /** @description The verb, by key. */
+                verb: string;
+                /** @description A state id of the lifecycle the object is in (for a move, its source). */
+                state?: components["schemas"]["Ulid"];
+                /** @description An entity id the lifecycle governs; only the points that run for it. */
+                entity?: components["schemas"]["Ulid"];
+                /** @description Comma-separated attribute ids the step reads or changes, for `read` and `modify`. */
+                attributes?: string;
+                /** @description A relation end id of the subject, for a verb on a link. */
+                end?: components["schemas"]["Ulid"];
+                /** @description A transition id of the lifecycle, for a move verb or `sign`. */
+                transition?: components["schemas"]["Ulid"];
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description A process id (uppercase ULID).
+                 * @example 01JQPRC0000000000000000002
+                 */
+                id: components["parameters"]["ProcessId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sequence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "lifecycle": "01JQPRC0000000000000000002",
+                     *       "verb": "delete",
+                     *       "steps": [
+                     *         {
+                     *           "order": 1,
+                     *           "step": "frozen"
+                     *         },
+                     *         {
+                     *           "order": 3,
+                     *           "step": "denies"
+                     *         },
+                     *         {
+                     *           "order": 4,
+                     *           "step": "defaults"
+                     *         },
+                     *         {
+                     *           "order": 9,
+                     *           "step": "checks",
+                     *           "triggerPoint": "01JQTGP0000000000000000002",
+                     *           "lifecycle": "01JQPRC0000000000000000002",
+                     *           "type": "check",
+                     *           "severity": "error"
+                     *         },
+                     *         {
+                     *           "order": 10,
+                     *           "step": "effect",
+                     *           "triggerPoint": "01JQTGP0000000000000000001",
+                     *           "lifecycle": "01JQPRC0000000000000000002",
+                     *           "type": "replace"
+                     *         },
+                     *         {
+                     *           "order": 11,
+                     *           "step": "with-change"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TriggerSequence"];
                 };
             };
             400: components["responses"]["BadRequest"];

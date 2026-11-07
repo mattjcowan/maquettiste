@@ -84,7 +84,7 @@ public sealed class ProcessModelTests
         var scenario = model.Get<Scenario>(HappyPath)!;
         Assert.Equal(ScenarioOutcome.Final, scenario.Outcome);
         Assert.Equal(ScenarioStart.DefaultStart, scenario.Start!.At);
-        Assert.False(scenario.Steps[3].Assume[IsLarge]);
+        Assert.False(scenario.Steps[3].Assume[IsLarge].Guard);
         Assert.False(model.Get<Scenario>(RefusedShip)!.Steps[0].Expect!.Accepted);
     }
 

@@ -822,7 +822,7 @@ public sealed class StatechartInterpreter
 
     // A guard runs when its expression, or its condition (next-phase-3-design.md section 3.1), compiled into the chart's session.
     private bool CanEvaluate(Instance inst, ProcessGuard guard) =>
-        (Session(inst.Chart)?.Compiled.Contains(guard.Id) ?? false) || (_scope.Input?.Assume.ContainsKey(guard.Id) ?? false);
+        (Session(inst.Chart)?.Compiled.Contains(guard.Id) ?? false) || (_scope.Input?.Assume.TryGetValue(guard.Id, out var assumed) == true && assumed.Guard is not null);
 
     private bool? Guard(Instance inst, ChartTransition t)
     {
@@ -859,7 +859,7 @@ public sealed class StatechartInterpreter
             return value;
         }
 
-        if (_scope.Input is { } input && input.Assume.TryGetValue(guard.Id, out var assumed))
+        if (_scope.Input is { } input && input.Assume.TryGetValue(guard.Id, out var entry) && entry.Guard is { } assumed)
         {
             _scope.Guards.Add(new GuardEvaluation(guard.Id, t.Id, assumed, GuardSource.Assumed));
             return assumed;

@@ -1612,13 +1612,13 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>Guard results keyed by guard name (the id when no guard has it), ordinal.</summary>
-    private static IReadOnlyDictionary<string, object?> Assumptions(IReadOnlyDictionary<string, bool> values, Dictionary<string, RGuard> guards)
+    private static IReadOnlyDictionary<string, object?> Assumptions(IReadOnlyDictionary<string, StepAssumption> values, Dictionary<string, RGuard> guards)
     {
         if (values.Count == 0)
             return ImmutableSortedDictionary<string, object?>.Empty;
         var map = new SortedDictionary<string, object?>(StringComparer.Ordinal);
         foreach (var (id, value) in values)
-            map.TryAdd(guards.TryGetValue(id, out var guard) ? guard.Name : id, value);
+            map.TryAdd(guards.TryGetValue(id, out var guard) ? guard.Name : id, value.ToPlain());
         return map.ToImmutableSortedDictionary(StringComparer.Ordinal);
     }
 

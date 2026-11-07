@@ -4,7 +4,8 @@ namespace Maquettiste.Engine.Model;
 
 /// <summary>
 /// A node of an expression of the one expression language (next-phase-3-design.md section 3.1, <c>common.json#/$defs/expr</c>):
-/// exactly one of <see cref="Value"/> (with an optional <see cref="Type"/>), <see cref="Null"/>, <see cref="Path"/>, <see cref="Ref"/>,
+/// exactly one of <see cref="Value"/> (with an optional <see cref="Type"/>), <see cref="Null"/>, <see cref="Path"/> (with an optional
+/// <see cref="Old"/>), <see cref="Ref"/>,
 /// <see cref="Member"/>, <see cref="Now"/>, <see cref="Actor"/>, <see cref="InState"/> (with an optional <see cref="Of"/>), <see cref="Op"/>
 /// (with <see cref="Args"/>), <see cref="Call"/> (with <see cref="Args"/>),
 /// <see cref="Case"/> (with an optional <see cref="Else"/>), <see cref="Satisfies"/> (with <see cref="With"/>) or <see cref="Text"/>.
@@ -29,6 +30,12 @@ public sealed record Expr
     /// </summary>
     [ElementRef(Keyed = true)]
     public IReadOnlyList<string>? Path { get; init; }
+
+    /// <summary>
+    /// With <see cref="Path"/>, when <see langword="true"/>: the path reads the object's values before the verb (<c>old.</c>,
+    /// trigger-points-design.md decision 14); trigger point sites only (MQ3104).
+    /// </summary>
+    public bool? Old { get; init; }
 
     /// <summary>An enum member id or a reference-type code id.</summary>
     [ElementRef(Keyed = true)]

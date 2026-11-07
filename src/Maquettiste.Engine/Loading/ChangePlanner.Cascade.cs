@@ -1277,12 +1277,19 @@ internal sealed partial class ChangePlanner
         return name is null ? noun : noun + " " + name;
     }
 
-    /// <summary>A part kind as a delete plan words it: an entry of a lifecycle's rights is a right (rights-design.md section 8).</summary>
-    private static string PartNoun(string kind) => kind == "process-right" ? "right" : kind;
+    /// <summary>A part kind as a delete plan words it: an entry of a lifecycle's rights is a right (rights-design.md section 8), and an entry
+    /// of its trigger points a trigger point (trigger-points-design.md section 9).</summary>
+    private static string PartNoun(string kind) => kind switch
+    {
+        "process-right" => "right",
+        "process-trigger-point" => "trigger point",
+        _ => kind,
+    };
 
     private static string Noun(string property) => property switch
     {
         "rights" => "right",
+        "triggerPoints" => "trigger point",
         "actors" => "actor",
         "verbs" => "verb",
         "attributes" => "attribute",
