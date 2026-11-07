@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.16.0 (unreleased)
+## 0.16.0 (2026-11-07)
 
 - **Rights, part 2: freezing.** An object or a link is frozen or not. An accepted `freeze` freezes it and an accepted `thaw` thaws it, whether
   a verb step does it or an event that names the verb. While frozen, `modify`, `connect`, `disconnect` and `delete` are refused before any
@@ -27,6 +27,8 @@ one.
   section, says more.
 - **New rules.** MQ9309 (warning) for the steps above. MQ9903 now also covers attributes that not every subject holds, attributes beside
   a verb other than `read` and `modify`, and attributes beside links. MQ9305 now also covers `attributes` beside a verb other than `read`.
+- **New names.** Each verify result may carry `warnings`, which holds only MQ9309 and is left out when empty. Templates gain
+  `right.while_frozen`, `right.attributes`, `step.attributes`, `object.frozen` and `model.freezing.used`.
 - **The upgrade.** Teams upgrade together: new files use shapes an older engine cannot read (`whileFrozen`, `attributes` and `frozen`). The file
   format version stays 1. The schema copies and the `maquettiste-modeling` skill change, so update the copies your repository holds. A project
   with neither freezing nor attribute rights is unchanged.
