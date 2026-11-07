@@ -20,7 +20,7 @@ What events, automatic moves and operations do. A verb is stored by its key.
 | Complete | `complete` | task | Finish a task. |  |
 | Create | `create` | object | Make a new object. |  |
 | Read | `read` | object | See an object or a link, and its data. | right `SalaryHrOnly` |
-| Modify | `modify` | object | Change the values of an object or a link. | event `edit`, right `SalaryHrOnly` |
+| Modify | `modify` | object | Change the values of an object or a link. | event `edit`, right `SalaryHrOnly`, right `NameHrOnly` |
 | Delete | `delete` | object | Remove an object. |  |
 | Copy | `copy` | object | Make a new object from an existing one. |  |
 | Revise | `revise` | object | Make the next revision of an object. |  |

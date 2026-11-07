@@ -1,0 +1,55 @@
+{{-
+# The frozen state of the scenario tests (rights-design.md section 9), written only when the project uses freezing and the testsFolder
+# parameter names a folder: ScenarioFrozen answers each command with whether the step's subject, and a link of it, were frozen before the
+# step in the replay. The generated test sets Current before each send and clears it after; ScenarioHost (the team's file) registers it once.
+include "_csharp.scriban"
+include "_process.scriban"
+if uses_freezing() && pack.params.testsFolder != ""
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Threading;
+using {{ actors_ns() }};
+
+namespace {{ base_ns }};
+
+/// <summary>
+/// Whether a scenario step's subject, and a link of it, are frozen, as the replay worked it out before the step. Register it once in
+/// ScenarioHost, in place of the FrozenState stub: pass <c>new ScenarioFrozen()</c> to each command handler (or register it as the
+/// container's <see cref="IFrozenState"/>). A test whose step is refused as frozen fails until then, and its message says so.
+/// </summary>
+public sealed class ScenarioFrozen : IFrozenState
+{
+    private static readonly AsyncLocal<Holder?> Step = new();
+
+    /// <summary>Whether the subject, and a link of it, are frozen before the current step; null between steps. Each test sets it before a send and clears it after.</summary>
+    public static (bool Object, bool Link)? Current
+    {
+        get => Step.Value?.Frozen;
+        set => Step.Value = value is { } frozen ? new Holder(frozen) : null;
+    }
+
+    /// <summary>Whether a command handler asked since <see cref="Current"/> was set.</summary>
+    public static bool Asked => Step.Value?.Asked == true;
+
+    /// <inheritdoc/>
+    public bool IsFrozen(FrozenQuery query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        if (Step.Value is not { } holder)
+            return false;
+        holder.Asked = true;
+        return query.Link ? holder.Frozen.Link : holder.Frozen.Object;
+    }
+
+    private sealed class Holder((bool Object, bool Link) frozen)
+    {
+        public (bool Object, bool Link) Frozen { get; } = frozen;
+
+        public bool Asked { get; set; }
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.testsFolder "ScenarioFrozen.cs") content -}}
+{{- end -}}

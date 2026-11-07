@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Maquettiste.Engine;
 using Maquettiste.Testing;
 
@@ -375,19 +377,69 @@ public sealed class CompileTests
     {
         // rights-design.md section 9, part 2: the project names freeze, so Freezing.cs, Refusals.Frozen, the interpreter's frozen check and
         // the request's frozen flags are written; a right names attributes, so the request and the rights table carry them. The frozen
-        // hook is left unwritten, so the project builds with warnings as errors and nothing is refused for freezing until the team writes
-        // it; the scenario test checks the replay's frozen steps with its frozen flags.
+        // state is a host interface, IFrozenState, whose stub the team owns (Dispatch/FrozenState.cs) and answers "not frozen", so the
+        // project builds with warnings as errors and nothing is refused for freezing until the team writes it. ScenarioHost registers
+        // ScenarioFrozen, so the scenario test's event step refused as frozen is refused by the dispatcher. Its verb step that changes a
+        // name and a salary is refused by the salary right, the first deny in file order, as the engine names it.
         using var repo = PackRepo.Freezing();
         await repo.GenerateCleanlyAsync();
         Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "freezing", "expected"), repo.PathOf("out"));
-        Assert.Contains("static partial void IsFrozen(FrozenQuery query, ref bool frozen);", repo.Read("out/Processes/Freezing.cs"), StringComparison.Ordinal);
+        Assert.Contains("public interface IFrozenState", repo.Read("out/Processes/Freezing.cs"), StringComparison.Ordinal);
+        Assert.Contains("public sealed class FrozenState : IFrozenState", repo.Read("out/Dispatch/FrozenState.cs"), StringComparison.Ordinal);
         Assert.Contains("public const string Frozen = \"frozen\";", repo.Read("out/Runtime/Statechart.g.cs"), StringComparison.Ordinal);
         var test = repo.Read("out/Tests/EmployeeRecord/FreezingTests.cs");
-        Assert.Contains("Attributes = [\"salary\"],", test, StringComparison.Ordinal);
+        Assert.Contains("Attributes = [\"name\", \"salary\"],", test, StringComparison.Ordinal);
+        Assert.Contains("Assert.Equal(\"01JFZ000000000000000000Y01\", decision3.RefusedBy);", test, StringComparison.Ordinal);
         Assert.Contains("Frozen = true,", test, StringComparison.Ordinal);
-        Replace("out/Dispatch/Pipeline.cs", "throw new NotImplementedException(\"Map the caller's principal to the envelope's actor in Pipeline.cs (Authorize).\")", "true");
+        Assert.Contains("ScenarioFrozen.Current = (true, false);", test, StringComparison.Ordinal);
+        Assert.DoesNotContain("new FrozenFlags(", test, StringComparison.Ordinal);
+        await BuildAndRunScenarioTestsAsync(repo, "freezing", FreezingScenarioHost.Replace("$Held", "new ScenarioHoldings(), ", StringComparison.Ordinal), 2);
+    }
 
-        var project = Path.Combine(repo.Repo.Root, "freezing");
+    [Fact]
+    public async Task Freezing_without_rights_refuses_as_frozen_through_the_dispatcher()
+    {
+        // The freezing case with its rights taken out (rights-design.md decision 28): the project still names freeze, so the interpreter
+        // checks frozen and the command handlers take IFrozenState; nothing is written for rights. The scenario's event step refused as
+        // frozen goes through the dispatcher, and its verb step refused as frozen is checked with the replay's frozen flags.
+        using var repo = PackRepo.Freezing();
+        var process = JsonNode.Parse(repo.Read(".maquettiste/model/processes/employee-record.json"))!.AsObject();
+        Assert.True(process.Remove("rights"));
+        repo.Write(".maquettiste/model/processes/employee-record.json", process.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+        File.Delete(repo.PathOf(".maquettiste/model/rights/owner-kept-while-frozen.json"));
+        const string Z = "01JFZ000000000000000000";
+        repo.Write(".maquettiste/model/scenarios/employee-record/freezing.json", $$$"""
+            {"kind":"scenario","id":"{{{Z}}}C01","name":"Freezing","process":"{{{Z}}}Q01",
+             "objects":[{"id":"{{{Z}}}J01","name":"ada","entity":"{{{Z}}}E01","values":{"{{{Z}}}A02":"Ada"}}],"subject":"{{{Z}}}J01",
+             "steps":[{"id":"{{{Z}}}011","event":"{{{Z}}}V02","expect":{"states":["{{{Z}}}S01"]}},
+               {"id":"{{{Z}}}012","event":"{{{Z}}}V01","expect":{"accepted":false,"refusal":"frozen"}},
+               {"id":"{{{Z}}}013","input":"verb","verb":"modify","values":{"{{{Z}}}A02":"Ada K"},"expect":{"accepted":false,"refusal":"frozen"}},
+               {"id":"{{{Z}}}014","event":"{{{Z}}}V03","expect":{"states":["{{{Z}}}S01"]}},
+               {"id":"{{{Z}}}015","event":"{{{Z}}}V01","expect":{"states":["{{{Z}}}S01"]}},
+               {"id":"{{{Z}}}016","event":"{{{Z}}}V04","expect":{"states":["{{{Z}}}S02"]}}],
+             "outcome":"final"}
+
+            """);
+        await repo.GenerateCleanlyAsync();
+        Assert.False(File.Exists(repo.PathOf("out/Processes/Rights.cs")));
+        Assert.False(File.Exists(repo.PathOf("out/Tests/ScenarioHoldings.cs")));
+        Assert.Contains("IFrozenState? frozen = null) :", repo.Read("out/Processes/EmployeeRecord/EmployeeRecordHandlers.g.cs"), StringComparison.Ordinal);
+        var test = repo.Read("out/Tests/EmployeeRecord/FreezingTests.cs");
+        Assert.Contains("ScenarioFrozen.Current = (true, false);", test, StringComparison.Ordinal);
+        Assert.Contains("Assert.Equal(\"frozen\", result.Refusal);", test, StringComparison.Ordinal);
+        Assert.Contains("Assert.True(new FrozenFlags(", test, StringComparison.Ordinal);
+        await BuildAndRunScenarioTestsAsync(repo, "freezing-without-rights", FreezingScenarioHost[..FreezingScenarioHost.IndexOf("public sealed class FreezingTests", StringComparison.Ordinal)].Replace("$Held", "", StringComparison.Ordinal), 1);
+    }
+
+    // Builds the freezing case's output with a test host and runs its scenario tests, which must all pass.
+    private static async Task BuildAndRunScenarioTestsAsync(PackRepo repo, string folder, string host, int total)
+    {
+        var pipeline = repo.Read("out/Dispatch/Pipeline.cs");
+        const string Stub = "throw new NotImplementedException(\"Map the caller's principal to the envelope's actor in Pipeline.cs (Authorize).\")";
+        Assert.Contains(Stub, pipeline, StringComparison.Ordinal);
+        repo.Write("out/Dispatch/Pipeline.cs", pipeline.Replace(Stub, "true", StringComparison.Ordinal));
+
+        var project = Path.Combine(repo.Repo.Root, folder);
         WriteProject(project, repo.PathOf("out"), program: null, web: true);
         var csproj = Path.Combine(project, "RoundTrip.csproj");
         File.WriteAllText(csproj, File.ReadAllText(csproj)
@@ -395,22 +447,16 @@ public sealed class CompileTests
             .Replace("<Compile Include=\"Program.cs\" Condition=\"Exists('Program.cs')\" />",
                 "<Compile Include=\"Host/*.cs\" />\n    <PackageReference Include=\"xunit.v3\" Version=\"3.2.2\" />", StringComparison.Ordinal));
         Directory.CreateDirectory(Path.Combine(project, "Host"));
-        File.WriteAllText(Path.Combine(project, "Host", "ScenarioHost.cs"), FreezingScenarioHost);
+        File.WriteAllText(Path.Combine(project, "Host", "ScenarioHost.cs"), host);
 
         await BuildOrSkipAsync(project);
         var run = await ProcessRunner.RunAsync(ProcessRunner.Dotnet, [Path.Combine(project, "bin", "Debug", "net10.0", "RoundTrip.dll"), "-noColor"], project, TimeSpan.FromMinutes(2));
-        Assert.True(run.ExitCode == 0 && run.Output.Contains("Total: 2, Errors: 0, Failed: 0,", StringComparison.Ordinal), run.Output);
-
-        void Replace(string path, string stub, string with)
-        {
-            var text = repo.Read(path);
-            Assert.Contains(stub, text, StringComparison.Ordinal);
-            repo.Write(path, text.Replace(stub, with, StringComparison.Ordinal));
-        }
+        Assert.True(run.ExitCode == 0 && run.Output.Contains($"Total: {total}, Errors: 0, Failed: 0,", StringComparison.Ordinal), run.Output);
     }
 
-    // The test host of the freezing case: the dispatcher over the lifecycle, with the frozen hook unwritten, and the checks the scenario
-    // can't make: the unwritten hook answers "not frozen", a frozen flag the request gives decides, and one refused attribute refuses.
+    // The test host of the freezing case: the dispatcher over the lifecycle, with ScenarioFrozen in place of the FrozenState stub (and,
+    // with rights, ScenarioHoldings: $Held), and the checks the scenario can't make: the stub answers "not frozen", a frozen flag the
+    // request gives decides, and one refused attribute refuses.
     private const string FreezingScenarioHost = """
         using System;
         using System.Collections.Generic;
@@ -434,7 +480,7 @@ public sealed class CompileTests
             {
                 var host = new ProcessHost(clock);
                 var records = new EmployeeRecordCommandHandler(new EmployeeRecordMachine(new EmployeeRecordHandlers(), host, host, host),
-                    new EmployeeRecordStore(), new ScenarioHoldings());
+                    new EmployeeRecordStore(), $Heldnew ScenarioFrozen());
                 return Task.FromResult(new ScenarioHost(new Dispatcher(new HandlerRegistry(records), new Pipeline(new InMemoryProcessOutbox()))));
             }
 
@@ -446,13 +492,14 @@ public sealed class CompileTests
             [Fact]
             public void The_unwritten_hook_answers_not_frozen_and_a_given_flag_decides()
             {
-                Assert.False(Freezing.Frozen(new FrozenQuery { Process = "EmployeeRecord" }));
-                var edit = new RightRequest { Verb = Verb.Modify, Lifecycle = "EmployeeRecord", Subject = typeof(Employee), Actor = Actors.Clerk, Attributes = ["name"] };
+                Assert.False(new FrozenState().IsFrozen(new FrozenQuery { Process = "EmployeeRecord" }));
+                var edit = new RightRequest { Verb = Verb.Modify, Lifecycle = "EmployeeRecord", Subject = typeof(Employee), Actor = Actors.HrStaff, Attributes = ["name"] };
                 Assert.True(Rights.Check(edit).Allowed);
                 var frozen = Rights.Check(edit with { Frozen = true });
                 Assert.Equal((false, Refusals.Frozen, (string?)null), (frozen.Allowed, frozen.Refusal, frozen.RefusedBy));
-                Assert.Equal(Refusals.Right, Rights.Check(edit with { Attributes = ["name", "salary"] }).Refusal);
-                Assert.Equal(Refusals.Right, Rights.Check(edit with { Attributes = null }).Refusal);
+                var both = Rights.Check(edit with { Actor = Actors.Clerk, Attributes = ["name", "salary"] });
+                Assert.Equal((Refusals.Right, "01JFZ000000000000000000Y01"), (both.Refusal, both.RefusedBy));
+                Assert.Equal(Refusals.Right, Rights.Check(edit with { Actor = Actors.Clerk, Attributes = null }).Refusal);
                 Assert.True(Rights.Check(edit with { Actor = Actors.HrStaff, Attributes = ["salary"] }).Allowed);
                 var owner = edit with { Verb = Verb.ChangeOwner, Attributes = null };
                 Assert.True(Rights.Check(owner).Allowed);

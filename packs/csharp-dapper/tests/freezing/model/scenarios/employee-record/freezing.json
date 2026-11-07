@@ -16,7 +16,7 @@
     }
   ],
   "subject": "01JFZ000000000000000000J01",
-  "description": "HR staff may change a name, but a clerk may change a salary neither by a step nor by an edit; HR staff read it. The record is frozen, read by HR staff while frozen and thawed; its owner then changes, and it is archived.",
+  "description": "HR staff may change a name, but a clerk may change a salary neither by a step nor by an edit; HR staff read it. A clerk who changes a name and a salary is refused by the salary right, the first in the file. The record is frozen; HR staff can neither edit it nor change its name, but read it while frozen; it is thawed; its owner then changes, and it is archived.",
   "steps": [
     {
       "id": "01JFZ000000000000000000011",
@@ -40,6 +40,22 @@
       "values": {
         "01JFZ000000000000000000A03": 120
       },
+      "expect": {
+        "accepted": false,
+        "refusal": "right",
+        "refusedBy": "01JFZ000000000000000000Y01"
+      }
+    },
+    {
+      "id": "01JFZ00000000000000000001A",
+      "input": "verb",
+      "verb": "modify",
+      "actor": "01JFZ000000000000000000K02",
+      "values": {
+        "01JFZ000000000000000000A02": "Ada M",
+        "01JFZ000000000000000000A03": 130
+      },
+      "description": "A clerk changes the name and the salary: the deny on salary comes first in the file, so it names the refusal.",
       "expect": {
         "accepted": false,
         "refusal": "right",
@@ -74,6 +90,30 @@
         "states": [
           "01JFZ000000000000000000S01"
         ]
+      }
+    },
+    {
+      "id": "01JFZ00000000000000000001B",
+      "event": "01JFZ000000000000000000V01",
+      "actor": "01JFZ000000000000000000K01",
+      "description": "HR staff edit the frozen record: refused as frozen, whatever the rights say.",
+      "expect": {
+        "accepted": false,
+        "refusal": "frozen"
+      }
+    },
+    {
+      "id": "01JFZ00000000000000000001C",
+      "input": "verb",
+      "verb": "modify",
+      "actor": "01JFZ000000000000000000K01",
+      "values": {
+        "01JFZ000000000000000000A02": "Ada K"
+      },
+      "description": "HR staff change the frozen record's name: refused as frozen.",
+      "expect": {
+        "accepted": false,
+        "refusal": "frozen"
       }
     },
     {

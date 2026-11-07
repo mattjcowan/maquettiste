@@ -223,12 +223,12 @@ public static class ScenarioReplayer
                 failure = Compare(chart, scenario, i, step, expect, trace, pointer);
 
             // An earlier step froze what refused this one, and it doesn't expect that (MQ9309; rights-design.md decision 16): naming freeze
-            // now takes effect, so the finding names the step that froze it.
-            if (step.Expect is { } expects && !string.Equals(expects.Refusal, Refusals.Frozen, StringComparison.Ordinal)
+            // now takes effect, so the finding names the step that froze it. A step with no expect doesn't expect frozen either.
+            if (!string.Equals(step.Expect?.Refusal, Refusals.Frozen, StringComparison.Ordinal)
                 && FrozenAfter(chart, scenario, trace) is { } froze)
             {
                 Add(RuleCatalog.Create("MQ9309", $"{At(i)}{Describe(chart, step)} was refused as frozen{froze}; an accepted freeze takes effect, so modify, connect, disconnect and delete are refused until a thaw. Thaw in between, or expect refusal frozen (update the expectations from a replay).",
-                    scenario.Id, null, pointer + "/expect"));
+                    scenario.Id, null, step.Expect is null ? pointer : pointer + "/expect"));
             }
         }
 

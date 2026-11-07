@@ -62,6 +62,7 @@ object answers on its own, and any no wins.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `SalaryHrOnly` | denies | everyone | [HrStaff](../actors/hr-staff.md) | `read`, `modify` | `salary` | all states |  |  | Only HR staff read or change a salary. |
 | `OwnerKeptWhileFrozen` ([named](../rights.md)) | denies | everyone |  | `change-owner` |  | all states | yes |  | A frozen record keeps its owner. |
+| `NameHrOnly` | denies | everyone | [HrStaff](../actors/hr-staff.md) | `modify` | `name` | all states |  |  | Only HR staff change a name. |
 
 ### Who can do what
 
@@ -79,7 +80,7 @@ One table per state: each actor the rights, events, tasks and gates name, then e
 | [HrStaff](../actors/hr-staff.md) | `thaw` | allowed (default) | the default of EmployeeRecord |
 | everyone else | `change-owner` | allowed (default) | the default of EmployeeRecord |
 | everyone else | `freeze` | allowed (default) | the default of EmployeeRecord |
-| everyone else | `modify` | depends | `SalaryHrOnly` |
+| everyone else | `modify` | depends | `SalaryHrOnly`, `NameHrOnly` |
 | everyone else | `promote` | allowed (default) | the default of EmployeeRecord |
 | everyone else | `read` | depends | `SalaryHrOnly` |
 | everyone else | `thaw` | allowed (default) | the default of EmployeeRecord |
@@ -96,12 +97,12 @@ One table per state: each actor the rights, events, tasks and gates name, then e
 | [HrStaff](../actors/hr-staff.md) | `thaw` | allowed (default) | the default of EmployeeRecord |
 | everyone else | `change-owner` | allowed (default) | the default of EmployeeRecord |
 | everyone else | `freeze` | allowed (default) | the default of EmployeeRecord |
-| everyone else | `modify` | depends | `SalaryHrOnly` |
+| everyone else | `modify` | depends | `SalaryHrOnly`, `NameHrOnly` |
 | everyone else | `promote` | allowed (default) | the default of EmployeeRecord |
 | everyone else | `read` | depends | `SalaryHrOnly` |
 | everyone else | `thaw` | allowed (default) | the default of EmployeeRecord |
 
 ## Scenarios
 
-- [Freezing](employee-record/freezing.md): 9 steps, ends final
+- [Freezing](employee-record/freezing.md): 12 steps, ends final
 - [FrozenStart](employee-record/frozen-start.md): 2 steps, ends active

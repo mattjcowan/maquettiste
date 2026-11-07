@@ -53,6 +53,21 @@
     {
       "id": "01JFZ000000000000000000Y02",
       "right": "01JFZ000000000000000000R01"
+    },
+    {
+      "id": "01JFZ000000000000000000Y03",
+      "name": "NameHrOnly",
+      "access": "deny",
+      "except": [
+        "01JFZ000000000000000000K01"
+      ],
+      "verbs": [
+        "modify"
+      ],
+      "attributes": [
+        "01JFZ000000000000000000A02"
+      ],
+      "description": "Only HR staff change a name."
     }
   ],
   "states": [

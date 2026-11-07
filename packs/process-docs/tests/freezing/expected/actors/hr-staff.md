@@ -12,3 +12,4 @@
 | Right | Allows or denies | As | Does | Where |
 | --- | --- | --- | --- | --- |
 | `SalaryHrOnly` | denies | an exception | `read`, `modify` | [EmployeeRecord](../processes/employee-record.md) |
+| `NameHrOnly` | denies | an exception | `modify` | [EmployeeRecord](../processes/employee-record.md) |

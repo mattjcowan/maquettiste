@@ -674,13 +674,16 @@ public static class ProcessApi
         return (new VerifyResult(process.Id, results), null);
     }
 
-    /// <summary>The warnings of a replay, in the order it found them, such as MQ9309; <see langword="null"/> when it has none.</summary>
+    /// <summary>
+    /// The warnings verify answers for a replay, in the order it found them: MQ9309 only (a step refused as frozen that doesn't expect it),
+    /// so a project that doesn't freeze gets the answers it got before freezing; <see langword="null"/> when there are none.
+    /// </summary>
     /// <param name="replay">The replay.</param>
     /// <returns>The warnings, or null.</returns>
     public static IReadOnlyList<Diagnostic>? WarningsOf(ScenarioReplay replay)
     {
         ArgumentNullException.ThrowIfNull(replay);
-        var warnings = replay.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Warning).ToList();
+        var warnings = replay.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Warning && string.Equals(d.Rule, "MQ9309", StringComparison.Ordinal)).ToList();
         return warnings.Count > 0 ? warnings : null;
     }
 

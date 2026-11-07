@@ -2690,9 +2690,9 @@ the step acts as. A deny on Owner applies to Bea even when she acts as Author. A
 - **Warning MQ9309.** A step is refused as frozen because an earlier step froze the subject or the link, and the step did not expect that refusal. The
   warning names the step that froze it. Thaw in between, or expect the refusal. `verify_scenarios` gives it under the scenario's
   `warnings`, and the scenario still passes.
-- **Where "frozen" lives is your system's business.** The model holds no frozen field. Generated `csharp-dapper` code asks one hook,
-  `IsFrozen` on the `Freezing` class (see the pack's README, the section on freezing, for where to write it). Until written, it
-  answers "not frozen", so nothing is refused for freezing and the project still builds.
+- **Where "frozen" lives is your system's business.** The model holds no frozen field. Generated `csharp-dapper` code asks one host
+  interface, `IFrozenState`, and writes your stub of it once, `Dispatch/FrozenState.cs` (see the pack's README, the section on freezing).
+  Until you write it, it answers "not frozen", so nothing is refused for freezing and the project still builds.
 
 **Rights on attributes.** A right with **Attributes** speaks of reading or changing only those attributes. It works only with `read`
 and `modify`, and not beside **Links** (MQ9903).

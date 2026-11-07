@@ -210,6 +210,8 @@ for step in s.steps
 end
 # Whether generated code holds freezing (Freezing.cs): asked only when the test calls the rights check or the scenario freezes.
 freezing = (rights || freezes) && uses_freezing()
+# Whether each send sets ScenarioFrozen from the replay: only when the scenario freezes, so other tests are left as they were.
+frozen_sends = freezes && freezing
 attribute_rights = rights && uses_attribute_rights()
 # The names of the attributes a verb step reads or modifies, for a request's Attributes.
 func step_attributes(step)
@@ -324,15 +326,9 @@ public sealed class {{ test }}
 {{- else }}
         // Nothing in the model can refuse this verb: no lifecycle states rights or a default.
 {{- end }}
-{{- else if refusal_of(step) == "frozen" && step.event }}
-{{- if freezing && step.event.verb }}
-        // Refused as frozen in the replay. The frozen hook decides it in the dispatcher, from the team's own data, so the step checks the
-        // freezing rule with the replay's frozen flags instead, and a refused step changes nothing.
-        Assert.True(new FrozenFlags({{ frozen_query(step) }}, {{ frozen_before[step.index] ? "true" : "false" }}, {{ any_link_before[step.index] ? "true" : "false" }}).Refuses(global::{{ base_ns }}.Verb.{{ pascal step.event.verb.key }}));
-{{- else }}
+{{- else if refusal_of(step) == "frozen" && step.event && !(freezing && step.event.verb) }}
         // Refused as frozen in the replay. Nothing in generated code holds freezing until the project uses it (an event, a transition or a
         // right that names freeze or thaw, or a right with whileFrozen), so the step is not sent, and a refused step changes nothing.
-{{- end }}
 {{- else }}
 {{- if step.input == "time" }}
         clock.Advance(TimeSpan.FromTicks({{ step.after_ticks }}));
@@ -341,7 +337,19 @@ public sealed class {{ test }}
 {{- if $holds }}
         ScenarioHoldings.Current = {{ held(step) }};
 {{- end }}
+{{- if frozen_sends }}
+        ScenarioFrozen.Current = ({{ frozen_before[step.index] ? "true" : "false" }}, {{ any_link_before[step.index] ? "true" : "false" }});
+{{- end }}
         result = await host.Dispatcher.SendAsync({{ command(step) }}, cancellationToken);
+{{- if frozen_sends }}
+{{- if refusal_of(step) == "frozen" }}
+        var frozenAsked{{ step.index + 1 }} = ScenarioFrozen.Asked;
+        ScenarioFrozen.Current = null;
+        Assert.True(frozenAsked{{ step.index + 1 }}, "The command handlers did not ask ScenarioFrozen whether the object is frozen: register it in ScenarioHost in place of the FrozenState stub.");
+{{- else }}
+        ScenarioFrozen.Current = null;
+{{- end }}
+{{- end }}
 {{- if $holds }}
 {{- if depends_on_holdings(step) && refusal_of(step) != "actor" && refusal_of(step) != "validation" && refusal_of(step) != "instance" }}
         var asked{{ step.index + 1 }} = ScenarioHoldings.Asked;

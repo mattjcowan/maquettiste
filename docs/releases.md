@@ -20,9 +20,11 @@ one.
 - **Events that name `freeze` now freeze in runs.** An event that names the `freeze` verb (allowed since 0.14.0) now freezes the subject in
   simulation and replay. Steps that then modify, connect, disconnect or delete it are refused. `verify_scenarios` names those steps in each
   scenario's `warnings` (MQ9309). Naming `freeze` is the only opt-in: there is no separate switch.
-- **The `csharp-dapper` frozen hook.** Generated code asks one hook for "is it frozen", `IsFrozen` on the `Freezing` class
-  (`Processes/Freezing.cs`). It answers "not frozen" until the team writes it, so such a project keeps building, and nothing is refused for
-  freezing until then. The pack's README, in its freezing section, says where to write it.
+- **The `csharp-dapper` frozen state.** Generated code asks one host interface for "is it frozen", `IFrozenState`
+  (`Processes/Freezing.cs`), as it asks `ICallerHoldings` for held actors. The pack writes the team's stub once, `Dispatch/FrozenState.cs`.
+  It answers "not frozen" until the team writes it, so such a project keeps building, and nothing is refused for freezing until then.
+  Scenario tests register `ScenarioFrozen`, so a step refused as frozen is refused by the dispatcher. The pack's README, in its freezing
+  section, says more.
 - **New rules.** MQ9309 (warning) for the steps above. MQ9903 now also covers attributes that not every subject holds, attributes beside
   a verb other than `read` and `modify`, and attributes beside links. MQ9305 now also covers `attributes` beside a verb other than `read`.
 - **The upgrade.** Teams upgrade together: new files use shapes an older engine cannot read (`whileFrozen`, `attributes` and `frozen`). The file

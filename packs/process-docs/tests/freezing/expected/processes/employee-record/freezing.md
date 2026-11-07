@@ -4,13 +4,13 @@
 
 A scenario of [EmployeeRecord](../employee-record.md).
 
-HR staff may change a name, but a clerk may change a salary neither by a step nor by an edit; HR staff read it. The record is frozen, read by HR staff while frozen and thawed; its owner then changes, and it is archived.
+HR staff may change a name, but a clerk may change a salary neither by a step nor by an edit; HR staff read it. A clerk who changes a name and a salary is refused by the salary right, the first in the file. The record is frozen; HR staff can neither edit it nor change its name, but read it while frozen; it is thawed; its owner then changes, and it is archived.
 
 | | |
 | --- | --- |
 | Name | `Freezing` |
 | Starts at | `2000-01-01T00:00:00Z` |
-| Steps | 9 |
+| Steps | 12 |
 | Outcome | final |
 
 ## Walk-through
@@ -21,13 +21,16 @@ One row per step: who acts, the input, whether the process accepts it, and the a
 | --- | --- | --- | --- | --- | --- |
 | 1 | [HrStaff](../../actors/hr-staff.md) | does `modify` | accepted |  | sets `name` to `"Ada L"`; value `name` = `"Ada L"` |
 | 2 | [Clerk](../../actors/clerk.md) | does `modify` | **refused** |  | value `salary` = `120`; refused by `SalaryHrOnly`: Only HR staff read or change a salary. |
-| 3 | [Clerk](../../actors/clerk.md) | event `edit` | **refused** |  | refused by `SalaryHrOnly`: Only HR staff read or change a salary. |
-| 4 | [HrStaff](../../actors/hr-staff.md) | does `read` | accepted |  | attribute `salary` |
-| 5 | [Clerk](../../actors/clerk.md) | event `freezeRecord` | accepted | `Active` |  |
-| 6 | [HrStaff](../../actors/hr-staff.md) | does `read` | accepted |  | attribute `name` |
-| 7 | [HrStaff](../../actors/hr-staff.md) | does `thaw` | accepted |  |  |
-| 8 | [HrStaff](../../actors/hr-staff.md) | does `change-owner` | accepted |  |  |
-| 9 | [Clerk](../../actors/clerk.md) | event `archive` | accepted | `Archived` |  |
+| 3 | [Clerk](../../actors/clerk.md) | does `modify` | **refused** |  | value `name` = `"Ada M"`; value `salary` = `130`; refused by `SalaryHrOnly`: Only HR staff read or change a salary.. A clerk changes the name and the salary: the deny on salary comes first in the file, so it names the refusal. |
+| 4 | [Clerk](../../actors/clerk.md) | event `edit` | **refused** |  | refused by `SalaryHrOnly`: Only HR staff read or change a salary. |
+| 5 | [HrStaff](../../actors/hr-staff.md) | does `read` | accepted |  | attribute `salary` |
+| 6 | [Clerk](../../actors/clerk.md) | event `freezeRecord` | accepted | `Active` |  |
+| 7 | [HrStaff](../../actors/hr-staff.md) | event `edit` | **refused** |  | refused: `frozen`. HR staff edit the frozen record: refused as frozen, whatever the rights say. |
+| 8 | [HrStaff](../../actors/hr-staff.md) | does `modify` | **refused** |  | value `name` = `"Ada K"`; refused: `frozen`. HR staff change the frozen record's name: refused as frozen. |
+| 9 | [HrStaff](../../actors/hr-staff.md) | does `read` | accepted |  | attribute `name` |
+| 10 | [HrStaff](../../actors/hr-staff.md) | does `thaw` | accepted |  |  |
+| 11 | [HrStaff](../../actors/hr-staff.md) | does `change-owner` | accepted |  |  |
+| 12 | [Clerk](../../actors/clerk.md) | event `archive` | accepted | `Archived` |  |
 
 ## Outcome
 

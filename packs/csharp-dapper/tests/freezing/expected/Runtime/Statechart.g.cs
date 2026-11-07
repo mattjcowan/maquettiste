@@ -882,19 +882,20 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
     /// <param name="payload">The payload by attribute name.</param>
     /// <param name="audit">Gate audit attribute values by name.</param>
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as (ICallerHoldings).</param>
+    /// <param name="frozen">Whether the object, or a link of it, is frozen (IFrozenState); the team's FrozenState when null.</param>
     /// <returns>The result.</returns>
     public StepResult<TContext> Send(ProcessSnapshot<TContext> snapshot, string name, ProcessEnvelope envelope, IReadOnlyDictionary<string, object?>? payload = null,
-        IReadOnlyDictionary<string, object?>? audit = null, IReadOnlyList<string>? held = null)
+        IReadOnlyDictionary<string, object?>? audit = null, IReadOnlyList<string>? held = null, global::App.Model.Processes.IFrozenState? frozen = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(envelope);
-        var run = new Run(this, snapshot, name, envelope) { AuditValues = audit ?? new Dictionary<string, object?>(), Held = held ?? [] };
+        var run = new Run(this, snapshot, name, envelope) { AuditValues = audit ?? new Dictionary<string, object?>(), Held = held ?? [], Frozen = frozen };
         if (run.Done || Chart.Event(name) is not { } ev)
             return run.Refuse(Refusals.NoTransition);
 
         // Freezing first (rights-design.md decision 17): a frozen object can't be modified, deleted, connected or disconnected, whatever
-        // the actors and rights say. The frozen hook (Freezing) answers, "not frozen" until the team writes it.
-        if (ev.Verb is { } frozenVerb && new global::App.Model.Processes.FrozenFlags(new global::App.Model.Processes.FrozenQuery { Process = Chart.ProcessName, Envelope = envelope, Subject = Chart.Rights?.Subject }).Refuses(frozenVerb))
+        // the actors and rights say. The frozen state (IFrozenState) answers; the team's FrozenState answers "not frozen" until the team writes it.
+        if (ev.Verb is { } frozenVerb && new global::App.Model.Processes.FrozenFlags(new global::App.Model.Processes.FrozenQuery { Process = Chart.ProcessName, Envelope = envelope, Subject = Chart.Rights?.Subject }, state: frozen).Refuses(frozenVerb))
             return run.Refuse(Refusals.Frozen);
         if (ev.Actors.Count > 0 && (envelope.Actor is null || !ev.Actors.Contains(envelope.Actor, StringComparer.Ordinal)))
             return run.Refuse(Refusals.Actor, Chart.Rights?.Id("event:" + name));
@@ -931,12 +932,13 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
     /// <param name="failed">True for an error, false for done.</param>
     /// <param name="actor">The actor reporting it (checked for human tasks).</param>
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as (ICallerHoldings).</param>
+    /// <param name="frozen">Whether the object, or a link of it, is frozen (IFrozenState); the team's FrozenState when null.</param>
     /// <returns>The result.</returns>
-    public StepResult<TContext> Complete(ProcessSnapshot<TContext> snapshot, string invoke, bool failed, string? actor, IReadOnlyList<string>? held = null)
+    public StepResult<TContext> Complete(ProcessSnapshot<TContext> snapshot, string invoke, bool failed, string? actor, IReadOnlyList<string>? held = null, global::App.Model.Processes.IFrozenState? frozen = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(invoke);
-        var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor)) { Held = held ?? [] };
+        var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor)) { Held = held ?? [], Frozen = frozen };
         if (Chart.Invoke(invoke) is not { } found || !run.Pending.Contains(found))
             return run.Refuse(Refusals.NoTransition);
         if (found.Kind == InvokeKind.HumanTask && found.Actors.Count > 0 && (actor is null || !found.Actors.Contains(actor, StringComparer.Ordinal)))
@@ -1109,6 +1111,8 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         public List<Timer> Timers { get; } = [];
 
         public List<InvokeDefinition> Pending { get; } = [];
+
+        public global::App.Model.Processes.IFrozenState? Frozen { get; init; }
 
         public IReadOnlyList<string> Held { get; init; } = [];
 
@@ -1364,6 +1368,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                 Actor = envelope.Actor,
                 Envelope = envelope,
                 Held = Held,
+                FrozenState = Frozen,
                 States = states,
                 Allowed = allowed,
             });

@@ -41,55 +41,60 @@ public sealed partial class EmployeeRecordMachine
     /// <param name="snapshot">The instance.</param>
     /// <param name="command">The command.</param>
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as.</param>
+    /// <param name="frozen">Whether the object, or a link of it, is frozen; the team's FrozenState when null.</param>
     /// <returns>The result.</returns>
-    public StepResult<EmployeeRecordContext> Edit(ProcessSnapshot<EmployeeRecordContext> snapshot, EmployeeRecordEditCommand command, IReadOnlyList<string>? held = null)
+    public StepResult<EmployeeRecordContext> Edit(ProcessSnapshot<EmployeeRecordContext> snapshot, EmployeeRecordEditCommand command, IReadOnlyList<string>? held = null, global::App.Model.Processes.IFrozenState? frozen = null)
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Send(snapshot, "edit", command.Envelope, command.Payload(), command.AuditValues(), held);
+        return _chart.Send(snapshot, "edit", command.Envelope, command.Payload(), command.AuditValues(), held, frozen);
     }
 
     /// <summary>Raises freezeRecord.</summary>
     /// <param name="snapshot">The instance.</param>
     /// <param name="command">The command.</param>
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as.</param>
+    /// <param name="frozen">Whether the object, or a link of it, is frozen; the team's FrozenState when null.</param>
     /// <returns>The result.</returns>
-    public StepResult<EmployeeRecordContext> FreezeRecord(ProcessSnapshot<EmployeeRecordContext> snapshot, EmployeeRecordFreezeRecordCommand command, IReadOnlyList<string>? held = null)
+    public StepResult<EmployeeRecordContext> FreezeRecord(ProcessSnapshot<EmployeeRecordContext> snapshot, EmployeeRecordFreezeRecordCommand command, IReadOnlyList<string>? held = null, global::App.Model.Processes.IFrozenState? frozen = null)
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Send(snapshot, "freezeRecord", command.Envelope, command.Payload(), command.AuditValues(), held);
+        return _chart.Send(snapshot, "freezeRecord", command.Envelope, command.Payload(), command.AuditValues(), held, frozen);
     }
 
     /// <summary>Raises thawRecord.</summary>
     /// <param name="snapshot">The instance.</param>
     /// <param name="command">The command.</param>
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as.</param>
+    /// <param name="frozen">Whether the object, or a link of it, is frozen; the team's FrozenState when null.</param>
     /// <returns>The result.</returns>
-    public StepResult<EmployeeRecordContext> ThawRecord(ProcessSnapshot<EmployeeRecordContext> snapshot, EmployeeRecordThawRecordCommand command, IReadOnlyList<string>? held = null)
+    public StepResult<EmployeeRecordContext> ThawRecord(ProcessSnapshot<EmployeeRecordContext> snapshot, EmployeeRecordThawRecordCommand command, IReadOnlyList<string>? held = null, global::App.Model.Processes.IFrozenState? frozen = null)
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Send(snapshot, "thawRecord", command.Envelope, command.Payload(), command.AuditValues(), held);
+        return _chart.Send(snapshot, "thawRecord", command.Envelope, command.Payload(), command.AuditValues(), held, frozen);
     }
 
     /// <summary>Raises archive.</summary>
     /// <param name="snapshot">The instance.</param>
     /// <param name="command">The command.</param>
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as.</param>
+    /// <param name="frozen">Whether the object, or a link of it, is frozen; the team's FrozenState when null.</param>
     /// <returns>The result.</returns>
-    public StepResult<EmployeeRecordContext> Archive(ProcessSnapshot<EmployeeRecordContext> snapshot, EmployeeRecordArchiveCommand command, IReadOnlyList<string>? held = null)
+    public StepResult<EmployeeRecordContext> Archive(ProcessSnapshot<EmployeeRecordContext> snapshot, EmployeeRecordArchiveCommand command, IReadOnlyList<string>? held = null, global::App.Model.Processes.IFrozenState? frozen = null)
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Send(snapshot, "archive", command.Envelope, command.Payload(), command.AuditValues(), held);
+        return _chart.Send(snapshot, "archive", command.Envelope, command.Payload(), command.AuditValues(), held, frozen);
     }
 
     /// <summary>Reports the result of an invoke.</summary>
     /// <param name="snapshot">The instance.</param>
     /// <param name="command">The command.</param>
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as.</param>
+    /// <param name="frozen">Whether the object, or a link of it, is frozen; the team's FrozenState when null.</param>
     /// <returns>The result.</returns>
-    public StepResult<EmployeeRecordContext> Complete(ProcessSnapshot<EmployeeRecordContext> snapshot, EmployeeRecordInvokeResultControl command, IReadOnlyList<string>? held = null)
+    public StepResult<EmployeeRecordContext> Complete(ProcessSnapshot<EmployeeRecordContext> snapshot, EmployeeRecordInvokeResultControl command, IReadOnlyList<string>? held = null, global::App.Model.Processes.IFrozenState? frozen = null)
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor, held);
+        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor, held, frozen);
     }
 
     /// <summary>Fires the timers due at the clock's current instant.</summary>

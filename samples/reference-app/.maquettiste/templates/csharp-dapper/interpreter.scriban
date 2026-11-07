@@ -28,28 +28,10 @@ has_relative = relative_names.size > 0
 # RefusedBy written. model.rights_lifecycles keys only on the rights naming key.
 rights = model.rights_lifecycles.size > 0
 rights_ns = "global::" + base_ns + ".Processes"
-# Whether the project uses freezing (rights-design.md decision 28, as _process.scriban's uses_freezing says): an event, a transition or
-# a right names freeze or thaw, or a right has whileFrozen. Only then are the frozen check of events and Refusals.Frozen written.
-freezing = false
-for v in model.verbs
-  if v.built_in && (v.key == "freeze" || v.key == "thaw") && (v.events.size > 0 || v.transitions.size > 0 || v.rights.size > 0)
-    freezing = true
-  end
-end
-if !freezing
-  for r in model.rights
-    if r.while_frozen
-      freezing = true
-    end
-  end
-  for l in model.rights_lifecycles
-    for u in l.rights
-      if u.right.while_frozen
-        freezing = true
-      end
-    end
-  end
-end
+# Whether the project uses freezing (rights-design.md decision 28): an event, a transition or a right names freeze or thaw, or a right
+# has whileFrozen. Only then are the frozen check of events, its frozen state and Refusals.Frozen written. model.freezing keys only on
+# the freezing naming key, so no other edit renders the interpreter again.
+freezing = model.freezing.used
 verb_keys = {}
 for v in model.verbs
   verb_keys[v.key] = true
@@ -992,20 +974,23 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 {{- if rights }}
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as (ICallerHoldings).</param>
 {{- end }}
+{{- if freezing }}
+    /// <param name="frozen">Whether the object, or a link of it, is frozen (IFrozenState); the team's FrozenState when null.</param>
+{{- end }}
     /// <returns>The result.</returns>
     public StepResult<TContext> Send(ProcessSnapshot<TContext> snapshot, string name, ProcessEnvelope envelope, IReadOnlyDictionary<string, object?>? payload = null,
-        IReadOnlyDictionary<string, object?>? audit = null{{ if rights }}, IReadOnlyList<string>? held = null{{ end }})
+        IReadOnlyDictionary<string, object?>? audit = null{{ if rights }}, IReadOnlyList<string>? held = null{{ end }}{{ if freezing }}, {{ rights_ns }}.IFrozenState? frozen = null{{ end }})
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(envelope);
-        var run = new Run(this, snapshot, name, envelope) { AuditValues = audit ?? new Dictionary<string, object?>(){{ if rights }}, Held = held ?? []{{ end }} };
+        var run = new Run(this, snapshot, name, envelope) { AuditValues = audit ?? new Dictionary<string, object?>(){{ if rights }}, Held = held ?? []{{ end }}{{ if freezing }}, Frozen = frozen{{ end }} };
         if (run.Done || Chart.Event(name) is not { } ev)
             return run.Refuse(Refusals.NoTransition);
 {{- if freezing }}
 
         // Freezing first (rights-design.md decision 17): a frozen object can't be modified, deleted, connected or disconnected, whatever
-        // the actors and rights say. The frozen hook (Freezing) answers, "not frozen" until the team writes it.
-        if (ev.Verb is { } frozenVerb && new {{ rights_ns }}.FrozenFlags(new {{ rights_ns }}.FrozenQuery { Process = Chart.ProcessName, Envelope = envelope{{ if rights }}, Subject = Chart.Rights?.Subject{{ end }} }).Refuses(frozenVerb))
+        // the actors and rights say. The frozen state (IFrozenState) answers; the team's FrozenState answers "not frozen" until the team writes it.
+        if (ev.Verb is { } frozenVerb && new {{ rights_ns }}.FrozenFlags(new {{ rights_ns }}.FrozenQuery { Process = Chart.ProcessName, Envelope = envelope{{ if rights }}, Subject = Chart.Rights?.Subject{{ end }} }, state: frozen).Refuses(frozenVerb))
             return run.Refuse(Refusals.Frozen);
 {{- end }}
         if (ev.Actors.Count > 0 && (envelope.Actor is null || !{{ has_members ? (actors_type + ".Allows(ev.Actors, envelope.Actor)") : "ev.Actors.Contains(envelope.Actor, StringComparer.Ordinal)" }}{{ resolves("snapshot", "envelope.Actor", "envelope") }}))
@@ -1047,12 +1032,15 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 {{- if rights }}
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as (ICallerHoldings).</param>
 {{- end }}
+{{- if freezing }}
+    /// <param name="frozen">Whether the object, or a link of it, is frozen (IFrozenState); the team's FrozenState when null.</param>
+{{- end }}
     /// <returns>The result.</returns>
-    public StepResult<TContext> Complete(ProcessSnapshot<TContext> snapshot, string invoke, bool failed, string? actor{{ if rights }}, IReadOnlyList<string>? held = null{{ end }})
+    public StepResult<TContext> Complete(ProcessSnapshot<TContext> snapshot, string invoke, bool failed, string? actor{{ if rights }}, IReadOnlyList<string>? held = null{{ end }}{{ if freezing }}, {{ rights_ns }}.IFrozenState? frozen = null{{ end }})
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(invoke);
-        var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor)){{ if rights }} { Held = held ?? [] }{{ end }};
+        var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor)){{ if rights || freezing }} { {{ if rights }}Held = held ?? []{{ end }}{{ if rights && freezing }}, {{ end }}{{ if freezing }}Frozen = frozen{{ end }} }{{ end }};
         if (Chart.Invoke(invoke) is not { } found || !run.Pending.Contains(found))
             return run.Refuse(Refusals.NoTransition);
         if (found.Kind == InvokeKind.HumanTask && found.Actors.Count > 0 && (actor is null || !{{ has_members ? (actors_type + ".Allows(found.Actors, actor)") : "found.Actors.Contains(actor, StringComparer.Ordinal)" }}{{ resolves("snapshot", "actor", "new ProcessEnvelope(snapshot.Instance, actor)") }}))
@@ -1234,6 +1222,10 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 
         public List<InvokeDefinition> Pending { get; } = [];
 
+{{ if freezing ~}}
+        public {{ rights_ns }}.IFrozenState? Frozen { get; init; }
+
+{{ end ~}}
 {{ if rights ~}}
         public IReadOnlyList<string> Held { get; init; } = [];
 
@@ -1503,6 +1495,9 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                 Actor = envelope.Actor,
                 Envelope = envelope,
                 Held = Held,
+{{- if freezing }}
+                FrozenState = Frozen,
+{{- end }}
                 States = states,
                 Allowed = allowed,
 {{- if has_relative }}

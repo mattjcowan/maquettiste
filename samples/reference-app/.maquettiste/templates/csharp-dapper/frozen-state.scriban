@@ -1,0 +1,30 @@
+{{-
+# The team's stub of IFrozenState (unit frozen-state, written once, rights-design.md decision 19): Dispatch/FrozenState.cs, written only
+# when the project uses freezing. It answers "not frozen", and says what that means.
+include "_csharp.scriban"
+include "_process.scriban"
+if uses_freezing()
+-}}
+{{- capture content -}}
+using System;
+using {{ actors_ns() }};
+
+namespace {{ dispatch_ns() }};
+
+// Whether an object, or one of its links, is frozen. Maquettiste wrote this file once and never touches it again. Where "frozen" is
+// held is your system's business: answer from your own data. Each generated command handler, and each rights check, asks it when a
+// check needs it, and may ask more than once for one command.
+//
+// As written it answers "not frozen": nothing is refused for freezing, and no right with whileFrozen holds, until you write it.
+public sealed class FrozenState : IFrozenState
+{
+    /// <inheritdoc/>
+    public bool IsFrozen(FrozenQuery query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        return false;
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.partialFolder "Dispatch" "FrozenState.cs") content -}}
+{{- end -}}

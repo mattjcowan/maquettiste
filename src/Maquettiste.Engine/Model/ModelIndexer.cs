@@ -653,10 +653,13 @@ internal static class ModelIndexer
 
     /// <summary>
     /// A process row's members for the rights naming key (rights-design.md section 6), each <see langword="null"/> unless the process writes
-    /// <c>rights</c> or <c>rightsDefault</c>: its default as written, the verbs its inline deny rights name, and the named rights its uses name.
+    /// <c>rights</c> or <c>rightsDefault</c>: its default as written, the verbs its inline deny rights name, and the named rights its uses name;
+    /// and, for the freezing naming key, whether an inline right (or a named right's own row) has <c>whileFrozen</c>.
     /// </summary>
     private static ElementSummary WithRights(ElementSummary row, Element element)
     {
+        if (element is Right { WhileFrozen: true })
+            return row with { WhileFrozen = true };
         if (element is not Process process || (process.Rights.Count == 0 && process.RightsDefault is null))
             return row;
         return row with
@@ -664,6 +667,7 @@ internal static class ModelIndexer
             RightsDefault = process.RightsDefault is { } written ? AccessName(written) : null,
             DenyVerbs = SortedKeys(process.Rights.Where(r => !r.IsUse && r.Access == RightAccess.Deny).SelectMany(r => r.Verbs)),
             RightUses = SortedKeys(process.Rights.Select(r => r.Right).OfType<string>()),
+            WhileFrozen = process.Rights.Any(r => !r.IsUse && r.WhileFrozen),
         };
     }
 

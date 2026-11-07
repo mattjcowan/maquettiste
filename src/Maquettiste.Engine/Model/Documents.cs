@@ -147,6 +147,13 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     internal IReadOnlyList<string>? RightUses { get; init; }
 
     /// <summary>
+    /// Whether a named right's row has <c>whileFrozen</c>, or a process row has an inline right with it (rights-design.md decision 28). For the
+    /// freezing naming key only: never serialized.
+    /// </summary>
+    [JsonIgnore]
+    internal bool WhileFrozen { get; init; }
+
+    /// <summary>
     /// Whether the row is a lifecycle that writes <c>rights</c> or <c>rightsDefault</c>, so the project uses rights (rights-design.md decision
     /// 28). An orchestration that still writes them (MQ9901) uses none, so demoting a lifecycle changes the rights naming key.
     /// </summary>
@@ -195,7 +202,8 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && string.Equals(Access, other.Access, StringComparison.Ordinal)
         && string.Equals(RightsDefault, other.RightsDefault, StringComparison.Ordinal)
         && (ReferenceEquals(DenyVerbs, other.DenyVerbs) || (DenyVerbs is not null && other.DenyVerbs is not null && DenyVerbs.SequenceEqual(other.DenyVerbs, StringComparer.Ordinal)))
-        && (ReferenceEquals(RightUses, other.RightUses) || (RightUses is not null && other.RightUses is not null && RightUses.SequenceEqual(other.RightUses, StringComparer.Ordinal)));
+        && (ReferenceEquals(RightUses, other.RightUses) || (RightUses is not null && other.RightUses is not null && RightUses.SequenceEqual(other.RightUses, StringComparer.Ordinal)))
+        && WhileFrozen == other.WhileFrozen;
 
     /// <inheritdoc/>
     public override int GetHashCode() => HashCode.Combine(

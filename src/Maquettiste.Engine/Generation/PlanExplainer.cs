@@ -266,12 +266,16 @@ internal static class PlanExplainer
         "exports" => ExportsOf(key) is (var pack, { } id)
             ? "The exports of " + (Label(id, nameOf) ?? "element " + id) + " from " + pack
             : "The model exports of " + key[3..],
-        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? StereotypeCoverage(key) ?? VerbNaming(key) ?? RightsNamingWords(key) ?? "Input " + key,
+        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? StereotypeCoverage(key) ?? VerbNaming(key) ?? RightsNamingWords(key) ?? FreezingNamingWords(key) ?? "Input " + key,
     };
 
     /// <summary>The <c>vn:verbs</c> key's words (verbs-design.md section 6): "The verbs the model names". Its cause kind stays <c>inputs</c>.</summary>
     private static string? VerbNaming(string key) =>
         string.Equals(key, Model.ModelSnapshot.VerbNamingKey, StringComparison.Ordinal) ? "The verbs the model names" : null;
+
+    /// <summary>The <c>fn:freezing</c> key's words (rights-design.md decision 28): "Whether the project uses freezing". Its cause kind stays <c>inputs</c>.</summary>
+    private static string? FreezingNamingWords(string key) =>
+        string.Equals(key, Planning.FreezingNaming.Key, StringComparison.Ordinal) ? "Whether the project uses freezing" : null;
 
     /// <summary>The <c>rn:rights</c> key's words (rights-design.md section 6): "The rights the lifecycles state". Its cause kind stays <c>inputs</c>.</summary>
     private static string? RightsNamingWords(string key) =>

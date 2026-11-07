@@ -156,9 +156,15 @@ public static partial class {{ name }}RightConditions
 /// <param name="store">The store.</param>
 {{- if rights }}
 /// <param name="holdings">What the caller holds besides the actor it acts as; the team's CallerHoldings when null.</param>
-public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, I{{ name }}Store store, ICallerHoldings? holdings = null) :
+{{- if uses_freezing() }}
+/// <param name="frozen">Whether an object, or a link of it, is frozen; the team's FrozenState when null.</param>
+{{- end }}
+public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, I{{ name }}Store store, ICallerHoldings? holdings = null{{ if uses_freezing() }}, {{ frozen_state_type() }}? frozen = null{{ end }}) :
 {{- else }}
-public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, I{{ name }}Store store) :
+{{- if uses_freezing() }}
+/// <param name="frozen">Whether an object, or a link of it, is frozen; the team's FrozenState when null.</param>
+{{- end }}
+public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, I{{ name }}Store store{{ if uses_freezing() }}, {{ frozen_state_type() }}? frozen = null{{ end }}) :
 {{- end }}
     ICommandHandler<{{ name }}StartControl>,
 {{- for e in p.events }}
@@ -184,7 +190,7 @@ public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, 
     {
         ArgumentNullException.ThrowIfNull(command);
         var held = await Holdings.HeldAsync(command.Envelope, cancellationToken).ConfigureAwait(false);
-        return await RunAsync(command.Envelope.Instance, {{ json e.name }}, snapshot => machine.{{ pascal e.name }}(snapshot, command, held), cancellationToken).ConfigureAwait(false);
+        return await RunAsync(command.Envelope.Instance, {{ json e.name }}, snapshot => machine.{{ pascal e.name }}(snapshot, command, held{{ if uses_freezing() }}, Frozen{{ end }}), cancellationToken).ConfigureAwait(false);
     }
 {{- else }}
 
@@ -192,7 +198,7 @@ public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, 
     public Task<CommandResult> HandleAsync({{ command_type(p, e) }} command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        return RunAsync(command.Envelope.Instance, {{ json e.name }}, snapshot => machine.{{ pascal e.name }}(snapshot, command), cancellationToken);
+        return RunAsync(command.Envelope.Instance, {{ json e.name }}, snapshot => machine.{{ pascal e.name }}(snapshot, command{{ if uses_freezing() }}, Frozen{{ end }}), cancellationToken);
     }
 {{- end }}
 {{- end }}
@@ -203,7 +209,7 @@ public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, 
     {
         ArgumentNullException.ThrowIfNull(command);
         var held = await Holdings.HeldAsync(command.Envelope, cancellationToken).ConfigureAwait(false);
-        return await RunAsync(command.Envelope.Instance, command.Invoke, snapshot => machine.Complete(snapshot, command, held), cancellationToken).ConfigureAwait(false);
+        return await RunAsync(command.Envelope.Instance, command.Invoke, snapshot => machine.Complete(snapshot, command, held{{ if uses_freezing() }}, Frozen{{ end }}), cancellationToken).ConfigureAwait(false);
     }
 {{- else }}
 
@@ -211,7 +217,7 @@ public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, 
     public Task<CommandResult> HandleAsync({{ name }}InvokeResultControl command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        return RunAsync(command.Envelope.Instance, command.Invoke, snapshot => machine.Complete(snapshot, command), cancellationToken);
+        return RunAsync(command.Envelope.Instance, command.Invoke, snapshot => machine.Complete(snapshot, command{{ if uses_freezing() }}, Frozen{{ end }}), cancellationToken);
     }
 {{- end }}
 
@@ -270,6 +276,11 @@ public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, 
 
     // Asked once per command: what the caller holds comes from the host, never from the command (rights-design.md decision 29).
     private ICallerHoldings Holdings { get; } = holdings ?? new CallerHoldings();
+{{- end }}
+{{- if uses_freezing() }}
+
+    // Whether the object, or a link of it, is frozen: the host's answer (rights-design.md decision 19), asked by the run when a check needs it.
+    private {{ frozen_state_type() }} Frozen { get; } = frozen ?? new {{ frozen_state_stub() }}();
 {{- end }}
 
     private static CommandResult Result(StepResult<{{ ctx }}> step, IReadOnlyList<object> events) =>

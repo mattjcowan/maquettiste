@@ -151,6 +151,8 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
   `condition_text`, `named`, `package` and `uses`. `model.rights` lists the
   named rights, used or not, and `model.rights_lifecycles` the lifecycles that state rights or a default, by name (empty in a project
   without rights, and keyed only on the rights naming key, so `model.rights_lifecycles.size > 0` asks whether the project uses rights).
+  `model.freezing.used` says whether the project uses freezing (an event, a transition or a right names `freeze` or `thaw`, or a right has
+  `while_frozen`); it keys only on the freezing naming key, whose hash never changes in a project that doesn't freeze.
 - `schema_diff.<database>` when the pack sets `"usesSchemaDiff": true`: `from_revision`, `to_revision`, `is_empty` and ordered
   `tables` (`kind` added/renamed/altered/dropped, `columns`, constraint and index changes).
 - Definitions: `model.stereotypes` (one per key, by key: `key`, `name`, `applies_to`, the `attributes` it adds,

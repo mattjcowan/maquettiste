@@ -316,6 +316,12 @@ public sealed class ResolvedModel
     /// </summary>
     public RList<RProcess> RightsLifecycles { get; internal init; } = RList<RProcess>.Empty;
 
+    /// <summary>
+    /// Whether the project uses freezing (rights-design.md decision 28): <c>model.freezing.used</c>. It keys only on the freezing naming key
+    /// (<c>fn:freezing</c>), whose hash never changes in a project that doesn't freeze, so a template that asks pays for nothing else.
+    /// </summary>
+    public RFreezing Freezing { get; internal init; } = RFreezing.Unused;
+
     /// <summary>Operations, by (package qualified name, subject name with none first, name, id) (next-phase-2-design.md section 4.1).</summary>
     public RList<ROperation> Operations { get; internal init; } = RList<ROperation>.Empty;
 
@@ -404,4 +410,24 @@ public sealed class RLocale : RObject
             Chain = Localization.LocaleChains.Chain(settings, tag),
             Dependencies = Keys,
         });
+}
+
+/// <summary>
+/// Whether the project uses freezing (rights-design.md decision 28): an event, a transition or a right names <c>freeze</c> or <c>thaw</c>,
+/// or a right has <c>whileFrozen</c>. Worked out from the index rows; its one dependency is the freezing naming key.
+/// </summary>
+public sealed class RFreezing : RObject
+{
+    /// <summary>The flag of a project that doesn't freeze, still keyed on the freezing naming key.</summary>
+    internal static RFreezing Unused { get; } = new() { Id = "freezing", Dependencies = [Planning.FreezingNaming.Key] };
+
+    /// <inheritdoc/>
+    public override string Kind => "freezing";
+
+    /// <summary>Whether the project uses freezing.</summary>
+    public bool Used { get; internal init; }
+
+    /// <summary>The flag of a snapshot.</summary>
+    internal static RFreezing Of(ModelSnapshot model) =>
+        Planning.FreezingNaming.Uses(model) ? new() { Id = "freezing", Used = true, Dependencies = [Planning.FreezingNaming.Key] } : Unused;
 }

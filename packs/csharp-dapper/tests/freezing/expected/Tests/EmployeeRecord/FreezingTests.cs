@@ -12,12 +12,12 @@ using Xunit;
 
 namespace App.Model.Staff.Tests;
 
-/// <summary>Scenario Freezing of process EmployeeRecord: HR staff may change a name, but a clerk may change a salary neither by a step nor by an edit; HR staff read it. The record is frozen, read by HR staff while frozen and thawed; its owner then changes, and it is archived.</summary>
+/// <summary>Scenario Freezing of process EmployeeRecord: HR staff may change a name, but a clerk may change a salary neither by a step nor by an edit; HR staff read it. A clerk who changes a name and a salary is refused by the salary right, the first in the file. The record is frozen; HR staff can neither edit it nor change its name, but read it while frozen; it is thawed; its owner then changes, and it is archived.</summary>
 public sealed class FreezingTests
 {
     private const string Instance = "0193fe00-0000-0000-0000-000000003001";
 
-    /// <summary>Runs the 9 steps of Freezing and checks each one and the outcome (final).</summary>
+    /// <summary>Runs the 12 steps of Freezing and checks each one and the outcome (final).</summary>
     /// <returns>The task.</returns>
     [Fact]
     public async Task Freezing()
@@ -66,15 +66,37 @@ public sealed class FreezingTests
         Assert.Equal("right", decision2.Refusal);
         Assert.Equal("01JFZ000000000000000000Y01", decision2.RefusedBy);
 
-        // Step 3: edit by Clerk.
+        // Step 3: modify by Clerk. A clerk changes the name and the salary: the deny on salary comes first in the file, so it names the refusal.
+        var decision3 = Rights.Check(new RightRequest
+        {
+            Verb = global::App.Model.Verb.Modify,
+            Lifecycle = "EmployeeRecord",
+            Subject = typeof(global::App.Model.Staff.Employee),
+            Actor = Actors.Clerk,
+            Held = [],
+            States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+                ["EmployeeRecord"] = result.States ?? [],
+            },
+            Frozen = false,
+            LinkFrozen = false,
+            Attributes = ["name", "salary"],
+        });
+        Assert.False(decision3.Allowed);
+        Assert.Equal("right", decision3.Refusal);
+        Assert.Equal("01JFZ000000000000000000Y01", decision3.RefusedBy);
+
+        // Step 4: edit by Clerk.
+        ScenarioFrozen.Current = (false, false);
         result = await host.Dispatcher.SendAsync(new EmployeeRecordEditCommand(new ProcessEnvelope(Instance, Actor: Actors.Clerk)), cancellationToken);
+        ScenarioFrozen.Current = null;
         Assert.False(result.Accepted);
         Assert.Equal("right", result.Refusal);
         Assert.Equal("01JFZ000000000000000000Y01", result.RefusedBy);
         Assert.Equal<string>([], result.Changed);
 
-        // Step 4: read by HrStaff.
-        var decision4 = Rights.Check(new RightRequest
+        // Step 5: read by HrStaff.
+        var decision5 = Rights.Check(new RightRequest
         {
             Verb = global::App.Model.Verb.Read,
             Lifecycle = "EmployeeRecord",
@@ -89,16 +111,47 @@ public sealed class FreezingTests
             LinkFrozen = false,
             Attributes = ["salary"],
         });
-        Assert.True(decision4.Allowed, decision4.Refusal);
+        Assert.True(decision5.Allowed, decision5.Refusal);
 
-        // Step 5: freezeRecord by Clerk.
+        // Step 6: freezeRecord by Clerk.
+        ScenarioFrozen.Current = (false, false);
         result = await host.Dispatcher.SendAsync(new EmployeeRecordFreezeRecordCommand(new ProcessEnvelope(Instance, Actor: Actors.Clerk)), cancellationToken);
+        ScenarioFrozen.Current = null;
         Assert.True(result.Accepted, result.Refusal);
         Assert.Equal<string>(["Active"], result.States);
         Assert.Equal<string>([], result.Changed);
 
-        // Step 6: read by HrStaff.
-        var decision6 = Rights.Check(new RightRequest
+        // Step 7: edit by HrStaff. HR staff edit the frozen record: refused as frozen, whatever the rights say.
+        ScenarioFrozen.Current = (true, false);
+        result = await host.Dispatcher.SendAsync(new EmployeeRecordEditCommand(new ProcessEnvelope(Instance, Actor: Actors.HrStaff)), cancellationToken);
+        var frozenAsked7 = ScenarioFrozen.Asked;
+        ScenarioFrozen.Current = null;
+        Assert.True(frozenAsked7, "The command handlers did not ask ScenarioFrozen whether the object is frozen: register it in ScenarioHost in place of the FrozenState stub.");
+        Assert.False(result.Accepted);
+        Assert.Equal("frozen", result.Refusal);
+        Assert.Equal<string>([], result.Changed);
+
+        // Step 8: modify by HrStaff. HR staff change the frozen record's name: refused as frozen.
+        var decision8 = Rights.Check(new RightRequest
+        {
+            Verb = global::App.Model.Verb.Modify,
+            Lifecycle = "EmployeeRecord",
+            Subject = typeof(global::App.Model.Staff.Employee),
+            Actor = Actors.HrStaff,
+            Held = [],
+            States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+                ["EmployeeRecord"] = result.States ?? [],
+            },
+            Frozen = true,
+            LinkFrozen = false,
+            Attributes = ["name"],
+        });
+        Assert.False(decision8.Allowed);
+        Assert.Equal("frozen", decision8.Refusal);
+
+        // Step 9: read by HrStaff.
+        var decision9 = Rights.Check(new RightRequest
         {
             Verb = global::App.Model.Verb.Read,
             Lifecycle = "EmployeeRecord",
@@ -113,10 +166,10 @@ public sealed class FreezingTests
             LinkFrozen = false,
             Attributes = ["name"],
         });
-        Assert.True(decision6.Allowed, decision6.Refusal);
+        Assert.True(decision9.Allowed, decision9.Refusal);
 
-        // Step 7: thaw by HrStaff.
-        var decision7 = Rights.Check(new RightRequest
+        // Step 10: thaw by HrStaff.
+        var decision10 = Rights.Check(new RightRequest
         {
             Verb = global::App.Model.Verb.Thaw,
             Lifecycle = "EmployeeRecord",
@@ -130,10 +183,10 @@ public sealed class FreezingTests
             Frozen = true,
             LinkFrozen = false,
         });
-        Assert.True(decision7.Allowed, decision7.Refusal);
+        Assert.True(decision10.Allowed, decision10.Refusal);
 
-        // Step 8: change-owner by HrStaff.
-        var decision8 = Rights.Check(new RightRequest
+        // Step 11: change-owner by HrStaff.
+        var decision11 = Rights.Check(new RightRequest
         {
             Verb = global::App.Model.Verb.ChangeOwner,
             Lifecycle = "EmployeeRecord",
@@ -147,10 +200,12 @@ public sealed class FreezingTests
             Frozen = false,
             LinkFrozen = false,
         });
-        Assert.True(decision8.Allowed, decision8.Refusal);
+        Assert.True(decision11.Allowed, decision11.Refusal);
 
-        // Step 9: archive by Clerk.
+        // Step 12: archive by Clerk.
+        ScenarioFrozen.Current = (false, false);
         result = await host.Dispatcher.SendAsync(new EmployeeRecordArchiveCommand(new ProcessEnvelope(Instance, Actor: Actors.Clerk)), cancellationToken);
+        ScenarioFrozen.Current = null;
         Assert.True(result.Accepted, result.Refusal);
         Assert.Equal<string>(["Archived"], result.States);
         Assert.Equal<string>([], result.Changed);

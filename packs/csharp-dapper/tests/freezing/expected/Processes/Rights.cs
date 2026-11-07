@@ -95,11 +95,14 @@ public sealed record RightRequest
     /// <summary>The closed lists the caller passed (an event's or human task's actors, a gate's signers), by id: each counts as an allow of the acting lifecycle.</summary>
     public IReadOnlyList<string> Allowed { get; init; } = [];
 
-    /// <summary>Whether the object is frozen, when the caller knows; null asks the frozen hook (<see cref="Freezing"/>).</summary>
+    /// <summary>Whether the object is frozen, when the caller knows; null asks <see cref="FrozenState"/>.</summary>
     public bool? Frozen { get; init; }
 
-    /// <summary>Whether the link through <see cref="End"/> is frozen (with no end known, whether a link of the object is), when the caller knows; null asks the frozen hook.</summary>
+    /// <summary>Whether the link through <see cref="End"/> is frozen (with no end known, whether a link of the object is), when the caller knows; null asks <see cref="FrozenState"/>.</summary>
     public bool? LinkFrozen { get; init; }
+
+    /// <summary>The frozen state the flags left null are asked of (<see cref="IFrozenState"/>); the team's FrozenState when null.</summary>
+    public IFrozenState? FrozenState { get; init; }
 
     /// <summary>The names of the attributes the verb reads or modifies: each is checked on its own, and one refused refuses the verb. Null or empty when not known, such as for an event that names modify: then a deny that names attributes holds, and an allow that names attributes grants nothing.</summary>
     public IReadOnlyList<string>? Attributes { get; init; }
@@ -147,9 +150,9 @@ public static class Rights
         ArgumentNullException.ThrowIfNull(request);
 
         // Freezing first (rights-design.md decision 17): built in, so no element refused it, and no allow lifts it. A flag the request
-        // leaves null is asked of the frozen hook, which answers "not frozen" until the team writes it.
+        // leaves null is asked of the frozen state; the team's FrozenState answers "not frozen" until the team writes it.
         var frozen = new FrozenFlags(new FrozenQuery { Process = request.Lifecycle, Subject = request.Subject, Envelope = request.Envelope, End = request.End },
-            request.Frozen, request.LinkFrozen);
+            request.Frozen, request.LinkFrozen, request.FrozenState);
         if (request.Verb is { } frozenVerb && frozen.Refuses(frozenVerb))
             return new(false, Refusals.Frozen);
 
@@ -174,8 +177,10 @@ public static class Rights
             var states = Configuration(chart, request);
 
             // Each attribute on its own (rights-design.md decision 21): the rights that name it and those that name none, then the
-            // default; one refused attribute refuses the verb. With the attributes not known, they are checked once, as none.
+            // default; one refused attribute refuses the verb. With the attributes not known, they are checked once, as none. The right that
+            // refuses is the first deny, in file order, that holds for any attribute, as the engine names it.
             IReadOnlyList<string?> attributes = request.Attributes is { Count: > 0 } known ? [.. known.Distinct(StringComparer.Ordinal)] : [null];
+            var denies = new HashSet<RightUse>(ReferenceEqualityComparer.Instance);
             foreach (var attribute in attributes)
             {
                 var denied = false;
@@ -187,7 +192,7 @@ public static class Rights
                     if (use.Right.Access == RightAccess.Deny)
                     {
                         denied = true;
-                        deniedBy ??= use.Right.Id;
+                        denies.Add(use);
                     }
                     else
                     {
@@ -198,6 +203,8 @@ public static class Rights
                 if (!denied && !allowed && rights.Default == RightAccess.Deny)
                     byDefault ??= chart;
             }
+
+            deniedBy ??= rights.Uses.FirstOrDefault(denies.Contains)?.Right.Id;
         }
 
         if (deniedBy is not null)

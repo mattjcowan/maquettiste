@@ -51,7 +51,8 @@ public sealed partial class HandlerRegistry
     {
         ArgumentNullException.ThrowIfNull(registrar);
         registrar.Add(services => new EmployeeRecordCommandHandler(Resolve<EmployeeRecordMachine>(services), Resolve<IEmployeeRecordStore>(services),
-            services.GetService(typeof(ICallerHoldings)) as ICallerHoldings));
+            services.GetService(typeof(ICallerHoldings)) as ICallerHoldings,
+            services.GetService(typeof(IFrozenState)) as IFrozenState));
     }
 
     // A service provider looks services up by a type token, so this is the one place the registry names a type as a value.

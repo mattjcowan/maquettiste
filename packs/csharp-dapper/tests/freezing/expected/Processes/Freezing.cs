@@ -6,7 +6,7 @@ using App.Model.Runtime;
 
 namespace App.Model.Processes;
 
-/// <summary>What the frozen hook is asked: whether the object, or one of its links, is frozen. Its members are init properties, so later versions add members without breaking the hook.</summary>
+/// <summary>What the frozen state is asked: whether the object, or one of its links, is frozen. Its members are init properties, so later versions add members without breaking the hook.</summary>
 public sealed record FrozenQuery
 {
     /// <summary>The name of the process that asks, or null for a check outside a run (an edit endpoint, an operation's handler).</summary>
@@ -26,53 +26,46 @@ public sealed record FrozenQuery
 }
 
 /// <summary>
-/// Freezing (rights-design.md decisions 16 to 19). A frozen object can't be modified or deleted, and its links can't be connected or
-/// disconnected; a frozen link can't be disconnected or modified. It is refused before any right, and no allow lifts it. Freezing stops
-/// nothing else: a right with whileFrozen holds only while the object (with ends, the link) is frozen.
+/// Whether an object, or one of its links, is frozen (rights-design.md decisions 16 to 19): the host's answer, as <c>ICallerHoldings</c> is
+/// for held actors. A frozen object can't be modified or deleted, and its links can't be connected or disconnected; a frozen link can't
+/// be disconnected or modified. It is refused before any right, and no allow lifts it. Freezing stops nothing else: a right with
+/// whileFrozen holds only while the object (with ends, the link) is frozen. The team's FrozenState (Dispatch/FrozenState.cs) is the
+/// default; each command handler takes another, and so does a rights request.
 /// </summary>
-public static partial class Freezing
+public interface IFrozenState
 {
-    /// <summary>Whether the object, or a link of it, is frozen: the frozen hook's answer.</summary>
+    /// <summary>Whether the object, or a link of it, is frozen. It may be asked more than once for one command.</summary>
     /// <param name="query">What is asked.</param>
-    /// <returns>Whether it is frozen; false until the hook is written.</returns>
-    public static bool Frozen(FrozenQuery query)
-    {
-        ArgumentNullException.ThrowIfNull(query);
-        var frozen = false;
-        IsFrozen(query, ref frozen);
-        return frozen;
-    }
-
-    // The frozen hook. Where "frozen" is held is your system's business: write this method in your own half of this partial class
-    // (static partial void IsFrozen(FrozenQuery query, ref bool frozen), in any file of this namespace) and set frozen from your data.
-    // Until you write it, the compiler drops the call and the answer is "not frozen": nothing is refused for freezing, and no right with
-    // whileFrozen holds. It may be asked more than once for one command.
-    static partial void IsFrozen(FrozenQuery query, ref bool frozen);
+    /// <returns>Whether it is frozen.</returns>
+    bool IsFrozen(FrozenQuery query);
 }
 
-/// <summary>The frozen flags of one check: each given, or asked of the frozen hook at most once, and only when the check needs it.</summary>
+/// <summary>The frozen flags of one check: each given, or asked of the frozen state at most once, and only when the check needs it.</summary>
 public sealed class FrozenFlags
 {
     private readonly FrozenQuery _query;
+    private readonly IFrozenState _state;
     private bool? _object;
     private bool? _link;
 
     /// <summary>Creates the flags of one check.</summary>
-    /// <param name="query">What the hook is asked; its <see cref="FrozenQuery.End"/> is the end of the link the verb acts on, or null for the object.</param>
-    /// <param name="frozen">Whether the object is frozen, when the caller knows; null asks the hook.</param>
-    /// <param name="linkFrozen">Whether the link is frozen, when the caller knows; null asks the hook.</param>
-    public FrozenFlags(FrozenQuery query, bool? frozen = null, bool? linkFrozen = null)
+    /// <param name="query">What the frozen state is asked; its <see cref="FrozenQuery.End"/> is the end of the link the verb acts on, or null for the object.</param>
+    /// <param name="frozen">Whether the object is frozen, when the caller knows; null asks the frozen state.</param>
+    /// <param name="linkFrozen">Whether the link is frozen, when the caller knows; null asks the frozen state.</param>
+    /// <param name="state">The frozen state to ask; the team's FrozenState when null.</param>
+    public FrozenFlags(FrozenQuery query, bool? frozen = null, bool? linkFrozen = null, IFrozenState? state = null)
     {
         _query = query ?? throw new ArgumentNullException(nameof(query));
         _object = frozen;
         _link = linkFrozen;
+        _state = state ?? new global::App.Model.Dispatch.FrozenState();
     }
 
     /// <summary>Whether the object is frozen.</summary>
-    public bool Object => _object ??= Freezing.Frozen(_query with { Link = false, End = null });
+    public bool Object => _object ??= _state.IsFrozen(_query with { Link = false, End = null });
 
     /// <summary>Whether the link the verb acts on is frozen; with no end known, whether a link of the object is.</summary>
-    public bool Link => _link ??= Freezing.Frozen(_query with { Link = true });
+    public bool Link => _link ??= _state.IsFrozen(_query with { Link = true });
 
     /// <summary>Whether freezing refuses a verb (rights-design.md decision 17), the first check, which no allow lifts.</summary>
     /// <param name="verb">The verb.</param>

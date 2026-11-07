@@ -17,27 +17,18 @@ func uses_rights()
 end
 
 # Whether the project uses freezing (rights-design.md decision 28): an event, a transition or a right names freeze or thaw, or a right
-# has whileFrozen. Only then are the interpreter's frozen check, Freezing.cs (the frozen hook), Refusals.Frozen and the request's
-# frozen flags written.
+# has whileFrozen. Only then are the interpreter's frozen check, Freezing.cs (IFrozenState), the FrozenState stub, Refusals.Frozen and
+# the request's frozen flags written. model.freezing keys only on the freezing naming key, so asking renders a unit again on nothing else.
 func uses_freezing()
-  for $v in model.verbs
-    if $v.built_in && ($v.key == "freeze" || $v.key == "thaw") && ($v.events.size > 0 || $v.transitions.size > 0 || $v.rights.size > 0)
-      ret true
-    end
-  end
-  for $r in model.rights
-    if $r.while_frozen
-      ret true
-    end
-  end
-  for $l in model.rights_lifecycles
-    for $u in $l.rights
-      if $u.right.while_frozen
-        ret true
-      end
-    end
-  end
-  ret false
+  ret model.freezing.used
+end
+
+# The host interface of the frozen state (Freezing.cs) and the team's stub of it (Dispatch/FrozenState.cs), qualified.
+func frozen_state_type()
+  ret "global::" + actors_ns() + ".IFrozenState"
+end
+func frozen_state_stub()
+  ret "global::" + dispatch_ns() + ".FrozenState"
 end
 
 # Whether the project uses attribute rights (rights-design.md decision 28): a right names attributes. Only then do the request and the

@@ -425,4 +425,50 @@ public sealed class FreezingReplayTests
         Assert.Contains("\"warnings\":[{\"rule\":\"MQ9309\"", JsonSerializer.Serialize(verified, EngineJson.Options), StringComparison.Ordinal);
     }
 
+    // A step with no expect doesn't expect frozen either: refused as frozen after a freeze, it is named by MQ9309 on the step itself, in
+    // the replay, in verify's warnings and in validate.
+    [Fact]
+    public async Task A_step_with_no_expect_refused_as_frozen_is_named_by_MQ9309()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        var recorded = await store.RecordScenarioAsync(Items, new RecordScenarioRequest
+        {
+            Name = "freezing", Objects = Objects(), Subject = Box, Participants = People(), Steps = [Event(Release), Event(Edit)],
+        }, false, ChangeSource.Editor, Ct);
+        var id = recorded.Value!.Id;
+        var scenario = store.Current!.Get<Scenario>(id)!;
+        var bare = scenario with { Steps = [scenario.Steps[0], scenario.Steps[1] with { Expect = null }] };
+        var (bareH, bareStore) = await OpenAsync(scenario: JsonSerializer.Serialize(bare, EngineJson.Options));
+        using var ___ = bareH;
+        await using var ____ = bareStore;
+        var result = (await bareStore.VerifyScenariosAsync(Items, [id], Ct)).Value!.Results.Single();
+        Assert.True(result.Passed, result.Failure?.Message);
+        var warning = Assert.Single(result.Warnings!);
+        Assert.Equal(("MQ9309", "/steps/1"), (warning.Rule, warning.JsonPointer));
+        Assert.StartsWith("Step 2: event 'edit' was refused as frozen after step 1 (event 'release') froze it;", warning.Message, StringComparison.Ordinal);
+        Assert.Contains((await bareStore.ValidateAsync(ValidationScope.All, Ct)).Diagnostics, d => d.Rule == "MQ9309");
+    }
+
+    // Verify's warnings hold MQ9309 alone: a project that doesn't freeze answers as 0.15.0 did. The process-basics fixture's guard returns 1,
+    // which the replay warns of (MQ9504), and verify's answer still has no warnings member.
+    [Fact]
+    public async Task Verify_answers_of_a_project_that_does_not_freeze_carry_no_other_warning()
+    {
+        using var h = new LoaderHarness();
+        h.CopyFixture("models", "process-basics");
+        var text = h.Read("model/processes/order-lifecycle.json");
+        Assert.Contains("\"expression\": \"context.amount > 1000\"", text, StringComparison.Ordinal);
+        h.Write("model/processes/order-lifecycle.json", text.Replace("\"expression\": \"context.amount > 1000\"", "\"expression\": \"1\"", StringComparison.Ordinal));
+        await using var store = new ModelStore(h.Options, h.Services() with { Validator = EngineServices.Create(h.Options).Validator });
+        await store.LoadAsync(Ct);
+        const string Lifecycle = "01JPRC00000000000000000001";
+        var ids = store.Current!.All<Scenario>().Where(s => s.Process == Lifecycle).Select(s => s.Id).Order(StringComparer.Ordinal).ToList();
+        using (var runtime = new ProcessRuntime(store.Current!, 1, Ct))
+            Assert.Contains(ids, i => ScenarioReplayer.Replay(store.Current!.Get<Scenario>(i)!, runtime)!.Diagnostics.Any(d => d.Rule == "MQ9504"));
+        var verified = (await store.VerifyScenariosAsync(Lifecycle, ids, Ct)).Value!;
+        Assert.All(verified.Results, r => Assert.Null(r.Warnings));
+        Assert.DoesNotContain("warnings", JsonSerializer.Serialize(verified, EngineJson.Options), StringComparison.Ordinal);
+    }
 }

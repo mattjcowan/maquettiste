@@ -34,7 +34,8 @@ public sealed partial class EmployeeRecordHandlers : IStatechartBehaviour<Employ
 /// <param name="machine">The machine.</param>
 /// <param name="store">The store.</param>
 /// <param name="holdings">What the caller holds besides the actor it acts as; the team's CallerHoldings when null.</param>
-public sealed partial class EmployeeRecordCommandHandler(EmployeeRecordMachine machine, IEmployeeRecordStore store, ICallerHoldings? holdings = null) :
+/// <param name="frozen">Whether an object, or a link of it, is frozen; the team's FrozenState when null.</param>
+public sealed partial class EmployeeRecordCommandHandler(EmployeeRecordMachine machine, IEmployeeRecordStore store, ICallerHoldings? holdings = null, global::App.Model.Processes.IFrozenState? frozen = null) :
     ICommandHandler<EmployeeRecordStartControl>,
     ICommandHandler<EmployeeRecordEditCommand>,
     ICommandHandler<EmployeeRecordFreezeRecordCommand>,
@@ -57,7 +58,7 @@ public sealed partial class EmployeeRecordCommandHandler(EmployeeRecordMachine m
     {
         ArgumentNullException.ThrowIfNull(command);
         var held = await Holdings.HeldAsync(command.Envelope, cancellationToken).ConfigureAwait(false);
-        return await RunAsync(command.Envelope.Instance, "edit", snapshot => machine.Edit(snapshot, command, held), cancellationToken).ConfigureAwait(false);
+        return await RunAsync(command.Envelope.Instance, "edit", snapshot => machine.Edit(snapshot, command, held, Frozen), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -65,7 +66,7 @@ public sealed partial class EmployeeRecordCommandHandler(EmployeeRecordMachine m
     {
         ArgumentNullException.ThrowIfNull(command);
         var held = await Holdings.HeldAsync(command.Envelope, cancellationToken).ConfigureAwait(false);
-        return await RunAsync(command.Envelope.Instance, "freezeRecord", snapshot => machine.FreezeRecord(snapshot, command, held), cancellationToken).ConfigureAwait(false);
+        return await RunAsync(command.Envelope.Instance, "freezeRecord", snapshot => machine.FreezeRecord(snapshot, command, held, Frozen), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -73,7 +74,7 @@ public sealed partial class EmployeeRecordCommandHandler(EmployeeRecordMachine m
     {
         ArgumentNullException.ThrowIfNull(command);
         var held = await Holdings.HeldAsync(command.Envelope, cancellationToken).ConfigureAwait(false);
-        return await RunAsync(command.Envelope.Instance, "thawRecord", snapshot => machine.ThawRecord(snapshot, command, held), cancellationToken).ConfigureAwait(false);
+        return await RunAsync(command.Envelope.Instance, "thawRecord", snapshot => machine.ThawRecord(snapshot, command, held, Frozen), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -81,7 +82,7 @@ public sealed partial class EmployeeRecordCommandHandler(EmployeeRecordMachine m
     {
         ArgumentNullException.ThrowIfNull(command);
         var held = await Holdings.HeldAsync(command.Envelope, cancellationToken).ConfigureAwait(false);
-        return await RunAsync(command.Envelope.Instance, "archive", snapshot => machine.Archive(snapshot, command, held), cancellationToken).ConfigureAwait(false);
+        return await RunAsync(command.Envelope.Instance, "archive", snapshot => machine.Archive(snapshot, command, held, Frozen), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -89,7 +90,7 @@ public sealed partial class EmployeeRecordCommandHandler(EmployeeRecordMachine m
     {
         ArgumentNullException.ThrowIfNull(command);
         var held = await Holdings.HeldAsync(command.Envelope, cancellationToken).ConfigureAwait(false);
-        return await RunAsync(command.Envelope.Instance, command.Invoke, snapshot => machine.Complete(snapshot, command, held), cancellationToken).ConfigureAwait(false);
+        return await RunAsync(command.Envelope.Instance, command.Invoke, snapshot => machine.Complete(snapshot, command, held, Frozen), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc/>
@@ -145,6 +146,9 @@ public sealed partial class EmployeeRecordCommandHandler(EmployeeRecordMachine m
 
     // Asked once per command: what the caller holds comes from the host, never from the command (rights-design.md decision 29).
     private ICallerHoldings Holdings { get; } = holdings ?? new CallerHoldings();
+
+    // Whether the object, or a link of it, is frozen: the host's answer (rights-design.md decision 19), asked by the run when a check needs it.
+    private global::App.Model.Processes.IFrozenState Frozen { get; } = frozen ?? new global::App.Model.Dispatch.FrozenState();
 
     private static CommandResult Result(StepResult<EmployeeRecordContext> step, IReadOnlyList<object> events) =>
         new(step.Accepted, step.Refusal, step.States, step.Changed, step.Final, step.Context, events) { Audit = step.Audit, Failure = step.Failure, RefusedBy = step.RefusedBy };
