@@ -6,7 +6,8 @@ namespace Maquettiste.Engine.Processes;
 /// <summary>
 /// MQ9305 on a verb step's fields and on an expected refusal (rights-design.md decisions 25 and 26), judged before the step runs, as a
 /// payload is: an object, link or own verb (moves, signatures and tasks are event and invoke-done steps); attributes only beside read;
-/// values only beside modify on the subject, of attributes a set could set and of their types; a link step's end of the
+/// assume words only for checks the team writes (trigger-points-design.md decision 26);
+/// values only beside modify on the subject or create, of attributes a set could set and of their types; a link step's end of the
 /// subject's entity and an object linked through it, except for connect; no delete on a link; and a refusal only beside
 /// <c>accepted: false</c>. A step that is no verb step and expects no refusal costs two tests.
 /// </summary>
@@ -26,6 +27,8 @@ internal static class VerbStepFields
                 + "set accepted to false, or remove them.", expect.Refusal is not null ? "/expect/refusal" : "/expect/refusedBy");
         }
 
+        if (CheckAssume(runtime.Model, process, cast, step) is { } assume)
+            return assume;
         if (step.Input != StepInput.Verb)
             return null;
         var model = runtime.Model;
@@ -45,8 +48,9 @@ internal static class VerbStepFields
 
         if (step.Values is { Count: > 0 } values)
         {
-            if (!string.Equals(verb, "modify", StringComparison.Ordinal))
-                return ($"the step gives values beside verb '{verb}'; only modify sets values. Remove them.", "/values");
+            // A create step gives the new object's values (trigger-points-design.md decision 27).
+            if (verb is not ("modify" or "create"))
+                return ($"the step gives values beside verb '{verb}'; only modify and create set values. Remove them.", "/values");
             if (step.End is not null)
                 return ("the step gives values on a link, which holds none in a scenario; remove them, or modify the subject.", "/values");
             var held = ExprSites.HeldAttributes(model, process);
@@ -88,6 +92,47 @@ internal static class VerbStepFields
         {
             return ($"object '{cast.Objects.First(o => string.Equals(o.Id, objectId, StringComparison.Ordinal)).Name}' is not linked to the subject through end '{end}'; "
                 + "link it in the subject's links, or connect it first.", "/object");
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// MQ9305 on a step's <c>assume</c> words (trigger-points-design.md decision 26): each word names a check the team writes, a check with no
+    /// condition, of a lifecycle the step reaches (<see cref="TriggerSequences.Reaching"/>). Boolean entries, for guards, are not checked. A step
+    /// with no word costs one pass over its entries.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process the scenario runs.</param>
+    /// <param name="cast">The scenario's objects, subject and participants.</param>
+    /// <param name="step">The step.</param>
+    /// <returns>The message, without the step's number, and the field it points at; or <see langword="null"/>.</returns>
+    public static (string Message, string Field)? CheckAssume(ModelSnapshot model, Process process, ScenarioCast cast, ScenarioStep step)
+    {
+        if (!step.Assume.Values.Any(a => a.Check is not null))
+            return null;
+        var obj = cast.Subject is { } subject ? cast.Objects.FirstOrDefault(o => string.Equals(o.Id, subject, StringComparison.Ordinal)) : null;
+        var entity = obj is null ? null : model.Get<Entity>(obj.Entity);
+        var verb = step.Input switch
+        {
+            StepInput.Verb => step.Verb,
+            StepInput.Event => process.Events.FirstOrDefault(e => string.Equals(e.Id, step.Event, StringComparison.Ordinal))?.Verb,
+            _ => null,
+        };
+        var reached = TriggerSequences.Of(model).Reaching(process, entity, verb);
+        foreach (var (key, value) in step.Assume.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            if (value.Check is not { } word)
+                continue;
+            var point = reached.SelectMany(l => l.TriggerPoints).FirstOrDefault(p => string.Equals(p.Id, key, StringComparison.Ordinal));
+            if (point is not { Type: TriggerPointType.Check })
+            {
+                return ($"assume gives {StepAssumption.Word(word)} for '{key}', which is not a check the team writes of a lifecycle this step reaches; "
+                    + "give true or false for a guard, or name such a check.", "/assume");
+            }
+
+            if (point.Condition is not null)
+                return ($"assume gives {StepAssumption.Word(word)} for check '{point.Name}', which has a condition the run works out; remove the entry.", "/assume");
         }
 
         return null;

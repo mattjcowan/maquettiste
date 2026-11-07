@@ -59,6 +59,12 @@ public sealed record InterpreterOptions
     /// verb steps of the root process ask. Without it, verb steps are accepted as given and only the closed lists are checked, as before rights.
     /// </summary>
     internal RunRights? Rights { get; init; }
+
+    /// <summary>
+    /// The run's trigger points (trigger-points-design.md section 8), set only in a project that uses them: the root's moves, signatures, human
+    /// tasks and verb steps run them in the fixed order. Without it, nothing runs and selection works as before trigger points.
+    /// </summary>
+    internal RunTriggers? Triggers { get; init; }
 }
 
 /// <summary>
@@ -68,7 +74,7 @@ public sealed record InterpreterOptions
 /// <c>now()</c>), collections are ordered by document order, and the sandbox's <c>Math.random</c> is seeded with the process id and the
 /// input index. Not thread-safe.
 /// </summary>
-public sealed class StatechartInterpreter
+public sealed partial class StatechartInterpreter
 {
     private static readonly JsonElement Null = JsonDocument.Parse("null").RootElement.Clone();
     private static readonly JsonElement NoObject = JsonDocument.Parse("{}").RootElement.Clone();
@@ -182,6 +188,14 @@ public sealed class StatechartInterpreter
         _index++;
         _scope = new Scope(input) { Identity = identity };
         var before = Snapshot();
+        // A word in assume names a check the team writes of a lifecycle the step reaches (MQ9305, trigger-points-design.md decision 26).
+        if (_options.Triggers is { } triggers && input.Assume.Count > 0 && triggers.AssumeProblem(input) is { } problem)
+        {
+            Problem("MQ9305", char.ToUpperInvariant(problem[0]) + problem[1..]);
+            Refuse(Refusals.NoTransition);
+            return Finish(before);
+        }
+
         switch (input.Input)
         {
             case StepInput.Time:
@@ -256,7 +270,7 @@ public sealed class StatechartInterpreter
             var selection = Select(target, TransitionTrigger.Event, ev.Id, external: true);
             if (selection.Transitions.Count == 0 && !selection.Consumed)
             {
-                Refuse(selection.Reason, selection.By);
+                RefuseSelection(selection);
                 return false;
             }
 
@@ -301,6 +315,9 @@ public sealed class StatechartInterpreter
             Macrostep(() =>
             {
                 if (Guard(next.Owner, next.Transition) != true)
+                    return true;
+                // Rows 8 and 9 right after the timer's guard (trigger-points-design.md decision 18): a refusing check skips its move.
+                if (TriggerCandidate(next.Owner, next.Transition, external: false) is not null)
                     return true;
                 Microstep(next.Owner, [next.Transition]);
                 RunToCompletion(next.Owner);
@@ -350,16 +367,35 @@ public sealed class StatechartInterpreter
 
         var trigger = input.Input == StepInput.InvokeError ? TransitionTrigger.InvokeError : TransitionTrigger.InvokeDone;
         _scope.Event = EventObject(null, input.Actor, [], ImmutableDictionary<string, JsonElement>.Empty);
+        // A human task of the root ends with the verb complete (trigger-points-design.md section 8): its before actions and checks run before
+        // the transition is picked, and a refusing check refuses the step, so the task stays pending.
+        var completion = _scope.HumanTask && ReferenceEquals(found.Instance, _root) ? PrepareVerb("complete", null, null, null, create: false) : null;
+        if (completion?.Refused is { } refusing)
+        {
+            _scope.TriggerRuns.Add(refusing);
+            Refuse(Refusals.Check, refusing.TriggerPoint);
+            return;
+        }
+
         Macrostep(() =>
         {
-            var selection = SelectAt(found.Instance, found.State, trigger, found.Invoke.Id);
+            var selection = SelectAt(found.Instance, found.State, trigger, found.Invoke.Id, own: true);
             if (selection.Transitions.Count == 0)
             {
-                Refuse(selection.Reason, selection.By);
+                RefuseSelection(selection);
                 return false;
             }
 
+            // complete as a verb of its own around the task's end: its before values, the end, its with-change and after-commit points.
+            if (completion is not null)
+            {
+                List(completion, []);
+                Write(completion, []);
+            }
+
             found.Instance.Pending.RemoveAll(p => ReferenceEquals(p.Invoke, found.Invoke));
+            if (completion is not null)
+                RunLater(completion, []);
             Microstep(found.Instance, selection.Transitions);
             RunToCompletion(found.Instance);
             Propagate(found.Instance);
@@ -399,31 +435,62 @@ public sealed class StatechartInterpreter
             return;
         }
 
-        switch (verb)
+        // The values a modify step on the subject, or a create step, gives (trigger-points-design.md decision 27), by attribute id with its name.
+        var own = new SortedDictionary<string, (string Name, JsonElement Value)>(StringComparer.Ordinal);
+        if ((verb == "modify" && input.End is null) || verb == "create")
         {
-            case "modify" when input.End is null:
-                var values = new SortedDictionary<string, (string Name, JsonElement Value)>(StringComparer.Ordinal);
-                foreach (var (id, value) in input.Values ?? ImmutableDictionary<string, JsonElement>.Empty)
-                {
-                    if (rights?.AttributeName(id) is { } name)
-                        values[id] = (name, value);
-                }
-
-                Apply(values);
-                break;
-            case "freeze" or "thaw":
-                Freeze(verb == "freeze", input.End, input.Object);
-                break;
-            case "delete" when input.End is null:
-                _deleted = true;
-                Note("The step deleted the object, so the process stops where it stood: later events, invokes and verb steps are refused, timers no longer fire, and time steps only move the clock.");
-                break;
-            default:
-                Note(input.End is null
-                    ? $"The run checked verb '{verb}' and recorded it, but did not apply it."
-                    : $"The run checked verb '{verb}' on a link and recorded it, but did not apply it: a scenario's links hold no values and do not change.");
-                break;
+            foreach (var (id, value) in input.Values ?? ImmutableDictionary<string, JsonElement>.Empty)
+            {
+                if (rights?.AttributeName(id) is { } name)
+                    own[id] = (name, value);
+            }
         }
+
+        // Rows 8 and 9 after rights and freezing (trigger-points-design.md decision 18): matching reads the step's own attributes only.
+        var prepared = PrepareVerb(verb, own, StepAttributes(input, verb), input.End, create: verb == "create");
+        if (prepared?.Refused is { } refused)
+        {
+            _scope.TriggerRuns.Add(refused);
+            Refuse(Refusals.Check, refused.TriggerPoint);
+            return;
+        }
+
+        // The proposed values are written before the effect; copy and revise make a new object the run doesn't hold, so they write nothing.
+        if (prepared is not null)
+            List(prepared, []);
+        if (verb is not ("copy" or "revise"))
+        {
+            Apply(own);
+            if (prepared is not null)
+                Write(prepared, []);
+        }
+
+        // A replace stands in for the effect of a verb step (decision 16): a replaced delete keeps the object.
+        var replaced = prepared is not null && Replace(prepared);
+        if (!replaced)
+        {
+            switch (verb)
+            {
+                case "modify" when input.End is null:
+                case "create" when own.Count > 0 || prepared is not null:
+                    break; // the values are written above
+                case "freeze" or "thaw":
+                    Freeze(verb == "freeze", input.End, input.Object);
+                    break;
+                case "delete" when input.End is null:
+                    _deleted = true;
+                    Note("The step deleted the object, so the process stops where it stood: later events, invokes and verb steps are refused, timers no longer fire, and time steps only move the clock.");
+                    break;
+                default:
+                    Note(input.End is null
+                        ? $"The run checked verb '{verb}' and recorded it, but did not apply it."
+                        : $"The run checked verb '{verb}' on a link and recorded it, but did not apply it: a scenario's links hold no values and do not change.");
+                    break;
+            }
+        }
+
+        if (prepared is not null)
+            RunLater(prepared, []);
     }
 
     // An accepted freeze or thaw (rights-design.md decision 16): of the subject, or with an end of its link to the object. Freezing what is
@@ -655,7 +722,16 @@ public sealed class StatechartInterpreter
 
     // ---- selection ----
 
-    private sealed record Selection(List<ChartTransition> Transitions, bool Consumed, string Reason, string? By = null);
+    // Refusing: the check that refused the most telling candidate, which a refused step lists (trigger-points-design.md decision 28).
+    private sealed record Selection(List<ChartTransition> Transitions, bool Consumed, string Reason, string? By = null, TriggerPointRun? Refusing = null);
+
+    // Refuses the input with the selection's most telling reason; a check that refused it is listed in the trace.
+    private void RefuseSelection(Selection selection)
+    {
+        if (selection.Refusing is { } refusing && _scope.Refusal is null)
+            _scope.TriggerRuns.Add(refusing);
+        Refuse(selection.Reason, selection.By);
+    }
 
     private Selection Select(Instance inst, TransitionTrigger trigger, string key, bool external)
     {
@@ -664,6 +740,7 @@ public sealed class StatechartInterpreter
         var consumed = false;
         var reason = Refusals.NoTransition;
         string? by = null;
+        TriggerPointRun? refusing = null;
         var rank = 0;
         foreach (var leaf in Leaves(inst))
         {
@@ -708,6 +785,14 @@ public sealed class StatechartInterpreter
                         }
                     }
 
+                    // Rows 8 and 9 (trigger-points-design.md decision 18): a refusing check leaves the candidate out, as a false guard does,
+                    // and outranks a gate as the reason.
+                    if (TriggerCandidate(inst, t, external) is { } refused)
+                    {
+                        Fail(Refusals.Check, 3, refused.TriggerPoint, refused);
+                        continue;
+                    }
+
                     CheckOverlap(inst, s, t, trigger, key);
                     tried[t] = true;
                     enabled.Add(t);
@@ -722,42 +807,55 @@ public sealed class StatechartInterpreter
 
         var selected = RemoveConflicts(inst, enabled, t =>
         {
-            if (t.Gate is not { } gate || Sign(inst, t, gate))
+            if (t.Gate is not { } gate || Admit(inst, t, gate))
                 return true;
             consumed = true; // the occurrence signed an incomplete gate: it is accepted, and the transition waits for more signatures
             return false;
         });
-        return new Selection(selected, consumed, reason, by);
+        return new Selection(selected, consumed, reason, by, refusing);
 
-        void Fail(string why, int level, string? refusedBy)
+        void Fail(string why, int level, string? refusedBy, TriggerPointRun? run = null)
         {
             if (level > rank)
             {
                 rank = level;
                 reason = why;
                 by = refusedBy;
+                refusing = run;
             }
         }
     }
 
-    private Selection SelectAt(Instance inst, ChartState source, TransitionTrigger trigger, string key)
+    // own: the move is the step's own (a finished invoke), not an automatic one, so a check that refuses it can refuse the step.
+    private Selection SelectAt(Instance inst, ChartState source, TransitionTrigger trigger, string key, bool own = false)
     {
         var reason = Refusals.NoTransition;
         string? by = null;
+        TriggerPointRun? refusing = null;
         foreach (var t in inst.Chart.Candidates(source, trigger, key))
         {
             if (Guard(inst, t) == true)
             {
+                // Rows 8 and 9 (trigger-points-design.md decision 18): a check outranks a guard as the reason, the first of each kept.
+                if (TriggerCandidate(inst, t, own) is { } refused)
+                {
+                    if (reason != Refusals.Check)
+                        (reason, by, refusing) = (Refusals.Check, refused.TriggerPoint, refused);
+                    continue;
+                }
+
                 CheckOverlap(inst, source, t, trigger, key);
                 return new Selection([t], false, reason);
             }
 
-            if (reason != Refusals.Guard)
+            if (reason == Refusals.NoTransition)
+            {
                 by = t.Guard?.Id ?? t.Transition.Guard;
-            reason = Refusals.Guard;
+                reason = Refusals.Guard;
+            }
         }
 
-        return new Selection([], false, reason, by);
+        return new Selection([], false, reason, by, refusing);
     }
 
     // MQ9506: a later guarded transition of the same source and trigger is also enabled. Unguarded fallbacks (a choice's else) are
@@ -1135,6 +1233,18 @@ public sealed class StatechartInterpreter
         var exited = new List<string>();
         var entered = new List<string>();
         var actions = new List<ActionRun>();
+        // The points of the moves taken (trigger-points-design.md decision 18): listed once per microstep, and their proposed values written
+        // before the exit actions, once per point, in selection order, so the later transition wins an attribute both set.
+        var taken = TakenCandidates(inst, transitions);
+        if (taken is not null)
+        {
+            HashSet<string> listed = [], written = [];
+            foreach (var move in taken)
+            {
+                List(move, listed);
+                Write(move, written);
+            }
+        }
 
         // Exit, in reverse document order.
         var exitSet = new HashSet<ChartState>(ReferenceEqualityComparer.Instance);
@@ -1226,6 +1336,14 @@ public sealed class StatechartInterpreter
                     }
                 }
             }
+        }
+
+        // With-the-change points after the entry actions; after-commit points are queued for the end of the step.
+        if (taken is not null)
+        {
+            HashSet<string> later = [];
+            foreach (var move in taken)
+                RunLater(move, later);
         }
 
         if (inst.Done)
@@ -1461,8 +1579,11 @@ public sealed class StatechartInterpreter
             ValuesChanged = values,
             Notes = _scope.Notes.Count > 0 ? [.. _scope.Notes] : null,
             // Written in a project that uses rights, and for a step that expects it, so today's traces keep their members (decision 26).
-            RefusedBy = _scope.RefusedBy is { } by && (_options.Rights is { Uses: true } || _scope.Input?.Expect?.RefusedBy is not null) ? by : null,
+            // ... and in a project that uses trigger points (trigger-points-design.md decision 28).
+            RefusedBy = _scope.RefusedBy is { } by && (_options.Rights is { Uses: true } || _options.Triggers is not null || _scope.Input?.Expect?.RefusedBy is not null) ? by : null,
             Rights = _scope.Rights.Count > 0 ? [.. _scope.Rights] : null,
+            TriggerPoints = _scope.TriggerRuns.Count + _scope.Queued.Count > 0 ? [.. _scope.TriggerRuns, .. _scope.Queued] : null,
+            CheckWarnings = _scope.CheckWarnings.Count > 0 ? [.. _scope.CheckWarnings] : null,
             Frozen = _frozen,
             FrozenBy = _scope.Refusal == Refusals.Frozen ? FrozeBy(_scope.Input) : null,
         };
@@ -1623,6 +1744,10 @@ public sealed class StatechartInterpreter
         public List<GuardEvaluation> Guards { get; } = [];
         public List<GateAuditRecord> Audit { get; } = [];
         public List<Diagnostic> Diagnostics { get; } = [];
+        // The trigger points listed in the trace, the after-commit ones queued for its end, and the checks that warned (decision 28).
+        public List<TriggerPointRun> TriggerRuns { get; } = [];
+        public List<TriggerPointRun> Queued { get; } = [];
+        public List<string> CheckWarnings { get; } = [];
     }
 
     private sealed class TimerOrder : IComparer<Timer>

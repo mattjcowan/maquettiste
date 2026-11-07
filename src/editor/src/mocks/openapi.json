@@ -13351,6 +13351,13 @@
               "null"
             ]
           },
+          "triggerPoints": {
+            "description": "`refresh-scenario`: also write each step's `expect.triggerPoints`, the trigger points that ran in order (skipped ones left out); without it they are rewritten only where a step already expects them (trigger-points-design.md decision 28).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "expectedHashes": {
             "description": "Materialize, `map-by-name`, `resync-binding`, `fold-into-stereotype`, `retag`, `tags-to-property`, `names-to-ids`, the reference-type refactors, `rename-verb` and `remove-verb`: the hash the caller read of each element it expects the operation to change or delete (the preview's\nupdates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is\na conflict and nothing is written. A key may be an id or a qualified name; a placeholder key is MQ1015, two keys for\none element are MQ1014.\n",
             "type": [
@@ -43385,7 +43392,8 @@
                 "default",
                 "redefine",
                 "excludeMissing",
-                "keepNames"
+                "keepNames",
+                "triggerPoints"
               ],
               "properties": {
                 "op": {
@@ -43621,6 +43629,11 @@
                 },
                 "keepNames": {
                   "description": "resync-binding: keep every attribute's name, even one that followed its column's name; the provenance entry still takes the column's new name.",
+                  "type": "boolean",
+                  "default": false
+                },
+                "triggerPoints": {
+                  "description": "refresh-scenario: also write each step's expect.triggerPoints, the trigger points that ran in order (skipped ones left out); without it they are rewritten only where a step already expects them.",
                   "type": "boolean",
                   "default": false
                 }

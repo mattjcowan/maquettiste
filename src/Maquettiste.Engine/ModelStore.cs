@@ -1882,6 +1882,7 @@ public enum BatchOp
 /// <param name="Stereotype">sync-enum and sync-codes, in place of <paramref name="Entity"/>: the key of the stereotype whose subjects entry
 /// the operation acts on (stereotype-sets-design.md decision 10).</param>
 /// <param name="Verb">The key of the project's own verb a verb operation acts on (rename-verb, remove-verb).</param>
+/// <param name="TriggerPoints">refresh-scenario: also write each step's <c>expect.triggerPoints</c> (trigger-points-design.md decision 28).</param>
 public sealed record BatchOperation(
     BatchOp Op, string? Id, string? ExpectedHash, JsonElement? Element, string? Locale = null, string? Field = null, JsonElement? Value = null,
     string? Schema = null, string? Name = null, string? Target = null, string? Default = null, DeleteResolution? Resolution = null,
@@ -1890,7 +1891,7 @@ public sealed record BatchOperation(
     IReadOnlyList<string>? Tags = null, string? As = null, IReadOnlyList<string>? ElementIds = null, string? Prefix = null, bool? Redefine = null,
     bool? ExcludeMissing = null, bool? KeepNames = null, string? Code = null, string? To = null, IReadOnlyDictionary<string, string>? Codes = null,
     string? Entity = null, string? Attribute = null, IReadOnlyDictionary<string, JsonElement>? StateCodes = null, string? Stereotype = null,
-    string? Verb = null);
+    string? Verb = null, bool? TriggerPoints = null);
 
 /// <summary>An atomic batch of operations.</summary>
 /// <param name="Operations">The operations, applied in order.</param>

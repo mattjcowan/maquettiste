@@ -8945,6 +8945,9 @@ components:
         keepNames:
           description: '`resync-binding`: keep every attribute''s name, even one that followed its column''s name; the provenance entry still takes the column''s new name.'
           type: [boolean, 'null']
+        triggerPoints:
+          description: '`refresh-scenario`: also write each step''s `expect.triggerPoints`, the trigger points that ran in order (skipped ones left out); without it they are rewritten only where a step already expects them (trigger-points-design.md decision 28).'
+          type: [boolean, 'null']
         expectedHashes:
           description: |
             Materialize, `map-by-name`, `resync-binding`, `fold-into-stereotype`, `retag`, `tags-to-property`, `names-to-ids`, the reference-type refactors, `rename-verb` and `remove-verb`: the hash the caller read of each element it expects the operation to change or delete (the preview's

@@ -114,8 +114,9 @@ public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOn
     bool Final, ScenarioFailure? Failure)
 {
     /// <summary>
-    /// Whether the project uses rights (rights-design.md decision 28): then a refused step's expectations record its refusal and the element
-    /// that refused it. Otherwise they record them only where the scenario already expects them, and a refusal as frozen (decision 16).
+    /// Whether the project uses rights (rights-design.md decision 28) or trigger points (trigger-points-design.md decision 28): then a refused
+    /// step's expectations record its refusal and the element that refused it. Otherwise they record them only where the scenario already
+    /// expects them, and a refusal as frozen (decision 16).
     /// </summary>
     public bool UsesRights { get; init; }
 
@@ -123,17 +124,25 @@ public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOn
     public bool Passed => Complete && Failure is null && !Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error);
 
     /// <summary>The expectations the replay gives: one per step that ran, and the outcome.</summary>
+    /// <param name="triggerPoints">
+    /// Whether to also give each step's <c>expect.triggerPoints</c> (trigger-points-design.md decision 28), the trigger points that ran, skipped
+    /// ones left out; without it they are given only where the scenario already expects them, so a new trigger point breaks no recording.
+    /// </param>
     /// <returns>The step expectations and the outcome.</returns>
-    public (IReadOnlyList<StepExpectation> Steps, ScenarioOutcome Outcome) Observed() =>
+    public (IReadOnlyList<StepExpectation> Steps, ScenarioOutcome Outcome) Observed(bool triggerPoints = false) =>
         ([.. Steps.Select((t, i) =>
             {
                 var expected = i < Scenario.Steps.Count ? Scenario.Steps[i].Expect : null;
+                var ran = t.TriggerPoints?.Where(r => r.Outcome != TriggerOutcome.Skipped).Select(r => r.TriggerPoint).ToList();
                 return new StepExpectation
                 {
                     Accepted = t.Accepted, States = t.Configuration, Context = t.Changed,
                     Values = t.ValuesChanged ?? ImmutableDictionary<string, JsonElement>.Empty,
                     Refusal = !t.Accepted && (UsesRights || expected?.Refusal is not null || t.Refusal == Refusals.Frozen) ? t.Refusal : null,
                     RefusedBy = !t.Accepted && (UsesRights || expected?.RefusedBy is not null) ? t.RefusedBy : null,
+                    // The checks that warned, which only a project with trigger points has; each written only when not empty.
+                    CheckWarnings = t.CheckWarnings,
+                    TriggerPoints = (triggerPoints || expected?.TriggerPoints is not null) && ran is { Count: > 0 } ? ran : null,
                 };
             })],
             Final ? ScenarioOutcome.Final : ScenarioOutcome.Active);
@@ -245,7 +254,10 @@ public static class ScenarioReplayer
             }
         }
 
-        return new ScenarioReplay(scenario, start, steps, diagnostics, complete, interpreter.IsFinal, failure) { UsesRights = RightsEvaluator.Of(runtime.Model).Uses };
+        return new ScenarioReplay(scenario, start, steps, diagnostics, complete, interpreter.IsFinal, failure)
+        {
+            UsesRights = RightsEvaluator.Of(runtime.Model).Uses || TriggerSequences.Of(runtime.Model).Uses,
+        };
 
         void Report(StepTrace trace, string pointer)
         {
@@ -285,6 +297,20 @@ public static class ScenarioReplayer
                     + $"{(expect.RefusedBy is { } b ? "refusedBy " + Named(runtime.Model, b) : "")}; fix the step, the chart or the rights, or update the expectations from a replay.";
                 first ??= Fail("MQ9308", message, new { refusal = expect.Refusal, refusedBy = expect.RefusedBy }, new { refusal = trace.Refusal, refusedBy = trace.RefusedBy },
                     pointer + "/expect/" + field);
+            }
+
+            // The checks that warned and the trigger points that ran (trigger-points-design.md decision 28): exactly those ids, in order, each
+            // only when the step expects it; skipped trigger points are left out.
+            var warned = trace.CheckWarnings ?? [];
+            var ran = trace.TriggerPoints?.Where(r => r.Outcome != TriggerOutcome.Skipped).Select(r => r.TriggerPoint).ToList() ?? [];
+            var warnings = expect.CheckWarnings is { } cw && !cw.SequenceEqual(warned, StringComparer.Ordinal);
+            if (warnings || (expect.TriggerPoints is { } tp && !tp.SequenceEqual(ran, StringComparer.Ordinal)))
+            {
+                var message = $"{At(i)}{Describe(c, step)} warned by {Ids(runtime.Model, warned)} and ran the trigger points {Ids(runtime.Model, ran)}, but expect gives "
+                    + $"{(expect.CheckWarnings is { } w ? "checkWarnings " + Ids(runtime.Model, w) : "")}{(expect.CheckWarnings is not null && expect.TriggerPoints is not null ? " and " : "")}"
+                    + $"{(expect.TriggerPoints is { } p ? "triggerPoints " + Ids(runtime.Model, p) : "")}; fix the trigger points or the step, or update the expectations from a replay.";
+                first ??= Fail("MQ9310", message, new { checkWarnings = expect.CheckWarnings, triggerPoints = expect.TriggerPoints }, new { checkWarnings = warned, triggerPoints = ran },
+                    pointer + (warnings ? "/expect/checkWarnings" : "/expect/triggerPoints"));
             }
 
             if (expect.States.Count > 0 && !expect.States.SequenceEqual(trace.Configuration, StringComparer.Ordinal))
@@ -330,6 +356,7 @@ public static class ScenarioReplayer
         return new(chart, runtime.Options(scenario.Id) with
         {
             Subject = row, StateNotes = notes.Count > 0 ? notes : null, Rights = new RunRights(runtime, chart.Process, ScenarioCast.Of(scenario)),
+            Triggers = RunTriggers.For(runtime, chart.Process, ScenarioCast.Of(scenario)),
         });
     }
 
@@ -384,6 +411,9 @@ public static class ScenarioReplayer
         model.TryGetEntry(id, out var entry) && model.GetDocument(entry.OwnerId) is { } document
             ? (string.Equals(entry.OwnerId, id, StringComparison.Ordinal) ? document.Element.Name : document.Element.Name + "/" + id) + " (" + id + ")"
             : id;
+
+    // Element ids by name for messages, or "none".
+    private static string Ids(ModelSnapshot model, IReadOnlyList<string> ids) => ids.Count == 0 ? "none" : string.Join(", ", ids.Select(id => Named(model, id)));
 
     private static string Paths(StatechartModel chart, IEnumerable<string> states)
     {

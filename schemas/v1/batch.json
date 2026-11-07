@@ -10,7 +10,7 @@
       "items": {
         "title": "Batch operation",
         "type": "object",
-        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "verb", "to", "codes", "entity", "stereotype", "attribute", "stateCodes", "target", "default", "redefine", "excludeMissing", "keepNames"],
+        "x-order": ["op", "id", "as", "expectedHash", "resolution", "element", "locale", "field", "value", "database", "entities", "tables", "package", "columns", "attributes", "elementIds", "tags", "prefix", "expectedHashes", "schema", "name", "code", "verb", "to", "codes", "entity", "stereotype", "attribute", "stateCodes", "target", "default", "redefine", "excludeMissing", "keepNames", "triggerPoints"],
         "properties": {
           "op": {
             "enum": ["create", "update", "delete", "translate", "add-schema", "rename-schema", "remove-schema", "set-default-schema", "materialize-tables", "materialize-entities", "materialize-attributes", "materialize-columns", "sync-enum", "sync-codes", "set-lifecycle", "set-initial", "refresh-scenario", "use-subjects", "retag", "tags-to-property", "names-to-ids", "fold-into-stereotype", "map-by-name", "resync-binding", "rename-code", "retire-code", "merge-reference-types", "rename-reference-type", "text-to-trees", "rename-verb", "remove-verb", "upsert"]
@@ -201,6 +201,11 @@
           },
           "keepNames": {
             "description": "resync-binding: keep every attribute's name, even one that followed its column's name; the provenance entry still takes the column's new name.",
+            "type": "boolean",
+            "default": false
+          },
+          "triggerPoints": {
+            "description": "refresh-scenario: also write each step's expect.triggerPoints, the trigger points that ran in order (skipped ones left out); without it they are rewritten only where a step already expects them.",
             "type": "boolean",
             "default": false
           }

@@ -118,7 +118,8 @@ internal sealed class BatchParser(ISchemaRegistry schemas, ICanonicalJson json)
                     Attribute: Text(item, "attribute"),
                     StateCodes: Values(item, "stateCodes"),
                     Stereotype: Text(item, "stereotype"),
-                    Verb: Text(item, "verb")));
+                    Verb: Text(item, "verb"),
+                    TriggerPoints: Flag(item, "triggerPoints")));
             }
 
             return new BatchParseResult(new ModelBatch(operations), []);

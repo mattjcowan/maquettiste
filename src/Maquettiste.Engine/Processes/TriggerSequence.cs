@@ -813,6 +813,35 @@ internal sealed class TriggerSequences
         return asked;
     }
 
+    /// <summary>
+    /// The lifecycles with trigger points a step can reach, whatever its places (decisions 11 and 26): the running lifecycle; and when the
+    /// step's verb is an object, link or own verb, every other lifecycle that governs the object, or with no object those that govern every
+    /// subject of the process. A scenario step's <c>assume</c> words may name team-code checks of these only (MQ9305).
+    /// </summary>
+    /// <param name="process">The process the step runs in.</param>
+    /// <param name="entity">The object's entity; <see langword="null"/> when the run has no object.</param>
+    /// <param name="verb">The step's verb (a verb step's, or the verb its event names); <see langword="null"/> for none.</param>
+    /// <returns>The lifecycles, the running one first, then the others by name then id.</returns>
+    public IReadOnlyList<Process> Reaching(Process process, Entity? entity, string? verb)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        var reached = new List<Process>();
+        if (_byId.ContainsKey(process.Id))
+            reached.Add(process);
+        if (!SpeaksOfObject(verb))
+            return reached;
+        var subjects = entity is null ? SubjectsOf(process) : null;
+        foreach (var other in entity is null ? _lifecycles : Governing(entity))
+        {
+            if (string.Equals(other.Id, process.Id, StringComparison.Ordinal))
+                continue;
+            if (entity is not null || (subjects!.Count > 0 && subjects.All(s => SubjectCoverage.Governs(_model, other, s))))
+                reached.Add(other);
+        }
+
+        return reached;
+    }
+
     /// <summary>The lifecycles with trigger points that govern an entity, by name then id, worked out once per entity.</summary>
     private IReadOnlyList<Process> Governing(Entity entity) =>
         _governing.GetOrAdd(entity.Id, _ => [.. _lifecycles.Where(l => SubjectCoverage.Governs(_model, l, entity))]);

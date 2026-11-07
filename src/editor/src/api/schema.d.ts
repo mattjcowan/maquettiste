@@ -3445,6 +3445,8 @@ export interface components {
             excludeMissing?: boolean | null;
             /** @description `resync-binding`: keep every attribute's name, even one that followed its column's name; the provenance entry still takes the column's new name. */
             keepNames?: boolean | null;
+            /** @description `refresh-scenario`: also write each step's `expect.triggerPoints`, the trigger points that ran in order (skipped ones left out); without it they are rewritten only where a step already expects them (trigger-points-design.md decision 28). */
+            triggerPoints?: boolean | null;
             /**
              * @description Materialize, `map-by-name`, `resync-binding`, `fold-into-stereotype`, `retag`, `tags-to-property`, `names-to-ids`, the reference-type refactors, `rename-verb` and `remove-verb`: the hash the caller read of each element it expects the operation to change or delete (the preview's
              *     updates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is
@@ -12717,6 +12719,11 @@ export interface components {
                  * @default false
                  */
                 keepNames?: boolean;
+                /**
+                 * @description refresh-scenario: also write each step's expect.triggerPoints, the trigger points that ran in order (skipped ones left out); without it they are rewritten only where a step already expects them.
+                 * @default false
+                 */
+                triggerPoints?: boolean;
             } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown))[];
             $defs: {
                 /** @description A name a batch declares with as and uses anywhere in the batch. */
