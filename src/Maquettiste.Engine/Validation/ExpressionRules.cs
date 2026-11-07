@@ -22,6 +22,14 @@ namespace Maquettiste.Engine.Validation;
 /// <param name="Fill">Adds the site's members to its scope's root.</param>
 internal sealed record ExprSite(string Pointer, Expr? Tree, bool Raw, string SubId, ExprSiteKind Kind, Action<ExprScope> Fill)
 {
+    private readonly string? _key;
+
+    /// <summary>
+    /// The key the site is found and lowered by: its <see cref="SubId"/>, but for a trigger point's <c>when</c>, which shares the point's id with
+    /// its condition (<see cref="ExprSites.WhenKey"/>).
+    /// </summary>
+    public string Key { get => _key ?? SubId; init => _key = value; }
+
     /// <summary>The type a value site must have.</summary>
     public ExprType? ValueType { get; init; }
 
@@ -131,6 +139,7 @@ internal static class ExprSites
 
                 AddSets(sites, model, process);
                 AddRights(sites, model, process);
+                AddTriggerPoints(sites, model, process);
                 break;
             case Constraint constraint:
                 sites.Add(new ExprSite("/condition", constraint.Condition, false, constraint.Id, ExprSiteKind.Check, _ => { }) { Constraint = constraint });
@@ -141,6 +150,23 @@ internal static class ExprSites
         }
 
         return sites;
+
+        // A lifecycle's trigger points (trigger-points-design.md decision 15): each one's when and a check's condition at a trigger site, each
+        // value it sets at a trigger set site, all in the point's scope (TriggerScope).
+        static void AddTriggerPoints(List<ExprSite> sites, ModelSnapshot model, Process process)
+        {
+            for (var i = 0; i < process.TriggerPoints.Count; i++)
+            {
+                var point = process.TriggerPoints[i];
+                var at = Ptr.At("/triggerPoints", i);
+                if (point.When is { } when)
+                    sites.Add(TriggerSite(model, process, point, at + "/when", when, point.Id, null) with { Key = WhenKey(point.Id) });
+                if (point.Condition is { } condition)
+                    sites.Add(TriggerSite(model, process, point, at + "/condition", condition, point.Id, null));
+                for (var j = 0; j < point.Sets.Count; j++)
+                    sites.Add(TriggerSite(model, process, point, Ptr.At(at + "/sets", j) + "/value", point.Sets[j].Value, point.Sets[j].Id, point.Sets[j].Attribute));
+            }
+        }
 
         // A lifecycle's rights (rights-design.md decisions 6 and 7): an inline right's condition reads the lifecycle's subjects; a named
         // right's is typed at each use against the lifecycle's subjects, though its tree lives in the named right's file. Only lifecycles
@@ -221,6 +247,121 @@ internal static class ExprSites
         (Right right, ExprSiteKind.Right) => NamedRightSite(model, right, null) with { Tree = null },
         _ => null,
     };
+
+    /// <summary>The key a trigger point's <c>when</c> is typed and lowered by: the point's id is its condition's.</summary>
+    /// <param name="pointId">The trigger point's id.</param>
+    /// <returns>The key.</returns>
+    internal static string WhenKey(string pointId) => pointId + "_when";
+
+    /// <summary>The name a trigger point's site reads the values before the verb under (trigger-points-design.md decision 14).</summary>
+    internal const string OldPrefix = "old";
+
+    /// <summary>
+    /// A trigger point's site (trigger-points-design.md decisions 12 to 15): a <c>when</c> or a check's condition, or with
+    /// <paramref name="attribute"/> the value of one of its sets, typed against that attribute.
+    /// </summary>
+    internal static ExprSite TriggerSite(ModelSnapshot model, Process process, ProcessTriggerPoint point, string pointer, Expr? tree, string subId, string? attribute)
+    {
+        var events = TriggerEvents(process, point);
+        ExprType? type = null;
+        if (attribute is not null && TriggerMembers(model, process, point, withBound: true).Attributes.FirstOrDefault(a => string.Equals(a.Id, attribute, StringComparison.Ordinal))
+            is { Collection: false } held && TypeOf(model, held.Type) is { IsAvailable: true } found)
+            type = found;
+        return new ExprSite(pointer, tree, false, subId, attribute is null ? ExprSiteKind.Trigger : ExprSiteKind.TriggerSet,
+            s => TriggerScope(s, model, process, point, events))
+        {
+            ValueType = type,
+            Payloads = events.Count > 0 ? [.. events.Select(e => e?.Payload.Select(a => a.Id).ToHashSet(StringComparer.Ordinal) ?? [])] : null,
+            Lifecycles = new ModelLifecycles(model, process, null),
+        };
+    }
+
+    /// <summary>
+    /// A site for text written for a trigger point not stored yet, or for a new one (<c>preview_expression</c> with <c>site</c> <c>trigger</c>
+    /// or <c>trigger-set</c>): the point's scope, or with no point the lifecycle's subjects and no payload. <see langword="null"/> when the
+    /// lifecycle has no such trigger point.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="lifecycle">The lifecycle.</param>
+    /// <param name="pointId">A trigger point's id, or <see langword="null"/>.</param>
+    /// <param name="attributeId">For a set's value, the attribute's id; else <see langword="null"/>.</param>
+    /// <returns>The site, with no tree.</returns>
+    public static ExprSite? FreeTrigger(ModelSnapshot model, Process lifecycle, string? pointId, string? attributeId)
+    {
+        var point = pointId is null || string.Equals(pointId, lifecycle.Id, StringComparison.Ordinal)
+            ? new ProcessTriggerPoint { Id = lifecycle.Id, Name = "", Type = TriggerPointType.Check, Verbs = [] }
+            : lifecycle.TriggerPoints.FirstOrDefault(t => string.Equals(t.Id, pointId, StringComparison.Ordinal));
+        return point is null ? null : TriggerSite(model, lifecycle, point, "", null, point.Id, attributeId);
+    }
+
+    /// <summary>
+    /// The events whose payload a trigger point may read (trigger-points-design.md decisions 4 and 13): when every verb it names is a move verb
+    /// or an own verb an event of its lifecycle names, the events of its lifecycle that send one of its verbs (on its transitions, when it
+    /// names some), and a <see langword="null"/> entry for a transition with no event that does one, which carries no payload. Empty
+    /// otherwise: then it reads no payload (MQ3102).
+    /// </summary>
+    internal static IReadOnlyList<ProcessEvent?> TriggerEvents(Process process, ProcessTriggerPoint point)
+    {
+        if (point.Verbs.Count == 0 || !point.Verbs.All(v => IsMoveVerb(v) || (!BuiltInVerbs.IsBuiltIn(v) && process.Events.Any(e => e.Verb == v))))
+            return [];
+        var transitions = process.Transitions.Where(t => point.Transitions.Count == 0 || point.Transitions.Contains(t.Id, StringComparer.Ordinal)).ToList();
+        var events = new List<ProcessEvent?>();
+        foreach (var e in process.Events.Where(e => e.Verb is { } v && point.Verbs.Contains(v, StringComparer.Ordinal)))
+        {
+            if (point.Transitions.Count == 0 || transitions.Any(t => t.Event == e.Id))
+                events.Add(e);
+        }
+
+        if (transitions.Any(t => t.Event is null && t.Verb is { } v && point.Verbs.Contains(v, StringComparer.Ordinal)))
+            events.Add(null);
+        return events;
+    }
+
+    /// <summary>Whether a verb is a move verb (trigger-points-design.md decision 4): a built-in verb of group <c>move</c>.</summary>
+    /// <param name="verb">The verb's key.</param>
+    /// <returns>Whether it is.</returns>
+    internal static bool IsMoveVerb(string verb) => BuiltInVerbs.Get(verb)?.Group == "move";
+
+    /// <summary>
+    /// What a trigger point reads and sets on its object (trigger-points-design.md decision 12): what every subject of its lifecycle holds under
+    /// one id, or with <c>entities</c> what every entity it names holds. Without <paramref name="withBound"/> the subjects' bound attributes are
+    /// left out, as a guard reads the object.
+    /// </summary>
+    internal static (IReadOnlyList<ModelAttribute> Attributes, IReadOnlyList<RelationEnd> Navigations) TriggerMembers(ModelSnapshot model, Process process,
+        ProcessTriggerPoint point, bool withBound)
+    {
+        IEnumerable<ProcessSubject> entries = point.Entities.Count == 0 ? process.Subjects : point.Entities.Select(id => new ProcessSubject { Id = id, Entity = id });
+        var bound = withBound ? new HashSet<string>(StringComparer.Ordinal) : process.Subjects.Select(s => s.BoundAttribute).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        return Held(model, entries, bound);
+    }
+
+    /// <summary>
+    /// What a trigger point's site reads (trigger-points-design.md decision 13): the object under <c>subject</c>, the same members before the
+    /// verb under <c>old</c>, and the payload of the events it may read; never the context, since a trigger point also runs outside a run.
+    /// </summary>
+    private static void TriggerScope(ExprScope scope, ModelSnapshot model, Process process, ProcessTriggerPoint point, IReadOnlyList<ProcessEvent?> events)
+    {
+        foreach (var e in events)
+        {
+            if (e is not null)
+                AddAttributes(scope.Root, model, e.Payload, "event");
+        }
+
+        var (attributes, navigations) = TriggerMembers(model, process, point, withBound: false);
+        AddAttributes(scope.Root, model, attributes, SubjectPrefix);
+        AddNavigations(scope.Root, model, navigations, SubjectPrefix);
+        if (scope.Old is { } old)
+        {
+            AddAttributes(old, model, attributes, OldPrefix);
+            AddNavigations(old, model, navigations, OldPrefix);
+        }
+    }
+
+    /// <summary>Whether a lifecycle's trigger points hold an expression or a set (trigger-points-design.md decision 3).</summary>
+    /// <param name="process">The process.</param>
+    /// <returns>Whether one does.</returns>
+    internal static bool TriggerData(Process process) =>
+        process.Use == ProcessUse.Lifecycle && process.TriggerPoints.Any(t => t.When is not null || t.Condition is not null || t.Sets.Count > 0);
 
     /// <summary>
     /// The site of a named right's condition (rights-design.md decision 7). Its scope is what every subject of every lifecycle that uses the
@@ -1121,12 +1262,16 @@ internal static class ExprSites
             ? new Dictionary<string, ModelAttribute>(StringComparer.Ordinal)
             : Held(model, process, new HashSet<string>(StringComparer.Ordinal)).Attributes.ToDictionary(a => a.Id, StringComparer.Ordinal);
 
-    private static (IReadOnlyList<ModelAttribute> Attributes, IReadOnlyList<RelationEnd> Navigations) Held(ModelSnapshot model, Process process, HashSet<string> bound)
+    private static (IReadOnlyList<ModelAttribute> Attributes, IReadOnlyList<RelationEnd> Navigations) Held(ModelSnapshot model, Process process, HashSet<string> bound) =>
+        Held(model, process.Subjects, bound);
+
+    private static (IReadOnlyList<ModelAttribute> Attributes, IReadOnlyList<RelationEnd> Navigations) Held(ModelSnapshot model, IEnumerable<ProcessSubject> entries,
+        HashSet<string> bound)
     {
         var named = new HashSet<string>(StringComparer.Ordinal);
         List<ModelAttribute>? attributes = null;
         List<RelationEnd>? navigations = null;
-        foreach (var entry in process.Subjects)
+        foreach (var entry in entries)
         {
             if (!named.Add(entry.Entity is { } id ? "e:" + id : "s:" + entry.Stereotype) || EntryMembers(model, entry) is not { } members)
                 continue;
@@ -1199,7 +1344,7 @@ internal static class ExprSites
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if (process.Guards.All(g => g.Condition is null) && !SetsData(process))
+        if (process.Guards.All(g => g.Condition is null) && !SetsData(process) && !TriggerData(process))
             return null;
         return SubjectDepths.GetValue(model, static _ => new()).GetValue(process, p =>
         {
@@ -1211,7 +1356,7 @@ internal static class ExprSites
             }
 
             // A set writes into the object's own row (object-effects-design.md section 7), so a process that sets data needs the row.
-            if (SetsData(p))
+            if (SetsData(p) || (p.Use == ProcessUse.Lifecycle && p.TriggerPoints.Any(t => t.Sets.Count > 0)))
                 depth ??= 0;
 
             return new StrongBox<int?>(depth);
@@ -1227,7 +1372,9 @@ internal static class ExprSites
     /// <param name="process">The process.</param>
     /// <returns>The guard and set ids.</returns>
     internal static IEnumerable<string> ConditionIds(Process process) =>
-        process.Guards.Where(g => g.Condition is not null).Select(g => g.Id).Concat(process.Actions.SelectMany(a => a.Sets).Select(s => s.Id));
+        process.Guards.Where(g => g.Condition is not null).Select(g => g.Id).Concat(process.Actions.SelectMany(a => a.Sets).Select(s => s.Id))
+            .Concat(process.Use != ProcessUse.Lifecycle ? [] : process.TriggerPoints.SelectMany(t =>
+                (t.When is null ? Enumerable.Empty<string>() : [WhenKey(t.Id)]).Concat(t.Condition is null ? [] : [t.Id]).Concat(t.Sets.Select(s => s.Id))));
 
     /// <summary>The processes a process invokes, directly or through the processes it invokes, each once and never itself, in walk order.</summary>
     /// <param name="model">The model.</param>
@@ -1324,7 +1471,7 @@ internal static class ExpressionRules
                 continue;
             if (problems.All(p => p.Severity != DiagnosticSeverity.Error))
             {
-                typedTrees[site.SubId] = typed;
+                typedTrees[site.Key] = typed;
                 if (element is Table or Stereotype)
                 {
                     var known = columns ??= ColumnsOf(model, element);
@@ -1372,7 +1519,7 @@ internal static class ExpressionRules
 
         if (element is Entity entity)
             CheckBindings(model, entity, trees, typedTrees, report);
-        if (element is Process { Use: not ProcessUse.Library } owner && ExprSites.SetsData(owner))
+        if (element is Process { Use: not ProcessUse.Library } owner && (ExprSites.SetsData(owner) || owner.TriggerPoints.Any(t => t.Sets.Count > 0)))
             CheckSets(model, owner, report);
     }
 
@@ -1440,6 +1587,25 @@ internal static class ExpressionRules
                 if (attribute.Derived is not null)
                     report.Add("MQ9802", $"The set's attribute '{attribute.Name}' is derived, worked out from others; remove the set.", at, set.Id);
                 else if (bound.Contains(attribute.Id))
+                    report.Add("MQ9802", $"The set's attribute '{attribute.Name}' holds a lifecycle's state, which only its chart moves; remove the set.", at, set.Id);
+            }
+        }
+
+        // A trigger point's sets, as an action's (trigger-points-design.md decision 3): once each, neither derived nor a lifecycle's state.
+        for (var i = 0; i < process.TriggerPoints.Count; i++)
+        {
+            var point = process.TriggerPoints[i];
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var members = point.Sets.Count == 0 ? null : ExprSites.TriggerMembers(model, process, point, withBound: true).Attributes.ToDictionary(a => a.Id, StringComparer.Ordinal);
+            for (var j = 0; j < point.Sets.Count; j++)
+            {
+                var set = point.Sets[j];
+                var at = Ptr.At(Ptr.At("/triggerPoints", i) + "/sets", j) + "/attribute";
+                if (!seen.Add(set.Attribute))
+                    report.Add("MQ9803", $"Trigger point '{point.Name}' sets '{AttributeName(model, set.Attribute)}' twice; remove the second set.", at, set.Id);
+                else if (members!.TryGetValue(set.Attribute, out var attribute) && attribute.Derived is not null)
+                    report.Add("MQ9802", $"The set's attribute '{attribute.Name}' is derived, worked out from others; remove the set.", at, set.Id);
+                else if (attribute is not null && bound.Contains(attribute.Id))
                     report.Add("MQ9802", $"The set's attribute '{attribute.Name}' holds a lifecycle's state, which only its chart moves; remove the set.", at, set.Id);
             }
         }

@@ -99,6 +99,8 @@ public sealed partial class ModelStore
         ["value"] = ExprSiteKind.Value,
         ["set"] = ExprSiteKind.Set,
         ["right"] = ExprSiteKind.Right,
+        ["trigger"] = ExprSiteKind.Trigger,
+        ["trigger-set"] = ExprSiteKind.TriggerSet,
     };
 
     /// <summary>
@@ -227,7 +229,16 @@ public sealed partial class ModelStore
         if (request.Text is not null && pointer is null)
         {
             if (!SiteKinds.TryGetValue(request.Site!, out var kind))
-                throw new ArgumentException($"site must be check, value, guard, set, right or the pointer of a site, not '{request.Site}'.", nameof(request));
+                throw new ArgumentException($"site must be check, value, guard, set, right, trigger, trigger-set or the pointer of a site, not '{request.Site}'.", nameof(request));
+            if (kind is ExprSiteKind.Trigger or ExprSiteKind.TriggerSet)
+            {
+                // Text for a trigger point names its lifecycle, or the trigger point itself (trigger-points-design.md section 9).
+                if (element is not Process { Use: ProcessUse.Lifecycle } lifecycle || (kind == ExprSiteKind.TriggerSet && string.IsNullOrEmpty(request.Attribute)))
+                    throw new ArgumentException("site trigger takes element, a lifecycle or one of its trigger points; trigger-set also takes attribute, the id of the attribute the value is for.", nameof(request));
+                return ExprSites.FreeTrigger(snapshot, lifecycle, sub, kind == ExprSiteKind.TriggerSet ? request.Attribute : null)
+                    ?? throw new ArgumentException($"'{sub}' is not a trigger point of lifecycle '{lifecycle.Name}'.", nameof(request));
+            }
+
             if (kind == ExprSiteKind.Set)
             {
                 if (element is not Process process || sub is null || string.IsNullOrEmpty(request.Attribute))

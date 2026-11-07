@@ -232,7 +232,7 @@ internal static class ExprResolution
     {
         foreach (var site in ExprSites.Of(model, element))
         {
-            if (!string.Equals(site.SubId, subId, StringComparison.Ordinal) || site.Tree is not { } tree)
+            if (!string.Equals(site.Key, subId, StringComparison.Ordinal) || site.Tree is not { } tree)
                 continue;
             var scope = ExprSites.Scope(model, element, model.GetDocument(element.Id), site, text: false);
             var problems = new List<Diagnostic>();

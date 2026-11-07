@@ -24,6 +24,9 @@ public sealed record ExprParse(Expr? Tree, Diagnostic? Problem, int Position = -
 /// </summary>
 public static class ExprText
 {
+    /// <summary>The name text writes before a path that reads the values before the verb, at a trigger point's site.</summary>
+    internal const string OldName = "old";
+
     private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
     {
         "and", "or", "not", "implies", "is", "null", "true", "false", "between", "in", "distinct", "from", "case", "when", "then", "else",
@@ -564,6 +567,10 @@ public static class ExprText
         {
             var start = Current.Position;
             var segments = Segments();
+            // old. reads the values before the verb, only at a trigger point's site (trigger-points-design.md decision 14).
+            if (_scope.Old is { } old && segments.Count >= 2 && string.Equals(segments[0], OldName, StringComparison.Ordinal)
+                && Resolve(old, segments, 0, []) is { } before)
+                return new Expr { Path = before, Old = true };
             if (Resolve(_scope.Root, segments, 0, []) is { } path)
                 return new Expr { Path = path };
             var text = string.Join('.', segments);
@@ -773,7 +780,7 @@ public static class ExprText
 
             if (e.Path is { } path)
             {
-                Path(path);
+                Path(path, e.Old == true);
                 return;
             }
 
@@ -1008,10 +1015,12 @@ public static class ExprText
 
         private void String(string text) => sb.Append('\'').Append(text.Replace("'", "''", StringComparison.Ordinal)).Append('\'');
 
-        private void Path(IReadOnlyList<string> path)
+        private void Path(IReadOnlyList<string> path, bool old)
         {
-            var container = scope.Root;
+            var container = old && scope.Old is { } before ? before : scope.Root;
             var parts = new List<string>();
+            if (old && scope.Old is null)
+                parts.Add(OldName);
             for (var i = 0; i < path.Count; i++)
             {
                 if (container is null)

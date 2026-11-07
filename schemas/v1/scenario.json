@@ -548,8 +548,9 @@
               "default": {}
             },
             "checkWarnings": {
-              "description": "The ids of exactly the checks that warned (MQ9310). Absent checks nothing; empty expects none.",
-              "$ref": "common.json#/$defs/idList"
+              "description": "The ids of exactly the checks that warned, each once, in the order it first warned (MQ9310). Absent checks nothing; empty expects none.",
+              "$ref": "common.json#/$defs/idList",
+              "uniqueItems": true
             },
             "triggerPoints": {
               "description": "The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked.",

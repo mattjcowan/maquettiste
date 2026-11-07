@@ -1002,7 +1002,7 @@ public sealed record StepExpectation
     public IReadOnlyDictionary<string, JsonElement> Values { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
 
     /// <summary>
-    /// The ids of exactly the checks that warned (trigger-points-design.md decision 28; MQ9310); <see langword="null"/> checks nothing, and an
+    /// The ids of exactly the checks that warned, each once (trigger-points-design.md decision 28; MQ9310); <see langword="null"/> checks nothing, and an
     /// empty list expects none.
     /// </summary>
     [ElementRef(IndexKinds = ["process-trigger-point"])]

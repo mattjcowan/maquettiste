@@ -52,6 +52,13 @@ internal static class VerbRules
                         CheckUse(context.Model, right.Verbs[k], Ptr.At(Ptr.At("/rights", i) + "/verbs", k), right.Id, $"Right '{right.Name}'", report);
                 }
 
+                for (var i = 0; i < process.TriggerPoints.Count; i++)
+                {
+                    var point = process.TriggerPoints[i];
+                    for (var k = 0; k < point.Verbs.Count; k++)
+                        CheckUse(context.Model, point.Verbs[k], Ptr.At(Ptr.At("/triggerPoints", i) + "/verbs", k), point.Id, $"Trigger point '{point.Name}'", report);
+                }
+
                 break;
             case Operation { Verb: { } operationVerb } operation:
                 CheckUse(context.Model, operationVerb, "/verb", operation.Id, $"Operation '{operation.Name}'", report);

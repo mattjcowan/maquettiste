@@ -11171,7 +11171,7 @@ components:
           description: The id of the element the step expects to refuse it (rights-design.md decision 26); absent when the file gives none.
         checkWarnings:
           type: array
-          description: The ids of the checks the step expects to warn (trigger-points-design.md decision 28); absent when the file gives none.
+          description: The ids of the checks the step expects to warn, each once (trigger-points-design.md decision 28); absent when the file gives none.
           items:
             type: string
         triggerPoints:
@@ -15130,7 +15130,7 @@ components:
           items:
             $ref: '#/components/schemas/TriggerPointRun'
         checkWarnings:
-          description: The ids of the checks that warned, in run order (trigger-points-design.md decision 28); a step's `expect.checkWarnings` is compared with it (MQ9310). Left out when none did.
+          description: The ids of the checks that warned, each once, in the order it first warned (trigger-points-design.md decision 28); a step's `expect.checkWarnings` is compared with it (MQ9310). Left out when none did.
           type: array
           items:
             $ref: '#/components/schemas/Ulid'

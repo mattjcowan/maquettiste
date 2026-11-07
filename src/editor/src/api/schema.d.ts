@@ -4567,7 +4567,7 @@ export interface components {
             refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-repeat" | "gate-reason" | "right" | "default" | "frozen" | "check";
             /** @description The id of the element the step expects to refuse it (rights-design.md decision 26); absent when the file gives none. */
             refusedBy?: string;
-            /** @description The ids of the checks the step expects to warn (trigger-points-design.md decision 28); absent when the file gives none. */
+            /** @description The ids of the checks the step expects to warn, each once (trigger-points-design.md decision 28); absent when the file gives none. */
             checkWarnings?: string[];
             /** @description The ids of the trigger points the step expects to run, in run order (trigger-points-design.md decision 28); absent when the file gives none. */
             triggerPoints?: string[];
@@ -6661,7 +6661,7 @@ export interface components {
              *     Checks run on candidates that were not taken are left out, and so are their warnings. Left out when none matched.
              */
             triggerPoints?: components["schemas"]["TriggerPointRun"][];
-            /** @description The ids of the checks that warned, in run order (trigger-points-design.md decision 28); a step's `expect.checkWarnings` is compared with it (MQ9310). Left out when none did. */
+            /** @description The ids of the checks that warned, each once, in the order it first warned (trigger-points-design.md decision 28); a step's `expect.checkWarnings` is compared with it (MQ9310). Left out when none did. */
             checkWarnings?: components["schemas"]["Ulid"][];
             /**
              * @description Whether the subject is frozen after the input (rights-design.md section 7): true from an accepted `freeze`, or a start with
@@ -11502,7 +11502,7 @@ export interface components {
                 values?: {
                     [key: string]: unknown;
                 };
-                /** @description The ids of exactly the checks that warned (MQ9310). Absent checks nothing; empty expects none. */
+                /** @description The ids of exactly the checks that warned, each once, in the order it first warned (MQ9310). Absent checks nothing; empty expects none. */
                 checkWarnings?: components["schemas"]["idList"];
                 /** @description The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked. */
                 triggerPoints?: components["schemas"]["idList"];
@@ -11743,7 +11743,7 @@ export interface components {
                         values?: {
                             [key: string]: unknown;
                         };
-                        /** @description The ids of exactly the checks that warned (MQ9310). Absent checks nothing; empty expects none. */
+                        /** @description The ids of exactly the checks that warned, each once, in the order it first warned (MQ9310). Absent checks nothing; empty expects none. */
                         checkWarnings?: components["schemas"]["idList"];
                         /** @description The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked. */
                         triggerPoints?: components["schemas"]["idList"];

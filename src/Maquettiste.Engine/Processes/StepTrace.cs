@@ -287,7 +287,7 @@ public sealed record StepTrace(
     public IReadOnlyList<TriggerPointRun>? TriggerPoints { get; init; }
 
     /// <summary>
-    /// The ids of the checks that warned, in run order (trigger-points-design.md decisions 6 and 28); a step's <c>expect.checkWarnings</c> is
+    /// The ids of the checks that warned, each once, in the order it first warned (trigger-points-design.md decisions 6 and 28); a step's <c>expect.checkWarnings</c> is
     /// compared with it (MQ9310). <see langword="null"/>, and left out of the JSON, when none did.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

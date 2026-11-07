@@ -99,6 +99,7 @@ internal static partial class BuiltinRules
 
         VerbRules.Check(context, element, report);
         RightRules.Check(context, element, report);
+        TriggerRules.Check(context, element, report);
     }
 
     // ---- MQ3022: a package diagram without a package ----
