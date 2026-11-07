@@ -200,6 +200,9 @@ internal static class ProcessCommand
                     if (s.Failure is { } f)
                         text.Append(string.Create(CultureInfo.InvariantCulture, $": {f.Rule} at {(f.Step < 0 ? "outcome" : "step " + f.Step)}: {f.Message}"));
                     text.Append('\n');
+                    // A scenario that passes may still warn, such as MQ9309 for a step refused as frozen after an earlier step froze it.
+                    foreach (var w in s.Warnings ?? [])
+                        text.Append("  warn  ").Append(w.Rule).Append(w.JsonPointer is { } at ? " at " + at : "").Append(": ").Append(w.Message).Append('\n');
                 }
             }
 

@@ -25607,6 +25607,13 @@
                 "type": "null"
               }
             ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Diagnostic"
+            },
+            "description": "The replay's warnings on the scenario, in the order it found them, each at the scenario's file and the step's pointer. A scenario that passes may still have them: MQ9309 names a step refused as frozen after an earlier step froze the subject or a link (rights-design.md decision 16), and the step that froze it. Left out when there are none."
           }
         }
       },

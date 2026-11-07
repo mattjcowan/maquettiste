@@ -527,6 +527,57 @@ public sealed class RightsReplayTests
         }
     }
 
+    // Part 2's no change (rights-design.md section 14): a project that uses part 1 rights but no freezing and no attribute rights, and one
+    // without rights, keep their traces and recorded expectations byte for byte. The hash was taken from the engine before freezing took effect.
+    [Fact]
+    public async Task A_project_without_freezing_or_attribute_rights_keeps_its_traces_and_recordings_byte_for_byte()
+    {
+        var (h, store) = await OpenAsync(vocabulary: true);
+        using var _ = h;
+        await using var __ = store;
+        var titled = $",\"values\":{{\"{Title}\":\"Pump spec\"}}";
+        var link = $",\"end\":\"{Components}\",\"object\":\"{Pump}\"";
+        var runs = new (string Process, JsonElement[] Steps, JsonElement[]? Objects, string? Subject)[]
+        {
+            (Documents, [Verb("modify", "p2", titled), Verb("modify", "p1", titled), Verb("read", "p3"), Verb("archive", "p1"), Verb("disconnect", "p1", link),
+                Event(Release, "p2"), Event(Submit, "p1"), Verb("connect", "p1", link), Verb("modify", "p1", link), Event(Release, "p3"), Verb("delete", "p1"),
+                Event(Submit, "p1")], SpecObjects(), Spec),
+            (Documents, [Verb("modify", "p1", titled), Event(Submit, "p1"), Event(Release, "p3")], null, null),
+            (Onboarding, [Event(Update, "p4"), Event(Update, "p5")], [Json($$"""{"id":"{{Eve}}","name":"eve","entity":"{{Employee}}"}""")], Eve),
+            (Loose, [Event(Poke, "p4")], null, null),
+        };
+        var text = new StringBuilder();
+        foreach (var (process, steps, objects, subject) in runs)
+        {
+            var result = await SimulateAsync(store, process, steps, objects, subject);
+            text.Append(JsonSerializer.Serialize(result.Trace, EngineJson.Options)).Append('\n');
+            var recorded = await store.RecordScenarioAsync(process, new RecordScenarioRequest
+            {
+                // Recording mints the objects' ids again, so link steps are simulated only.
+                Name = "run" + text.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), Objects = objects, Subject = subject, Participants = People(), Steps = [.. steps.Where(s => !s.TryGetProperty("end", out var _))],
+            }, false, ChangeSource.Editor, Ct);
+            Assert.True(recorded.Status is ProcessCallStatus.Ok, process + " " + steps.Length + " " + recorded.Detail + string.Join(" | ", recorded.Diagnostics.Select(d => d.Message)));
+            foreach (var step in recorded.Value!.Element.GetProperty("steps").EnumerateArray())
+                text.Append(step.TryGetProperty("expect", out var expect) ? expect.GetRawText() : "-").Append('\n');
+            text.Append(recorded.Value.Element.TryGetProperty("outcome", out var outcome) ? outcome.GetRawText() : "-").Append('\n');
+        }
+
+        using var plain = new LoaderHarness();
+        plain.CopyFixture("models", "process-basics");
+        await using var basics = new ModelStore(plain.Options, plain.Services());
+        await basics.LoadAsync(Ct);
+        using var runtime = new ProcessRuntime(basics.Current!, 1, Ct);
+        foreach (var scenario in basics.Current!.All<Scenario>().OrderBy(s => s.Id, StringComparer.Ordinal))
+        {
+            var replay = ScenarioReplayer.Replay(scenario, runtime)!;
+            text.Append(JsonSerializer.Serialize(replay.Steps, EngineJson.Options)).Append('\n');
+            text.Append(JsonSerializer.Serialize(replay.Observed().Steps.Select(ProcessApi.ExpectNode), EngineJson.Options)).Append('\n');
+        }
+
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
+        Assert.Equal("1B5A7854B209FB564FB53A1FF11D8DEF610807512BFA728928107CFB08860F10", hash);
+    }
+
     private static async Task<BatchResult> ApplyAsync(ModelStore store, string operation)
     {
         var parsed = store.ParseBatch(Encoding.UTF8.GetBytes("{\"operations\":[" + operation + "]}"));

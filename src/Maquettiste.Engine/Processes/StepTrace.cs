@@ -219,6 +219,13 @@ public sealed record StepTrace(
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Frozen { get; init; }
 
+    /// <summary>
+    /// For an input refused as frozen: the index of the step that froze the subject or the link, -1 when the run started it frozen (MQ9309).
+    /// Not part of the trace's JSON.
+    /// </summary>
+    [JsonIgnore]
+    internal int? FrozenBy { get; init; }
+
     /// <summary>Whether a guard's result was missing (MQ9306): what followed in this input is not meaningful.</summary>
     public bool Incomplete => Guards.Any(g => g.Source == GuardSource.Missing) || Diagnostics.Any(d => d.Rule is "MQ9305" or "MQ9507");
 }

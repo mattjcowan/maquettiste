@@ -88,6 +88,11 @@ public sealed class StatechartInterpreter
     private bool _started;
     // The object was deleted by a verb step (rights-design.md decision 25): the chart stops where it stood.
     private bool _deleted;
+    // Whether the subject is frozen, and the index of the step that froze it (-1: the run started it frozen); the subject's frozen links the
+    // same way, by relation end and linked object (rights-design.md decision 16).
+    private bool _frozen;
+    private int _frozeAt = -1;
+    private readonly Dictionary<(string End, string Object), int> _frozenLinks = [];
     private Scope _scope = new(null);
 
     /// <summary>Creates an interpreter for one instance of a chart.</summary>
@@ -100,6 +105,12 @@ public sealed class StatechartInterpreter
         _root = new Instance(chart, null, null, 0);
         _subject = _options.Subject is { ValueKind: JsonValueKind.Object } subject ? subject : NoObject;
         _current = _subject;
+        if (_options.Rights is { } rights)
+        {
+            _frozen = rights.StartsFrozen;
+            foreach (var link in rights.FrozenLinks)
+                _frozenLinks.TryAdd(link, -1);
+        }
     }
 
     /// <summary>The values the run's sets gave the object so far, by attribute id (object-effects-design.md decision 4).</summary>
@@ -209,9 +220,10 @@ public sealed class StatechartInterpreter
         }
 
         var ev = target.Chart.Events[input.Event!];
+        var root = ReferenceEquals(target, _root);
         // The root's events answer to rights before any guard picks a transition (rights-design.md decisions 12 to 14), with the signers of the
         // gates the event can reach as an allow; an invoked sub-process sees no object, so its events answer to their own actors only.
-        if (ReferenceEquals(target, _root) && _options.Rights is { Uses: true } rights)
+        if (root && _options.Rights is { Uses: true } rights)
         {
             var decision = CheckRights(rights, ev.Verb, [new RightsList(ev.Id, ev.Actors)], GateSigners(target, ev.Id), null);
             if (decision is { Allowed: false, Refusal: { } refusal })
@@ -220,12 +232,24 @@ public sealed class StatechartInterpreter
                 return;
             }
         }
-        else if (ev.Actors.Count > 0 && (input.Actor is null || !Allows(ev.Actors, input.Actor)))
+        else
         {
-            Refuse(Refusals.Actor, ev.Id);
-            return;
+            // Freezing refuses first (decision 17), in a project without rights too: naming freeze is the opt-in (decision 16). With no end
+            // known, a frozen link of the subject refuses disconnect.
+            if (root && RightsEvaluator.RefusedByFreezing(ev.Verb, null, _frozen, _frozenLinks.Count > 0))
+            {
+                Refuse(Refusals.Frozen);
+                return;
+            }
+
+            if (ev.Actors.Count > 0 && (input.Actor is null || !Allows(ev.Actors, input.Actor)))
+            {
+                Refuse(Refusals.Actor, ev.Id);
+                return;
+            }
         }
 
+        _scope.Thaws = root && string.Equals(ev.Verb, "thaw", StringComparison.Ordinal);
         _scope.Event = EventObject(ev.Name, input.Actor, ev.Payload, input.Payload);
         Macrostep(() =>
         {
@@ -242,6 +266,10 @@ public sealed class StatechartInterpreter
             Propagate(target);
             return true;
         });
+
+        // An accepted event that names freeze or thaw freezes or thaws the subject (decision 16), after its move.
+        if (root && _scope.Refusal is null && ev.Verb is "freeze" or "thaw")
+            Freeze(ev.Verb == "freeze", null, null);
     }
 
     private void HandleTime(ScenarioStep input)
@@ -359,9 +387,15 @@ public sealed class StatechartInterpreter
             return;
         }
 
-        if (rights is not null && CheckRights(rights, verb, [], [], input.End) is { Allowed: false, Refusal: { } refusal } decision)
+        if (rights is not null && CheckRights(rights, verb, [], [], input.End, StepAttributes(input, verb)) is { Allowed: false, Refusal: { } refusal } decision)
         {
             Refuse(refusal, decision.RefusedBy);
+            return;
+        }
+
+        if (rights is null && RightsEvaluator.RefusedByFreezing(verb, input.End, _frozen, LinkFrozen(input.End, input.Object)))
+        {
+            Refuse(Refusals.Frozen);
             return;
         }
 
@@ -377,6 +411,9 @@ public sealed class StatechartInterpreter
 
                 Apply(values);
                 break;
+            case "freeze" or "thaw":
+                Freeze(verb == "freeze", input.End, input.Object);
+                break;
             case "delete" when input.End is null:
                 _deleted = true;
                 Note("The step deleted the object, so the process stops where it stood: later events, invokes and verb steps are refused, timers no longer fire, and time steps only move the clock.");
@@ -389,12 +426,70 @@ public sealed class StatechartInterpreter
         }
     }
 
+    // An accepted freeze or thaw (rights-design.md decision 16): of the subject, or with an end of its link to the object. Freezing what is
+    // frozen, or thawing what is not, changes nothing and says so.
+    private void Freeze(bool freeze, string? end, string? obj)
+    {
+        if (end is null)
+        {
+            if (_frozen == freeze)
+            {
+                Note(freeze ? "The object was already frozen, so freeze changed nothing." : "The object was not frozen, so thaw changed nothing.");
+                return;
+            }
+
+            (_frozen, _frozeAt) = (freeze, _index);
+            return;
+        }
+
+        var link = (end, obj ?? "");
+        if (_frozenLinks.ContainsKey(link) == freeze)
+        {
+            Note(freeze ? "The link was already frozen, so freeze changed nothing." : "The link was not frozen, so thaw changed nothing.");
+            return;
+        }
+
+        if (freeze)
+            _frozenLinks[link] = _index;
+        else
+            _frozenLinks.Remove(link);
+    }
+
+    // Whether the link a verb acts on is frozen; with no end known, whether a link of the subject is (rights-design.md decision 17).
+    private bool LinkFrozen(string? end, string? obj) => end is null ? _frozenLinks.Count > 0 : _frozenLinks.ContainsKey((end, obj ?? ""));
+
+    // The attributes a verb step reads or modifies on the subject (rights-design.md decision 21): a modify step's values, in ordinal order, and
+    // a read step's attributes; null when it names none, which the check reads as not known.
+    private static IReadOnlyList<string>? StepAttributes(ScenarioStep input, string verb) => verb switch
+    {
+        "modify" when input.End is null && input.Values is { Count: > 0 } values => [.. values.Keys.Order(StringComparer.Ordinal)],
+        "read" when input.End is null && input.Attributes is { Count: > 0 } attributes => attributes,
+        _ => null,
+    };
+
+    // The index of the step that froze what refused the input as frozen (MQ9309): the subject's freeze, else the link's; -1 when the run
+    // started it frozen. With no end known, the latest freeze of a link.
+    private int? FrozeBy(ScenarioStep? input)
+    {
+        if (input is null)
+            return null;
+        var verb = input.Input == StepInput.Verb ? input.Verb : input.Event is { } e && Chart.Events.TryGetValue(e, out var ev) ? ev.Verb : null;
+        var end = input.Input == StepInput.Verb ? input.End : null;
+        if (_frozen && (end is null || verb is "connect" or "disconnect"))
+            return _frozeAt;
+        if (end is not null)
+            return _frozenLinks.TryGetValue((end, input.Object ?? ""), out var at) ? at : null;
+        return _frozenLinks.Count > 0 ? _frozenLinks.Values.Max() : null;
+    }
+
     // Asks the run's rights check for the root, with the input as it runs, and puts its notes, findings and answering rights in the trace.
-    private RightsDecision CheckRights(RunRights rights, string? verb, IReadOnlyList<RightsList> closed, IReadOnlyList<RightsList> signers, string? end)
+    private RightsDecision CheckRights(RunRights rights, string? verb, IReadOnlyList<RightsList> closed, IReadOnlyList<RightsList> signers, string? end,
+        IReadOnlyList<string>? attributes = null)
     {
         var result = rights.Check(new RunCheck
         {
             Verb = verb, Closed = closed, Signers = signers, End = end, Step = _scope.Input!,
+            Frozen = _frozen, LinkFrozen = LinkFrozen(end, _scope.Input?.Object), Attributes = attributes,
             Running = [.. _root.Config.Where(s => !s.IsRoot).OrderBy(s => s.Order).Select(s => s.Id)],
             Identity = Identity(), Clock = ClockText(), Subject = _current, Values = _values, Seed = Seed(_root),
         });
@@ -820,7 +915,12 @@ public sealed class StatechartInterpreter
         }
 
         if (sets is not null)
+        {
+            // Freezing doesn't stop moves, and a move's sets are part of it (rights-design.md decision 17); a thaw's own move runs thawed.
+            if (sets.Count > 0 && _frozen && !_scope.Thaws)
+                Note("The object is frozen, but the move's sets applied: freezing stops modify, connect, disconnect and delete, not moves. A whileFrozen deny on the move's verb stops it.");
             Apply(sets);
+        }
         foreach (var raised in action.Raises)
         {
             if (inst.Chart.Events.ContainsKey(raised))
@@ -1363,6 +1463,8 @@ public sealed class StatechartInterpreter
             // Written in a project that uses rights, and for a step that expects it, so today's traces keep their members (decision 26).
             RefusedBy = _scope.RefusedBy is { } by && (_options.Rights is { Uses: true } || _scope.Input?.Expect?.RefusedBy is not null) ? by : null,
             Rights = _scope.Rights.Count > 0 ? [.. _scope.Rights] : null,
+            Frozen = _frozen,
+            FrozenBy = _scope.Refusal == Refusals.Frozen ? FrozeBy(_scope.Input) : null,
         };
     }
 
@@ -1513,6 +1615,7 @@ public sealed class StatechartInterpreter
         public string? RefusedBy { get; set; }
         public List<RightEvaluation> Rights { get; } = [];
         public bool HumanTask { get; set; }
+        public bool Thaws { get; set; }
         public string? Identity { get; init; }
         public Dictionary<string, JsonElement> ValuesBefore { get; } = new(StringComparer.Ordinal);
         public List<string> Notes { get; } = [];

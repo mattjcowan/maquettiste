@@ -190,7 +190,12 @@ public sealed record SimulationResult(string ProcessHash, IReadOnlyList<StepTrac
 /// <param name="Passed">Whether it ran to the end and every expectation held.</param>
 /// <param name="Steps">The scenario's step count.</param>
 /// <param name="Failure">The first failure.</param>
-public sealed record ScenarioVerification(string Scenario, string Name, bool Passed, int Steps, ScenarioFailure? Failure);
+/// <param name="Warnings">The replay's warnings on the scenario, such as MQ9309 for a step refused as frozen after an earlier step froze
+/// the subject or a link (rights-design.md decision 16), which a scenario that passes still has; <see langword="null"/>, and left out of the
+/// JSON, when there are none.</param>
+public sealed record ScenarioVerification(string Scenario, string Name, bool Passed, int Steps, ScenarioFailure? Failure,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<Diagnostic>? Warnings = null);
 
 /// <summary>The response of <c>verify</c>.</summary>
 /// <param name="Process">The process id.</param>
@@ -661,11 +666,22 @@ public static class ProcessApi
             {
                 var scenario = selected[i];
                 var replay = ScenarioReplayer.Replay(scenario, runtime);
-                results[i] = new ScenarioVerification(scenario.Id, scenario.Name, replay?.Passed ?? false, scenario.Steps.Count, replay is null ? null : FailureOf(replay));
+                results[i] = new ScenarioVerification(scenario.Id, scenario.Name, replay?.Passed ?? false, scenario.Steps.Count, replay is null ? null : FailureOf(replay),
+                    replay is null ? null : WarningsOf(replay));
             });
         }
 
         return (new VerifyResult(process.Id, results), null);
+    }
+
+    /// <summary>The warnings of a replay, in the order it found them, such as MQ9309; <see langword="null"/> when it has none.</summary>
+    /// <param name="replay">The replay.</param>
+    /// <returns>The warnings, or null.</returns>
+    public static IReadOnlyList<Diagnostic>? WarningsOf(ScenarioReplay replay)
+    {
+        ArgumentNullException.ThrowIfNull(replay);
+        var warnings = replay.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Warning).ToList();
+        return warnings.Count > 0 ? warnings : null;
     }
 
     /// <summary>The first failure of a replay: its failed expectation, else its first error (a stop at MQ9305, MQ9306 or MQ9507).</summary>
