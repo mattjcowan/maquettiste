@@ -390,6 +390,7 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
       clip: "max-w-20",
       mono: true,
       value: (r) => r.when || ALWAYS,
+      cellTitle: (r) => r.when || ALWAYS,
       onOpen: (r) => setDialog({ kind: "when", id: r.id }),
     },
     {
@@ -413,7 +414,16 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
       cellTitle: (r) => r.details,
       onOpen: (r) => setDialog({ kind: "details", id: r.id }),
     },
-    { key: "why", label: A.columns.why, tooltip: A.tips.why, kind: "text", width: "min-w-20", clip: "max-w-28", value: (r) => r.why },
+    {
+      key: "why",
+      label: A.columns.why,
+      tooltip: A.tips.why,
+      kind: "text",
+      width: "min-w-20",
+      clip: "max-w-28",
+      value: (r) => r.why,
+      cellTitle: (r) => r.why || undefined,
+    },
   ];
   const groups = roundGroups(g);
   const stageIndex = (id: string) => (g.stages ?? []).findIndex((s) => s.id === id);
@@ -486,8 +496,8 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    label={A.removeStage(stage.name)}
-                    title={A.removeStageTip}
+                    label={A.removeStage(stage.name, stage.signatures.length)}
+                    title={(g.stages ?? []).length <= 1 ? A.removeLastStageTip : A.removeStageTip(stage.name, stage.signatures.length)}
                     disabled={(g.stages ?? []).length <= 1}
                     data-testid="remove-stage"
                     onClick={() => {

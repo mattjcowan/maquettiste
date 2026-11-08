@@ -649,6 +649,8 @@ export const SIMULATION_LABELS = {
   delegateTo: "Delegate to",
   onBehalfOf: "On behalf of",
   noOne: "(no one)",
+  /** Why Delegate and On behalf of are off when the scenario has no participants. */
+  noDelegate: "A delegation needs a participant to go to. Add participants on the scenario's Participants tab.",
   /** The Approvals section and the response and signature fields of an enabled approval. */
   approvals: "Approvals",
   noApprovals: "No approval is open.",
@@ -1199,8 +1201,9 @@ export const APPROVAL_LABELS = {
   skipUnlessTitle: (name: string) => `Skip unless, ${name}`,
   skipUnlessHint: "Judged when the stage's round starts. Only false skips the stage: true or unknown means it runs. Empty means never skipped.",
   never: "Never",
-  removeStage: (name: string) => `Remove the stage ${name}`,
-  removeStageTip: "Removes the stage and its signatures",
+  removeStage: (name: string, signatures: number) => `Remove stage ${name} and its ${signatures} ${signatures === 1 ? "signature" : "signatures"}`,
+  removeStageTip: (name: string, signatures: number) => `Remove stage ${name} and its ${signatures} ${signatures === 1 ? "signature" : "signatures"}`,
+  removeLastStageTip: "An approval needs at least one stage, so the last one can't be removed. Use Back to one list of signers instead.",
   lastStage: "An approval needs at least one stage. Use Back to one list of signers instead.",
   addSignatureTo: (stage: string) => `Add signature to ${stage}`,
   details: "Details",

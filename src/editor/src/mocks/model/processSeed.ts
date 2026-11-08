@@ -248,12 +248,18 @@ const issueApproval: Json = {
       ],
     },
     {
-      // Round 2 starts when the review is complete, and the stage is skipped unless the total is very large.
+      // Round 2 starts when the review is complete. The stage is skipped unless the total isn't negative, so the default subject runs it.
       id: APR(6),
       name: "Release",
       round: 2,
-      when: { text: "subject.total > 100000" },
+      when: { text: "subject.total >= 0" },
       signatures: [
+        {
+          id: APR(8),
+          name: "Controller",
+          signers: [APPROVER],
+          description: "Always needed in round 2.",
+        },
         {
           id: APR(7),
           name: "Director",

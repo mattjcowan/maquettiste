@@ -78,11 +78,11 @@ export function hasQuickFix(rule: string, catalogFix: string | null | undefined)
 
 /**
  * True when the fix of a finding in an unsaved draft can still be offered: it edits the project's verbs, not the draft
- * (MQ9701, "add it to the project's verbs") or rewrites the draft itself (MQ8201, which the server would refuse to save as it
+ * (MQ9701, "add it to the project's verbs") or rewrites the draft itself (MQ8201, MQ8203 and MQ8204, which the server would refuse to save as it
  * is). Every other fix reads the saved document and waits for the draft to save.
  */
 export function hasDraftQuickFix(rule: string): boolean {
-  return rule === "MQ9701" || rule === "MQ8201";
+  return rule === "MQ9701" || rule === "MQ8201" || rule === "MQ8203" || rule === "MQ8204";
 }
 
 const str = (value: unknown): string | undefined => (typeof value === "string" && value ? value : undefined);

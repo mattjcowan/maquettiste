@@ -980,7 +980,7 @@ function EnabledRowView({
   return (
     <li data-trigger={row.trigger} data-label={row.label}>
       <div
-        className={cn(ROW, "focus-visible:bg-accent-subtle focus-visible:outline-none")}
+        className={cn(ROW, "h-auto min-h-[var(--mq-row-h)] flex-wrap py-0.5 focus-visible:bg-accent-subtle focus-visible:outline-none")}
         tabIndex={0}
         role="group"
         aria-label={L.raiseRow(row.label, n)}
@@ -1112,11 +1112,17 @@ function EnabledRowView({
                   id={`sim-${row.key}-response`}
                   className={cn(FIELD, "flex-1")}
                   value={value.response || "sign"}
+                  title={responses.includes("delegate") && !participants.length ? L.noDelegate : undefined}
                   onChange={(e) => onEdit({ response: e.target.value })}
                   data-testid="enabled-response"
                 >
                   {responses.map((r) => (
-                    <option key={r} value={r}>
+                    <option
+                      key={r}
+                      value={r}
+                      disabled={r === "delegate" && !participants.length}
+                      title={r === "delegate" && !participants.length ? L.noDelegate : undefined}
+                    >
                       {L.responseWords[r] ?? r}
                     </option>
                   ))}

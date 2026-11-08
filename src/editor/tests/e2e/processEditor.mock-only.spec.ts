@@ -71,9 +71,9 @@ test("a lifecycle opens on its chart and every tab shows its part of the process
   await expect(editor.getByTestId("approval-stage").first()).toHaveValue("Review");
   await expect(editor.getByTestId("approval-stage").nth(1)).toHaveValue("Release");
   await expect(editor.getByTestId("stage-round").nth(1)).toHaveValue("2");
-  await expect(editor.getByTestId("stage-when").nth(1)).toContainText("subject.total > 100000");
+  await expect(editor.getByTestId("stage-when").nth(1)).toContainText("subject.total >= 0");
   await expect(editor.getByTestId("signatures-grid")).toHaveCount(2);
-  await expect(rowsOf(editor, "signatures-grid")).toHaveCount(3);
+  await expect(rowsOf(editor, "signatures-grid")).toHaveCount(4);
   await expect(cell(rowsOf(editor, "signatures-grid").first(), "when")).toContainText("subject.total > 10000");
   await expect(cell(rowsOf(editor, "signatures-grid").nth(1), "notBy")).toHaveText("Promote");
   await expect(editor.getByTestId("gate-required")).toHaveCount(0);

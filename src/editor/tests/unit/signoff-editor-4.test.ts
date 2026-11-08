@@ -5,7 +5,7 @@ import { approvalRows, defaultRowValue, inputOf, lastStepLines, namesOf, type En
 import type { SimulationResult, StepTrace } from "@/editors/process/simulation/api";
 import { failureSentence } from "@/editors/scenario/replayFailure";
 import { gateDelegatorIds, hasNotices, mayDelegate } from "@/model/approvals";
-import { RIGHT_LABELS as L, SIMULATION_LABELS as SL } from "@/model/labels";
+import { APPROVAL_LABELS as A, RIGHT_LABELS as L, SIMULATION_LABELS as SL } from "@/model/labels";
 import { stepRows, type ProcessDoc, type ScenarioDoc } from "@/model/process";
 
 const process = {
@@ -171,5 +171,18 @@ describe("the simulation panel: rounds, delegation and notices", () => {
     } as unknown as StepTrace;
     const lines = lastStepLines(entry, namesOf(process, new Map()));
     expect(lines.find((l) => l.kind === "notice")?.text).toContain("escalation due");
+  });
+});
+
+describe("remove stage and delegate wording", () => {
+  it("names the signature count in the remove-stage label and tip, and says why the last stage stays", () => {
+    expect(A.removeStage("Release", 1)).toBe("Remove stage Release and its 1 signature");
+    expect(A.removeStageTip("Review", 2)).toBe("Remove stage Review and its 2 signatures");
+    expect(A.removeLastStageTip).toContain("at least one stage");
+  });
+
+  it("tells why Delegate is off without participants", () => {
+    expect(SL.noDelegate).toMatch(/participant to go to/);
+    expect(SL.noDelegate).toMatch(/Participants/);
   });
 });
