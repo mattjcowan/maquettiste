@@ -31,6 +31,32 @@
         "promote"
       ],
       "description": "Stamps the released document, after the named Stamp."
+    },
+    {
+      "id": "01JNT000000000000000000X02",
+      "name": "MarkRevised",
+      "type": "action",
+      "timing": "with-change",
+      "verbs": [
+        "modify"
+      ],
+      "attributes": [
+        "01JNT000000000000000000A12"
+      ],
+      "description": "Marks the document revised when its title changes."
+    },
+    {
+      "id": "01JNT000000000000000000X03",
+      "name": "NoteRevision",
+      "type": "action",
+      "timing": "with-change",
+      "verbs": [
+        "modify"
+      ],
+      "attributes": [
+        "01JNT000000000000000000A12"
+      ],
+      "description": "Notes the revision when the title changes."
     }
   ],
   "states": [

@@ -76,7 +76,7 @@ public sealed record TriggerPointCall
     /// <summary>The caller's id for the command, which makes the per-type runner's message ids stable; the runner needs it when after-commit work is queued.</summary>
     public string? CommandId { get; init; }
 
-    /// <summary>Whether a bulk load asks to skip the trigger points not marked noBypass (decisions 20 and 35). The per-type runner honours it only when the host's <see cref="ITriggerBypass"/> allows it, and logs each skip there.</summary>
+    /// <summary>Whether a bulk load asks to skip the checks and actions not marked noBypass (decisions 20 and 35); a replace always runs. The per-type runner honours it only when the host's <see cref="ITriggerBypass"/> allows it, and logs each skip there.</summary>
     public bool SkipOptional { get; init; }
 
     /// <summary>Whether the per-type runner only asks (decision 35): it runs freezing, rights, before actions and checks, then stops before the records and the effect and writes nothing, so a screen can learn whether the verb would be accepted and with which warnings. Outside points are recorded, not called.</summary>
@@ -154,7 +154,7 @@ public sealed class TriggerPointOutcome
     /// <summary>The trigger points a permitted bypass skipped, in order (decisions 20 and 35).</summary>
     public IReadOnlyList<string> Skipped => _skipped;
 
-    // Whether a point not marked noBypass is skipped: the call asks to skip, which the runner keeps only when the bypass allows it. Each
+    // Whether a check or an action not marked noBypass is skipped: the call asks to skip, which the runner keeps only when the bypass allows it. Each
     // skip is listed once.
     internal bool Skips(TriggerPointCall call, string id)
     {
@@ -278,14 +278,14 @@ public abstract class TriggerPointStandIn
 }
 
 /// <summary>
-/// Whether a bulk load may skip the trigger points not marked noBypass (trigger-points-design.md decisions 20 and 35): the host's
+/// Whether a bulk load may skip the checks and actions not marked noBypass (trigger-points-design.md decisions 20 and 35): the host's
 /// permission, as who is signed in is, not a right. The per-type runner asks it when a call sets <see cref="TriggerPointCall.SkipOptional"/>,
-/// honours the skip only when it allows it, and logs each skipped point here. Points marked noBypass always run. The team's TriggerBypass
-/// (Dispatch/TriggerBypass.cs) is the default; each runner takes another.
+/// honours the skip only when it allows it, and logs each skipped point here. Points marked noBypass, and replaces, always run. The team's
+/// TriggerBypass (Dispatch/TriggerBypass.cs) is the default; each runner takes another.
 /// </summary>
 public interface ITriggerBypass
 {
-    /// <summary>Whether the call may skip the trigger points not marked noBypass.</summary>
+    /// <summary>Whether the call may skip the checks and actions not marked noBypass.</summary>
     /// <param name="call">The call: the verb, the object, the envelope.</param>
     /// <returns>Whether it may.</returns>
     bool Allows(TriggerPointCall call);

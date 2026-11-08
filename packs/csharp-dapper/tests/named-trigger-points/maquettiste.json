@@ -5,6 +5,8 @@
     "csharp-dapper": {
       "output": "out",
       "parameters": {
+        "bulkLoadBypass": true,
+        "dryRun": true,
         "testsFolder": "Tests"
       }
     }

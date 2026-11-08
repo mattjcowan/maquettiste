@@ -638,8 +638,9 @@ public sealed class CompileTests
     {
         // trigger-points-design.md section 15, part 2: per-package TriggerPoints, TriggerConditions and TriggerRecords (a named Stamp beside
         // lifecycle Document's Stamp), a runner for a customer with no lifecycle that gets its number on create, exceptEntities tested on
-        // the object's type, named points before the lifecycle's in a process command, noBypass, the bypass stub refusing, a permitted
-        // skip logged, and a dry run that writes nothing, returns the warnings and records the outside point.
+        // the object's type (in a process, the type the handlers give), named points before the lifecycle's in a process command, two
+        // actions narrowed by attributes on one verb, noBypass, the bypass stub refusing, a permitted skip logged, and a dry run that writes
+        // nothing, logs no skip, returns the warnings and records the outside point.
         using var repo = PackRepo.NamedTriggerPoints();
         await repo.GenerateCleanlyAsync();
         Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "named-trigger-points", "expected"), repo.PathOf("out"));
@@ -703,7 +704,11 @@ public sealed class CompileTests
 
                 public static partial void Stamp(TriggerPointCall call) => Stamped.Add("named");
 
-                public static partial bool TitleWarning(TriggerPointCall call) => true;
+                public static partial bool TitleWarning(TriggerPointCall call) => false;
+
+                public static partial void TitleLog(TriggerPointCall call) => Stamped.Add("title log");
+
+                public static partial void TitleStamp(TriggerPointCall call) => Stamped.Add("title stamp");
             }
 
             """);
@@ -727,10 +732,57 @@ public sealed class CompileTests
             public static partial class DocumentTriggerPoints
             {
                 public static partial void Stamp(TriggerPointCall call) => TriggerPoints.Stamped.Add("lifecycle");
+
+                public static partial void MarkRevised(TriggerPointCall call) => TriggerPoints.Stamped.Add("revised");
+
+                public static partial void NoteRevision(TriggerPointCall call) => TriggerPoints.Stamped.Add("revision");
+            }
+
+            """);
+        repo.Write("out/Processes/Document/DocumentHandlers.cs", """
+            using System;
+            using App.Model.Runtime;
+
+            namespace App.Model.Docs;
+
+            public sealed partial class DocumentHandlers
+            {
+                public partial Type EntityOf(StatechartCall<DocumentContext> call) => call.Instance.StartsWith("m-", StringComparison.Ordinal) ? typeof(Memo) : typeof(Document);
+            }
+
+            """);
+        repo.Write("out/Docs/DocumentVerbs.cs", """
+            using System.Collections.Generic;
+            using App.Model.Processes;
+
+            namespace App.Model.Docs;
+
+            public sealed partial class DocumentVerbs
+            {
+                private static partial IReadOnlyList<string>? StatesInDocument(TriggerPointCall call) => ["Draft"];
             }
 
             """);
         await BuildAndRunScenarioTestsAsync(repo, "named-trigger-points", NamedTriggerPointsScenarioHost, 2);
+    }
+
+    [Fact]
+    public async Task Named_trigger_points_build_with_the_bypass_and_the_dry_run_off()
+    {
+        // Both pack parameters off: no ITriggerBypass, TriggerBypass.cs, SkipOptional or DryRun, the static outside run of part 1, and the
+        // project still builds with warnings as errors.
+        using var repo = PackRepo.NamedTriggerPointsOff();
+        await repo.GenerateCleanlyAsync();
+        Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "named-trigger-points-off", "expected"), repo.PathOf("out"));
+        Assert.False(File.Exists(repo.PathOf("out/Dispatch/TriggerBypass.cs")));
+        var shared = repo.Read("out/Processes/TriggerPoints.cs");
+        Assert.DoesNotContain("ITriggerBypass", shared, StringComparison.Ordinal);
+        Assert.DoesNotContain("DryRun", shared, StringComparison.Ordinal);
+        Assert.DoesNotContain("Skips(", repo.Read("out/Sales/CustomerVerbs.g.cs"), StringComparison.Ordinal);
+        Assert.Contains("internal static void Run(string id, TriggerPointCall call, Action body)", shared, StringComparison.Ordinal);
+        var project = Path.Combine(repo.Repo.Root, "named-trigger-points-off");
+        WriteProject(project, repo.PathOf("out"), program: null, web: true);
+        await BuildOrSkipAsync(project);
     }
 
     // The test host of the named-trigger-points case: the dispatcher over the document lifecycle with an in-memory outbox, and the checks
@@ -846,6 +898,28 @@ public sealed class CompileTests
                 Assert.Equal<string>(["01JNT000000000000000000N07", "01JNT000000000000000000N06", "01JNT000000000000000000X01"], released.TriggerPoints);
                 Assert.Equal<string>(["01JNT000000000000000000N07"], [.. released.CheckWarnings.Select(w => w.Id)]);
                 Assert.Equal<string>(["named", "lifecycle"], Docs.TriggerPoints.Stamped);
+
+                // A memo's process: the handlers give its own entity, so Stamp, which skips memos, doesn't run.
+                Assert.True((await host.Dispatcher.SendAsync(new DocumentStartControl(new ProcessEnvelope("m-9")) { Context = new DocumentContext() }, ct)).Accepted);
+                Docs.TriggerPoints.Stamped.Clear();
+                ScenarioTriggers.Assumed = new Dictionary<string, string> { ["01JNT000000000000000000N07"] = "pass" };
+                var memoReleased = await host.Dispatcher.SendAsync(new DocumentReleaseCommand(new ProcessEnvelope("m-9", Actors.Author)), ct);
+                ScenarioTriggers.Assumed = null;
+                Assert.True(memoReleased.Accepted, memoReleased.Refusal);
+                Assert.Equal<string>(["01JNT000000000000000000N07", "01JNT000000000000000000X01"], memoReleased.TriggerPoints);
+                Assert.Equal<string>(["lifecycle"], Docs.TriggerPoints.Stamped);
+
+                // Two actions narrowed by attributes on one verb, named and lifecycle, run when the title changes, named first.
+                Docs.TriggerPoints.Stamped.Clear();
+                var retitled = await new DocumentVerbs(new InMemoryProcessOutbox(), clock).RunAsync(Verb.Modify, new TriggerPointCall { Key = "d-2", Attributes = ["title"] }, Nothing, ct);
+                Assert.True(retitled.Passed, retitled.Message);
+                Assert.Equal<string>(["title log", "title stamp", "revised", "revision"], Docs.TriggerPoints.Stamped);
+
+                // A dry run with a permitted skip logs nothing through the hook; the outcome still lists what it would skip.
+                var quiet = new LoggingBypass();
+                var dryBulk = await new CustomerVerbs(new InMemoryProcessOutbox(), clock, bypass: quiet).RunAsync(Verb.Create, new TriggerPointCall { Key = "c-6", SkipOptional = true, DryRun = true }, Nothing, ct);
+                Assert.Equal<string>([Number, Credit, Length], dryBulk.Skipped);
+                Assert.Empty(quiet.Logged);
             }
 
             private sealed class LoggingBypass : ITriggerBypass

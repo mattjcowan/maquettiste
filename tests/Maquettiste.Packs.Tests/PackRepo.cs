@@ -746,8 +746,9 @@ internal sealed class PackRepo : IDisposable
     /// The csharp-dapper pack's <c>named-trigger-points</c> case (trigger-points-design.md section 15, part 2): a customer with no lifecycle
     /// covered by named trigger points of package Sales (a before action, checks one marked noBypass, a warning and an outside one, and an
     /// outside after-commit action), and a document with a lifecycle that has a point named Stamp, covered by a named Stamp of package Docs
-    /// and a warning on modify that both skip memos, and by an outside check of the root package. csharp-dapper writes to <c>out</c>, with
-    /// the scenario tests under out/Tests.
+    /// and a warning on modify that both skip memos, two actions narrowed by attributes on modify, and by an outside check of the root package;
+    /// lifecycle Document has two such actions too. csharp-dapper writes to <c>out</c>, with the scenario tests under out/Tests, and with
+    /// the bulk-load bypass and the dry run on.
     /// </summary>
     /// <returns>The repo.</returns>
     public static PackRepo NamedTriggerPoints()
@@ -761,7 +762,30 @@ internal sealed class PackRepo : IDisposable
               "formatVersion": 1,
               "name": "named-trigger-points",
               "outputs": { "allow": [ { "path": "out" } ] },
-              "packs": { "csharp-dapper": { "output": "out", "parameters": { "testsFolder": "Tests" } } }
+              "packs": { "csharp-dapper": { "output": "out", "parameters": { "bulkLoadBypass": true, "dryRun": true, "testsFolder": "Tests" } } }
+            }
+
+            """);
+        return repo;
+    }
+
+    /// <summary>
+    /// The csharp-dapper pack's <c>named-trigger-points-off</c> case: the <c>named-trigger-points</c> model with the bulk-load bypass and the
+    /// dry run off, and no scenario tests, so the part 1 shapes stay. csharp-dapper writes to <c>out</c>.
+    /// </summary>
+    /// <returns>The repo.</returns>
+    public static PackRepo NamedTriggerPointsOff()
+    {
+        var repo = new PackRepo();
+        var source = Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "named-trigger-points-off");
+        CopyTree(Path.Combine(source, "model"), Path.Combine(repo.Repo.ModelRoot, "model"));
+        CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper"), Path.Combine(repo.Repo.ModelRoot, "templates", "csharp-dapper"));
+        repo.Write(".maquettiste/maquettiste.json", """
+            {
+              "formatVersion": 1,
+              "name": "named-trigger-points-off",
+              "outputs": { "allow": [ { "path": "out" } ] },
+              "packs": { "csharp-dapper": { "output": "out" } }
             }
 
             """);

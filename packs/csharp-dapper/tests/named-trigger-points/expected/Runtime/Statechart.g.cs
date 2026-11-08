@@ -680,6 +680,21 @@ public interface ILifecycleStates<TContext>
     IReadOnlyDictionary<string, IReadOnlyList<string>> StatesIn(StatechartCall<TContext> call);
 }
 
+/// <summary>
+/// The object's own entity (trigger-points-design.md decision 33): a named trigger point's entities and exceptEntities are tested on it, and
+/// a process's subject may be a base of it. Generated code can't read the object yet, so a process's Handlers class implements this when a
+/// named trigger point it runs names an entity derived from a subject's; otherwise the call gives the subject's entity.
+/// </summary>
+/// <typeparam name="TContext">The process's context type.</typeparam>
+public interface IObjectEntity<TContext>
+    where TContext : class
+{
+    /// <summary>The entity of the instance's object: the subject's, or one derived from it.</summary>
+    /// <param name="call">The current call.</param>
+    /// <returns>The entity's type.</returns>
+    Type EntityOf(StatechartCall<TContext> call);
+}
+
 /// <summary>The clock the interpreter reads (an extension point; ProcessHost implements it).</summary>
 public interface IProcessClock
 {
@@ -1422,7 +1437,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         {
             Verb = verb,
             Lifecycle = _chart.ProcessName,
-            Entity = (Steps ?? _chart.TypeSteps)?.Subject,
+            Entity = _owner._behaviour is IObjectEntity<TContext> own ? own.EntityOf(Call()) : (Steps ?? _chart.TypeSteps)?.Subject,
             Instance = _snapshot.Instance,
             Envelope = _envelope,
             Held = [],

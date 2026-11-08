@@ -605,22 +605,31 @@ anything below; a project without them gets the same bytes as before.
 - **Results.** `Refusals.Check` is the new refusal, and results gain `CheckWarnings`. A project that uses rights or trigger points
   writes `RefusedBy`.
 
-**Named trigger points, the bypass and the dry run** (part 2). They are written only when a named trigger point exists or a point is
-marked `noBypass`, so a project that uses part 1 alone keeps its bytes.
+**Named trigger points, the bypass and the dry run** (part 2). Named trigger points are written only when one exists. The bypass and the
+dry run are each behind a parameter, `bulkLoadBypass` and `dryRun`, both off by default, so a project keeps its bytes until it turns one on.
 
 - **Named trigger points.** Each package with named points gets `TriggerPoints/<Package>/TriggerPoints.g.cs`, the declarations of
   `TriggerPoints`, `TriggerConditions` and `TriggerRecords` in the package's namespace, and the stubs in `TriggerPoints/<Package>/TriggerPoints.cs`
   (in the `partialFolder`). Each method is written once, however many types its point covers. Every entity a named point covers with an
   object, link or own verb gets a runner, `<Entity>Verbs`, also when no lifecycle governs it. Each runner, and each process's definition,
-  holds a private `NamedTriggerSteps` that runs the named points first at each moment, in the engine's order; their `entities` and
-  `exceptEntities` are tested on the object's type. A process asks only the points that cover its subject: one that covers only a type
-  derived from the subject isn't asked, since generated code can't tell the object's own type yet.
-- **The bypass.** A call to a runner may set `SkipOptional`. The runner honours it only when `ITriggerBypass.Allows` says yes, skips every
-  point not marked `noBypass`, and logs each skip through `ITriggerBypass.Skipped`. Your `Dispatch/TriggerBypass.cs` (written once) refuses
-  until you write it; each runner also takes another bypass.
-- **The dry run.** A call to a runner may set `DryRun`. The runner runs freezing, rights, before actions and checks, then stops: no records,
-  no effect, nothing in the outbox. Outside points are recorded in `TriggerPointOutcome.Recorded`, not called. Roll back your own
-  transaction after it too.
+  holds a private `NamedTriggerSteps` that runs the named points first at each moment, in the engine's order. A runner tests their
+  `entities` and `exceptEntities` on the call's `Entity` (give it for a derived type, such as a memo in `DocumentVerbs`). A process asks
+  only the points that cover its subject: one that covers only a type derived from the subject isn't asked. When a point it asks names a
+  type derived from the subject, in `entities` or `exceptEntities`, its handlers implement `IObjectEntity<TContext>`: write `EntityOf` in
+  `<Process>Handlers.cs` (it throws until written) to give the object's own type, which those tests read. Only a lifecycle runs named
+  points: an orchestration's commands run none, as in simulation.
+- **The bypass** (`bulkLoadBypass`). A call to a runner may set `SkipOptional`. The runner honours it only when `ITriggerBypass.Allows`
+  says yes, skips every check and action not marked `noBypass`, and logs each skip through `ITriggerBypass.Skipped`. A replace always runs:
+  it is the verb's effect, so skipping it would turn an "archive, never remove" delete into a real one. Your `Dispatch/TriggerBypass.cs`
+  (written once) refuses until you write it; each runner also takes another bypass. With the parameter off, `noBypass` has no effect in this
+  pack, since nothing can skip. If you turn it off after it was on, delete `Dispatch/TriggerBypass.cs`: it implements an interface that is
+  no longer written, so the build fails until you do.
+- **The dry run** (`dryRun`). A call to a runner may set `DryRun`. The runner runs freezing, rights, before actions and checks, then stops:
+  no records, no effect, nothing in the outbox, and no skip logged through the bypass (`TriggerPointOutcome.Skipped` still lists what a
+  real run would skip). Outside points are recorded in `TriggerPointOutcome.Recorded`, not called. Roll back your own transaction after
+  it too.
+- **Names to avoid.** Each package with named points declares `TriggerPoints`, `TriggerConditions` and `TriggerRecords` in its namespace,
+  so a child package with one of those names breaks the build (two definitions of one name). Rename the package.
 
 ### Scenario tests
 
@@ -661,6 +670,8 @@ Set them in `maquettiste.json` under `packs.csharp-dapper.parameters`.
 | `database` | `""` | The database the repositories and foreign-key properties use; empty picks, per entity, the first database by name that maps it. |
 | `generatedFolder` | `""` | Folder (under the pack output) for generated files. |
 | `partialFolder` | `""` | Folder (under the pack output) for the once-written companions. |
+| `bulkLoadBypass` | `false` | With trigger points, also write the bulk-load bypass: `TriggerPointCall.SkipOptional`, `ITriggerBypass`, the skip tests and the team's `Dispatch/TriggerBypass.cs` (see Trigger points). Off, `noBypass` has no effect in this pack. |
+| `dryRun` | `false` | With trigger points, also write the dry run: `TriggerPointCall.DryRun` and `TriggerPointOutcome.Recorded` (see Trigger points). |
 | `seedLoader` | `false` | Also write `SeedDataLoader.g.cs` (unit `seed-loader`): a class that loads the seed-data pack's output for one database with Dapper. Off, nothing changes. |
 | `endpointsFolder` | `""` | Folder (under the pack output) for the process and operation endpoint files; empty writes none. Keep it in a folder you commit: the process files have user-code regions. |
 | `testsFolder` | `""` | Folder (under the pack output) for the generated scenario tests (a test project's); empty writes none. |

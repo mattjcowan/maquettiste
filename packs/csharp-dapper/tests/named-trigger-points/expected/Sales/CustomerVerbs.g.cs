@@ -28,12 +28,13 @@ public sealed record CustomerVerbDone(string Entity, string? Key, string Verb, s
 /// <see cref="CustomerVerbDone"/> record written to the outbox. Call it inside your own transaction: nothing is written before every
 /// check passes, an exception from the team's code passes through to you so the transaction rolls back, and the outbox's messages are
 /// stored only if it commits.
-/// A call may set SkipOptional, which skips the points not marked noBypass only when the bypass allows it, each skip logged there; or
-/// DryRun, which stops after the checks and writes nothing, so roll your transaction back after it too.
+/// A call may set SkipOptional, which skips the checks and actions not marked noBypass only when the bypass allows it, each skip logged
+/// there; a replace always runs.
+/// A call may set DryRun, which stops after the checks and writes nothing, so roll your transaction back after it too.
 /// </summary>
 /// <param name="outbox">Where the after-commit messages and the history record go, inside the caller's transaction.</param>
 /// <param name="clock">The clock.</param>
-/// <param name="bypass">Whether a call may skip the trigger points not marked noBypass, and where each skip is logged; the team's TriggerBypass when null.</param>
+/// <param name="bypass">Whether a call may skip the checks and actions not marked noBypass, and where each skip is logged; the team's TriggerBypass when null.</param>
 public sealed partial class CustomerVerbs(IProcessOutbox outbox, IProcessClock clock, ITriggerBypass? bypass = null)
 {
     /// <summary>The steps of the named trigger points that cover a Customer, then of the lifecycles that govern it, by name.</summary>
@@ -58,7 +59,7 @@ public sealed partial class CustomerVerbs(IProcessOutbox outbox, IProcessClock c
         var states = new Dictionary<string, IReadOnlyList<string>>(call.States, StringComparer.Ordinal);
         call = call with { Verb = verb, Entity = call.Entity ?? typeof(global::App.Model.Sales.Customer), States = states };
 
-        // A bulk load's bypass (decisions 20 and 35): honoured only when the host allows it; points marked noBypass always run.
+        // A bulk load's bypass (decisions 20 and 35): honoured only when the host allows it; points marked noBypass, and replaces, always run.
         if (call.SkipOptional && !Bypass.Allows(call))
             call = call with { SkipOptional = false };
 
@@ -72,8 +73,10 @@ public sealed partial class CustomerVerbs(IProcessOutbox outbox, IProcessClock c
                 l.Check(verb, call, outcome);
         }
 
-        // A dry run stops here (decision 35): no records, no effect, nothing in the outbox.
-        if (!outcome.Passed || call.DryRun)
+        // A dry run stops here (decision 35): no records, no effect, nothing in the outbox, and no skip logged, since none happened.
+        if (call.DryRun)
+            return outcome;
+        if (!outcome.Passed)
             return Logged(call, outcome);
         foreach (var (_, write) in outcome.Records)
             write();

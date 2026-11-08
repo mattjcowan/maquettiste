@@ -14,6 +14,14 @@ public static partial class TriggerPoints
     public static partial void Stamp(TriggerPointCall call) =>
         throw new NotImplementedException("Trigger point Stamp of package Docs is not implemented yet.");
 
+    // TitleLog (action, with-change)
+    public static partial void TitleLog(TriggerPointCall call) =>
+        throw new NotImplementedException("Trigger point TitleLog of package Docs is not implemented yet.");
+
+    // TitleStamp (action, with-change)
+    public static partial void TitleStamp(TriggerPointCall call) =>
+        throw new NotImplementedException("Trigger point TitleStamp of package Docs is not implemented yet.");
+
     // TitleWarning (check)
     public static partial bool TitleWarning(TriggerPointCall call) =>
         throw new NotImplementedException("Trigger point TitleWarning of package Docs is not implemented yet.");

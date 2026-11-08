@@ -5,7 +5,8 @@
 # point's methods are its package's (TriggerPoints, TriggerConditions and TriggerRecords), written once however many types it covers.
 
 # A named point's places and when as a C# condition followed by " && ", or "" when it has none (decisions 10, 12 and 33). Its entities and
-# exceptEntities are tested on the object's type at run time; an excepted entity is tested only where it derives from the one subject.
+# exceptEntities are tested on the object's own type at run time (a runner's call, or in a process what IObjectEntity gives); an excepted
+# entity is tested where it derives from a subject, since the point covers no other.
 func named_place(tp, link, subjects)
   $c = []
   if tp.entities.size > 0
@@ -25,11 +26,15 @@ func named_place(tp, link, subjects)
     end
     $c[$c.size] = "(" + ($parts | array.join " || ") + ")"
   end
-  if subjects.size == 1
-    for $e in tp.except_entities
-      if derives_from($e, subjects[0])
-        $c[$c.size] = "!call.Is(typeof(global::" + ns($e) + "." + type_name($e) + "), false)"
+  for $e in tp.except_entities
+    $derived = false
+    for $s in subjects
+      if derives_from($e, $s)
+        $derived = true
       end
+    end
+    if $derived
+      $c[$c.size] = "!call.Is(typeof(global::" + ns($e) + "." + type_name($e) + "), false)"
     end
   end
   if tp.attributes.size > 0
@@ -40,7 +45,7 @@ func named_place(tp, link, subjects)
     if tp.type == "check"
       $c[$c.size] = "(call.Attributes is not { Count: > 0 } || call.Attributes.Any(a => a is " + ($names | array.join " or ") + "))"
     else
-      $c[$c.size] = "call.Attributes is { Count: > 0 } attributes && attributes.Any(a => a is " + ($names | array.join " or ") + ")"
+      $c[$c.size] = "call.Attributes is { Count: > 0 } && call.Attributes.Any(a => a is " + ($names | array.join " or ") + ")"
     end
   end
   if tp.ends.size > 0
@@ -79,10 +84,18 @@ func named_moment(tp)
   ret "After"
 end
 
-# The verbs a list of points names at a moment, in the model's verb order, each with its points in run order.
-func named_verbs(points, moment)
+# Whether a consumer of the named points runs a verb: a per-type runner only object, link and own verbs (it refuses the others).
+func named_runs(v, objects_only)
+  ret !objects_only || (v.group != "move" && v.group != "signature" && v.group != "task")
+end
+
+# The verbs a list of points names at a moment that its consumer runs, in the model's verb order, each with its points in run order.
+func named_verbs(points, moment, objects_only)
   $out = []
   for $v in model.verbs
+    if !named_runs($v, objects_only)
+      continue
+    end
     $at = []
     for $tp in points
       if named_moment($tp) == moment
@@ -100,10 +113,13 @@ func named_verbs(points, moment)
   ret $out
 end
 
-# The verbs a list of points names, in the model's verb order, as C# Verb members.
-func named_speaks(points)
+# The verbs a list of points names that its consumer runs, in the model's verb order, as C# Verb members.
+func named_speaks(points, objects_only)
   $out = []
   for $v in model.verbs
+    if !named_runs($v, objects_only)
+      continue
+    end
     $named = false
     for $tp in points
       for $x in $tp.verbs
@@ -119,14 +135,17 @@ func named_speaks(points)
   ret $out
 end
 
-# The skip test of a point a permitted bypass may skip, followed by " && "; "" for a point marked noBypass (decisions 20 and 35).
-func named_skip(tp)
-  ret tp.no_bypass ? "" : ("!outcome.Skips(call, " + (json tp.id) + ") && ")
+# The skip test of a point a permitted bypass may skip, followed by " && "; "" without the bypass or for a point marked noBypass (decisions
+# 20 and 35). A replace is never skipped: it is the verb's effect, not an extra.
+func named_skip(tp, bypass)
+  ret (bypass && !tp.no_bypass) ? ("!outcome.Skips(call, " + (json tp.id) + ") && ") : ""
 end
 -}}
-{{- func named_steps(points, subject, subjects, what) -}}
+{{- func named_steps(points, subject, subjects, what, objects_only) -}}
 {{- verb = "global::" + base_ns + ".Verb" }}
-{{- speaks = named_speaks(points) }}
+{{- named_bypass = uses_bulk_bypass() }}
+{{- named_run = uses_dry_run() ? "outcome.Run" : "TriggerPointOutcome.Run" }}
+{{- speaks = named_speaks(points, objects_only) }}
 
     /// <summary>
     /// The step methods of the named trigger points that cover {{ what }}, in run order (trigger-points-design.md decision 34).
@@ -152,7 +171,7 @@ end
             ArgumentNullException.ThrowIfNull(outcome);
             switch (verb)
             {
-{{- for g in named_verbs(points, m) }}
+{{- for g in named_verbs(points, m, objects_only) }}
 {{- link = g.verb.group == "link" }}
                 case {{ verb }}.{{ pascal g.verb.key }}:
                 {
@@ -162,17 +181,17 @@ end
 {{- for tp in g.points }}
 {{- body = named_class(tp, "Points") + "." + member_name(tp.name, "TriggerPoints") }}
 {{- if m == "Before" }}
-                    if ({{ named_place(tp, link, subjects) }}{{ named_skip(tp) }}outcome.Once({{ json tp.id }}))
+                    if ({{ named_place(tp, link, subjects) }}{{ named_skip(tp, named_bypass) }}outcome.Once({{ json tp.id }}))
                     {
 {{- if tp.outside }}
-                        outcome.Run({{ json tp.id }}, call, () => {{ body }}(call));
+                        {{ named_run }}({{ json tp.id }}, call, () => {{ body }}(call));
 {{- else }}
                         {{ body }}(call);
 {{- end }}
                         outcome.Record({{ json tp.id }}, () => {{ named_class(tp, "Records") }}.{{ member_name(tp.name, "TriggerRecords") }}(call));
                     }
 {{- else if m == "Check" }}
-                    if (outcome.Passed && {{ named_place(tp, link, subjects) }}{{ named_skip(tp) }}outcome.Once({{ json tp.id }}))
+                    if (outcome.Passed && {{ named_place(tp, link, subjects) }}{{ named_skip(tp, named_bypass) }}outcome.Once({{ json tp.id }}))
 {{- if tp.outside }}
                         outcome.Check({{ json tp.id }}, {{ json tp.message }}, {{ tp.severity == "warning" ? "true" : "false" }}, call, () => {{ body }}(call));
 {{- else }}
@@ -181,17 +200,17 @@ end
 {{- else if m == "With" }}
 {{- if g.verb.key == "delete" && tp.sets.size > 0 }}
                     // After a built-in delete there is no object to set (decision 16): {{ tp.name }} runs only after a replace, or on an event, whose object stays.
-                    if ((call.Transition is not null || outcome.Replaced is not null) && {{ named_place(tp, link, subjects) }}{{ named_skip(tp) }}outcome.Once({{ json tp.id }}))
+                    if ((call.Transition is not null || outcome.Replaced is not null) && {{ named_place(tp, link, subjects) }}{{ named_skip(tp, named_bypass) }}outcome.Once({{ json tp.id }}))
 {{- else }}
-                    if ({{ named_place(tp, link, subjects) }}{{ named_skip(tp) }}outcome.Once({{ json tp.id }}))
+                    if ({{ named_place(tp, link, subjects) }}{{ named_skip(tp, named_bypass) }}outcome.Once({{ json tp.id }}))
 {{- end }}
 {{- if tp.outside }}
-                        outcome.Run({{ json tp.id }}, call, () => {{ body }}(call));
+                        {{ named_run }}({{ json tp.id }}, call, () => {{ body }}(call));
 {{- else }}
                         {{ body }}(call);
 {{- end }}
 {{- else }}
-                    if ({{ named_place(tp, link, subjects) }}{{ named_skip(tp) }}outcome.Once({{ json tp.id }}))
+                    if ({{ named_place(tp, link, subjects) }}{{ named_skip(tp, named_bypass) }}outcome.Once({{ json tp.id }}))
                         outcome.Queue(Message(call, {{ json tp.id }}, {{ json tp.name }}, {{ tp.outside ? "true" : "false" }}));
 {{- end }}
 {{- end }}
@@ -211,17 +230,17 @@ end
             ArgumentNullException.ThrowIfNull(outcome);
             switch (verb)
             {
-{{- for g in named_verbs(points, "Perform") }}
+{{- for g in named_verbs(points, "Perform", objects_only) }}
 {{- link = g.verb.group == "link" }}
                 case {{ verb }}.{{ pascal g.verb.key }}:
                 {
                     using var depth = TriggerPointDepth.Enter();
 {{- for tp in g.points }}
 {{- body = named_class(tp, "Points") + "." + member_name(tp.name, "TriggerPoints") }}
-                    if ({{ named_place(tp, link, subjects) }}{{ named_skip(tp) }}outcome.Once({{ json tp.id }}))
+                    if ({{ named_place(tp, link, subjects) }}outcome.Once({{ json tp.id }}))
                     {
 {{- if tp.outside }}
-                        outcome.Run({{ json tp.id }}, call, () => {{ body }}(call));
+                        {{ named_run }}({{ json tp.id }}, call, () => {{ body }}(call));
 {{- else }}
                         {{ body }}(call);
 {{- end }}

@@ -12,4 +12,12 @@ public static partial class DocumentTriggerPoints
     // Stamp (action, with-change)
     public static partial void Stamp(TriggerPointCall call) =>
         throw new NotImplementedException("Trigger point Stamp of lifecycle Document is not implemented yet.");
+
+    // MarkRevised (action, with-change)
+    public static partial void MarkRevised(TriggerPointCall call) =>
+        throw new NotImplementedException("Trigger point MarkRevised of lifecycle Document is not implemented yet.");
+
+    // NoteRevision (action, with-change)
+    public static partial void NoteRevision(TriggerPointCall call) =>
+        throw new NotImplementedException("Trigger point NoteRevision of lifecycle Document is not implemented yet.");
 }

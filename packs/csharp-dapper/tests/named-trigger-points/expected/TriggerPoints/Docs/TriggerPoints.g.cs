@@ -13,6 +13,14 @@ public static partial class TriggerPoints
     /// <param name="call">The call.</param>
     public static partial void Stamp(TriggerPointCall call);
 
+    /// <summary>With-the-change action TitleLog on modify: the team&apos;s code. Logs a document&apos;s new title.</summary>
+    /// <param name="call">The call.</param>
+    public static partial void TitleLog(TriggerPointCall call);
+
+    /// <summary>With-the-change action TitleStamp on modify: the team&apos;s code. Stamps a document whose title changed.</summary>
+    /// <param name="call">The call.</param>
+    public static partial void TitleStamp(TriggerPointCall call);
+
     /// <summary>Warning check TitleWarning on modify: the team&apos;s code. The title changed after review.</summary>
     /// <param name="call">The call.</param>
     /// <returns>Whether the check passes.</returns>

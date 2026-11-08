@@ -238,9 +238,6 @@ public static partial class {{ name }}Definition
 {{- end }}
     }
 {{- if named_points.size > 0 }}
-{{- $subjects = [] }}
-{{- for sub in p.subjects }}{{ $subjects[$subjects.size] = sub.entity }}{{ end }}
-{{- for sub in p.stereotype_subjects }}{{ for x in sub.entities }}{{ $subjects[$subjects.size] = x }}{{ end }}{{ end }}
-{{- named_steps(named_points, p.subjects.size == 1 && p.stereotype_subjects.size == 0 ? type_of_entity(p.subjects[0].entity) : "null", $subjects, "the subject of " + p.name) }}
+{{- named_steps(named_points, p.subjects.size == 1 && p.stereotype_subjects.size == 0 ? type_of_entity(p.subjects[0].entity) : "null", subject_entities(p), "the subject of " + p.name, false) }}
 {{- end }}
 }

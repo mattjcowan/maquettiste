@@ -12,7 +12,7 @@ using App.Model.Runtime;
 namespace App.Model.Docs;
 
 /// <summary>The guards and actions of process Document.</summary>
-public sealed partial class DocumentHandlers : IStatechartBehaviour<DocumentContext>
+public sealed partial class DocumentHandlers : IStatechartBehaviour<DocumentContext>, IObjectEntity<DocumentContext>
 {
     /// <inheritdoc/>
     public bool Guard(string guard, StatechartCall<DocumentContext> call) => guard switch
@@ -28,6 +28,11 @@ public sealed partial class DocumentHandlers : IStatechartBehaviour<DocumentCont
 
     /// <inheritdoc/>
     public IReadOnlyList<string> Changed(DocumentContext before, DocumentContext after) => DocumentContext.Changed(before, after);
+
+    /// <summary>The entity of the instance's object, the subject's or one derived from it, which named trigger points test their entities and exceptEntities on (implemented in DocumentHandlers.cs).</summary>
+    /// <param name="call">The current call.</param>
+    /// <returns>The entity's type.</returns>
+    public partial Type EntityOf(StatechartCall<DocumentContext> call);
 }
 
 /// <summary>Handles the commands of process Document: loads the instance through the store, runs the machine and saves.</summary>

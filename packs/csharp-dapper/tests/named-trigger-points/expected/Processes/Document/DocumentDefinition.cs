@@ -132,6 +132,15 @@ public static partial class DocumentDefinition
                         global::App.Model.Docs.TriggerPoints.Stamp(call);
                     break;
                 }
+                case global::App.Model.Verb.Modify:
+                {
+                    using var depth = TriggerPointDepth.Enter();
+                    if (call.Attributes is { Count: > 0 } && call.Attributes.Any(a => a is "title") && call.End is null && !outcome.Skips(call, "01JNT000000000000000000N10") && outcome.Once("01JNT000000000000000000N10"))
+                        global::App.Model.Docs.TriggerPoints.TitleLog(call);
+                    if (call.Attributes is { Count: > 0 } && call.Attributes.Any(a => a is "title") && call.End is null && !outcome.Skips(call, "01JNT000000000000000000N09") && outcome.Once("01JNT000000000000000000N09"))
+                        global::App.Model.Docs.TriggerPoints.TitleStamp(call);
+                    break;
+                }
                 default:
                     break;
             }

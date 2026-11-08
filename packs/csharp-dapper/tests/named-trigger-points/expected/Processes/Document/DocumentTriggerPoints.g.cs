@@ -23,7 +23,7 @@ public sealed class DocumentTriggerSteps : ITriggerPointSteps
     public Type? Subject => typeof(global::App.Model.Docs.Document);
 
     /// <inheritdoc/>
-    public bool Speaks(global::App.Model.Verb verb) => verb is global::App.Model.Verb.Promote;
+    public bool Speaks(global::App.Model.Verb verb) => verb is global::App.Model.Verb.Promote or global::App.Model.Verb.Modify;
 
     /// <inheritdoc/>
     public void Before(global::App.Model.Verb verb, TriggerPointCall call, TriggerPointOutcome outcome)
@@ -32,6 +32,9 @@ public sealed class DocumentTriggerSteps : ITriggerPointSteps
         {
             case global::App.Model.Verb.Promote:
                 BeforePromote(call, outcome);
+                break;
+            case global::App.Model.Verb.Modify:
+                BeforeModify(call, outcome);
                 break;
             default:
                 break;
@@ -46,6 +49,9 @@ public sealed class DocumentTriggerSteps : ITriggerPointSteps
             case global::App.Model.Verb.Promote:
                 CheckPromote(call, outcome);
                 break;
+            case global::App.Model.Verb.Modify:
+                CheckModify(call, outcome);
+                break;
             default:
                 break;
         }
@@ -59,6 +65,9 @@ public sealed class DocumentTriggerSteps : ITriggerPointSteps
             case global::App.Model.Verb.Promote:
                 WithPromote(call, outcome);
                 break;
+            case global::App.Model.Verb.Modify:
+                WithModify(call, outcome);
+                break;
             default:
                 break;
         }
@@ -71,6 +80,9 @@ public sealed class DocumentTriggerSteps : ITriggerPointSteps
         {
             case global::App.Model.Verb.Promote:
                 AfterPromote(call, outcome);
+                break;
+            case global::App.Model.Verb.Modify:
+                AfterModify(call, outcome);
                 break;
             default:
                 break;
@@ -122,6 +134,47 @@ public sealed class DocumentTriggerSteps : ITriggerPointSteps
         ArgumentNullException.ThrowIfNull(outcome);
     }
 
+    /// <summary>The before actions of modify: they fill the call's proposed values and write nothing.</summary>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    public void BeforeModify(TriggerPointCall call, TriggerPointOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(outcome);
+    }
+
+    /// <summary>The checks of modify: an error refuses, a warning is listed.</summary>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    public void CheckModify(TriggerPointCall call, TriggerPointOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(outcome);
+    }
+
+    /// <summary>The with-the-change actions of modify, in the command's unit of work.</summary>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    public void WithModify(TriggerPointCall call, TriggerPointOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(outcome);
+        using var depth = TriggerPointDepth.Enter();
+        if (call.Attributes is { Count: > 0 } && call.Attributes.Any(a => a is "title") && call.End is null && !outcome.Skips(call, "01JNT000000000000000000X02") && outcome.Once("01JNT000000000000000000X02"))
+            DocumentTriggerPoints.MarkRevised(call);
+        if (call.Attributes is { Count: > 0 } && call.Attributes.Any(a => a is "title") && call.End is null && !outcome.Skips(call, "01JNT000000000000000000X03") && outcome.Once("01JNT000000000000000000X03"))
+            DocumentTriggerPoints.NoteRevision(call);
+    }
+
+    /// <summary>The after-commit actions of modify, queued as messages.</summary>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    public void AfterModify(TriggerPointCall call, TriggerPointOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(outcome);
+    }
+
     // An after-commit message: what the call says, with the depth it was queued at (decision 21).
     private TriggerPointMessage Message(TriggerPointCall call, string id, string point, bool outside) => new()
     {
@@ -155,4 +208,12 @@ public static partial class DocumentTriggerPoints
     /// <summary>With-the-change action Stamp on promote: the team&apos;s code. Stamps the released document, after the named Stamp.</summary>
     /// <param name="call">The call.</param>
     public static partial void Stamp(TriggerPointCall call);
+
+    /// <summary>With-the-change action MarkRevised on modify: the team&apos;s code. Marks the document revised when its title changes.</summary>
+    /// <param name="call">The call.</param>
+    public static partial void MarkRevised(TriggerPointCall call);
+
+    /// <summary>With-the-change action NoteRevision on modify: the team&apos;s code. Notes the revision when the title changes.</summary>
+    /// <param name="call">The call.</param>
+    public static partial void NoteRevision(TriggerPointCall call);
 }

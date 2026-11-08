@@ -29,6 +29,7 @@ public sealed class ReleaseTests
         Assert.True(result.Accepted, result.Refusal);
 
         // Step 1: modify by bea.
+        // Assumed: check Docs.TitleWarning gives warning; the team's code must give it.
         ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal);
         var outcome1 = await new global::App.Model.Docs.DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Modify, new TriggerPointCall
         {
@@ -44,11 +45,16 @@ public sealed class ReleaseTests
             CommandId = "Release-1",
         }, (_, _) => Task.CompletedTask, cancellationToken);
         Assert.True(outcome1.Passed, outcome1.Message);
+        Assert.Equal<string>(["01JNT000000000000000000N08"], [.. outcome1.Warnings.Select(w => w.Id)]);
+        Assert.Equal<string>(["01JNT000000000000000000N08", "01JNT000000000000000000N10", "01JNT000000000000000000N09", "01JNT000000000000000000X02", "01JNT000000000000000000X03"], outcome1.Ran);
 
         // Step 2: release by bea as Author, signed by bea.
-        ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal);
+        // Assumed: check Portal gives warning; it reaches outside systems, so ScenarioTriggers answers it.
+        ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal) { ["01JNT000000000000000000N07"] = "warning" };
         result = await host.Dispatcher.SendAsync(new DocumentReleaseCommand(new ProcessEnvelope(Instance, Actor: Actors.Author, Signer: "bea")), cancellationToken);
         Assert.True(result.Accepted, result.Refusal);
+        Assert.Equal<string>(["01JNT000000000000000000N07"], [.. result.CheckWarnings.Select(w => w.Id)]);
+        Assert.Equal<string>(["01JNT000000000000000000N07", "01JNT000000000000000000N06", "01JNT000000000000000000X01"], result.TriggerPoints);
         Assert.Equal<string>(["Released"], result.States);
         Assert.Equal<string>([], result.Changed);
 

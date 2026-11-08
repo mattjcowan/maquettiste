@@ -303,12 +303,14 @@ Each decision gives its confidence: **high**, **medium-high**, **medium** or **l
     - Its keys are an inline point's, but for `states`, `targets` and `transitions`, which belong to one lifecycle (MQ8102). A state elsewhere is read with `in_state` in `when`. What it may read and set is what every covered entity holds under one id (decision 12).
     - **`exceptEntities` is the opt-out,** written where the rule is, so "every approvable type but memos" is one file. It is not `excludes`, which operations use for the stereotype errors they don't inherit.
     - `subjects` is the key rights reserved for named rights on types (rights decision 8), so a later item can give both one control in the editor.
+    - **Known limit:** MQ3001 allows one name in two packages, but files are named by name, so `Sales.LeadOnly` and `Other.LeadOnly` both belong at `model/trigger-points/lead-only.json` and one shows MQ1005. Named rights behave the same way.
 34. **(Part 2) Type points run before lifecycle points, at each moment.** Confidence: medium.
     - Among type points: the one whose subject is the farthest base runs first, as JPA runs superclass listeners first [S36]. At one depth, those brought by an entity come before those brought by a stereotype, then by name.
     - So the order runs from the outside in: type, then lifecycle, then the list's order within it.
-35. **(Part 2) Generated code gains the bulk-load bypass and a dry run.** Confidence: medium.
-    - **Bypass:** `TriggerPointCall.SkipOptional` is honoured only when the host's `ITriggerBypass` hook allows it. Its team-owned stub, written once, refuses. Each skip is logged through the hook. Points with `noBypass` always run (decision 20).
-    - **Dry run:** `TriggerPointCall.DryRun` runs freezing, rights, before actions and checks, stops before the effect, and rolls its unit of work back, so a screen can ask "would this be accepted, and with which warnings?". Outside points are recorded, not called.
+35. **(Part 2) Generated code can gain the bulk-load bypass and a dry run, when the pack's parameters say so.** Confidence: medium.
+    - In `csharp-dapper` each is behind its own parameter, `bulkLoadBypass` and `dryRun`, both off by default. A switch that skips checks is opt-in, and a project keeps its bytes until it turns one on.
+    - **Bypass:** `TriggerPointCall.SkipOptional` is honoured only when the host's `ITriggerBypass` hook allows it. Its team-owned stub, written once, refuses. Each skip is logged through the hook. Points with `noBypass` always run (decision 20), and so does every replace: it is the verb's effect, not an extra.
+    - **Dry run:** `TriggerPointCall.DryRun` runs freezing, rights, before actions and checks and stops before the effect, so a screen can ask "would this be accepted, and with which warnings?". The caller rolls its unit of work back. Outside points are recorded, not called, and no skip is logged.
 
 ### Tools
 
@@ -523,7 +525,7 @@ Output changes only for a model that uses what each output needs (decision 29).
 - **Scenario tests:** a generated `ScenarioTriggers` records outside points and after-commit messages instead of calling them, and answers outside team-code checks from the step's `assume`. A team-code check that isn't outside runs the team's code, and the test asserts it gives the assumed outcome. A step with `expect.checkWarnings` or `expect.refusedBy` asserts them.
 - **Nothing goes in `helpers.js`.**
 
-**`csharp-dapper`, part 2:** named trigger points' methods in `TriggerPoints`, `TriggerConditions` and `TriggerRecords` classes per package, written once however many types they cover, and their place in each `<Entity>Verbs` runner, including entities with no lifecycle. `ITriggerBypass` with its team-owned stub `Dispatch/TriggerBypass.cs`, `SkipOptional` and `DryRun` (decision 35).
+**`csharp-dapper`, part 2:** named trigger points' methods in `TriggerPoints`, `TriggerConditions` and `TriggerRecords` classes per package, written once however many types they cover, and their place in each `<Entity>Verbs` runner, including entities with no lifecycle. With the `bulkLoadBypass` parameter, `ITriggerBypass` with its team-owned stub `Dispatch/TriggerBypass.cs` and `SkipOptional`; with `dryRun`, `DryRun` (decision 35). A process whose named points name a type derived from its subject asks the handlers for the object's own type (`IObjectEntity`).
 
 **`process-docs`, part 1**
 - **The lifecycle page,** when it has `triggerPoints`: a "Trigger points" table (name, type, verbs, where, when, what it does, severity, outside, why), and for each verb a "What happens when someone promotes a Document" list in the order of decision 18: the built-in rows that apply, then each trigger point with its sentence. A team-code body says "the team's code: <why>". An outside one says so.

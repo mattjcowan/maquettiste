@@ -23,21 +23,23 @@ namespace App.Model.Docs;
 public sealed record DocumentVerbDone(string Entity, string? Key, string Verb, string? Actor, DateTimeOffset At, string? Replaced);
 
 /// <summary>
-/// Runs the object, link and own verbs of a Document done outside an event, with the named trigger points that cover it: then before actions and checks across the lifecycles, the
+/// Runs the object, link and own verbs of a Document done outside an event, with the named trigger points that cover it and the trigger points of the lifecycles that govern it
+/// (Document): then before actions and checks across the lifecycles, the
 /// records, the verb's effect or its replace, the with-the-change actions, and the after-commit messages and the
 /// <see cref="DocumentVerbDone"/> record written to the outbox. Call it inside your own transaction: nothing is written before every
 /// check passes, an exception from the team's code passes through to you so the transaction rolls back, and the outbox's messages are
 /// stored only if it commits.
-/// A call may set SkipOptional, which skips the points not marked noBypass only when the bypass allows it, each skip logged there; or
-/// DryRun, which stops after the checks and writes nothing, so roll your transaction back after it too.
+/// A call may set SkipOptional, which skips the checks and actions not marked noBypass only when the bypass allows it, each skip logged
+/// there; a replace always runs.
+/// A call may set DryRun, which stops after the checks and writes nothing, so roll your transaction back after it too.
 /// </summary>
 /// <param name="outbox">Where the after-commit messages and the history record go, inside the caller's transaction.</param>
 /// <param name="clock">The clock.</param>
-/// <param name="bypass">Whether a call may skip the trigger points not marked noBypass, and where each skip is logged; the team's TriggerBypass when null.</param>
+/// <param name="bypass">Whether a call may skip the checks and actions not marked noBypass, and where each skip is logged; the team's TriggerBypass when null.</param>
 public sealed partial class DocumentVerbs(IProcessOutbox outbox, IProcessClock clock, ITriggerBypass? bypass = null)
 {
     /// <summary>The steps of the named trigger points that cover a Document, then of the lifecycles that govern it, by name.</summary>
-    public static IReadOnlyList<ITriggerPointSteps> Lifecycles { get; } = [new NamedTriggerSteps()];
+    public static IReadOnlyList<ITriggerPointSteps> Lifecycles { get; } = [new NamedTriggerSteps(), new global::App.Model.Docs.DocumentTriggerSteps()];
 
     /// <summary>Runs a verb. Move, signature and task verbs are refused: they go through the process's commands.</summary>
     /// <param name="verb">The verb.</param>
@@ -55,10 +57,16 @@ public sealed partial class DocumentVerbs(IProcessOutbox outbox, IProcessClock c
             outcome.Refuse(Refusals.NoTransition, null, $"Verb {(global::App.Model.Verbs.Key(verb))} goes through the process's commands, not the per-type runner.");
             return outcome;
         }
+        // Create reads each lifecycle's initial state (decision 13), whatever the call gives; other verbs ask the team for the object's states
+        // in a lifecycle the call doesn't give.
         var states = new Dictionary<string, IReadOnlyList<string>>(call.States, StringComparer.Ordinal);
+        if (verb == global::App.Model.Verb.Create)
+            states["Document"] = ["Draft"];
+        else if (!states.ContainsKey("Document") && StatesInDocument(call) is { } inDocument)
+            states["Document"] = inDocument;
         call = call with { Verb = verb, Entity = call.Entity ?? typeof(global::App.Model.Docs.Document), States = states };
 
-        // A bulk load's bypass (decisions 20 and 35): honoured only when the host allows it; points marked noBypass always run.
+        // A bulk load's bypass (decisions 20 and 35): honoured only when the host allows it; points marked noBypass, and replaces, always run.
         if (call.SkipOptional && !Bypass.Allows(call))
             call = call with { SkipOptional = false };
 
@@ -72,8 +80,10 @@ public sealed partial class DocumentVerbs(IProcessOutbox outbox, IProcessClock c
                 l.Check(verb, call, outcome);
         }
 
-        // A dry run stops here (decision 35): no records, no effect, nothing in the outbox.
-        if (!outcome.Passed || call.DryRun)
+        // A dry run stops here (decision 35): no records, no effect, nothing in the outbox, and no skip logged, since none happened.
+        if (call.DryRun)
+            return outcome;
+        if (!outcome.Passed)
             return Logged(call, outcome);
         foreach (var (_, write) in outcome.Records)
             write();
@@ -115,6 +125,9 @@ public sealed partial class DocumentVerbs(IProcessOutbox outbox, IProcessClock c
 
     private ITriggerBypass Bypass { get; } = bypass ?? new global::App.Model.Dispatch.TriggerBypass();
 
+    /// <summary>The object's active state paths in lifecycle Document, when the call doesn't give them; null when Document doesn't govern the object (implemented in DocumentVerbs.cs).</summary>
+    private static partial IReadOnlyList<string>? StatesInDocument(TriggerPointCall call);
+
     /// <summary>
     /// The step methods of the named trigger points that cover a Document, in run order (trigger-points-design.md decision 34).
     /// At each moment they run before every lifecycle's. Each tests its places and its when, and calls its package's TriggerPoints,
@@ -129,7 +142,7 @@ public sealed partial class DocumentVerbs(IProcessOutbox outbox, IProcessClock c
         public Type? Subject => typeof(global::App.Model.Docs.Document);
 
         /// <inheritdoc/>
-        public bool Speaks(global::App.Model.Verb verb) => verb is global::App.Model.Verb.Promote or global::App.Model.Verb.Modify;
+        public bool Speaks(global::App.Model.Verb verb) => verb is global::App.Model.Verb.Modify;
 
         /// <inheritdoc/>
         public void Before(global::App.Model.Verb verb, TriggerPointCall call, TriggerPointOutcome outcome)
@@ -150,13 +163,6 @@ public sealed partial class DocumentVerbs(IProcessOutbox outbox, IProcessClock c
             ArgumentNullException.ThrowIfNull(outcome);
             switch (verb)
             {
-                case global::App.Model.Verb.Promote:
-                {
-                    using var depth = TriggerPointDepth.Enter();
-                    if (outcome.Passed && call.End is null && !outcome.Skips(call, "01JNT000000000000000000N07") && outcome.Once("01JNT000000000000000000N07"))
-                        outcome.Check("01JNT000000000000000000N07", "The supplier portal accepts the document.", false, call, () => global::App.Model.TriggerPoints.Portal(call));
-                    break;
-                }
                 case global::App.Model.Verb.Modify:
                 {
                     using var depth = TriggerPointDepth.Enter();
@@ -176,11 +182,13 @@ public sealed partial class DocumentVerbs(IProcessOutbox outbox, IProcessClock c
             ArgumentNullException.ThrowIfNull(outcome);
             switch (verb)
             {
-                case global::App.Model.Verb.Promote:
+                case global::App.Model.Verb.Modify:
                 {
                     using var depth = TriggerPointDepth.Enter();
-                    if (!call.Is(typeof(global::App.Model.Docs.Memo), false) && call.End is null && !outcome.Skips(call, "01JNT000000000000000000N06") && outcome.Once("01JNT000000000000000000N06"))
-                        global::App.Model.Docs.TriggerPoints.Stamp(call);
+                    if (call.Attributes is { Count: > 0 } && call.Attributes.Any(a => a is "title") && call.End is null && !outcome.Skips(call, "01JNT000000000000000000N10") && outcome.Once("01JNT000000000000000000N10"))
+                        global::App.Model.Docs.TriggerPoints.TitleLog(call);
+                    if (call.Attributes is { Count: > 0 } && call.Attributes.Any(a => a is "title") && call.End is null && !outcome.Skips(call, "01JNT000000000000000000N09") && outcome.Once("01JNT000000000000000000N09"))
+                        global::App.Model.Docs.TriggerPoints.TitleStamp(call);
                     break;
                 }
                 default:

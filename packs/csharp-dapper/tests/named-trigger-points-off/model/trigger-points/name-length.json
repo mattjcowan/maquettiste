@@ -1,0 +1,18 @@
+{
+  "$schema": "../../.schema/v1/trigger-point.json",
+  "kind": "trigger-point",
+  "id": "01JNT000000000000000000N03",
+  "name": "NameLength",
+  "package": "01JNT000000000000000000P01",
+  "subjects": [
+    {
+      "entity": "01JNT000000000000000000E01"
+    }
+  ],
+  "type": "check",
+  "severity": "warning",
+  "verbs": [
+    "create"
+  ],
+  "description": "The name is longer than a label holds."
+}
