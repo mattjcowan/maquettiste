@@ -109,7 +109,8 @@ describe("the mock stepper: approvals", () => {
     const d = doc(approval([sig("a", ["MgrRole"]), sig("b", ["MgrRole"])]));
     const again = run(d, [submit, answer("Bob"), answer("Bob")]);
     expect(last(again)).toMatchObject({ accepted: false, refusal: "gate-repeat", refusedBy: "g" });
-    expect(outcomes(again, 2)).toEqual(["refused:b"]);
+    // The refusal is on the first signature the person meets, complete or not (review S1): a, which Bob already signed.
+    expect(outcomes(again, 2)).toEqual(["refused:a"]);
     const across = run(doc(approval([sig("a", ["MgrRole"]), sig("b", ["MgrRole"])], { allowSignerAcrossSignatures: true })), [
       submit,
       answer("Bob"),

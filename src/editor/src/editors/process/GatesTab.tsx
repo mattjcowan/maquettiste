@@ -295,16 +295,22 @@ function ConvertButton({ form, set }: { form: GateForm; set: SetGate }) {
     );
   const can = canRevert(form.gate);
   return (
-    <div className="flex">
+    <div className="flex flex-col items-start gap-1">
       <Button
         size="sm"
         title={can ? A.backTip : A.backBlocked}
         disabled={!can}
+        aria-describedby={can ? undefined : "back-to-signers-why"}
         onClick={() => set((x) => void revertToSigners(x))}
         data-testid="back-to-signers"
       >
         {A.back}
       </Button>
+      {can ? null : (
+        <p id="back-to-signers-why" className="text-12 text-secondary" data-testid="back-to-signers-why">
+          {A.backWhy}
+        </p>
+      )}
     </div>
   );
 }
@@ -331,26 +337,26 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
   const actorOptions = actors.map((a) => ({ id: a.id, name: a.name }));
   const names = (ids: string[]) => ids.map((a) => actorNames.get(a) ?? "").join(", ");
   const columns: GridColumn<SignatureRow>[] = [
-    { key: "name", label: A.columns.name, kind: "text", width: "w-28", clip: "max-w-28", sticky: true, value: (r) => r.name },
+    { key: "name", label: A.columns.name, kind: "text", width: "w-20", clip: "max-w-20", sticky: true, value: (r) => r.name },
     {
       key: "signers",
       label: A.columns.signers,
       tooltip: A.tips.signers,
       kind: "multi",
-      width: "w-32",
-      clip: "max-w-32",
+      width: "w-24",
+      clip: "max-w-24",
       value: (r) => r.signers,
       editValue: (r) => names(r.signerIds),
       options: () => actorOptions.map((a) => ({ value: a.id, label: a.name })),
     },
-    { key: "required", label: A.columns.required, tooltip: A.tips.required, kind: "text", width: "w-16", value: (r) => String(r.required) },
+    { key: "required", label: A.columns.required, tooltip: A.tips.required, kind: "text", width: "w-12", value: (r) => String(r.required) },
     {
       key: "requiredActors",
       label: A.columns.requiredActors,
       tooltip: A.tips.requiredActors,
       kind: "multi",
-      width: "w-28",
-      clip: "max-w-28",
+      width: "w-20",
+      clip: "max-w-20",
       value: (r) => r.requiredActors,
       editValue: (r) => names(r.requiredActorIds),
       options: (r) => actorOptions.filter((a) => r.signerIds.includes(a.id)).map((a) => ({ value: a.id, label: a.name })),
@@ -360,7 +366,8 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
       label: A.columns.repeat,
       tooltip: A.tips.repeat,
       kind: "toggle",
-      width: "w-16",
+      named: true,
+      width: "w-12",
       value: (r) => (r.repeat ? "yes" : ""),
       on: (r) => r.repeat,
     },
@@ -369,8 +376,8 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
       label: A.columns.when,
       tooltip: A.tips.when,
       kind: "popover",
-      width: "w-36",
-      clip: "max-w-36",
+      width: "w-28",
+      clip: "max-w-28",
       mono: true,
       value: (r) => r.when || ALWAYS,
       onOpen: (r) => setDialog({ kind: "when", id: r.id }),
@@ -380,18 +387,24 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
       label: A.columns.notBy,
       tooltip: A.tips.notBy,
       kind: "popover",
-      width: "w-32",
-      clip: "max-w-32",
+      width: "w-24",
+      clip: "max-w-24",
       value: (r) => r.notBy,
       onOpen: (r) => setDialog({ kind: "notBy", id: r.id }),
     },
-    { key: "why", label: A.columns.why, tooltip: A.tips.why, kind: "text", width: "min-w-40", clip: "max-w-56", value: (r) => r.why },
+    { key: "why", label: A.columns.why, tooltip: A.tips.why, kind: "text", width: "min-w-28", clip: "max-w-32", value: (r) => r.why },
   ];
   const stage = stageOf(g);
   return (
     <div className="flex flex-col gap-1">
       <SectionTitle>
-        {A.stage}: <span data-testid="approval-stage">{stage?.name}</span>
+        <span title={A.stageTip}>
+          {A.signaturesNeeded} <span className="font-normal text-secondary">({A.stage.toLowerCase()} </span>
+          <span className="font-normal text-secondary" data-testid="approval-stage">
+            {stage?.name}
+          </span>
+          <span className="font-normal text-secondary">)</span>
+        </span>
       </SectionTitle>
       {refused ? (
         <p role="alert" className="text-12 text-danger" data-testid="approval-refused">
@@ -414,7 +427,8 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
           setRefused(why);
           if (!why) set((x) => void editSignature(x, r.id, key, value, { actors: actorOptions }));
         }}
-        onAdd={(after) => set((x) => void addSignature(x, after?.id))}
+        // Always at the end: a new signature takes the signers of the last one and lands after it, wherever the cursor is.
+        onAdd={() => set((x) => void addSignature(x))}
         onRemove={(r) => {
           const last = signaturesOf(g).length <= 1;
           setRefused(last ? A.lastSignature : null);
@@ -457,8 +471,16 @@ function SignatureDialog({
         hint={A.whenHint}
         placeholder={A.whenPlaceholder}
         initial={treeText(stored, context.names)}
-        // A stored condition previews at its place; text being typed has no preview site of its own yet (the contract's sites end at the trigger point's).
-        request={(text) => (text === undefined && stored ? { element: pc.id, at: `${form.pointer}/stages/${stage}/signatures/${index}/when` } : null)}
+        // A stored condition previews at its place; text being typed is judged at the approval site of the lifecycle.
+        request={(text) =>
+          text === undefined
+            ? stored
+              ? { element: pc.id, at: `${form.pointer}/stages/${stage}/signatures/${index}/when` }
+              : null
+            : text.trim()
+              ? { element: pc.id, site: "approval", text }
+              : null
+        }
         onApply={(text) => {
           set((x) => void editSignature(x, sig.id, "when", text, { actors: [] }));
           onClose();
@@ -515,8 +537,8 @@ function NotByDialog({
             onApply([...verbKeys.map((v) => ({ verb: v })), ...transitions.map((t) => ({ transition: t }))]);
           }}
         >
-          <ChipsEditor label={A.notByVerbs} values={verbKeys} options={verbOptions} allowFree={false} whenNone={A.noOne} onChange={setVerbKeys} />
-          <ChipsEditor label={A.notByMoves} values={transitions} options={moves} allowFree={false} whenNone={A.noOne} onChange={setTransitions} />
+          <ChipsEditor label={A.notByVerbs} values={verbKeys} options={verbOptions} allowFree={false} whenNone={A.none} onChange={setVerbKeys} />
+          <ChipsEditor label={A.notByMoves} values={transitions} options={moves} allowFree={false} whenNone={A.none} onChange={setTransitions} />
           <div className="flex justify-end gap-2">
             <Button type="button" onClick={onClose}>
               Cancel

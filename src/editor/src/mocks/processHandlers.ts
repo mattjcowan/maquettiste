@@ -698,6 +698,8 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
           "signer",
           "meaning",
           "reason",
+          "response",
+          "signature",
           "payload",
           "assume",
         ]) {

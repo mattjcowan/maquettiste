@@ -6,7 +6,7 @@
 import type { AttributeDoc } from "@/api/types";
 import { RIGHT_LABELS as RL, SIMULATION_LABELS as L, TRIGGER_LABELS as TL } from "@/model/labels";
 import { builtInVerb, labelOfKey } from "@/model/verbList";
-import { stateIndex, transitionLabel, type ApprovalResponse, type EventDoc, type ProcessDoc, type ScenarioDoc } from "@/model/process";
+import { stateIndex, transitionLabel, type ApprovalResponse, type EventDoc, type NotByDoc, type ProcessDoc, type ScenarioDoc } from "@/model/process";
 import type { CheckWord } from "@/model/process";
 import type { EnabledTrigger, ScenarioVerification, SimInput, SimulationResult, StepTrace } from "./api";
 
@@ -33,6 +33,8 @@ export interface Names {
   eventVerb?(id: string): string | undefined;
   /** A named signature of an approval, by id. */
   signature?(id: string | null | undefined): string;
+  /** What a named signature's Not by names, as the verbs and moves in words ("Submit, Issue · void"); "" when it names none. */
+  notBy?(id: string | null | undefined): string;
 }
 
 /** Display names for the ids an answer carries: state paths, event, invoke, actor, guard, action and gate names. */
@@ -56,10 +58,15 @@ export function namesOf(
   const meanings = new Map<string, string>();
   const gates = new Map<string, string>();
   const signatures = new Map<string, string>();
+  const notBys = new Map<string, NotByDoc[]>();
   const transitions = new Map<string, string>();
   for (const t of process.transitions ?? []) {
     transitions.set(t.id, transitionLabel(process, t));
-    for (const st of t.gate?.stages ?? []) for (const sg of st.signatures ?? []) signatures.set(sg.id, sg.displayName || sg.name);
+    for (const st of t.gate?.stages ?? [])
+      for (const sg of st.signatures ?? []) {
+        signatures.set(sg.id, sg.displayName || sg.name);
+        if (sg.notBy?.length) notBys.set(sg.id, sg.notBy);
+      }
     if (t.gate) {
       gates.set(t.gate.id, t.gate.displayName || t.gate.name);
       for (const m of t.gate.meanings ?? []) meanings.set(m.id, m.name);
@@ -82,6 +89,10 @@ export function namesOf(
     meaning: of(meanings),
     gate: (id) => gates.get(id) ?? id,
     signature: of(signatures),
+    notBy: (id) =>
+      (id ? (notBys.get(id) ?? []) : [])
+        .map((n) => (n.verb !== undefined ? (builtInVerb(n.verb)?.displayName ?? labelOfKey(n.verb)) : (transitions.get(n.transition ?? "") ?? "a move")))
+        .join(", "),
     why: (id) => {
       const own = (process.rights ?? []).find((r) => r.id === id || r.right === id);
       const text = typeof own?.description === "string" ? own.description : "";
@@ -451,7 +462,16 @@ export function lastStepLines(
       tone: actsAs ? "neutral" : "warning",
     });
   if (entry.refusal) {
-    const reason = L.refusals[entry.refusal] ?? entry.refusal;
+    // A person a Not by excludes: said with the signature and what they did, in words ("fiona did Submit, so cannot give the Finance signature").
+    const refusedAudit = entry.audit.find((a) => a.outcome === "refused" && a.signature);
+    const reason =
+      entry.refusal === "gate-excluded" && refusedAudit
+        ? L.excludedReason(
+            refusedAudit.signer ?? entry.input?.signer ?? "",
+            names.signature?.(refusedAudit.signature) ?? "",
+            names.notBy?.(refusedAudit.signature) ?? "",
+          )
+        : (L.refusals[entry.refusal] ?? entry.refusal);
     // The refusing element is named once: in the refusal line, as a link the panel adds (`element`), with the right's Why.
     const by = entry.refusedBy ? { id: entry.refusedBy, name: names.element(entry.refusedBy) } : undefined;
     lines.push({
@@ -527,12 +547,13 @@ export function lastStepLines(
   if (entry.valuesChanged && Object.keys(entry.valuesChanged).length)
     lines.push({ kind: "values", text: L.valuesLine(subjectText(entry.valuesChanged)), tone: "neutral" });
   for (const note of new Set(entry.notes ?? [])) lines.push({ kind: "note", text: L.noteLine(note), tone: "neutral" });
-  for (const r of entry.audit)
+  // A refused attempt on a named signature is the step's refusal line above; its audit record would say it a second time.
+  for (const r of entry.audit.filter((a) => !(a.outcome === "refused" && a.signature && entry.refusal)))
     lines.push({
       kind: "audit",
       text: L.auditLine(
         names.gate(r.gate),
-        L.auditOutcomes[r.outcome] ?? r.outcome,
+        r.outcome,
         r.signer ?? "",
         names.actor(r.actor),
         names.meaning(r.meaning),
@@ -561,19 +582,22 @@ export function inputLabel(input: SimInput, names: Names, filled?: { actor?: str
             ? L.verbInput((builtInVerb(input.verb ?? "")?.displayName ?? labelOfKey(input.verb ?? "")).toLowerCase())
             : names.event(input.event);
   // An approval's response other than sign reads after the event: "approve (reject)".
-  const answered = input.response && input.response !== "sign" ? `${head} (${(L.responseWords[input.response] ?? input.response).toLowerCase()})` : head;
+  const answering = !!input.response && input.response !== "sign";
+  const answered = answering ? `${head} (${L.responseShort[input.response!] ?? input.response})` : head;
+  // A signature is "signed by"; the other responses are not signing, so "by".
+  const bySigner = (who: string) => (answering ? L.byPerson(who) : L.bySigner(who));
   const actor = input.actor || (input.participant ? filled?.actor : undefined);
   const signer = input.signer || (input.participant ? filled?.signer : undefined);
   // A participant's step reads "approve by SalesApprover, acting as Approver, signed by erin".
   if (input.participant) {
     const parts = [`${answered} ${L.asParticipant(names.participant(input.participant))}`];
     if (actor) parts.push(L.actingAs(names.actor(actor)));
-    if (signer) parts.push(L.bySigner(signer));
+    if (signer) parts.push(bySigner(signer));
     return parts.join(", ");
   }
   const parts = [answered];
   if (actor) parts.push(L.asActor(names.actor(actor)));
-  if (signer) parts.push(L.bySigner(signer));
+  if (signer) parts.push(bySigner(signer));
   return parts.join(" ");
 }
 

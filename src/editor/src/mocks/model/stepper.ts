@@ -772,13 +772,27 @@ class Interpreter {
     return held.some((a) => !!a && this.membership.accepts(listed, a));
   }
 
+  /** Who may sign a gated move now: its signers, or on an approval the signers of the round's needed signatures, and nobody when nothing is needed (decision 14). */
+  private allowSigners(t: Edge): string[] {
+    const approval = this.approvalOf(t);
+    if (!approval) return t.gate ? signersOf(t.gate) : [];
+    if (approval.waiting) return [];
+    return [
+      ...new Set(
+        gateSignatures(t.gate)
+          .filter((sg) => approval.needed.has(String(sg.id)))
+          .flatMap((sg) => ids(sg.signers)),
+      ),
+    ];
+  }
+
   /** The list a participant's step is checked against when it names no move: the event's or the human task's actors. */
   private firstList(input: SimInputJson): string[] {
     if (input.input === "event") {
       const ev = input.event ? this.chart.events.get(input.event) : undefined;
       if (!ev) return [];
-      const gated = this.eventMoves(input).find((t) => t.gate && signersOf(t.gate).length);
-      return gated ? signersOf(gated.gate!) : ids(ev.actors);
+      const gated = this.eventMoves(input).find((t) => t.gate && this.allowSigners(t).length);
+      return gated ? this.allowSigners(gated) : ids(ev.actors);
     }
     if (input.input === "invoke-done" || input.input === "invoke-error") {
       const found = this.pending.find((x) => x.invoke.id === input.invoke);
@@ -816,7 +830,7 @@ class Interpreter {
         if ("sg" in picked && picked.actor) return picked.actor;
         continue;
       }
-      const signers = t.gate ? signersOf(t.gate) : [];
+      const signers = t.gate ? this.allowSigners(t) : [];
       if (!t.gate || !signers.length) return firstOf(eventActors);
       const signed = this.signatures.get(t.id) ?? [];
       const required = ids(t.gate.requiredActors).find((a) => !signed.some((s) => this.membership.accepts(a, s.actor)) && this.satisfies(p, a));
@@ -872,6 +886,7 @@ class Interpreter {
       this.problem("MQ9305", `The event '${input.event}' is not an event of process '${String(this.chart.doc.name)}'; pick one of its events.`);
       return this.refuse("no-transition");
     }
+    if (this.approvalFieldsProblem(input, ev)) return this.refuse("no-transition");
     if (this.frozenRefused(str(ev.verb), null, null)) return;
     const actors = ids(ev.actors);
     if (actors.length && (!input.actor || !this.membership.allows(actors, input.actor))) return this.refuse("actor", String(ev.id));
@@ -879,7 +894,7 @@ class Interpreter {
     const closed = [
       ...(actors.length ? [String(ev.id)] : []),
       ...this.eventMoves(input).flatMap((t) =>
-        t.gate && !!input.actor && signersOf(t.gate).some((x) => this.membership.accepts(x, input.actor!)) ? [String(t.gate.id)] : [],
+        t.gate && !!input.actor && this.allowSigners(t).some((x) => this.membership.accepts(x, input.actor!)) ? [String(t.gate.id)] : [],
       ),
     ];
     if (this.checkRights(str(ev.verb), closed)) return;
@@ -900,6 +915,36 @@ class Interpreter {
     this.thawing = false;
     // Naming `freeze` or `thaw` is the opt-in: the accepted event freezes or thaws the subject.
     if (this.scope.refusal === null && (ev.verb === "freeze" || ev.verb === "thaw")) this.applyFreeze(ev.verb, null, null);
+  }
+
+  /** MQ9305 on a step's response and signature (decision 25), judged before the step runs: only an event step gated by an approval takes them. */
+  private approvalFieldsProblem(input: SimInputJson, ev: Json): boolean {
+    const response = input.response ?? "sign";
+    if (response === "sign" && !input.signature) return false;
+    const approvals = this.chart.transitions.filter((t) => t.trigger === "event" && t.key === input.event && approvalStages(t.gate)).map((t) => t.gate!);
+    const name = `event '${String(ev.name)}'`;
+    if (!approvals.length && response !== "sign") {
+      this.problem(
+        "MQ9305",
+        `The step gives response '${response}', but only an event step whose event is gated by an approval takes a response; remove it, or give the gate stages.`,
+      );
+      return true;
+    }
+    if (!approvals.length && input.signature) {
+      this.problem(
+        "MQ9305",
+        "The step names a signature, but only an event step whose event is gated by an approval answers one; remove it, or give the gate stages.",
+      );
+      return true;
+    }
+    if (input.signature && !approvals.some((g) => gateSignatures(g).some((sg) => sg.id === input.signature))) {
+      this.problem(
+        "MQ9305",
+        `The signature '${input.signature}' is not a named signature of an approval on ${name}; pick one of its signatures, or remove it.`,
+      );
+      return true;
+    }
+    return false;
   }
 
   private handleTime(input: SimInputJson) {
@@ -972,6 +1017,11 @@ class Interpreter {
       if (completion) {
         this.runLater(completion, "with-change", new Set());
         this.runLater(completion, "after-commit", new Set());
+      }
+      // A person who ends a human task did `complete` and its move (decision 28); another invoke's end is nobody's.
+      if (found.invoke.type === "human-task") {
+        this.act("complete", null);
+        for (const t of selection.transitions) this.act(t.verb, t.id);
       }
       this.microstep(selection.transitions);
       this.runToCompletion();
@@ -1508,7 +1558,11 @@ class Interpreter {
     const out = new Set<string>();
     for (const t of edges)
       // On a gated move its own checks run only on the signature that brings the gate to its count (decision 18).
-      for (const verb of [...(t.gate ? (this.approvalOf(t) ? RESPONSES : ["sign"]) : []), !t.gate || this.couldComplete(t) ? t.verb : null]) {
+      // An open approval takes every response; one that needs nothing moves as a move without a gate (decision 17).
+      for (const verb of [
+        ...(t.gate && !this.waitingApproval(t) ? (this.approvalOf(t) ? RESPONSES : ["sign"]) : []),
+        !t.gate || this.waitingApproval(t) || this.couldComplete(t) ? t.verb : null,
+      ]) {
         if (!verb) continue;
         const place = this.placeFor(verb, { edge: t });
         for (const p of this.namedFor(verb)) if (p.type === "check" && isTeamCode(p) && matchPoint(p, p, place).ok) out.add(String(p.id));
@@ -1874,6 +1928,11 @@ class Interpreter {
     return this.approvals.get(t.id) ?? this.startApproval(t);
   }
 
+  /** Whether the move's gate is an approval whose round needs nothing. */
+  private waitingApproval(t: Edge): boolean {
+    return !!this.approvalOf(t)?.waiting;
+  }
+
   /** Starts a round: each signature's `when` is judged now, and only false means not needed (decision 7). */
   private startApproval(t: Edge): Approval {
     const needed = new Set<string>();
@@ -1984,7 +2043,8 @@ class Interpreter {
       ids(sg.requiredActors).some(
         (r) => !approval.counted.some((c) => c.signature === sg.id && this.membership.accepts(r, c.actor)) && this.membership.accepts(r, actor),
       );
-    const sg = fills.find((x) => unsigned(x, actorFor(x))) ?? fills[0] ?? open.find((x) => actorFor(x) !== null);
+    // A signature already complete still counts as met, so the person is refused on it (gate-repeat), not as no signer (review S1).
+    const sg = fills.find((x) => unsigned(x, actorFor(x))) ?? fills[0] ?? needed.find((x) => actorFor(x) !== null);
     return sg ? { sg, actor: actorFor(sg) } : { refuse: "gate-signer" };
   }
 

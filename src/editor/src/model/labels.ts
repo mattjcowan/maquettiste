@@ -582,7 +582,7 @@ export const SIMULATION_LABELS = {
     "gate-signer": "the signer is not one of the gate's signers",
     "gate-repeat": "this signer already signed the gate",
     "gate-reason": "the gate needs a reason with each signature",
-    "gate-excluded": "the person did a verb or move the signature's Not by names",
+    "gate-excluded": "the person already did something this signature rules out",
     "gate-not-signed": "the person has no signature to withdraw",
     right: "a right denies it",
     default: "nothing allows it, and the lifecycle denies by default",
@@ -603,14 +603,32 @@ export const SIMULATION_LABELS = {
   unknownAttributesRefused: (attributes: string) =>
     `No attribute was picked, and unknown attributes are refused because the right names attribute ${attributes}. Pick an attribute under Do.`,
   transitionLine: (transitions: string) => `Took ${transitions}`,
-  auditLine: (gate: string, outcome: string, signer: string, actor: string, meaning: string, signature = "") =>
-    `${gate}${signature ? `, ${signature}` : ""}: ${outcome}${signer ? ` by ${signer}` : ""}${actor ? ` as ${actor}` : ""}${meaning ? ` (${meaning})` : ""}`,
-  /** An approval's audit outcomes in the line, each in its own words; the rest are shown as the engine names them. */
-  auditOutcomes: {
-    rejected: "rejected, so the approval was cleared and starts again",
-    ignored: "ignored (abstained)",
-    withdrawn: "withdrawn",
-  } as Record<string, string>,
+  /** One audit record of a gate, in plain words by outcome; the meaning belongs to a signature only. */
+  auditLine: (gate: string, outcome: string, signer: string, actor: string, meaning: string, signature = "") => {
+    const head = `${gate}${signature ? `, ${signature}` : ""}`;
+    const as = actor ? ` as ${actor}` : "";
+    const who = signer || "someone";
+    switch (outcome) {
+      case "rejected":
+        return `${head}: ${who} rejected${as}; the approval is cleared and starts again`;
+      case "ignored":
+        return `${head}: ${who} abstained${as}`;
+      case "withdrawn":
+        return `${head}: ${who} took their signature back${as}`;
+      case "refused":
+        // On a named signature, "for" the person: "by" would read as the element that refused.
+        if (signature) return `${head}: refused for ${who}${as}`;
+        return `${head}: ${outcome}${signer ? ` by ${signer}` : ""}${as}${meaning ? ` (${meaning})` : ""}`;
+      default:
+        return `${head}: ${outcome}${signer ? ` by ${signer}` : ""}${as}${meaning ? ` (${meaning})` : ""}`;
+    }
+  },
+  /** Why a Not by refused a person, naming the signature and what they did (a verb or a move). */
+  excludedReason: (signer: string, signature: string, did: string) =>
+    `${signer || "the person"} did ${did || "a verb or move"} earlier, so cannot give the ${signature || "named"} signature`,
+  /** A response other than sign, short, after the event: "issue (ignore)". */
+  responseShort: { reject: "reject", ignore: "ignore", withdraw: "withdraw" } as Record<string, string>,
+  byPerson: (signer: string) => `by ${signer}`,
   /** The Approvals section and the response and signature fields of an enabled approval. */
   approvals: "Approvals",
   noApprovals: "No approval is open.",
@@ -649,6 +667,8 @@ export const SIMULATION_LABELS = {
   record: "Record to scenario…",
   recordTitle: "Record to scenario",
   recordName: "Name",
+  recordNameInvalid:
+    "A scenario name uses letters, digits and underscores, with no spaces, and starts with a letter or underscore (for example SignedAfterRejection).",
   recordOutcome: "Outcome",
   outcomeFinal: "final: the process ends",
   outcomeActive: "active: the process is still running",
@@ -1028,6 +1048,8 @@ export const RIGHT_LABELS = {
   failedAcceptByCheck: (step: string, checks: string) => `${step} was expected to be accepted, but in the replay it is refused by ${checks} (Check).`,
   failedWarnings: (expected: string, actual: string) => `The step was expected to warn from ${expected}, but in the replay it warns from ${actual}.`,
   failedPoints: (expected: string, actual: string) => `It was expected to run ${expected}, but in the replay it runs ${actual}.`,
+  failedSignatures: (step: string, expected: string, actual: string) =>
+    `${step} was expected to leave ${expected} signed, but in the replay it leaves ${actual}.`,
   failedAccept: (step: string) => `${step} was expected to be accepted, but in the replay it is refused.`,
   updateExpectations: "Update expectations",
   updateExpectationsTip: "Rewrite the expectations of every step from what the replay does (Shift+R in the Scenarios tab)",
@@ -1098,6 +1120,10 @@ export const APPROVAL_LABELS = {
   backTip: "Turns the approval back into a plain gate with one list of signers. Only when it has one signature with no Needed when and no Not by.",
   backBlocked: "Only an approval with one signature that has no Needed when and no Not by can go back to one list of signers.",
   stage: "Stage",
+  signaturesNeeded: "Signatures",
+  stageTip:
+    "A stage is a group of signatures. This approval has one stage, so every needed signature is given before the move happens. The stage takes its name from the gate.",
+  backWhy: "A gate goes back to one list of signers only with one signature that has no Needed when and no Not by. Remove the others first.",
   acrossSignatures: "One person may give several signatures",
   acrossSignaturesTip: "Without this, a person gives at most one signature or ignore on the whole approval.",
   add: "Add signature",
@@ -1121,7 +1147,7 @@ export const APPROVAL_LABELS = {
     why: "Why this signature is needed.",
   },
   always: "Always",
-  noOne: "No one",
+  none: "None",
   notByTitle: (name: string) => `Not by, ${name}`,
   notByHint: "Whoever did one of these verbs or moves since the object entered this move's source state cannot give this signature.",
   notByVerbs: "Verbs",

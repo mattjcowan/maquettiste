@@ -68,6 +68,9 @@ export function verbUses(doc: Json): VerbUse[] {
     arr(doc.steps).forEach((st, i) => {
       const key = str(st.verb);
       if (st.input === "verb" && key !== null) out.push({ pointer: `/steps/${i}/verb`, holder: str(st.id), key, owner: "step" });
+      // A response is a built-in verb's key (signoff-design.md decision 25); a hidden one is MQ9704.
+      const response = str(st.response);
+      if (st.input === "event" && response !== null) out.push({ pointer: `/steps/${i}/response`, holder: str(st.id), key: response, owner: "step" });
     });
   } else if (doc.kind === "operation") {
     const key = str(doc.verb);

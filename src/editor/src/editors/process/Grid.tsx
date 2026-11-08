@@ -81,6 +81,8 @@ export interface GridColumn<R> {
   onCellClick?: (row: R) => void;
   /** Custom content in place of the text (badges). */
   render?: (row: R) => ReactNode;
+  /** A toggle that reads as a checkbox named by its column and row ("Repeat signer of Finance"), for screen readers; its state is `aria-checked`. */
+  named?: boolean;
   /** A short visible label after a toggle's first box (the column's header says what both boxes are about). */
   toggleLabel?: string;
   /** A toggle's second box in the same cell, after the first (so the column does not widen). */
@@ -449,7 +451,9 @@ export function Grid<R extends { id: string }>({
                             {c === 0 && rowProblems.length ? <RowProblemIcon problems={rowProblems} /> : null}
                             {kind === "toggle" ? (
                               <span
-                                aria-label={column.on?.(row) ? "yes" : "no"}
+                                {...(column.named
+                                  ? { role: "checkbox", "aria-checked": !!column.on?.(row), "aria-label": `${column.label} of ${rowName(row)}` }
+                                  : { "aria-label": column.on?.(row) ? "yes" : "no" })}
                                 onClick={() => startEdit(r, c)}
                                 className={cn("inline-block size-3 rounded-[3px] border border-input", column.on?.(row) && "border-accent bg-accent")}
                               />

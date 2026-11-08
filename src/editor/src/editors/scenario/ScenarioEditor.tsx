@@ -228,6 +228,22 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
 
   const columns: GridColumn<StepRow>[] = [
     { key: "index", label: "#", kind: "readonly", width: "w-8", value: (r) => String(r.index + 1) },
+    // Replay and the approval cells sit up front, so they stay in view when the expectations make the grid wider than its area.
+    {
+      key: "status",
+      label: "Replay",
+      kind: "readonly",
+      width: "w-16",
+      value: (r) => replay.steps[r.index] ?? "not-run",
+      render: (r) => {
+        const s = replay.steps[r.index] ?? "not-run";
+        return (
+          <Badge tone={STATUS_TONE[s]} data-testid="step-status" data-status={s}>
+            {s === "not-run" ? "not run" : s}
+          </Badge>
+        );
+      },
+    },
     { key: "input", label: "Input", kind: "select", width: "w-24", value: (r) => r.input, options: () => STEP_INPUTS.map((i) => ({ value: i, label: i })) },
     {
       key: "on",
@@ -267,6 +283,40 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       editValue: (r) => step(r)?.actor ?? "",
       options: () => [none, ...actors.map((a) => ({ value: a.id, label: a.name }))],
     },
+    ...(hasApproval(processDoc)
+      ? [
+          {
+            key: "response",
+            label: SL.response,
+            tooltip: SL.responseTip,
+            kind: "select" as const,
+            width: "min-w-24",
+            // Offered only on a step whose event is gated by an approval; the verbs the project hides are left out.
+            locked: (r: StepRow) => !answers(r),
+            value: (r: StepRow) => (answers(r) ? (SL.responseWords[r.response || "sign"] ?? r.response) : ""),
+            editValue: (r: StepRow) => step(r)?.response ?? "sign",
+            options: (r: StepRow) =>
+              APPROVAL_RESPONSES.filter((x) => x === "sign" || !verbs.hidden.has(x) || x === step(r)?.response).map((x) => ({
+                value: x,
+                label: SL.responseWords[x],
+              })),
+          },
+          {
+            key: "signature",
+            label: SL.signature,
+            tooltip: SL.signatureTip,
+            kind: "select" as const,
+            width: "min-w-24",
+            locked: (r: StepRow) => !answers(r),
+            value: (r: StepRow) => (answers(r) ? r.signature || SL.picked : ""),
+            editValue: (r: StepRow) => step(r)?.signature ?? "",
+            options: (r: StepRow) => [
+              { value: "", label: SL.picked },
+              ...approvalsOfEvent(processDoc, step(r)?.event).flatMap((g) => signaturesOf(g).map((sg) => ({ value: sg.id, label: sg.displayName || sg.name }))),
+            ],
+          },
+        ]
+      : []),
     ...(refusals
       ? [
           {
@@ -401,40 +451,6 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         ]
       : []),
     { key: "signer", label: "Signer", kind: "text", width: "min-w-20", value: (r) => r.signer },
-    ...(hasApproval(processDoc)
-      ? [
-          {
-            key: "response",
-            label: SL.response,
-            tooltip: SL.responseTip,
-            kind: "select" as const,
-            width: "min-w-24",
-            // Offered only on a step whose event is gated by an approval; the verbs the project hides are left out.
-            locked: (r: StepRow) => !answers(r),
-            value: (r: StepRow) => (answers(r) ? (SL.responseWords[r.response || "sign"] ?? r.response) : ""),
-            editValue: (r: StepRow) => step(r)?.response ?? "sign",
-            options: (r: StepRow) =>
-              APPROVAL_RESPONSES.filter((x) => x === "sign" || !verbs.hidden.has(x) || x === step(r)?.response).map((x) => ({
-                value: x,
-                label: SL.responseWords[x],
-              })),
-          },
-          {
-            key: "signature",
-            label: SL.signature,
-            tooltip: SL.signatureTip,
-            kind: "select" as const,
-            width: "min-w-24",
-            locked: (r: StepRow) => !answers(r),
-            value: (r: StepRow) => (answers(r) ? r.signature || SL.picked : ""),
-            editValue: (r: StepRow) => step(r)?.signature ?? "",
-            options: (r: StepRow) => [
-              { value: "", label: SL.picked },
-              ...approvalsOfEvent(processDoc, step(r)?.event).flatMap((g) => signaturesOf(g).map((sg) => ({ value: sg.id, label: sg.displayName || sg.name }))),
-            ],
-          },
-        ]
-      : []),
     {
       key: "meaning",
       label: "Meaning",
@@ -468,21 +484,6 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
               </span>
             ))}
           </span>
-        );
-      },
-    },
-    {
-      key: "status",
-      label: "Replay",
-      kind: "readonly",
-      width: "w-20",
-      value: (r) => replay.steps[r.index] ?? "not-run",
-      render: (r) => {
-        const s = replay.steps[r.index] ?? "not-run";
-        return (
-          <Badge tone={STATUS_TONE[s]} data-testid="step-status" data-status={s}>
-            {s === "not-run" ? "not run" : s}
-          </Badge>
         );
       },
     },

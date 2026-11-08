@@ -422,7 +422,7 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
         </span>
       </div>
       {!collapsed ? (
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,2fr)] divide-x divide-default">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,3fr)] divide-x divide-default">
           <div className="min-h-0 overflow-auto">
             {section(
               "start",
@@ -494,9 +494,6 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
               L.time,
               <TimeSection result={result} live={live} names={names} onAdvance={(after) => update((s) => addInput(s, { input: "time", after }))} />,
             )}
-            {result && approvalRows(result, process, names).length
-              ? section("approvals", L.approvals, <ApprovalsSection result={result} process={process} names={names} />)
-              : null}
             {section(
               "pending",
               L.pending,
@@ -511,6 +508,10 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
           </div>
           <div className="min-h-0 overflow-auto">
             <Messages session={session} />
+            {/* Up here, not under Enabled: the people still to sign stay in view with the panel short. */}
+            {result && approvalRows(result, process, names).length
+              ? section("approvals", L.approvals, <ApprovalsSection result={result} process={process} names={names} />)
+              : null}
             {cast.objects.length
               ? section(
                   "cast",
@@ -1270,15 +1271,20 @@ function ApprovalsSection({ result, process, names }: { result: SimulationResult
           </div>
           {a.stages.flatMap((st) =>
             st.signatures.map((s) => (
-              <div key={s.id} className={cn(ROW, "pl-6")} data-testid="approval-signature" data-signature={s.name}>
+              <div
+                key={s.id}
+                className={cn(ROW, "h-auto min-h-[var(--mq-row-h)] flex-wrap py-0.5 pl-6")}
+                data-testid="approval-signature"
+                data-signature={s.name}
+              >
                 <span
-                  className={cn("min-w-0 flex-1 truncate", !s.needed && "text-secondary")}
+                  className={cn("min-w-0 flex-1 break-words", !s.needed && "text-secondary")}
                   title={L.signatureState(s.name, s.needed, s.counted, s.required)}
                 >
                   {L.signatureState(s.name, s.needed, s.counted, s.required)}
                 </span>
                 {s.finished.length ? (
-                  <span className="min-w-0 truncate text-secondary" title={L.finishedBy(s.finished.join(", "))}>
+                  <span className="min-w-0 break-words text-secondary" title={L.finishedBy(s.finished.join(", "))}>
                     {L.finishedBy(s.finished.join(", "))}
                   </span>
                 ) : null}
@@ -1393,7 +1399,8 @@ function LastStepSection({
           key={i}
           className={cn(
             ROW,
-            (line.kind === "sets" || line.kind === "values" || line.kind === "refusal") && "h-auto min-h-[var(--mq-row-h)] items-start py-0.5",
+            (line.kind === "sets" || line.kind === "values" || line.kind === "refusal" || line.kind === "audit" || line.kind === "diagnostic") &&
+              "h-auto min-h-[var(--mq-row-h)] items-start py-0.5",
             line.kind === "trigger" && "gap-1",
             line.kind === "trigger" && line.named && "h-auto min-h-[var(--mq-row-h)] flex-wrap py-0.5",
             line.tone === "danger" && "text-danger",
@@ -1404,7 +1411,7 @@ function LastStepSection({
           data-kind={line.kind}
           title={line.text}
         >
-          {line.kind === "sets" || line.kind === "values" ? (
+          {line.kind === "sets" || line.kind === "values" || line.kind === "audit" || line.kind === "diagnostic" ? (
             <span className="min-w-0 whitespace-normal break-words" data-testid="last-step-wrapped">
               {line.text}
             </span>
@@ -1531,10 +1538,10 @@ function TraceSection({
                   r.refusedBy ? RL.refusedByLine(L.refusals[r.refusal ?? ""] ?? r.refusal ?? "", r.refusedBy) : (L.refusals[r.refusal ?? ""] ?? r.refusal ?? "")
                 }
               >
-                {r.refusal}
+                {RL.refusalWords[r.refusal ?? ""] ?? r.refusal}
               </Badge>
             ) : (
-              <span className="flex max-w-[55%] items-center gap-1">
+              <span className="flex max-w-[35%] items-center gap-1">
                 {r.froze ? (
                   <Badge tone="accent" data-testid="trace-froze">
                     {r.froze}
@@ -1685,8 +1692,20 @@ function RecordDialog({
           }}
         >
           <Field label={L.recordName} htmlFor="record-name">
-            <Input id="record-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-invalid={name !== "" && !valid} />
+            <Input
+              id="record-name"
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              aria-invalid={name !== "" && !valid}
+              aria-describedby={name !== "" && !valid ? "record-name-why" : undefined}
+            />
           </Field>
+          {name !== "" && !valid ? (
+            <p id="record-name-why" className="text-12 text-danger" data-testid="record-name-why">
+              {L.recordNameInvalid}
+            </p>
+          ) : null}
           <Field label={L.recordOutcome} htmlFor="record-outcome">
             <Select id="record-outcome" value={outcome} onChange={(e) => setOutcome(e.target.value as "final" | "active")}>
               <option value="active">{L.outcomeActive}</option>

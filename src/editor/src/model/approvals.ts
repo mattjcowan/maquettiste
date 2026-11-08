@@ -36,8 +36,8 @@ export interface SignatureRow {
   notByEntries: NotByDoc[];
 }
 
-/** The word a Not by cell shows while the signature excludes no one. */
-export const NO_ONE = "No one";
+/** The word a Not by cell shows while the signature excludes no one: anyone may give it. */
+export const ANYONE = "Anyone";
 /** The word a Needed when cell shows while the signature is always needed. */
 export const ALWAYS = "Always";
 
@@ -70,7 +70,7 @@ export function signatureRows(gate: GateDoc, pointer: string, names: ApprovalNam
         required: sig.required ?? 1,
         repeat: sig.allowRepeatSigner === true,
         when: sig.when ? names.condition(sig.when) : "",
-        notBy: notBy.length ? notBy.map((n) => (n.verb !== undefined ? names.verb(n.verb) : names.transition(n.transition ?? ""))).join(", ") : NO_ONE,
+        notBy: notBy.length ? notBy.map((n) => (n.verb !== undefined ? names.verb(n.verb) : names.transition(n.transition ?? ""))).join(", ") : ANYONE,
         why: text(sig.description),
         signerIds: sig.signers ?? [],
         requiredActorIds: sig.requiredActors ?? [],

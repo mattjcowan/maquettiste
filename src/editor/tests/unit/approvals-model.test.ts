@@ -14,7 +14,7 @@ import {
   signatureRows,
   signaturesOf,
   toApproval,
-  NO_ONE,
+  ANYONE,
 } from "@/model/approvals";
 import type { GateDoc } from "@/model/process";
 
@@ -115,7 +115,7 @@ describe("the signatures grid", () => {
       when: "subject.total > 10000",
       notBy: "PROMOTE, move t1",
     });
-    expect(rows[1]).toMatchObject({ name: "signature2", when: "", notBy: NO_ONE, signers: "Approver, Controller", required: 1 });
+    expect(rows[1]).toMatchObject({ name: "signature2", when: "", notBy: ANYONE, signers: "Approver, Controller", required: 1 });
   });
 
   it("adds a signature after a row and refuses to remove the last one", () => {

@@ -515,6 +515,16 @@ function dropRightStates(process: ProcessDoc, gone: ReadonlySet<string>): void {
  * everywhere (trigger-points-design.md section 9).
  */
 export function dropTriggerPointRefs(process: ProcessDoc, gone: { states?: ReadonlySet<string>; transitions?: ReadonlySet<string> }): void {
+  // A named signature's Not by names a move; a move that goes leaves no entry behind (MQ8202), and an emptied list goes with its key.
+  const moves = gone.transitions;
+  if (moves?.size)
+    for (const t of process.transitions ?? [])
+      for (const stage of t.gate?.stages ?? [])
+        for (const sig of stage.signatures) {
+          if (!sig.notBy?.some((n) => n.transition !== undefined && moves.has(n.transition))) continue;
+          sig.notBy = sig.notBy.filter((n) => n.transition === undefined || !moves.has(n.transition));
+          if (!sig.notBy.length) delete sig.notBy;
+        }
   if (!process.triggerPoints) return;
   const lists = [
     ["states", gone.states],

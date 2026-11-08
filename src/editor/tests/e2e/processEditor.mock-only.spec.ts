@@ -188,3 +188,26 @@ test("a scenario opens from the Scenarios tab and replays with each step's statu
   await expect(scenario.getByTestId("replay-failure")).toContainText("Step 2 (MQ9302)");
   await expect(page.getByTestId("inspector-scenario")).toContainText("PurchaseApproval");
 });
+
+test("at 1440 px the signatures grid shows Needed when and Why, and a scenario's grid shows Response, Signature and Replay", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const editor = await openProcess(page, "InvoiceLifecycle");
+  // Whether a cell of the column sits fully inside the scrolling frame of its grid.
+  const visible = (grid: Locator, column: string) =>
+    grid
+      .locator(`td[data-column="${column}"]`)
+      .first()
+      .evaluate((th) => {
+        const frame = th.closest("div.overflow-x-auto")!.getBoundingClientRect();
+        const box = th.getBoundingClientRect();
+        return box.left >= frame.left - 1 && box.right <= frame.right + 1;
+      });
+  await tab(editor, "Gates").click();
+  const signatures = editor.getByTestId("signatures-grid");
+  for (const column of ["when", "notBy", "why"]) expect(await visible(signatures, column), column).toBe(true);
+  await tab(editor, "Scenarios").click();
+  await rowsOf(editor, "scenarios-grid").first().getByTestId("scenario-open").click();
+  const scenario = page.getByTestId("element-editor").and(page.locator('[data-kind="scenario"]'));
+  const steps = scenario.getByTestId("steps-grid");
+  for (const column of ["status", "response", "signature"]) expect(await visible(steps, column), column).toBe(true);
+});
