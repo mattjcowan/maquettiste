@@ -76,7 +76,7 @@ public sealed partial class StatechartInterpreter
                 continue;
             // An open approval takes every response; one that needs nothing moves as a move without a gate (signoff-design.md decision 17).
             var gate = t.Gate is { UsesStages: true } && !OpenApproval(_root, t) ? null : t.Gate;
-            IEnumerable<string?> verbs = gate is { UsesStages: true } ? [.. ResponseVerbs] : [gate is not null ? "sign" : null];
+            IEnumerable<string?> verbs = gate is { UsesStages: true } ? [.. ResponseVerbsOf(gate)] : [gate is not null ? "sign" : null];
             foreach (var verb in verbs.Append(gate is null || CouldComplete(_root, t, gate) ? MoveVerb(t) : null))
             {
                 if (verb is null)
@@ -161,7 +161,8 @@ public sealed partial class StatechartInterpreter
             {
                 var input = _scope.Input!;
                 var (meaning, attributes) = AuditFields(input, gate);
-                Audit(inst, gate, t, input.Signer, input.Actor, meaning, input.Reason, GateOutcome.Refused, attributes, gate.UsesStages ? _picks.GetValueOrDefault(t) : null);
+                Audit(inst, gate, t, input.Signer, input.Actor, meaning, input.Reason, GateOutcome.Refused, attributes, gate.UsesStages ? _picks.GetValueOrDefault(t) : null,
+                    _behalf.GetValueOrDefault(t)?.Delegator);
             }
 
             // Each refused automatic move is noted once per step, though RunToCompletion tries it again after every microstep.
@@ -175,14 +176,15 @@ public sealed partial class StatechartInterpreter
     }
 
     // Whether the next signature, by whoever signs, brings the gate to its count; who signs it may still leave a required actor missing. On an
-    // approval: at most one signature is missing across the round's needed signatures, or nothing is needed.
+    // approval: nothing is needed, or the round is the last and at most one signature is missing across its needed signatures (signoff-design.md
+    // decision 33: only the last round's completion moves).
     private bool CouldComplete(Instance inst, ChartTransition t, ProcessGate gate)
     {
         if (gate.UsesStages)
         {
             var approval = ApprovalOf(inst, t, gate);
-            return approval.Waiting || gate.AllSignatures.Where(s => approval.Needed.Contains(s.Id) && !Complete(s, approval.Counted))
-                .Sum(s => Math.Max(1, s.Required) - approval.Counted.Count(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal))) <= 1;
+            return approval.Waiting || (LaterRound(gate, approval) is null && gate.AllSignatures.Where(s => approval.Needed.Contains(s.Id) && !Complete(s, approval.Counted))
+                .Sum(s => Math.Max(1, s.Required) - approval.Counted.Count(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal))) <= 1);
         }
 
         return (inst.Signatures.TryGetValue(t.Id, out var existing) ? existing.Count : 0) + 1 >= Math.Max(1, gate.Required);
@@ -196,8 +198,10 @@ public sealed partial class StatechartInterpreter
         if (gate.UsesStages)
         {
             var approval = ApprovalOf(inst, t, gate);
-            return approval.Waiting || (input.Response == SignatureResponse.Sign && _picks.TryGetValue(t, out var picked)
-                && RoundDone(gate, approval, [.. approval.Counted, new CountedSignature(input.Signer!, input.Actor!, null, null, picked.Id)]));
+            // A signature on behalf counts as the delegator's actor (decision 34); only the last round's completion moves (decision 33).
+            var actor = _behalf.TryGetValue(t, out var behalf) ? behalf.Actor : input.Actor!;
+            return approval.Waiting || (input.Response == SignatureResponse.Sign && _picks.TryGetValue(t, out var picked) && LaterRound(gate, approval) is null
+                && RoundDone(gate, approval, [.. approval.Counted, new CountedSignature(input.Signer!, actor, null, null, picked.Id)]));
         }
 
         var signatures = inst.Signatures.TryGetValue(t.Id, out var existing) ? existing : [];
