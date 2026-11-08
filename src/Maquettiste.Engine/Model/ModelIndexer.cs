@@ -962,7 +962,18 @@ internal static class ModelIndexer
                 _ => null,
             },
             Rights: element is Process { Rights.Count: > 0 } withRights ? withRights.Rights.Count : null,
-            Access: element is Right access ? AccessName(access.Access) : null), element), element), element);
+            Access: element is Right access ? AccessName(access.Access) : null,
+            Approvals: element is Process approvalProcess && ApprovalGates(approvalProcess).Count() is > 0 and var approvals ? approvals : null,
+            Signatures: element is Process signatureProcess && ApprovalGates(signatureProcess).Sum(static g => g.AllSignatures.Count()) is > 0 and var signatures
+                ? signatures
+                : null), element), element), element);
+
+    /// <summary>
+    /// A process's gates that have stages (signoff-design.md section 9): each transition's inline gate in transition order, then a library's gate
+    /// policies in file order. A gate policy another process uses counts on its library's row only.
+    /// </summary>
+    private static IEnumerable<ProcessGate> ApprovalGates(Process process) =>
+        process.Transitions.Select(static t => t.Gate).Concat(process.Gates).OfType<ProcessGate>().Where(static g => g.UsesStages);
 
     /// <summary>The entities a process's entity entries name, in entry order (a stereotype entry is not counted).</summary>
     private static List<string> EntityEntries(Process process) => [.. process.Subjects.Select(s => s.Entity).OfType<string>()];

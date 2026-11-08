@@ -97,6 +97,10 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// point (trigger-points-design.md section 9).</param>
 /// <param name="Replaces">The distinct verb keys a process's replaces name, sorted ordinally, on process rows that have a replace
 /// (trigger-points-design.md section 9).</param>
+/// <param name="Approvals">The number of a process's gates that have stages, inline on its transitions or as gate policies of a library, on
+/// process rows that have at least one (signoff-design.md section 9).</param>
+/// <param name="Signatures">The number of named signatures across those gates' stages, on process rows that have at least one
+/// (signoff-design.md section 9).</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
 /// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
@@ -133,7 +137,9 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Access = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? TriggerPoints = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? TriggerVerbs = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Replaces = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Replaces = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Approvals = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Signatures = null)
 {
     /// <summary>
     /// A process row's <c>rightsDefault</c> as its file writes it, <c>allow</c> or <c>deny</c> (rights-design.md section 6); <see langword="null"/>
@@ -253,6 +259,8 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && TriggerPoints == other.TriggerPoints
         && (ReferenceEquals(TriggerVerbs, other.TriggerVerbs) || (TriggerVerbs is not null && other.TriggerVerbs is not null && TriggerVerbs.SequenceEqual(other.TriggerVerbs, StringComparer.Ordinal)))
         && (ReferenceEquals(Replaces, other.Replaces) || (Replaces is not null && other.Replaces is not null && Replaces.SequenceEqual(other.Replaces, StringComparer.Ordinal)))
+        && Approvals == other.Approvals
+        && Signatures == other.Signatures
         && (ReferenceEquals(ReplaceScopes, other.ReplaceScopes)
             || (ReplaceScopes is not null && other.ReplaceScopes is not null && ReplaceScopes.SequenceEqual(other.ReplaceScopes, StringComparer.Ordinal)))
         && InlineApproval == other.InlineApproval

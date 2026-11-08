@@ -12,7 +12,8 @@ namespace Maquettiste.Engine;
 /// goes takes its translations with it, since the save removes its sub-element. A right whose last verb is removed goes (rights-design.md
 /// section 8): an inline right leaves its lifecycle's rights, and a named right is deleted with its uses. A trigger point whose last verb is
 /// removed leaves its lifecycle's trigger points (trigger-points-design.md section 9), and the scenario steps that assume its outcome or
-/// expect it lose those entries.
+/// expect it lose those entries. A named signature's <c>notBy</c> entry for the verb is renamed or dropped (signoff-design.md section 9). A
+/// step's <c>response</c> names a built-in verb, which neither operation renames or removes, so it stays as it is.
 /// </summary>
 public sealed partial class ModelStore
 {
@@ -22,7 +23,7 @@ public sealed partial class ModelStore
 
     /// <summary>
     /// Plans a verb operation: adds the updates to <paramref name="changes"/>; returns why it is refused, or <see langword="null"/>. Uses are
-    /// found by key in every event, transition, operation, right, trigger point and scenario verb step. <c>rename-verb</c> and <c>remove-verb</c> of an own verb whose key a built-in
+    /// found by key in every event, transition, operation, right, trigger point, named signature's notBy and scenario verb step. <c>rename-verb</c> and <c>remove-verb</c> of an own verb whose key a built-in
     /// verb has (MQ9702) leave the uses, which name the built-in verb: they write only the vocabulary.
     /// </summary>
     private string? VerbOperation(ModelSnapshot snapshot, BatchOperation o, List<PlannedChange> changes)
@@ -96,6 +97,36 @@ public sealed partial class ModelStore
 
             return verbs.Count > 0;
         }
+
+        // Whether a gate's named signatures name the verb in a notBy entry.
+        bool NotByNames(ProcessGate? gate) =>
+            gate is not null && gate.AllSignatures.Any(s => s.NotBy.Any(e => string.Equals(e.Verb, key, StringComparison.Ordinal)));
+
+        // A named signature's notBy (signoff-design.md section 9): a verb entry is renamed in place, or dropped when the list already names the
+        // new key; on a remove it is dropped. A list left empty goes, as an empty notBy excludes nobody. Transition entries stay.
+        void RewriteNotBy(JsonObject gate)
+        {
+            foreach (var signature in (gate["stages"] as JsonArray ?? []).OfType<JsonObject>().SelectMany(s => (s["signatures"] as JsonArray ?? []).OfType<JsonObject>()))
+            {
+                if (signature["notBy"] is not JsonArray entries)
+                    continue;
+                for (var i = entries.Count - 1; i >= 0; i--)
+                {
+                    if (entries[i] is not JsonObject entry || !NamesVerb(entry, key))
+                        continue;
+                    if (to is not { } renamed || entries.Any(e => e is JsonObject other && NamesVerb(other, renamed)))
+                        entries.RemoveAt(i);
+                    else
+                        entry["verb"] = renamed;
+                }
+
+                if (entries.Count == 0)
+                    signature.Remove("notBy");
+            }
+        }
+
+        static bool NamesVerb(JsonObject entry, string verb) =>
+            entry["verb"] is JsonValue value && value.TryGetValue<string>(out var named) && string.Equals(named, verb, StringComparison.Ordinal);
 
         // An own verb that shadows a built-in key (MQ9702) has no uses: they name the built-in verb, so a rename or a remove leaves them, and
         // adopting the built-in (to the same key) writes only the vocabulary. A write that would change nothing is skipped.
@@ -173,6 +204,19 @@ public sealed partial class ModelStore
                             continue;
                         if (Working(document)["triggerPoints"] is JsonArray points && points[i] is JsonObject point && !RewriteList(point))
                             points.RemoveAt(i);
+                    }
+
+                    // A named signature's notBy, on an inline gate or a gate policy (signoff-design.md section 9).
+                    for (var i = 0; i < process.Transitions.Count; i++)
+                    {
+                        if (NotByNames(process.Transitions[i].Gate) && Working(document)["transitions"]?[i]?["gate"] is JsonObject gate)
+                            RewriteNotBy(gate);
+                    }
+
+                    for (var i = 0; i < process.Gates.Count; i++)
+                    {
+                        if (NotByNames(process.Gates[i]) && Working(document)["gates"]?[i] is JsonObject policy)
+                            RewriteNotBy(policy);
                     }
 
                     break;

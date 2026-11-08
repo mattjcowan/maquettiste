@@ -55,6 +55,8 @@ internal sealed partial class ChangePlanner
         while (_cascadeQueue.Count > 0)
         {
             var (at, target, how) = _cascadeQueue.Dequeue();
+            if (how == DeleteResolution.DeleteDependents)
+                DropAnswers(at, target);
             foreach (var reference in _snapshot.ReferencesTo(target)
                          .OrderBy(r => r.FromElementId, StringComparer.Ordinal)
                          .ThenBy(r => r.JsonPointer, PointerOrder.Instance))
@@ -142,6 +144,7 @@ internal sealed partial class ChangePlanner
                     : referrer.Element is Right || holder.StartsWith("/rights/", StringComparison.Ordinal) ? "the right"
                     : referrer.Element is Process && SetHolder(holder) ? "the set"
                     : referrer.Element is Process && holder.StartsWith("/triggerPoints/", StringComparison.Ordinal) ? "the trigger point"
+                    : referrer.Element is Process && SignatureCondition(holder) ? "the signature's condition (when)"
                     : "the check or guard";
                 _cascadeRefused.Add((index, referrerId, reference,
                     $"an expression names {Label(target)}, and remove-references does not rewrite an expression; delete with delete-dependents to remove {what} that holds it."));
@@ -234,6 +237,32 @@ internal sealed partial class ChangePlanner
             if (TryOps(referrer, dropped, narrow, out _) is null)
             {
                 Commit(referrerId, dropped);
+                return;
+            }
+        }
+
+        // A verb or a move a named signature's notBy names (signoff-design.md section 9), in either resolution: the entry goes, and the key
+        // with its last entry. The verb or move can no longer happen, so dropping it widens nothing that could occur.
+        if (referrer.Element is Process && NotByPart(reference.JsonPointer) is { } notBy)
+        {
+            var part = Remaining(referrer.Json, notBy.List, ops) <= 1 ? notBy.List : notBy.Entry;
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                return;
+            }
+        }
+
+        // A named signature a step's expect.signatures counts (signoff-design.md section 9), in either resolution: only the listed signatures
+        // are compared, so its key is cleared, and the map with its last key.
+        if (referrer.Element is Scenario && ExpectedSignature(reference.JsonPointer) is { } expected)
+        {
+            var part = Remaining(referrer.Json, expected.Map, ops) <= 1 ? expected.Map : reference.JsonPointer;
+            List<CascadeOp> cleared = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, false, reference, index)];
+            if (TryOps(referrer, cleared, narrow, out _) is null)
+            {
+                Commit(referrerId, cleared);
                 return;
             }
         }
@@ -435,6 +464,61 @@ internal sealed partial class ChangePlanner
     }
 
     private void Commit(string referrerId, List<CascadeOp> ops) => _cascadeOps[referrerId] = ops;
+
+    /// <summary>
+    /// An approval that delete-dependents removes (signoff-design.md section 9): the scenario steps that answered it, a step of a process
+    /// whose gated transition's event it raises, drop their <c>response</c> and <c>signature</c>, as no gate is left to answer. The gate is
+    /// one on a transition, or a library's gate policy at each transition that uses it.
+    /// </summary>
+    private void DropAnswers(int index, string target)
+    {
+        if (!_snapshot.TryGetEntry(target, out var entry) || _snapshot.Get<Process>(entry.OwnerId) is not { } owner
+            || !JsonPointer.TryParse(entry.JsonPointer, out var segments))
+            return;
+        List<(string Process, string Event)> moves = [];
+        if (segments is ["transitions", var at, "gate"] && JsonPointer.TryIndex(at, out var t) && t < owner.Transitions.Count
+            && owner.Transitions[t].Event is { } gated)
+        {
+            moves.Add((owner.Id, gated));
+        }
+        else if (segments is ["gates", _])
+        {
+            foreach (var use in _snapshot.ReferencesTo(target).Where(r => r.Field == "gatePolicy"))
+            {
+                if (_snapshot.Get<Process>(use.FromElementId) is { } user && JsonPointer.TryParse(use.JsonPointer, out var parts)
+                    && parts is ["transitions", var i, "gatePolicy"] && JsonPointer.TryIndex(i, out var u) && u < user.Transitions.Count
+                    && user.Transitions[u].Event is { } named)
+                    moves.Add((user.Id, named));
+            }
+        }
+
+        foreach (var (process, raised) in moves.Distinct())
+        {
+            foreach (var scenarioId in _snapshot.ReferencesTo(process).Where(r => r.JsonPointer == "/process").Select(r => r.FromElementId).Distinct().Order(StringComparer.Ordinal))
+            {
+                if (_cascadeDeleted.ContainsKey(scenarioId) || _deleted.Contains(scenarioId) || _batchIds.Contains(scenarioId)
+                    || _snapshot.Get<Scenario>(scenarioId) is not { } scenario || !TryGetCurrent(scenarioId, null, out var referrer))
+                    continue;
+                var ops = _cascadeOps.GetValueOrDefault(scenarioId) ?? [];
+                List<CascadeOp> next = [.. ops];
+                for (var k = 0; k < scenario.Steps.Count; k++)
+                {
+                    if (!string.Equals(scenario.Steps[k].Event, raised, StringComparison.Ordinal))
+                        continue;
+                    foreach (var key in new[] { "response", "signature" })
+                    {
+                        var pointer = FormattableString.Invariant($"/steps/{k}/{key}");
+                        if (!JsonPointer.TryGet(referrer.Json, pointer, out _) || next.Any(o => o.Pointer == pointer || (o.Remove && IsUnder(pointer, o.Pointer))))
+                            continue;
+                        next.Add(new CascadeOp(pointer, true, new ReferenceInfo(scenarioId, scenario.Steps[k].Id, pointer, key, target), index));
+                    }
+                }
+
+                if (next.Count > ops.Count && TryOps(referrer, next, true, out _) is null)
+                    Commit(scenarioId, next);
+            }
+        }
+    }
 
     /// <summary>
     /// The refused references that still stand: a scenario's subject refuses only while the scenario stays, and a later delete of the
@@ -968,14 +1052,39 @@ internal sealed partial class ChangePlanner
             : null;
     }
 
-    /// <summary>The items a list holds once the planned edits that drop one of its items are applied.</summary>
+    /// <summary>The items a list holds, or the keys a map holds, once the planned edits that drop one of them are applied.</summary>
     private static int Remaining(JsonElement json, string list, IReadOnlyList<CascadeOp> ops)
     {
-        if (!JsonPointer.TryGet(json, list, out var items) || items.ValueKind != JsonValueKind.Array)
+        if (!JsonPointer.TryGet(json, list, out var items) || items.ValueKind is not (JsonValueKind.Array or JsonValueKind.Object))
             return 0;
         var dropped = ops.Select(o => o.Pointer).Where(p => IsUnder(p, list) && p.IndexOf('/', list.Length + 1) < 0).Distinct(StringComparer.Ordinal).Count();
-        return items.GetArrayLength() - dropped;
+        return (items.ValueKind == JsonValueKind.Array ? items.GetArrayLength() : items.EnumerateObject().Count()) - dropped;
     }
+
+    /// <summary>
+    /// The entry of a named signature's <c>notBy</c> a pointer names a verb or a transition in (<c>…/signatures/1/notBy/0/verb</c>), with its
+    /// list (<c>…/signatures/1/notBy</c>), on an inline gate or a gate policy (signoff-design.md section 9); <see langword="null"/> for any
+    /// other pointer.
+    /// </summary>
+    private static (string List, string Entry)? NotByPart(string pointer) =>
+        JsonPointer.TryParse(pointer, out var segments) && segments.Length >= 6 && segments[^1] is "verb" or "transition"
+        && JsonPointer.TryIndex(segments[^2], out _) && segments[^3] == "notBy" && segments[^5] == "signatures"
+            ? (JsonPointer.Build(segments[..^2]), JsonPointer.Build(segments[..^1]))
+            : null;
+
+    /// <summary>
+    /// The map a key of a step's <c>expect.signatures</c> is in (<c>/steps/0/expect/signatures</c>, signoff-design.md section 9);
+    /// <see langword="null"/> for any other pointer.
+    /// </summary>
+    private static (string Map, string Key)? ExpectedSignature(string pointer) =>
+        JsonPointer.TryParse(pointer, out var segments) && segments.Length == 5 && segments[0] == "steps" && JsonPointer.TryIndex(segments[1], out _)
+        && segments[2] == "expect" && segments[3] == "signatures"
+            ? (JsonPointer.Build(segments[..4]), pointer)
+            : null;
+
+    /// <summary>Whether a part is a named signature's <c>when</c> (<c>…/signatures/1/when</c>, signoff-design.md section 9).</summary>
+    private static bool SignatureCondition(string part) =>
+        JsonPointer.TryParse(part, out var segments) && segments.Length >= 3 && segments[^1] == "when" && segments[^3] == "signatures";
 
     /// <summary>Applies the edits to a copy of the referrer; null when it is valid after them, else why not.</summary>
     private string? TryOps(Working referrer, IReadOnlyList<CascadeOp> ops, bool narrow, out bool widening)
@@ -1039,7 +1148,8 @@ internal sealed partial class ChangePlanner
     /// <summary>
     /// The part that holds the expression tree a pointer is inside: a check, guard or inline right (<c>/checks/0</c>, <c>/guards/2</c>,
     /// <c>/rights/1</c>, rights-design.md section 8), a trigger point for its <c>when</c> or condition (<c>/triggerPoints/0</c>,
-    /// trigger-points-design.md section 9), a derived value (<c>/attributes/1/derived</c>), an action's or a trigger point's set
+    /// trigger-points-design.md section 9), a named signature's <c>when</c> itself (<c>…/signatures/1/when</c>, signoff-design.md section 9),
+    /// a derived value (<c>/attributes/1/derived</c>), an action's or a trigger point's set
     /// (<c>/actions/0/sets/1</c>, its value, object-effects-design.md section 8), or <c>""</c> for a constraint's condition, which needs the
     /// whole element; <see langword="null"/> when the pointer is in no tree.
     /// </summary>
@@ -1055,6 +1165,10 @@ internal sealed partial class ChangePlanner
                 return JsonPointer.Build(segments[..k]);
             if (segments[k] == "when" && k == 2 && segments[0] == "triggerPoints")
                 return JsonPointer.Build(segments[..k]);
+            // A named signature's when goes alone (signoff-design.md section 9): the signature is then always needed, the safe choice decision
+            // 7 makes when a condition cannot be judged.
+            if (segments[k] == "when" && k >= 2 && segments[k - 2] == "signatures")
+                return JsonPointer.Build(segments[..(k + 1)]);
             if (segments[k] == "value" && k >= 1 && segments[k - 1] == "derived")
                 return JsonPointer.Build(segments[..k]);
             if (SetEntry(segments, k) is { } set)
@@ -1427,6 +1541,7 @@ internal sealed partial class ChangePlanner
         "participants" => "participant",
         "holds" => "holding",
         "sets" => "set",
+        "when" => "condition (when)",
         _ => property,
     };
 }
