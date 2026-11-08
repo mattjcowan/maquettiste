@@ -102,6 +102,15 @@ test("Use turns a lifecycle into an orchestration with its entity, as one undo s
       .getByRole("button", { name: /^Remove right/ })
       .click();
   }
+  // It also states trigger points, which only a lifecycle holds (MQ8101): take them out too.
+  await tab(editor, "Trigger points").click();
+  const points = editor.getByTestId("trigger-grid-row");
+  while ((await points.count()) > 0) {
+    await points
+      .first()
+      .getByRole("button", { name: /^Remove trigger point/ })
+      .click();
+  }
   await tab(editor, "States").click();
   await editor.getByTestId("editor-details-toggle").click();
   await editor.getByLabel("Use").selectOption("orchestration");

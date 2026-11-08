@@ -239,6 +239,14 @@ test("a process is revealed in its new use folder after its use changes", async 
       .first()
       .getByRole("button", { name: /^Remove right/ })
       .click();
+  // It also states trigger points, which only a lifecycle holds (MQ8101): take them out too.
+  await editor.getByRole("tab", { name: "Trigger points", exact: true }).click();
+  const points = editor.getByTestId("trigger-grid-row");
+  while ((await points.count()) > 0)
+    await points
+      .first()
+      .getByRole("button", { name: /^Remove trigger point/ })
+      .click();
   await editor.getByRole("tab", { name: "States", exact: true }).click();
   await editor.getByTestId("editor-details-toggle").click();
   // The orchestrations folder is not open: changing the use moves the row there, and the selection opens the folder.
