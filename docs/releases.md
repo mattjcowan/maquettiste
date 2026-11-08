@@ -41,12 +41,14 @@ one.
   written), register `ScenarioTriggers` once in `ScenarioHost` (`TriggerPointStandIn.Current = new ScenarioTriggers();`), call `<Entity>Verbs`
   inside your own transaction for object, link and own verbs, and run a relay that passes each `TriggerPointMessage` from the outbox to
   `TriggerPointRelay.DeliverAsync`. The pack's README has the exact steps.
-- **New names to confirm before release.** Besides the names the design lists: in `csharp-dapper`, `ChartDefinition.TriggerSteps` and
+- **New names.** Besides the names the design lists: in `csharp-dapper`, `ChartDefinition.TriggerSteps` and
   `ChartDefinition.Id`, `TriggerPointWarning`, `TriggerPointDepth`, `StepResult.TriggerPoints`, `CommandResult.TriggerPoints`,
-  `StepResult.AfterCommit`, `TriggerPointCall.InState`, `.Enters`, `.MovedBy` and `.Is`, `ITriggerPointSteps.Speaks` and `.Subject`,
+  `StepResult.AfterCommit`, `TriggerPointCall.InState`, `.Enters`, `.MovedBy`, `.Is` and `.Resolves` (written only when rights name actors taken from the object), `ITriggerPointSteps.Speaks` and `.Subject`,
   `TriggerPointOutcome.Ran`, `.Replaced` and `.Messages`, `TriggerPointStandIn` (`Current`, `Check`, `Records`) and `ScenarioTriggers`
   (`Assumed`, `Recorded`). In templates, `trigger_point.team_code`, `trigger_point.covers`, `trigger_point.process` and
   `verb.trigger_points`. In the CLI, `process trigger-sequence`.
+- **A limit in generated code.** Generated process code doesn't ask a lifecycle that governs only a derived type of the process's subject.
+  Simulation does ask it, and the derived type's own `<Entity>Verbs` runner still runs that lifecycle for a verb step.
 
 ## 0.16.0 (2026-11-07)
 
