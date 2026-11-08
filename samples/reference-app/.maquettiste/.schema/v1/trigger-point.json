@@ -17,6 +17,9 @@
     "timing",
     "severity",
     "verbs",
+    "states",
+    "targets",
+    "transitions",
     "entities",
     "attributes",
     "ends",
@@ -88,6 +91,21 @@
     },
     "verbs": {
       "$ref": "common.json#/$defs/triggerBody/properties/verbs"
+    },
+    "states": {
+      "description": "Not allowed on a named trigger point (MQ8102): states belong to one lifecycle. It runs for its subjects in every state; to run only in some, write in_state in when. Remove the key.",
+      "$ref": "common.json#/$defs/idList",
+      "default": []
+    },
+    "targets": {
+      "description": "Not allowed on a named trigger point (MQ8102): the states a move enters belong to one lifecycle. To run only on some moves, write in_state in when. Remove the key.",
+      "$ref": "common.json#/$defs/idList",
+      "default": []
+    },
+    "transitions": {
+      "description": "Not allowed on a named trigger point (MQ8102): transitions belong to one lifecycle. To run only on some moves, write in_state in when. Remove the key.",
+      "$ref": "common.json#/$defs/idList",
+      "default": []
     },
     "entities": {
       "description": "Entities it runs for, each with its derived entities: some of those its subjects cover (MQ8102). Empty: every entity its subjects cover, less exceptEntities. Its paths and sets name what every entity it covers holds under one id.",

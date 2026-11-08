@@ -18,10 +18,10 @@ What events, automatic moves and operations do. A verb is stored by its key.
 | Route | `route` | signature | Send the object to actors for review, signature or a task. |  |
 | Claim | `claim` | task | Take a task offered to several actors, so only you hold it. |  |
 | Complete | `complete` | task | Finish a task. |  |
-| Create | `create` | object | Make a new object. | trigger point `AssignNumber`, trigger point `PartyNumber` |
+| Create | `create` | object | Make a new object. | trigger point `PartyNumber`, trigger point `AssignNumber` |
 | Read | `read` | object | See an object or a link, and its data. |  |
 | Modify | `modify` | object | Change the values of an object or a link. | trigger point `LargePriceDrop` |
-| Delete | `delete` | object | Remove an object. | trigger point `ApprovedForDeletion`, trigger point `Archive`, trigger point `DocumentAudit` |
+| Delete | `delete` | object | Remove an object. | trigger point `DocumentAudit`, trigger point `ApprovedForDeletion`, trigger point `Archive` |
 | Copy | `copy` | object | Make a new object from an existing one. |  |
 | Revise | `revise` | object | Make the next revision of an object. |  |
 | Lock | `lock` | object | Reserve an object, so only the actor holding the lock may change it. |  |

@@ -84,4 +84,22 @@ public sealed partial class ModelStore
 
         static ProcessCall<TriggerSequence> Bad(string detail) => ProcessCall<TriggerSequence>.Fail(ProcessCallStatus.BadRequest, detail);
     }
+
+    /// <summary>
+    /// The entities a named trigger point runs for (trigger-points-design.md decision 33; <c>GET /api/model/trigger-points/{id}/covers</c>): every
+    /// entity a subject covers (an entity with its derived entities; a stereotype's carriers, those a package gives it by default and those an
+    /// implied stereotype brings included, with their derived entities), less <c>exceptEntities</c> and theirs, narrowed by <c>entities</c>, in
+    /// name order: the same list as the record's <c>covers</c>. It reads the snapshot; it never resolves the model, and writes nothing.
+    /// </summary>
+    /// <param name="id">The named trigger point's id.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The entity ids; <see cref="ProcessCallStatus.NotFound"/> when the id is not a named trigger point.</returns>
+    public async Task<ProcessCall<IReadOnlyList<string>>> GetTriggerPointCoversAsync(string id, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+        var snapshot = await LoadedAsync(ct).ConfigureAwait(false);
+        if (snapshot.Get<TriggerPoint>(id) is not { } point)
+            return ProcessCall<IReadOnlyList<string>>.Fail(ProcessCallStatus.NotFound, $"No named trigger point has the id {id}.");
+        return ProcessCall<IReadOnlyList<string>>.Ok([.. TriggerSequences.Of(snapshot).Covers(point).Select(e => e.Id)]);
+    }
 }

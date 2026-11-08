@@ -19,6 +19,29 @@ public sealed class ProcessCommandTests
         """;
 
     [Fact]
+    public async Task Mcp_get_trigger_sequence_given_an_entity_and_no_process_lists_its_named_points()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var repo = CliRepo.Processes();
+        const string SalesOrder = "01JQENT0000000000000000001";
+        const string Stamp = "01JQTRP0000000000000000001";
+        repo.Write(".maquettiste/model/trigger-points/stamp.json", $$"""
+            {"kind":"trigger-point","id":"{{Stamp}}","name":"Stamp","package":"01JQPKG0000000000000000001","subjects":[{"entity":"{{SalesOrder}}"}],
+             "type":"action","timing":"before","verbs":["create"],"noBypass":true}
+            """);
+        await using var session = await McpSession.StartAsync(repo, ct);
+
+        var sequence = await session.OkAsync("get_trigger_sequence", new { entity = SalesOrder, verb = "create" });
+        var step = sequence["steps"]!.AsArray().Single(s => (string?)s!["triggerPoint"] == Stamp)!;
+        Assert.Null(step["lifecycle"]);
+        Assert.True((bool)step["noBypass"]!);
+        Assert.Equal("before", (string?)step["timing"]);
+
+        // A move verb happens in one lifecycle, so the entity alone can't answer it.
+        Assert.NotNull(await session.ErrorAsync("get_trigger_sequence", new { entity = SalesOrder, verb = "promote" }));
+    }
+
+    [Fact]
     public async Task Mcp_simulate_verify_and_record_match_the_api()
     {
         var ct = TestContext.Current.CancellationToken;

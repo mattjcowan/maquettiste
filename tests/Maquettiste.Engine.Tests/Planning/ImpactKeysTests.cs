@@ -47,6 +47,18 @@ public sealed class ImpactKeysTests
         new(s.Model, s.Model, [], [.. paths.Select(p => new BatchPreviewFile(p, "changed", null, null, null, "h", "before", "after"))], [], []);
 
     [Fact]
+    public async Task A_batch_that_only_adds_a_named_trigger_point_touches_the_trigger_points_naming_key()
+    {
+        await using var s = await BillingStore.OpenAsync();
+        var (keys, _) = await KeysAsync(s, Create($$"""
+            { "kind": "trigger-point", "name": "CustomerNumber", "package": "{{BillingPackage}}", "subjects": [ { "entity": "{{Customer}}" } ],
+              "type": "action", "timing": "before", "verbs": [ "create" ] }
+            """));
+        Assert.True(keys.IsTouched("tn:trigger-points"));
+        Assert.True(keys.IsTouched("k:trigger-point"));
+    }
+
+    [Fact]
     public async Task An_element_key_is_touched_when_its_document_is_written_or_deleted()
     {
         await using var s = await BillingStore.OpenAsync();

@@ -199,7 +199,7 @@ One table per state: each actor the rights, events, tasks and gates name, then e
 {{- end }}
 {{- end }}
 {{- end }}
-{{- if p.use == "lifecycle" }}{{ named = [] }}{{ governed = [] }}
+{{- if model.trigger_points.size > 0 && p.use == "lifecycle" }}{{ named = [] }}{{ governed = [] }}
 {{- for s in p.subjects }}{{ governed[governed.size] = s.entity }}{{ end }}
 {{- for s in p.stereotype_subjects }}{{ for e in s.entities }}{{ governed[governed.size] = e }}{{ end }}{{ end }}
 {{- for e in governed }}{{ for tp in e.trigger_points }}{{ if !(named | array.contains tp) }}{{ named[named.size] = tp }}{{ end }}{{ end }}{{ end }}

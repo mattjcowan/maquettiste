@@ -263,6 +263,14 @@ internal static class TriggerRules
         }
 
         // MQ8102: what its verbs allow, and entities and exceptEntities within what its subjects cover.
+        foreach (var (key, list, what) in new[] { ("states", named.States, "states"), ("targets", named.Targets, "the states a move enters"),
+            ("transitions", named.Transitions, "transitions") })
+        {
+            if (list.Count > 0)
+                report.Add("MQ8102", $"Trigger point '{name}' names {key}, but {what} belong to one lifecycle and a named trigger point runs for its subjects in every "
+                    + "lifecycle and state. To run only in some states, write in_state in when. Remove the key.", "/" + key, named.Id);
+        }
+
         if (point.Attributes.Count > 0 && (point.Ends.Count > 0 || !point.Verbs.All(v => v is "read" or "modify")))
             report.Add("MQ8102", $"Trigger point '{name}' names attributes beside {(point.Ends.Count > 0 ? "ends" : "a verb other than read and modify")}; remove them.", "/attributes", named.Id);
         if (point.Ends.Count > 0 && !point.Verbs.All(LinkVerbs.Contains))

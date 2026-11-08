@@ -122,13 +122,15 @@ public sealed class NamedTriggerPointContractTests
         Invalid("trigger-point.json", Point(""" "type":"check","verbs":["delete"],"subjects":[{"stereotype":""}] """), "/subjects/0/stereotype");
         Invalid("trigger-point.json", Point($$""" "type":"check","verbs":["delete"],"subjects":[{"entity":"{{Customer}}"},{"entity":"{{Customer}}"}] """), "/subjects");
 
-        // exceptEntities are entity ids; states, targets and transitions belong to one lifecycle and are no key here.
+        // exceptEntities are entity ids. States, targets and transitions belong to one lifecycle: the schema lets them through as id lists, and
+        // MQ8102 says why they don't fit (NamedTriggerPointTests).
         string Body(string more) => Point($$""" "type":"check","verbs":["delete"],"subjects":[{"entity":"{{Customer}}"}],{{more}} """);
         Invalid("trigger-point.json", Body(""" "exceptEntities":["Supplier"] """), "/exceptEntities");
         Invalid("trigger-point.json", Body($$""" "exceptEntities":["{{Supplier}}","{{Supplier}}"] """), "/exceptEntities");
-        Invalid("trigger-point.json", Body($$""" "states":["{{Supplier}}"] """), "");
-        Invalid("trigger-point.json", Body($$""" "targets":["{{Supplier}}"] """), "");
-        Invalid("trigger-point.json", Body($$""" "transitions":["{{Supplier}}"] """), "");
+        Valid("trigger-point.json", Body($$""" "states":["{{Supplier}}"] """));
+        Valid("trigger-point.json", Body($$""" "targets":["{{Supplier}}"] """));
+        Valid("trigger-point.json", Body($$""" "transitions":["{{Supplier}}"] """));
+        Invalid("trigger-point.json", Body(""" "states":["Open"] """), "/states/0");
         Invalid("trigger-point.json", Body(""" "noBypass":1 """), "/noBypass");
         Invalid("trigger-point.json", Body(""" "timing":"later" """), "/timing");
         Invalid("trigger-point.json", Point($$""" "verbs":["delete"],"subjects":[{"entity":"{{Customer}}"}] """), "");

@@ -363,7 +363,7 @@ internal sealed partial class ResolveRun
                 if (entity.Id.Length > 0)
                 {
                     entity.TriggerLifecycles = new RList<RProcess>([], naming);
-                    entity.TriggerPoints = new RList<RTriggerPoint>([], naming);
+                    entity.TriggerPoints = new RList<RTriggerPoint>([], [TriggerPointKind]);
                 }
             }
 
@@ -470,7 +470,7 @@ internal sealed partial class ResolveRun
                 continue;
             if (!sequences.Named.Any())
             {
-                r.TriggerPoints = new RList<RTriggerPoint>([], [TriggerNaming.Key]);
+                r.TriggerPoints = new RList<RTriggerPoint>([], [TriggerPointKind]);
                 continue;
             }
 
@@ -487,7 +487,8 @@ internal sealed partial class ResolveRun
     /// <summary>
     /// The trigger points that name a verb (section 7, <c>verb.trigger_points</c>): keyed on the trigger points naming key alone in a project
     /// without trigger points, whose hash never changes there; otherwise also on the file of every lifecycle with trigger points. The named
-    /// trigger points that name the verb follow the lifecycles' (part 2), by name then id, and the list keys on each named point's file too, so
+    /// trigger points that name the verb come first, as they run first (part 2, decision 34), by name then id, then the lifecycles'; the list
+    /// keys on each named point's file too, so
     /// renaming one renders the verbs page again; a project without named points gets the same list and keys.
     /// </summary>
     private RList<RTriggerPoint> TriggerPointsOf(RVerb verb)
@@ -499,9 +500,9 @@ internal sealed partial class ResolveRun
             keys.Element(lifecycle.Id);
         foreach (var named in _namedTriggerPoints)
             keys.Element(named.Id);
-        var points = _triggerLifecycles.SelectMany(l => l.TriggerPoints)
-            .Where(p => _triggerPointVerbs.TryGetValue(p.Id, out var verbs) && verbs.Contains(verb.Key, StringComparer.Ordinal))
-            .Concat(_namedTriggerPoints.Where(p => Model.Get<TriggerPoint>(p.Id) is { } source && source.Verbs.Contains(verb.Key, StringComparer.Ordinal)));
+        var points = _namedTriggerPoints.Where(p => Model.Get<TriggerPoint>(p.Id) is { } source && source.Verbs.Contains(verb.Key, StringComparer.Ordinal))
+            .Concat(_triggerLifecycles.SelectMany(l => l.TriggerPoints)
+                .Where(p => _triggerPointVerbs.TryGetValue(p.Id, out var verbs) && verbs.Contains(verb.Key, StringComparer.Ordinal)));
         return new RList<RTriggerPoint>(points, keys.ToList());
     }
     /// <summary>
@@ -512,7 +513,8 @@ internal sealed partial class ResolveRun
     /// (of every subject entity of the process when the scenario has no subject) and each other lifecycle that governs it with points on a verb a
     /// step does, with that lifecycle's file and what its points read. So it replays when another lifecycle starts governing the subject or gains
     /// a check on <c>modify</c>. A project without trigger points adds only the naming key, whose hash never changes there, and only to such
-    /// scenarios.
+    /// scenarios; and to every scenario with steps, while the project has no named trigger point, their kind set, whose hash never changes
+    /// either until the first one.
     /// </summary>
     private IReadOnlyList<string> TriggerReplayKeys(Scenario scenario)
     {
@@ -546,9 +548,12 @@ internal sealed partial class ResolveRun
 
         // Named trigger points (part 2) run on every verb of an object their subjects cover, moves included, so in a project with one every
         // scenario with steps keys on the naming key (a point added, removed, or changing its verbs, subjects or exceptEntities), on what
-        // decides coverage, and on each point that covers what its steps touch, with what that point reads. Nothing without named points.
+        // decides coverage, and on each point that covers what its steps touch, with what that point reads. Without named points it keys on
+        // their kind set alone, whose hash never changes there, so the first named point replays a scenario that does only moves too.
         if (sequences.Named.Count > 0 && scenario.Steps.Count > 0)
             NamedReplayKeys(keys, scenario, running);
+        else if (scenario.Steps.Count > 0)
+            keys.Add(TriggerPointKind);
         if (done.Count == 0)
             return keys.ToList();
         keys.Add(TriggerNaming.Key);
@@ -583,7 +588,8 @@ internal sealed partial class ResolveRun
 
     /// <summary>
     /// A scenario's replay keys for named trigger points (part 2, decisions 33 and 34): the naming key, the keys that decide which entities a
-    /// point covers (the referrers of the subject's entity and its bases, <c>sn:subjects</c> and the carrier sets), and for each named point
+    /// point covers (the referrers of the subject's entity and its bases, <c>sn:subjects</c>, and the carrier sets of the stereotypes the
+    /// lifecycles and the named points name), and for each named point
     /// that covers the subject's entity (every subject of the process when the scenario has no subject) its file and what its expressions read.
     /// </summary>
     private void NamedReplayKeys(DependencySet keys, Scenario scenario, Process running)
@@ -594,6 +600,10 @@ internal sealed partial class ResolveRun
         IReadOnlyList<Entity> entities = subjectObject is not null ? entity is null ? [] : [entity] : RightsGrid.Subjects(Model, running);
         keys.Add(TriggerNaming.Key).Add(ProcessKind).Add(SubjectCoverage.NamingKey);
         foreach (var key in SubjectCoverage.Of(Model).Keys)
+            keys.Add(SubjectCoverage.CarrierSetKey(key));
+        // The stereotypes only named points name: a package default or an implied stereotype that starts carrying one brings the subject under
+        // that point, and only its carrier set says so.
+        foreach (var key in sequences.Named.SelectMany(p => p.Subjects).Select(s => s.Stereotype).OfType<string>())
             keys.Add(SubjectCoverage.CarrierSetKey(key));
         foreach (var subject in entities)
         {

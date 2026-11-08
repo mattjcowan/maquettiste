@@ -119,6 +119,14 @@ public sealed class NamedTriggerPointTests
             $$""" "subjects":[{"entity":"{{Party}}"}],"exceptEntities":["{{Customer}}","{{Order}}"],"entities":["{{Party}}","{{Supplier}}"],"type":"check","verbs":["delete"] """))));
         Assert.Equal(["p-31.json:/entities/1", "p-31.json:/exceptEntities/1"], Hits(found, "MQ8102"));
 
+        // MQ8102, not a schema error: states, targets and transitions belong to one lifecycle.
+        const string Placed = "01JTPN00000000000000000034";
+        var placed = await ValidateAsync(With((Placed, Point(Placed, "Placed",
+            $$""" "subjects":[{"entity":"{{Party}}"}],"type":"check","verbs":["promote"],"states":["{{Party}}"],"targets":["{{Party}}"],"transitions":["{{Party}}"] """))));
+        Assert.Equal(["p-34.json:/states", "p-34.json:/targets", "p-34.json:/transitions"], Hits(placed, "MQ8102"));
+        Assert.Empty(Hits(placed, "MQ1002"));
+        Assert.Contains(placed, d => d.Rule == "MQ8102" && d.Message.Contains("in_state", StringComparison.Ordinal));
+
         // MQ8104: two named replaces on delete that both cover Customer, reported once by the later by name; a named replace and a lifecycle's
         // replace that both cover Order. exceptEntities settles the first.
         const string ArchiveAll = "01JTPN00000000000000000032";

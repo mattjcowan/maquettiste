@@ -12813,6 +12813,21 @@ export interface components {
             severity?: components["schemas"]["severity"];
             verbs: components["schemas"]["properties-verbs"];
             /**
+             * @description Not allowed on a named trigger point (MQ8102): states belong to one lifecycle. It runs for its subjects in every state; to run only in some, write in_state in when. Remove the key.
+             * @default []
+             */
+            states?: components["schemas"]["idList"];
+            /**
+             * @description Not allowed on a named trigger point (MQ8102): the states a move enters belong to one lifecycle. To run only on some moves, write in_state in when. Remove the key.
+             * @default []
+             */
+            targets?: components["schemas"]["idList"];
+            /**
+             * @description Not allowed on a named trigger point (MQ8102): transitions belong to one lifecycle. To run only on some moves, write in_state in when. Remove the key.
+             * @default []
+             */
+            transitions?: components["schemas"]["idList"];
+            /**
              * @description Entities it runs for, each with its derived entities: some of those its subjects cover (MQ8102). Empty: every entity its subjects cover, less exceptEntities. Its paths and sets name what every entity it covers holds under one id.
              * @default []
              */

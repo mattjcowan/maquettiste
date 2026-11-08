@@ -165,6 +165,23 @@ public static class ProcessEndpoints
         return Answer(await store.GetEntityTriggerSequenceAsync(id, verb, filter, ct).ConfigureAwait(false), "entity", id);
     });
 
+    /// <summary>
+    /// The entities a named trigger point runs for (trigger-points-design.md decision 33), in name order: the same list as the record's
+    /// <c>covers</c>, package defaults included. It reads the snapshot and never resolves the model.
+    /// </summary>
+    /// <param name="id">The named trigger point's id.</param>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with <c>{ entities }</c>, or 404.</returns>
+    [HttpGet("/api/model/trigger-points/{id}/covers")]
+    public static Task<IResult> TriggerPointCovers(string id, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        var call = await store.GetTriggerPointCoversAsync(id, ct).ConfigureAwait(false);
+        return call.Status == ProcessCallStatus.Ok ? Api.Json(new { entities = call.Value }) : Answer(call, "named trigger point", id);
+    });
+
     /// <summary>A process as an XState machine config, in canonical key order; the header counts the MQ9406 notes.</summary>
     /// <param name="id">The process id.</param>
     /// <param name="format">The format: <c>xstate</c> (the default and only one).</param>

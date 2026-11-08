@@ -650,12 +650,16 @@ internal sealed class TriggerSequences
 
     /// <summary>
     /// The named trigger points asked for a verb (decisions 33 and 34), in run order, whatever their places: those that cover the object's
-    /// entity, for any verb, whichever lifecycle's move, signature or task does it, or none. With no object, those that cover every subject
+    /// entity; for an object, link or own verb whichever process does it, or none; for a move, signature or task verb only in the lifecycle
+    /// whose move, signature or task does it, never in an orchestration. With no object, those that cover every subject
     /// of the process, in the run order of its first subject; with the entity left open, those that cover any subject. Only points on the verb.
     /// </summary>
     private List<TriggerPoint> NamedAsked(TriggerQuery query, string verb, List<string> notes)
     {
         if (!_named.Any)
+            return [];
+        // A move, signature or task verb happens in one lifecycle: its named points run only there, never in an orchestration (A5).
+        if (!SpeaksOfObject(verb) && query.Process is not { Use: ProcessUse.Lifecycle })
             return [];
         bool OnVerb(TriggerPoint p) => p.Verbs.Contains(verb, StringComparer.Ordinal);
         if (query.Entity is { } entity)

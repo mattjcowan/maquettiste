@@ -162,6 +162,15 @@ public sealed record TriggerPoint : Element, IPackaged
     [VerbKey]
     public required IReadOnlyList<string> Verbs { get; init; }
 
+    /// <summary>States, which belong to one lifecycle: never allowed here (MQ8102), read only to say so; <c>in_state</c> in <c>when</c> reads a state.</summary>
+    public IReadOnlyList<string> States { get; init; } = [];
+
+    /// <summary>Targets, the states a move enters, which belong to one lifecycle: never allowed here (MQ8102), read only to say so.</summary>
+    public IReadOnlyList<string> Targets { get; init; } = [];
+
+    /// <summary>Transitions, which belong to one lifecycle: never allowed here (MQ8102), read only to say so.</summary>
+    public IReadOnlyList<string> Transitions { get; init; } = [];
+
     /// <summary>
     /// The entities it runs for, each with its derived entities: some of those its subjects cover (MQ8102); empty for all of them. Its paths and
     /// sets name what every entity it covers holds under one id (decision 12).

@@ -48,7 +48,8 @@ public sealed class NamedTriggerReplayTests
     private static string Point(string id, string name, string body) =>
         $$"""{"kind":"trigger-point","id":"{{id}}","name":"{{name}}","package":"{{Package}}",{{body}}}""";
 
-    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(bool named = true, string numberVerbs = "\"create\"", string? assume = null)
+    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(bool named = true, string numberVerbs = "\"create\"", string? assume = null,
+        Action<LoaderHarness>? tweak = null)
     {
         var h = new LoaderHarness();
         h.CopyFixture("models", "process-basics");
@@ -98,6 +99,7 @@ public sealed class NamedTriggerReplayTests
              "objects":[{"id":"01JNTJ00000000000000000001","name":"c","entity":"{{Customer}}"}],"subject":"01JNTJ00000000000000000001",
              "steps":[{"id":"{{Step}}","input":"verb","verb":"create"{{(assume is null ? "" : ",\"assume\":" + assume)}} }]}
             """);
+        tweak?.Invoke(h);
         var store = new ModelStore(h.Options, h.Services() with { Validator = EngineServices.Create(h.Options).Validator });
         await store.LoadAsync(Ct);
         Assert.DoesNotContain(store.Current!.LoadDiagnostics, d => d.Severity == DiagnosticSeverity.Error);
@@ -227,5 +229,100 @@ public sealed class NamedTriggerReplayTests
         Assert.True(call.Value.Steps.Single(s => s.TriggerPoint == CustomerNumber).NoBypass);
         Assert.Equal(ProcessCallStatus.BadRequest, (await store.GetEntityTriggerSequenceAsync(Customer, "promote", new TriggerSequenceFilter(), Ct)).Status);
         Assert.Equal(ProcessCallStatus.NotFound, (await store.GetEntityTriggerSequenceAsync(Onboarding, "create", new TriggerSequenceFilter(), Ct)).Status);
+    }
+
+    [Fact]
+    public async Task A_stereotype_a_package_gives_by_default_replays_a_scenario_whose_subject_it_brings_under_a_named_point()
+    {
+        // Customer moves to package Other and carries no stereotype itself; then Other gives approvable by default. No lifecycle names it.
+        const string Other = "01JPKG00000000000000000002";
+        static Action<LoaderHarness> InOther(bool defaults) => h =>
+        {
+            h.Write("model/packages/other.json", $$"""{"kind":"package","id":"{{Other}}","name":"Other"{{(defaults ? ",\"defaultStereotypes\":[\"approvable\"]" : "")}}}""");
+            h.Write("model/entities/customer.json", $$"""{"kind":"entity","id":"{{Customer}}","name":"Customer","package":"{{Other}}","base":"{{Party}}"}""");
+        };
+        var (h, plain) = await OpenAsync(tweak: InOther(false));
+        using var _ = h;
+        await using var __ = plain;
+        var (h2, carried) = await OpenAsync(tweak: InOther(true));
+        using var ___ = h2;
+        await using var ____ = carried;
+
+        var before = (await SimulateAsync(plain, Onboarding, [Json("""{"input":"verb","verb":"create"}""")], Object(Customer))).Trace[1];
+        var after = (await SimulateAsync(carried, Onboarding, [Json("""{"input":"verb","verb":"create"}""")], Object(Customer))).Trace[1];
+        Assert.DoesNotContain(Ran(before), r => r.Item1 == ApprovableStamp);
+        Assert.Contains(Ran(after), r => r.Item1 == ApprovableStamp);
+
+        // The run changed, so the step's keys must say so: the carrier set of the stereotype only a named point names.
+        var step = Assert.IsType<RStep>(ResolutionKit.Resolve(plain.Current!).Find(Step));
+        Assert.Contains(SubjectCoverage.CarrierSetKey("approvable"), step.Dependencies);
+        Assert.NotEqual(HashOf(plain.Current!, step.Dependencies), HashOf(carried.Current!, step.Dependencies));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_named_point_on_a_move_verb_never_runs_in_an_orchestration(bool withSubject)
+    {
+        const string Welcoming = "01JNTP00000000000000000003";
+        const string Refuse = "01JNTQ00000000000000000007";
+        const string Go = "01JNTX00000000000000000003";
+        const string Welcome = "01JNTS00000000000000000021";
+        const string Welcomed = "01JNTS00000000000000000022";
+        var subjects = withSubject ? $$""" "subjects":[{"id":"01JNTB00000000000000000003","entity":"{{Customer}}"}], """ : "";
+        var (h, store) = await OpenAsync(tweak: x =>
+        {
+            x.Write("model/processes/welcoming.json", $$"""
+                {"kind":"process","id":"{{Welcoming}}","name":"Welcoming","package":"{{Package}}","use":"orchestration",{{subjects}}
+                 "events":[{"id":"{{Go}}","name":"go","verb":"promote"}],
+                 "states":[{"id":"{{Welcome}}","name":"Welcome"},{"id":"{{Welcomed}}","name":"Welcomed"}],"initial":"{{Welcome}}",
+                 "transitions":[{"id":"01JNTK00000000000000000003","source":"{{Welcome}}","event":"{{Go}}","targets":["{{Welcomed}}"]}]}
+                """);
+            x.Write("model/trigger-points/refuse.json", Point(Refuse, "Refuse",
+                $$""" "subjects":[{"entity":"{{Customer}}"}],"type":"check","verbs":["promote"],"condition":{{T("1 = 2")}} """));
+        });
+        using var _ = h;
+        await using var __ = store;
+        var go = (await SimulateAsync(store, Welcoming, [Json($$"""{"event":"{{Go}}"}""")], Object(Customer))).Trace[1];
+        Assert.True(go.Accepted, go.Refusal);
+        Assert.Equal([Welcomed], go.Configuration);
+        Assert.Empty(Ran(go));
+    }
+
+    [Fact]
+    public async Task The_first_named_point_replays_a_lifecycle_scenario_that_only_moves()
+    {
+        const string MoveStep = "01JNTZ00000000000000000012";
+        static void Moves(LoaderHarness x) => x.Write("model/scenarios/tickets/submit.json", $$"""
+            {"kind":"scenario","id":"01JNTZ00000000000000000011","name":"submit","package":"{{Package}}","process":"{{Tickets}}",
+             "objects":[{"id":"01JNTJ00000000000000000011","name":"t","entity":"{{Ticket}}"}],"subject":"01JNTJ00000000000000000011",
+             "steps":[{"id":"{{MoveStep}}","input":"event","event":"{{Submit}}"}]}
+            """);
+        var (h, plain) = await OpenAsync(named: false, tweak: Moves);
+        using var _ = h;
+        await using var __ = plain;
+        var step = Assert.IsType<RStep>(ResolutionKit.Resolve(plain.Current!).Find(MoveStep));
+        // Not the naming key, so a part 1 project's lifecycle points never replay it; the kind set's hash is the one of no named points.
+        Assert.DoesNotContain(TriggerNaming.Key, step.Dependencies);
+        Assert.Contains("k:trigger-point", step.Dependencies);
+
+        var (h2, named) = await OpenAsync(tweak: Moves);
+        using var ___ = h2;
+        await using var ____ = named;
+        Assert.NotEqual(HashOf(plain.Current!, step.Dependencies), HashOf(named.Current!, step.Dependencies));
+    }
+
+    [Fact]
+    public async Task Deleting_a_named_check_drops_its_assume_words_from_scenarios()
+    {
+        var (h, store) = await OpenAsync(assume: $$"""{"{{TeamCode}}":"pass"}""");
+        using var _ = h;
+        await using var __ = store;
+        Assert.Contains(TeamCode, h.Read("model/scenarios/onboarding/create.json"), StringComparison.Ordinal);
+        var hash = store.Current!.GetDocument(TeamCode)!.Hash;
+        var deleted = await store.DeleteAsync(TeamCode, hash, DeleteResolution.RemoveReferences, ChangeSource.Editor, Ct);
+        Assert.True(deleted.Outcome == SaveOutcome.Saved, string.Join(" | ", deleted.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        Assert.DoesNotContain(TeamCode, h.Read("model/scenarios/onboarding/create.json"), StringComparison.Ordinal);
+        Assert.Null(store.Current!.Get<TriggerPoint>(TeamCode));
     }
 }
