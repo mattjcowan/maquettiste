@@ -91,7 +91,15 @@ public sealed record CommandResult(bool Accepted, string? Refusal, IReadOnlyList
 /// <param name="Signer">The signing person, for a gated event.</param>
 /// <param name="Meaning">The meaning of the signature.</param>
 /// <param name="Reason">The reason of the signature.</param>
-public record EventRequest(string? Actor = null, string? Signer = null, string? Meaning = null, string? Reason = null);
+public record EventRequest(string? Actor = null, string? Signer = null, string? Meaning = null, string? Reason = null)
+{
+    /// <summary>What the signer answers an approval: sign, the default, reject, ignore or withdraw (the envelope's Response).</summary>
+    public SignatureResponse Response { get; init; }
+
+    /// <summary>The name of the named signature the response answers, as Meaning takes the meaning's name; null lets the interpreter pick
+    /// it (the envelope's Signature).</summary>
+    public string? Signature { get; init; }
+}
 
 /// <summary>The body of an event endpoint whose event has a payload.</summary>
 /// <typeparam name="TPayload">The payload type.</typeparam>

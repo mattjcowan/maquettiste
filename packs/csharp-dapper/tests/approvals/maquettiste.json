@@ -12,7 +12,8 @@
     "csharp-dapper": {
       "output": "out",
       "parameters": {
-        "testsFolder": "Tests"
+        "testsFolder": "Tests",
+        "endpointsFolder": "Api"
       }
     }
   }

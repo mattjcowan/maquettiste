@@ -23,6 +23,10 @@ public static partial class ReleaseApprovalConditions
         throw new NotImplementedException("The condition of signature ApprovalConditions of gate Release of Release is not implemented yet.");
 
     // ReleaseFinance, Check: subject.cost > 50000
-    public static partial bool ReleaseFinanceCheck01JAD000(ApprovalCall<ReleaseContext> call) =>
+    public static partial bool ReleaseFinanceCheck000000N5(ApprovalCall<ReleaseContext> call) =>
         throw new NotImplementedException("The condition of signature Check of gate ReleaseFinance of Release is not implemented yet.");
+
+    // ReleaseFinance, check: subject.cost > 75000
+    public static partial bool ReleaseFinanceCheck000000N8(ApprovalCall<ReleaseContext> call) =>
+        throw new NotImplementedException("The condition of signature check of gate ReleaseFinance of Release is not implemented yet.");
 }

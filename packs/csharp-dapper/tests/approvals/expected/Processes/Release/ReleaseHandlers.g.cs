@@ -34,7 +34,8 @@ public sealed partial class ReleaseHandlers : IStatechartBehaviour<ReleaseContex
     {
         "01JAD0000000000000000000N3" => ReleaseApprovalConditions.ReleaseFinanceCheck(call),
         "01JAD0000000000000000000N4" => ReleaseApprovalConditions.ReleaseApprovalConditionsValue(call),
-        "01JAD0000000000000000000N5" => ReleaseApprovalConditions.ReleaseFinanceCheck01JAD000(call),
+        "01JAD0000000000000000000N5" => ReleaseApprovalConditions.ReleaseFinanceCheck000000N5(call),
+        "01JAD0000000000000000000N8" => ReleaseApprovalConditions.ReleaseFinanceCheck000000N8(call),
         _ => true,
     };
 }
@@ -55,7 +56,12 @@ public static partial class ReleaseApprovalConditions
     /// <summary>Whether signature Check of gate ReleaseFinance is needed: <c>subject.cost &gt; 50000</c>.</summary>
     /// <param name="call">The approval, its instance and context, and the active states.</param>
     /// <returns>Whether the signature is needed.</returns>
-    public static partial bool ReleaseFinanceCheck01JAD000(ApprovalCall<ReleaseContext> call);
+    public static partial bool ReleaseFinanceCheck000000N5(ApprovalCall<ReleaseContext> call);
+
+    /// <summary>Whether signature check of gate ReleaseFinance is needed (A second finance check, whose method name clashes with two others.): <c>subject.cost &gt; 75000</c>.</summary>
+    /// <param name="call">The approval, its instance and context, and the active states.</param>
+    /// <returns>Whether the signature is needed.</returns>
+    public static partial bool ReleaseFinanceCheck000000N8(ApprovalCall<ReleaseContext> call);
 }
 
 /// <summary>Handles the commands of process Release: loads the instance through the store, runs the machine and saves.</summary>

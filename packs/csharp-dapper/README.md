@@ -647,14 +647,19 @@ does the pack write anything below; a project without approvals gets the same by
      method carries the model's text. Generated code can't read the object (roadmap 4.6), so the body is yours. Answer `true` when you
      can't tell: an unknown answer means the signature is needed.
   2. **Pass the response.** A call sets the envelope's `Response` (`Sign` is the default) and, to answer one signature, its `Signature`.
-     Without `Signature`, the interpreter picks one by the engine's rule. The envelope's `Signer` is the person: it decides **Not by**, and
-     one person's one response.
+     `Signature` takes the signature's name, as `Meaning` takes the meaning's name; the audit records and the snapshot's `Approvals` keep
+     the signature's id. Without `Signature`, the interpreter picks one by the engine's rule. The envelope's `Signer` is the person: it
+     decides **Not by**, and one person's one response. A human task's result command names its person in `Signer` too: they did
+     `complete` and its move. The event endpoints' request body takes `Response` and `Signature` as well, so an HTTP caller can reject,
+     ignore and withdraw.
   3. **Read the progress** from the result's `Approvals` if your screen shows who still has to sign.
 - **The promises.** The interpreter checks a response in the engine's order and refuses it with the engine's words. A rejection clears the
   approval and moves nothing. The condition is asked when the object enters the state and after a rejection, not at each response. If
   `<Process>Handlers` does not answer a condition, every signature counts as needed.
-- **Limits.** The generated code does not yet record a human task's `complete` for **Not by**. The generated endpoints take only `Sign`: an
-  HTTP caller of an event can only sign; a team that wants the other responses calls the machine with its own envelope.
+- **Limits.** The snapshot doesn't keep when the object entered a state. An instance already waiting in the state when its gate gets
+  stages, or saved before the project used approvals, starts its round at the next input, so **Not by** can't see what was done before
+  then: the submitter is not excluded, where the engine, which replays from the start, excludes them. Generated scenario tests check a
+  verb step's rights but don't record it in the snapshot, so a **Not by** that names that verb doesn't see it there.
 
 ### Scenario tests
 

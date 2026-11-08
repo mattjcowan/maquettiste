@@ -65,6 +65,7 @@ public static partial class ReleaseDefinition
                     [
                         new("01JAD0000000000000000000N5", "Check", 1, [Actors.Controller], [], false) { When = "subject.cost > 50000" },
                         new("01JAD0000000000000000000N6", "Editor", 1, [Actors.Engineer, Actors.Controller], [], true),
+                        new("01JAD0000000000000000000N8", "check", 1, [Actors.Controller], [], false) { When = "subject.cost > 75000" },
                     ]),
                 ],
                 AllowSignerAcrossSignatures = true,
@@ -123,7 +124,7 @@ public static partial class ReleaseDefinition
         /// <summary>Meaning of a Release signature: approved.</summary>
         public const string ReleaseApproved = "approved";
 
-        /// <summary>ReleaseFinance: an approval of 2 named signature(s) on transition publish.</summary>
+        /// <summary>ReleaseFinance: an approval of 3 named signature(s) on transition publish.</summary>
         public const string ReleaseFinance = "ReleaseFinance";
 
         /// <summary>Meaning of a ReleaseFinance signature: published.</summary>

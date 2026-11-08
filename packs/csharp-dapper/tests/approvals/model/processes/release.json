@@ -212,6 +212,17 @@
                   "01JAD0000000000000000000R3"
                 ],
                 "allowRepeatSigner": true
+              },
+              {
+                "id": "01JAD0000000000000000000N8",
+                "name": "check",
+                "signers": [
+                  "01JAD0000000000000000000R3"
+                ],
+                "when": {
+                  "text": "subject.cost > 75000"
+                },
+                "description": "A second finance check, whose method name clashes with two others."
               }
             ]
           }

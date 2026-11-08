@@ -334,8 +334,9 @@ func approval_conditions(p)
 end
 
 # The method names of <Process>ApprovalConditions by signature id (signoff-design.md section 10): <Gate><Signature> by member_name, so
-# one named like its class gets Value; when two would share a name, each after the first in id order gets the first eight characters
-# of its id appended.
+# one named like its class gets Value; when two would share a name, each after the first in id order gets the last eight characters
+# of its id appended (the random end of a ULID: its first characters are a timestamp, the same for ids minted close together), and its
+# whole id in the unlikely case that name is taken too.
 func approval_methods(p)
   $class = p_name(p) + "ApprovalConditions"
   $sorted = array.sort approval_conditions(p) "id"
@@ -344,7 +345,11 @@ func approval_methods(p)
   for sig in $sorted
     $n = member_name((pascal sig.gate.name) + (pascal sig.name), $class)
     if $taken[$n]
-      $n = $n + (sig.id | string.slice 0 8)
+      $base = $n
+      $n = $base + (sig.id | string.slice (sig.id.size > 8 ? sig.id.size - 8 : 0))
+      if $taken[$n]
+        $n = $base + sig.id
+      end
     end
     $taken[$n] = true
     $out[sig.id] = $n

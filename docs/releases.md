@@ -44,9 +44,9 @@ one.
   - Engine: `RNotBy` (kind `not-by`, with `VerbKey`), `RSignatureCount`, `NotByRecord`.
   - `csharp-dapper`: `CommandResult.Approvals`; `ApprovalProgress.Started`, `.Entered`, `.Needed`, `.Signed` and `.Ignored`;
     `ActRecord(Sequence, Signer, Verb, Transition)`; `StageDefinition(Id, Name, Signatures)`; `SignatureDefinition.When`, `.NotByVerbs`
-    and `.NotByTransitions`.
-- **Limits.** Generated code does not yet record a human task's `complete` for **Not by**. An HTTP event call can only sign. Part 1 has
-  one stage: rounds, a stage's condition, delegation, reminders, escalation and signing again with a password come in part 2.
+    and `.NotByTransitions`; `EventRequest.Response` and `.Signature`; the `signer` parameter of `Statechart<TContext>.Complete`.
+- **Limits.** Generated code can't tell when an instance that was already waiting entered its state, so **Not by** misses what was done
+  before the gate got stages. Generated scenario tests don't record verb steps for **Not by**. Part 1 has one stage: rounds, a stage's condition, delegation, reminders, escalation and signing again with a password come in part 2.
 
 ## 0.18.0 (2026-11-08)
 

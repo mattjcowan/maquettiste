@@ -87,7 +87,7 @@ public sealed partial class {{ name }}Machine
     public {{ res }} Complete({{ snap }} snapshot, {{ name }}InvokeResultControl command, IReadOnlyList<string>? held = null{{ if uses_freezing() }}, {{ frozen_state_type() }}? frozen = null{{ end }})
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor, held{{ if uses_freezing() }}, frozen{{ end }});
+        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor, held{{ if uses_freezing() }}, frozen{{ end }}{{ if model.approval_lifecycles.size > 0 }}, signer: command.Envelope.Signer{{ end }});
     }
 {{- else }}
 {{- if uses_freezing() }}
@@ -97,7 +97,7 @@ public sealed partial class {{ name }}Machine
     public {{ res }} Complete({{ snap }} snapshot, {{ name }}InvokeResultControl command{{ if uses_freezing() }}, {{ frozen_state_type() }}? frozen = null{{ end }})
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor{{ if uses_freezing() }}, frozen: frozen{{ end }});
+        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor{{ if uses_freezing() }}, frozen: frozen{{ end }}{{ if model.approval_lifecycles.size > 0 }}, signer: command.Envelope.Signer{{ end }});
     }
 {{- end }}
 

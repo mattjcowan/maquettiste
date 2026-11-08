@@ -2519,8 +2519,8 @@ method you write, in `<Process>ApprovalConditions`; answer true when you can't t
 (`Response`) and the signature (`Signature`). The pack's README has the steps. `process-docs` shows a table of signatures for each
 approval, and what each response does.
 
-**Limits.** Generated code does not yet record a human task's completion for **Not by**. An HTTP event call can only sign. Part 1
-has one stage, with no rounds, delegation, reminders or password check.
+**Limits.** Generated code can't tell when an instance that was already waiting entered its state, so **Not by** misses what was done
+before the gate got stages. Part 1 has one stage, with no rounds, delegation, reminders or password check.
 
 ### Libraries: shared guards, actions and gate policies
 

@@ -811,7 +811,7 @@ internal sealed class PackRepo : IDisposable
               "formatVersion": 1,
               "name": "approvals",
               "outputs": { "allow": [ { "path": "out" } ] },
-              "packs": { "csharp-dapper": { "output": "out", "parameters": { "testsFolder": "Tests" } } }
+              "packs": { "csharp-dapper": { "output": "out", "parameters": { "testsFolder": "Tests", "endpointsFolder": "Api" } } }
             }
 
             """);

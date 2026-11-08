@@ -89,7 +89,7 @@ public sealed partial class ReleaseMachine
     public StepResult<ReleaseContext> Complete(ProcessSnapshot<ReleaseContext> snapshot, ReleaseInvokeResultControl command, IReadOnlyList<string>? held = null)
     {
         ArgumentNullException.ThrowIfNull(command);
-        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor, held);
+        return _chart.Complete(snapshot, command.Invoke, command.Failed, command.Envelope.Actor, held, signer: command.Envelope.Signer);
     }
 
     /// <summary>Fires the timers due at the clock's current instant.</summary>

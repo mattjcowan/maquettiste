@@ -1035,16 +1035,19 @@ public sealed class CompileTests
     public async Task Approvals_compile_and_respond_as_the_engine_does()
     {
         // signoff-design.md section 15: the interpreter's approvals, the envelope's Response and Signature, ApprovalProgress and ActRecord
-        // in the snapshot, ReleaseApprovalConditions (FinanceCheck's method, ApprovalConditions' named like its class, and Check's, which
-        // clashes with FinanceCheck's and takes its id's first eight characters) reached through IApprovalConditions, a deny on reject and a
-        // check on reject build with warnings as errors. The scenario test agrees with the engine's replay, and the host's checks pass.
+        // in the snapshot, ReleaseApprovalConditions (FinanceCheck's method, ApprovalConditions' named like its class, and Check's and check's,
+        // which clash with FinanceCheck's and take their ids' last eight characters, the ULIDs' random ends), reached through
+        // IApprovalConditions, a deny on reject, a check on reject, and endpoints whose request carries Response and Signature build with
+        // warnings as errors. The scenario test agrees with the engine's replay, and the host's checks pass.
         using var repo = PackRepo.Approvals();
         await repo.GenerateCleanlyAsync();
         Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "approvals", "expected"), repo.PathOf("out"));
         var handlers = repo.Read("out/Processes/Release/ReleaseHandlers.g.cs");
         Assert.Contains("public static partial bool ReleaseFinanceCheck(ApprovalCall<ReleaseContext> call);", handlers, StringComparison.Ordinal);
         Assert.Contains("public static partial bool ReleaseApprovalConditionsValue(ApprovalCall<ReleaseContext> call);", handlers, StringComparison.Ordinal);
-        Assert.Contains("public static partial bool ReleaseFinanceCheck01JAD000(ApprovalCall<ReleaseContext> call);", handlers, StringComparison.Ordinal);
+        Assert.Contains("public static partial bool ReleaseFinanceCheck000000N5(ApprovalCall<ReleaseContext> call);", handlers, StringComparison.Ordinal);
+        Assert.Contains("public static partial bool ReleaseFinanceCheck000000N8(ApprovalCall<ReleaseContext> call);", handlers, StringComparison.Ordinal);
+        Assert.Contains("{ Response = request.Response, Signature = request.Signature }", repo.Read("out/Api/Processes/Release/Endpoints/ReleaseEndpoints.cs"), StringComparison.Ordinal);
         Assert.Contains("{ RecordsActs = true };", repo.Read("out/Processes/Release/ReleaseDefinition.cs"), StringComparison.Ordinal);
         Assert.DoesNotContain("RecordsActs", repo.Read("out/Processes/MemoLifecycle/MemoLifecycleDefinition.cs"), StringComparison.Ordinal);
         Assert.DoesNotContain("IApprovalConditions", repo.Read("out/Processes/MemoLifecycle/MemoLifecycleHandlers.g.cs"), StringComparison.Ordinal);
@@ -1054,11 +1057,13 @@ public sealed class CompileTests
             "public static partial bool ReleaseFinanceCheck(ApprovalCall<ReleaseContext> call) => call.Context.Cost > 10000m;");
         Replace("out/Processes/Release/ReleaseHandlers.cs", "public static partial bool ReleaseApprovalConditionsValue(ApprovalCall<ReleaseContext> call) =>\n        throw new NotImplementedException(\"The condition of signature ApprovalConditions of gate Release of Release is not implemented yet.\");",
             "public static partial bool ReleaseApprovalConditionsValue(ApprovalCall<ReleaseContext> call) => call.Context.Cost > 100000m;");
-        Replace("out/Processes/Release/ReleaseHandlers.cs", "public static partial bool ReleaseFinanceCheck01JAD000(ApprovalCall<ReleaseContext> call) =>\n        throw new NotImplementedException(\"The condition of signature Check of gate ReleaseFinance of Release is not implemented yet.\");",
-            "public static partial bool ReleaseFinanceCheck01JAD000(ApprovalCall<ReleaseContext> call) => call.Context.Cost > 50000m;");
+        Replace("out/Processes/Release/ReleaseHandlers.cs", "public static partial bool ReleaseFinanceCheck000000N5(ApprovalCall<ReleaseContext> call) =>\n        throw new NotImplementedException(\"The condition of signature Check of gate ReleaseFinance of Release is not implemented yet.\");",
+            "public static partial bool ReleaseFinanceCheck000000N5(ApprovalCall<ReleaseContext> call) => call.Context.Cost > 50000m;");
+        Replace("out/Processes/Release/ReleaseHandlers.cs", "public static partial bool ReleaseFinanceCheck000000N8(ApprovalCall<ReleaseContext> call) =>\n        throw new NotImplementedException(\"The condition of signature check of gate ReleaseFinance of Release is not implemented yet.\");",
+            "public static partial bool ReleaseFinanceCheck000000N8(ApprovalCall<ReleaseContext> call) => call.Context.Cost > 75000m;");
         Replace("out/Processes/Release/ReleaseTriggerPoints.cs", "public static partial bool VetoCheck(TriggerPointCall call) =>\n        throw new NotImplementedException(\"Trigger point VetoCheck of lifecycle Release is not implemented yet.\");",
             "public static partial bool VetoCheck(TriggerPointCall call) => true;");
-        await BuildAndRunScenarioTestsAsync(repo, "approvals", ApprovalsScenarioHost, 4);
+        await BuildAndRunScenarioTestsAsync(repo, "approvals", ApprovalsScenarioHost, 5);
 
         void Replace(string path, string stub, string with)
         {
@@ -1070,7 +1075,8 @@ public sealed class CompileTests
 
     // The test host of the approvals case: the dispatcher over both lifecycles, and the checks the scenario can't make: a rejection clears
     // the snapshot's progress and makes no move, a refused response saves only its audit, notBy reads the envelope's Signer, the conditions
-    // are reached through IApprovalConditions with a typed context, and Acts stays empty in a lifecycle without a notBy.
+    // are reached through IApprovalConditions with a typed context, Acts stays empty in a lifecycle without a notBy, and signing a complete
+    // signature again is a repeat.
     private const string ApprovalsScenarioHost = """
         using System;
         using System.Collections.Generic;
@@ -1132,6 +1138,24 @@ public sealed class CompileTests
 
                 var nothing = machine.Approve(vetoed.Snapshot, new ReleaseApproveCommand(new ProcessEnvelope("r1", Actors.Engineer, "ben") { Response = SignatureResponse.Withdraw }));
                 Assert.Equal(Refusals.GateNotSigned, nothing.Refusal);
+            }
+
+            [Fact]
+            public void Signing_a_complete_signature_again_is_a_repeat()
+            {
+                var host = new ProcessHost(new ManualClock(DateTimeOffset.UnixEpoch));
+                var machine = new ReleaseMachine(new ReleaseHandlers(), host, host, host);
+                var review = machine.Submit(machine.Start("r4", new ReleaseContext { Cost = 500m }).Snapshot, new ReleaseSubmitCommand(new ProcessEnvelope("r4", Actors.Engineer, "ana")));
+                var signed = machine.Approve(review.Snapshot, new ReleaseApproveCommand(new ProcessEnvelope("r4", Actors.QualityLead, "quinn")));
+                Assert.True(signed.Accepted, signed.Refusal);
+                Assert.Equal("01JAD0000000000000000000N2", signed.Audit.Single().Signature);
+
+                // Quality needs one signature and has it: the same person signing again is refused as a repeat on it, by pick or by name.
+                var again = machine.Approve(signed.Snapshot, new ReleaseApproveCommand(new ProcessEnvelope("r4", Actors.QualityLead, "quinn")));
+                Assert.Equal(Refusals.GateRepeat, again.Refusal);
+                Assert.Equal("01JAD0000000000000000000N2", again.Audit.Single().Signature);
+                var named = machine.Approve(again.Snapshot, new ReleaseApproveCommand(new ProcessEnvelope("r4", Actors.QualityLead, "quinn") { Signature = "Quality" }));
+                Assert.Equal(Refusals.GateRepeat, named.Refusal);
             }
 
             [Fact]

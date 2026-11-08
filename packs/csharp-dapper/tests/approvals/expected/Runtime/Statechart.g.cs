@@ -715,7 +715,8 @@ public sealed record ProcessEnvelope(string Instance, string? Actor = null, stri
     /// <summary>What the signer answers an approval (signoff-design.md decision 9): sign, the default, reject, ignore or withdraw.</summary>
     public SignatureResponse Response { get; init; }
 
-    /// <summary>The name of the named signature the response answers; null lets the interpreter pick it (decision 8).</summary>
+    /// <summary>The name of the named signature the response answers, as <see cref="ProcessEnvelope.Meaning"/> takes the meaning's name (the
+    /// audit records and the snapshot keep the signature's id); null lets the interpreter pick it (decision 8).</summary>
     public string? Signature { get; init; }
 }
 
@@ -1101,12 +1102,13 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
     /// <param name="failed">True for an error, false for done.</param>
     /// <param name="actor">The actor reporting it (checked for human tasks).</param>
     /// <param name="held">The actors the caller holds with no context, besides the one it acts as (ICallerHoldings).</param>
+    /// <param name="signer">The person who ends a human task: they did complete and its move, which a signature's notBy reads.</param>
     /// <returns>The result.</returns>
-    public StepResult<TContext> Complete(ProcessSnapshot<TContext> snapshot, string invoke, bool failed, string? actor, IReadOnlyList<string>? held = null)
+    public StepResult<TContext> Complete(ProcessSnapshot<TContext> snapshot, string invoke, bool failed, string? actor, IReadOnlyList<string>? held = null, string? signer = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(invoke);
-        var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor)) { Held = held ?? [] };
+        var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor, signer)) { Held = held ?? [] };
         if (Chart.Invoke(invoke) is not { } found || !run.Pending.Contains(found))
             return run.Refuse(Refusals.NoTransition);
         if (found.Kind == InvokeKind.HumanTask && found.Actors.Count > 0 && (actor is null || !global::App.Model.Processes.Actors.Allows(found.Actors, actor)))
@@ -1133,6 +1135,8 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 
             run.Pending.Remove(found);
             run.Completed(selection.Transitions);
+            if (found.Kind == InvokeKind.HumanTask)
+                run.Ended(selection.Transitions);
             run.Microstep(selection.Transitions);
             run.RunToCompletion();
         });
@@ -2006,6 +2010,14 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             }
         }
 
+        // A person who ends a human task did complete and its moves (decision 28); another invoke's end is nobody's.
+        public void Ended(IReadOnlyList<TransitionDefinition> transitions)
+        {
+            RecordAct(Person(), "complete", null);
+            foreach (var t in transitions)
+                RecordAct(Person(), MoveVerb(t), t.Id);
+        }
+
         // Drops the acts no waiting notBy can read (decision 28): those older than the earliest entry of an active source of an approval with
         // a notBy; all of them when there is none.
         private void TrimActs()
@@ -2165,7 +2177,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         // Decision 8's pick, the same way every time: withdraw takes the person's latest signature in the round; reject the first needed
         // signature whose signers the person meets, complete or not; sign and ignore, among the needed signatures not complete, the first the
         // person may fill (rows 7a, 7c and 7d) where they meet a required actor not yet signed, else the first they may fill, else the first
-        // whose signers they meet, so that row 7 refuses on it.
+        // whose signers they meet, complete or not, so that row 7 refuses on it (a complete one as gate-repeat).
         private (SignatureDefinition? Signature, string? Refusal) Pick(GateDefinition gate, ApprovalProgress approval, SignatureResponse response, string? actor, string? signer)
         {
             var needed = Signatures(gate).Where(s => approval.Needed.Contains(s.Id)).ToList();
@@ -2181,10 +2193,10 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             SignatureDefinition? fill = null, met = null;
             foreach (var s in needed)
             {
-                if (IsComplete(s, approval.Signed) || !Meets(s))
+                if (!Meets(s))
                     continue;
                 met ??= s;
-                if (Excluded(s, approval, signer) || Repeated(gate, approval, s, response, signer))
+                if (IsComplete(s, approval.Signed) || Excluded(s, approval, signer) || Repeated(gate, approval, s, response, signer))
                     continue;
                 if (s.RequiredActors.Any(a => Accepts(a, actor!) && !approval.Signed.Any(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal) && Accepts(a, c.Actor))))
                     return (s, null);
