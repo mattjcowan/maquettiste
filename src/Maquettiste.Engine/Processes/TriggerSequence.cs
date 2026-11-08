@@ -1016,6 +1016,29 @@ internal sealed class TriggerSequences
         return reached;
     }
 
+    /// <summary>
+    /// The named trigger points a step can reach (decisions 26 and 33), whatever its verb and places: those that cover the object's entity, in
+    /// run order; with no object, those that cover every subject of the process. A step's <c>assume</c> words may name their team-code checks.
+    /// </summary>
+    /// <param name="process">The process the step runs in.</param>
+    /// <param name="entity">The object's entity; <see langword="null"/> when the run has no object.</param>
+    /// <returns>The named trigger points; empty in a project without them.</returns>
+    public IReadOnlyList<TriggerPoint> NamedReaching(Process process, Entity? entity)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        if (!_named.Any)
+            return [];
+        if (entity is not null)
+            return _named.For(entity);
+        var subjects = SubjectsOf(process);
+        return subjects.Count == 0 ? [] : [.. _named.For(subjects[0]).Where(p => subjects.All(s => _named.Covered(p, s.Id)))];
+    }
+
+    /// <summary>A named trigger point's body as a lifecycle's trigger point reads it (<see cref="NamedTriggerPoints.Body"/>).</summary>
+    /// <param name="point">The named trigger point.</param>
+    /// <returns>The body.</returns>
+    public ProcessTriggerPoint BodyOf(TriggerPoint point) => _named.Body(point);
+
     /// <summary>The lifecycles with trigger points that govern an entity, by name then id, worked out once per entity.</summary>
     private IReadOnlyList<Process> Governing(Entity entity) =>
         _governing.GetOrAdd(entity.Id, _ => [.. _lifecycles.Where(l => SubjectCoverage.Governs(_model, l, entity))]);

@@ -25,7 +25,7 @@ public sealed class ShippedPackTests
     private static string[] CasesOf(string pack) => pack switch
     {
         "csharp-dapper" => ["actors", Case, "freezing", "lifecycle-codes", "object-effects", "rights", "trigger-points", "verbs"],
-        "process-docs" => ["actors", Case, "freezing", "object-effects", "rights", "trigger-points", "verbs"],
+        "process-docs" => ["actors", Case, "freezing", "named-trigger-points", "object-effects", "rights", "trigger-points", "verbs"],
         _ => [Case],
     };
 

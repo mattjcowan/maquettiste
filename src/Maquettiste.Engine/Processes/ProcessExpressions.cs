@@ -159,6 +159,80 @@ public sealed class ProcessExpressions
         });
     }
 
+    private static readonly ConditionalWeakTable<ModelSnapshot, ConditionalWeakTable<TriggerPoint, ProcessExpressions>> ByNamedPoint = new();
+
+    /// <summary>
+    /// The compiled expressions of a named trigger point of a model (trigger-points-design.md decision 33, part 2's simulation): its
+    /// <c>when</c> under <see cref="ExprSites.WhenKey"/>, a check's condition under its id and each value it sets under the set's id, typed in
+    /// the point's own scope (what every entity it covers holds) and lowered as a lifecycle's trigger point's are. One that does not type stays
+    /// out (validation says why). Kept per model and point, so a run keys its session by the point, not by a lifecycle.
+    /// </summary>
+    /// <param name="model">The model that holds the point.</param>
+    /// <param name="point">The named trigger point.</param>
+    /// <returns>The compiled expressions; none when the point has no expression and no set.</returns>
+    internal static ProcessExpressions Get(ModelSnapshot model, TriggerPoint point)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(point);
+        return ByNamedPoint.GetOrCreateValue(model).GetValue(point, p =>
+        {
+            // A process of its own, with no guards and no actions, holds the point's lowered conditions; its name keeps it apart in the cache.
+            var holder = new Process { Id = p.Id, Name = "trigger-point:" + p.Name };
+            var path = model.GetDocument(p.Id)?.Path;
+            var lowered = new List<LoweredCondition>();
+            foreach (var (key, tree) in new[] { (ExprSites.WhenKey(p.Id), p.When), (p.Id, p.Condition) })
+            {
+                if (tree is null || ExprResolution.Type(model, p, key) is not { } typed)
+                    continue;
+                var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Trigger, ExprResolution.ApiColumns(model, p.Id, path));
+                lowered.Add(NamedLowered(key, js, typed.Typed, ExprSites.SubjectPathDepth(typed.Typed) is not null, null));
+            }
+
+            IReadOnlyList<ModelAttribute>? members = null;
+            foreach (var set in p.Sets)
+            {
+                members ??= ExprSites.NamedTriggerMembers(model, p).Attributes;
+                if (members.FirstOrDefault(a => string.Equals(a.Id, set.Attribute, StringComparison.Ordinal)) is not { } attribute
+                    || ExprResolution.Type(model, p, set.Id) is not { } typed)
+                    continue;
+                var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.TriggerSet, ExprResolution.ApiColumns(model, set.Id, path));
+                lowered.Add(NamedLowered(set.Id, js, typed.Typed, true, new LoweredSet(set.Attribute, attribute.Name, typed.Typed.Type.Kind)));
+            }
+
+            JsonElement? defaults = null;
+            if (lowered.Any(c => c.ReadsSubject))
+            {
+                var map = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);
+                foreach (var attribute in members ?? ExprSites.NamedTriggerMembers(model, p).Attributes)
+                {
+                    if (!map.ContainsKey(attribute.Name))
+                        map[attribute.Name] = attribute.Default is { ValueKind: not JsonValueKind.Undefined } value ? value : NullValue;
+                }
+
+                defaults = JsonSerializer.SerializeToElement(map);
+            }
+
+            return lowered.Count == 0 ? FromContent(holder, [], null) : FromContent(holder, lowered, defaults);
+        });
+    }
+
+    private static LoweredCondition NamedLowered(string id, string js, TypedExpr typed, bool readsSubject, LoweredSet? set) =>
+        new(id, js, ReadsNowOf(typed), readsSubject, set)
+        {
+            EngineOnly = ExprLowering.IsEngineOnly(typed),
+            ActorKinds = [.. ActorKindsOf(typed).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
+            ReadsRunning = ReadsRunningOf(typed),
+            StateReads = ObjectStates.ReadsOf(typed),
+        };
+
+    private static bool ReadsNowOf(TypedExpr t) => t.Node.Now is not null || (t.Body is { } body && ReadsNowOf(body)) || t.Args.Any(ReadsNowOf);
+
+    private static bool ReadsRunningOf(TypedExpr t) =>
+        (t.Node.InState is not null && t.Running) || (t.Body is { } body && ReadsRunningOf(body)) || t.Args.Any(ReadsRunningOf);
+
+    private static IEnumerable<string> ActorKindsOf(TypedExpr t) =>
+        (t.Node.CurrentActor is not null ? [t.Type.Kind] : Enumerable.Empty<string>()).Concat(t.Body is { } body ? ActorKindsOf(body) : []).Concat(t.Args.SelectMany(ActorKindsOf));
+
     private static ProcessExpressions FromContent(Process process, IReadOnlyList<LoweredCondition> conditions, JsonElement? subjectDefaults)
     {
         var key = Key(process, conditions, subjectDefaults);

@@ -1,0 +1,24 @@
+{
+  "kind": "entity",
+  "id": "01JTP000000000000000000E11",
+  "name": "Party",
+  "package": "01JTP000000000000000000P01",
+  "key": {
+    "attributes": [
+      "01JTP000000000000000000A11"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JTP000000000000000000A11",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JTP000000000000000000A12",
+      "name": "number",
+      "type": "string"
+    }
+  ]
+}

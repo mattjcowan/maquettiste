@@ -520,6 +520,9 @@ func tp_sentence(tp, numbers)
   if tp.outside
     $text = $text + ". It reaches outside systems"
   end
+  if tp.no_bypass
+    $text = $text + ". Never skipped by a bulk load"
+  end
   ret $text
 end
 

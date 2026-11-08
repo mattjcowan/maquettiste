@@ -1,0 +1,30 @@
+{
+  "kind": "trigger-point",
+  "id": "01JTPNAMED0000000000000001",
+  "name": "PartyNumber",
+  "package": "01JTP000000000000000000P01",
+  "subjects": [
+    {
+      "entity": "01JTP000000000000000000E11"
+    }
+  ],
+  "exceptEntities": [
+    "01JTP000000000000000000E13"
+  ],
+  "type": "action",
+  "timing": "before",
+  "verbs": [
+    "create"
+  ],
+  "noBypass": true,
+  "sets": [
+    {
+      "id": "01JTPNAMED0000000000000003",
+      "attribute": "01JTP000000000000000000A12",
+      "value": {
+        "text": "'C-00042'"
+      }
+    }
+  ],
+  "description": "Every party but a supplier gets a number when it is created."
+}

@@ -194,6 +194,26 @@ internal sealed class NamedTriggerPoints
         });
     }
 
+    /// <summary>
+    /// The key a step's <c>assume</c> gives a named trigger point's check by name (decision 26, part 2): its package's qualified name, a dot
+    /// and its name; its name alone when it has no package.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="point">The named trigger point.</param>
+    /// <returns>The qualified name.</returns>
+    public static string QualifiedName(ModelSnapshot model, TriggerPoint point)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(point);
+        var names = new List<string> { point.Name };
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var package = point.Package is { } id ? model.Get<Package>(id) : null; package is not null && seen.Add(package.Id);
+             package = package.Parent is { } parent ? model.Get<Package>(parent) : null)
+            names.Add(package.Name);
+        names.Reverse();
+        return string.Join('.', names);
+    }
+
     private List<string> ChainOf(Entity entity) => _chains.TryGetValue(entity.Id, out var chain) ? chain : SubjectCoverage.Chain(_model, entity);
 
     private static ProcessTriggerPoint BodyOf(TriggerPoint point) => new()

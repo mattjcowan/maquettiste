@@ -939,7 +939,7 @@ public sealed record ScenarioStep : IProcessNode
     /// Results for guards without an expression, by guard id, as booleans; and outcomes for checks the team writes, by trigger point id, as
     /// the words <c>pass</c>, <c>warning</c> and <c>error</c> (trigger-points-design.md decision 26).
     /// </summary>
-    [ElementRef(IndexKinds = ["guard", "process-trigger-point"])]
+    [ElementRef(IndexKinds = ["guard", "process-trigger-point", "trigger-point"])]
     public IReadOnlyDictionary<string, StepAssumption> Assume { get; init; } = ImmutableDictionary<string, StepAssumption>.Empty;
 
     /// <summary>What is expected after the step; <see langword="null"/> checks nothing.</summary>
@@ -1005,7 +1005,7 @@ public sealed record StepExpectation
     /// The ids of exactly the checks that warned, each once (trigger-points-design.md decision 28; MQ9310); <see langword="null"/> checks nothing, and an
     /// empty list expects none.
     /// </summary>
-    [ElementRef(IndexKinds = ["process-trigger-point"])]
+    [ElementRef(IndexKinds = ["process-trigger-point", "trigger-point"])]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? CheckWarnings { get; init; }
 
@@ -1013,7 +1013,7 @@ public sealed record StepExpectation
     /// The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (trigger-points-design.md
     /// decision 28; MQ9310); <see langword="null"/> checks nothing, and an empty list expects none.
     /// </summary>
-    [ElementRef(IndexKinds = ["process-trigger-point"])]
+    [ElementRef(IndexKinds = ["process-trigger-point", "trigger-point"])]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? TriggerPoints { get; init; }
 }

@@ -1364,10 +1364,17 @@ internal static class ExprSites
     /// <param name="process">The process.</param>
     /// <param name="typed">The guard's typed condition.</param>
     /// <returns>The depth, or <see langword="null"/>.</returns>
-    internal static int? SubjectPathDepth(Process process, TypedExpr typed)
+    internal static int? SubjectPathDepth(Process process, TypedExpr typed) =>
+        process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)) ? null : SubjectPathDepth(typed);
+
+    /// <summary>
+    /// The most navigations a path of a typed expression follows under <c>subject</c>, where no context attribute takes that name: a named
+    /// trigger point's (trigger-points-design.md decision 33), which has no context. <see langword="null"/> when it does not read the object.
+    /// </summary>
+    /// <param name="typed">The typed expression.</param>
+    /// <returns>The depth, or <see langword="null"/>.</returns>
+    internal static int? SubjectPathDepth(TypedExpr typed)
     {
-        if (process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
-            return null;
         int? depth = null;
         var pending = new Stack<TypedExpr>();
         pending.Push(typed);
@@ -1390,7 +1397,7 @@ internal static class ExprSites
     private static readonly ConditionalWeakTable<ModelSnapshot, ConditionalWeakTable<Process, StrongBox<int?>>> SubjectDepths = new();
 
     /// <summary>
-    /// The longest path under <c>subject</c> any guard condition of a process reads (<see cref="SubjectPathDepth"/>): <see langword="null"/>
+    /// The longest path under <c>subject</c> any guard condition of a process reads (<see cref="SubjectPathDepth(Process, TypedExpr)"/>): <see langword="null"/>
     /// when no condition that types reads the object, as <see cref="Processes.ProcessExpressions"/> then has no subject defaults. Typed once
     /// per model.
     /// </summary>
