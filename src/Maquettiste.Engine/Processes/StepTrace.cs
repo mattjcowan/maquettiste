@@ -185,6 +185,9 @@ public enum GateOutcome
 
     /// <summary>A person took back their latest signature (<c>withdrawn</c>, signoff-design.md decision 13).</summary>
     [JsonStringEnumMemberName("withdrawn")] Withdrawn,
+
+    /// <summary>A person handed their part of a signature to someone else (<c>delegated</c>, signoff-design.md decision 34).</summary>
+    [JsonStringEnumMemberName("delegated")] Delegated,
 }
 
 /// <summary>One gate audit record (phase-3-design.md section 2.3).</summary>
@@ -214,7 +217,30 @@ public sealed record GateAuditRecord(
     /// <summary>On an approval, the id of the stage of <see cref="Signature"/>; <see langword="null"/>, and left out of the JSON, when that is.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Stage { get; init; }
+
+    /// <summary>
+    /// For an answer given on behalf of someone who delegated the signature, the delegator's identity (signoff-design.md decision 34);
+    /// <see cref="Signer"/> is the person who answered. <see langword="null"/>, and left out of the JSON, otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OnBehalfOf { get; init; }
+
+    /// <summary>
+    /// For a <see cref="GateOutcome.Delegated"/> record, the identity the signature went to (signoff-design.md decision 34);
+    /// <see cref="Signer"/> is the delegator. <see langword="null"/>, and left out of the JSON, otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DelegateTo { get; init; }
 }
+
+/// <summary>
+/// A reminder or an escalation that fell due in a step (signoff-design.md decisions 26 and 35): the running system sends it; it never moves
+/// the object.
+/// </summary>
+/// <param name="Signature">The named signature's id.</param>
+/// <param name="Kind">Whether it is a reminder or an escalation.</param>
+/// <param name="Recipients">The actor ids it goes to: the signature's signers for a reminder, its <c>escalateTo</c> for an escalation.</param>
+public sealed record ApprovalNotice(string Signature, NoticeKind Kind, IReadOnlyList<string> Recipients);
 
 /// <summary>An action run in a microstep.</summary>
 /// <param name="Action">The action id.</param>
@@ -327,6 +353,14 @@ public sealed record StepTrace(
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? CheckWarnings { get; init; }
+
+    /// <summary>
+    /// The reminders and escalations that fell due during the step, in file order (stage, then signature), a reminder before an escalation
+    /// (signoff-design.md decision 35); a step's <c>expect.notices</c> is compared with them as a set (MQ9311). <see langword="null"/>, and
+    /// left out of the JSON, when none did.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ApprovalNotice>? Notices { get; init; }
 
     /// <summary>
     /// Whether the subject is frozen after the input (rights-design.md section 7): <see langword="true"/> from an accepted <c>freeze</c>, or a

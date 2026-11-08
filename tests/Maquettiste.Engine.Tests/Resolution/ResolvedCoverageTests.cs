@@ -278,6 +278,13 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
+
+        // Approvals, part 2 (signoff-design.md section 7), resolved in a later round of the same item: a stage's round and condition, a
+        // signature's delegation, notices and password, a step's delegation.
+        ("gate stage", "round"), ("gate stage", "when"),
+        ("named signature", "delegateTo"), ("named signature", "remindAfter"), ("named signature", "escalateAfter"), ("named signature", "escalateTo"),
+        ("named signature", "reauthenticate"),
+        ("step", "delegateTo"), ("step", "onBehalfOf"),
     ];
 
     /// <summary>

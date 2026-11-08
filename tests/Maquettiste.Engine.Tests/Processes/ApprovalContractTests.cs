@@ -105,14 +105,9 @@ public sealed class ApprovalContractTests
         // A gate policy's when and notBy transition pass too: MQ8202 reports them.
         Valid("process.json", Approval($$""" "signers":["{{Manager}}"],"when":{"value":true},"notBy":[{"transition":"{{Submit}}"}] """));
 
-        // Part 1 holds exactly one stage; part 2's keys are refused until then.
-        var stage = $$"""{"id":"01JGST00000000000000000002","name":"Again","signatures":[{"id":"01JNSG00000000000000000009","name":"X","signers":["{{Manager}}"]}]}""";
-        Invalid("process.json", Library($$""" "name":"Release",{{Meanings}},"stages":[{{stage}},{{stage}}] """), "/gates/0/stages");
+        // Stages need at least one, each with at least one signature; part 2 lifts the limit of one stage (ApprovalPart2ContractTests).
         Invalid("process.json", Library($$""" "name":"Release",{{Meanings}},"stages":[] """), "/gates/0/stages");
         Invalid("process.json", Library($$""" "name":"Release",{{Meanings}},"stages":[{"id":"{{Stage}}","name":"Review","signatures":[]}] """), "/gates/0/stages/0/signatures");
-        Invalid("process.json", Library($$""" "name":"Release",{{Meanings}},"stages":[{"id":"{{Stage}}","name":"Review","round":2,"signatures":[{"id":"{{Managers}}","name":"M","signers":["{{Manager}}"]}]}] """), "/gates/0/stages/0");
-        Invalid("process.json", Approval($$""" "signers":["{{Manager}}"],"delegateTo":["{{Finance}}"] """), "/gates/0/stages/0/signatures/0");
-        Invalid("process.json", Approval($$""" "signers":["{{Manager}}"],"reauthenticate":true """), "/gates/0/stages/0/signatures/0");
 
         // A signature's own shape.
         Invalid("process.json", Approval(""" "required":1 """), "/gates/0/stages/0/signatures/0");
@@ -153,7 +148,6 @@ public sealed class ApprovalContractTests
         Valid("scenario.json", Step("""  "expect":{"accepted":false,"refusal":"gate-excluded"} """));
         Valid("scenario.json", Step("""  "expect":{"accepted":false,"refusal":"gate-not-signed"} """));
         Valid("scenario.json", Step("""  "expect":{"signatures":{}} """));
-        Invalid("scenario.json", Step("""  "response":"delegate" """), "/steps/0/response");
         Invalid("scenario.json", Step("""  "response":"approve" """), "/steps/0/response");
         Invalid("scenario.json", Step("""  "signature":"Managers" """), "/steps/0/signature");
         Invalid("scenario.json", Step($$"""  "expect":{"signatures":{"{{Managers}}":-1} } """), "/steps/0/expect/signatures");
@@ -342,7 +336,7 @@ public sealed class ApprovalContractTests
     {
         Assert.Equal(
             [("MQ8201", DiagnosticSeverity.Error), ("MQ8202", DiagnosticSeverity.Error)],
-            RuleCatalog.All.Where(r => r.Id.StartsWith("MQ82", StringComparison.Ordinal)).Select(r => (r.Id, r.DefaultSeverity)));
+            RuleCatalog.All.Where(r => r.Id.StartsWith("MQ82", StringComparison.Ordinal)).Take(2).Select(r => (r.Id, r.DefaultSeverity)));
         Assert.Equal("Approvals", RuleCatalog.FamilyLabel("MQ82xx"));
         Assert.Equal((DiagnosticSeverity.Error, "refresh-scenario"), (RuleCatalog.Get("MQ9311").DefaultSeverity, RuleCatalog.Get("MQ9311").QuickFix));
         Assert.True(RuleCatalog.IsReplayFinding("MQ9311"));

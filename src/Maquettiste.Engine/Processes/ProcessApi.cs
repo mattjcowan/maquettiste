@@ -154,7 +154,8 @@ public sealed record EnabledTrigger(string Trigger, string? Event, string? Invok
 
     /// <summary>
     /// The responses the trigger's event takes at an approval, in the order <c>sign</c>, <c>reject</c>, <c>ignore</c>, <c>withdraw</c>
-    /// (signoff-design.md decision 26); <see langword="null"/>, and left out of the JSON, when none.
+    /// (signoff-design.md decision 26), then <c>delegate</c> when one of the approval's signatures has <c>delegateTo</c> (decision 34);
+    /// <see langword="null"/>, and left out of the JSON, when none.
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<SignatureResponse>? Responses { get; init; }
@@ -209,7 +210,22 @@ public sealed record GateState(string Gate, string Transition, IReadOnlyList<Gat
 /// <param name="Stage">The stage id.</param>
 /// <param name="Complete">Whether each of its signatures is complete or not needed.</param>
 /// <param name="Signatures">Its signatures, in file order.</param>
-public sealed record ApprovalStageState(string Stage, bool Complete, IReadOnlyList<ApprovalSignatureState> Signatures);
+public sealed record ApprovalStageState(string Stage, bool Complete, IReadOnlyList<ApprovalSignatureState> Signatures)
+{
+    /// <summary>
+    /// The stage's round (signoff-design.md decision 33); <see langword="null"/>, and left out of the JSON, when the approval has one round.
+    /// The current round is the lowest round with a stage that is neither complete nor skipped.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? Round { get; init; }
+
+    /// <summary>
+    /// Whether the stage's <c>when</c> was false when its round started, so it is skipped and counts as complete (signoff-design.md
+    /// decision 6). Left out of the JSON when false.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Skipped { get; init; }
+}
 
 /// <summary>A named signature of an approval in a simulation's gate state (signoff-design.md decision 26).</summary>
 /// <param name="Signature">The named signature id.</param>
