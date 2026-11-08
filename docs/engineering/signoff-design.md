@@ -1,6 +1,6 @@
 # Richer sign-off with approval stages: design
 
-**Status (2026-11-08): designed, not built. Not yet checked independently.** It designs the seventh item in the owner's order after 4.1: "richer sign-off: several named signatures, conditions on who must sign, delegation, escalation, separation of duties across steps", with approval stages (4.3). The owner's review of 2026-11-08 answered the eight questions this item raised (B1 to B8). This design takes those answers as decided and does not reopen them. Section 3 tests them against a study of about 20 systems and says where the evidence leans the other way. [Who, what and when](lifecycle-actors-scenarios.md) section 10 step 7 sets the direction. [What lifecycle systems can do](lifecycle-capabilities.md), part E, is the yardstick. [The verbs design](verbs-design.md), [the rights design](rights-design.md), [the actors design](actors-design.md), [the object effects design](object-effects-design.md) and [the trigger points design](trigger-points-design.md) give its parts. It builds on trigger points part 2 (named trigger points, 0.18.0). A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
+**Status (2026-11-08): designed, one independent check applied, not built.** It designs the seventh item in the owner's order after 4.1: "richer sign-off: several named signatures, conditions on who must sign, delegation, escalation, separation of duties across steps", with approval stages (4.3). The owner's review of 2026-11-08 answered the eight questions this item raised (B1 to B8). This design takes those answers as decided and does not reopen them. Section 3 tests them against a study of about 20 systems and says where the evidence leans the other way. [Who, what and when](lifecycle-actors-scenarios.md) section 10 step 7 sets the direction. [What lifecycle systems can do](lifecycle-capabilities.md), part E, is the yardstick. [The verbs design](verbs-design.md), [the rights design](rights-design.md), [the actors design](actors-design.md), [the object effects design](object-effects-design.md) and [the trigger points design](trigger-points-design.md) give its parts. It builds on trigger points part 2 (named trigger points, 0.18.0). A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
 
 ## 1. In short
 
@@ -42,9 +42,9 @@ The owner's answers were tested against the study and the code. All of them hold
 | Delegation states whether and to whom; `delegate` records on whose behalf (B5) | **Agree** | Salesforce has `allowDelegate` per step [10]. Agile records the person who signed in place of another as the Signoff User (checked) [16]. Who is away, and from when to when, is the running system's data (ServiceNow's delegation dates [27]) | 20 |
 | Reminders and escalation: the model states the delay and the recipient; the host sends; never a transition (B6) | **Agree, with a note** | Agile: a reminder period "begins when the routable object enters each Review or Released status", and "escalation occurs only once per status" (checked) [16]. **The note:** Agile's escalation person "may approve, reject or acknowledge … in the place of the original approver" (checked). Here an escalation is a notice only. A team whose escalation target should sign names it among the signers or in `delegateTo` | 21 |
 | Signing again with a password: a flag on a named signature; the host checks (B7) | **Agree, with a note** | 21 CFR 11.200 asks for the full identity check on signings outside one continuous session [32]. **The note:** Agile sets it per response: "Approve Only" or "Reject Only" (checked) [16]. Here the flag covers every response on the signature. A per-response rule can come later as an optional key | 22 |
-| `route` stays inert until delegation (B3) | **Agree** | What `route` would do, sending the object to people at run time, is "adding reviewers at run time", which the note leaves to the running system | 23 |
+| `route` stays inert until delegation (B3) | **Agree, with a note** | What `route` would do, sending the object to people at run time, is "adding reviewers at run time", which the note leaves to the running system. **The note:** this design keeps `route` inert in both parts, also after delegation arrives. The owner confirms that before part 2 (section 14) | 23 |
 | Observers, acknowledgers and weighted votes stay out | **Agree** | Weights appear only in Aras [6]. Observer and acknowledger roles are common in PLM systems (Agile, Teamcenter, Odoo), so they are listed in section 13 | 24 |
-| New names settled by the independent check; the tag waits for the owner (B8) | **Agree** | Section 14 lists every new name | 14 |
+| New names settled by the independent check; the tag waits for the owner (B8) | **Agree** | The check settled them, with one change: the signature's schema and part kind are `namedSignature` and `named-signature`. Section 14 lists every new name | 14 |
 
 **One thing the study suggests that was not asked:** "all", "any" and a share of signers as counts are cheap and common (ServiceNow, Power Automate, Teamcenter [17] [14] [5]). They are left out, since `required` and `requiredActors` already cover the cases the owner named. Section 13 lists them.
 
@@ -58,8 +58,8 @@ Each decision gives its confidence: **high**, **medium-high**, **medium** or **l
    - In part 1, `stages` holds exactly one stage (the schema's `maxItems: 1`). Part 2 lifts the limit (decision 5).
    - **With stages, the counting keys move to the signatures.** `required`, `signers`, `requiredActors` and `allowRepeatSigner` are written on each signature, and never on a gate with stages (MQ8201). So each count lives in one place.
    - **What stays on the gate:** `name`, `displayName`, `reasonRequired`, `meanings`, `auditAttributes`, `description`, `stereotypes` and `properties`. They apply to every signature and every response of the approval. A gate still needs at least one meaning (MQ9104).
-   - **A gate policy holds stages the same way.** Signatures still count per transition, as the gate policy's description says today.
-   - Each stage is a part of kind **`gate-stage`**, and each signature a part of kind **`gate-signature`**.
+   - **A gate policy holds stages the same way.** Signatures still count per transition, as the gate policy's description says today. In part 1, a gate policy's signature takes no `when` (MQ8202, decision 7).
+   - Each stage is a part of kind **`gate-stage`**, and each signature a part of kind **`named-signature`**. Not `gate-signature`: the API already has a `GateSignature` record, for a signature given, and a schema named `gateSignature` would differ from it only in case.
    - **Why no wrapper key such as `approval`:** a gate has one approval, so a second level would add nothing. The editor and the docs call a gate with stages an approval.
    - **Why not states, one per stage:** the owner's B2 reasons. One source and event carry only one gate, parallel approvers would need parallel regions, and a gate policy can share a stage list the way it shares one gate today. Modeling each stage as a state stays possible, as before.
 2. **A gate with today's fields and no stages keeps today's meaning, and takes only `sign`.** Confidence: high, by the owner's B1.
@@ -86,15 +86,19 @@ Each decision gives its confidence: **high**, **medium-high**, **medium** or **l
 ### Who must sign, and when that is judged
 
 7. **A signature's `when` decides whether it is needed. It is judged when its round starts.** Confidence: medium-high.
-   - **When a round starts:** round 1 when the object enters the gated move's source state, and again when a rejection clears the approval (decision 10). A later round when the round before it completes (part 2). The answer holds until the approval completes, is rejected, or the object leaves the source state.
+   - **When a round starts:** round 1 when the object enters the gated move's source state, again when a rejection clears the approval (decision 10), and again when the gated move completes without leaving its source state (an internal move, or a move into a child of the source). A later round when the round before it completes (part 2). The answer holds until the approval completes, is rejected, or the object leaves the source state.
+   - **On entry, it is judged after the entering move's actions and sets,** so `when` reads the values that move wrote.
    - **Why at the start, not at each response:** an approval completes on an occurrence. If a signature stopped being needed halfway, nobody would be left to give the occurrence that completes it. Agile picks approvers and starts its reminder clock when the object enters the status (checked) [16]. A team that changes data during a review and wants it judged again rejects, which starts round 1 again.
-   - **Only true counts.** False or unknown means the signature isn't needed. The simulation's gate state shows which signatures are needed (decision 26).
+   - **Only false means not needed.** True or unknown means the signature is needed. Unknown is treated as needed because it is the safe choice: missing data never drops a signature. The simulation's gate state shows which signatures are needed (decision 26). Confidence: high.
    - **What it reads:** a new site kind, **`Approval`**: `subject.`, the process's context, `in_state` and `now()`. Not `current_actor()`, since nobody acts when a round starts, and not an event's payload or `old.` (MQ3102, MQ3104). Unlike a trigger point, it may read the context: a signature only ever happens inside a run.
+   - **Not on a gate policy's signature, in part 1** (MQ8202). A library has no subject, so `subject.` can't be typed there. It is also unclear which lifecycle's class would hold the method, and one policy used twice in a lifecycle would need it twice. A later release can lift the rule without changing any file. Confidence: high.
    - **When nothing is needed,** the approval is complete when it starts. The gated event's next occurrence makes the move as if there were no gate. Its sender is checked as for a move without a gate (the event's actors and rights), and the audit records `completed` with no signature. Confidence: medium.
-8. **The step may name the signature it answers. Otherwise the engine picks one, the same way every time.** Confidence: medium-high.
-   - The pick: among the current round's signatures that are needed and not complete, in file order (stage, then signature), the first one the person may fill (decisions 14 to 16) where they meet a required actor not yet signed; else the first one they may fill at all.
-   - Then actors decision 15 picks the actor they sign as, within that signature.
-   - **When the person may fill none,** the step is refused with the first failing check of row 7 (decision 14), on the first signature whose signers they meet, or `gate-signer` when they meet none.
+8. **The step may name the signature it answers. Otherwise the engine picks one, the same way every time, by a rule per response.** Confidence: medium.
+   - **`sign` and `ignore`:** among the current round's signatures that are needed and not complete, in file order (stage, then signature), the first one the person may fill (decisions 14 to 16) where they meet a required actor not yet signed; else the first one they may fill at all. When they may fill none, the step is refused with the first failing check of row 7 (decision 14), on the first signature whose signers they meet, or `gate-signer` when they meet none.
+   - **`withdraw`:** the person's latest signature in the current round. When they have none there, the step is refused `gate-not-signed`.
+   - **`reject`:** the first needed signature of the current round, in file order, whose signers the person meets, complete or not. So a person who has signed may still reject (decision 10). When they meet no signers, the step is refused `gate-signer`.
+   - A step's `signature` replaces the pick. Row 7 then runs on that signature.
+   - **The pick is made once,** where the engine works out whom the step acts as (`StatechartInterpreter.Acting`, then `Participants.ActsAs`). Actors decision 15 picks the actor within the picked signature's signers and required actors, and the step runs with that signature. A step without a participant gives its actor itself, so the same rule picks inside the step, once. The trace still echoes the step as given; the audit record names the signature (decision 19).
    - Generated code follows the same rule, with the envelope's `Signature` in place of the step's.
 
 ### Responses
@@ -120,7 +124,7 @@ Each decision gives its confidence: **high**, **medium-high**, **medium** or **l
     - Without `allowSignerAcrossSignatures`, an ignore is the person's one response on the approval, as a signature is (decision 16).
     - **When a required actor can then never be met,** the approval waits. A rejection or a move out of the state ends the wait. The simulation's gate state shows it.
     - **The verb's fixed meaning still reads true:** "waive a signature, so the move no longer waits for it". It waives that person's part.
-13. **Withdraw removes that person's signature on one signature of the current round.** Confidence: high for the rule, by the owner's B3; medium-high for "current round only".
+13. **Withdraw removes that person's latest signature in the current round (decision 8), or on the step's `signature`.** Confidence: high for the rule, by the owner's B3; medium-high for "current round only".
     - With `allowRepeatSigner`, it removes their latest one. The audit records `withdrawn`. They may sign again.
     - With no signature of theirs there, the step is refused with **`gate-not-signed`** (new).
     - **Why the current round only (part 2):** a later round started because the earlier one completed. Reopening it would undo that round's start.
@@ -131,12 +135,17 @@ Each decision gives its confidence: **high**, **medium-high**, **medium** or **l
     | 7a | The person meets the signature's signers (a gate's signers, without stages) | `gate-signer` |
     | 7b | The lifecycle's denies on the response's verb | `right` |
     | 7c | `notBy` (decision 15) | **`gate-excluded`** (new) |
-    | 7d | Already signed, ignored or delegated on this approval, where that isn't allowed (decision 16) | `gate-repeat` |
+    | 7d | An earlier answer on this approval blocks this response (decision 16; see below) | `gate-repeat` |
     | 7e | Nothing to withdraw (decision 13) | **`gate-not-signed`** (new) |
     | 7f | A reason is required and missing | `gate-reason` |
     | 8 to 12 | The response's trigger points: before actions, checks, the effect, with the change, after commit (trigger points decision 18) | `check` |
 
     - Every refused attempt is audited `refused`, as today. `refusedBy` names the gate or gate policy, as today, or the right.
+    - **Row 7d by response.** Part 2's `delegate` blocks as an ignore does.
+      - `sign`: the person already signed this signature, without `allowRepeatSigner`; or ignored this signature; or signed or ignored another signature of the approval, without `allowSignerAcrossSignatures`.
+      - `ignore`: the person already signed or ignored this signature; or signed or ignored another signature, without `allowSignerAcrossSignatures`.
+      - `reject`: only an earlier ignore by the person, on this signature, or on any signature of the approval without `allowSignerAcrossSignatures`. A signature never blocks a rejection.
+      - `withdraw`: never. Row 7e covers it.
     - `gate-repeat` already means "this person already signed the gate". On an approval it means "already answered this approval", which is the same idea one level up.
     - **`reasonRequired` applies to every response.** A rule per response, as Agile has for comments (checked) [16], can come later as an optional key.
 
@@ -144,7 +153,7 @@ Each decision gives its confidence: **high**, **medium-high**, **medium** or **l
 
 15. **`notBy` keeps a person off a signature: whoever did a named verb or a named move since the object entered this move's source state.** Confidence: high for the rule, by the owner's B4; medium-high for the shape.
     - Each entry is `{ "verb": … }` or `{ "transition": … }`.
-    - **The window opens with the move that entered the source state, and includes it.** So "not the submitter" is `notBy: [{ "verb": "promote" }]` on a review entered by a promote, or `{ "transition": <Submit> }`.
+    - **The window opens with the move that entered the source state, and includes it.** Acts are ordered by the step's sequence number, not by time (decision 28). So "not the submitter" is `notBy: [{ "verb": "promote" }]` on a review entered by a promote, or `{ "transition": <Submit> }`.
     - **A person is an identity:** a step's `signer`, else its participant's identity. In generated code it is the envelope's `Signer`. An automatic move is done by nobody, so it excludes nobody.
     - **A gated move is done by everyone whose signature counted toward the approval that made it.** So "the release approvers are not the review approvers" is `notBy: [{ "transition": <the reviewed move> }]`. Confidence: medium.
     - **Which verbs:** those the lifecycle's own runs see: move verbs, signature verbs, `complete`, and verbs its events name (MQ8202). A verb done outside a run, such as a `modify` from an edit screen through the per-type runner, never reaches the process's snapshot, so generated code couldn't see it. A team that needs it records the person in an attribute and denies with a right's condition, as rights' example `subject.submittedBy = current_actor()` does.
@@ -160,8 +169,8 @@ Each decision gives its confidence: **high**, **medium-high**, **medium** or **l
 
 17. **Trigger points on `reject`, `ignore` and `withdraw` run at an approval, in the places `sign`'s run.** Confidence: high.
     - Their before actions and checks run during selection, after row 7. When admitted, the response's effect is made, its with-change points run, and its after-commit points are queued. A response never makes a microstep, so this all happens in the admit, as for a signature that doesn't complete a gate (trigger points decision 18).
-    - **`targets` and `transitions` are allowed beside `reject`, `ignore` and `withdraw`,** as beside `sign`. So a point can tell the response on the gated move from the ordinary `reject` move of decision 11.
-    - **MQ8107 warns on them** only when no gate of the lifecycle has stages and no event names the verb. A named trigger point (0.18.0) may name them too. It runs inside the lifecycle that owns the gate, before that lifecycle's points, for a covered type (the review's answer to A5).
+    - **`targets` and `transitions` are allowed beside `reject`, `ignore` and `withdraw`** in a lifecycle with an approval, as beside `sign`. So a point can tell the response on the gated move from the ordinary `reject` move of decision 11. In other lifecycles MQ8102 still flags them.
+    - **MQ8107 warns on them** only when no gate of the lifecycle has stages and no event names the verb. A named trigger point (0.18.0) may name them too. It runs inside the lifecycle that owns the gate, before that lifecycle's points, for a covered type (the review's answer to A5). MQ8107 warns on such a named point only when no lifecycle that governs an entity it covers has an approval.
     - `delegate` joins in part 2, where a signature has `delegateTo`. `route` stays warned.
 18. **A signature's signers count as an allow for `sign`, `reject`, `ignore` and `withdraw` on that approval, and for the gated event.** Confidence: high, extending rights decision 14.
     - Rights on those verbs narrow them: a right may deny `reject` to some signers.
@@ -185,34 +194,44 @@ Each decision gives its confidence: **high**, **medium-high**, **medium** or **l
 22. **(Part 2) `reauthenticate: true` on a signature asks for the person's identity to be checked again for every response on it.** Confidence: high for the flag, by the owner's B7; medium for how generated code enforces it.
     - The model never sees a password. Simulation takes the check as done.
     - Generated code refuses a response on such a signature unless the host says it checked, through the envelope's `Reauthenticated`, with `Refusals.GateReauthenticate`. This refusal exists only in generated code, since a scenario can't fail a password.
-23. **`route` stays inert in both parts.** Confidence: medium-high. It would send the object to people at run time, which is the running system's job. Its trigger points stay warned (MQ8107).
+23. **`route` stays inert in both parts.** Confidence: medium-high. It would send the object to people at run time, which is the running system's job. Its trigger points stay warned (MQ8107). The review said "until delegation", so the owner confirms this before part 2 (section 14, item 1).
 24. **Out of both parts:** observers and acknowledgers, weighted votes, "all", "any" or a share as counts, a rule per response, and adding reviewers at run time. Confidence: high, by the review.
 
 ### Simulation and scenarios
 
 25. **A step answers an approval with `response` and, optionally, `signature`.** Confidence: high.
     - Both are allowed only on an event step whose event is gated by an approval (MQ9305). A `signature` must belong to that gate (MQ9305).
+    - A `response` the project hides, such as a hidden `ignore`, is MQ9704 on the step. The editor leaves hidden verbs out of its choices.
     - Part 2 adds `delegateTo` and `onBehalfOf`, each a participant.
 26. **The trace, the audit and the simulation's gate state show the approval.** Confidence: high for the content; medium-high for the shape.
     - **The audit** gains the records of decision 19.
-    - **The gate state** (`GateState` in a simulation answer) gains `stages`: for each stage its signatures, each with whether it is needed, the signatures counted, the people finished on it, and whether it is complete. Part 2 adds the current `round` and a stage's `skipped`. All are left out on a gate without stages.
-    - **Each enabled trigger** in a simulation answer gains `responses`: the responses its event takes at an approval. It is left out when empty, so today's answers don't change.
+    - **The gate state** (`GateState` in a simulation answer) on an approval:
+      - `signatures` lists every signature counted, across stages, in the order given. Each `GateSignature` gains `signature`, the named signature's id, left out on a gate without stages.
+      - `satisfied` is true only when nothing is needed: the approval is complete and waits for the next occurrence (decision 7). Otherwise the occurrence that completes it moves at once, as today.
+      - `stages` (new) is a list of **`ApprovalStageState`**: `stage`, `complete`, and `signatures`, a list of **`ApprovalSignatureState`**: `signature`, `needed`, `counted`, `required`, `finished` (the people who answered it) and `complete`. Part 2 adds the current `round` and a stage's `skipped`.
+      - All are left out on a gate without stages.
+    - **Each enabled trigger** (`EnabledTrigger`) on an approval:
+      - `gate` (`GateProgress`): `have` is the signatures counted on the current round's needed signatures, and `need` the sum of their `required`. Today it would read a count of 1.
+      - `actors`, when the event names none: the signers of the current round's needed signatures, in file order, with their members. Today it would be empty, which reads "anyone".
+      - `responses` (new): the responses its event takes at an approval. It is left out when empty, so today's answers don't change.
     - **(Part 2)** The trace gains `notices`: each reminder or escalation that fell due, with its signature, kind (`remind` or `escalate`) and recipients.
 27. **A step may expect the signatures counted after it.** Confidence: medium-high.
-    - **`expect.signatures`** maps a signature's id to the number counted after the step. Only the listed signatures are compared. A difference is MQ9311.
+    - **`expect.signatures`** maps a signature's id to the number counted after the step. Only the listed signatures are compared. A difference is MQ9311. A key that isn't a signature of the approval the step answers is MQ9305.
     - `expect.refusal` gains `gate-excluded` and `gate-not-signed` (MQ9308).
     - **(Part 2)** `expect.notices` lists the notices due at the step, as `{ signature, kind }` (MQ9311).
     - **Recording** writes `expect.signatures` on a step that answers an approval. A new signature elsewhere doesn't change it, since only the listed ids are compared.
 28. **Separation of duties reads what was done since each state was entered.** Confidence: medium-high.
-    - The run keeps, per instance, who did which verb and which move, and when each active state was entered. It keeps this only for a lifecycle with a `notBy`, so other runs cost nothing.
-    - Generated code keeps the same record in its snapshot, so replays and generated tests agree.
+    - The run keeps, per instance, who did which verb and which move, each with the step's sequence number, and the sequence number at which each active state was entered. **Time can't order them:** the generated clock moves only on time steps, so many acts share one instant.
+    - Entries older than the oldest active state's entry are dropped, so the record stays small.
+    - It is kept only for a lifecycle with a `notBy`, inline or through a gate policy, so other runs cost nothing.
+    - Generated code keeps the same record in its snapshot, so replays and generated tests agree. The shared interpreter always declares `Acts` when any lifecycle uses an approval. Each lifecycle's definition says whether it records acts (`ChartDefinition.RecordsActs`). So the shared file doesn't depend on which signatures have a `notBy`, which `ap:approvals` doesn't track.
 
 ### Code generation
 
 29. **Each output depends on what it needs, so a project pays only for what it uses.** Confidence: high.
     - **A lifecycle uses approvals** when one of its gates, inline or through a gate policy, has stages. Only then are the new members, refusals, outcomes and snapshot fields written.
-    - **One naming key, `ap:approvals`,** hashes the ids of those lifecycles, and of the gate policies with stages. **`model.approval_lifecycles`** lists the lifecycles by name, then id, and keys only on `ap:approvals`. The shared generated interpreter asks it, as it asks `model.rights_lifecycles` today. Its hash never changes in a project without approvals.
-30. **`csharp-dapper` and `process-docs` follow the model.** Confidence: medium-high. Section 10 lists what each writes. A signature's `when` goes to the team as a static method, as a right's condition does, until the generated runtime (4.6) reads the object.
+    - **One naming key, `ap:approvals`,** hashes the ids of each lifecycle that uses an approval, inline or through a gate policy (section 7). An unused gate policy with stages adds nothing; the first lifecycle to use it changes the hash. **`model.approval_lifecycles`** lists the lifecycles by name, then id, and keys only on `ap:approvals`. The shared generated interpreter asks it, as it asks `model.rights_lifecycles` today. Its hash never changes in a project without approvals.
+30. **`csharp-dapper` and `process-docs` follow the model.** Confidence: medium-high. Section 10 lists what each writes. A signature's `when` goes to the team as a static method, as a right's condition does, until the generated runtime (4.6) reads the object. Each lifecycle's generated Handlers class reaches it for the shared interpreter (section 10). Confidence for that route: medium-high.
 
 ### Release
 
@@ -229,8 +248,8 @@ Each decision gives its confidence: **high**, **medium-high**, **medium** or **l
 | --- | --- | --- | --- |
 | `process.json` | `$defs/gate` gains `stages` (after `name` and `displayName`) | list of `$defs/gateStage`, `minItems` 1, `maxItems` 1 | Decision 1. With stages: no `required`, `signers`, `requiredActors` or `allowRepeatSigner` (MQ8201). `signers` stays required on a gate without stages, through the schema's condition, so the finding for a gate with neither doesn't change |
 | `process.json` | `$defs/gate` gains `allowSignerAcrossSignatures` | boolean, default false | Decision 16. Only with stages (MQ8201) |
-| `process.json` | `$defs/gateStage` (new) | `{ id, name, displayName?, description?, signatures }`; `signatures` a list of `$defs/gateSignature`, `minItems` 1 | Part kind `gate-stage` |
-| `process.json` | `$defs/gateSignature` (new) | `{ id, name, displayName?, description?, signers, required?, requiredActors?, allowRepeatSigner?, when?, notBy? }` | Decision 3. `signers` `minItems` 1; `required` default 1; `when` a `$defs/expr`; `notBy` a list of `{ verb }` or `{ transition }`. Part kind `gate-signature` |
+| `process.json` | `$defs/gateStage` (new) | `{ id, name, displayName?, description?, signatures }`; `signatures` a list of `$defs/namedSignature`, `minItems` 1 | Part kind `gate-stage` |
+| `process.json` | `$defs/namedSignature` (new) | `{ id, name, displayName?, description?, signers, required?, requiredActors?, allowRepeatSigner?, when?, notBy? }` | Decision 3. `signers` `minItems` 1; `required` default 1; `when` a `$defs/expr` (not in a gate policy, MQ8202); `notBy` a list of `{ verb }` or `{ transition }`. Part kind `named-signature` |
 | `scenario.json` | step `response` | `sign`, `reject`, `ignore`, `withdraw`; default `sign` | Decision 25 |
 | `scenario.json` | step `signature` | id | Decision 25 |
 | `scenario.json` | `expect.signatures` | map of signature id to a whole number | Decision 27 |
@@ -242,11 +261,11 @@ Each decision gives its confidence: **high**, **medium-high**, **medium** or **l
 | --- | --- | --- | --- |
 | `process.json` | `stages` drops `maxItems` | | Decision 5 |
 | `process.json` | `$defs/gateStage` gains `round`, `when` | whole number from 1, default 1; `$defs/expr` | Decisions 5 and 6 |
-| `process.json` | `$defs/gateSignature` gains `delegateTo`, `remindAfter`, `escalateAfter`, `escalateTo`, `reauthenticate` | actor ids (`minItems` 1); ISO 8601 durations; actor ids; boolean | Decisions 20 to 22 |
+| `process.json` | `$defs/namedSignature` gains `delegateTo`, `remindAfter`, `escalateAfter`, `escalateTo`, `reauthenticate` | actor ids (`minItems` 1); ISO 8601 durations; actor ids; boolean | Decisions 20 to 22 |
 | `scenario.json` | step `response` gains `delegate`; step `delegateTo`, `onBehalfOf` | participant ids | Decision 25 |
 | `scenario.json` | `expect.notices` | list of `{ signature, kind }`, kind `remind` or `escalate` | Decision 27 |
 
-Also updated in each part: the sample app's schema copies, `openapi.yaml` by hand (the shapes, the audit record, `GateState`, the enabled trigger's `responses`, the simulate and record requests, the records), and the editor files generated from it.
+Also updated in each part: the sample app's schema copies, `openapi.yaml` by hand (the shapes as `GateStage` and `NamedSignature`, the audit record, `GateState` with `ApprovalStageState` and `ApprovalSignatureState`, `GateSignature.signature`, the enabled trigger's `responses`, the simulate and record requests, the records), and the editor files generated from it.
 
 Part 1, a release approval on a document's `Approve` move:
 
@@ -310,22 +329,22 @@ The process families MQ90xx to MQ99xx are full, and MQ81xx holds trigger points.
 | Id | Severity | Rule | Quick fix |
 | --- | --- | --- | --- |
 | MQ8201 | E | An approval's shape: a gate with `stages` that also has `required`, `signers`, `requiredActors` or `allowRepeatSigner`; `allowSignerAcrossSignatures` on a gate without stages | Remove the key |
-| MQ8202 | E | A `notBy` entry that doesn't fit: a transition that isn't this lifecycle's; a transition in a gate policy; a verb this lifecycle's runs can't see (decision 15) | Remove the entry |
+| MQ8202 | E | A signature key that doesn't fit: a `notBy` transition that isn't this lifecycle's; a `notBy` transition in a gate policy; a `notBy` verb this lifecycle's runs can't see (decision 15); in part 1, a `when` on a gate policy's signature (decision 7) | Remove the entry or key |
 | MQ8203 | E | (Part 2) Stages not listed in round order | Reorder the stages |
 | MQ8204 | E | (Part 2) Reminder and escalation shape: `escalateTo` without `escalateAfter`, or the reverse; a delay that isn't a positive ISO 8601 duration | Add or remove the key |
 | MQ8205 | W | (Part 2) An escalation due no later than its reminder | Lengthen `escalateAfter` |
 | MQ9311 | E | A scenario step whose signatures (part 2: notices) differ from `expect.signatures` (`expect.notices`) | Update the expectations from a replay |
 
-**Existing rules that gain a case.** Each new case needs a stage, a step's `response`, `signature` or `expect.signatures`, or a trigger point's `targets` or `transitions` beside a signature verb.
+**Existing rules that gain a case.** Each new case needs a stage, a step's `response`, `signature` or `expect.signatures`, or a trigger point's `targets` or `transitions` beside a signature verb. **Every existing finding keeps its message word for word.** A new case gets its own message. The rule descriptions in `list_validation_rules` do grow, so that one answer changes for every project.
 - **MQ3001:** two stages of one gate with one name, or two signatures of one gate with one name, across its stages.
 - **MQ3101, MQ3102, MQ3104, MQ3108 and the typing rules:** a signature's `when` (part 2: a stage's) at the `Approval` site; MQ3102 for `current_actor()` or the payload there.
 - **MQ9101, MQ9102, MQ9105:** each signature's signers and required actors, as for a gate today. MQ9101 also: an approval that needs more different people than its signers can give, without `allowSignerAcrossSignatures` (decision 16).
 - **MQ9106:** a signature's signers and required actors (part 2: `delegateTo` and `escalateTo`) count as uses.
-- **MQ9701, MQ9704:** a verb in `notBy`.
-- **MQ9305:** a `response` or `signature` on a step that isn't an event step gated by an approval; a `signature` of another gate. Part 2: `delegateTo` without `response: delegate`, `onBehalfOf` for a person with no delegation, and `delegate` on a signature without `delegateTo`.
+- **MQ9701, MQ9704:** a verb in `notBy`. MQ9704 also: a step's `response` that the project hides.
+- **MQ9305:** a `response` or `signature` on a step that isn't an event step gated by an approval; a `signature` of another gate; an `expect.signatures` key that isn't a signature of the approval the step answers. Part 2: `delegateTo` without `response: delegate`, `onBehalfOf` for a person with no delegation, and `delegate` on a signature without `delegateTo`.
 - **MQ9308:** the refusals `gate-excluded` and `gate-not-signed`.
-- **MQ8102:** `targets` and `transitions` are now allowed beside `reject`, `ignore` and `withdraw` (decision 17). This removes a case, which was an error before; it is the one finding that can disappear.
-- **MQ8107:** `reject`, `ignore` and `withdraw` count as doable in a lifecycle with an approval (part 2: `delegate`, where a signature has `delegateTo`).
+- **MQ8102:** `targets` and `transitions` are now allowed beside `reject`, `ignore` and `withdraw` in a lifecycle with an approval (decision 17). Elsewhere the finding stays, so a project without approvals keeps it.
+- **MQ8107:** `reject`, `ignore` and `withdraw` count as doable in a lifecycle with an approval (part 2: `delegate`, where a signature has `delegateTo`). Both checks change: a lifecycle's point (`CanRun` in `Validation/TriggerRules.cs`) and a named point (the `NotYet` test there), which counts them as doable when a lifecycle that governs an entity it covers has an approval.
 
 The mock backend's rule list follows.
 
@@ -336,24 +355,24 @@ public sealed class RGate : RProcessNode                       // existing; new 
 {
     public RList<RGateStage> Stages { get; internal set; }     // empty for a gate without stages
     public bool UsesStages => Stages.Count > 0;
-    public RList<RGateSignature> AllSignatures { get; internal set; } // every stage's, in file order; empty without stages
+    public RList<RNamedSignature> AllSignatures { get; internal set; } // every stage's, in file order; empty without stages
     public bool AllowSignerAcrossSignatures { get; internal set; }
 }
 public sealed class RGateStage : RProcessNode                  // Kind "gate-stage"
 {
     public string Name, DisplayName, Description;
     public RGate Gate { get; internal set; }
-    public RList<RGateSignature> Signatures { get; internal set; }
+    public RList<RNamedSignature> Signatures { get; internal set; }
     // Part 2: public int Round; public RExpression? When;
 }
-public sealed class RGateSignature : RProcessNode              // Kind "gate-signature"
+public sealed class RNamedSignature : RProcessNode              // Kind "named-signature"
 {
     public string Name, DisplayName, Description;
     public RGate Gate; public RGateStage Stage;
     public int Required { get; internal set; } = 1;
     public RList<RActor> Signers, RequiredActors;
     public bool AllowRepeatSigner { get; internal set; }
-    public RExpression? When { get; internal set; }           // typed at the Approval site
+    public RExpression? When { get; internal set; }           // typed at the Approval site; null in a gate policy (part 1)
     public RList<RNotBy> NotBy { get; internal set; }         // each has Verb or Transition
     // Part 2: RList<RActor> DelegateTo, EscalateTo; string? RemindAfter, EscalateAfter; bool Reauthenticate;
 }
@@ -366,7 +385,7 @@ public sealed class RGateSignature : RProcessNode              // Kind "gate-sig
 - **A gate without stages reads as today.** `gate.signers`, `gate.required` and the rest keep their values. On a gate with stages they are empty, and templates read the signatures.
 
 **Dependency keys.**
-- **`ap:approvals`** hashes the ids of the lifecycles and gate policies with stages. It changes when a lifecycle gets its first approval or loses its last, not when a signature changes. It is worked out once per snapshot from the index rows, as `rn:rights` is: a process row carries a flag only where it has an approval. `Planning/DependencyHasher.cs` gains the `ap` prefix, and the plan explainer words it "The approvals the lifecycles state".
+- **`ap:approvals`** hashes the ids of each lifecycle that uses an approval, inline or through a gate policy. It changes when a lifecycle gets its first approval or loses its last, not when a signature changes. It is worked out once per snapshot from the index rows, as `rn:rights` is. The rows carry internal fields, never serialized, like `RightUses`: a process row flags an inline gate with stages, and lists the gate policies its transitions use (`GatePolicyUses`); a library row lists its gate policies with stages. So a gate policy with stages that no lifecycle used yet changes the hash the moment one does, and the shared interpreter is written again. `Planning/DependencyHasher.cs` gains the `ap` prefix, and the plan explainer words it "The approvals the lifecycles state".
 - **`model.approval_lifecycles`** keys only on `ap:approvals`.
 - **`gate.*`, `stage.*` and `signature.*`** key on the process file, or on the library's file for a gate policy, as gate members do today.
 - **`actor.signatures`** keys on the actor's referrers, as `actor.rights` and the actor's gates do: every signature that names the actor refers to it.
@@ -377,13 +396,14 @@ public sealed class RGateSignature : RProcessNode              // Kind "gate-sig
 ## 8. Simulation and replay
 
 - **Where the interpreter changes** (`Processes/StatechartInterpreter.cs`):
-  - **`Microstep`,** on entering a state: for each gated transition of the entered state whose gate has stages, the approval starts. Round 1's conditions are judged, and the progress is kept on the instance beside `Signatures`, which stays for gates without stages.
-  - **`CheckSigner`** becomes the full row 7 of decision 14. It takes the step's response, picks the signature (decision 8), and audits a refused attempt `refused`, as today.
+  - **`Microstep`,** on entering a state, after the entering move's actions and sets: for each gated transition of the entered state whose gate has stages, the approval starts. Round 1's conditions are judged, and the progress is kept on the instance beside `Signatures`, which stays for gates without stages. When a gated move completes without leaving its source, round 1 starts again there.
+  - **`Acting` and `Participants.ActsAs`** pick the signature once (decision 8). `ActingMove` carries the picked signature, `ActsAs` picks the actor from its signers and required actors in place of `gate.Signers`, and the pick is passed into the step beside the input, so the trace's echo doesn't change.
+  - **`CheckSigner`** becomes the full row 7 of decision 14. It takes the step's response and the picked signature, and audits a refused attempt `refused`, as today.
   - **`Sign`** becomes the response's effect: count a signature, record an ignore, remove a withdrawn signature, or fail and clear the approval and start round 1 again. Only a signature can complete the approval. When a signature completes the last needed signature of the round, the round is done. In part 2, the next round starts and its conditions are judged. When the last round is done, the move follows, as when a gate completes today.
   - **Responses other than `sign`** select only gated transitions with an approval, and are consumed in the admit without a microstep, as a signature that doesn't complete a gate is today.
   - **The response's trigger points** run where `sign`'s run today (trigger points section 8), for the response's verb.
-  - **`Cancel`** discards the approval's progress on leaving, audited `discarded`, as today.
-  - **The acts record** of decision 28 is kept in `HandleEvent`, `HandleInvoke`, `HandleVerb` and the admit, only for a lifecycle with a `notBy`.
+  - **`Cancel`** discards the approval's progress on leaving, audited `discarded`, as today. It audits `discarded` whenever the approval holds any response, even when every response so far is an ignore: the leaving ends those people's block, and the audit shows it. Confidence: medium-high.
+  - **The acts record** of decision 28 is kept in `HandleEvent`, `HandleInvoke`, `HandleVerb` and the admit, by step sequence number, only for a lifecycle with a `notBy`. Entries older than the oldest active state's entry are dropped.
   - **(Part 2)** `HandleTime` lists reminders and escalations that fall due, once per round start, in the trace's `notices`.
 - **Scenario steps** pass `response` and `signature` (part 2: `delegateTo`, `onBehalfOf`) through `Model/Processes.cs`. A person's identity comes from the step's `signer` or participant, as for signatures today.
 - **The trace and audit:** decisions 19 and 26, each new member left out when unused, so today's traces don't change.
@@ -400,11 +420,12 @@ public sealed class RGateSignature : RProcessNode              // Kind "gate-sig
 - **`get_rights`** and "who can do what": signers' `reject`, `ignore` and `withdraw` at an approval (decision 18).
 - **`preview_expression`:** previews a signature's `when` at its pointer.
 - **`save_element`, `apply_batch`:** accept `{ "text": … }` for `when`, parsed at the `Approval` site.
-- **`get_references`, `referenced_by`:** a signature's signers and required actors, its `notBy` verbs and transitions, the paths its `when` reads, and a step's `signature`. Part 2: `delegateTo` and `escalateTo`.
-- **Deletes:** an actor removed from a signature's signers follows what removing a gate's signer does today. A transition or a project verb named in `notBy` drops its entry; the move or verb can no longer happen, so dropping it widens nothing that could occur. A signature named by a step's `signature`: `remove-references` drops the key, and the engine picks again. Removing a gate's last signature or last stage is refused by `remove-references`; `delete-dependents` removes the gate. `rename-verb` and `remove-verb` walk `notBy`.
+- **`get_references`, `referenced_by`:** a signature's signers and required actors, its `notBy` verbs and transitions, the paths its `when` reads, a step's `signature`, and the keys of a step's `expect.signatures`. Part 2: `delegateTo` and `escalateTo`.
+- **Deletes:** an actor removed from a signature's signers follows what removing a gate's signer does today. A transition or a project verb named in `notBy` drops its entry; the move or verb can no longer happen, so dropping it widens nothing that could occur. A signature named by a step's `signature`: `remove-references` drops the key, and the engine picks again. A signature named in a step's `expect.signatures`: `remove-references` drops that entry, and an empty `signatures` map goes with it. Removing a gate's last signature or last stage is refused by `remove-references`; `delete-dependents` removes the gate. `rename-verb` and `remove-verb` walk `notBy`.
 - **`get_model_index`:** process rows gain `approvals`, the count of gates with stages, and `signatures`, the count of named signatures, each only when above zero.
 - **`export_process`, `import_process`:** stages and signatures travel in `meta.maquettiste`.
 - **`validate`:** the rules of section 6.
+- **`list_validation_rules`:** the new rules, and the grown descriptions of the existing ones (section 6).
 - **The CLI** follows the same tools. **The rule list, the schemas, the conventions resource, the modeling skill and the tool texts** (`src/Maquettiste.Cli/Mcp/ProcessTools.cs`, `Agent/tools.json`) describe all of this.
 
 ## 10. Packs
@@ -417,16 +438,19 @@ Output changes only for a model that uses what each output needs (decision 29).
   - `ProcessEnvelope` gains `Response` and `Signature` as init properties. It is a positional record today, so adding them as init properties leaves every existing call compiling.
   - `GateDefinition` gains `Stages` and `AllowSignerAcrossSignatures` as init properties, with new records `StageDefinition` and `SignatureDefinition`.
   - `GateOutcome` gains `Rejected`, `Ignored` and `Withdrawn`. `Refusals` gains `GateExcluded` and `GateNotSigned`. `GateAuditRecord` and `SignatureEntry` gain `Signature` and `Stage` as init properties.
-  - The snapshot gains `Approvals`, each gate's progress by transition (`ApprovalProgress`: the round's start, the signatures needed, each person's response), and `Acts` (`ActRecord`), only for a lifecycle with a `notBy`.
+  - The snapshot gains `Approvals`, each gate's progress by transition (`ApprovalProgress`: the round's start, the signatures needed, each person's response), and `Acts` (`ActRecord`, each with its step sequence number). `Acts` is always declared; it stays empty unless the lifecycle's `ChartDefinition.RecordsActs` is set, which `process-definition.scriban` writes only for a lifecycle with a `notBy`.
   - The interpreter starts approvals on entry, runs row 7 of decision 14, picks the signature by decision 8's rule, and calls the trigger steps of the response's verb through `ITriggerPointSteps`, as it calls `sign`'s.
-- **`process-definition.scriban`:** builds a gate's stages and signatures, for lifecycles with an approval.
-- **The team's half:** a static partial class `<Lifecycle>ApprovalConditions`, written once, with one synchronous method per signature that has a `when`, named `<Gate><Signature>` and documented with its text. It takes an `ApprovalCall` (instance, lifecycle, gate, stage, signature, states) and returns whether the signature is needed. A method named like its class gets `Value` added, by the pack's existing rule (`member_name` in `_process.scriban`). A new one fails the build until written, as a right's condition does.
+- **`process-definition.scriban`:** builds a gate's stages and signatures, for lifecycles with an approval, and sets `RecordsActs`.
+- **The team's half:** a static partial class `<Lifecycle>ApprovalConditions`, written once, with one synchronous method per signature that has a `when`, named `<Gate><Signature>` and documented with its text. It takes an `ApprovalCall<TContext>` and returns whether the signature is needed. A new one fails the build until written, as a right's condition does.
+  - **`ApprovalCall<TContext>`** holds the `Instance`, the object's `Key` as text when the caller gives it (as a trigger point's call has), the `Context`, the `Lifecycle`, `Gate`, `Stage` and `Signature` names, and the active `States`. It is generic like `StatechartCall<TContext>`, so `when` reads a typed context.
+  - **How the shared interpreter reaches it:** the lifecycle's generated Handlers class implements a new interface, `IApprovalConditions<TContext>`, with one method, `Needed(signature, call)`, which calls the team's method by signature id. The shared interpreter asks it when a round starts, as it asks `IActorResolver<TContext>` today. Not a delegate on `SignatureDefinition`: the definition is shared and untyped, while the context is typed per lifecycle. A signature without a `when` is needed without asking.
+  - **Names:** a method named like its class gets `Value` added, by the pack's existing rule (`member_name` in `_process.scriban`). When two methods would get one name, such as gate `Release` with signature `FinanceCheck` and gate `ReleaseFinance` with signature `Check`, each after the first in id order gets the first eight characters of its id appended. Part 2's stage methods are named `<Gate><Stage>Stage`, so a stage and a signature can share a name, as `Finance` does in section 5, with the same suffix rule. This is fixed now so part 2 adds names only.
 - **`process-handlers.scriban`:** passes the envelope through. A refused response saves only what a refused signature saves today: the snapshot and its audit.
 - **`process-contracts.scriban`:** each gate's typed audit record gains `Signature` and `Stage` on gates with stages.
 - **`scenario-tests.scriban`:** a step's `response` and `signature` set the envelope; `expect.signatures` is asserted from the snapshot; the participant's identity is the envelope's `Signer`, so `notBy` works in generated tests as in replays.
 - **Nothing goes in `helpers.js`.**
 
-**`csharp-dapper`, part 2:** rounds and stage conditions (methods per stage with a `when` in `<Lifecycle>ApprovalConditions`); `SignatureResponse.Delegate`, `ProcessEnvelope.DelegateTo` and `.OnBehalfOf`, `GateOutcome.Delegated`; `ApprovalNotice` and `ApprovalNotices.Due(snapshot, now)`, which the host's scheduler calls to list due reminders and escalations, each with a stable id built from the instance, the transition, the round's start, the signature and the kind, so a host can drop a repeat; `SignatureDefinition.Reauthenticate`, `ProcessEnvelope.Reauthenticated` and `Refusals.GateReauthenticate`.
+**`csharp-dapper`, part 2:** rounds and stage conditions (a method per stage with a `when` in `<Lifecycle>ApprovalConditions`, named `<Gate><Stage>Stage`); `SignatureResponse.Delegate`, `ProcessEnvelope.DelegateTo` and `.OnBehalfOf`, `GateOutcome.Delegated`; `ApprovalNotice` and `ApprovalNotices.Due(snapshot, now)`, which the host's scheduler calls to list due reminders and escalations, each with a stable id built from the instance, the transition, the round's start, the signature and the kind, so a host can drop a repeat; `SignatureDefinition.Reauthenticate`, `ProcessEnvelope.Reauthenticated` and `Refusals.GateReauthenticate`.
 
 **`process-docs`, part 1**
 - **The lifecycle page,** for a gate with stages: an "Approval" heading in place of today's gate lines, with a table per stage (signature, signers, required, required actors, repeat signer, needed when, not by). One paragraph says what each response does. The audit list gains the new outcomes. The transitions table's Gate cell reads "approval, 3 signatures" in place of "required of signers".
@@ -446,24 +470,24 @@ Output changes only for a model that uses what each output needs (decision 29).
 - **(Part 2)** **Add stage**, a **Round** column on stages, rows grouped by round, **Skip unless** (a stage's `when`), and on each signature **May be delegated to**, **Remind after**, **Escalate after**, **Escalate to** and **Sign again with a password**.
 
 **Scenario editor:**
-- **Steps:** a **Response** cell (Sign, Reject, Ignore (abstain), Withdraw; part 2: Delegate, with a participant) and a **Signature** cell, which shows "Picked by the engine" when empty. Both are offered only on a step whose event is gated by an approval.
+- **Steps:** a **Response** cell (Sign, Reject, Ignore (abstain), Withdraw; part 2: Delegate, with a participant) and a **Signature** cell, which shows "Picked by the engine" when empty. Both are offered only on a step whose event is gated by an approval. The Response cell leaves out verbs the project hides.
 - **Expectations:** a **Signatures** cell. "Update from replay" fills it. The Refusal cell offers the two new refusals.
 
 **Simulation panel:** for each approval, its signatures with needed, counted, required and the people finished; the enabled trigger offers Reject, Ignore and Withdraw beside Sign, from its `responses`, with a signature picker. A rejection shows that the approval was cleared. Part 2: rounds, skipped stages and due notices.
 
 **Elsewhere:** "Who can do what" lists the new verbs for signers. The Verbs tab counts approvals among `reject`, `ignore` and `withdraw`'s uses. Quick fixes: MQ8201 and MQ8202 remove the key or entry, MQ8203 reorders, MQ9311 updates the expectations from a replay.
 
-**Generated and mock files:** the editor's API types come from `openapi.yaml` by the fixed command. The part kinds need no entry in `model/model.ts` or `model/labels.ts`, as `process-right` has none. By hand: `model/labels.ts` gains the texts above, and a new `model/approvals.ts` beside `model/rights.ts` holds the grid's rows and the conversion. In `src/editor/src/mocks/model/`, `stepper.ts` (2,287 lines today) gains approvals at entry, responses, the pick and `notBy`; `validate.ts`, `refs.ts`, `cascade.ts` and `modelIndex.ts` follow.
+**Generated and mock files:** the editor's API types come from `openapi.yaml` by the fixed command. The part kinds need no entry in `model/model.ts` or `model/labels.ts`, as `process-right` has none. By hand: `model/labels.ts` gains the texts above, and a new `model/approvals.ts` beside `model/rights.ts` holds the grid's rows and the conversion. In `src/editor/src/mocks/model/`, `stepper.ts` (2,327 lines on the trigger points part 2 branch) gains approvals at entry, responses, the pick and `notBy`; `validate.ts`, `refs.ts`, `cascade.ts` and `modelIndex.ts` follow.
 
 ## 12. A project that uses none of this
 
 **After part 1:**
 - **Files:** nothing rewrites a file, so saves, `format`, `format --check` and snapshot import behave as today. Recording a scenario writes what it writes today.
 - **Gates:** a gate without stages means exactly what it means today. It takes `sign` only, counts signatures per transition, audits `signed`, `completed`, `refused` and `discarded`, and refuses with the same words. Gate policies without stages are unchanged.
-- **Findings:** the same, with one exception that needs a trigger point already in error: MQ8102 no longer flags `targets` or `transitions` beside `reject`, `ignore` or `withdraw`. Every new rule and case needs a stage or a new step key.
+- **Findings:** the same, with the same messages word for word. MQ8102 still flags `targets` or `transitions` beside `reject`, `ignore` or `withdraw`, since the lifecycle has no approval. Every new rule and case needs a stage or a new step key.
 - **Output:** the same bytes. Each pack change depends on `model.approval_lifecycles`, `gate.uses_stages` or a new step key.
 - **Simulation and replay:** the same outcomes, traces, audits and gate states. No new member appears without an approval.
-- **Tool answers about the model:** the same. New record, index and simulation members are left out when unused, and `model.approval_lifecycles` is empty. `get_trigger_sequence`, `get_rights` and `get_references` answer as today.
+- **Tool answers about the model:** the same. New record, index and simulation members are left out when unused, and `model.approval_lifecycles` is empty. `get_trigger_sequence`, `get_rights` and `get_references` answer as today. One answer changes for every project: `list_validation_rules`, whose descriptions grow (section 6).
 - **Dependency keys:** the same, but for one key. A template that reads `model.approval_lifecycles` also keys on `ap:approvals`, whose hash never changes in a project without approvals.
 - **Speed:** the same. Nothing new runs for a gate without stages.
 - **Capabilities:** once built, these rows of `lifecycle-capabilities.md` part E become Yes: approve, reject, ignore with a separate list of who may do each (through rights on each verb); several named signatures on one state; a signature withdrawn; whether a signature is needed decided by a condition. "Separation of duties" becomes Yes for "approve what they submitted", and stays Part for "one person can't hold two roles on one object". After part 2: steps in series or parallel, signing authority handed to someone else, reminders and escalation, and signing again with a password become Yes (the last two as model states, host does).
@@ -488,34 +512,39 @@ Output changes only for a model that uses what each output needs (decision 29).
 
 ## 14. The owner's decisions
 
-**All product choices were decided in the review of 2026-11-08 (B1 to B8).** The independent check may settle the new names (B8); the release tag waits for the owner. Two consequences of the decided answers are kept visible here, so they are not a surprise once built: one input either vetoes or moves (decision 11), and an ignore never satisfies a required actor (decision 12).
+**All product choices were decided in the review of 2026-11-08 (B1 to B8).** One independent check has reviewed the design and settled the new names (B8), with one change: `namedSignature` and `named-signature` in place of `gateSignature` and `gate-signature`. The release tag waits for the owner. Two consequences of the decided answers are kept visible here, so they are not a surprise once built: one input either vetoes or moves (decision 11), and an ignore never satisfies a required actor (decision 12).
 
-1. **Names, permanent once released.** Recommended: keep the set below. Each stays clear of a name already in use.
-   - On a gate: `stages` and `allowSignerAcrossSignatures` (not a wrapper `approval`; decision 1). On a stage: `signatures`, and in part 2 `round` and `when`. On a signature: the gate's own `signers`, `required`, `requiredActors` and `allowRepeatSigner`, plus `when` and `notBy` (not `excludes`, which operations use for the stereotype errors they don't inherit); in part 2 `delegateTo`, `remindAfter`, `escalateAfter`, `escalateTo` and `reauthenticate`. The part kinds `gate-stage` and `gate-signature`.
-   - In scenarios: the step's `response` with `sign`, `reject`, `ignore` and `withdraw` (the built-in verbs' keys), and `signature`; in part 2 `delegate`, `delegateTo` and `onBehalfOf`. `expect.signatures`, and in part 2 `expect.notices` with the kinds `remind` and `escalate`. The refusals `gate-excluded` and `gate-not-signed`. The audit outcomes `rejected`, `ignored` and `withdrawn`, and in part 2 `delegated`; the audit record's `signature` and `stage`, and in part 2 `onBehalfOf`. The gate state's `stages` (part 2: `round`, `skipped`), the enabled trigger's `responses`, and the trace's `notices` (part 2). The rule family label "Approvals".
+1. **`route` in part 2. The owner should confirm before part 2 starts.** The review said `route` stays inert "until delegation". This design keeps it inert in both parts, also once part 2 adds delegation (decision 23), since sending the object to people at run time is the running system's job. Recommended: keep it inert. Part 1 doesn't depend on the answer.
+2. **Names, permanent once released.** Recommended: keep the set below. Each stays clear of a name already in use.
+   - On a gate: `stages` and `allowSignerAcrossSignatures` (not a wrapper `approval`; decision 1). On a stage: `signatures`, and in part 2 `round` and `when`. On a signature: the gate's own `signers`, `required`, `requiredActors` and `allowRepeatSigner`, plus `when` and `notBy` (not `excludes`, which operations use for the stereotype errors they don't inherit); in part 2 `delegateTo`, `remindAfter`, `escalateAfter`, `escalateTo` and `reauthenticate`. The part kinds `gate-stage` and `named-signature`, and the schemas `gateStage` and `namedSignature`.
+   - In scenarios: the step's `response` with `sign`, `reject`, `ignore` and `withdraw` (the built-in verbs' keys), and `signature`; in part 2 `delegate`, `delegateTo` and `onBehalfOf`. `expect.signatures`, and in part 2 `expect.notices` with the kinds `remind` and `escalate`. The refusals `gate-excluded` and `gate-not-signed`. The audit outcomes `rejected`, `ignored` and `withdrawn`, and in part 2 `delegated`; the audit record's `signature` and `stage`, and in part 2 `onBehalfOf`. The gate state's `stages` (part 2: `round`, `skipped`), the API records `GateStage`, `NamedSignature`, `ApprovalStageState` (`stage`, `complete`, `signatures`) and `ApprovalSignatureState` (`signature`, `needed`, `counted`, `required`, `finished`, `complete`), `GateSignature.signature`, the enabled trigger's `responses`, and the trace's `notices` (part 2). The rule family label "Approvals".
    - In the engine and its contract: the site kind `Approval`, the naming key `ap:approvals`, the index members `approvals` and `signatures`, and the template members of section 7.
-   - In `csharp-dapper`: `SignatureResponse`, `ProcessEnvelope.Response` and `.Signature`, `GateDefinition.Stages` and `.AllowSignerAcrossSignatures`, `StageDefinition`, `SignatureDefinition`, `GateOutcome.Rejected`, `.Ignored` and `.Withdrawn`, `Refusals.GateExcluded` and `.GateNotSigned`, `GateAuditRecord.Signature` and `.Stage`, `SignatureEntry.Signature` and `.Stage`, `ApprovalProgress`, `ActRecord`, `<Lifecycle>ApprovalConditions` and `ApprovalCall`; in part 2 `SignatureResponse.Delegate`, `ProcessEnvelope.DelegateTo`, `.OnBehalfOf` and `.Reauthenticated`, `GateOutcome.Delegated`, `Refusals.GateReauthenticate`, `ApprovalNotice` and `ApprovalNotices.Due`.
+   - In `csharp-dapper`: `SignatureResponse`, `ProcessEnvelope.Response` and `.Signature`, `GateDefinition.Stages` and `.AllowSignerAcrossSignatures`, `StageDefinition`, `SignatureDefinition`, `GateOutcome.Rejected`, `.Ignored` and `.Withdrawn`, `Refusals.GateExcluded` and `.GateNotSigned`, `GateAuditRecord.Signature` and `.Stage`, `SignatureEntry.Signature` and `.Stage`, `ApprovalProgress`, `ActRecord`, `ChartDefinition.RecordsActs`, `<Lifecycle>ApprovalConditions` with methods `<Gate><Signature>`, `ApprovalCall<TContext>` and `IApprovalConditions<TContext>`; in part 2 `SignatureResponse.Delegate`, `ProcessEnvelope.DelegateTo`, `.OnBehalfOf` and `.Reauthenticated`, `GateOutcome.Delegated`, `Refusals.GateReauthenticate`, `ApprovalNotice` and `ApprovalNotices.Due`, and stage methods `<Gate><Stage>Stage`.
    - In the editor: Use named signatures, Back to one list of signers, Needed when, Not by, One person may give several signatures, Response, Signature, Picked by the engine, Ignore (abstain); in part 2 Add stage, Round, Skip unless, May be delegated to, Remind after, Escalate after, Escalate to, Sign again with a password.
    - **Names a builder adds** follow these patterns, and are listed in the pull request and the release notes for the check to settle.
 
 ## 15. Tests
 
 **Part 1**
-- **`ApprovalRuleTests` (new):** failing and passing cases for MQ8201, MQ8202 and MQ9311, and the new cases of MQ3001, MQ3101, MQ3102, MQ3104, MQ3108, MQ9101, MQ9102, MQ9105, MQ9106, MQ9701, MQ9704, MQ9305, MQ9308, MQ8102 and MQ8107. A gate policy with a `notBy` transition. A gate without signers or stages keeps today's finding. Today's models give the same findings.
+- **`ApprovalRuleTests` (new):** failing and passing cases for MQ8201, MQ8202 and MQ9311, and the new cases of MQ3001, MQ3101, MQ3102, MQ3104, MQ3108, MQ9101, MQ9102, MQ9105, MQ9106, MQ9701, MQ9704, MQ9305, MQ9308, MQ8102 and MQ8107. A gate policy with a `notBy` transition, and with a `when` (MQ8202). A hidden verb as a step's `response` (MQ9704). An `expect.signatures` key of another gate (MQ9305). MQ8102 kept beside `reject` in a lifecycle without an approval. MQ8107 on a named point on `reject`, with and without an approval in a lifecycle that governs what it covers. A gate without signers or stages keeps today's finding. Today's models give the same findings, with the same messages.
 - **`ApprovalReplayTests` (new):**
   - Counting: two signatures complete independently; the move follows only when all needed signatures are complete; a required actor met through membership; `allowRepeatSigner` on one signature only.
-  - Conditions: a signature not needed when `when` is false or unknown; judged on entry and not again after a `modify`; judged again after a rejection; nothing needed lets the next occurrence move, checked as a move without a gate.
+  - Conditions: a signature not needed when `when` is false, and needed when it is unknown; judged on entry after the entering move's sets, and not again after a `modify`; judged again after a rejection, and after a gated move that completes without leaving its source; nothing needed lets the next occurrence move, checked as a move without a gate, with `satisfied` true in the gate state.
   - Responses: a rejection clears every signature of that approval, keeps another gate's, stays in the state and audits `rejected`; an ordinary `reject` move leaves, audits `discarded`, and runs its own guard, rights and trigger points; ignore leaves the count, finishes the person, and never meets a required actor; withdraw removes the latest signature and allows signing again; withdraw with nothing refused `gate-not-signed`; a non-sign response with no open approval refused `no-transition`; a false guard refuses a response as it refuses a signature.
   - Refusal order: each row of decision 14 in turn, each audited `refused`.
   - Separation: the submitter excluded by verb and by move; the window includes the entering move; a gated move's signers excluded by `{ transition }`; an automatic move excludes nobody; one person on two signatures refused `gate-repeat`, and allowed with the flag.
-  - The pick: by required actor first, then file order; a step's `signature` overrides it.
+  - The pick: for sign and ignore, by required actor first, then file order; withdraw takes the person's latest signature in the round; reject by a person who has signed takes a complete signature; a step's `signature` overrides it; a participant who meets the signers through a membership acts as the picked signature's actor, and the trace echoes the step as given.
+  - Row 7d by response: reject refused after the person ignored, allowed after they signed; withdraw never refused `gate-repeat`.
+  - The acts record: two acts in one instant ordered by step; entries older than the oldest active state's entry dropped.
+  - `Cancel` with only ignores audits `discarded`.
+  - The simulation's gate state and enabled trigger on an approval: `stages`, `signatures` with their `signature`, `gate` and `actors` from the round's needed signatures.
   - Trigger points on `reject`, `ignore` and `withdraw`: run with `transitions` at the gate; a refusing check leaves the approval as it was and audits `refused`; a point on `reject` with `transitions` naming the ordinary move runs only there; a named trigger point on `reject` runs before the lifecycle's.
   - Rights: a deny on `reject` refuses a signer's rejection; signers allowed to reject under a deny default.
   - Expectations, MQ9311; recording writes `expect.signatures`.
   - Unchanged traces, audits, gate states and replays for models without stages, including gates, gate policies, rights and trigger points on `sign`.
-- **`ResolvedApprovalTests` (new):** `model.approval_lifecycles`, the gate, stage and signature members, `actor.signatures`, records; `ap:approvals` changes on the first approval and not on a signature edit; a gate policy with stages renders each user again.
+- **`ResolvedApprovalTests` (new):** `model.approval_lifecycles`, the gate, stage and signature members, `actor.signatures`, records; `ap:approvals` changes on the first approval and not on a signature edit; it changes when an unused gate policy with stages gets its first use, and the shared interpreter is written again; a gate policy with stages renders each user again.
 - **No change:** a model without approvals gives the same output, files, `format --check`, findings, replay, traces and tool answers. The pack golden tests pass untouched.
-- **Pack tests:** a new case per pack. `csharp-dapper`'s approval build and run with warnings as errors: a rejection clears the snapshot's progress and makes no move; a refused response saves only its audit; `notBy` refuses the submitter from the envelope's `Signer`; `<Lifecycle>ApprovalConditions` methods named after their signatures, with one named like the class; generated scenario tests agree with the engine's replay. `process-docs`' approval tables, actor signatures and scenario lines.
+- **Pack tests:** a new case per pack. `csharp-dapper`'s approval build and run with warnings as errors: a rejection clears the snapshot's progress and makes no move; a refused response saves only its audit; `notBy` refuses the submitter from the envelope's `Signer`; `<Lifecycle>ApprovalConditions` methods named after their signatures, with one named like the class and two that clash, reached through `IApprovalConditions<TContext>` with a typed context and the object's key; `Acts` declared but empty in a lifecycle without `notBy`; generated scenario tests agree with the engine's replay. `process-docs`' approval tables, actor signatures and scenario lines.
 - **Editor:** unit tests for the conversion both ways, the signatures grid, the Not by popover and the Response cell. Browser tests (in the browser pass) for converting a gate, adding signatures, responding in the simulation panel, and updating expectations from a replay.
 - **Acceptance,** on an invented model: the document approval and scenario of section 5, under a deny default with rights.
 
@@ -540,7 +569,7 @@ The sizes are days for a person who knows the code, with tests and a review.
 | 1 | References, deletes and the sequence | References, deletes, `rename-verb` and `remove-verb`, index rows, localization; `TriggerSequence` for the response verbs | A day |
 | 1 | Editor, part one | The Gates tab's approval grid and conversion, quick fixes, the mock's validation and references | A day and a half |
 | 2 | Simulation and scenarios | Approvals on entry, responses, the pick, row 7, `notBy` and the acts record, trigger points on the response verbs, the trace, audit and gate state, `expect.signatures`, MQ9311, recording, replay keys | Two days |
-| 2 | Resolved model, keys, tools and docs output | `RGateStage`, `RGateSignature`, `model.approval_lifecycles`, `ap:approvals`, records, tool texts and routes; `process-docs` | A day |
+| 2 | Resolved model, keys, tools and docs output | `RGateStage`, `RNamedSignature`, `model.approval_lifecycles`, `ap:approvals`, records, tool texts and routes; `process-docs` | A day |
 | 2 | `csharp-dapper` | The interpreter's approvals, envelope, snapshot, refusals and outcomes; `<Lifecycle>ApprovalConditions`; handlers, contracts and scenario tests | Two days |
 | 2 | Editor, part two | Scenario cells, the simulation panel, the mock's stepper | A day and a half |
 | 3 | Docs | User guide (processes, scenarios, approvals), releases, modeling skill, capabilities rows, `next.md` | Half a day |
@@ -562,17 +591,18 @@ That comes to about four and a quarter days for a person.
 - **New part kinds:** `Model/ModelIndexer.cs` (the part kind map and `SubElementKinds`), `Model/PropertySchemas.cs` (`TranslatedHolderKinds`), `Loading/NameIndex.cs`, the list-to-kind map and `PartNoun` in `Loading/ChangePlanner.Cascade.cs`.
 - **Expressions:** the `Approval` site in `Expressions/ExprType.cs` and every site switch the `Trigger` kind needed (`Expressions/ExprJs.cs`, `ExprTyper.cs`, `ExprScope.cs`, `ExprSql.cs`, `Rendering/BuiltinHelpers.cs`, `ModelStore.ExpressionPreview.cs`), and `Validation/ExpressionRules.cs` (`ExprSites.Of`).
 - **Processes:** `Model/Processes.cs` (the gate, stage and signature; the step's new keys), `Processes/StatechartInterpreter.cs` (`Microstep`, `CheckSigner`, `Sign`, `Cancel`, selection of responses, the admit), `Processes/StepTrace.cs` (`Refusals`, `GateOutcome`, `GateAuditRecord`), `Processes/ProcessApi.cs` (`GateState`, `EnabledTrigger.Responses`), `Processes/ScenarioReplayer.cs`, `Processes/RunRights.cs` (the response verbs at row 7), `Processes/ProcessLibraries.cs` (gate policies with stages), `Processes/TriggerSequence.cs`, and the exporter and importer.
-- **Resolver, keys and records:** `Resolution/ResolvedProcesses.cs`, `Resolution/ResolveRun.Processes.cs`, `Editor/ResolvedRecords.cs`, `Planning/DependencyHasher.cs` (`ap`), `Generation/PlanExplainer.cs`.
+- **Every reader of `gate.Signers`, `gate.Required` and `gate.RequiredActors`,** which are empty on an approval: `StatechartInterpreter.cs` (`GateSigners`, the allow for the gated event; `Acting`, the pick; `CheckSigner` and `Sign`), `StatechartInterpreter.Triggers.cs` (`CouldComplete`, `WouldComplete`), `Processes/Participants.cs` (`ActsAs`, and `Failed`'s message, which lists a gate's signers), `Processes/RightsGrid.cs` (the named lists and the signers lists of the access grid), `Processes/ProcessApi.cs` (`GateState.satisfied`; `EnabledTrigger`'s `gate` and `actors`), and the process rules that read signers (`Validation/ProcessRules.cs`, `ProcessRules.Actors.cs`).
+- **Resolver, keys and records:** `Resolution/ResolvedProcesses.cs`, `Resolution/ResolveRun.Processes.cs`, `Editor/ResolvedRecords.cs`, `Planning/DependencyHasher.cs` (`ap`), `Generation/PlanExplainer.cs`, and the index rows' internal fields in `Model/Documents.cs` and `Model/ModelIndexer.cs` (`GatePolicyUses`, beside `RightUses`).
 - **Tools:** `src/Maquettiste.Cli/Mcp/ProcessTools.cs`, `Agent/tools.json` and `src/Maquettiste.Functions/_functions/ProcessEndpoints.cs`, each owned by one agent per wave.
 - **Packs:** in `packs/csharp-dapper/`, `interpreter.scriban`, `process-definition.scriban`, `process-handlers.scriban`, `process-contracts.scriban`, `process-store.scriban` and `scenario-tests.scriban`; in `packs/process-docs/`, `process-page.scriban`, `actor-page.scriban` and `_docs.scriban`.
 - **Contracts:** the schema copies, `openapi.yaml` and its generated files. `validation-rules.json` is written only by the fixed command.
 
 ### How it gets built
 
-**What earlier items cost.** Rights part 1, about 7,500 to 8,500 lines, cost about 1.46M output tokens, 5.17M new input and 372M cached re-reads over about 3.1 hours. Trigger points part 1, about 15,900 lines, cost about 1.49M output, 4.51M new input and 297M cached over about 3 hours, against an estimate of 1.9M, 6.5M and 465M. So the cost of a part follows its agents and waves more than its lines: both parts used about the same, though one was twice the size. Trigger points' estimate ran high by about a third on output and cached. The figures below use the two actual costs, scaled down a little for a smaller part. In every item, the review and the browser pass each found real bugs.
+**What earlier items cost.** Rights part 1, about 7,500 to 8,500 lines, cost about 1.46M output tokens, 5.17M new input and 372M cached re-reads over about 3.1 hours. Trigger points part 1, about 15,900 lines, cost about 1.49M output, 4.51M new input and 297M cached over about 3 hours, against an estimate of 1.9M, 6.5M and 465M. So the cost of a part follows its agents and waves more than its lines: both parts used about the same, though one was twice the size. Trigger points' estimate ran high by about a third on output and cached. The figures below follow the independent check: close to rights part 1, a little below it. In every item, the review and the browser pass each found real bugs.
 
 **This item's size,** with tests, without pack expected files.
-- **Part 1, about 9,000 to 10,000 lines:** contract, rules and references about 1,300 and their tests about 900; simulation about 1,200 and its tests about 1,000; resolved model, keys, tools and `process-docs` about 900 and tests about 400; `csharp-dapper` about 1,100 and tests about 300; editor and mock about 1,800; docs about 350. The main risks are the interpreter's admit, where responses join signatures, and the generated interpreter's snapshot.
+- **Part 1, about 10,000 to 11,000 lines:** contract, rules and references about 1,400 and their tests about 1,000; simulation about 1,400 and its tests about 1,100; resolved model, keys, tools and `process-docs` about 950 and tests about 450; `csharp-dapper` about 1,250 and tests about 350; editor and mock about 1,900; docs about 350. The check's fixes add most of the growth: the pick per response in `Acting`, every reader of a gate's signers, the index fields behind `ap:approvals`, and the simulation records. The main risks are the interpreter's admit, where responses join signatures, and the generated interpreter's snapshot.
 - **Part 2, about 4,500 lines:** contract and engine about 500 and tests about 400; simulation about 700 and tests about 600; resolved model and packs about 900 and tests about 250; editor and mock about 1,000; docs about 200.
 
 **Agents.** Each is capped at about 100 steps or 200k context. Opus 5.5 builds the engine and pack output and runs every review. Sonnet 5.5 builds the editor, the mock and the docs. **At most three agents run at once.**
@@ -586,7 +616,7 @@ That comes to about four and a quarter days for a person.
 | 1 | Editor and mock, part one | Sonnet | About 90 | The contract commit |
 | 2 | Simulation and scenarios, through `Processes/ProcessApi.cs` | Opus | About 100, with a fresh agent for the rest if it runs over | Wave 1's engine agents |
 | 2 | Resolved model, keys, records, tool texts and routes, replay keys and `process-docs`. **Owns `ProcessTools.cs`, `tools.json` and `ProcessEndpoints.cs`** | Opus | About 80 | Wave 1's engine agents, beside the simulation agent |
-| 2 | `csharp-dapper` output | Opus | About 100 | The resolved model agent's first commit (`RGateStage`, `RGateSignature`, `model.approval_lifecycles`), in the first free slot |
+| 2 | `csharp-dapper` output | Opus | About 100 | The resolved model agent's first commit (`RGateStage`, `RNamedSignature`, `model.approval_lifecycles`), in the first free slot |
 | 2 | Editor and mock, part two | Sonnet | About 90 | Wave 1's editor agent, in the next free slot |
 | 3 | Review of the pull request | Opus | About 60 | All builders' finish |
 | 3 | Docs | Sonnet | About 50 | The builders' finish, beside the review |
@@ -614,13 +644,13 @@ That comes to about four and a quarter days for a person.
 
 | | Wall time | Output | New input | Cached re-reads |
 | --- | --- | --- | --- | --- |
-| Wave 1 (contract, references, editor part one) | About 1 hour | 0.35M | 1.2M | 80M |
-| Wave 2 (simulation, resolved model and docs output, `csharp-dapper`, editor part two) | About 1.2 hours | 0.55M | 1.8M | 125M |
-| Wave 3 (review, docs, browser pass) | About 0.4 hours | 0.2M | 0.7M | 50M |
-| Wave 4 (fixes, second browser pass, CI) | About 0.4 hours | 0.2M | 0.7M | 45M |
-| In all | **About 3 hours** | **About 1.3M** | **About 4.4M** | **About 300M** |
+| Wave 1 (contract, references, editor part one) | About 1.1 hours | 0.4M | 1.35M | 90M |
+| Wave 2 (simulation, resolved model and docs output, `csharp-dapper`, editor part two) | About 1.3 hours | 0.6M | 2.05M | 140M |
+| Wave 3 (review, docs, browser pass) | About 0.45 hours | 0.22M | 0.8M | 57M |
+| Wave 4 (fixes, second browser pass, CI) | About 0.45 hours | 0.23M | 0.8M | 53M |
+| In all | **About 3.3 hours** | **About 1.45M** | **About 5M** | **About 340M** |
 
-**Part 1 stays under the 400M cap without a further split.** Its likely range is 260M to 360M: trigger points part 1 came in at 297M, and rights part 1, the heaviest so far, at 372M. If the simulation agent needs a fresh agent to finish, add about 30M. If wave 2 ends above 330M, the rest of part 1 is tracked step by step, and the owner is told before wave 4 starts.
+**Part 1 stays under the 400M cap without a further split.** Its likely range is 290M to 390M: trigger points part 1 came in at 297M, and rights part 1, the heaviest so far, at 372M. If the simulation agent needs a fresh agent to finish, add about 30M. If wave 2 ends above 330M, the rest of part 1 is tracked step by step, and the owner is told before wave 4 starts.
 
 **Part 2**
 
@@ -632,7 +662,7 @@ That comes to about four and a quarter days for a person.
 | Wave 4 (fixes, CI) | About 0.4 hours | 0.1M | 0.4M | 25M |
 | In all | **About 2.5 hours** | **About 0.75M** | **About 2.6M** | **About 170M** |
 
-**Both parts:** about 13,500 to 14,500 lines, about 5.5 hours, about 2.05M output, about 7M new input and about 470M cached re-reads, each part well under the cap.
+**Both parts:** about 14,500 to 15,500 lines, about 5.8 hours, about 2.2M output, about 7.6M new input and about 510M cached re-reads, each part under the cap.
 
 ## Sources
 
