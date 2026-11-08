@@ -16,6 +16,7 @@ export const EDITOR_KINDS = [
   "process",
   "actor",
   "right",
+  "trigger-point",
   "scenario",
   "table",
   "view",

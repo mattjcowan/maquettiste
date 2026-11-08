@@ -13,7 +13,7 @@ import { bindingDiagnostics } from "./lifecycleRules";
 import { verbDiagnostics, verbGlobalsOf, type VerbGlobals } from "./verbs";
 import { relativeUseDiagnostics } from "./relativeRules";
 import { rightDiagnostics } from "./rightRules";
-import { assumeKindDiagnostics, triggerDiagnostics } from "./triggerRules";
+import { assumeKindDiagnostics, namedTriggerDiagnostics, triggerDiagnostics } from "./triggerRules";
 import { appliesToEntities, Coverage } from "./coverage";
 import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
 
@@ -202,7 +202,11 @@ function scopeName(scope: string, globals: ModelGlobals): string {
  * Diagrams take no part, as in the engine: a process's diagram carries the process's name beside other diagrams. */
 export function nameScope(json: Json): string | null {
   const kind = String(json.kind);
-  if (typeof json.name !== "string" || json.name === "" || !["entity", "value-object", "enum", "scalar-type", "relation", "package"].includes(kind))
+  if (
+    typeof json.name !== "string" ||
+    json.name === "" ||
+    !["entity", "value-object", "enum", "scalar-type", "relation", "package", "trigger-point"].includes(kind)
+  )
     return null;
   const group = ["entity", "value-object", "enum", "scalar-type"].includes(kind) ? "type" : kind;
   return `${group}|${String(json.package ?? json.parent ?? "")}|${json.name.toLowerCase()}`;
@@ -364,6 +368,9 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   // MQ8101 to MQ8107 and the MQ3001 cases of a lifecycle's trigger points (triggerRules.ts)
   if (kind === "process" && ctx.all)
     triggerDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
+  // MQ8101 to MQ8107 of a named trigger point (triggerRules.ts); MQ3001 for its name is the package scope below
+  if (kind === "trigger-point" && ctx.all)
+    namedTriggerDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
   // MQ2002 on a scenario's assume keys: a guard's key given a word, a trigger point's key given a boolean
   if (kind === "scenario" && ctx.all)
     assumeKindDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));

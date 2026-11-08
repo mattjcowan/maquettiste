@@ -9,7 +9,19 @@
 import { Membership } from "./membership";
 import { evalTree, UNKNOWN, type EvalEnv, type Value } from "./effects";
 import { answerLifecycle, checkAll, FROZEN_VERBS, ownLifecycleOnly, takesPart, usesRights, type Facts, type Holding, type Tri } from "./rightsCheck";
-import { assumedWord, CHECK_WORDS, isTeamCode, matchPoint, momentOf, pointsOf, usesTriggers, type Moment, type Place } from "./triggerRun";
+import {
+  assumedWord,
+  CHECK_WORDS,
+  isTeamCode,
+  matchPoint,
+  momentOf,
+  namedFor,
+  pointsOf,
+  usesTriggers,
+  type Moment,
+  type Place,
+  type StereotypeCover,
+} from "./triggerRun";
 import { subjectsOf } from "@/model/process";
 import { builtInVerbs } from "@/model/verbs";
 
@@ -318,7 +330,8 @@ export interface StepTraceJson {
 /** A trigger point that ran in a step, and what it did. */
 export interface TriggerRunJson {
   triggerPoint: string;
-  lifecycle: string;
+  /** The lifecycle the point belongs to; left out for a named trigger point. */
+  lifecycle?: string;
   verb: string;
   type: "check" | "action" | "replace";
   timing?: "before" | "with-change" | "after-commit";
@@ -385,6 +398,9 @@ export interface StepperOptions {
   lifecycles?: Json[];
   /** An entity and the entities it is based on, for a trigger point's `entities` key; the entity alone without it. */
   entityChain?: (entity: string) => string[];
+  /** The named trigger points (kind `trigger-point`), and whether a stereotype (by key) covers an entity, for the ones that name stereotypes. */
+  namedPoints?: Json[];
+  stereotypeCovers?: StereotypeCover;
   /** Replay also records each step's `expect.triggerPoints` (the record operation's `triggerPoints: true`). */
   recordTriggerPoints?: boolean;
 }
@@ -564,6 +580,9 @@ class Interpreter {
   lifecycles: Json[] = [];
   /** Whether any lifecycle lists trigger points, and the entity and its bases (decision 12). */
   triggers = false;
+  /** The named trigger points, which run for an object before every lifecycle's points (decision 34). */
+  namedPoints: Json[] = [];
+  stereotypeCovers: StereotypeCover = () => false;
   entityChain: (entity: string) => string[] = (e) => [e];
   private prep = new Map<Edge, { sign: Prepared | null; move: Prepared | null }>();
   private auditSeq = 0;
@@ -1042,6 +1061,11 @@ class Interpreter {
     return ownLifecycleOnly(verb) ? (acting ? [acting] : []) : this.answering(verb);
   }
 
+  /** The named trigger points that cover the object, in decision 34's order. */
+  private namedHere(): Json[] {
+    return namedFor(this.namedPoints, this.entityChains(), this.stereotypeCovers);
+  }
+
   /** The entity of the object, with its bases: one chain, or one for each subject entity of a run with no object. */
   private entityChains(): string[][] {
     const object = this.subjectObject();
@@ -1100,7 +1124,8 @@ class Interpreter {
   private runOf(l: Json, t: Json, verb: string, outcome: TriggerRunJson["outcome"], extra: Partial<TriggerRunJson> = {}): TriggerRunJson {
     return {
       triggerPoint: String(t.id),
-      lifecycle: String(l.id),
+      // A named trigger point stands in for its lifecycle here, and belongs to none.
+      ...(l.kind === "trigger-point" ? {} : { lifecycle: String(l.id) }),
       verb,
       type: t.type as TriggerRunJson["type"],
       ...(t.type === "action" ? { timing: t.timing as TriggerRunJson["timing"] } : {}),
@@ -1133,6 +1158,14 @@ class Interpreter {
    */
   private prepare(verb: string, place: Place, start: Json, old: Json | null, verbStep: boolean): Prepared {
     const found: { l: Json; t: Json; moment: Moment }[] = [];
+    // Named points run before the lifecycles' at each moment (decision 34): the list is in that order, and each moment keeps it.
+    for (const t of this.namedHere()) {
+      const m = matchPoint(t, t, place);
+      if (!m.ok) continue;
+      found.push({ l: t, t, moment: momentOf(t) });
+      if (m.assumed)
+        this.scope.notes.push(`The step names no ${strsOf(t.ends).length ? "link end" : "attribute"}, so the check '${String(t.name)}' ran as if it applied.`);
+    }
     for (const l of this.lifecyclesFor(verb))
       for (const t of pointsOf(l)) {
         const m = matchPoint(t, l, place);
@@ -1343,6 +1376,7 @@ class Interpreter {
       for (const verb of [t.gate ? "sign" : null, !t.gate || this.couldComplete(t) ? t.verb : null]) {
         if (!verb) continue;
         const place = this.placeFor(verb, { edge: t });
+        for (const p of this.namedHere()) if (p.type === "check" && isTeamCode(p) && matchPoint(p, p, place).ok) out.add(String(p.id));
         for (const l of this.lifecyclesFor(verb))
           for (const p of pointsOf(l)) if (p.type === "check" && isTeamCode(p) && matchPoint(p, l, place).ok) out.add(String(p.id));
       }
@@ -2072,7 +2106,9 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
   run.subjectEntity = options.subjectEntity;
   run.lifecycles = options.lifecycles ?? [];
   run.named = options.namedRights ?? new Map();
-  run.triggers = usesTriggers([doc, ...run.lifecycles]);
+  run.namedPoints = options.namedPoints ?? [];
+  run.stereotypeCovers = options.stereotypeCovers ?? (() => false);
+  run.triggers = usesTriggers([doc, ...run.lifecycles], run.namedPoints);
   run.entityChain = options.entityChain ?? ((e) => [e]);
   run.rightsOn = options.refusedBy === true || usesRights(run.lifecycles) || run.triggers;
   const at = readAt(start?.at);
@@ -2259,7 +2295,11 @@ export function replay(doc: Json, start: { context?: Json; at?: string } | null 
     if (Object.keys(t.changed).length) expect.context = t.changed;
     if (t.valuesChanged && Object.keys(t.valuesChanged).length) expect.values = t.valuesChanged;
     // A refusal and its element are written when the project uses rights or trigger points (decision 26), and a frozen refusal always.
-    if (!t.accepted && t.refusal && (usesRights(options.lifecycles ?? []) || usesTriggers([doc, ...(options.lifecycles ?? [])]) || t.refusal === "frozen")) {
+    if (
+      !t.accepted &&
+      t.refusal &&
+      (usesRights(options.lifecycles ?? []) || usesTriggers([doc, ...(options.lifecycles ?? [])], options.namedPoints) || t.refusal === "frozen")
+    ) {
       expect.refusal = t.refusal;
       if (t.refusedBy) expect.refusedBy = t.refusedBy;
     }

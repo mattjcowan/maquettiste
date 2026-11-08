@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useIndex } from "@/api/queries";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ChipsEditor } from "@/inspector/fields";
 import { TRIGGER_LABELS as L } from "@/model/labels";
@@ -193,6 +194,19 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
       on: (r) => r.outside,
       // Only a point the team writes can reach outside systems (MQ8101).
       locked: (r) => !r.teamCode && !r.outside,
+      // The second box: never skipped by a bulk load (decision 20). It sits in this cell so the grid does not widen.
+      after: (r) => (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={r.noBypass}
+          aria-label={`${L.noBypass}: ${r.name}`}
+          title={L.noBypass}
+          onClick={() => change((p) => void editTriggerPoint(p, r.id, "noBypass", !r.noBypass))}
+          className={cn("inline-block size-3 shrink-0 rounded-[3px] border border-input", r.noBypass && "border-accent bg-accent")}
+          data-testid="trigger-no-bypass"
+        />
+      ),
     },
     { key: "why", label: L.columns.why, tooltip: L.tips.why, kind: "text", width: "min-w-28", clip: "max-w-36", value: (r) => r.why },
   ];

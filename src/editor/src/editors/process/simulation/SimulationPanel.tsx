@@ -123,8 +123,11 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
   );
   // The trigger points that ran: this lifecycle's own, and other lifecycles' that an object verb reached, named from their lifecycles' files.
   const traceRuns = ((replay ? replay.simulation?.trace : session.result?.trace) ?? []).flatMap((t) => t.triggerPoints ?? []);
-  const otherLifecycles = [...new Set(traceRuns.map((r) => r.lifecycle).filter((l) => l !== id))];
+  const otherLifecycles = [...new Set(traceRuns.flatMap((r) => (r.lifecycle && r.lifecycle !== id ? [r.lifecycle] : [])))];
   const otherDocs = useElements(otherLifecycles).byId;
+  // A named trigger point has no lifecycle: its own document gives its name and its message (part 2).
+  const namedRuns = [...new Set(traceRuns.flatMap((r) => (r.lifecycle ? [] : [r.triggerPoint])))];
+  const namedDocs = useElements(namedRuns).byId;
   const pointInfo = useMemo(() => {
     const named = new Map<string, string>();
     const why = new Map<string, string>();
@@ -138,8 +141,9 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
     };
     take(id, process.triggerPoints);
     for (const [lid, d] of otherDocs) take(lid, (d.json as { triggerPoints?: unknown }).triggerPoints);
+    for (const [pid, d] of namedDocs) take(pid, [d.json]);
     return { named, why, owner };
-  }, [id, process.triggerPoints, otherDocs]);
+  }, [id, process.triggerPoints, otherDocs, namedDocs]);
   const names = useMemo(
     () => namesOf(process, actorNames, participants, new Map([...elementNames, ...pointInfo.named]), new Map([...whys, ...pointInfo.why])),
     [process, actorNames, participants, elementNames, whys, pointInfo],

@@ -99,6 +99,8 @@ function removeAt(json: Json, pointer: string, item: boolean): void {
     if (parts.length === 1 && parts[0] === "rights" && parent.length === 0) delete json.rights;
     // So is a lifecycle left with no trigger points.
     if (parts.length === 1 && parts[0] === "triggerPoints" && parent.length === 0) delete json.triggerPoints;
+    // A named trigger point left with no exception or no sets is written without the key.
+    if (parts.length === 1 && json.kind === "trigger-point" && parent.length === 0 && ["exceptEntities", "sets"].includes(parts[0])) delete json[parts[0]];
     if (parent.length === 0 && parts.length >= 1 && parts[parts.length - 1] === "except") {
       let holder: unknown = json;
       for (const p of parts.slice(0, -1)) holder = (holder as Json)[p];
@@ -270,7 +272,12 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
       if (mine.some((o) => o.remove && (ref.pointer === o.pointer || ref.pointer.startsWith(`${o.pointer}/`)))) continue;
       if (mine.some((o) => !o.remove && o.ref.pointer === ref.pointer)) continue;
       if (ref.deletesHolder) {
-        markDeleted(doc.id, `names no other actor or end than ${describe(ref.toId)}`);
+        markDeleted(
+          doc.id,
+          doc.json.kind === "trigger-point"
+            ? `covers no other type than ${describe(ref.toId)}, and a trigger point with none would run everywhere`
+            : `names no other actor or end than ${describe(ref.toId)}`,
+        );
         continue;
       }
       if (!ref.required || ref.drops) {

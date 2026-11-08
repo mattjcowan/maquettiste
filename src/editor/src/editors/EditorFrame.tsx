@@ -15,7 +15,7 @@ import { KindIcon } from "@/app/icons";
 import { useServices } from "@/app/context";
 import { useEditor, type Draft } from "@/state/store";
 import { displayName, KIND_LABELS } from "@/model/model";
-import { EDITOR_LABELS, EDITOR_TAB_LABELS, GROUP_LABELS, RIGHT_LABELS } from "@/model/labels";
+import { EDITOR_LABELS, EDITOR_TAB_LABELS, GROUP_LABELS, RIGHT_LABELS, TRIGGER_LABELS } from "@/model/labels";
 import { local } from "@/lib/storage";
 import { FindingsSummary } from "@/problems/findings";
 import { entryIdsOf, useProblems } from "./process/shared";
@@ -188,8 +188,8 @@ function HeaderFields({ id, kind, json, doc, edit, flush, translations }: Editor
         edit={(change) => edit((j) => change(j as Rec))}
         flush={flush}
         // A right has no plural name, and its description is the Why every refusal shows.
-        noPlural={kind === "right"}
-        descriptionLabel={kind === "right" ? RIGHT_LABELS.columns.why : undefined}
+        noPlural={kind === "right" || kind === "trigger-point"}
+        descriptionLabel={kind === "right" ? RIGHT_LABELS.columns.why : kind === "trigger-point" ? TRIGGER_LABELS.columns.why : undefined}
         sidecar={
           typeof description === "object" && description !== null ? { file: (description as { file: string }).file, text: doc?.sidecarText ?? "" } : null
         }

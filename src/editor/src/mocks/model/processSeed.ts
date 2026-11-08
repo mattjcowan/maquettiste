@@ -195,6 +195,24 @@ const namedRights: Json[] = [
     description: "A paid invoice is final; only an approver may correct it.",
   },
 ];
+// A named trigger point (trigger-points-design.md decision 33): Customer has no lifecycle, so its number is given here. It is the
+// team's code (no sets), and a bulk load may not skip it.
+export const CUSTOMER_NUMBER = TGP(20);
+const CUSTOMER = "01J92P0V0ETQKXXP951CMMNHH3";
+const namedTriggerPoints: Json[] = [
+  {
+    kind: "trigger-point",
+    id: CUSTOMER_NUMBER,
+    name: "CustomerNumber",
+    package: BILLING,
+    subjects: [{ entity: CUSTOMER }],
+    type: "action",
+    timing: "before",
+    verbs: ["create"],
+    noBypass: true,
+    description: "Gives each customer its number, such as C-00042.",
+  },
+];
 const invoiceLifecycle: Json = {
   ...invoiceBase,
   rights: [
@@ -340,6 +358,7 @@ export function processFiles(): SeedFile[] {
     file("model/vocabularies/stereotypes/persona.json", persona),
     ...actors.map((a) => file(`model/actors/${kebab(String(a.name))}.json`, a)),
     ...namedRights.map((r) => file(`model/rights/${kebab(String(r.name))}.json`, r)),
+    ...namedTriggerPoints.map((t) => file(`model/trigger-points/${kebab(String(t.name))}.json`, t)),
     file("model/processes/purchase-approval.json", purchaseApproval),
     file("model/processes/invoice-lifecycle.json", invoiceLifecycle),
     ...scenarios.map((s) => file(`model/scenarios/${kebab(String(s.name))}.json`, s)),

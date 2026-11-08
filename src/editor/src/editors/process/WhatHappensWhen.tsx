@@ -43,7 +43,7 @@ export function WhatHappensWhen({ pc }: { pc: ProcessContext }) {
     staleTime: 5_000,
   });
   const lifecycleName = (id: string) => lookup.byId.get(id)?.displayName || lookup.byId.get(id)?.name || "?";
-  const pointName = (id: string) => (process.triggerPoints ?? []).find((t) => t.id === id)?.name ?? "?";
+  const pointName = (id: string) => (process.triggerPoints ?? []).find((t) => t.id === id)?.name ?? lifecycleName(id);
   const rows = answer.data
     ? sequenceRows(answer.data, {
         point: pointName,
@@ -131,12 +131,17 @@ export function WhatHappensWhen({ pc }: { pc: ProcessContext }) {
                     size="sm"
                     className="h-5 px-1"
                     title={L.happens.open(r.point.name)}
-                    onClick={() => (r.other ? go.open(r.point!.lifecycle) : go.node("triggerPoints", r.point!.id))?.go()}
+                    onClick={() => (r.named ? go.open(r.point!.id) : r.other ? go.open(r.point!.lifecycle!) : go.node("triggerPoints", r.point!.id))?.go()}
                     data-testid="sequence-link"
                   >
                     {r.point.name}
                   </Button>
                   <span className="shrink-0 text-secondary">{r.kind}</span>
+                  {r.named ? (
+                    <span className="shrink-0 rounded-control border border-default bg-app px-1 text-11" data-testid="sequence-named">
+                      {L.happens.namedPoint}
+                    </span>
+                  ) : null}
                   {r.other ? (
                     <span className="shrink-0 rounded-control border border-default bg-app px-1 text-11" data-testid="sequence-lifecycle">
                       {L.happens.otherLifecycle(r.other)}

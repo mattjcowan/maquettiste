@@ -1,6 +1,7 @@
 import {
   ArrowLeftRight,
   Box,
+  Crosshair,
   Database,
   Eye,
   FileCode,
@@ -58,6 +59,7 @@ export const KIND_ICONS: Record<ElementKind, LucideIcon> = {
   process: GitBranch,
   actor: UserRound,
   right: ShieldCheck,
+  "trigger-point": Crosshair,
   scenario: ListChecks,
   migration: History,
   operation: SquareTerminal,

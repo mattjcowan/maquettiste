@@ -154,6 +154,24 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
         (Array.isArray(relative.within) ? (relative.within as unknown[]) : []).forEach((p, i) => push(`/relative/within/${i}`, "within", p, true));
       }
       break;
+    case "trigger-point": {
+      // A named trigger point (trigger-points-design.md decision 33): its subjects, the entities it skips, and what an inline point names.
+      const subjects = arr(doc.subjects);
+      subjects.forEach((e, i) => {
+        const at = `/subjects/${i}`;
+        const alone = subjects.length === 1;
+        const to = str(e.entity) ?? (typeof e.stereotype === "string" ? rows?.stereotypeIdOf?.(e.stereotype) : null);
+        const field = str(e.entity) ? "entity" : "stereotype";
+        // The last subject takes the point with it: an empty list would run it everywhere.
+        if (to && !own.has(to) && to !== id)
+          out.push({ fromId: id, pointer: `${at}/${field}`, field, toId: to, required: false, ...(alone ? { deletesHolder: true } : { removeItem: at }) });
+      });
+      arr(doc.exceptEntities as unknown).forEach((_, j) =>
+        push(`/exceptEntities/${j}`, "exceptEntities", (doc.exceptEntities as unknown[])[j], false, `/exceptEntities/${j}`),
+      );
+      triggerRefs(out, doc, "", id, own);
+      break;
+    }
     case "right":
       // A named right (rights-design.md decision 7). It cannot drop itself from the cascade, so its last actor, end or verb is a
       // required reference, which the delete refuses unless the right goes with it.
@@ -427,7 +445,9 @@ function triggerRefs(out: Ref[], point: Json, base: string, holder: string, own:
     const toId = str(to);
     if (!toId || own.has(toId) || toId === holder) return;
     if (required) out.push({ fromId: holder, pointer, field, toId, required: true });
-    else if (alone) out.push({ fromId: holder, pointer, field, toId, required: false, removeItem: base, drops: true });
+    // A named trigger point (no base) cannot drop itself from a lifecycle: it is deleted, as the last subject does.
+    else if (alone)
+      out.push({ fromId: holder, pointer, field, toId, required: false, ...(base === "" ? { deletesHolder: true } : { removeItem: base, drops: true }) });
     else out.push({ fromId: holder, pointer, field, toId, required: false, ...(item ? { removeItem: item } : {}) });
   };
   for (const field of ["entities", "attributes", "ends"] as const) {
@@ -496,6 +516,7 @@ export function subElementIds(doc: Json): string[] {
   collect(doc.indexes);
   collect(doc.checks);
   if (doc.kind === "entity" || doc.kind === "reference-type") collect(doc.bindings);
+  if (doc.kind === "trigger-point") collect(doc.sets);
   if (doc.kind === "enum") collect(doc.members);
   if (doc.kind === "verb-vocabulary") collect(doc.verbs);
   if (doc.kind === "process") {

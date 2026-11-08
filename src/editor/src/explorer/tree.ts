@@ -365,6 +365,7 @@ function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row, actsIn?: ReadonlyM
     for (const e of r.ends) text = text ? `${text} → ${nameOf(e.entity) ?? "?"}` : (nameOf(e.entity) ?? "?");
     return text;
   }
+  if (r.kind === "trigger-point") return [r.type ? r.type[0].toUpperCase() + r.type.slice(1) : "Check", ...(r.verbs ?? []).slice(0, 3)].join(" ");
   if (r.kind === "right") return [r.access === "allow" ? "Allows" : "Denies", ...(r.verbs ?? []).slice(0, 3)].join(" ");
   if (r.kind === "diagram" && r.process) return CHART_LABELS.statechartOf(nameOf(r.process) ?? "?");
   if (r.kind === "diagram") return plural(r.memberCount ?? 0, "member", "members");
@@ -521,7 +522,7 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
   // The Processes explorer is rebuilt, not patched: a process, actor or scenario change, or a domain change while it lists
   // processes (its groups are named after domains).
   const listsProcesses = (nodes.get(ROOTS.processes)?.children?.length ?? 0) > 0;
-  const PHASE3 = ["process", "actor", "scenario", "right"];
+  const PHASE3 = ["process", "actor", "scenario", "right", "trigger-point"];
   for (const [old, row] of steps) {
     const kind = row?.kind ?? old?.kind ?? "";
     if (PHASE3.includes(kind) || (kind === "package" && listsProcesses)) return null;
@@ -784,7 +785,12 @@ export function buildForest(input: TreeInput): Forest {
   const actorRows: Row[] = [];
   const scenarioRows: Row[] = [];
   const rightRows: Row[] = [];
+  const triggerPointRows: Row[] = [];
   for (const r of rows) {
+    if (r.kind === "trigger-point") {
+      triggerPointRows.push(r);
+      continue;
+    }
     if (r.kind === "right") {
       rightRows.push(r);
       continue;
@@ -1632,6 +1638,23 @@ export function buildForest(input: TreeInput): Forest {
     folder.count = rightNodes.length;
     folder.secondary = fmt(rightNodes.length);
     folder.sort = "￿￿";
+    processTop.push(folder);
+  }
+  // Named trigger points (trigger-points-design.md section 11, part 2): a Trigger points folder after Rights, each with its type and verbs.
+  if (triggerPointRows.length) {
+    const pointNodes = triggerPointRows.map((r) => elementNode(r, "processes", `${ROOTS.processes}/t:${r.id}`));
+    const folder = folderNode(
+      `${ROOTS.processes}/trigger-points`,
+      "processes",
+      kindFolder("trigger-point")!,
+      [],
+      PROCESS_LABELS.triggerPoints,
+      kindFolder("trigger-point")!.tooltip,
+    );
+    attach(folder, pointNodes.sort(byLabel));
+    folder.count = pointNodes.length;
+    folder.secondary = fmt(pointNodes.length);
+    folder.sort = "￿￿￿";
     processTop.push(folder);
   }
   headers.processes = [countOf(processRows.length, "process"), countOf(actorRows.length, "actor"), countOf(scenarioRows.length, "scenario")].join(" · ");

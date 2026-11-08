@@ -118,7 +118,7 @@ export function relationKind(relation: RelationDoc): NonNullable<RelationDoc["re
 export const DATABASE_MEMBER_KINDS: ReadonlySet<string> = new Set(["table", "view", "sequence", "routine", "database-type", "sql-object", "query", "mapping"]);
 
 /** An index row built from a document the SPA just saved (phase2-design.md 4.3). */
-export function summaryFromDocument(doc: ElementDocument, actorIds?: ReadonlySet<string>): ElementSummary {
+export function summaryFromDocument(doc: ElementDocument, actorIds?: ReadonlySet<string>, stereotypeIds?: ReadonlyMap<string, string>): ElementSummary {
   const json = doc.json as ModelJson & {
     package?: string;
     parent?: string;
@@ -138,7 +138,7 @@ export function summaryFromDocument(doc: ElementDocument, actorIds?: ReadonlySet
     stereotypes: json.stereotypes ?? [],
     hash: doc.hash,
     path: doc.path,
-    ...indexMembers(json, actorIds),
+    ...indexMembers(json, actorIds, stereotypeIds),
   };
 }
 
@@ -161,7 +161,7 @@ export function actorIdsIn(value: unknown, known: ReadonlySet<string> | undefine
  * its display name, its base entity, a relation's ends, a mapping's or table's entity and database, and the seed and
  * reference type counts (RT 2.1) until the next index read.
  */
-function indexMembers(json: Record<string, unknown>, actorIds?: ReadonlySet<string>): Partial<ElementSummary> {
+function indexMembers(json: Record<string, unknown>, actorIds?: ReadonlySet<string>, stereotypeIds?: ReadonlyMap<string, string>): Partial<ElementSummary> {
   const out: Partial<ElementSummary> = {};
   const kind = json.kind;
   if (typeof json.displayName === "string") out.displayName = json.displayName;
@@ -202,6 +202,17 @@ function indexMembers(json: Record<string, unknown>, actorIds?: ReadonlySet<stri
     out.access = json.access === "allow" ? "allow" : "deny";
     const verbs = [...new Set(Array.isArray(json.verbs) ? json.verbs.filter((v): v is string => typeof v === "string") : [])];
     if (verbs.length) out.verbs = verbs.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+  // A named trigger point's type, verbs, entity subjects and stereotype subjects (trigger-points-design.md section 9); the stereotypes by id.
+  if (kind === "trigger-point") {
+    if (json.type === "check" || json.type === "action" || json.type === "replace") out.type = json.type;
+    const verbs = [...new Set(Array.isArray(json.verbs) ? json.verbs.filter((v): v is string => typeof v === "string") : [])];
+    if (verbs.length) out.verbs = verbs.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const subjects = Array.isArray(json.subjects) ? (json.subjects as Record<string, unknown>[]) : [];
+    const entities = subjects.flatMap((s) => (typeof s.entity === "string" ? [s.entity] : []));
+    if (entities.length) out.subjects = entities;
+    const stereotypes = subjects.flatMap((s) => (typeof s.stereotype === "string" ? (stereotypeIds?.get(s.stereotype) ?? []) : []));
+    if (stereotypes.length) out.subjectStereotypes = stereotypes;
   }
   if (kind === "actor" && typeof json.type === "string" && (ACTOR_TYPES as readonly string[]).includes(json.type)) {
     out.actorType = json.type as ActorType;

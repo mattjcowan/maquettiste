@@ -19,8 +19,10 @@ import { syncCodesOf } from "./model/syncCodes";
 import { report } from "./model/store";
 import { Membership } from "./model/membership";
 import { rightsGrid } from "./model/rightsCheck";
-import { resolveCheckNames, sequenceOf } from "./model/triggerRun";
+import { Coverage } from "./model/coverage";
+import { entitySequenceOf, resolveCheckNames, sequenceOf } from "./model/triggerRun";
 import { entityChain } from "@/model/objectFields";
+import { builtInVerbs } from "@/model/verbs";
 
 type Json = Record<string, unknown>;
 type StateDoc = { id: string; name: string; type?: string; initial?: string; states?: StateDoc[] };
@@ -268,7 +270,20 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
   // What the mock's interpreter reads of the object (object-effects-design.md section 7): the attributes of the subject's
   // entity with their defaults, and every lifecycle (the run's own draft in place of its saved file).
   const stereotypeOf = (key: string) => [...model.entries.values()].map((e) => e.json).find((d) => d.kind === "stereotype" && d.key === key);
+  // The named trigger points, and whether a stereotype covers an entity (the entity or a base carries it), for the stepper and the sequences.
+  const namedPoints = () => [...model.entries.values()].map((e) => e.json).filter((j) => j.kind === "trigger-point");
+  const stereotypeCovers = () => {
+    let coverage: Coverage | null = null;
+    return (key: string, entity: string) => (coverage ??= new Coverage(model.entries.values())).covers(key, entity);
+  };
+  // The entities a lifecycle governs, by its subject entries (an entity and its derived ones, a stereotype's carriers).
+  const governedBy = (lifecycle: Json) => {
+    const coverage = new Coverage(model.entries.values());
+    return [...model.entries.values()].filter((e) => e.json.kind === "entity" && coverage.governs(lifecycle, e.id)).map((e) => e.id);
+  };
   const effectOptions = (doc: Json) => ({
+    namedPoints: namedPoints(),
+    stereotypeCovers: stereotypeCovers(),
     attributesOf: (entity: string) =>
       bindableAttributes(model.entries.get(entity)?.json, (id) => model.entries.get(id)?.json, stereotypeOf).map((a) => ({
         id: String(a.id),
@@ -478,8 +493,43 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
           ...(q.get("transition") ? { transition: q.get("transition")! } : {}),
         },
         (id) => entityChain(id, (x) => model.entries.get(x)?.json).map((d) => String(d.id)),
+        // Named points come before the lifecycle's own, for the entity asked about or else those the lifecycle governs.
+        namedPoints(),
+        stereotypeCovers(),
+        governedBy(entry.json),
       );
       return HttpResponse.json({ lifecycle: entry.id, verb, steps });
+    }),
+    // The same for an entity alone, with no lifecycle acting (decision 36): the named points that cover it. Simpler: no lifecycle's points.
+    rawHttp.get(url("/api/model/entities/:id/trigger-sequence"), ({ params, request }) => {
+      const id = String(params.id);
+      const entity = model.entries.get(id);
+      if (!entity || entity.json.kind !== "entity") return kit.problem(404, "not-found" as never, `No entity has the id ${id}.`);
+      const q = new URL(request.url).searchParams;
+      const verb = q.get("verb");
+      if (!verb) return bad("verb is required.");
+      const group = builtInVerbs.find((v) => v.key === verb)?.group;
+      if (group === "move" || group === "signature" || group === "task")
+        return bad(
+          `'${verb}' happens in one lifecycle; ask the lifecycle's trigger sequence. Only object, link and own verbs can be asked of an entity alone.`,
+        );
+      const held = (list: "attributes" | "ends", x: string) =>
+        [...model.entries.values()].some((e) => Array.isArray(e.json[list]) && (e.json[list] as Json[]).some((y) => y.id === x));
+      const attribute = (idList(q.get("attributes")) ?? []).find((a) => !held("attributes", a));
+      if (attribute) return bad(`attribute ${attribute} is not an attribute of the model.`);
+      if (q.get("end") && !held("ends", q.get("end")!)) return bad(`end ${q.get("end")} is not a relation end of the model.`);
+      const steps = entitySequenceOf(
+        {
+          verb,
+          entity: id,
+          ...(q.get("attributes") ? { attributes: idList(q.get("attributes")) } : {}),
+          ...(q.get("end") ? { end: q.get("end")! } : {}),
+        },
+        (x) => entityChain(x, (y) => model.entries.get(y)?.json).map((d) => String(d.id)),
+        namedPoints(),
+        stereotypeCovers(),
+      );
+      return HttpResponse.json({ verb, steps });
     }),
     rawHttp.post(url("/api/processes/:id/simulate"), async ({ params, request }) => {
       const entry = find(String(params.id));
