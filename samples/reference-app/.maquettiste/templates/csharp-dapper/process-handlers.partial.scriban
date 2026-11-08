@@ -75,6 +75,23 @@ public sealed partial class {{ name }}Handlers
         throw new NotImplementedException("The entity of the object of process {{ p.name }} is not read yet.");
 {{- end }}
 }
+{{- approval_sigs = approval_conditions(p) }}
+{{- if approval_sigs.size > 0 }}
+{{- methods = approval_methods(p) }}
+
+// The conditions of the named signatures of {{ p.name }}. A signature with one is needed only when it is true, judged when its round
+// starts; read the object for the call's instance. Answer true when you can't tell: an unknown answer means needed.
+public static partial class {{ name }}ApprovalConditions
+{
+{{- for sig in approval_sigs }}
+{{- if !for.first }}
+{{ end }}
+    // {{ sig.gate.name }}, {{ sig.name }}: {{ cs_line sig.when.text }}
+    public static partial bool {{ methods[sig.id] }}(ApprovalCall<{{ ctx }}> call) =>
+        throw new NotImplementedException("The condition of signature {{ sig.name }} of gate {{ sig.gate.name }} of {{ p.name }} is not implemented yet.");
+{{- end }}
+}
+{{- end }}
 
 {{- if uses_rights() }}
 {{- conditions = inline_conditions(p) }}

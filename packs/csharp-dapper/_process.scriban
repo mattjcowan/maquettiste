@@ -308,6 +308,50 @@ func inline_conditions(p)
   ret $out
 end
 
+# Whether a process's gates hold an approval (signoff-design.md decision 29): one of them has stages. Only then do its handlers set the
+# result's Approvals, and its definition the gates' stages.
+func uses_approvals(p)
+  for g in p.gates
+    if g.uses_stages
+      ret true
+    end
+  end
+  ret false
+end
+
+# The named signatures of a process's approvals that have a condition (their when), in gate then file order: one method each in
+# <Process>ApprovalConditions.
+func approval_conditions(p)
+  $out = []
+  for g in p.gates
+    for sig in g.all_signatures
+      if sig.when
+        $out[$out.size] = sig
+      end
+    end
+  end
+  ret $out
+end
+
+# The method names of <Process>ApprovalConditions by signature id (signoff-design.md section 10): <Gate><Signature> by member_name, so
+# one named like its class gets Value; when two would share a name, each after the first in id order gets the first eight characters
+# of its id appended.
+func approval_methods(p)
+  $class = p_name(p) + "ApprovalConditions"
+  $sorted = array.sort approval_conditions(p) "id"
+  $taken = {}
+  $out = {}
+  for sig in $sorted
+    $n = member_name((pascal sig.gate.name) + (pascal sig.name), $class)
+    if $taken[$n]
+      $n = $n + (sig.id | string.slice 0 8)
+    end
+    $taken[$n] = true
+    $out[sig.id] = $n
+  end
+  ret $out
+end
+
 # The C# name of a process (and the prefix of its types).
 func p_name(p)
   ret pascal p.name

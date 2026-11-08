@@ -1,0 +1,153 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JAD0000000000000000000Y1",
+  "name": "veto",
+  "process": "01JAD0000000000000000000C1",
+  "description": "The submitter may not sign, an ignore and a withdraw leave the count, quality may not veto, and an engineer's veto clears the approval before the document is sent back.",
+  "start": {
+    "context": {
+      "01JAD0000000000000000000X1": 20000
+    },
+    "at": "2026-11-08T09:00:00Z"
+  },
+  "steps": [
+    {
+      "id": "01JAD0000000000000000000Z1",
+      "event": "01JAD0000000000000000000V1",
+      "actor": "01JAD0000000000000000000R1",
+      "signer": "ana",
+      "expect": {
+        "states": [
+          "01JAD0000000000000000000S2"
+        ]
+      }
+    },
+    {
+      "id": "01JAD0000000000000000000Z2",
+      "event": "01JAD0000000000000000000V2",
+      "actor": "01JAD0000000000000000000R1",
+      "signer": "ana",
+      "signature": "01JAD0000000000000000000N1",
+      "expect": {
+        "accepted": false,
+        "refusal": "gate-excluded",
+        "states": [
+          "01JAD0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAD0000000000000000000N1": 0
+        }
+      }
+    },
+    {
+      "id": "01JAD0000000000000000000Z3",
+      "event": "01JAD0000000000000000000V2",
+      "actor": "01JAD0000000000000000000R1",
+      "signer": "ben",
+      "expect": {
+        "states": [
+          "01JAD0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAD0000000000000000000N1": 1
+        }
+      }
+    },
+    {
+      "id": "01JAD0000000000000000000Z4",
+      "event": "01JAD0000000000000000000V2",
+      "actor": "01JAD0000000000000000000R1",
+      "signer": "cleo",
+      "response": "ignore",
+      "expect": {
+        "states": [
+          "01JAD0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAD0000000000000000000N1": 1
+        }
+      }
+    },
+    {
+      "id": "01JAD0000000000000000000Z5",
+      "event": "01JAD0000000000000000000V2",
+      "actor": "01JAD0000000000000000000R1",
+      "signer": "ben",
+      "response": "withdraw",
+      "expect": {
+        "states": [
+          "01JAD0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAD0000000000000000000N1": 0
+        }
+      }
+    },
+    {
+      "id": "01JAD0000000000000000000Z6",
+      "event": "01JAD0000000000000000000V2",
+      "actor": "01JAD0000000000000000000R1",
+      "signer": "ben",
+      "expect": {
+        "states": [
+          "01JAD0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAD0000000000000000000N1": 1
+        }
+      }
+    },
+    {
+      "id": "01JAD0000000000000000000Z7",
+      "event": "01JAD0000000000000000000V2",
+      "actor": "01JAD0000000000000000000R2",
+      "signer": "quinn",
+      "response": "reject",
+      "reason": "Not ready.",
+      "expect": {
+        "accepted": false,
+        "refusal": "right",
+        "refusedBy": "01JAD0000000000000000000Q1",
+        "states": [
+          "01JAD0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAD0000000000000000000N1": 1,
+          "01JAD0000000000000000000N2": 0
+        }
+      }
+    },
+    {
+      "id": "01JAD0000000000000000000Z8",
+      "event": "01JAD0000000000000000000V2",
+      "actor": "01JAD0000000000000000000R1",
+      "signer": "ben",
+      "response": "reject",
+      "reason": "Not ready.",
+      "expect": {
+        "states": [
+          "01JAD0000000000000000000S2"
+        ],
+        "triggerPoints": [
+          "01JAD0000000000000000000K1"
+        ],
+        "signatures": {
+          "01JAD0000000000000000000N1": 0,
+          "01JAD0000000000000000000N2": 0
+        }
+      }
+    },
+    {
+      "id": "01JAD0000000000000000000Z9",
+      "event": "01JAD0000000000000000000V3",
+      "actor": "01JAD0000000000000000000R3",
+      "signer": "dee",
+      "expect": {
+        "states": [
+          "01JAD0000000000000000000S1"
+        ]
+      }
+    }
+  ]
+}

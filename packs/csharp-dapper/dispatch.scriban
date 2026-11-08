@@ -75,6 +75,12 @@ public sealed record CommandResult(bool Accepted, string? Refusal, IReadOnlyList
 
     /// <summary>Why the input stopped short (a macrostep over the microstep bound), or null; the instance kept the state it reached.</summary>
     public string? Failure { get; init; }
+{{- if model.approval_lifecycles.size > 0 }}
+
+    /// <summary>The progress of the instance's approvals after the command, by transition id, as its snapshot holds it (signoff-design.md
+    /// section 10); empty for a lifecycle without one.</summary>
+    public IReadOnlyDictionary<string, ApprovalProgress> Approvals { get; init; } = new Dictionary<string, ApprovalProgress>();
+{{- end }}
 {{- if model.rights_lifecycles.size > 0 }}
 
     /// <summary>The id of the element that refused the command (the event or invoke, the right, the lifecycle whose default denies, the

@@ -18,6 +18,38 @@ gate_index = {}
 for g in p.gates
   gate_index[g.id] = for.index
 end
+# Whether the chart keeps the record of acts (signoff-design.md decision 28): one of its approvals has a signature with a notBy.
+records_acts = false
+for g in p.gates
+  for sig in g.all_signatures
+    if sig.not_by.size > 0
+      records_acts = true
+    end
+  end
+end
+# A named signature's condition text and notBy, as the initializer of its SignatureDefinition; "" when it has neither.
+func signature_init(sig)
+  $parts = []
+  if sig.when
+    $parts[$parts.size] = "When = " + (json sig.when.text)
+  end
+  $verbs = []
+  $moves = []
+  for n in sig.not_by
+    if n.verb_key
+      $verbs[$verbs.size] = json n.verb_key
+    else if n.transition
+      $moves[$moves.size] = json n.transition.id
+    end
+  end
+  if $verbs.size > 0
+    $parts[$parts.size] = "NotByVerbs = [" + ($verbs | array.join ", ") + "]"
+  end
+  if $moves.size > 0
+    $parts[$parts.size] = "NotByTransitions = [" + ($moves | array.join ", ") + "]"
+  end
+  ret $parts.size > 0 ? (" { " + ($parts | array.join ", ") + " }") : ""
+end
 func state_kind(s)
   ret "StateKind." + (s.type == "human-task" ? "HumanTask" : (pascal s.type))
 end
@@ -186,19 +218,37 @@ public static partial class {{ name }}Definition
 {{- else }}
         [
 {{- for g in p.gates }}
-            new({{ json g.id }}, {{ json g.name }}, {{ g.required }}, {{ actor_list(g.signers) }}, {{ actor_list(g.required_actors) }}, {{ g.allow_repeat_signer ? "true" : "false" }}, {{ g.reason_required ? "true" : "false" }}, {{ name_list(g.meanings) }}, {{ id_list(g.meanings) }}),
+            new({{ json g.id }}, {{ json g.name }}, {{ g.required }}, {{ actor_list(g.signers) }}, {{ actor_list(g.required_actors) }}, {{ g.allow_repeat_signer ? "true" : "false" }}, {{ g.reason_required ? "true" : "false" }}, {{ name_list(g.meanings) }}, {{ id_list(g.meanings) }})
+{{- if g.uses_stages }}
+            {
+                Stages =
+                [
+{{- for st in g.stages }}
+                    new({{ json st.id }}, {{ json st.name }},
+                    [
+{{- for sig in st.signatures }}
+                        new({{ json sig.id }}, {{ json sig.name }}, {{ sig.required }}, {{ actor_list(sig.signers) }}, {{ actor_list(sig.required_actors) }}, {{ sig.allow_repeat_signer ? "true" : "false" }}){{ signature_init(sig) }},
+{{- end }}
+                    ]),
+{{- end }}
+                ],
+{{- if g.allow_signer_across_signatures }}
+                AllowSignerAcrossSignatures = true,
+{{- end }}
+            }
+{{- end }},
 {{- end }}
         ]
 {{- end }},
 {{- if p.actors.size == 0 }}
-        null{{ if rights }},{{ rights_arg }}{{ end }}{{ trigger_args }});
+        null{{ if rights }},{{ rights_arg }}{{ end }}{{ trigger_args }}){{ if records_acts }} { RecordsActs = true }{{ end }};
 {{- else }}
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
 {{- for a in p.actors }}
             [Actors.{{ actor_member a }}] = {{ json a.id }},
 {{- end }}
-        }{{ if rights }},{{ rights_arg }}{{ end }}{{ trigger_args }});
+        }{{ if rights }},{{ rights_arg }}{{ end }}{{ trigger_args }}){{ if records_acts }} { RecordsActs = true }{{ end }};
 {{- end }}
 
     /// <summary>The event names.</summary>
@@ -229,7 +279,7 @@ public static partial class {{ name }}Definition
 {{- for g in p.gates }}
 {{- if !for.first }}
 {{ end }}
-        /// <summary>{{ cs_line g.display_name | escape_xml }}: {{ g.required }} signature(s){{ if g.transition }} on transition {{ cs_line g.transition.label | escape_xml }}{{ end }}.</summary>
+        /// <summary>{{ cs_line g.display_name | escape_xml }}: {{ if g.uses_stages }}an approval of {{ g.all_signatures.size }} named signature(s){{ else }}{{ g.required }} signature(s){{ end }}{{ if g.transition }} on transition {{ cs_line g.transition.label | escape_xml }}{{ end }}.</summary>
         public const string {{ member_name(g.name, "Gates") }} = {{ json g.name }};
 {{- for m in g.meanings }}
 

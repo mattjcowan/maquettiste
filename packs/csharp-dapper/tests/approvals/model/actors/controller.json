@@ -1,0 +1,8 @@
+{
+  "$schema": "../../.schema/v1/actor.json",
+  "kind": "actor",
+  "id": "01JAD0000000000000000000R3",
+  "name": "Controller",
+  "package": "01JAD0000000000000000000P1",
+  "type": "role"
+}
