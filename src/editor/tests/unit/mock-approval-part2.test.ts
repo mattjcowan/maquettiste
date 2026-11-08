@@ -85,15 +85,26 @@ describe("the mock stepper: rounds", () => {
   it("skips a stage whose when is false, and a round with nothing needed completes at once", () => {
     const falsy = { kind: "literal", value: false };
     const d = doc(gate([stage("s1", [sig("fin", ["FinRole"])]), stage("s2", [sig("mgr", ["MgrRole"])], { round: 2, when: falsy })]));
-    // Judged when its round starts: round 2 starts when Ann completes round 1, finds nothing needed, and the approval waits for the next occurrence.
+    // Judged when its round starts: round 2 is not judged on entry.
     expect(stages(run(d, [submit])).find((s) => s.stage === "s2")).toMatchObject({ complete: false });
+    // Ann completes round 1, round 2 finds nothing needed and completes at once: her signature completed the approval, so it moves (decision 33).
     const r = run(d, [submit, answer("Ann")]);
-    expect(outcomes(r, 1)).toEqual(["signed:fin"]);
-    expect(stages(r).find((s) => s.stage === "s2")).toMatchObject({ skipped: true, complete: true });
-    expect(r.gates[0].satisfied).toBe(true);
-    expect(r.configuration).toContain("Review");
-    const moved = run(d, [submit, answer("Ann"), answer("Bob")]);
-    expect(outcomes(moved, 2)).toEqual(["completed"]);
+    expect(r.trace[2]).toMatchObject({ accepted: true });
+    expect(outcomes(r, 1)).toEqual(["signed:fin", "completed"]);
+    expect(r.configuration).toContain("Done");
+    // The same when every signature of the later round is not needed.
+    const unneeded = doc(gate([stage("s1", [sig("fin", ["FinRole"])]), stage("s2", [sig("mgr", ["MgrRole"], { when: falsy })], { round: 2 })]));
+    expect(outcomes(run(unneeded, [submit, answer("Ann")]), 1)).toEqual(["signed:fin", "completed"]);
+  });
+
+  it("waits for the next occurrence when round 1 starts with nothing needed (decision 7)", () => {
+    const falsy = { kind: "literal", value: false };
+    const d = doc(gate([stage("s1", [sig("fin", ["FinRole"], { when: falsy })]), stage("s2", [sig("mgr", ["MgrRole"])], { round: 2, when: falsy })]));
+    const entered = run(d, [submit]);
+    expect(entered.gates[0].satisfied).toBe(true);
+    expect(entered.configuration).toContain("Review");
+    const moved = run(d, [submit, answer("Bob")]);
+    expect(outcomes(moved, 1)).toEqual(["completed"]);
     expect(moved.configuration).toContain("Done");
   });
 
@@ -205,7 +216,8 @@ describe("the mock stepper: notices", () => {
     expect(done.expects[1].notices).toEqual([{ signature: "fin", kind: "remind" }]);
     // A step with no notices and no expectation writes no key.
     expect(done.expects[0]).not.toHaveProperty("notices");
+    // A step where none fell due writes no key, even when it expected some, as the engine records it.
     const none = replay(d, null, [submit, { ...time("PT10M"), expect: { notices: [] } }], { membership: members, participants });
-    expect(none.expects[1].notices).toEqual([]);
+    expect(none.expects[1]).not.toHaveProperty("notices");
   });
 });

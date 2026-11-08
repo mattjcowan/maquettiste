@@ -780,25 +780,9 @@ internal sealed partial class ResolveRun
         // its paths there at the declaring entity's own attribute, a base's for an inherited one, so it has one target whichever subject
         // runs; it depends on every subject's entity and its bases, and, through Names, on the relations it follows and the entities they
         // lead to. An in_state node is filled once every process is built, and keys its holder on its binding.
-        // A condition the expression sites don't list yet, such as a stage's when (signoff-design.md decision 6), typed at the process's free
-        // site of its kind, the scope its siblings there have; null when it doesn't type, or when a listed site holds it.
-        (Expr Tree, TypedExpr Typed, ExprScope Scope)? TypeAtFreeSite(string siteId, ExprSiteKind kind, Expr? tree)
+        RExpression? BuildCondition(string siteId, ExprSiteKind kind, DependencySet holderDeps)
         {
-            if (tree is null || ExprSites.Free(Model, process, kind) is not { } site
-                || ExprSites.Of(Model, process).Any(x => string.Equals(x.Key, siteId, StringComparison.Ordinal)))
-                return null;
-            var scope = ExprSites.Scope(Model, process, Model.GetDocument(process.Id), site with { Tree = tree, SubId = siteId }, text: false);
-            var problems = new List<Maquettiste.Engine.Diagnostics.Diagnostic>();
-            var typed = ExprTyper.Type(tree, scope, problems);
-            return typed is null || problems.Any(d => d.Severity == Maquettiste.Engine.Diagnostics.DiagnosticSeverity.Error) || ExprSites.EventContextRead(process, typed) is not null
-                ? null : (tree, typed, scope);
-        }
-
-        RExpression? BuildCondition(string siteId, ExprSiteKind kind, DependencySet holderDeps) => BuildConditionOr(siteId, kind, holderDeps, null);
-
-        RExpression? BuildConditionOr(string siteId, ExprSiteKind kind, DependencySet holderDeps, Expr? fallback)
-        {
-            if ((ExprResolution.Type(Model, process, siteId) ?? TypeAtFreeSite(siteId, kind, fallback)) is not { } typed)
+            if (ExprResolution.Type(Model, process, siteId) is not { } typed)
                 return null;
             readable ??= r.Context.Concat(events.SelectMany(ev => ev.Payload)).DistinctBy(a => a.Id, StringComparer.Ordinal)
                 .ToDictionary(a => a.Id, StringComparer.Ordinal);
@@ -988,7 +972,7 @@ internal sealed partial class ResolveRun
                 FillNode(stage, st.DisplayName ?? st.Name, st.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
                 // A stage's when is typed at the approval site, as a signature's is (part 2, decision 6); a gate policy's stage has none (MQ8202).
                 if (st.When is not null && process.Use != ProcessUse.Library)
-                    stage.When = BuildConditionOr(st.Id, ExprSiteKind.Approval, DepsOf(stage), st.When);
+                    stage.When = BuildCondition(st.Id, ExprSiteKind.Approval, DepsOf(stage));
                 var own = new List<RNamedSignature>();
                 foreach (var ns in st.Signatures)
                 {

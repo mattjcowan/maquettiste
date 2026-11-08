@@ -1515,7 +1515,7 @@ class Interpreter {
       const left = gateSignatures(t.gate)
         .filter((sg) => approval.needed.has(String(sg.id)) && !this.sigComplete(sg, approval.counted))
         .reduce((n, sg) => n + Math.max(1, num(sg.required) ?? 1) - approval.counted.filter((c) => c.signature === sg.id).length, 0);
-      return approval.waiting || (left <= 1 && !this.hasLater(t, approval));
+      return approval.waiting || (left <= 1 && this.laterRoundsEmpty(t, approval));
     }
     const required = Math.max(1, typeof t.gate!.required === "number" ? t.gate!.required : 1);
     return (this.signatures.get(t.id)?.length ?? 0) + 1 >= required;
@@ -1530,11 +1530,10 @@ class Interpreter {
       const pick = this.picks.get(t.id);
       if ((input.response ?? "sign") !== "sign" || !pick) return false;
       return (
-        !this.hasLater(t, approval) &&
         this.roundDone(t, approval, [
           ...approval.counted,
           { signer: input.signer!, actor: input.actor!, meaning: null, reason: null, signature: String(pick.sg.id) },
-        ])
+        ]) && this.laterRoundsEmpty(t, approval)
       );
     }
     const signatures = [...(this.signatures.get(t.id) ?? [])];
@@ -2042,6 +2041,22 @@ class Interpreter {
   }
 
   /**
+   * Whether every round after the current one would complete at once if it started now (decision 33): each of its stages skipped, or nothing
+   * needed in it. Then the signature that completes the current round completes the approval. Judged on the values before the step, to tell
+   * the move's trigger points whether the step moves; each round is judged again when it starts.
+   */
+  private laterRoundsEmpty(t: Edge, approval: Approval): boolean {
+    const env = this.env();
+    return arr(t.gate?.stages)
+      .filter((st) => (num(st.round) ?? 1) > approval.round)
+      .every(
+        (st) =>
+          (st.when !== undefined && evalTree(st.when, env) === false) ||
+          arr(st.signatures).every((sg) => sg.when !== undefined && evalTree(sg.when, env) === false),
+      );
+  }
+
+  /**
    * Starts the first round after `after` that needs anything (decisions 6, 7 and 33): a stage's `when` is judged, then the `when` of each
    * signature of the stages kept. A round that needs nothing is complete at once; with none left the approval waits for the next occurrence.
    */
@@ -2280,9 +2295,10 @@ class Interpreter {
       audit("signed", answerNamed);
       if (!this.roundDone(t, approval, approval.counted)) return false;
       if (this.hasLater(t, approval)) {
-        // A round other than the last is complete: the next one starts and nothing moves (decision 33).
+        // A round other than the last is complete: the next one starts and nothing moves (decision 33). When every later round then
+        // completes at once, this signature completed the approval, and its occurrence moves (decisions 4 and 33).
         this.startRound(t, approval, approval.round);
-        return false;
+        if (!approval.waiting) return false;
       }
       audit("completed", {});
       // A gated move is done by everyone whose signature counted toward it (decision 15).
@@ -2984,9 +3000,9 @@ export function replay(doc: Json, start: { context?: Json; at?: string } | null 
     // A step that answered an approval records the signatures counted after it (decision 27).
     const counted = signatureCounts.get(t);
     if (counted) expect.signatures = counted;
-    // The notices due at a time step, written when some fell due or the step already expected some (decision 27, part 2).
-    const notices = (t.notices ?? []).map((n) => ({ signature: n.signature, kind: n.kind }));
-    if (notices.length || (steps[t.index]?.expect as Json | undefined)?.notices !== undefined) expect.notices = notices;
+    // The reminders and escalations due at the step, each pair once, only where some fell due (decision 35), as the engine records them.
+    const notices = [...new Map((t.notices ?? []).map((n) => [`${n.signature} ${n.kind}`, { signature: n.signature, kind: n.kind }])).values()];
+    if (notices.length) expect.notices = notices;
     // Written only when some ran: a step that expected points and now has none drops the key (as the engine's Observed does).
     const ran = (t.triggerPoints ?? []).filter((r) => r.outcome !== "skipped").map((r) => r.triggerPoint);
     const expected = (steps[t.index]?.expect as Json | undefined)?.triggerPoints !== undefined;

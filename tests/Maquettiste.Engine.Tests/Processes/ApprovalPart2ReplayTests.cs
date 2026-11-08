@@ -224,20 +224,53 @@ public sealed class ApprovalPart2ReplayTests
         var judged = await SimulateAsync(store, Doc(100), Step(SubmitEvent, "ana"), modify, Step(ApproveEvent, "ben"), Step(ApproveEvent, "quinn"));
         Assert.False(judged.Gates.Single().Stages![2].Skipped);
         Assert.True(judged.Gates.Single().Stages![2].Signatures.Single().Needed);
+    }
 
-        // Round 2 needs nothing (the controller only above 10,000, Legal skipped): it completes at once, and as the last round the approval
-        // waits with nothing needed; the signature that completed round 1 moved nothing, and the next occurrence moves as without a gate.
-        var (h2, cascade) = await OpenAsync(RoundStages(controller: $$""","when":{{T("subject.cost > 10000")}}"""));
+    [Fact]
+    public async Task A_signature_that_completes_round_1_with_every_later_round_needing_nothing_completes_the_approval_and_moves()
+    {
+        // Round 2 needs nothing (the controller only above 10,000, Legal skipped): the signature that completes round 1 completed the approval,
+        // so its occurrence moves at once, as the occurrence that completes a gate does (decisions 4 and 33).
+        var below = $$""","when":{{T("subject.cost > 10000")}}""";
+        var (h, store) = await OpenAsync(RoundStages(controller: below));
+        using var _ = h;
+        await using var __ = store;
+        var result = await SimulateAsync(store, Doc(100), Step(SubmitEvent, "ana"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "quinn"));
+        var t = result.Trace;
+        Assert.Equal([(GateOutcome.Signed, Engineering)], Audit(t[2]));
+        Assert.Equal([Review], t[2].Configuration);
+        Assert.True(t[3].Accepted);
+        Assert.Equal([(GateOutcome.Signed, Quality), (GateOutcome.Completed, null)], Audit(t[3]));
+        Assert.NotEmpty(t[3].Microsteps);
+        Assert.Equal([Released], t[3].Configuration);
+
+        // The move's own checks run on that occurrence, as on any occurrence that completes the approval: one that fails refuses it.
+        var points = $$""","triggerPoints":[{"id":"{{DelegatePoint}}","name":"NoRelease","type":"check","verbs":["promote"],"transitions":["{{Approve}}"],"condition":{{T("false")}} }]""";
+        var (h2, checks) = await OpenAsync(RoundStages(controller: below), points: points);
         using var ___ = h2;
-        await using var ____ = cascade;
-        var waited = await SimulateAsync(cascade, Doc(100), Step(SubmitEvent, "ana"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "quinn"), Step(ApproveEvent, "cleo"));
-        Assert.Empty(waited.Trace[3].Microsteps);
-        Assert.Equal([Review], waited.Trace[3].Configuration);
-        Assert.Equal([(GateOutcome.Completed, null)], Audit(waited.Trace[4]));
-        Assert.Equal([Released], waited.Trace[4].Configuration);
-        var satisfied = await SimulateAsync(cascade, Doc(100), Step(SubmitEvent, "ana"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "quinn"));
-        Assert.True(satisfied.Gates.Single().Satisfied);
-        Assert.Equal([SignatureResponse.Sign], satisfied.Enabled.Single(e => e.Event == ApproveEvent).Responses);
+        await using var ____ = checks;
+        var refused = await SimulateAsync(checks, Doc(100), Step(SubmitEvent, "ana"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "quinn"));
+        Assert.Equal((Refusals.Check, DelegatePoint), (refused.Trace[3].Refusal, refused.Trace[3].RefusedBy));
+        Assert.Equal([Review], refused.Trace[3].Configuration);
+    }
+
+    [Fact]
+    public async Task An_approval_whose_round_1_starts_with_nothing_needed_waits_for_the_next_occurrence()
+    {
+        // Nothing is needed in any round on entry: the approval is complete when it starts, the entering move does nothing more, and the gated
+        // event's next occurrence moves as if there were no gate (decision 7).
+        var below = $$""","when":{{T("subject.cost > 10000")}}""";
+        var (h, store) = await OpenAsync(RoundStages(controller: below, engineering: below, quality: below));
+        using var _ = h;
+        await using var __ = store;
+        var waiting = await SimulateAsync(store, Doc(100), Step(SubmitEvent, "ana"));
+        Assert.Empty(waiting.Trace[1].Audit);
+        Assert.Equal([Review], waiting.Trace[1].Configuration);
+        Assert.True(waiting.Gates.Single().Satisfied);
+        Assert.Equal([SignatureResponse.Sign], waiting.Enabled.Single(e => e.Event == ApproveEvent).Responses);
+        var moved = await SimulateAsync(store, Doc(100), Step(SubmitEvent, "ana"), Step(ApproveEvent, "cleo"));
+        Assert.Equal([(GateOutcome.Completed, null)], Audit(moved.Trace[2]));
+        Assert.Equal([Released], moved.Trace[2].Configuration);
     }
 
     [Fact]

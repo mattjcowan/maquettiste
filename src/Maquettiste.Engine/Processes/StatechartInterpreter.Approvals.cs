@@ -185,19 +185,32 @@ public sealed partial class StatechartInterpreter
     }
 
     // Whether a stage's or signature's when holds when its round starts (decisions 6 and 7), over the context and the object: only false
-    // answers false, so one that didn't compile, threw or ran past a limit holds.
-    private bool Holds(Instance inst, ProcessExpressionSession? session, string id, string label)
+    // answers false, so one that didn't compile, threw or ran past a limit holds. A quiet judgment notes and reports nothing.
+    private bool Holds(Instance inst, ProcessExpressionSession? session, string id, string label, bool quiet = false)
     {
         if (session is null || !session.Conditions.Contains(id))
             return true;
         var lowered = session.Lowered.TryGetValue(id, out var found) ? found : null;
-        if (lowered is { EngineOnly: true })
+        if (lowered is { EngineOnly: true } && !quiet)
             _ = Reads(inst, lowered);
         var result = session.EvaluateApproval(id, label, ContextObject(inst), SubjectOf(inst), lowered is { ReadsRunning: true } ? Running(inst) : null, ClockText(),
             Seed(inst), _options.CancellationToken);
-        if (result.Diagnostic is { } d)
+        if (result.Diagnostic is { } d && !quiet)
             _scope.Diagnostics.Add(d);
         return result.Diagnostic is not null || result.Value is not false;
+    }
+
+    // Whether every round after the current one would complete at once if it started now (decision 33): each of its stages skipped, or nothing
+    // needed in it. Then the signature that completes the current round completes the approval. Judged quietly on the values before the step,
+    // to tell the move's trigger points whether the step moves; the admit judges each round again when it starts.
+    private bool LaterRoundsEmpty(Instance inst, ProcessGate gate, ApprovalProgress approval)
+    {
+        if (LaterRound(gate, approval) is null)
+            return true;
+        var session = Session(inst.Chart);
+        return gate.Stages!.Where(s => s.Round > approval.Round).All(stage =>
+            (stage.When is not null && !Holds(inst, session, stage.Id, $"Stage '{stage.Name}'", quiet: true))
+            || stage.Signatures.All(x => x.When is not null && !Holds(inst, session, x.Id, $"Signature '{x.Name}'", quiet: true)));
     }
 
     // The round after the current one, or null when it is the last (decision 33).
@@ -394,7 +407,7 @@ public sealed partial class StatechartInterpreter
     /// <summary>
     /// The response's effect on an approval (decisions 7, 10 to 13, 33 and 34), already checked by row 7: with nothing needed, the occurrence
     /// completes it; a signature is counted, and when every needed signature of the round is complete it starts the next round, or completes the
-    /// approval in the last; an ignore finishes the person on the signature; a withdraw takes their latest signature on it back; a delegation
+    /// approval in the last or when every later round completes at once; an ignore finishes the person on the signature; a withdraw takes their latest signature on it back; a delegation
     /// hands the signature to the person it goes to; a rejection clears the approval and starts round 1 again. An answer on behalf counts as the
     /// delegator's actor. Whether the move follows.
     /// </summary>
@@ -429,11 +442,13 @@ public sealed partial class StatechartInterpreter
                 Audit(inst, gate, t, person, actor, meaning, input.Reason, GateOutcome.Signed, attributes, signature, behalf?.Delegator);
                 if (!RoundDone(gate, approval, approval.Counted))
                     return false;
-                // A round other than the last starts the next and moves nothing; the step is consumed in the admit (decision 33).
+                // A round other than the last starts the next and moves nothing; the step is consumed in the admit (decision 33). When every
+                // later round then completes at once, this signature completed the approval, and its occurrence moves (decisions 4 and 33).
                 if (LaterRound(gate, approval) is { } next)
                 {
                     StartRound(inst, gate, approval, next);
-                    return false;
+                    if (!approval.Waiting)
+                        return false;
                 }
 
                 Audit(inst, gate, t, person, actor, meaning, input.Reason, GateOutcome.Completed, attributes);

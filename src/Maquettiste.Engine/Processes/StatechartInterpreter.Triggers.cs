@@ -176,14 +176,14 @@ public sealed partial class StatechartInterpreter
     }
 
     // Whether the next signature, by whoever signs, brings the gate to its count; who signs it may still leave a required actor missing. On an
-    // approval: nothing is needed, or the round is the last and at most one signature is missing across its needed signatures (signoff-design.md
-    // decision 33: only the last round's completion moves).
+    // approval: nothing is needed, or every later round would complete at once and at most one signature is missing across the round's needed
+    // signatures (signoff-design.md decision 33: only the approval's completion moves).
     private bool CouldComplete(Instance inst, ChartTransition t, ProcessGate gate)
     {
         if (gate.UsesStages)
         {
             var approval = ApprovalOf(inst, t, gate);
-            return approval.Waiting || (LaterRound(gate, approval) is null && gate.AllSignatures.Where(s => approval.Needed.Contains(s.Id) && !Complete(s, approval.Counted))
+            return approval.Waiting || (LaterRoundsEmpty(inst, gate, approval) && gate.AllSignatures.Where(s => approval.Needed.Contains(s.Id) && !Complete(s, approval.Counted))
                 .Sum(s => Math.Max(1, s.Required) - approval.Counted.Count(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal))) <= 1);
         }
 
@@ -191,17 +191,18 @@ public sealed partial class StatechartInterpreter
     }
 
     // Whether this occurrence would complete the gate, worked out without counting it, as Sign counts. On an approval: a signature on the
-    // picked signature that completes the round.
+    // picked signature that completes the round, when every later round would complete at once.
     private bool WouldComplete(Instance inst, ChartTransition t, ProcessGate gate)
     {
         var input = _scope.Input!;
         if (gate.UsesStages)
         {
             var approval = ApprovalOf(inst, t, gate);
-            // A signature on behalf counts as the delegator's actor (decision 34); only the last round's completion moves (decision 33).
+            // A signature on behalf counts as the delegator's actor (decision 34); only the approval's completion moves: the last round's, or a
+            // round's after which every later round completes at once (decision 33).
             var actor = _behalf.TryGetValue(t, out var behalf) ? behalf.Actor : input.Actor!;
-            return approval.Waiting || (input.Response == SignatureResponse.Sign && _picks.TryGetValue(t, out var picked) && LaterRound(gate, approval) is null
-                && RoundDone(gate, approval, [.. approval.Counted, new CountedSignature(input.Signer!, actor, null, null, picked.Id)]));
+            return approval.Waiting || (input.Response == SignatureResponse.Sign && _picks.TryGetValue(t, out var picked)
+                && RoundDone(gate, approval, [.. approval.Counted, new CountedSignature(input.Signer!, actor, null, null, picked.Id)]) && LaterRoundsEmpty(inst, gate, approval));
         }
 
         var signatures = inst.Signatures.TryGetValue(t.Id, out var existing) ? existing : [];
