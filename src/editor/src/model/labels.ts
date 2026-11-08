@@ -557,6 +557,9 @@ export const SIMULATION_LABELS = {
   enabledHint: "Enter raises the focused row · 1 to 9 raise the first nine rows",
   // Time
   nextTimer: (transition: string, due: string) => `Next: ${transition} at ${due}`,
+  /** No timer, but a reminder or escalation is pending. */
+  nextNotice: (signature: string, kind: string, due: string) =>
+    `No timer is scheduled. Next notice: ${signature} ${kind === "escalate" ? "escalation" : "reminder"} at ${due}`,
   noTimers: "No timer is scheduled.",
   clock: (clock: string) => `Clock ${clock}`,
   advanceBy: "Advance by",
@@ -575,6 +578,9 @@ export const SIMULATION_LABELS = {
   noLastStep: "Raise an input to see what it did.",
   initialEntry: "Initial entry",
   refused: (reason: string) => `Refused: ${reason}`,
+  /** A delegation refused gate-signer: to the delegator themselves, or to someone outside May be delegated to. */
+  delegateToSelfReason: "A signer can't delegate a signature to themselves; delegate it to someone else.",
+  delegateTargetReason: "The person it goes to isn't one of the actors this signature may be delegated to.",
   refusals: {
     "no-transition": "no transition of the active states takes it",
     guard: "the guards of its transitions are false",
@@ -655,7 +661,12 @@ export const SIMULATION_LABELS = {
   approvals: "Approvals",
   noApprovals: "No approval is open.",
   approvalWaiting: "Nothing is needed; the next occurrence moves.",
-  signatureState: (name: string, needed: boolean, counted: number, required: number) => (needed ? `${name}: ${counted} of ${required}` : `${name}: not needed`),
+  signatureState: (name: string, needed: boolean, counted: number, required: number, waitsForRound?: number) =>
+    needed ? `${name}: ${counted} of ${required}` : waitsForRound !== undefined ? `${name}: waits for round ${waitsForRound}` : `${name}: not needed`,
+  finishedDelegated: (to: string) => `delegated to ${to}`,
+  finishedBehalf: (from: string) => `on behalf of ${from}`,
+  delegatedTo: (to: string) => `delegated to ${to}`,
+  onBehalfOfWord: (from: string) => `on behalf of ${from}`,
   finishedBy: (people: string) => `finished: ${people}`,
   signatureComplete: "complete",
   response: "Response",

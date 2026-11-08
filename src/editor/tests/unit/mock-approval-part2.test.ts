@@ -262,14 +262,19 @@ describe("the mock stepper: review fixes for part 2", () => {
     ]);
   });
 
-  it("M3: delegating to the delegator themselves is refused gate-signer with a reason, and a step naming its own participant is MQ9305", () => {
+  it("M3: delegating to the delegator themselves is refused gate-signer, and the inputs after it still run", () => {
     const same = [...participants, { id: "pann2", name: "pann2", identity: "ann", actor: "Deputy" }];
-    const self = simulate(delegating, null, [submit, { ...answer("Ann", "delegate"), delegateTo: "pann2" }], { membership: members, participants: same });
-    expect(last(self)).toMatchObject({ accepted: false, refusal: "gate-signer" });
-    expect(last(self).notes!.join(" ")).toContain("themselves");
-    const own = run(delegating, [submit, { event: "approve", participant: "pdan", response: "delegate", delegateTo: "pdan" }]);
-    expect(last(own).diagnostics.find((x) => x.rule === "MQ9305")?.message).toBe(
-      "the step delegates to its own participant; a delegation goes to someone else.",
-    );
+    const self = simulate(delegating, null, [submit, { ...answer("Ann", "delegate"), delegateTo: "pann2" }, answer("Ann")], {
+      membership: members,
+      participants: same,
+    });
+    expect(self.trace[2]).toMatchObject({ accepted: false, refusal: "gate-signer" });
+    // The refusal is not a replay-stopping problem: the next input runs (and counts).
+    expect(self.trace).toHaveLength(4);
+    expect(self.trace[2].incomplete).toBe(false);
+    expect(self.trace[3].accepted).toBe(true);
+    const own = run(delegating, [submit, { event: "approve", participant: "pdan", response: "delegate", delegateTo: "pdan" }, answer("Ann")]);
+    expect(own.trace[2]).toMatchObject({ accepted: false, refusal: "gate-signer" });
+    expect(own.trace).toHaveLength(4);
   });
 });

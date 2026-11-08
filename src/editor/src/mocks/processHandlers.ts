@@ -318,6 +318,8 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         st.verb !== undefined ||
         st.response !== undefined ||
         st.signature !== undefined ||
+        st.delegateTo !== undefined ||
+        st.onBehalfOf !== undefined ||
         expect?.signatures !== undefined ||
         expect?.refusal !== undefined ||
         expect?.refusedBy !== undefined ||
@@ -677,9 +679,12 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       // A step names its participant by name or id; the replay and the record work with the request's participant ids.
       const requestPeople = arr(value.participants);
       const rawSteps = (value.steps as Json[]).map((st) => {
-        const hit = typeof st.participant === "string" ? requestPeople.find((x) => x.id === st.participant || x.name === st.participant) : undefined;
+        const idOf = (key: string) => {
+          const hit = typeof st[key] === "string" ? requestPeople.find((x) => x.id === st[key] || x.name === st[key]) : undefined;
+          return hit ? { [key]: hit.id } : {};
+        };
         return resolveCheckNames(
-          hit ? { ...st, participant: hit.id } : st,
+          { ...st, ...idOf("participant"), ...idOf("delegateTo"), ...idOf("onBehalfOf") },
           entry.json,
           effectOptions(entry.json).lifecycles ?? [],
           namedPoints(),
@@ -718,6 +723,8 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
           "reason",
           "response",
           "signature",
+          "delegateTo",
+          "onBehalfOf",
           "payload",
           "assume",
         ]) {
@@ -726,7 +733,8 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
           if (typeof v === "object" && !Array.isArray(v) && !Object.keys(v as Json).length) continue;
           step[key] = v;
         }
-        if (typeof step.participant === "string" && people && !("error" in people)) step.participant = people.ids.get(step.participant) ?? step.participant;
+        for (const key of ["participant", "delegateTo", "onBehalfOf"])
+          if (typeof step[key] === "string" && people && !("error" in people)) step[key] = people.ids.get(step[key] as string) ?? step[key];
         step.expect = replayed.expects[i] ?? {};
         if (typeof s.description === "string" && s.description) step.description = s.description;
         return step;

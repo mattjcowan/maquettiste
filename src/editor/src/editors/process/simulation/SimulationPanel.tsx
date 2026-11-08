@@ -48,6 +48,7 @@ import {
   namesOf,
   nextDue,
   approvalRows,
+  nextNoticeDue,
   pendingRows,
   replayRows,
   replaySummary,
@@ -492,7 +493,13 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
             {section(
               "time",
               L.time,
-              <TimeSection result={result} live={live} names={names} onAdvance={(after) => update((s) => addInput(s, { input: "time", after }))} />,
+              <TimeSection
+                result={result}
+                process={process}
+                live={live}
+                names={names}
+                onAdvance={(after) => update((s) => addInput(s, { input: "time", after }))}
+              />,
             )}
             {section(
               "pending",
@@ -1239,8 +1246,21 @@ function EnabledRowView({
   );
 }
 
-function TimeSection({ result, live, names, onAdvance }: { result: SimulationResult | null; live: boolean; names: Names; onAdvance: (after: string) => void }) {
+function TimeSection({
+  result,
+  process,
+  live,
+  names,
+  onAdvance,
+}: {
+  result: SimulationResult | null;
+  process: ProcessDoc;
+  live: boolean;
+  names: Names;
+  onAdvance: (after: string) => void;
+}) {
   const next = result ? nextDue(result) : null;
+  const notice = result && !next ? nextNoticeDue(result, process, names) : null;
   const [after, setAfter] = useState<string | null>(null);
   const shown = after ?? next?.after ?? "PT1H";
   const valid = isDuration(shown);
@@ -1252,7 +1272,9 @@ function TimeSection({ result, live, names, onAdvance }: { result: SimulationRes
   };
   return (
     <div>
-      <Note testid="time-row">{next ? L.nextTimer(names.transition(next.transition), next.dueAt) : L.noTimers}</Note>
+      <Note testid="time-row">
+        {next ? L.nextTimer(names.transition(next.transition), next.dueAt) : notice ? L.nextNotice(notice.signature, notice.kind, notice.dueAt) : L.noTimers}
+      </Note>
       <div className={ROW} data-testid="time-row">
         <span className="min-w-0 flex-1 truncate text-secondary" title={L.clock(result.clock)} data-testid="simulation-clock">
           {L.clock(result.clock)}
@@ -1311,10 +1333,10 @@ function ApprovalsSection({ result, process, names }: { result: SimulationResult
                 data-signature={s.name}
               >
                 <span
-                  className={cn("min-w-0 flex-1 break-words", !s.needed && "text-secondary")}
-                  title={L.signatureState(s.name, s.needed, s.counted, s.required)}
+                  className={cn("min-w-[8rem] flex-1 break-words", !s.needed && "text-secondary")}
+                  title={L.signatureState(s.name, s.needed, s.counted, s.required, s.waitsForRound)}
                 >
-                  {L.signatureState(s.name, s.needed, s.counted, s.required)}
+                  {L.signatureState(s.name, s.needed, s.counted, s.required, s.waitsForRound)}
                 </span>
                 {st.round !== undefined || st.skipped ? (
                   <span className="min-w-0 break-words text-secondary" data-testid="approval-stage">
@@ -1581,7 +1603,7 @@ function TraceSection({
                 {RL.refusalWords[r.refusal ?? ""] ?? r.refusal}
               </Badge>
             ) : (
-              <span className="flex min-w-0 max-w-[40%] items-center gap-1">
+              <span className="flex min-w-0 max-w-[40%] shrink items-center gap-1 overflow-hidden">
                 {r.froze ? (
                   <Badge tone="accent" data-testid="trace-froze">
                     {r.froze}
@@ -1597,6 +1619,7 @@ function TraceSection({
                 variant="ghost"
                 size="icon-row"
                 tabIndex={-1}
+                className="shrink-0"
                 label={L.deleteInput(r.label)}
                 shortcut="Delete"
                 onClick={(e) => {

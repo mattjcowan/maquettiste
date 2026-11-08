@@ -995,8 +995,6 @@ class Interpreter {
       return fail("The step names who it delegates to, but its response is not delegate; give the response delegate, or remove it.");
     if (response === "delegate" && !input.delegateTo)
       return fail("The step delegates, but names no one to delegate to; pick a participant, or change the response.");
-    if (response === "delegate" && input.delegateTo && input.delegateTo === input.participant)
-      return fail("the step delegates to its own participant; a delegation goes to someone else.");
     if (response === "delegate" && input.onBehalfOf)
       return fail("A delegation can't be passed on: a step that delegates can't also answer on behalf of someone; remove one.");
     if (response === "delegate" || input.onBehalfOf) {
@@ -2247,10 +2245,7 @@ class Interpreter {
         else if (response === "withdraw" && !approval.counted.some((c) => c.signer === signer && c.signature === sg.id)) refusal = ["gate-not-signed", gateId];
         else if (gate.reasonRequired === true && !(input.reason ?? "").trim()) refusal = ["gate-reason", gateId];
         else if (response === "delegate" && !this.mayReceive(sg, input.delegateTo)) refusal = ["gate-signer", gateId];
-        else if (response === "delegate" && this.participantIdentity(input.delegateTo) === signer) {
-          this.scope.notes.push("A signer can't delegate a signature to themselves; delegate it to someone else.");
-          refusal = ["gate-signer", gateId];
-        }
+        else if (response === "delegate" && this.participantIdentity(input.delegateTo) === signer) refusal = ["gate-signer", gateId];
       }
     }
     if (refusal) this.audit(gate, t, signer, actor, meaningOf(input, gate), input.reason, "refused", auditAttributes(input, gate), this.namedOf(t));
