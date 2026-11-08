@@ -4,13 +4,29 @@ namespace Maquettiste.Engine.Resolution;
 
 /// <summary>
 /// A resolved trigger point (trigger-points-design.md section 7): an entry of a lifecycle's <c>triggerPoints</c> (kind
-/// <c>process-trigger-point</c>), what runs when one of its verbs happens, in the places its optional keys name. A check has a
+/// <c>process-trigger-point</c>), or a named trigger point (kind <c>trigger-point</c>, decision 33, with no <see cref="Process"/>): what runs
+/// when one of its verbs happens, in the places its optional keys name. A check has a
 /// <see cref="Condition"/>, an action or a replace has <see cref="Sets"/>; with neither, the body is the team's code (<see cref="TeamCode"/>).
 /// </summary>
 public sealed class RTriggerPoint : RObject
 {
     /// <inheritdoc/>
-    public override string Kind => "process-trigger-point";
+    public override string Kind => Named ? "trigger-point" : "process-trigger-point";
+
+    /// <summary>Whether it is a named trigger point (decision 33), its own element of kind <c>trigger-point</c>.</summary>
+    internal bool Named { get; init; }
+
+    /// <summary>Whether no bulk load may ever skip it (decision 20): <c>trigger_point.no_bypass</c>.</summary>
+    public bool NoBypass { get; internal set; }
+
+    /// <summary>A named trigger point's package; <see langword="null"/> for the root, and for a lifecycle's trigger point.</summary>
+    public RPackage? Package { get; internal set; }
+
+    /// <summary>A named trigger point's subjects in file order (<c>trigger_point.subjects</c>); empty for a lifecycle's trigger point.</summary>
+    public RList<RTriggerPointSubject> Subjects { get; internal set; } = RList<RTriggerPointSubject>.Empty;
+
+    /// <summary>The entities a named trigger point skips, as written (<c>trigger_point.except_entities</c>); empty for a lifecycle's trigger point.</summary>
+    public RList<REntity> ExceptEntities { get; internal set; } = RList<REntity>.Empty;
 
     /// <summary>The name, unique among the lifecycle's trigger points and apart from its process's guards.</summary>
     public string Name { get; internal set; } = "";
@@ -90,6 +106,28 @@ public sealed class RTriggerPoint : RObject
 
     /// <summary>The lifecycle whose trigger points list it.</summary>
     public RProcess? Process { get; internal set; }
+}
+
+/// <summary>
+/// A subject of a named trigger point (trigger-points-design.md decision 33), as written: an entity, which covers itself and its derived
+/// entities, or a stereotype, which covers its carriers and theirs. Exactly one of <see cref="Entity"/> and <see cref="Stereotype"/> is set.
+/// </summary>
+public sealed class RTriggerPointSubject : IResolvedObject
+{
+    /// <summary>The point's id, then <c>/subjects/</c> and the entry's index.</summary>
+    public string Id { get; internal set; } = "";
+
+    /// <inheritdoc/>
+    public string Kind => "trigger-point-subject";
+
+    /// <inheritdoc/>
+    public IReadOnlyList<string> Dependencies { get; internal set; } = [];
+
+    /// <summary>The entity, for an entity entry.</summary>
+    public REntity? Entity { get; internal set; }
+
+    /// <summary>The stereotype, for a stereotype entry whose key names one.</summary>
+    public RStereotypeDefinition? Stereotype { get; internal set; }
 }
 
 /// <summary>

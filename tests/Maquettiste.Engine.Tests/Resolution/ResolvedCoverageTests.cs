@@ -104,8 +104,8 @@ public sealed class ResolvedCoverageTests
 
         // Trigger points (trigger-points-design.md section 7): an entry of a lifecycle's triggerPoints.
         new("trigger point", "process.json", "$defs/triggerPoint", typeof(RTriggerPoint)),
-        // Part 2: a named trigger point resolves as an RTriggerPoint in a later round of the same item; until then it is unresolved.
-        new("named trigger point", "trigger-point.json", "", null),
+        // Part 2: a named trigger point (decision 33), as an RTriggerPoint of kind trigger-point.
+        new("named trigger point", "trigger-point.json", "", typeof(RTriggerPoint)),
 
         // Vocabularies, mappings and diagrams.
         new("stereotype", "stereotype.json", "", typeof(RStereotypeDefinition)),
@@ -183,6 +183,15 @@ public sealed class ResolvedCoverageTests
         [("right", "category")] = "RRight: one shape for named and inline rights",
         [("right", "properties")] = "RRight: one shape for named and inline rights",
         [("right", "generation")] = "RRight: one shape for named and inline rights",
+        [("named trigger point", "pluralName")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "rationale")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "decision")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "status")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "stereotypes")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "tags")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "category")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "properties")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "generation")] = "RTriggerPoint: one shape for named and inline trigger points",
         // An entry of a lifecycle's rights: what an inline right says is on use.right, the "inline right" target; where it holds is on the use.
         [("process right", "name")] = "on use.right (the inline right target)",
         [("process right", "displayName")] = "on use.right (the inline right target)",
@@ -265,9 +274,6 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
-
-        // Trigger points, part 2 (trigger-points-design.md section 7), resolved in a later round of the same item: a point's noBypass.
-        ("trigger point", "noBypass"),
     ];
 
     /// <summary>
@@ -278,7 +284,7 @@ public sealed class ResolvedCoverageTests
     /// (next-phase-1-design.md section 5.5). The verb vocabulary resolves into <c>model.verbs</c> (verbs-design.md section 6): each own verb an
     /// <see cref="RVerb"/>, and its hidden built-in verbs left out unless named, so the file itself is no object.
     /// </summary>
-    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram", "verb vocabulary", "named trigger point" };
+    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram", "verb vocabulary" };
 
     [Fact]
     public void Every_property_of_every_model_file_is_a_member_of_its_resolved_object()

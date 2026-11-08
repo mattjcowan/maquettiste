@@ -105,12 +105,18 @@ internal sealed record TriggerQuery
 
 /// <summary>One trigger point that runs at one moment of a verb.</summary>
 /// <param name="Point">The trigger point.</param>
-/// <param name="Lifecycle">The lifecycle whose trigger points list it.</param>
+/// <param name="Lifecycle">The lifecycle whose trigger points list it; <see langword="null"/> for a named trigger point (decision 33).</param>
 /// <param name="Verb">The verb it runs on, by key.</param>
 /// <param name="Moment">When it runs.</param>
-/// <param name="Acting">Whether its lifecycle is the acting one, whose move, signature or task does the verb.</param>
-internal sealed record TriggerRun(ProcessTriggerPoint Point, Process Lifecycle, string Verb, TriggerMoment Moment, bool Acting)
+/// <param name="Acting">Whether its lifecycle is the acting one, whose move, signature or task does the verb; never for a named trigger point.</param>
+internal sealed record TriggerRun(ProcessTriggerPoint Point, Process? Lifecycle, string Verb, TriggerMoment Moment, bool Acting)
 {
+    /// <summary>
+    /// The named trigger point it is, whose body <see cref="Point"/> is (<see cref="NamedTriggerPoints.Body"/>); <see langword="null"/> for a
+    /// lifecycle's trigger point.
+    /// </summary>
+    public TriggerPoint? Named { get; init; }
+
     /// <summary>
     /// Why a check runs although the step doesn't say which attributes or link it speaks of (decision 10: checks fail closed), for the trace's
     /// note; <see langword="null"/> when its places matched.
@@ -144,6 +150,9 @@ internal sealed record TriggerVerbRun
 
     /// <summary>The lifecycles whose points were asked, in run order: the acting one, then the others by name then id.</summary>
     public IReadOnlyList<Process> Lifecycles { get; init; } = [];
+
+    /// <summary>The named trigger points asked, in run order (decision 34), whatever their places; each runs before every lifecycle's points.</summary>
+    public IReadOnlyList<TriggerPoint> Named { get; init; } = [];
 
     /// <summary>What it assumed or left out, for the trace's notes, in the order found.</summary>
     public IReadOnlyList<string> Notes { get; init; } = [];
@@ -214,7 +223,8 @@ public sealed record TriggerSequenceFilter
 /// <param name="Verb">The verb, by key.</param>
 /// <param name="Steps">The steps in run order. A built-in step has no trigger point; a trigger point's step follows the built-in step of its
 /// moment, when that applies.</param>
-public sealed record TriggerSequence(string Lifecycle, string Verb, IReadOnlyList<TriggerSequenceStep> Steps);
+public sealed record TriggerSequence(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Lifecycle, string Verb, IReadOnlyList<TriggerSequenceStep> Steps);
 
 /// <summary>
 /// One step of the fixed order (trigger-points-design.md decision 18): a built-in step that applies to the verb, or a trigger point that can
@@ -270,6 +280,15 @@ public sealed record TriggerSequenceStep
 
     /// <summary><see langword="true"/> when the team's code reaches outside systems.</summary>
     public bool? Outside { get; init; }
+
+    /// <summary>A named trigger point's subjects in file order (decision 33): an entity's id or a stereotype's id each; absent otherwise.</summary>
+    public IReadOnlyList<TriggerPointSubjectRecord>? Subjects { get; init; }
+
+    /// <summary>The ids of the entities a named trigger point skips; absent when none.</summary>
+    public IReadOnlyList<string>? ExceptEntities { get; init; }
+
+    /// <summary><see langword="true"/> when no bulk load may ever skip it (decision 20).</summary>
+    public bool? NoBypass { get; init; }
 }
 
 /// <summary>
@@ -303,10 +322,13 @@ internal sealed class TriggerSequences
     private readonly ConcurrentDictionary<string, IReadOnlyList<Process>> _governing = new(StringComparer.Ordinal);
     // Per lifecycle id: the entities it governs, by name then id.
     private readonly ConcurrentDictionary<string, IReadOnlyList<Entity>> _governed = new(StringComparer.Ordinal);
+    // The named trigger points (decision 33).
+    private readonly NamedTriggerPoints _named;
 
     private TriggerSequences(ModelSnapshot model)
     {
         _model = model;
+        _named = NamedTriggerPoints.Of(model);
         var lifecycles = new List<Process>();
         foreach (var process in model.All<Process>())
         {
@@ -320,8 +342,21 @@ internal sealed class TriggerSequences
         _byId = lifecycles.ToFrozenDictionary(p => p.Id, StringComparer.Ordinal);
     }
 
-    /// <summary>Whether the project uses trigger points (decision 29): a lifecycle has <c>triggerPoints</c>.</summary>
-    public bool Uses => _lifecycles.Count > 0;
+    /// <summary>Whether the project uses trigger points (decision 29): a lifecycle has <c>triggerPoints</c>, or a named trigger point exists.</summary>
+    public bool Uses => _lifecycles.Count > 0 || _named.Any;
+
+    /// <summary>The named trigger points, by name then id (<c>model.trigger_points</c>, decision 33).</summary>
+    public IReadOnlyList<TriggerPoint> Named => _named.All;
+
+    /// <summary>The named trigger points that cover an entity, in run order (decision 34, <c>entity.trigger_points</c>), whatever their verbs.</summary>
+    /// <param name="entity">The entity.</param>
+    /// <returns>The points.</returns>
+    public IReadOnlyList<TriggerPoint> NamedFor(Entity entity) => _named.For(entity);
+
+    /// <summary>The entities a named trigger point runs for, by qualified name then id (<c>trigger_point.covers</c>).</summary>
+    /// <param name="point">The named trigger point.</param>
+    /// <returns>The entities.</returns>
+    public IReadOnlyList<Entity> Covers(TriggerPoint point) => _named.Covers(point);
 
     /// <summary>The lifecycles with trigger points, by name then id (<c>model.trigger_lifecycles</c>).</summary>
     public IReadOnlyList<Process> Lifecycles => _lifecycles;
@@ -447,8 +482,9 @@ internal sealed class TriggerSequences
         if (query.Verb is not { Length: > 0 } verb || !Uses)
             return TriggerVerbRun.None(query.Verb);
         var notes = new List<string>();
+        var named = NamedAsked(query, verb, notes);
         var asked = Asked(query, verb, notes);
-        if (asked.Count == 0)
+        if (asked.Count == 0 && named.Count == 0)
             return new TriggerVerbRun { Verb = verb, Notes = notes };
         var before = new List<TriggerRun>();
         var checks = new List<TriggerRun>();
@@ -457,6 +493,21 @@ internal sealed class TriggerSequences
         var afterCommit = new List<TriggerRun>();
         var acting = query.Process is { Use: ProcessUse.Lifecycle } p ? p : null;
         List<Entity>? subjects = null;
+        // Named trigger points first, at each moment (decision 34). They have no states, targets or transitions, and read no payload.
+        foreach (var namedPoint in named)
+        {
+            var point = _named.Body(namedPoint);
+            if (MomentOf(point, verb) is not { } moment)
+                continue;
+            if (moment == TriggerMoment.Replace && query.Transition is not null)
+            {
+                notes.Add($"An event that names '{verb}' still does its move, so replace '{point.Name}' does not run.");
+                continue;
+            }
+
+            Place(point, moment, null, namedPoint, false);
+        }
+
         foreach (var lifecycle in asked)
         {
             var isActing = acting is not null && string.Equals(acting.Id, lifecycle.Id, StringComparison.Ordinal);
@@ -498,70 +549,7 @@ internal sealed class TriggerSequences
                         continue;
                 }
 
-                if (point.Entities.Count > 0)
-                {
-                    if (query.Entity is { } entity)
-                    {
-                        if (!Narrowed(point, entity))
-                            continue;
-                    }
-                    else if ((query.Open & TriggerOpenPlaces.Entity) == 0)
-                    {
-                        subjects ??= query.Process is { } process ? SubjectsOf(process) : [];
-                        if (subjects.Count == 0 || !subjects.All(s => Narrowed(point, s)))
-                        {
-                            notes.Add($"The run has no object, and trigger point '{point.Name}' runs only for some of the subjects' entities, so it does not run.");
-                            continue;
-                        }
-                    }
-                }
-
-                var assumed = new List<string>(2);
-                if (point.Attributes.Count > 0)
-                {
-                    if (query.Attributes is { Count: > 0 } given)
-                    {
-                        if (!point.Attributes.Any(a => given.Contains(a, StringComparer.Ordinal)))
-                            continue;
-                    }
-                    else
-                    {
-                        assumed.Add("which attributes it reads or changes");
-                    }
-                }
-
-                switch (Speaks(point, verb, query.End))
-                {
-                    case false:
-                        continue;
-                    case null:
-                        assumed.Add("which link it speaks of");
-                        break;
-                }
-
-                string? why = null;
-                if (assumed.Count > 0)
-                {
-                    var unknown = string.Join(" or ", assumed);
-                    if (point.Type != TriggerPointType.Check)
-                    {
-                        notes.Add($"The step does not say {unknown}, so {Noun(point)} '{point.Name}', which is narrowed to some of them, does not run.");
-                        continue;
-                    }
-
-                    why = $"The step does not say {unknown}, so check '{point.Name}', which is narrowed to some of them, runs: a check fails closed.";
-                    notes.Add(why);
-                }
-
-                var run = new TriggerRun(point, lifecycle, verb, moment, isActing) { Assumed = why };
-                (moment switch
-                {
-                    TriggerMoment.Before => before,
-                    TriggerMoment.Check => checks,
-                    TriggerMoment.Replace => replaces,
-                    TriggerMoment.WithChange => withChange,
-                    _ => afterCommit,
-                }).Add(run);
+                Place(point, moment, lifecycle, null, isActing);
             }
         }
 
@@ -586,8 +574,115 @@ internal sealed class TriggerSequences
             WithChange = withChange,
             AfterCommit = afterCommit,
             Lifecycles = asked,
+            Named = named,
             Notes = notes,
         };
+
+        // A point's entities, attributes and ends (decisions 10 and 12), alike for both kinds; then its place at its moment.
+        void Place(ProcessTriggerPoint point, TriggerMoment moment, Process? lifecycle, TriggerPoint? namedPoint, bool isActing)
+        {
+            if (point.Entities.Count > 0)
+            {
+                if (query.Entity is { } entity)
+                {
+                    if (!Narrowed(point, entity))
+                        return;
+                }
+                else if ((query.Open & TriggerOpenPlaces.Entity) == 0)
+                {
+                    subjects ??= query.Process is { } process ? SubjectsOf(process) : [];
+                    if (subjects.Count == 0 || !subjects.All(s => Narrowed(point, s)))
+                    {
+                        notes.Add($"The run has no object, and trigger point '{point.Name}' runs only for some of the subjects' entities, so it does not run.");
+                        return;
+                    }
+                }
+            }
+
+            var assumed = new List<string>(2);
+            if (point.Attributes.Count > 0)
+            {
+                if (query.Attributes is { Count: > 0 } given)
+                {
+                    if (!point.Attributes.Any(a => given.Contains(a, StringComparer.Ordinal)))
+                        return;
+                }
+                else
+                {
+                    assumed.Add("which attributes it reads or changes");
+                }
+            }
+
+            switch (Speaks(point, verb, query.End))
+            {
+                case false:
+                    return;
+                case null:
+                    assumed.Add("which link it speaks of");
+                    break;
+            }
+
+            string? why = null;
+            if (assumed.Count > 0)
+            {
+                var unknown = string.Join(" or ", assumed);
+                if (point.Type != TriggerPointType.Check)
+                {
+                    notes.Add($"The step does not say {unknown}, so {Noun(point)} '{point.Name}', which is narrowed to some of them, does not run.");
+                    return;
+                }
+
+                why = $"The step does not say {unknown}, so check '{point.Name}', which is narrowed to some of them, runs: a check fails closed.";
+                notes.Add(why);
+            }
+
+            var run = new TriggerRun(point, lifecycle, verb, moment, isActing) { Assumed = why, Named = namedPoint };
+            (moment switch
+            {
+                TriggerMoment.Before => before,
+                TriggerMoment.Check => checks,
+                TriggerMoment.Replace => replaces,
+                TriggerMoment.WithChange => withChange,
+                _ => afterCommit,
+            }).Add(run);
+        }
+    }
+
+    /// <summary>
+    /// The named trigger points asked for a verb (decisions 33 and 34), in run order, whatever their places: those that cover the object's
+    /// entity, for any verb, whichever lifecycle's move, signature or task does it, or none. With no object, those that cover every subject
+    /// of the process, in the run order of its first subject; with the entity left open, those that cover any subject. Only points on the verb.
+    /// </summary>
+    private List<TriggerPoint> NamedAsked(TriggerQuery query, string verb, List<string> notes)
+    {
+        if (!_named.Any)
+            return [];
+        bool OnVerb(TriggerPoint p) => p.Verbs.Contains(verb, StringComparer.Ordinal);
+        if (query.Entity is { } entity)
+            return [.. _named.For(entity).Where(OnVerb)];
+        var subjects = query.Process is { } process ? SubjectsOf(process) : [];
+        var found = new List<TriggerPoint>();
+        foreach (var subject in subjects)
+        {
+            foreach (var point in _named.For(subject))
+            {
+                if (OnVerb(point) && !found.Contains(point))
+                    found.Add(point);
+            }
+        }
+
+        if ((query.Open & TriggerOpenPlaces.Entity) != 0)
+            return found;
+        var all = new List<TriggerPoint>(found.Count);
+        foreach (var point in found)
+        {
+            if (subjects.All(s => _named.Covered(point, s.Id)))
+                all.Add(point);
+            else
+                notes.Add($"Named trigger point '{point.Name}' covers only some subjects of '{query.Process!.Name}', so it does not run.");
+        }
+
+        return all;
     }
 
     /// <summary>
@@ -676,7 +771,7 @@ internal sealed class TriggerSequences
         steps.AddRange(run.AfterCommit.Select(r => Point(12, "after-commit", r)));
         return new TriggerSequence(lifecycle.Id, verb, steps);
 
-        static TriggerSequenceStep Point(int order, string step, TriggerRun run)
+        TriggerSequenceStep Point(int order, string step, TriggerRun run)
         {
             var point = run.Point;
             static IReadOnlyList<string>? Listed(IReadOnlyList<string> ids) => ids.Count > 0 ? ids : null;
@@ -685,7 +780,7 @@ internal sealed class TriggerSequences
                 Order = order,
                 Step = step,
                 TriggerPoint = point.Id,
-                Lifecycle = run.Lifecycle.Id,
+                Lifecycle = run.Lifecycle?.Id,
                 Type = point.Type,
                 Timing = point.Type == TriggerPointType.Action ? point.Timing : null,
                 Severity = point.Type == TriggerPointType.Check ? point.Severity ?? TriggerSeverity.Error : null,
@@ -697,9 +792,87 @@ internal sealed class TriggerSequences
                 Ends = Listed(point.Ends),
                 When = point.When is not null ? true : null,
                 Outside = point.Outside ? true : null,
+                Subjects = run.Named is { } named ? SubjectRecords(_model, named) : null,
+                ExceptEntities = run.Named is { ExceptEntities.Count: > 0 } except ? except.ExceptEntities : null,
+                NoBypass = point.NoBypass ? true : null,
             };
         }
     }
+
+    /// <summary>
+    /// What runs, in order, when an object, link or own verb happens to an object of an entity with no lifecycle acting (decisions 33, 34 and
+    /// 36, <c>getEntityTriggerSequence</c>): the built-in steps that apply, then at each moment the named trigger points that cover the entity,
+    /// then every lifecycle that governs it, by name, each reading every state. A place the filter doesn't give is left open, but for
+    /// attributes and ends, where a run fails closed. <see langword="null"/> for a move, signature or task verb, which happens in one lifecycle.
+    /// </summary>
+    /// <param name="entity">The object's entity.</param>
+    /// <param name="verb">The verb's key.</param>
+    /// <param name="filter">The place: its attributes and end; its state, entity and transition are not read.</param>
+    /// <returns>The sequence, with no lifecycle; or <see langword="null"/>.</returns>
+    public TriggerSequence? Describe(Entity entity, string verb, TriggerSequenceFilter filter)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        ArgumentNullException.ThrowIfNull(verb);
+        ArgumentNullException.ThrowIfNull(filter);
+        if (!SpeaksOfObject(verb))
+            return null;
+        var run = For(new TriggerQuery { Verb = verb, Entity = entity, Attributes = filter.Attributes, End = filter.End, Open = TriggerOpenPlaces.States });
+        var steps = new List<TriggerSequenceStep>();
+        if (verb is "modify" or "delete" or "connect" or "disconnect")
+            steps.Add(new TriggerSequenceStep { Order = 1, Step = "frozen" });
+        var rights = RightsEvaluator.Of(_model);
+        if (rights.Uses)
+        {
+            var (answering, _) = rights.Answering(new RightsQuery { Verb = verb, Entity = entity, Caller = Nobody });
+            if (answering.Any(l => rights.RulesOf(l).Any(r => r.Access == RightAccess.Deny && r.Verbs.Contains(verb, StringComparer.Ordinal))))
+                steps.Add(new TriggerSequenceStep { Order = 3, Step = "denies" });
+            if (answering.Any(l => RightsEvaluator.DefaultOf(l) == RightAccess.Deny))
+                steps.Add(new TriggerSequenceStep { Order = 4, Step = "defaults" });
+        }
+
+        var model = _model;
+        steps.AddRange(run.Before.Select(r => Step(8, "before", r)));
+        steps.AddRange(run.Checks.Select(r => Step(9, "checks", r)));
+        if (run.Replace is { } replace)
+            steps.Add(Step(10, "effect", replace));
+        else if (RightsEvaluator.GroupOf(verb) != BuiltInVerbs.ProjectGroup)
+            steps.Add(new TriggerSequenceStep { Order = 10, Step = "effect" });
+        steps.AddRange(run.WithChange.Select(r => Step(11, "with-change", r)));
+        steps.AddRange(run.AfterCommit.Select(r => Step(12, "after-commit", r)));
+        return new TriggerSequence(null, verb, steps);
+
+        TriggerSequenceStep Step(int order, string step, TriggerRun r)
+        {
+            var point = r.Point;
+            return new TriggerSequenceStep
+            {
+                Order = order,
+                Step = step,
+                TriggerPoint = point.Id,
+                Lifecycle = r.Lifecycle?.Id,
+                Type = point.Type,
+                Timing = point.Type == TriggerPointType.Action ? point.Timing : null,
+                Severity = point.Type == TriggerPointType.Check ? point.Severity ?? TriggerSeverity.Error : null,
+                Entities = point.Entities.Count > 0 ? point.Entities : null,
+                Attributes = point.Attributes.Count > 0 ? point.Attributes : null,
+                Ends = point.Ends.Count > 0 ? point.Ends : null,
+                When = point.When is not null ? true : null,
+                Outside = point.Outside ? true : null,
+                Subjects = r.Named is { } named ? SubjectRecords(model, named) : null,
+                ExceptEntities = r.Named is { ExceptEntities.Count: > 0 } except ? except.ExceptEntities : null,
+                NoBypass = point.NoBypass ? true : null,
+            };
+        }
+    }
+
+    /// <summary>A named trigger point's subjects as records, in file order: an entity's id, or a known stereotype's id; an unknown key is left out.</summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="point">The named trigger point.</param>
+    /// <returns>The records.</returns>
+    internal static IReadOnlyList<TriggerPointSubjectRecord> SubjectRecords(ModelSnapshot model, TriggerPoint point) =>
+        [.. point.Subjects.Select(s => s.Entity is { } id ? new TriggerPointSubjectRecord(id)
+                : s.Stereotype is { } key && model.GetStereotype(key) is { } stereotype ? new TriggerPointSubjectRecord(Stereotype: stereotype.Id) : null)
+            .OfType<TriggerPointSubjectRecord>()];
 
     /// <summary>
     /// The states a move enters (decision 10's <c>targets</c>): each target of the transition and its default states, down from it (a compound

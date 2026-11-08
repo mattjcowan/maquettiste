@@ -25,6 +25,148 @@ internal sealed partial class ResolveRun
     // The lifecycles with trigger points, by name then id (model.trigger_lifecycles); empty in a project without trigger points.
     private List<RProcess> _triggerLifecycles = [];
 
+    /// <summary>The kind key of named trigger points, on which <c>model.trigger_points</c> keys.</summary>
+    private const string TriggerPointKind = "k:trigger-point";
+
+    // The named trigger points, by name then id (model.trigger_points); empty in a project without them.
+    private List<RTriggerPoint> _namedTriggerPoints = [];
+
+    /// <summary>
+    /// The named trigger points (decision 33), after the entities and the lifecycles: each with its package, subjects, exceptEntities, places,
+    /// typed <c>when</c>, condition and sets, which read what every entity it covers holds, and its verbs, which wait for <c>model.verbs</c>.
+    /// Each list keys on the point's file and on what decides what it names resolves.
+    /// </summary>
+    private void ResolveNamedTriggerPoints()
+    {
+        var points = NamedTriggerPoints.Of(Model);
+        foreach (var source in points.All)
+        {
+            Ct.ThrowIfCancellationRequested();
+            var displayName = source.DisplayName ?? source.Name;
+            var description = source.Description is { } d ? d.Text ?? (d.File is null ? null : Model.GetDocument(source.Id)?.SidecarText) : null;
+            var point = new RTriggerPoint
+            {
+                Named = true,
+                Id = source.Id,
+                Name = source.Name,
+                DisplayName = displayName,
+                Description = description,
+                Message = description is { Length: > 0 } ? description : displayName.Length > 0 ? displayName : source.Name,
+                Type = ResolutionValues.Kebab(source.Type),
+                Timing = source.Type == TriggerPointType.Action && source.Timing is { } timing ? ResolutionValues.Kebab(timing) : null,
+                Severity = source.Type == TriggerPointType.Check ? ResolutionValues.Kebab(source.Severity ?? TriggerSeverity.Error) : null,
+                Outside = source.Outside,
+                TeamCode = source.TeamCode,
+                NoBypass = source.NoBypass,
+                Package = PackageOf(source.Package),
+            };
+            IReadOnlyList<string> own = [Keys.Element(source.Id)];
+            var deps = DepsOf(point).Element(source.Id);
+            if (source.Package is { } package)
+                deps.Element(package);
+
+            var subjectKeys = new DependencySet(Keys).AddRange(own);
+            var subjects = new List<RTriggerPointSubject>(source.Subjects.Count);
+            for (var i = 0; i < source.Subjects.Count; i++)
+            {
+                var entry = source.Subjects[i];
+                var subject = new RTriggerPointSubject { Id = source.Id + "/subjects/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+                if (entry.Entity is { } entityId)
+                {
+                    subjectKeys.Element(entityId);
+                    subject.Entity = _entities.GetValueOrDefault(entityId) is { Id.Length: > 0 } entity ? entity : null;
+                }
+                else if (entry.Stereotype is { } key && _stereotypeDefinitions.GetValueOrDefault(key) is { } stereotype)
+                {
+                    subjectKeys.Element(stereotype.Id);
+                    subject.Stereotype = stereotype;
+                }
+
+                if (subject.Entity is null && subject.Stereotype is null)
+                    continue;
+                subject.Dependencies = own;
+                subjects.Add(subject);
+            }
+
+            point.Subjects = new RList<RTriggerPointSubject>(subjects, subjectKeys.ToList());
+            point.ExceptEntities = EntitiesNamed(source.ExceptEntities, own);
+            point.Entities = EntitiesNamed(source.Entities, own);
+
+            var attributeKeys = new DependencySet(Keys).AddRange(own);
+            foreach (var id in source.Attributes)
+            {
+                if (Model.TryGetEntry(id, out var holder))
+                    attributeKeys.Element(holder.OwnerId);
+            }
+
+            point.Attributes = new RList<RAttribute>(source.Attributes.Select(id => _byId.GetValueOrDefault(id)).OfType<RAttribute>().Distinct(), attributeKeys.ToList());
+            var endKeys = new DependencySet(Keys).AddRange(own);
+            foreach (var id in source.Ends)
+            {
+                if (Model.TryGetEntry(id, out var relation))
+                    endKeys.Element(relation.OwnerId);
+            }
+
+            point.Ends = new RList<REnd>(source.Ends.Select(id => _byId.GetValueOrDefault(id)).OfType<REnd>().Distinct(), endKeys.ToList());
+
+            // What its expressions read is what the entities it covers hold (decision 12): they and their bases decide it, and the carrier
+            // sets of the stereotypes it names.
+            var scopeKeys = new DependencySet(Keys);
+            foreach (var entity in points.CoveredEntities(source))
+            {
+                foreach (var level in SubjectCoverage.Chain(Model, entity))
+                    scopeKeys.Element(level);
+            }
+
+            foreach (var entry in source.Subjects)
+            {
+                if (entry.Stereotype is { } key)
+                    scopeKeys.Add(SubjectCoverage.CarrierSetKey(key));
+            }
+
+            var scope = scopeKeys.ToList();
+            RExpression? Condition(string siteId, ExprSiteKind kind, DependencySet holderDeps)
+            {
+                if (ExprResolution.Type(Model, source, siteId) is not { } typed)
+                    return null;
+                var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, kind, ExprResolution.ApiColumns(Model, siteId, Model.GetDocument(source.Id)?.Path));
+                var built = ExprResolution.Build(root, m => DeclaredAttribute(m.Id), EnumMemberOf, InStateFill(null, null, holderDeps));
+                foreach (var name in ExprResolution.Names(Model, typed.Typed))
+                    holderDeps.Element(name);
+                holderDeps.AddRange(scope);
+                return built;
+            }
+
+            if (source.When is not null)
+                point.When = Condition(ExprSites.WhenKey(source.Id), ExprSiteKind.Trigger, deps);
+            if (source.Condition is not null)
+                point.Condition = Condition(source.Id, ExprSiteKind.Trigger, deps);
+            if (source.Sets.Count > 0)
+                point.Sets = TriggerSetsOf(points.Body(source), own, scope, Condition);
+
+            var verbs = source.Verbs;
+            _verbKeysNamed.UnionWith(verbs);
+            _verbFills.Add((verbOf, vocabularyKeys) =>
+                point.Verbs = new RList<RVerb>(verbs.Distinct(StringComparer.Ordinal).Select(verbOf).OfType<RVerb>(), [.. own, .. vocabularyKeys]));
+            if (_triggerPoints.TryAdd(source.Id, point))
+            {
+                _namedTriggerPoints.Add(point);
+                Register(point);
+            }
+        }
+    }
+
+    // Entities a named trigger point lists, as written: each resolving one, keyed on the point's file and on each entity's file.
+    private RList<REntity> EntitiesNamed(IReadOnlyList<string> ids, IReadOnlyList<string> own)
+    {
+        if (ids.Count == 0)
+            return new RList<REntity>([], own);
+        var keys = new DependencySet(Keys).AddRange(own);
+        foreach (var id in ids)
+            keys.Element(id);
+        return new RList<REntity>(ids.Select(id => _entities.GetValueOrDefault(id)).OfType<REntity>().Where(e => e.Id.Length > 0).Distinct(), keys.ToList());
+    }
+
     /// <summary>
     /// A lifecycle's trigger points in file order (decisions 1 to 3 and 10), each with its places, its typed <c>when</c>, condition and sets,
     /// and its verbs, which wait for <c>model.verbs</c>; then its points per verb, as the evaluator groups them. <paramref name="condition"/>
@@ -216,11 +358,17 @@ internal sealed partial class ResolveRun
             foreach (var entity in _entities.Values)
             {
                 if (entity.Id.Length > 0)
+                {
                     entity.TriggerLifecycles = new RList<RProcess>([], naming);
+                    entity.TriggerPoints = new RList<RTriggerPoint>([], naming);
+                }
             }
 
             return;
         }
+
+        ResolveNamedTriggerPoints();
+        FinishNamedTriggerPoints(sequences);
 
         _triggerLifecycles = [.. sequences.Lifecycles.Select(l => _processes.GetValueOrDefault(l.Id)).OfType<RProcess>()];
 
@@ -271,6 +419,64 @@ internal sealed partial class ResolveRun
             foreach (var lifecycle in listed)
                 keys.Element(lifecycle.Id);
             r.TriggerLifecycles = new RList<RProcess>(listed, keys.ToList());
+        }
+    }
+
+    /// <summary>
+    /// Each named trigger point's <c>covers</c> and each entity's <c>trigger_points</c> (decisions 33 and 34). Which entities a point covers is
+    /// decided by its file (its subjects, exceptEntities and entities), the referrers of each subject entity, its bases and each covered or
+    /// skipped entity (a new derived entity names its base), and the carrier sets of the stereotypes it names. Which points cover an entity is
+    /// decided by the naming key, the entity and its bases, and those carrier sets; their order by each listed point's name.
+    /// </summary>
+    private void FinishNamedTriggerPoints(TriggerSequences sequences)
+    {
+        var keysNamed = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var source in sequences.Named)
+        {
+            if (!_triggerPoints.TryGetValue(source.Id, out var resolved) || !resolved.Named)
+                continue;
+            var keys = new DependencySet(Keys).Element(source.Id);
+            foreach (var subject in source.Subjects)
+            {
+                if (subject.Entity is { } id && Model.Get<Entity>(id) is { } entity)
+                {
+                    foreach (var level in SubjectCoverage.Chain(Model, entity))
+                        keys.Referrers(level);
+                }
+                else if (subject.Stereotype is { } key)
+                {
+                    keys.Add(SubjectCoverage.CarrierSetKey(key));
+                    keysNamed.Add(key);
+                }
+            }
+
+            foreach (var id in source.ExceptEntities)
+                keys.Referrers(id);
+            var covered = NamedTriggerPoints.Of(Model).CoveredEntities(source);
+            foreach (var entity in covered)
+                keys.Referrers(entity.Id);
+            resolved.Covers = new RList<REntity>(sequences.Covers(source).Select(e => _entities.GetValueOrDefault(e.Id)).OfType<REntity>()
+                .Where(e => e.Id.Length > 0), keys.ToList());
+        }
+
+        List<string> carrierKeys = [TriggerNaming.Key, .. keysNamed.Select(SubjectCoverage.CarrierSetKey)];
+        foreach (var (id, source) in _entitySources)
+        {
+            if (!_entities.TryGetValue(id, out var r) || r.Id.Length == 0)
+                continue;
+            if (!sequences.Named.Any())
+            {
+                r.TriggerPoints = new RList<RTriggerPoint>([], [TriggerNaming.Key]);
+                continue;
+            }
+
+            var keys = new DependencySet(Keys).AddRange(carrierKeys);
+            foreach (var level in SubjectCoverage.Chain(Model, source))
+                keys.Element(level);
+            var listed = sequences.NamedFor(source).Select(p => _triggerPoints.GetValueOrDefault(p.Id)).OfType<RTriggerPoint>().ToList();
+            foreach (var point in listed)
+                keys.Element(point.Id);
+            r.TriggerPoints = new RList<RTriggerPoint>(listed, keys.ToList());
         }
     }
 

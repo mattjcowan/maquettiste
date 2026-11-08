@@ -67,6 +67,10 @@ internal static class VerbRules
                 for (var k = 0; k < named.Verbs.Count; k++)
                     CheckUse(context.Model, named.Verbs[k], Ptr.At("/verbs", k), named.Id, $"Named right '{named.Name}'", report);
                 break;
+            case TriggerPoint namedPoint:
+                for (var k = 0; k < namedPoint.Verbs.Count; k++)
+                    CheckUse(context.Model, namedPoint.Verbs[k], Ptr.At("/verbs", k), namedPoint.Id, $"Trigger point '{namedPoint.Name}'", report);
+                break;
         }
     }
 

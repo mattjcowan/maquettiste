@@ -5,7 +5,9 @@ namespace Maquettiste.Engine.Validation;
 
 /// <summary>
 /// The trigger point rules (trigger-points-design.md section 6): MQ8101 to MQ8107 on a process's trigger points, and MQ3001 for a trigger
-/// point named like another of its lifecycle or like a guard of its process. A process without trigger points gets no finding.
+/// point named like another of its lifecycle or like a guard of its process. A process without trigger points gets no finding. A named trigger
+/// point (decision 33) takes the same rules, its covered entities standing for a lifecycle's governed ones, with MQ2003 and MQ9211 on its
+/// subjects; its name is unique in its package through the scoped names (MQ3001).
 /// </summary>
 internal static class TriggerRules
 {
@@ -20,6 +22,12 @@ internal static class TriggerRules
 
     public static void Check(ValidationContext context, Element element, Report report)
     {
+        if (element is TriggerPoint named)
+        {
+            CheckNamed(context.Model, named, report);
+            return;
+        }
+
         if (element is not Process { TriggerPoints.Count: > 0 } process)
             return;
         var model = context.Model;
@@ -40,7 +48,7 @@ internal static class TriggerRules
         {
             var point = process.TriggerPoints[i];
             var at = Ptr.At("/triggerPoints", i);
-            CheckShape(model, process, point, at, governed, report);
+            CheckShape(model, point, at, () => Covers(model, point, governed), report);
             CheckPlaces(model, process, point, at, governed, states, transitions, report);
             CheckRuns(process, point, at, report);
         }
@@ -70,7 +78,7 @@ internal static class TriggerRules
 
     // ---- MQ8101, MQ8105, MQ8106 ----
 
-    private static void CheckShape(ModelSnapshot model, Process process, ProcessTriggerPoint point, string at, IReadOnlyList<Entity> governed, Report report)
+    private static void CheckShape(ModelSnapshot model, ProcessTriggerPoint point, string at, Func<IReadOnlyList<Entity>> covers, Report report)
     {
         var name = point.Name;
         if (point.Type == TriggerPointType.Action && point.Timing is null)
@@ -95,12 +103,19 @@ internal static class TriggerRules
             var replaced = new HashSet<string>(StringComparer.Ordinal);
             foreach (var lifecycle in model.All<Process>().Where(p => p.Use == ProcessUse.Lifecycle))
             {
-                var theirs = ReferenceEquals(lifecycle, process) ? governed : Governed(model, lifecycle);
-                foreach (var replace in lifecycle.TriggerPoints.Where(t => t.Type == TriggerPointType.Replace && t.Verbs.Contains("delete", StringComparer.Ordinal)))
+                var replaces = lifecycle.TriggerPoints.Where(t => t.Type == TriggerPointType.Replace && t.Verbs.Contains("delete", StringComparer.Ordinal)).ToList();
+                if (replaces.Count == 0)
+                    continue;
+                var theirs = Governed(model, lifecycle);
+                foreach (var replace in replaces)
                     replaced.UnionWith(Covers(model, replace, theirs).Select(e => e.Id));
             }
 
-            if (Covers(model, point, governed).Any(e => !replaced.Contains(e.Id)))
+            // A named replace on delete covers its entities too (decision 33).
+            var named = NamedTriggerPoints.Of(model);
+            foreach (var replace in named.All.Where(t => t.Type == TriggerPointType.Replace && t.Verbs.Contains("delete", StringComparer.Ordinal)))
+                replaced.UnionWith(named.Covers(replace).Select(e => e.Id));
+            if (covers().Any(e => !replaced.Contains(e.Id)))
                 report.Add("MQ8101", $"With-change action '{name}' sets values on delete, but after a built-in delete there is no object to set; add a replace on delete that "
                     + "covers its entities, or remove the sets.", at + "/sets", point.Id);
         }
@@ -224,6 +239,117 @@ internal static class TriggerRules
             return byName != 0 ? byName < 0 : string.CompareOrdinal(a.Id, b.Id) < 0;
         }
     }
+
+    // ---- named trigger points (decision 33) ----
+
+    private static void CheckNamed(ModelSnapshot model, TriggerPoint named, Report report)
+    {
+        var points = NamedTriggerPoints.Of(model);
+        var point = points.Body(named);
+        var name = named.Name;
+        CheckShape(model, point, "", () => points.Covers(named), report);
+
+        // MQ2003 and MQ9211: a subject's stereotype is a known key of a stereotype that applies to entities.
+        for (var i = 0; i < named.Subjects.Count; i++)
+        {
+            if (named.Subjects[i].Stereotype is not { } key)
+                continue;
+            var pointer = Ptr.At("/subjects", i) + "/stereotype";
+            if (model.GetStereotype(key) is not { } stereotype)
+                report.Add("MQ2003", $"Stereotype '{key}' is not defined in model/vocabularies/stereotypes.", pointer, named.Id);
+            else if (!ProcessRules.AppliesToEntities(stereotype))
+                report.Add("MQ9211", $"Subject {i + 1} of trigger point '{name}' names stereotype '{key}', which applies to {string.Join(", ", stereotype.AppliesTo)}, not to entities, so no "
+                    + "entity can carry it; name a stereotype entities carry, or an entity.", pointer, named.Id);
+        }
+
+        // MQ8102: what its verbs allow, and entities and exceptEntities within what its subjects cover.
+        if (point.Attributes.Count > 0 && (point.Ends.Count > 0 || !point.Verbs.All(v => v is "read" or "modify")))
+            report.Add("MQ8102", $"Trigger point '{name}' names attributes beside {(point.Ends.Count > 0 ? "ends" : "a verb other than read and modify")}; remove them.", "/attributes", named.Id);
+        if (point.Ends.Count > 0 && !point.Verbs.All(LinkVerbs.Contains))
+            report.Add("MQ8102", $"Trigger point '{name}' names ends beside a verb that cannot act on a link (any but connect, disconnect, read, modify, freeze and thaw); remove them.",
+                "/ends", named.Id);
+        for (var k = 0; k < named.Entities.Count; k++)
+        {
+            if (model.Get<Entity>(named.Entities[k]) is not null && !points.SubjectsCover(named, named.Entities[k]))
+                report.Add("MQ8102", $"Trigger point '{name}' names '{named.Entities[k]}' in entities, which its subjects do not cover; remove the entry.", Ptr.At("/entities", k), named.Id);
+        }
+
+        for (var k = 0; k < named.ExceptEntities.Count; k++)
+        {
+            if (model.Get<Entity>(named.ExceptEntities[k]) is not null && !points.SubjectsCover(named, named.ExceptEntities[k]))
+                report.Add("MQ8102", $"Trigger point '{name}' names '{named.ExceptEntities[k]}' in exceptEntities, which no subject covers; remove the entry.",
+                    Ptr.At("/exceptEntities", k), named.Id);
+        }
+
+        var (attributes, navigations) = ExprSites.NamedTriggerMembers(model, named);
+        var held = attributes.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+        var reached = navigations.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
+        for (var k = 0; k < point.Attributes.Count; k++)
+        {
+            if (!held.Contains(point.Attributes[k]))
+                report.Add("MQ8102", $"Trigger point '{name}' names '{point.Attributes[k]}' in attributes, which not every entity it covers holds under one id; remove the entry.",
+                    Ptr.At("/attributes", k), named.Id);
+        }
+
+        for (var k = 0; k < point.Ends.Count; k++)
+        {
+            if (!reached.Contains(point.Ends[k]))
+                report.Add("MQ8102", $"Trigger point '{name}' names '{point.Ends[k]}' in ends, which is not an end every entity it covers holds; remove the entry.", Ptr.At("/ends", k), named.Id);
+        }
+
+        for (var j = 0; j < point.Sets.Count; j++)
+        {
+            if (!held.Contains(point.Sets[j].Attribute))
+                report.Add("MQ8102", $"Trigger point '{name}' sets '{point.Sets[j].Attribute}', which not every entity it covers holds under one id; remove the set.",
+                    Ptr.At("/sets", j) + "/attribute", point.Sets[j].Id);
+        }
+
+        if (point.Type == TriggerPointType.Replace)
+        {
+            for (var k = 0; k < point.Verbs.Count; k++)
+            {
+                if (!Replaceable.Contains(point.Verbs[k]))
+                    report.Add("MQ8103", $"Replace '{name}' names verb '{point.Verbs[k]}', whose effect cannot be replaced; only delete, disconnect, copy and revise allow it. Make it an action.",
+                        Ptr.At("/verbs", k), named.Id);
+            }
+
+            CheckNamedReplace(model, points, named, report);
+        }
+
+        // MQ8107: verbs no input can do yet. Other verbs may run on any covered object, with or without a lifecycle.
+        if (point.Verbs.Count > 0 && point.Verbs.All(NotYet.Contains))
+            report.Add("MQ8107", $"Trigger point '{name}' can never run: no input can do its verbs yet. Remove it.", "/verbs", named.Id);
+    }
+
+    // MQ8104 for a named replace: against each named replace that sorts before it by name then id, and against every lifecycle's replace, so a
+    // clash is reported once, by the named point.
+    private static void CheckNamedReplace(ModelSnapshot model, NamedTriggerPoints points, TriggerPoint named, Report report)
+    {
+        var covers = points.Covers(named);
+        if (covers.Count == 0)
+            return;
+        var others = points.All.TakeWhile(p => !ReferenceEquals(p, named)).Where(p => p.Type == TriggerPointType.Replace)
+            .Select(p => (Where: "named trigger point '" + p.Name + "'", Verbs: p.Verbs, Covers: points.Covers(p)))
+            .Concat(model.All<Process>().Where(p => p.Use == ProcessUse.Lifecycle && p.TriggerPoints.Any(t => t.Type == TriggerPointType.Replace))
+                .OrderBy(p => p.Name, StringComparer.Ordinal).ThenBy(p => p.Id, StringComparer.Ordinal)
+                .SelectMany(p =>
+                {
+                    var governed = Governed(model, p);
+                    return p.TriggerPoints.Where(t => t.Type == TriggerPointType.Replace)
+                        .Select(t => (Where: "trigger point '" + t.Name + "' of lifecycle '" + p.Name + "'", Verbs: t.Verbs, Covers: Covers(model, t, governed)));
+                }));
+        foreach (var other in others)
+        {
+            var verb = named.Verbs.FirstOrDefault(v => other.Verbs.Contains(v, StringComparer.Ordinal));
+            var entity = verb is null ? null : covers.FirstOrDefault(e => other.Covers.Any(x => string.Equals(x.Id, e.Id, StringComparison.Ordinal)));
+            if (entity is null)
+                continue;
+            report.Add("MQ8104", $"Replace '{named.Name}' and {other.Where} can both apply to {verb} on '{entity.Name}'; at most one replace applies to a verb on an entity, "
+                + "whatever their states and when. Narrow one with entities, or a named one with exceptEntities.", "", named.Id);
+            return;
+        }
+    }
+
 
     // ---- MQ8107 ----
 

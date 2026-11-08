@@ -209,6 +209,7 @@ internal sealed partial class ResolveRun
             Rights = new RList<RRight>(_rightOrder, [RightKind]),
             RightsLifecycles = new RList<RProcess>(_rightsLifecycles, [RightsNaming.Key]),
             TriggerLifecycles = new RList<RProcess>(_triggerLifecycles, [TriggerNaming.Key]),
+            TriggerPoints = new RList<RTriggerPoint>(_namedTriggerPoints, [TriggerPointKind]),
             Freezing = RFreezing.Of(Model),
             Operations = new RList<ROperation>(_operationOrder, [OperationKind]),
             CustomElements = new RList<RCustom>(_customOrder, [CustomKind]),

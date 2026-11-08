@@ -906,8 +906,23 @@ internal static class ModelIndexer
             },
             StepCount: element is Scenario steps ? steps.Steps.Count : null,
             Effect: element is Operation effect ? (effect.Effect == OperationEffect.Change ? "change" : "read") : null,
-            Type: element is Custom typed ? typed.Type : null,
-            Subjects: element is Process { Subjects.Count: > 1 } several && EntityEntries(several) is { Count: > 1 } named ? named : null,
+            Type: element switch
+            {
+                Custom typed => typed.Type,
+                TriggerPoint { Type: var pointType } => pointType switch
+                {
+                    TriggerPointType.Check => "check",
+                    TriggerPointType.Action => "action",
+                    _ => "replace",
+                },
+                _ => null,
+            },
+            Subjects: element switch
+            {
+                Process { Subjects.Count: > 1 } several when EntityEntries(several) is { Count: > 1 } named => named,
+                TriggerPoint point when point.Subjects.Select(s => s.Entity).OfType<string>().ToList() is { Count: > 0 } covering => covering,
+                _ => null,
+            },
             Actors: actors,
             MemberOf: element is Actor { MemberOf.Count: > 0 } member ? [.. member.MemberOf] : null,
             Relative: element is Actor { Relative: { } relative } ? relative.Form : null,
@@ -917,6 +932,7 @@ internal static class ModelIndexer
             {
                 Process verbProcess => VerbsOf(verbProcess),
                 Right namedRight => SortedKeys(namedRight.Verbs),
+                TriggerPoint namedPoint => SortedKeys(namedPoint.Verbs),
                 _ => null,
             },
             Rights: element is Process { Rights.Count: > 0 } withRights ? withRights.Rights.Count : null,
@@ -937,12 +953,22 @@ internal static class ModelIndexer
     /// <returns>The rows.</returns>
     internal static IReadOnlyList<ElementSummary> WithSubjectCoverage(ModelSnapshot model, ImmutableArray<ElementSummary> rows)
     {
-        if (!Processes.SubjectCoverage.Of(model).Any)
+        var namedPoints = Processes.NamedTriggerPoints.Of(model);
+        if (!Processes.SubjectCoverage.Of(model).Any && !namedPoints.All.Any(p => p.Subjects.Any(s => s.Stereotype is not null)))
             return rows;
         var result = rows.ToBuilder();
         for (var i = 0; i < result.Count; i++)
         {
             var row = result[i];
+            // A named trigger point's row names the stereotypes its subjects name, by id; an unknown key is left out (section 9, part 2).
+            if (row.Kind == "trigger-point" && model.Get<TriggerPoint>(row.Id) is { } point)
+            {
+                var ids = point.Subjects.Select(s => s.Stereotype is { } key ? model.GetStereotype(key)?.Id : null).OfType<string>().ToList();
+                if (ids.Count > 0)
+                    result[i] = row with { SubjectStereotypes = ids };
+                continue;
+            }
+
             if (row.Kind != "process" || model.Get<Process>(row.Id) is not { } process || !Processes.SubjectCoverage.NamesStereotype(process))
                 continue;
             var stereotypes = new List<string>();

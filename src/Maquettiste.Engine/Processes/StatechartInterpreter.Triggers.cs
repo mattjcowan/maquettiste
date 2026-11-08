@@ -308,7 +308,7 @@ public sealed partial class StatechartInterpreter
 
     // A trace entry of a trigger point (decision 28).
     private static TriggerPointRun Entry(TriggerRun run, TriggerOutcome outcome, SortedDictionary<string, (string Name, JsonElement Value)>? sets = null) =>
-        new(run.Point.Id, run.Lifecycle.Id, run.Verb, run.Point.Type, run.Point.Type == TriggerPointType.Action ? run.Point.Timing : null, outcome)
+        new(run.Point.Id, run.Lifecycle?.Id, run.Verb, run.Point.Type, run.Point.Type == TriggerPointType.Action ? run.Point.Timing : null, outcome)
         {
             Outside = run.Point.Outside,
             Sets = sets is { Count: > 0 } ? sets.ToDictionary(p => p.Key, p => p.Value.Value, StringComparer.Ordinal) : null,
@@ -465,9 +465,12 @@ public sealed partial class StatechartInterpreter
     // as a right's condition reads them (rights-design.md decision 6).
     private Site? TriggerSite(TriggerRun run, string key, JsonElement row, IReadOnlyDictionary<string, JsonElement> values, Prepared prepared)
     {
-        var acting = string.Equals(run.Lifecycle.Id, _root.Chart.Process.Id, StringComparison.Ordinal);
+        // A named trigger point has no lifecycle session yet (trigger-points-design.md part 2, simulation).
+        if (run.Lifecycle is not { } lifecycle)
+            return null;
+        var acting = string.Equals(lifecycle.Id, _root.Chart.Process.Id, StringComparison.Ordinal);
         var triggers = _options.Triggers!;
-        var session = acting ? Session(_root.Chart) : triggers.Session(run.Lifecycle);
+        var session = acting ? Session(_root.Chart) : triggers.Session(lifecycle);
         if (session is null || !session.Lowered.TryGetValue(key, out var lowered))
             return null;
         if (acting)
@@ -477,8 +480,8 @@ public sealed partial class StatechartInterpreter
         }
 
         var running = LiveStates();
-        var old = prepared.Old.ValueKind == JsonValueKind.Null ? prepared.Old : triggers.Row(run.Lifecycle, key, prepared.Old, prepared.OldValues, running);
-        return new Site(session, lowered, NoEvent, triggers.Row(run.Lifecycle, key, row, values, running),
-            lowered.ReadsRunning ? triggers.Running(run.Lifecycle) : null, Identity(), old);
+        var old = prepared.Old.ValueKind == JsonValueKind.Null ? prepared.Old : triggers.Row(lifecycle, key, prepared.Old, prepared.OldValues, running);
+        return new Site(session, lowered, NoEvent, triggers.Row(lifecycle, key, row, values, running),
+            lowered.ReadsRunning ? triggers.Running(lifecycle) : null, Identity(), old);
     }
 }
