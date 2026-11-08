@@ -51,5 +51,11 @@ public static partial class Actors
 
         /// <summary>Event retire of Document.</summary>
         public static IReadOnlyList<string> DocumentRetire { get; } = [Actors.Author];
+
+        /// <summary>Event clear of Legal.</summary>
+        public static IReadOnlyList<string> LegalClear { get; } = [];
+
+        /// <summary>Event reopen of Legal.</summary>
+        public static IReadOnlyList<string> LegalReopen { get; } = [];
     }
 }

@@ -24,9 +24,11 @@ public sealed partial class HandlerRegistry
 {
     /// <summary>Creates the registry over the processes' command handlers.</summary>
     /// <param name="document">The command handler of Document.</param>
-    public HandlerRegistry(DocumentCommandHandler document)
+    /// <param name="legal">The command handler of Legal.</param>
+    public HandlerRegistry(DocumentCommandHandler document, LegalCommandHandler legal)
     {
         ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(legal);
         All =
         [
             new HandlerRegistration<DocumentStartControl>(Commands.DocumentStartControl, c => c.Envelope, document),
@@ -35,6 +37,11 @@ public sealed partial class HandlerRegistry
             new HandlerRegistration<DocumentRetireCommand>(Commands.DocumentRetireCommand, c => c.Envelope, document),
             new HandlerRegistration<DocumentInvokeResultControl>(Commands.DocumentInvokeResultControl, c => c.Envelope, document),
             new HandlerRegistration<DocumentTimersDueControl>(Commands.DocumentTimersDueControl, c => c.Envelope, document),
+            new HandlerRegistration<LegalStartControl>(Commands.LegalStartControl, c => c.Envelope, legal),
+            new HandlerRegistration<LegalClearCommand>(Commands.LegalClearCommand, c => c.Envelope, legal),
+            new HandlerRegistration<LegalReopenCommand>(Commands.LegalReopenCommand, c => c.Envelope, legal),
+            new HandlerRegistration<LegalInvokeResultControl>(Commands.LegalInvokeResultControl, c => c.Envelope, legal),
+            new HandlerRegistration<LegalTimersDueControl>(Commands.LegalTimersDueControl, c => c.Envelope, legal),
         ];
     }
 
@@ -50,6 +57,7 @@ public sealed partial class HandlerRegistry
     {
         ArgumentNullException.ThrowIfNull(registrar);
         registrar.Add(services => new DocumentCommandHandler(Resolve<DocumentMachine>(services), Resolve<IDocumentStore>(services)));
+        registrar.Add(services => new LegalCommandHandler(Resolve<LegalMachine>(services), Resolve<ILegalStore>(services)));
     }
 
     // A service provider looks services up by a type token, so this is the one place the registry names a type as a value.
@@ -77,5 +85,20 @@ public sealed partial class HandlerRegistry
 
         /// <summary>The due timers of an instance of Document.</summary>
         public static CommandDescriptor DocumentTimersDueControl { get; } = new("Document:timers-due", "Document", ":time", [], false);
+
+        /// <summary>Starts an instance of Legal.</summary>
+        public static CommandDescriptor LegalStartControl { get; } = new("Legal:start", "Legal", ":start", [], false);
+
+        /// <summary>Event clear of Legal.</summary>
+        public static CommandDescriptor LegalClearCommand { get; } = new("Legal.clear", "Legal", "clear", Actors.Events.LegalClear, false);
+
+        /// <summary>Event reopen of Legal.</summary>
+        public static CommandDescriptor LegalReopenCommand { get; } = new("Legal.reopen", "Legal", "reopen", Actors.Events.LegalReopen, false);
+
+        /// <summary>An invoke result of Legal.</summary>
+        public static CommandDescriptor LegalInvokeResultControl { get; } = new("Legal:invoke-result", "Legal", ":invoke-result", [], false);
+
+        /// <summary>The due timers of an instance of Legal.</summary>
+        public static CommandDescriptor LegalTimersDueControl { get; } = new("Legal:timers-due", "Legal", ":time", [], false);
     }
 }

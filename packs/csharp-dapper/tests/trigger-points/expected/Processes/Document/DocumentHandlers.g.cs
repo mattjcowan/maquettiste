@@ -12,7 +12,7 @@ using App.Model.Runtime;
 namespace App.Model.Docs;
 
 /// <summary>The guards and actions of process Document.</summary>
-public sealed partial class DocumentHandlers : IStatechartBehaviour<DocumentContext>
+public sealed partial class DocumentHandlers : IStatechartBehaviour<DocumentContext>, ILifecycleStates<DocumentContext>
 {
     /// <inheritdoc/>
     public bool Guard(string guard, StatechartCall<DocumentContext> call) => guard switch
@@ -28,6 +28,18 @@ public sealed partial class DocumentHandlers : IStatechartBehaviour<DocumentCont
 
     /// <inheritdoc/>
     public IReadOnlyList<string> Changed(DocumentContext before, DocumentContext after) => DocumentContext.Changed(before, after);
+
+    /// <inheritdoc/>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> StatesIn(StatechartCall<DocumentContext> call)
+    {
+        var states = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        if (StatesInLegal(call) is { } inLegal)
+            states["Legal"] = inLegal.Count > 0 ? inLegal : ["Pending"];
+        return states;
+    }
+
+    /// <summary>The object's active state paths in lifecycle Legal, which could say no to, or whose trigger points run on, a verb an event of Document names; none means its initial state, and null that Legal doesn't govern the object, so it isn't asked (implemented in DocumentHandlers.cs).</summary>
+    private partial IReadOnlyList<string>? StatesInLegal(StatechartCall<DocumentContext> call);
 }
 
 /// <summary>Handles the commands of process Document: loads the instance through the store, runs the machine and saves.</summary>

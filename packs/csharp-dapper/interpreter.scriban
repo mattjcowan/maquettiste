@@ -41,8 +41,12 @@ refusals = rights || triggers
 ids = rights ? "Rights?.Id" : "Id"
 verb_type = "global::" + base_ns + ".Verb"
 verb_keys = {}
+object_verbs = []
 for v in model.verbs
   verb_keys[v.key] = true
+  if v.group == "object" || v.group == "link" || v.group == "project"
+    object_verbs[object_verbs.size] = verb_type + "." + (pascal v.key)
+  end
 end
 # The check that an acting actor taken from the object is the caller, appended to each actor check.
 func resolves(snapshot, actor, envelope)
@@ -441,12 +445,13 @@ public sealed class ChartDefinition
     /// <param name="ids">The ids a refusal names, by "event:", "invoke:" or "guard:" and the name.</param>
 {{- end }}
 {{- if triggers }}
-    /// <param name="triggerSteps">The step methods of the lifecycle's trigger points, or null when it has none.</param>
+    /// <param name="triggerSteps">The step methods of the trigger points that run in the process: its lifecycle's own first, when it has points, then
+    /// those of the other lifecycles that govern its object with points on a verb its events name, by name; none when no trigger point runs.</param>
 {{- end }}
     public ChartDefinition(string processId, string processName, StateDefinition[] states, TransitionDefinition[] transitions, EventDefinition[] events,
         ActionDefinition[] actions, InvokeDefinition[] invokes, GateDefinition[] gates, IReadOnlyDictionary<string, string>? actorIds = null{{ if rights }},
         {{ rights_ns }}.ProcessRights? rights = null{{ end }}{{ if triggers && !rights }}, IReadOnlyDictionary<string, string>? ids = null{{ end }}{{ if triggers }},
-        {{ rights_ns }}.ITriggerPointSteps? triggerSteps = null{{ end }})
+        IReadOnlyList<{{ rights_ns }}.ITriggerPointSteps>? triggerSteps = null{{ end }})
     {
         _actorIds = actorIds ?? new Dictionary<string, string>(StringComparer.Ordinal);
 {{- if rights }}
@@ -456,7 +461,7 @@ public sealed class ChartDefinition
         _ids = ids ?? new Dictionary<string, string>(StringComparer.Ordinal);
 {{- end }}
 {{- if triggers }}
-        TriggerSteps = triggerSteps;
+        TriggerSteps = triggerSteps ?? [];
 {{- end }}
         ArgumentNullException.ThrowIfNull(states);
         ArgumentNullException.ThrowIfNull(transitions);
@@ -535,8 +540,8 @@ public sealed class ChartDefinition
 {{- end }}
 {{- if triggers }}
 
-    /// <summary>The step methods of the lifecycle's trigger points, or null when it has none (trigger-points-design.md decision 30).</summary>
-    public {{ rights_ns }}.ITriggerPointSteps? TriggerSteps { get; }
+    /// <summary>The step methods of the trigger points that run in the process, its lifecycle's own first (trigger-points-design.md decisions 11 and 30).</summary>
+    public IReadOnlyList<{{ rights_ns }}.ITriggerPointSteps> TriggerSteps { get; }
 {{- end }}
 {{- if triggers && !rights }}
 
@@ -777,9 +782,10 @@ public interface IActorResolver<TContext>
 }
 {{- end }}
 
-{{ if rights -}}
+{{ if rights || triggers -}}
 /// <summary>
-/// The object's states in the other lifecycles that could say no to a verb an event names (rights-design.md decision 29): generated code
+/// The object's states in the other lifecycles that could say no to a verb an event names (rights-design.md decision 29{{ if triggers }}), or whose
+/// trigger points run on it (trigger-points-design.md decision 11{{ end }}): generated code
 /// can't read another lifecycle's state for the same object, so a process's Handlers class implements this when one could. A lifecycle
 /// missing from the answer, or with no states, reads as its initial state.
 /// </summary>
@@ -1616,6 +1622,9 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         {
             public Verb? Verb { get; } = verb;
 
+            // The lifecycles whose points the move's verb runs (decision 11), its own first.
+            public IReadOnlyList<{{ rights_ns }}.ITriggerPointSteps> Lifecycles { get; set; } = [];
+
             public {{ rights_ns }}.TriggerPointCall Call { get; } = call;
 
             public {{ rights_ns }}.TriggerPointOutcome? Sign { get; set; }
@@ -1632,23 +1641,59 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         private readonly List<{{ rights_ns }}.TriggerPointMessage> _messages = [];
         private ({{ rights_ns }}.TriggerPointOutcome Outcome, {{ rights_ns }}.TriggerPointCall Call)? _task;
 
-        private {{ rights_ns }}.ITriggerPointSteps? Steps => _chart.TriggerSteps;
+        // The lifecycle's own steps, which moves, signatures and tasks run (decision 11); null when it has no points.
+        private {{ rights_ns }}.ITriggerPointSteps? Steps => _chart.TriggerSteps.FirstOrDefault(s => string.Equals(s.Lifecycle, _chart.ProcessName, StringComparison.Ordinal));
 
         // The verb a transition does: its event's, else its own (automatic moves). A move with no verb runs no trigger points.
         private Verb? VerbOf(TransitionDefinition t) => t.Trigger == TriggerKind.Event ? _chart.Event(t.Key)?.Verb : t.Verb;
 
-        private Dictionary<string, IReadOnlyList<string>> States() =>
-            new(StringComparer.Ordinal) { [_chart.ProcessName] = [.. Leaves().Select(s => s.Path)] };
+        // Whether a verb is an object, link or own verb, whose trigger points every lifecycle that governs the object runs (decision 11).
+        private static bool SpeaksOfObject(Verb verb) => {{ object_verbs.size > 0 ? ("verb is " + (object_verbs | array.join " or ")) : "false" }};
 
-        private {{ rights_ns }}.TriggerPointCall NewCall({{ rights_ns }}.ITriggerPointSteps steps, Verb verb) => new()
+        // The object's states: in this lifecycle the given ones; for an object, link or own verb, in each other lifecycle with points the
+        // ones the behaviour gives (ILifecycleStates), a lifecycle left out being one that doesn't govern the object.
+        private Dictionary<string, IReadOnlyList<string>> States(Verb? verb, IReadOnlyList<string> own)
+        {
+            var states = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { [_chart.ProcessName] = own };
+            if (verb is { } v && SpeaksOfObject(v) && _chart.TriggerSteps.Any(s => !string.Equals(s.Lifecycle, _chart.ProcessName, StringComparison.Ordinal))
+                && _owner._behaviour is ILifecycleStates<TContext> others)
+            {
+                foreach (var (lifecycle, paths) in others.StatesIn(Call()))
+                {
+                    if (!string.Equals(lifecycle, _chart.ProcessName, StringComparison.Ordinal))
+                        states[lifecycle] = paths;
+                }
+            }
+
+            return states;
+        }
+
+        // The active leaves, which a task's end and the moments after a move read.
+        private List<string> Live() => [.. Leaves().Select(s => s.Path)];
+
+        // The states a move leaves (decision 10's states): the active states inside its source, else the source itself. A compound state that
+        // contains the source counts through InState; other parallel regions don't count.
+        private List<string> SourceStates(TransitionDefinition t)
+        {
+            var inside = Leaves().Where(s => s == t.Source || t.Source.IsRoot || s.Path.StartsWith(t.Source.Path + ".", StringComparison.Ordinal)).Select(s => s.Path).ToList();
+            return inside.Count > 0 ? inside : [t.Source.Path];
+        }
+
+        // The lifecycles whose points a verb runs (decision 11), in run order: this lifecycle; and for an object, link or own verb each other
+        // lifecycle with points on it that governs the object, by name. Only those with points on the verb are listed.
+        private List<{{ rights_ns }}.ITriggerPointSteps> Lifecycles(Verb verb, IReadOnlyDictionary<string, IReadOnlyList<string>> states) =>
+            [.. _chart.TriggerSteps.Where(s => s.Speaks(verb)
+                && (string.Equals(s.Lifecycle, _chart.ProcessName, StringComparison.Ordinal) || (SpeaksOfObject(verb) && states.ContainsKey(s.Lifecycle))))];
+
+        private {{ rights_ns }}.TriggerPointCall NewCall(Verb verb, IReadOnlyDictionary<string, IReadOnlyList<string>> states) => new()
         {
             Verb = verb,
             Lifecycle = _chart.ProcessName,
-            Entity = steps.Subject,
+            Entity = Steps?.Subject,
             Instance = _snapshot.Instance,
             Envelope = _envelope,
             Held = {{ rights ? "Held" : "[]" }},
-            States = States(),
+            States = states,
             Event = Event.Name,
             Payload = Event.Payload,
         };
@@ -1659,18 +1704,18 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         public string? Checks(TransitionDefinition t)
         {
             _candidates.Remove(t);
-            if (Steps is not { } steps)
+            if (_chart.TriggerSteps.Count == 0)
                 return null;
             var verb = VerbOf(t);
-            var call = NewCall(steps, verb ?? default) with { Entered = EnteredBy(t), Transition = t.Id };
+            var call = NewCall(verb ?? default, States(verb, SourceStates(t))) with { Entered = EnteredBy(t), Transition = t.Id };
             var candidate = new Candidate(verb, call);
             var completes = true;
             if (t.Gate is { } gate)
             {
 {{- if verb_keys["sign"] }}
-                if (steps.Speaks({{ verb_type }}.Sign))
+                if (Steps is { } own && own.Speaks({{ verb_type }}.Sign))
                 {
-                    candidate.Sign = Ready(steps, {{ verb_type }}.Sign, call with { Verb = {{ verb_type }}.Sign });
+                    candidate.Sign = Ready([own], {{ verb_type }}.Sign, call with { Verb = {{ verb_type }}.Sign });
                     if (!candidate.Sign.Passed)
                         return RefuseSignature(t, gate, candidate.Sign);
                 }
@@ -1679,9 +1724,10 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                 completes = WouldComplete(t, gate);
             }
 
-            if (completes && verb is { } v && steps.Speaks(v))
+            if (completes && verb is { } v && Lifecycles(v, call.States) is { Count: > 0 } lifecycles)
             {
-                candidate.Move = Ready(steps, v, call);
+                candidate.Lifecycles = lifecycles;
+                candidate.Move = Ready(lifecycles, v, call);
                 if (!candidate.Move.Passed)
                     return t.Gate is { } g ? RefuseSignature(t, g, candidate.Move) : candidate.Move.RefusedBy;
             }
@@ -1690,11 +1736,18 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             return null;
         }
 
-        private static {{ rights_ns }}.TriggerPointOutcome Ready({{ rights_ns }}.ITriggerPointSteps steps, Verb verb, {{ rights_ns }}.TriggerPointCall call)
+        // Before actions, then checks, across the lifecycles (decision 19): each moment in every lifecycle before the next.
+        private static {{ rights_ns }}.TriggerPointOutcome Ready(IReadOnlyList<{{ rights_ns }}.ITriggerPointSteps> lifecycles, Verb verb, {{ rights_ns }}.TriggerPointCall call)
         {
             var outcome = new {{ rights_ns }}.TriggerPointOutcome();
-            steps.Before(verb, call, outcome);
-            steps.Check(verb, call, outcome);
+            foreach (var steps in lifecycles)
+                steps.Before(verb, call, outcome);
+            foreach (var steps in lifecycles)
+            {
+                if (outcome.Passed)
+                    steps.Check(verb, call, outcome);
+            }
+
             return outcome;
         }
 
@@ -1746,7 +1799,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             var complete = Sign(t, gate);
 {{- if verb_keys["sign"] }}
             if (candidate.Sign is not null)
-                Change(steps, {{ verb_type }}.Sign, [candidate.Call with { Verb = {{ verb_type }}.Sign }]);
+                Change([steps], {{ verb_type }}.Sign, [candidate.Call with { Verb = {{ verb_type }}.Sign }]);
 {{- end }}
             return complete;
         }
@@ -1757,8 +1810,8 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 {{- if verb_keys["complete"] }}
             if (Steps is not { } steps || !steps.Speaks({{ verb_type }}.Complete))
                 return null;
-            var call = NewCall(steps, {{ verb_type }}.Complete);
-            var outcome = Ready(steps, {{ verb_type }}.Complete, call);
+            var call = NewCall({{ verb_type }}.Complete, States(null, Live()));
+            var outcome = Ready([steps], {{ verb_type }}.Complete, call);
             _task = (outcome, call);
             return outcome;
 {{- else }}
@@ -1784,7 +1837,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 
             Write(task.Outcome, null);
 {{- if verb_keys["complete"] }}
-            Change(steps, {{ verb_type }}.Complete, [task.Call]);
+            Change([steps], {{ verb_type }}.Complete, [task.Call]);
 {{- end }}
         }
 
@@ -1811,23 +1864,31 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         // After the entry actions: the taken transitions' with-change points, once per point, then their after-commit points queued.
         private void Changed(List<Candidate> taken)
         {
-            if (Steps is not { } steps)
-                return;
-            foreach (var group in taken.Where(c => c.Verb is { } v && steps.Speaks(v)).GroupBy(c => c.Verb!.Value))
-                Change(steps, group.Key, [.. group.Select(c => c.Call)]);
+            foreach (var group in taken.Where(c => c.Verb is not null && c.Lifecycles.Count > 0).GroupBy(c => c.Verb!.Value))
+                Change(group.First().Lifecycles, group.Key, [.. group.Select(c => c.Call)]);
         }
 
-        // A verb's with-change points over the object after it, then its after-commit points queued, each point once.
-        private void Change({{ rights_ns }}.ITriggerPointSteps steps, Verb verb, IReadOnlyList<{{ rights_ns }}.TriggerPointCall> calls)
+        // A verb's with-change points over the object after it, then its after-commit points queued, each point once, the lifecycles in run
+        // order within each moment (decision 19). This lifecycle reads its states after the move; the others' are unchanged.
+        private void Change(IReadOnlyList<{{ rights_ns }}.ITriggerPointSteps> lifecycles, Verb verb, IReadOnlyList<{{ rights_ns }}.TriggerPointCall> calls)
         {
-            var states = States();
+            var live = Live();
+            var after = calls.Select(c => c with { Verb = verb, States = new Dictionary<string, IReadOnlyList<string>>(c.States, StringComparer.Ordinal) { [_chart.ProcessName] = live } }).ToList();
             var change = new {{ rights_ns }}.TriggerPointOutcome();
-            foreach (var call in calls)
-                steps.With(verb, call with { Verb = verb, States = states }, change);
+            foreach (var call in after)
+            {
+                foreach (var steps in lifecycles)
+                    steps.With(verb, call, change);
+            }
+
             _ran.AddRange(change.Ran);
             var queued = new {{ rights_ns }}.TriggerPointOutcome();
-            foreach (var call in calls)
-                steps.After(verb, call with { Verb = verb, States = states }, queued);
+            foreach (var call in after)
+            {
+                foreach (var steps in lifecycles)
+                    steps.After(verb, call, queued);
+            }
+
             _queued.AddRange(queued.Ran);
             _messages.AddRange(queued.Messages);
         }

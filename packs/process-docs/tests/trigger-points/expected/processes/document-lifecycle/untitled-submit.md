@@ -18,7 +18,7 @@ One row per step: who acts, the input, whether the process accepts it, and the a
 | Step | Actor | Input | Result | States after | Notes |
 | --- | --- | --- | --- | --- | --- |
 | 1 |  | event `submit` | **refused** | `Draft` | refused by `TitleBeforeReview`: A document needs a title before it goes to review. |
-| 2 |  | does `modify` | accepted | `Draft` | check `LargePriceDrop` warns: The price dropped by more than a tenth.; sets `price` to `80`; value `price` = `80` |
+| 2 |  | does `modify` | accepted | `Draft` | check `LargePriceDrop` warns: The price dropped by more than a tenth; sets `price` to `80`; value `price` = `80` |
 | 3 |  | does `delete` | accepted | `Draft` | check `ApprovedForDeletion` assumed to pass; trigger points that ran: `ApprovedForDeletion` |
 
 ## Outcome

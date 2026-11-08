@@ -19,7 +19,7 @@ call = "StatechartCall<" + ctx + ">"
 relatives = relative_actors(p)
 rights = uses_rights()
 triggers = uses_triggers()
-hooks = rights ? states_hooks(p) : []
+hooks = lifecycle_hooks(p)
 conditions = rights ? inline_conditions(p) : []
 -}}
 {{ header() }}
@@ -125,13 +125,13 @@ public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>
         var states = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
 {{- for l in hooks }}
         if (StatesIn{{ pascal l.name }}(call) is { } in{{ pascal l.name }})
-            states[{{ json l.name }}] = in{{ pascal l.name }};
+            states[{{ json l.name }}] = {{ if triggers }}in{{ pascal l.name }}.Count > 0 ? in{{ pascal l.name }} : [{{ json initial_path(l) }}]{{ else }}in{{ pascal l.name }}{{ end }};
 {{- end }}
         return states;
     }
 {{- for l in hooks }}
 
-    /// <summary>The object's active state paths in lifecycle {{ l.name }}, which could say no to a verb an event of {{ p.name }} names; none means its initial state, and null that {{ l.name }} doesn't govern the object, so it isn't asked (implemented in {{ name }}Handlers.cs).</summary>
+    /// <summary>The object's active state paths in lifecycle {{ l.name }}, which could say no to{{ if triggers }}, or whose trigger points run on,{{ end }} a verb an event of {{ p.name }} names; none means its initial state, and null that {{ l.name }} doesn't govern the object, so it isn't asked (implemented in {{ name }}Handlers.cs).</summary>
     private partial IReadOnlyList<string>? StatesIn{{ pascal l.name }}({{ call }} call);
 {{- end }}
 {{- end }}

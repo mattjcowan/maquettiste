@@ -41,7 +41,7 @@ public sealed class ReleaseTests
         // Assumed: check AskRegistry gives warning; it reaches outside systems, so ScenarioTriggers answers it.
         // Assumed: check CheckModify gives pass; the team's code must give it.
         ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal) { ["01JTP000000000000000000X10"] = "warning" };
-        var outcome2 = await new DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Modify, new TriggerPointCall
+        var outcome2 = await new global::App.Model.Docs.DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Modify, new TriggerPointCall
         {
             Key = "spec",
             Envelope = new ProcessEnvelope(Instance, Actor: Actors.Author),
@@ -49,8 +49,10 @@ public sealed class ReleaseTests
             States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
             {
                 ["Document"] = result.States ?? [],
+                ["Legal"] = ["Pending"],
             },
             Attributes = ["price", "title"],
+            Proposed = new Dictionary<string, object?>(StringComparer.Ordinal) { ["price"] = 80m, ["title"] = "Pump spec" },
             CommandId = "Release-2",
         }, (_, _) => Task.CompletedTask, cancellationToken);
         Assert.True(outcome2.Passed, outcome2.Message);
@@ -60,7 +62,7 @@ public sealed class ReleaseTests
         // Step 3: modify by bea.
         // Assumed: check AskRegistry gives error; it reaches outside systems, so ScenarioTriggers answers it.
         ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal) { ["01JTP000000000000000000X10"] = "error" };
-        var outcome3 = await new DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Modify, new TriggerPointCall
+        var outcome3 = await new global::App.Model.Docs.DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Modify, new TriggerPointCall
         {
             Key = "spec",
             Envelope = new ProcessEnvelope(Instance, Actor: Actors.Author),
@@ -68,8 +70,10 @@ public sealed class ReleaseTests
             States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
             {
                 ["Document"] = result.States ?? [],
+                ["Legal"] = ["Pending"],
             },
             Attributes = ["price"],
+            Proposed = new Dictionary<string, object?>(StringComparer.Ordinal) { ["price"] = 80m },
             CommandId = "Release-3",
         }, (_, _) => Task.CompletedTask, cancellationToken);
         Assert.False(outcome3.Passed);
@@ -93,7 +97,7 @@ public sealed class ReleaseTests
 
         // Step 6: delete by bea.
         ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal);
-        var outcome6 = await new DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Delete, new TriggerPointCall
+        var outcome6 = await new global::App.Model.Docs.DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Delete, new TriggerPointCall
         {
             Key = "spec",
             Envelope = new ProcessEnvelope(Instance, Actor: Actors.Author),
@@ -101,10 +105,12 @@ public sealed class ReleaseTests
             States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
             {
                 ["Document"] = result.States ?? [],
+                ["Legal"] = ["Pending"],
             },
             CommandId = "Release-6",
         }, (_, _) => Task.CompletedTask, cancellationToken);
         Assert.True(outcome6.Passed, outcome6.Message);
+        Assert.Equal<string>(["01JTP000000000000000000X08", "01JTP000000000000000000X12"], outcome6.Ran);
 
         ScenarioTriggers.Assumed = null;
 

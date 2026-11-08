@@ -119,7 +119,14 @@
       "verb": "delete",
       "participant": "01JTP000000000000000000W01",
       "expect": {
-        "accepted": true
+        "accepted": true,
+        "values": {
+          "01JTP000000000000000000A03": 0
+        },
+        "triggerPoints": [
+          "01JTP000000000000000000X08",
+          "01JTP000000000000000000X12"
+        ]
       }
     }
   ],

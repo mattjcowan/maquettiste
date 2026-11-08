@@ -55,6 +55,10 @@ public static partial class DocumentTriggerConditions
     // X runs when: subject.price > 0
     public static partial bool X(TriggerPointCall call) =>
         throw new NotImplementedException("The when of trigger point X of lifecycle Document is not implemented yet.");
+
+    // Archive runs when: coalesce(subject.title, '') <> ''
+    public static partial bool Archive(TriggerPointCall call) =>
+        throw new NotImplementedException("The when of trigger point Archive of lifecycle Document is not implemented yet.");
 }
 
 public static partial class DocumentTriggerRecords

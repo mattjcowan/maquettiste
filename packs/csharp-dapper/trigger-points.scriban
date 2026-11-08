@@ -13,6 +13,15 @@ verb_type = "global::" + base_ns + ".Verb"
 rights = uses_rights()
 freezing = uses_freezing()
 attribute_rights = rights && uses_attribute_rights()
+# Whether a right's actor may be taken from the object, so the per-type runner's call carries the caller's resolver (rights.scriban).
+relatives = false
+if rights
+  for a in model.actors
+    if a.relative
+      relatives = true
+    end
+  end
+end
 # The verbs that go through a process's commands, which the per-type runner refuses (decision 4).
 process_verbs = []
 for v in model.verbs
@@ -160,7 +169,11 @@ func point_text(tp)
     $text = $text + ": the team's code"
   end
   if tp.message != "" && tp.message != tp.name
-    $text = $text + ". " + (cs_line tp.message | string.strip)
+    $message = cs_line tp.message | string.strip
+    if $message | string.ends_with "."
+      $message = string.slice $message 0 ($message.size - 1)
+    end
+    $text = $text + ". " + $message
   end
   if tp.type == "action" && tp.timing == "before"
     $text = $text + ". It fills call.Proposed and must write nothing; " + p_name(tp.process) + "TriggerRecords writes once every check passes"
@@ -247,8 +260,13 @@ public sealed record TriggerPointCall
     /// <summary>The proposed values by attribute name: the step's own values, then what before actions fill. Nothing is written until every check passes.</summary>
     public IDictionary<string, object?> Proposed { get; init; } = new Dictionary<string, object?>(StringComparer.Ordinal);
 
-    /// <summary>The caller's id for the command, which makes the per-type runner's message ids stable.</summary>
+    /// <summary>The caller's id for the command, which makes the per-type runner's message ids stable; the runner needs it when after-commit work is queued.</summary>
     public string? CommandId { get; init; }
+{{- if relatives }}
+
+    /// <summary>Whether the caller is an actor taken from the object, by name, which the per-type runner's rights check asks; null answers no.</summary>
+    public Func<string, bool>? Resolves { get; init; }
+{{- end }}
 
     /// <summary>Whether the object is in a state of a lifecycle: the state itself, or a state inside it, is active.</summary>
     /// <param name="lifecycle">The lifecycle's name.</param>
@@ -582,13 +600,14 @@ public static class TriggerPointDepth
 /// </summary>
 public static class TriggerPointRelay
 {
-    /// <summary>Delivers one message to its trigger point's method.</summary>
+    /// <summary>Delivers one message to its trigger point's method, one level deeper than the message was queued at (decision 21).</summary>
     /// <param name="message">The message.</param>
     /// <returns>The task.</returns>
     public static async Task DeliverAsync(TriggerPointMessage message)
     {
         ArgumentNullException.ThrowIfNull(message);
-        using var depth = TriggerPointDepth.StartAt(message.Depth);
+        using var start = TriggerPointDepth.StartAt(message.Depth);
+        using var depth = TriggerPointDepth.Enter();
         var call = new TriggerPointCall
         {
             Verb = global::{{ base_ns }}.Verbs.FromKey(message.Verb) ?? throw new ArgumentException($"'{message.Verb}' is not a verb of the model.", nameof(message)),
@@ -625,8 +644,23 @@ public static class TriggerPointRelay
         }
     }
 }
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder "Processes" "TriggerPoints.cs") content -}}
 {{- for e in runners }}
 {{- name = type_name(e) + "Verbs" }}
+{{- capture runner -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using {{ actors_ns() }};
+using {{ dispatch_ns() }};
+using {{ runtime_ns() }};
+
+namespace {{ ns(e) }};
 
 /// <summary>A {{ e.name }} verb that the per-type runner did (trigger-points-design.md decision 16), for the team's history; written to the outbox on the built-in path and the replace path alike.</summary>
 /// <param name="Entity">The entity's name.</param>
@@ -674,14 +708,14 @@ public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock cloc
         }
 
 {{- end }}
+        // Create reads each lifecycle's initial state (decision 13), whatever the call gives; other verbs ask the team for the object's states
+        // in a lifecycle the call doesn't give.
         var states = new Dictionary<string, IReadOnlyList<string>>(call.States, StringComparer.Ordinal);
 {{- for l in e.trigger_lifecycles }}
-        if (!states.ContainsKey({{ json l.name }}))
-        {
-            // Create reads the lifecycle's initial state; other verbs ask the team for the object's states there.
-            if ((verb == {{ verb_type }}.Create ? new[] { {{ json initial_path(l) }} } : StatesIn{{ p_name(l) }}(call)) is { } in{{ p_name(l) }})
-                states[{{ json l.name }}] = in{{ p_name(l) }};
-        }
+        if (verb == {{ verb_type }}.Create)
+            states[{{ json l.name }}] = [{{ json initial_path(l) }}];
+        else if (!states.ContainsKey({{ json l.name }}) && StatesIn{{ p_name(l) }}(call) is { } in{{ p_name(l) }})
+            states[{{ json l.name }}] = in{{ p_name(l) }};
 {{- end }}
         call = call with { Verb = verb, Entity = call.Entity ?? typeof({{ entity_type(e) }}), States = states };
 {{- if freezing }}
@@ -710,6 +744,9 @@ public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock cloc
 {{- end }}
 {{- if attribute_rights }}
             Attributes = call.Attributes,
+{{- end }}
+{{- if relatives }}
+            Resolves = call.Resolves,
 {{- end }}
         });
         if (!decision.Allowed)
@@ -742,6 +779,8 @@ public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock cloc
             l.With(verb, call, outcome);
         foreach (var l in lifecycles)
             l.After(verb, call, outcome);
+        if (outcome.Messages.Count > 0 && call.CommandId is null)
+            throw new InvalidOperationException("After-commit trigger points queued work, whose message ids need the call's CommandId: give one.");
 
         var messages = new List<object>();
         for (var i = 0; i < outcome.Messages.Count; i++)
@@ -768,9 +807,9 @@ public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock cloc
     private static partial IReadOnlyList<string>? StatesIn{{ p_name(l) }}(TriggerPointCall call);
 {{- end }}
 }
-{{- end }}
 {{ end -}}
-{{- file (join_path pack.params.generatedFolder "Processes" "TriggerPoints.cs") content -}}
+{{- file (join_path pack.params.generatedFolder (package_folder e) (name + ".g.cs")) runner -}}
+{{- end }}
 {{- for l in model.trigger_lifecycles }}
 {{- name = p_name(l) }}
 {{- points = name + "TriggerPoints" }}
@@ -915,7 +954,13 @@ public sealed class {{ name }}TriggerSteps : ITriggerPointSteps
         using var depth = TriggerPointDepth.Enter();
 {{- end }}
 {{- for tp in tv.with_change }}
+{{- if tv.verb.key == "delete" && tp.sets.size > 0 }}
+        // After a built-in delete there is no object to set (decision 16): {{ tp.name }} runs only after a replace, or on an event, whose object stays.
+        if ((call.Transition is not null || outcome.Replaced is not null) && {{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+{{- else }}
         if ({{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+{{- end }}
+
 {{- if tp.outside }}
             TriggerPointOutcome.Run({{ json tp.id }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
 {{- else }}

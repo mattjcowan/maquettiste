@@ -132,7 +132,10 @@
       "verbs": [
         "delete"
       ],
-      "description": "Documents are archived, never removed."
+      "when": {
+        "text": "coalesce(subject.title, '') <> ''"
+      },
+      "description": "Documents with a title are archived, never removed."
     },
     {
       "id": "01JTP000000000000000000X09",

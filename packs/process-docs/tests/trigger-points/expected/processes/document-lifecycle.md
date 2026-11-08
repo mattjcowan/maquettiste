@@ -90,6 +90,7 @@ Other lifecycles that govern the object run their own trigger points at each mom
 1. Freezing and rights are checked.
 1. `ApprovedForDeletion` (check): the team's code: The records office approves the deletion. It reaches outside systems.
 1. In place of the built-in effect, `Archive` (replace): sets `archivedOn ← now()`. Only in `Released`.
+1. Where no replace applies, the verb's built-in effect.
 
 Other lifecycles that govern the object run their own trigger points at each moment too, after these.
 

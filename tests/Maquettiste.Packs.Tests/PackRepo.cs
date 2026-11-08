@@ -720,7 +720,8 @@ internal sealed class PackRepo : IDisposable
     /// The csharp-dapper pack's <c>trigger-points</c> case (trigger-points-design.md section 15): a document lifecycle with a before action,
     /// checks (one with a condition, a warning narrowed to an attribute with a when, team-code checks named CheckModify and
     /// DocumentTriggerPoints, the second on sign), with-change actions (one named XWhen beside X), an outside after-commit action and a
-    /// replace on delete, and no rights. csharp-dapper writes to <c>out</c>, with the scenario tests under out/Tests.
+    /// replace on delete with a when, and no rights; and a second lifecycle, Legal, governing the document with a check on modify narrowed
+    /// to a state and a with-change action with sets on delete. csharp-dapper writes to <c>out</c>, with the scenario tests under out/Tests.
     /// </summary>
     /// <returns>The repo.</returns>
     public static PackRepo TriggerPoints()

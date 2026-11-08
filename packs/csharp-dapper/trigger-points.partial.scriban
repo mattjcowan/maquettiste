@@ -77,8 +77,9 @@ public static partial class {{ records }}
 -}}
 using System;
 using System.Collections.Generic;
+using {{ actors_ns() }};
 
-namespace {{ actors_ns() }};
+namespace {{ ns(e) }};
 
 // The hand-written half of the {{ e.name }} per-type runner. Maquettiste wrote this file once and never touches it again. When a call
 // doesn't give the object's states in a lifecycle, the runner asks here; null means the lifecycle doesn't govern the object.
@@ -93,7 +94,8 @@ public sealed partial class {{ type_name(e) }}Verbs
 }
 {{ end -}}
 {{-
-      file (join_path pack.params.partialFolder "Processes" (type_name(e) + "Verbs.cs")) content
+      file (join_path pack.params.partialFolder (package_folder e) (type_name(e) + "Verbs.cs")) content
+
     end
   end
 end

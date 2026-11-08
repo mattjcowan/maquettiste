@@ -336,7 +336,7 @@ public sealed class DocumentTriggerSteps : ITriggerPointSteps
         ArgumentNullException.ThrowIfNull(call);
         ArgumentNullException.ThrowIfNull(outcome);
         using var depth = TriggerPointDepth.Enter();
-        if (call.End is null && outcome.Once("01JTP000000000000000000X08"))
+        if (call.End is null && DocumentTriggerConditions.Archive(call) && outcome.Once("01JTP000000000000000000X08"))
         {
             DocumentTriggerPoints.Archive(call);
             outcome.Replace("01JTP000000000000000000X08");
@@ -394,25 +394,25 @@ public sealed class DocumentTriggerSteps : ITriggerPointSteps
 /// <summary>The bodies of lifecycle Document's trigger points (implemented in DocumentTriggerPoints.cs). Generated code can't read the object yet, so each is the team's, documented with its text.</summary>
 public static partial class DocumentTriggerPoints
 {
-    /// <summary>Before action AssignNumber on create, modify: the team&apos;s code. Gives the document its number.. It fills call.Proposed and must write nothing; DocumentTriggerRecords writes once every check passes.</summary>
+    /// <summary>Before action AssignNumber on create, modify: the team&apos;s code. Gives the document its number. It fills call.Proposed and must write nothing; DocumentTriggerRecords writes once every check passes.</summary>
     /// <param name="call">The call.</param>
     public static partial void AssignNumber(TriggerPointCall call);
 
-    /// <summary>Check TitleBeforeReview on promote: passes when coalesce(subject.title, &apos;&apos;) &lt;&gt; &apos;&apos;. A document needs a title before it goes to review..</summary>
+    /// <summary>Check TitleBeforeReview on promote: passes when coalesce(subject.title, &apos;&apos;) &lt;&gt; &apos;&apos;. A document needs a title before it goes to review.</summary>
     /// <param name="call">The call.</param>
     /// <returns>Whether the check passes.</returns>
     public static partial bool TitleBeforeReview(TriggerPointCall call);
 
-    /// <summary>Warning check X on modify: passes when coalesce(old.price, 0) = 0 or subject.price &gt;= old.price * 0.9. The price dropped by more than a tenth..</summary>
+    /// <summary>Warning check X on modify: passes when coalesce(old.price, 0) = 0 or subject.price &gt;= old.price * 0.9. The price dropped by more than a tenth.</summary>
     /// <param name="call">The call.</param>
     /// <returns>Whether the check passes.</returns>
     public static partial bool X(TriggerPointCall call);
 
-    /// <summary>With-the-change action XWhen on modify: the team&apos;s code. Tells the price list..</summary>
+    /// <summary>With-the-change action XWhen on modify: the team&apos;s code. Tells the price list.</summary>
     /// <param name="call">The call.</param>
     public static partial void XWhen(TriggerPointCall call);
 
-    /// <summary>Check CheckModify on modify: the team&apos;s code. The team&apos;s own rule for edits..</summary>
+    /// <summary>Check CheckModify on modify: the team&apos;s code. The team&apos;s own rule for edits.</summary>
     /// <param name="call">The call.</param>
     /// <returns>Whether the check passes.</returns>
     public static partial bool CheckModify(TriggerPointCall call);
@@ -421,21 +421,21 @@ public static partial class DocumentTriggerPoints
     /// <param name="call">The call.</param>
     public static partial void StampRelease(TriggerPointCall call);
 
-    /// <summary>After-commit action PublishToPortal on promote: the team&apos;s code. Sends the released document to the portal.. It runs after the change is saved, may run late and may run more than once, so it must be safe to repeat. It reaches outside systems.</summary>
+    /// <summary>After-commit action PublishToPortal on promote: the team&apos;s code. Sends the released document to the portal. It runs after the change is saved, may run late and may run more than once, so it must be safe to repeat. It reaches outside systems.</summary>
     /// <param name="call">The call.</param>
     /// <returns>The task.</returns>
     public static partial Task PublishToPortal(TriggerPointCall call);
 
-    /// <summary>Replace Archive on delete: the team&apos;s code. Documents are archived, never removed..</summary>
+    /// <summary>Replace Archive on delete: the team&apos;s code. Documents with a title are archived, never removed.</summary>
     /// <param name="call">The call.</param>
     public static partial void Archive(TriggerPointCall call);
 
-    /// <summary>Check DocumentTriggerPoints on sign: the team&apos;s code. The signer&apos;s own rule..</summary>
+    /// <summary>Check DocumentTriggerPoints on sign: the team&apos;s code. The signer&apos;s own rule.</summary>
     /// <param name="call">The call.</param>
     /// <returns>Whether the check passes.</returns>
     public static partial bool DocumentTriggerPointsValue(TriggerPointCall call);
 
-    /// <summary>Check AskRegistry on modify: the team&apos;s code. The registry&apos;s own rule for edits.. It reaches outside systems.</summary>
+    /// <summary>Check AskRegistry on modify: the team&apos;s code. The registry&apos;s own rule for edits. It reaches outside systems.</summary>
     /// <param name="call">The call.</param>
     /// <returns>Whether the check passes.</returns>
     public static partial bool AskRegistry(TriggerPointCall call);
@@ -448,6 +448,11 @@ public static partial class DocumentTriggerConditions
     /// <param name="call">The call.</param>
     /// <returns>Whether it runs.</returns>
     public static partial bool X(TriggerPointCall call);
+
+    /// <summary>When trigger point Archive runs: <c>coalesce(subject.title, &apos;&apos;) &lt;&gt; &apos;&apos;</c>.</summary>
+    /// <param name="call">The call.</param>
+    /// <returns>Whether it runs.</returns>
+    public static partial bool Archive(TriggerPointCall call);
 }
 
 /// <summary>Writes what lifecycle Document's before actions filled in the call's proposed values, called only once every check passes (implemented in DocumentTriggerPoints.cs).</summary>

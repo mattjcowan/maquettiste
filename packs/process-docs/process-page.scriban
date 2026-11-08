@@ -226,9 +226,14 @@ takes the place of a verb's built-in effect. At each moment they run in the orde
 {{- for tp in tv.checks }}
 1. {{ tp_sentence(tp, numbers) }}.
 {{- end }}
-{{- if tv.replace.size > 0 }}{{ for tp in tv.replace }}
+{{- if tv.replace.size > 0 }}{{ everywhere = false }}{{ for tp in tv.replace }}
 1. In place of the built-in effect, {{ tp_sentence(tp, numbers) }}.
+{{- if !tp.when && tp.states.size == 0 && tp.targets.size == 0 && tp.transitions.size == 0 && tp.entities.size == 0 && tp.attributes.size == 0 && tp.ends.size == 0 }}{{ everywhere = true }}{{ end }}
 {{- end }}
+{{- if !everywhere }}
+1. Where no replace applies, the verb's built-in effect.
+{{- end }}
+
 {{- else if g == "move" }}
 1. The move: its exit, transition and entry actions.
 {{- else if g != "project" }}

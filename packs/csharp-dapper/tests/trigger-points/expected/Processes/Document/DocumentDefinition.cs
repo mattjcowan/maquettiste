@@ -53,7 +53,7 @@ public static partial class DocumentDefinition
             ["event:approve"] = "01JTP000000000000000000V02",
             ["event:retire"] = "01JTP000000000000000000V03",
         },
-        triggerSteps: new DocumentTriggerSteps());
+        triggerSteps: [new DocumentTriggerSteps(), new global::App.Model.Docs.LegalTriggerSteps()]);
 
     /// <summary>The event names.</summary>
     public static class Events

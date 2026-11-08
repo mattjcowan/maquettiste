@@ -359,14 +359,15 @@ public sealed class ChartDefinition
     /// <param name="gates">The gates.</param>
     /// <param name="actorIds">The ids of the actors the process names, by name (audit records hold ids, as the engine's do).</param>
     /// <param name="ids">The ids a refusal names, by "event:", "invoke:" or "guard:" and the name.</param>
-    /// <param name="triggerSteps">The step methods of the lifecycle's trigger points, or null when it has none.</param>
+    /// <param name="triggerSteps">The step methods of the trigger points that run in the process: its lifecycle's own first, when it has points, then
+    /// those of the other lifecycles that govern its object with points on a verb its events name, by name; none when no trigger point runs.</param>
     public ChartDefinition(string processId, string processName, StateDefinition[] states, TransitionDefinition[] transitions, EventDefinition[] events,
         ActionDefinition[] actions, InvokeDefinition[] invokes, GateDefinition[] gates, IReadOnlyDictionary<string, string>? actorIds = null, IReadOnlyDictionary<string, string>? ids = null,
-        global::App.Model.Processes.ITriggerPointSteps? triggerSteps = null)
+        IReadOnlyList<global::App.Model.Processes.ITriggerPointSteps>? triggerSteps = null)
     {
         _actorIds = actorIds ?? new Dictionary<string, string>(StringComparer.Ordinal);
         _ids = ids ?? new Dictionary<string, string>(StringComparer.Ordinal);
-        TriggerSteps = triggerSteps;
+        TriggerSteps = triggerSteps ?? [];
         ArgumentNullException.ThrowIfNull(states);
         ArgumentNullException.ThrowIfNull(transitions);
         ArgumentNullException.ThrowIfNull(events);
@@ -438,8 +439,8 @@ public sealed class ChartDefinition
     /// <summary>The process name.</summary>
     public string ProcessName { get; }
 
-    /// <summary>The step methods of the lifecycle's trigger points, or null when it has none (trigger-points-design.md decision 30).</summary>
-    public global::App.Model.Processes.ITriggerPointSteps? TriggerSteps { get; }
+    /// <summary>The step methods of the trigger points that run in the process, its lifecycle's own first (trigger-points-design.md decisions 11 and 30).</summary>
+    public IReadOnlyList<global::App.Model.Processes.ITriggerPointSteps> TriggerSteps { get; }
 
     /// <summary>The id a refusal names for a key ("event:", "invoke:" or "guard:" and the name), or null.</summary>
     /// <param name="key">The key.</param>
@@ -655,6 +656,22 @@ public interface IStatechartBehaviour<TContext>
     /// <param name="after">The context after.</param>
     /// <returns>The names, in declaration order.</returns>
     IReadOnlyList<string> Changed(TContext before, TContext after);
+}
+
+/// <summary>
+/// The object's states in the other lifecycles that could say no to a verb an event names (rights-design.md decision 29), or whose
+/// trigger points run on it (trigger-points-design.md decision 11): generated code
+/// can't read another lifecycle's state for the same object, so a process's Handlers class implements this when one could. A lifecycle
+/// missing from the answer, or with no states, reads as its initial state.
+/// </summary>
+/// <typeparam name="TContext">The process's context type.</typeparam>
+public interface ILifecycleStates<TContext>
+    where TContext : class
+{
+    /// <summary>The object's active state paths, by lifecycle name; a lifecycle left out that doesn't govern the object isn't asked.</summary>
+    /// <param name="call">The current call.</param>
+    /// <returns>The states.</returns>
+    IReadOnlyDictionary<string, IReadOnlyList<string>> StatesIn(StatechartCall<TContext> call);
 }
 
 /// <summary>The clock the interpreter reads (an extension point; ProcessHost implements it).</summary>
@@ -1326,6 +1343,9 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         {
             public Verb? Verb { get; } = verb;
 
+            // The lifecycles whose points the move's verb runs (decision 11), its own first.
+            public IReadOnlyList<global::App.Model.Processes.ITriggerPointSteps> Lifecycles { get; set; } = [];
+
             public global::App.Model.Processes.TriggerPointCall Call { get; } = call;
 
             public global::App.Model.Processes.TriggerPointOutcome? Sign { get; set; }
@@ -1342,23 +1362,59 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         private readonly List<global::App.Model.Processes.TriggerPointMessage> _messages = [];
         private (global::App.Model.Processes.TriggerPointOutcome Outcome, global::App.Model.Processes.TriggerPointCall Call)? _task;
 
-        private global::App.Model.Processes.ITriggerPointSteps? Steps => _chart.TriggerSteps;
+        // The lifecycle's own steps, which moves, signatures and tasks run (decision 11); null when it has no points.
+        private global::App.Model.Processes.ITriggerPointSteps? Steps => _chart.TriggerSteps.FirstOrDefault(s => string.Equals(s.Lifecycle, _chart.ProcessName, StringComparison.Ordinal));
 
         // The verb a transition does: its event's, else its own (automatic moves). A move with no verb runs no trigger points.
         private Verb? VerbOf(TransitionDefinition t) => t.Trigger == TriggerKind.Event ? _chart.Event(t.Key)?.Verb : t.Verb;
 
-        private Dictionary<string, IReadOnlyList<string>> States() =>
-            new(StringComparer.Ordinal) { [_chart.ProcessName] = [.. Leaves().Select(s => s.Path)] };
+        // Whether a verb is an object, link or own verb, whose trigger points every lifecycle that governs the object runs (decision 11).
+        private static bool SpeaksOfObject(Verb verb) => verb is global::App.Model.Verb.Create or global::App.Model.Verb.Read or global::App.Model.Verb.Modify or global::App.Model.Verb.Delete or global::App.Model.Verb.Copy or global::App.Model.Verb.Revise or global::App.Model.Verb.Lock or global::App.Model.Verb.Unlock or global::App.Model.Verb.ChangeOwner or global::App.Model.Verb.ChangeType or global::App.Model.Verb.ChangeLifecycle or global::App.Model.Verb.Freeze or global::App.Model.Verb.Thaw or global::App.Model.Verb.Connect or global::App.Model.Verb.Disconnect;
 
-        private global::App.Model.Processes.TriggerPointCall NewCall(global::App.Model.Processes.ITriggerPointSteps steps, Verb verb) => new()
+        // The object's states: in this lifecycle the given ones; for an object, link or own verb, in each other lifecycle with points the
+        // ones the behaviour gives (ILifecycleStates), a lifecycle left out being one that doesn't govern the object.
+        private Dictionary<string, IReadOnlyList<string>> States(Verb? verb, IReadOnlyList<string> own)
+        {
+            var states = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) { [_chart.ProcessName] = own };
+            if (verb is { } v && SpeaksOfObject(v) && _chart.TriggerSteps.Any(s => !string.Equals(s.Lifecycle, _chart.ProcessName, StringComparison.Ordinal))
+                && _owner._behaviour is ILifecycleStates<TContext> others)
+            {
+                foreach (var (lifecycle, paths) in others.StatesIn(Call()))
+                {
+                    if (!string.Equals(lifecycle, _chart.ProcessName, StringComparison.Ordinal))
+                        states[lifecycle] = paths;
+                }
+            }
+
+            return states;
+        }
+
+        // The active leaves, which a task's end and the moments after a move read.
+        private List<string> Live() => [.. Leaves().Select(s => s.Path)];
+
+        // The states a move leaves (decision 10's states): the active states inside its source, else the source itself. A compound state that
+        // contains the source counts through InState; other parallel regions don't count.
+        private List<string> SourceStates(TransitionDefinition t)
+        {
+            var inside = Leaves().Where(s => s == t.Source || t.Source.IsRoot || s.Path.StartsWith(t.Source.Path + ".", StringComparison.Ordinal)).Select(s => s.Path).ToList();
+            return inside.Count > 0 ? inside : [t.Source.Path];
+        }
+
+        // The lifecycles whose points a verb runs (decision 11), in run order: this lifecycle; and for an object, link or own verb each other
+        // lifecycle with points on it that governs the object, by name. Only those with points on the verb are listed.
+        private List<global::App.Model.Processes.ITriggerPointSteps> Lifecycles(Verb verb, IReadOnlyDictionary<string, IReadOnlyList<string>> states) =>
+            [.. _chart.TriggerSteps.Where(s => s.Speaks(verb)
+                && (string.Equals(s.Lifecycle, _chart.ProcessName, StringComparison.Ordinal) || (SpeaksOfObject(verb) && states.ContainsKey(s.Lifecycle))))];
+
+        private global::App.Model.Processes.TriggerPointCall NewCall(Verb verb, IReadOnlyDictionary<string, IReadOnlyList<string>> states) => new()
         {
             Verb = verb,
             Lifecycle = _chart.ProcessName,
-            Entity = steps.Subject,
+            Entity = Steps?.Subject,
             Instance = _snapshot.Instance,
             Envelope = _envelope,
             Held = [],
-            States = States(),
+            States = states,
             Event = Event.Name,
             Payload = Event.Payload,
         };
@@ -1369,26 +1425,27 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         public string? Checks(TransitionDefinition t)
         {
             _candidates.Remove(t);
-            if (Steps is not { } steps)
+            if (_chart.TriggerSteps.Count == 0)
                 return null;
             var verb = VerbOf(t);
-            var call = NewCall(steps, verb ?? default) with { Entered = EnteredBy(t), Transition = t.Id };
+            var call = NewCall(verb ?? default, States(verb, SourceStates(t))) with { Entered = EnteredBy(t), Transition = t.Id };
             var candidate = new Candidate(verb, call);
             var completes = true;
             if (t.Gate is { } gate)
             {
-                if (steps.Speaks(global::App.Model.Verb.Sign))
+                if (Steps is { } own && own.Speaks(global::App.Model.Verb.Sign))
                 {
-                    candidate.Sign = Ready(steps, global::App.Model.Verb.Sign, call with { Verb = global::App.Model.Verb.Sign });
+                    candidate.Sign = Ready([own], global::App.Model.Verb.Sign, call with { Verb = global::App.Model.Verb.Sign });
                     if (!candidate.Sign.Passed)
                         return RefuseSignature(t, gate, candidate.Sign);
                 }
                 completes = WouldComplete(t, gate);
             }
 
-            if (completes && verb is { } v && steps.Speaks(v))
+            if (completes && verb is { } v && Lifecycles(v, call.States) is { Count: > 0 } lifecycles)
             {
-                candidate.Move = Ready(steps, v, call);
+                candidate.Lifecycles = lifecycles;
+                candidate.Move = Ready(lifecycles, v, call);
                 if (!candidate.Move.Passed)
                     return t.Gate is { } g ? RefuseSignature(t, g, candidate.Move) : candidate.Move.RefusedBy;
             }
@@ -1397,11 +1454,18 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             return null;
         }
 
-        private static global::App.Model.Processes.TriggerPointOutcome Ready(global::App.Model.Processes.ITriggerPointSteps steps, Verb verb, global::App.Model.Processes.TriggerPointCall call)
+        // Before actions, then checks, across the lifecycles (decision 19): each moment in every lifecycle before the next.
+        private static global::App.Model.Processes.TriggerPointOutcome Ready(IReadOnlyList<global::App.Model.Processes.ITriggerPointSteps> lifecycles, Verb verb, global::App.Model.Processes.TriggerPointCall call)
         {
             var outcome = new global::App.Model.Processes.TriggerPointOutcome();
-            steps.Before(verb, call, outcome);
-            steps.Check(verb, call, outcome);
+            foreach (var steps in lifecycles)
+                steps.Before(verb, call, outcome);
+            foreach (var steps in lifecycles)
+            {
+                if (outcome.Passed)
+                    steps.Check(verb, call, outcome);
+            }
+
             return outcome;
         }
 
@@ -1452,7 +1516,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             Write(candidate.Sign, null);
             var complete = Sign(t, gate);
             if (candidate.Sign is not null)
-                Change(steps, global::App.Model.Verb.Sign, [candidate.Call with { Verb = global::App.Model.Verb.Sign }]);
+                Change([steps], global::App.Model.Verb.Sign, [candidate.Call with { Verb = global::App.Model.Verb.Sign }]);
             return complete;
         }
 
@@ -1461,8 +1525,8 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         {
             if (Steps is not { } steps || !steps.Speaks(global::App.Model.Verb.Complete))
                 return null;
-            var call = NewCall(steps, global::App.Model.Verb.Complete);
-            var outcome = Ready(steps, global::App.Model.Verb.Complete, call);
+            var call = NewCall(global::App.Model.Verb.Complete, States(null, Live()));
+            var outcome = Ready([steps], global::App.Model.Verb.Complete, call);
             _task = (outcome, call);
             return outcome;
         }
@@ -1484,7 +1548,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             }
 
             Write(task.Outcome, null);
-            Change(steps, global::App.Model.Verb.Complete, [task.Call]);
+            Change([steps], global::App.Model.Verb.Complete, [task.Call]);
         }
 
         // Before the exit actions: the taken transitions' proposed values are written, once per point, in selection order, so the later
@@ -1510,23 +1574,31 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         // After the entry actions: the taken transitions' with-change points, once per point, then their after-commit points queued.
         private void Changed(List<Candidate> taken)
         {
-            if (Steps is not { } steps)
-                return;
-            foreach (var group in taken.Where(c => c.Verb is { } v && steps.Speaks(v)).GroupBy(c => c.Verb!.Value))
-                Change(steps, group.Key, [.. group.Select(c => c.Call)]);
+            foreach (var group in taken.Where(c => c.Verb is not null && c.Lifecycles.Count > 0).GroupBy(c => c.Verb!.Value))
+                Change(group.First().Lifecycles, group.Key, [.. group.Select(c => c.Call)]);
         }
 
-        // A verb's with-change points over the object after it, then its after-commit points queued, each point once.
-        private void Change(global::App.Model.Processes.ITriggerPointSteps steps, Verb verb, IReadOnlyList<global::App.Model.Processes.TriggerPointCall> calls)
+        // A verb's with-change points over the object after it, then its after-commit points queued, each point once, the lifecycles in run
+        // order within each moment (decision 19). This lifecycle reads its states after the move; the others' are unchanged.
+        private void Change(IReadOnlyList<global::App.Model.Processes.ITriggerPointSteps> lifecycles, Verb verb, IReadOnlyList<global::App.Model.Processes.TriggerPointCall> calls)
         {
-            var states = States();
+            var live = Live();
+            var after = calls.Select(c => c with { Verb = verb, States = new Dictionary<string, IReadOnlyList<string>>(c.States, StringComparer.Ordinal) { [_chart.ProcessName] = live } }).ToList();
             var change = new global::App.Model.Processes.TriggerPointOutcome();
-            foreach (var call in calls)
-                steps.With(verb, call with { Verb = verb, States = states }, change);
+            foreach (var call in after)
+            {
+                foreach (var steps in lifecycles)
+                    steps.With(verb, call, change);
+            }
+
             _ran.AddRange(change.Ran);
             var queued = new global::App.Model.Processes.TriggerPointOutcome();
-            foreach (var call in calls)
-                steps.After(verb, call with { Verb = verb, States = states }, queued);
+            foreach (var call in after)
+            {
+                foreach (var steps in lifecycles)
+                    steps.After(verb, call, queued);
+            }
+
             _queued.AddRange(queued.Ran);
             _messages.AddRange(queued.Messages);
         }

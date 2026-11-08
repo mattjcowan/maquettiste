@@ -59,6 +59,18 @@ func outside_words(step)
   end
   ret $out | array.join ", "
 end
+# A verb step's values as the runner's proposed values (decision 25), as a dictionary initializer: the subject's attribute by name.
+func proposed(step)
+  $out = []
+  for kv in step.values
+    for $a in s.subject.entity.attributes
+      if $a.name == kv.key
+        $out[$out.size] = "[" + (json kv.key) + "] = " + cs_literal(kv.value, $a)
+      end
+    end
+  end
+  ret $out | array.join ", "
+end
 # The scenario subject's state paths in another lifecycle, else that lifecycle's initial state.
 func states_in(l)
   $ids = {}
@@ -352,18 +364,28 @@ public sealed class {{ test }}
 {{- if $runner }}
 {{- $n = step.index + 1 }}
 {{- $actor = verb_actor(step) }}
-        var outcome{{ $n }} = await new {{ type_name($runner) }}Verbs(new global::{{ dispatch_ns() }}.InMemoryProcessOutbox(), clock).RunAsync(global::{{ base_ns }}.Verb.{{ pascal step.verb.key }}, new TriggerPointCall
+{{- if frozen_sends }}
+        ScenarioFrozen.Current = ({{ frozen_before[step.index] ? "true" : "false" }}, {{ link_before[step.index] ? "true" : "false" }});
+{{- end }}
+        var outcome{{ $n }} = await new global::{{ ns($runner) }}.{{ type_name($runner) }}Verbs(new global::{{ dispatch_ns() }}.InMemoryProcessOutbox(), clock{{ if frozen_sends }}, new ScenarioFrozen(){{ end }}).RunAsync(global::{{ base_ns }}.Verb.{{ pascal step.verb.key }}, new TriggerPointCall
         {
             Key = {{ json s.subject.name }},
             Envelope = new ProcessEnvelope(Instance{{ if $actor }}, Actor: Actors.{{ actor_member $actor }}{{ end }}),
             Held = {{ held(step) }},
             States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
             {
+                [{{ json p.name }}] = result.States ?? [],
+{{- $listed = {} }}
+{{- $listed[p.name] = true }}
 {{- for l in $runner.trigger_lifecycles }}
-{{- if l.id == p.id }}
-                [{{ json l.name }}] = result.States ?? [],
-{{- else }}
+{{- if !$listed[l.name] }}
+{{- $listed[l.name] = true }}
                 [{{ json l.name }}] = [{{ for x in states_in(l) }}{{ for.first ? "" : ", " }}{{ json x }}{{ end }}],
+{{- end }}
+{{- end }}
+{{- for x in other_names }}
+{{- if !$listed[x] }}
+                [{{ json x }}] = [{{ for y in other_states[x] }}{{ for.first ? "" : ", " }}{{ json y }}{{ end }}],
 {{- end }}
 {{- end }}
             },
@@ -373,8 +395,20 @@ public sealed class {{ test }}
 {{- if step_attributes(step).size > 0 }}
             Attributes = [{{ for x in step_attributes(step) }}{{ for.first ? "" : ", " }}{{ json x }}{{ end }}],
 {{- end }}
+{{- $values = proposed(step) }}
+{{- if $values != "" }}
+            Proposed = new Dictionary<string, object?>(StringComparer.Ordinal) { {{ $values }} },
+{{- end }}
             CommandId = "{{ s.name }}-{{ $n }}",
+{{- $from = rights ? object_actors(step) : [] }}
+{{- if $from.size > 0 }}
+            Resolves = actor => actor is {{ for a in $from }}{{ for.first ? "" : " or " }}Actors.{{ actor_member a }}{{ end }},
+{{- end }}
         }, (_, _) => Task.CompletedTask, cancellationToken);
+{{- if frozen_sends }}
+        ScenarioFrozen.Current = null;
+{{- end }}
+
 {{- if step.expect }}
 {{- if step.expect.accepted }}
         Assert.True(outcome{{ $n }}.Passed, outcome{{ $n }}.Message);

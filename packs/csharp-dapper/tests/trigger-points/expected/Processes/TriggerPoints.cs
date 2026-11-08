@@ -73,7 +73,7 @@ public sealed record TriggerPointCall
     /// <summary>The proposed values by attribute name: the step's own values, then what before actions fill. Nothing is written until every check passes.</summary>
     public IDictionary<string, object?> Proposed { get; init; } = new Dictionary<string, object?>(StringComparer.Ordinal);
 
-    /// <summary>The caller's id for the command, which makes the per-type runner's message ids stable.</summary>
+    /// <summary>The caller's id for the command, which makes the per-type runner's message ids stable; the runner needs it when after-commit work is queued.</summary>
     public string? CommandId { get; init; }
 
     /// <summary>Whether the object is in a state of a lifecycle: the state itself, or a state inside it, is active.</summary>
@@ -408,13 +408,14 @@ public static class TriggerPointDepth
 /// </summary>
 public static class TriggerPointRelay
 {
-    /// <summary>Delivers one message to its trigger point's method.</summary>
+    /// <summary>Delivers one message to its trigger point's method, one level deeper than the message was queued at (decision 21).</summary>
     /// <param name="message">The message.</param>
     /// <returns>The task.</returns>
     public static async Task DeliverAsync(TriggerPointMessage message)
     {
         ArgumentNullException.ThrowIfNull(message);
-        using var depth = TriggerPointDepth.StartAt(message.Depth);
+        using var start = TriggerPointDepth.StartAt(message.Depth);
+        using var depth = TriggerPointDepth.Enter();
         var call = new TriggerPointCall
         {
             Verb = global::App.Model.Verbs.FromKey(message.Verb) ?? throw new ArgumentException($"'{message.Verb}' is not a verb of the model.", nameof(message)),
@@ -444,97 +445,4 @@ public static class TriggerPointRelay
                 throw new ArgumentOutOfRangeException(nameof(message), message.TriggerPoint, "Not an after-commit trigger point of the model.");
         }
     }
-}
-
-/// <summary>A Document verb that the per-type runner did (trigger-points-design.md decision 16), for the team's history; written to the outbox on the built-in path and the replace path alike.</summary>
-/// <param name="Entity">The entity's name.</param>
-/// <param name="Key">The object's key, as text.</param>
-/// <param name="Verb">The verb's key.</param>
-/// <param name="Actor">The actor.</param>
-/// <param name="At">When.</param>
-/// <param name="Replaced">The id of the replace that ran, or null.</param>
-public sealed record DocumentVerbDone(string Entity, string? Key, string Verb, string? Actor, DateTimeOffset At, string? Replaced);
-
-/// <summary>
-/// Runs the object, link and own verbs of a Document done outside an event, with the trigger points of the lifecycles that govern it
-/// (Document): then before actions and checks across the lifecycles, the
-/// records, the verb's effect or its replace, the with-the-change actions, and the after-commit messages and the
-/// <see cref="DocumentVerbDone"/> record written to the outbox. Call it inside your own transaction: nothing is written before every
-/// check passes, an exception from the team's code passes through to you so the transaction rolls back, and the outbox's messages are
-/// stored only if it commits.
-/// </summary>
-/// <param name="outbox">Where the after-commit messages and the history record go, inside the caller's transaction.</param>
-/// <param name="clock">The clock.</param>
-public sealed partial class DocumentVerbs(IProcessOutbox outbox, IProcessClock clock)
-{
-    /// <summary>The steps of the lifecycles that govern a Document, by name.</summary>
-    public static IReadOnlyList<ITriggerPointSteps> Lifecycles { get; } = [new global::App.Model.Docs.DocumentTriggerSteps()];
-
-    /// <summary>Runs a verb. Move, signature and task verbs are refused: they go through the process's commands.</summary>
-    /// <param name="verb">The verb.</param>
-    /// <param name="call">The call: the object's key, the envelope, the step's attributes or end, and the values it proposes.</param>
-    /// <param name="perform">The verb's built-in effect, which the team writes; not called when a replace runs.</param>
-    /// <param name="cancellationToken">Cancellation.</param>
-    /// <returns>Whether it was accepted, the check warnings, and what refused.</returns>
-    public async Task<TriggerPointOutcome> RunAsync(global::App.Model.Verb verb, TriggerPointCall call, Func<TriggerPointCall, CancellationToken, Task> perform, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(call);
-        ArgumentNullException.ThrowIfNull(perform);
-        var outcome = new TriggerPointOutcome();
-        if (verb is global::App.Model.Verb.Promote or global::App.Model.Verb.Demote or global::App.Model.Verb.Override or global::App.Model.Verb.SetState or global::App.Model.Verb.Sign or global::App.Model.Verb.Reject or global::App.Model.Verb.Ignore or global::App.Model.Verb.Withdraw or global::App.Model.Verb.Delegate or global::App.Model.Verb.Route or global::App.Model.Verb.Claim or global::App.Model.Verb.Complete)
-        {
-            outcome.Refuse(Refusals.NoTransition, null, $"Verb {(global::App.Model.Verbs.Key(verb))} goes through the process's commands, not the per-type runner.");
-            return outcome;
-        }
-        var states = new Dictionary<string, IReadOnlyList<string>>(call.States, StringComparer.Ordinal);
-        if (!states.ContainsKey("Document"))
-        {
-            // Create reads the lifecycle's initial state; other verbs ask the team for the object's states there.
-            if ((verb == global::App.Model.Verb.Create ? new[] { "Draft" } : StatesInDocument(call)) is { } inDocument)
-                states["Document"] = inDocument;
-        }
-        call = call with { Verb = verb, Entity = call.Entity ?? typeof(global::App.Model.Docs.Document), States = states };
-
-        // Before actions, then checks, across the lifecycles (decision 19); nothing is written until every check passes.
-        var lifecycles = Lifecycles.Where(l => l.Speaks(verb)).ToList();
-        foreach (var l in lifecycles)
-            l.Before(verb, call, outcome);
-        foreach (var l in lifecycles)
-        {
-            if (outcome.Passed)
-                l.Check(verb, call, outcome);
-        }
-
-        if (!outcome.Passed)
-            return outcome;
-        foreach (var (_, write) in outcome.Records)
-            write();
-        var replaced = false;
-        foreach (var l in lifecycles)
-            replaced = l.Perform(verb, call, outcome) || replaced;
-        if (!replaced)
-            await perform(call, cancellationToken).ConfigureAwait(false);
-        foreach (var l in lifecycles)
-            l.With(verb, call, outcome);
-        foreach (var l in lifecycles)
-            l.After(verb, call, outcome);
-
-        var messages = new List<object>();
-        for (var i = 0; i < outcome.Messages.Count; i++)
-        {
-            var m = outcome.Messages[i];
-            messages.Add(m with { MessageId = string.Create(CultureInfo.InvariantCulture, $"{call.CommandId}/{call.Key}/{m.TriggerPoint}/{i}"), CommandId = call.CommandId });
-        }
-
-        messages.Add(new DocumentVerbDone("Document", call.Key, global::App.Model.Verbs.Key(verb), call.Envelope?.Actor, Clock.Now, outcome.Replaced));
-        await Outbox.WriteAsync(messages, cancellationToken).ConfigureAwait(false);
-        return outcome;
-    }
-
-    private IProcessOutbox Outbox { get; } = outbox ?? throw new ArgumentNullException(nameof(outbox));
-
-    private IProcessClock Clock { get; } = clock ?? throw new ArgumentNullException(nameof(clock));
-
-    /// <summary>The object's active state paths in lifecycle Document, when the call doesn't give them; null when Document doesn't govern the object (implemented in DocumentVerbs.cs).</summary>
-    private static partial IReadOnlyList<string>? StatesInDocument(TriggerPointCall call);
 }

@@ -8,4 +8,9 @@ namespace App.Model.Docs;
 // the model later is declared in DocumentHandlers.g.cs and fails the build until you add it here.
 public sealed partial class DocumentHandlers
 {
+    // The object's active state paths in lifecycle Legal, which could say no to, or whose trigger points run on, a verb an event names: read them from your
+    // system for the instance's object. None means the initial state; null means Legal doesn't govern the object, so it isn't asked
+    // (a process with several subjects). It throws until you write it.
+    private partial global::System.Collections.Generic.IReadOnlyList<string>? StatesInLegal(StatechartCall<DocumentContext> call) =>
+        throw new NotImplementedException("The states of the object in lifecycle Legal are not read yet.");
 }
