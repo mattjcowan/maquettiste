@@ -1,0 +1,100 @@
+{
+  "kind": "scenario",
+  "id": "01JAP0000000000000000000N2",
+  "name": "handedOver",
+  "process": "01JAP0000000000000000000C1",
+  "description": "The engineer is reminded, hands the engineering signature to a controller, who signs it on the engineer's behalf.",
+  "participants": [
+    {
+      "id": "01JAP0000000000000000000Q1",
+      "name": "ana",
+      "holds": [
+        {
+          "id": "01JAP0000000000000000000H1",
+          "actor": "01JAP0000000000000000000R1"
+        }
+      ]
+    },
+    {
+      "id": "01JAP0000000000000000000Q2",
+      "name": "carl",
+      "holds": [
+        {
+          "id": "01JAP0000000000000000000H2",
+          "actor": "01JAP0000000000000000000R3"
+        }
+      ]
+    }
+  ],
+  "start": {
+    "context": {},
+    "at": "2026-11-08T09:00:00Z"
+  },
+  "steps": [
+    {
+      "id": "01JAP000000000000000000N21",
+      "input": "event",
+      "event": "01JAP0000000000000000000V1",
+      "participant": "01JAP0000000000000000000Q1",
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JAP0000000000000000000S2"
+        ]
+      }
+    },
+    {
+      "id": "01JAP000000000000000000N22",
+      "input": "time",
+      "after": "P3D",
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JAP0000000000000000000S2"
+        ],
+        "notices": [
+          {
+            "signature": "01JAP000000000000000000G11",
+            "kind": "remind"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JAP000000000000000000N23",
+      "input": "event",
+      "event": "01JAP0000000000000000000V2",
+      "participant": "01JAP0000000000000000000Q1",
+      "signature": "01JAP000000000000000000G11",
+      "response": "delegate",
+      "delegateTo": "01JAP0000000000000000000Q2",
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JAP0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAP000000000000000000G11": 0
+        }
+      }
+    },
+    {
+      "id": "01JAP000000000000000000N24",
+      "input": "event",
+      "event": "01JAP0000000000000000000V2",
+      "participant": "01JAP0000000000000000000Q2",
+      "signature": "01JAP000000000000000000G11",
+      "onBehalfOf": "01JAP0000000000000000000Q1",
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JAP0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAP000000000000000000G11": 1
+        }
+      }
+    }
+  ],
+  "outcome": "active"
+}

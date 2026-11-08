@@ -1,0 +1,127 @@
+{
+  "kind": "process",
+  "id": "01JAP0000000000000000000C1",
+  "name": "DocumentLifecycle",
+  "package": "01JAP0000000000000000000P1",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JAP0000000000000000000B1",
+      "entity": "01JAP0000000000000000000E1"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JAP0000000000000000000V1",
+      "name": "submit",
+      "verb": "promote",
+      "actors": [
+        "01JAP0000000000000000000R1"
+      ]
+    },
+    {
+      "id": "01JAP0000000000000000000V2",
+      "name": "approve"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JAP0000000000000000000S1",
+      "name": "Draft"
+    },
+    {
+      "id": "01JAP0000000000000000000S2",
+      "name": "Review"
+    },
+    {
+      "id": "01JAP0000000000000000000S3",
+      "name": "Approved",
+      "type": "final"
+    }
+  ],
+  "initial": "01JAP0000000000000000000S1",
+  "transitions": [
+    {
+      "id": "01JAP0000000000000000000T1",
+      "source": "01JAP0000000000000000000S1",
+      "event": "01JAP0000000000000000000V1",
+      "targets": [
+        "01JAP0000000000000000000S2"
+      ]
+    },
+    {
+      "id": "01JAP0000000000000000000T2",
+      "source": "01JAP0000000000000000000S2",
+      "event": "01JAP0000000000000000000V2",
+      "targets": [
+        "01JAP0000000000000000000S3"
+      ],
+      "gate": {
+        "id": "01JAP0000000000000000000G1",
+        "name": "Release",
+        "displayName": "Release approval",
+        "reasonRequired": false,
+        "meanings": [
+          {
+            "id": "01JAP0000000000000000000G2",
+            "name": "approved"
+          }
+        ],
+        "stages": [
+          {
+            "id": "01JAP0000000000000000000G3",
+            "name": "Review",
+            "displayName": "Review round",
+            "signatures": [
+              {
+                "id": "01JAP000000000000000000G11",
+                "name": "Engineering",
+                "signers": [
+                  "01JAP0000000000000000000R1"
+                ],
+                "delegateTo": [
+                  "01JAP0000000000000000000R3"
+                ],
+                "remindAfter": "P2D",
+                "escalateAfter": "P5D",
+                "escalateTo": [
+                  "01JAP0000000000000000000R2"
+                ],
+                "description": "An engineer, or a controller the engineer hands it to."
+              },
+              {
+                "id": "01JAP000000000000000000G12",
+                "name": "Quality",
+                "displayName": "Quality check",
+                "signers": [
+                  "01JAP0000000000000000000R2"
+                ],
+                "reauthenticate": true
+              }
+            ]
+          },
+          {
+            "id": "01JAP0000000000000000000G4",
+            "name": "Finance",
+            "displayName": "Finance round",
+            "description": "Only for costly documents.",
+            "round": 2,
+            "when": {
+              "text": "subject.cost > 10000"
+            },
+            "signatures": [
+              {
+                "id": "01JAP000000000000000000G13",
+                "name": "Controller",
+                "signers": [
+                  "01JAP0000000000000000000R3"
+                ],
+                "remindAfter": "P1D"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

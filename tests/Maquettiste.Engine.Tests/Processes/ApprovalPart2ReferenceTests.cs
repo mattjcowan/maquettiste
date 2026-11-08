@@ -5,6 +5,7 @@ using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Generation;
 using Maquettiste.Engine.Loading;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Processes;
 using Maquettiste.Engine.Tests.Loading;
 using Maquettiste.Testing;
 
@@ -13,8 +14,8 @@ namespace Maquettiste.Engine.Tests.Processes;
 /// <summary>
 /// The references and deletes of approvals, part 2 (signoff-design.md section 9): an actor that goes from a signature's delegateTo, or from its
 /// escalateTo with escalateAfter beside its last entry; a signature that goes from a step's expect.notices, and the list with its last entry;
-/// and a stage's when, which refuses remove-references and goes alone under delete-dependents. The model is the process-basics fixture with
-/// two rounds; the names are invented.
+/// and a stage's when, which refuses remove-references and goes alone under delete-dependents; and get_trigger_sequence, which answers
+/// delegate where a signature has delegateTo. The model is the process-basics fixture with two rounds; the names are invented.
 /// </summary>
 public sealed class ApprovalPart2ReferenceTests
 {
@@ -35,6 +36,9 @@ public sealed class ApprovalPart2ReferenceTests
     private const string Title = "01JAPA00000000000000000001"; // Record's attribute, which the legal stage's when reads
     private const string Scenario = "01JAPC00000000000000000001";
     private const string ProcessFile = "model/processes/order-lifecycle.json";
+    private const string Submit = "01JTRN00000000000000000001"; // Draft -> Submitted, no gate
+    private const string Approve = "01JTRN00000000000000000006"; // the gated transition
+    private const string DelegateCheck = "01JAPK00000000000000000001";
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -54,7 +58,7 @@ public sealed class ApprovalPart2ReferenceTests
            {"id":"01JAPT00000000000000000002","input":"time","after":"P2D","expect":{"notices":[{"signature":"{{Managers}}","kind":"escalate"}]} }]}
         """;
 
-    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync()
+    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(string? stages = null, string? triggerPoints = null)
     {
         var h = new LoaderHarness();
         h.CopyFixture("models", "process-basics");
@@ -71,7 +75,9 @@ public sealed class ApprovalPart2ReferenceTests
         var gate = process["transitions"]![5]!["gate"]!.AsObject();
         foreach (var key in new[] { "required", "signers", "requiredActors" })
             gate.Remove(key);
-        gate["stages"] = JsonNode.Parse(Stages);
+        gate["stages"] = JsonNode.Parse(stages ?? Stages);
+        if (triggerPoints is not null)
+            process["triggerPoints"] = JsonNode.Parse(triggerPoints);
         Write(h, ProcessFile, process.ToJsonString(), "process.json");
         Write(h, "model/scenarios/order-lifecycle/notices.json", Steps, "scenario.json");
         var store = new ModelStore(h.Options, h.Services() with { Validator = EngineServices.Create(h.Options).Validator });
@@ -168,5 +174,38 @@ public sealed class ApprovalPart2ReferenceTests
         var legal = store.Current!.Get<Process>(P)!.Transitions[5].Gate!.Stages![1];
         Assert.Equal((Legal, 2, true), (legal.Id, legal.Round, legal.When is null));
         Assert.Equal([Counsel], legal.Signatures.Select(s => s.Id));
+    }
+
+    private static async Task<IReadOnlyList<string>> SequenceAsync(ModelStore store, string verb, string? transition = null)
+    {
+        var call = await store.GetTriggerSequenceAsync(P, verb, new TriggerSequenceFilter { Transition = transition }, Ct);
+        Assert.Equal(ProcessCallStatus.Ok, call.Status);
+        return [.. call.Value!.Steps.Select(s => string.Join(' ', new[] { s.Order.ToString(System.Globalization.CultureInfo.InvariantCulture), s.Step, s.TriggerPoint }.OfType<string>()))];
+    }
+
+    [Fact]
+    public async Task The_trigger_sequence_answers_delegate_where_a_signature_has_delegateTo()
+    {
+        var (h, store) = await OpenAsync(triggerPoints: $$"""
+            [{"id":"{{DelegateCheck}}","name":"DelegateCheck","type":"check","verbs":["delegate"],"transitions":["{{Approve}}"]}]
+            """);
+        using var _ = h;
+        await using var __ = store;
+
+        // The signatures row (the delegator's checks, then the person it goes to) and the effect, with no transition and at the approval's move.
+        Assert.Equal(["2 closed-lists", "5 no-move", "6 guards", "7 signatures", $"9 checks {DelegateCheck}", "10 effect"], await SequenceAsync(store, "delegate"));
+        Assert.Equal(["2 closed-lists", "5 no-move", "6 guards", "7 signatures", $"9 checks {DelegateCheck}", "10 effect"], await SequenceAsync(store, "delegate", Approve));
+        // A move without a gate takes no delegation: no signatures row, and the point narrowed to the approval's move doesn't run there.
+        Assert.Equal(["2 closed-lists", "5 no-move", "6 guards", "10 effect"], await SequenceAsync(store, "delegate", Submit));
+
+        // An approval whose signatures have no delegateTo takes no delegate: with no transition there is no signatures row, as before part 2,
+        // and a transition given answers as it did.
+        var (other, plain) = await OpenAsync(stages: System.Text.RegularExpressions.Regex.Replace(Stages, "\"delegateTo\":\\[[^\\]]*\\],", ""));
+        using var ___ = other;
+        await using var ____ = plain;
+        Assert.Empty(SignatureOf(plain, Managers).DelegateTo);
+        Assert.Empty(SignatureOf(plain, Counsel).DelegateTo);
+        Assert.Equal(["2 closed-lists", "5 no-move", "6 guards", "10 effect"], await SequenceAsync(plain, "delegate"));
+        Assert.Equal(["2 closed-lists", "5 no-move", "6 guards", "7 signatures", "10 effect"], await SequenceAsync(plain, "delegate", Approve));
     }
 }

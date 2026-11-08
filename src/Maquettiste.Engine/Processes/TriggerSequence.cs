@@ -708,7 +708,8 @@ internal sealed class TriggerSequences
     /// that apply to the verb, and each trigger point that can run, as <see cref="For"/> picks them. A place the filter doesn't give is left
     /// open, but for attributes and ends, where a run fails closed: only checks narrowed by them are listed. <c>reject</c>, <c>ignore</c> and
     /// <c>withdraw</c> at a transition whose gate has stages, or with no transition in a lifecycle that has such a gate, list the signatures row
-    /// and the response's effect, as <c>sign</c> does (signoff-design.md section 9).
+    /// and the response's effect, as <c>sign</c> does (signoff-design.md section 9); so does <c>delegate</c> where a signature of such a gate
+    /// has <c>delegateTo</c> (decision 34).
     /// </summary>
     /// <param name="lifecycle">The acting lifecycle.</param>
     /// <param name="verb">The verb's key.</param>
@@ -763,9 +764,12 @@ internal sealed class TriggerSequences
 
         // A response at an approval (signoff-design.md sections 9 and 17): reject, ignore and withdraw answer a transition whose gate has stages,
         // inline or through a gate policy, so the signatures row (7a to 7f) applies there, and the effect is the response's. A transition given
-        // names its gate below; with none, any approval of the lifecycle may take the response. A plain gate answers as before.
-        var responds = filter.Transition is null && verb is "reject" or "ignore" or "withdraw"
-            && chart.Transitions.Any(t => Validation.ApprovalRules.GateOf(_model, t.Transition) is { UsesStages: true });
+        // names its gate below; with none, any approval of the lifecycle may take the response. A plain gate answers as before. delegate answers
+        // the same way where a signature of the approval has delegateTo (decision 34): the row then checks the delegator, then the person it goes to.
+        var responds = filter.Transition is null && (verb is "reject" or "ignore" or "withdraw"
+                ? chart.Transitions.Any(t => Validation.ApprovalRules.GateOf(_model, t.Transition) is { UsesStages: true })
+                : verb == "delegate" && chart.Transitions.Any(t => Validation.ApprovalRules.GateOf(_model, t.Transition) is { } gate
+                    && Validation.ApprovalRules.Delegable(gate)));
         var gated = verb == "sign" || responds || chart.Transitions.Any(t =>
             (filter.Transition is { } id ? string.Equals(t.Transition.Id, id, StringComparison.Ordinal)
                 : string.Equals(t.Transition.Verb ?? t.Event?.Verb, verb, StringComparison.Ordinal))

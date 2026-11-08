@@ -157,14 +157,50 @@ that completes the last needed signature makes the move. Reject is a veto: it cl
 starts the approval again. Ignore (abstain) finishes that person on the signature and leaves the count. Withdraw takes back the person's
 latest signature. A signature is needed unless its condition is false when the approval starts: when the object enters the source
 state, after a rejection, and after the gated move completes without leaving it. Leaving the source state discards every response.
+{{- # Part 2 (signoff-design.md section 10): rounds, skipped stages, delegation, notices and the password, each only where the approval uses it. }}
+{{- ap_rounds = false }}{{ ap_skips = false }}{{ ap_delegates = false }}{{ ap_reminds = false }}{{ ap_escalates = false }}{{ ap_password = false }}
+{{- for st in g.stages }}{{ if st.round != g.stages[0].round }}{{ ap_rounds = true }}{{ end }}{{ if st.when }}{{ ap_skips = true }}{{ end }}{{ end }}
+{{- for s in g.all_signatures }}{{ if s.delegate_to.size > 0 }}{{ ap_delegates = true }}{{ end }}{{ if s.remind_after }}{{ ap_reminds = true }}{{ end }}{{ if s.escalate_after || s.escalate_to.size > 0 }}{{ ap_escalates = true }}{{ end }}{{ if s.reauthenticate }}{{ ap_password = true }}{{ end }}{{ end }}
+{{- if ap_rounds || ap_skips }}
+
+{{ if ap_rounds }}Stages run in rounds, lowest first. A signature that completes a round before the last starts the next round and moves nothing;
+the signature that completes the last round makes the move.
+{{ end }}When a round starts, its stages' conditions are judged, then the conditions of the signatures in the stages not skipped. A stage
+whose condition is false is skipped.
+{{- end }}
+{{- if ap_delegates }}
+
+A signer of a signature that may be delegated can hand their part to a person who meets one of its delegate actors. That person then
+answers on the signer's behalf, and the answer counts as the signer's. A delegation can't be passed on; a rejection or leaving the source
+state ends it.
+{{- end }}
+{{- if ap_reminds || ap_escalates }}
+
+{{ if ap_reminds }}A reminder goes to the people who may still answer a signature, its Remind after time after its round started.
+{{ end }}{{ if ap_escalates }}An escalation goes to its Escalate to actors, its Escalate after time after its round started, and gives them
+no right to sign.
+{{ end }}Each is sent once per round start, by the running system, and never moves the object.
+{{- end }}
+{{- if ap_password }}
+
+A signature signed again with a password asks the running system to check the person's identity again for every response on it.
+{{- end }}
 {{- for st in g.stages }}
 
 Stage {{ md_code st.name }}{{ if st.display_name != st.name }} ({{ md_cell st.display_name }}){{ end }}:{{ if st.description }} {{ md_inline(st.description) }}{{ end }}
+{{- if ap_rounds || st.when }}
+{{ if ap_rounds }}
+- Round: {{ st.round }}
+{{- end }}
+{{- if st.when }}
+- Skip unless: {{ md_code st.when.text }}
+{{- end }}
+{{- end }}
 
-| Signature | Signers | Required | Required actors | Repeat signer | Needed when | Not by | Why |
-| --- | --- | --- | --- | --- | --- | --- | --- |
+| Signature | Signers | Required | Required actors | Repeat signer | Needed when | Not by |{{ if ap_delegates }} May be delegated to |{{ end }}{{ if ap_reminds }} Remind after |{{ end }}{{ if ap_escalates }} Escalate after | Escalate to |{{ end }}{{ if ap_password }} Signed again with a password |{{ end }} Why |
+| --- | --- | --- | --- | --- | --- | --- |{{ if ap_delegates }} --- |{{ end }}{{ if ap_reminds }} --- |{{ end }}{{ if ap_escalates }} --- | --- |{{ end }}{{ if ap_password }} --- |{{ end }} --- |
 {{- for s in st.signatures }}
-| {{ md_code s.name }}{{ if s.display_name != s.name }} ({{ md_cell s.display_name }}){{ end }} | {{ actor_links(s.signers, "../") }} | {{ s.required }} | {{ actor_links(s.required_actors, "../") }} | {{ s.allow_repeat_signer ? "allowed" : "no" }} | {{ s.when ? (md_code s.when.text) : "always" }} | {{ not_by_text(s, numbers) }} | {{ md_inline(s.description) }} |
+| {{ md_code s.name }}{{ if s.display_name != s.name }} ({{ md_cell s.display_name }}){{ end }} | {{ actor_links(s.signers, "../") }} | {{ s.required }} | {{ actor_links(s.required_actors, "../") }} | {{ s.allow_repeat_signer ? "allowed" : "no" }} | {{ s.when ? (md_code s.when.text) : "always" }} | {{ not_by_text(s, numbers) }} |{{ if ap_delegates }} {{ actor_links(s.delegate_to, "../") }} |{{ end }}{{ if ap_reminds }} {{ s.remind_after ? (md_code s.remind_after) : "" }} |{{ end }}{{ if ap_escalates }} {{ s.escalate_after ? (md_code s.escalate_after) : "" }} | {{ actor_links(s.escalate_to, "../") }} |{{ end }}{{ if ap_password }} {{ s.reauthenticate ? "yes" : "no" }} |{{ end }} {{ md_inline(s.description) }} |
 {{- end }}
 {{- end }}
 {{- end }}
