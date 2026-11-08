@@ -1243,6 +1243,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/model/trigger-points/{id}/covers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The named trigger point's id. */
+                id: components["schemas"]["Ulid"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The entities a named trigger point runs for
+         * @description trigger-points-design.md decision 33. Every entity a subject covers (an entity with its derived entities; a stereotype's
+         *     carriers, including those a package gives its entities by default, and their derived entities), less `exceptEntities` and
+         *     theirs, narrowed by `entities`: the same list as the record's `covers`. The editor's "Runs for" shows it. It reads the
+         *     snapshot; the model is never resolved, and nothing is written. 404 when the id is not a named trigger point.
+         */
+        get: operations["getTriggerPointCovers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/processes/{id}/export": {
         parameters: {
             query?: never;
@@ -15777,6 +15803,41 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getTriggerPointCovers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The named trigger point's id. */
+                id: components["schemas"]["Ulid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The entities, in name order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "entities": [
+                     *         "01JQENT0000000000000000004"
+                     *       ]
+                     *     }
+                     */
+                    "application/json": {
+                        /** @description Entity ids, in name order. */
+                        entities: components["schemas"]["Ulid"][];
+                    };
+                };
+            };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
         };

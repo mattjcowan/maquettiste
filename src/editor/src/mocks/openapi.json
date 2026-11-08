@@ -5791,6 +5791,64 @@
         }
       }
     },
+    "/api/model/trigger-points/{id}/covers": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "description": "The named trigger point's id.",
+          "schema": {
+            "$ref": "#/components/schemas/Ulid"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "processes"
+        ],
+        "operationId": "getTriggerPointCovers",
+        "summary": "The entities a named trigger point runs for",
+        "description": "trigger-points-design.md decision 33. Every entity a subject covers (an entity with its derived entities; a stereotype's\ncarriers, including those a package gives its entities by default, and their derived entities), less `exceptEntities` and\ntheirs, narrowed by `entities`: the same list as the record's `covers`. The editor's \"Runs for\" shows it. It reads the\nsnapshot; the model is never resolved, and nothing is written. 404 when the id is not a named trigger point.\n",
+        "x-maquettiste-role": "viewer",
+        "responses": {
+          "200": {
+            "description": "The entities, in name order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "entities"
+                  ],
+                  "properties": {
+                    "entities": {
+                      "type": "array",
+                      "description": "Entity ids, in name order.",
+                      "items": {
+                        "$ref": "#/components/schemas/Ulid"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "entities": [
+                    "01JQENT0000000000000000004"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/api/processes/{id}/export": {
       "parameters": [
         {
