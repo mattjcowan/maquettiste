@@ -162,12 +162,12 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Reviewers set per lifecycle role, mapped to people | W O | Part: actors, with no mapping |
 | Person, role, group and organization told apart, with membership | E W O N | **No**: planned in the actors design (0.14.0) |
 | Reviewers added or removed at run time | O | No: the system's job |
-| Signing again with a password | S O | **No** |
-| Signing authority handed to someone else | E O N | **No** |
+| Signing again with a password | S O | Part: a signature's `reauthenticate` states it; the running system checks it, and the simulation takes it as done (0.20.0) |
+| Signing authority handed to someone else | E O N | Yes: a signature's `delegateTo` and the response `delegate`, answered on behalf of the delegator (0.20.0). Who is away, and when, is the running system's job |
 | Claiming a task from a group, and an escalation chain | N | **No** |
 | Separation of duties: one person can't hold two roles on one object, or approve what they submitted | N | Part: yes for "approve what they submitted" (`notBy`, 0.19.0); no for one person never holding two roles on one object |
-| Reminders and escalation | O | **No**: a timer could express it |
-| Steps in series or parallel | T W A | **Part**: invokes and orchestrations; 4.3 |
+| Reminders and escalation | O | Part: a signature's `remindAfter`, `escalateAfter` and `escalateTo` state when and to whom; the running system sends them, and an escalation is a notice only (0.20.0) |
+| Steps in series or parallel | T W A | Yes: an approval's stages in rounds, side by side or one after another, with a stage skipped by a condition (0.20.0) |
 | One sign-off policy shared by many moves | Own | Yes: gate policies (#33) |
 | Signatures defined outside the model | Own | Yes: leave out the gate; custom logic decides |
 | A record of each signature | E O | Yes: audit attributes |
