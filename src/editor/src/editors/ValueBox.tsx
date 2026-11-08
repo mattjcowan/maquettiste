@@ -28,9 +28,11 @@ export interface ValueBoxProps {
   onChange: (text: string) => void;
   onCommit?: (text: string) => void;
   placeholder?: string;
+  /** The expression is a condition (true or false): its type line says so, in yes or no words. */
+  condition?: boolean;
 }
 
-export function ValueBox({ id, label, initial, request, onChange, onCommit, placeholder = L.valuePlaceholder }: ValueBoxProps) {
+export function ValueBox({ id, label, initial, request, onChange, onCommit, placeholder = L.valuePlaceholder, condition }: ValueBoxProps) {
   const [text, setText] = useState(initial);
   const edited = text !== initial;
   const wanted = useDebounced(edited ? text : undefined, 250);
@@ -63,7 +65,7 @@ export function ValueBox({ id, label, initial, request, onChange, onCommit, plac
       {detail ? (
         <span className="truncate text-11 text-secondary" title={detail.text} data-testid="value-preview">
           {detail.text !== text.trim() ? `${detail.text} · ` : ""}
-          {L.previewType(detail.type, detail.nullable)}
+          {condition ? L.conditionType(detail.type, detail.nullable) : L.previewType(detail.type, detail.nullable)}
         </span>
       ) : null}
       {findings.map((d) => (

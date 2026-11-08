@@ -23,9 +23,9 @@ import { Badge, Spinner } from "@/components/ui/misc";
 import { cn } from "@/lib/cn";
 import { indexLookup } from "@/model/index";
 import { RIGHT_LABELS as RL, SIMULATION_LABELS as L, TRIGGER_LABELS as TL } from "@/model/labels";
-import { CHECK_WORD_LABELS, CHECK_WORDS } from "@/model/triggerPoints";
+import { CHECK_WORD_LABELS, CHECK_WORDS, isTeamCheck, reachableChecks, triggerPointsOf } from "@/model/triggerPoints";
 import { summaryFromDocument } from "@/model/model";
-import type { ParticipantDoc, ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
+import type { CheckWord, ParticipantDoc, ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
 import { verifyScenario } from "../api";
 import { attributeLabels, castValues, entityChain } from "./castNames";
 import { objectStatesText, type StateChoiceGroup } from "@/model/effects";
@@ -197,11 +197,12 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
     return Array.isArray(doc?.attributes) ? doc.attributes.filter((a): a is string => typeof a === "string") : [];
   };
   // What Do... can name for read and modify: the subject's attributes (a modify sets the value the subject holds). With no subject
-  // object in the cast, the process's own subjects name them, as they do for sets.
+  // object in the cast, every attribute the process's own subjects hold: a calculated or bound one cannot be set by a Set, but it can be
+  // read, and a check may be scoped to it.
   const subjectObject = cast.objects.find((o) => o.id === cast.subject);
   const doAttributes = subjectObject
     ? [...(castLabels.get(subjectObject.entity) ?? new Map<string, string>())].map(([value, label]) => ({ value, label }))
-    : setContext.choices.map((a) => ({ value: a.id, label: a.name }));
+    : setContext.attributes.map((a) => ({ value: a.id, label: a.name }));
   useEffect(() => {
     let active = true;
     const wanted = castEntities ? castEntities.split(",") : [];
@@ -462,12 +463,18 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
                   actors={allActors}
                   disabled={!result || !live || !!result.final || !!replay}
                   attributes={doAttributes}
-                  onDo={(verb, who, attribute) =>
+                  hasChecks={triggerPointsOf(process).some(isTeamCheck)}
+                  onDo={(verb, who, attribute, checks) =>
                     update((s) =>
                       addInput(s, {
                         input: "verb",
                         verb,
                         ...who,
+                        // The team's checks that name this verb: what each does is the one choice made beside Do....
+                        ...(() => {
+                          const reached = reachableChecks(process, { id: "", input: "verb", verb });
+                          return reached.length ? { assume: Object.fromEntries(reached.map((t) => [t.id, checks])) } : {};
+                        })(),
                         // Read names the attribute; modify sets it to the value the subject holds.
                         ...(attribute && verb === "read" ? { attributes: [attribute] } : {}),
                         ...(attribute && verb === "modify" ? { values: { [attribute]: subjectObject?.values?.[attribute] ?? null } } : {}),
@@ -604,17 +611,21 @@ function DoMenu({
   actors,
   disabled,
   attributes,
+  hasChecks,
   onDo,
 }: {
   participants: readonly ParticipantDoc[];
   actors: readonly { id: string; name: string }[];
   disabled: boolean;
   attributes: readonly { value: string; label: string }[];
-  onDo: (verb: string, who: { participant?: string; actor?: string }, attribute: string) => void;
+  /** The lifecycle has checks the team writes: Do... offers what they do. */
+  hasChecks: boolean;
+  onDo: (verb: string, who: { participant?: string; actor?: string }, attribute: string, checks: CheckWord) => void;
 }) {
   const verbs = useVerbs();
   const [who, setWho] = useState("");
   const [attribute, setAttribute] = useState("");
+  const [checks, setChecks] = useState<CheckWord>("pass");
   const groups = verbGroups("right", verbs.own, verbs.hidden)
     .filter((g) => g.id !== "move" && g.id !== "signature" && g.id !== "task")
     .filter((g) => g.options.length);
@@ -652,6 +663,22 @@ function DoMenu({
           ))}
         </Select>
       ) : null}
+      {hasChecks ? (
+        <Select
+          aria-label={TL.panel.doChecks}
+          title={TL.panel.doChecksTip}
+          className={cn(FIELD, "w-20")}
+          value={checks}
+          onChange={(e) => setChecks(e.target.value as CheckWord)}
+          data-testid="do-checks"
+        >
+          {CHECK_WORDS.map((w) => (
+            <option key={w} value={w}>
+              {CHECK_WORD_LABELS[w]}
+            </option>
+          ))}
+        </Select>
+      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="secondary" size="sm" className={SMALL} disabled={disabled} title={RL.doMenuTip} data-testid="do-menu">
@@ -665,7 +692,7 @@ function DoMenu({
               {g.options.map((o) => (
                 <DropdownMenuItem
                   key={o.key}
-                  onSelect={() => onDo(o.key, pick(), o.key === "read" || o.key === "modify" ? attribute : "")}
+                  onSelect={() => onDo(o.key, pick(), o.key === "read" || o.key === "modify" ? attribute : "", checks)}
                   data-testid={`do-${o.key}`}
                 >
                   {o.label}

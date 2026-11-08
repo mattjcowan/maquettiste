@@ -43,7 +43,7 @@ import { ScenarioStatusBadge } from "../process/ScenariosTab";
 import { ObjectsGrid, ParticipantsGrid } from "./ParticipantsGrid";
 import { PARTICIPANT_LABELS as PL, RIGHT_LABELS as RL, TRIGGER_LABELS as TL } from "@/model/labels";
 import { EFFECT_LABELS as EL } from "@/model/effectLabels";
-import { CHECK_WORD_LABELS, isTeamCheck, parseAssume, reachableChecks } from "@/model/triggerPoints";
+import { CHECK_WORD_LABELS, canWarnAt, isTeamCheck, parseAssume, reachableChecks, stepVerbs } from "@/model/triggerPoints";
 
 type Rec = Record<string, unknown>;
 
@@ -305,7 +305,12 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
             width: "min-w-24",
             value: (r: StepRow) => r.checkWarnings,
             editValue: (r: StepRow) => (step(r)?.expect?.checkWarnings ?? []).join(","),
-            options: () => allPoints.filter(({ t }) => t.type === "check").map(({ t, label }) => ({ value: t.id, label })),
+            // Only the checks that can warn at this step (a warning that names its verb); those it already expects stay listed.
+            options: (r: StepRow) => {
+              const verbs = processDoc && step(r) ? stepVerbs(processDoc, step(r)!) : new Set<string>();
+              const kept = new Set(step(r)?.expect?.checkWarnings ?? []);
+              return allPoints.filter(({ t }) => kept.has(t.id) || canWarnAt(t, verbs)).map(({ t, label }) => ({ value: t.id, label }));
+            },
           },
           {
             key: "triggerPoints",
@@ -326,6 +331,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
             kind: "text" as const,
             width: "min-w-28",
             mono: true,
+            placeholder: TL.setValuesPlaceholder,
             value: (r: StepRow) => r.setValues,
           },
           {
@@ -397,6 +403,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       kind: "text",
       width: "min-w-24",
       mono: true,
+      placeholder: TL.assumePlaceholder,
       value: (r) => r.assume,
       // The team-code checks the step can reach and has no entry for: they pass unless the cell says Warning or Error.
       render: (r) => {

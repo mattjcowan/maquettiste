@@ -75,14 +75,24 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
   );
   const open = (kind: Open["kind"]) => (row: TriggerPointRow) => setDialog({ kind, id: row.id });
   const columns: GridColumn<TriggerPointRow>[] = [
-    { key: "name", label: L.columns.name, tooltip: L.tips.name, kind: "text", width: "w-32", clip: "max-w-32", sticky: true, value: (r) => r.name },
+    {
+      key: "name",
+      label: L.columns.name,
+      tooltip: L.tips.name,
+      kind: "text",
+      width: "w-28",
+      clip: "max-w-28",
+      sticky: true,
+      value: (r) => r.name,
+      cellTitle: (r) => r.name,
+    },
     {
       key: "verbs",
       label: L.columns.does,
       tooltip: L.tips.does,
       kind: "pick",
-      width: "w-32",
-      clip: "max-w-32",
+      width: "w-28",
+      clip: "max-w-28",
       value: (r) => r.verbs,
       editValue: (r) => r.verbKeys.join(","),
       options: () => verbOptions,
@@ -92,7 +102,7 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.type,
       tooltip: L.tips.type,
       kind: "select",
-      width: "w-20",
+      width: "w-16",
       value: (r) => r.typeLabel,
       editValue: (r) => r.type,
       // A replace is offered only for the verbs that allow it (decision 17); the type a row has stays in the list.
@@ -104,8 +114,8 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.timing,
       tooltip: L.tips.timing,
       kind: "select",
-      width: "w-28",
-      clip: "max-w-28",
+      width: "w-24",
+      clip: "max-w-24",
       value: (r) => r.timing,
       editValue: (r) => r.timingKey ?? "before",
       options: () => TRIGGER_TIMINGS.map((t) => ({ value: t, label: TIMING_LABELS[t] })),
@@ -116,7 +126,7 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.severity,
       tooltip: L.tips.severity,
       kind: "select",
-      width: "w-20",
+      width: "w-[4.5rem]",
       value: (r) => r.severity,
       editValue: (r) => r.severityKey ?? "error",
       options: () => (Object.keys(SEVERITY_LABELS) as (keyof typeof SEVERITY_LABELS)[]).map((s) => ({ value: s, label: SEVERITY_LABELS[s] })),
@@ -127,8 +137,8 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.where,
       tooltip: L.tips.where,
       kind: "popover",
-      width: "w-44",
-      clip: "max-w-56",
+      width: "w-28",
+      clip: "max-w-28",
       value: (r) => r.where || EVERYWHERE,
       onOpen: open("where"),
       render: (r) =>
@@ -154,8 +164,8 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.when,
       tooltip: L.tips.when,
       kind: "popover",
-      width: "w-32",
-      clip: "max-w-40",
+      width: "w-24",
+      clip: "max-w-24",
       mono: true,
       value: (r) => r.when,
       onOpen: open("when"),
@@ -165,8 +175,8 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.what,
       tooltip: L.tips.what,
       kind: "popover",
-      width: "w-40",
-      clip: "max-w-56",
+      width: "w-28",
+      clip: "max-w-28",
       mono: true,
       value: (r) => r.what,
       cellTitle: (r) => (r.teamCode ? L.tips.what : r.what),
@@ -178,13 +188,13 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.outside,
       tooltip: L.tips.outside,
       kind: "toggle",
-      width: "w-16",
+      width: "w-28",
       value: (r) => (r.outside ? "yes" : ""),
       on: (r) => r.outside,
       // Only a point the team writes can reach outside systems (MQ8101).
       locked: (r) => !r.teamCode && !r.outside,
     },
-    { key: "why", label: L.columns.why, tooltip: L.tips.why, kind: "text", width: "min-w-40", clip: "max-w-56", value: (r) => r.why },
+    { key: "why", label: L.columns.why, tooltip: L.tips.why, kind: "text", width: "min-w-28", clip: "max-w-36", value: (r) => r.why },
   ];
   return (
     <div className="flex flex-col gap-3">
@@ -319,6 +329,7 @@ function TriggerDialog({
     <ExpressionDialog
       title={key === "when" ? L.whenTitle(point.name) : L.conditionTitle(point.name)}
       hint={key === "when" ? L.whenHint : L.conditionHint}
+      placeholder={key === "when" ? L.whenPlaceholder : L.conditionPlaceholder}
       initial={treeText(stored, context.names)}
       request={(text) =>
         text === undefined
@@ -342,6 +353,7 @@ function TriggerDialog({
 function ExpressionDialog({
   title,
   hint,
+  placeholder,
   initial,
   request,
   onApply,
@@ -349,6 +361,7 @@ function ExpressionDialog({
 }: {
   title: string;
   hint: string;
+  placeholder: string;
   initial: string;
   request: Parameters<typeof ValueBox>[0]["request"];
   onApply: (text: string) => void;
@@ -369,7 +382,7 @@ function ExpressionDialog({
           }}
         >
           <p className="text-12 text-secondary">{hint}</p>
-          <ValueBox id="trigger-expression" label={title} initial={initial} onChange={setText} request={request} />
+          <ValueBox id="trigger-expression" label={title} initial={initial} onChange={setText} request={request} placeholder={placeholder} condition />
           <div className="flex justify-end gap-2">
             <Button type="button" onClick={onClose}>
               Cancel

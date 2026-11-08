@@ -324,6 +324,12 @@ export const isTeamCheck = (t: TriggerPointDoc): boolean => t.type === "check" &
  * the lifecycle's own list; another lifecycle's checks reach an object verb through the simulation panel's `checksUnknown`.
  */
 export function reachableChecks(process: Pick<ProcessDoc, "triggerPoints" | "events" | "transitions">, step: StepDoc): TriggerPointDoc[] {
+  const verbs = stepVerbs(process, step);
+  return triggerPointsOf(process).filter((t) => isTeamCheck(t) && t.verbs.some((v) => verbs.has(v)));
+}
+
+/** The verbs a step does: its own, those of the event or moves it fires, `complete` for a task's end and `sign` beside a gated move's. */
+export function stepVerbs(process: Pick<ProcessDoc, "events" | "transitions">, step: StepDoc): Set<string> {
   const verbs = new Set<string>();
   const input = step.input ?? "event";
   if (input === "verb" && step.verb) verbs.add(step.verb);
@@ -336,8 +342,12 @@ export function reachableChecks(process: Pick<ProcessDoc, "triggerPoints" | "eve
     if (verb) verbs.add(verb);
     if (t.gate) verbs.add("sign");
   }
-  return triggerPointsOf(process).filter((t) => isTeamCheck(t) && t.verbs.some((v) => verbs.has(v)));
+  return verbs;
 }
+
+/** True when a check can warn at a step that does `verbs`: it warns (an error refuses instead) and names one of them. Nothing known keeps every warning. */
+export const canWarnAt = (t: TriggerPointDoc, verbs: ReadonlySet<string>): boolean =>
+  t.type === "check" && t.severity === "warning" && (!verbs.size || t.verbs.some((v) => verbs.has(v)));
 
 /** Parses the Assume cell: `name=true` for a guard, `name=pass`, `warning` or `error` for a check; anything else is left out. */
 export function parseAssume(map: Json, checks: ReadonlySet<string>): Record<string, boolean | CheckWord> {

@@ -20,6 +20,8 @@ type Rec = Record<string, unknown>;
 
 export interface SetContext {
   choices: SettableAttribute[];
+  /** Every attribute the subjects hold, calculated and bound ones too (a set may name only the settable `choices`). */
+  attributes: { id: string; name: string }[];
   /** Attribute name by id, over everything the subjects hold. */
   names: TreeNames;
   attributeName: (id: string) => string;
@@ -60,7 +62,13 @@ export function useSetContext(process: ProcessDoc): SetContext {
       state: (id) => states.get(id),
       subject: (id) => all.has(id),
     };
-    return { choices, names, attributeName: (id) => all.get(id) ?? "?", noSubjects: entries.length === 0 };
+    return {
+      choices,
+      attributes: [...all].map(([id, name]) => ({ id, name })),
+      names,
+      attributeName: (id) => all.get(id) ?? "?",
+      noSubjects: entries.length === 0,
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [held, process, index.data]);
 }

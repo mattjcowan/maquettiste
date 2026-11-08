@@ -71,6 +71,8 @@ export interface GridColumn<R> {
   marker?: (row: R) => { rule: string; message: string } | null;
   /** The element or process node the cell references: F12 goes to it, Shift+F12 lists where it is used. */
   definition?: (row: R) => GridTarget | null;
+  /** What an empty text cell says while it is edited (the format it takes). */
+  placeholder?: string;
   /** A tooltip on the cell (a marker's message wins). */
   cellTitle?: (row: R) => string | undefined;
   /** A popover cell's dialog: opened by the keys and the double click that start an edit. */
@@ -250,7 +252,10 @@ export function Grid<R extends { id: string }>({
       const to = r + (e.key === "ArrowUp" ? -1 : 1);
       if (to >= 0 && to < rows.length) {
         onReorder(row, to);
-        focusCell(to, c);
+        // The moved row stays the active, selected one (focusCell would select the row now at `to`, which is the other one).
+        setActive({ row: to, col: c });
+        pendingFocus.current = true;
+        onSelect?.(row);
       }
       return;
     }
@@ -315,7 +320,7 @@ export function Grid<R extends { id: string }>({
                 </th>
               ))}
               {onRemove || actions || onReorder ? (
-                <th className="w-8">
+                <th className="sticky right-0 z-10 w-8 bg-app">
                   <span className="sr-only">Actions</span>
                 </th>
               ) : null}
@@ -392,10 +397,6 @@ export function Grid<R extends { id: string }>({
                               value={editing.value}
                               onChange={(value) => setEditing({ value })}
                               onDone={(move) => commit(move)}
-                              onCancel={() => {
-                                setEditing(null);
-                                focusCell(active.row, active.col);
-                              }}
                             />
                           ) : kind === "select" ? (
                             <select
@@ -432,6 +433,7 @@ export function Grid<R extends { id: string }>({
                               aria-label={`${column.label} of ${rowName(row)}`}
                               className={cn("h-6 w-full rounded-[4px] border border-input bg-surface px-1 text-12", column.mono && "font-mono")}
                               value={editing.value}
+                              placeholder={column.placeholder}
                               title={kind === "multi" ? `Comma-separated: ${(column.options?.(row) ?? []).map((o) => o.label).join(", ")}` : undefined}
                               onChange={(e) => setEditing({ value: e.target.value })}
                               onKeyDown={onEditorKeyDown}
@@ -469,7 +471,7 @@ export function Grid<R extends { id: string }>({
                     );
                   })}
                   {onRemove || actions || onReorder ? (
-                    <td className="whitespace-nowrap px-1">
+                    <td className="sticky right-0 z-10 whitespace-nowrap bg-surface px-1 shadow-[-1px_0_0_var(--mq-border-default)]">
                       <span className="flex items-center justify-end gap-0.5">
                         {onReorder ? (
                           <span
@@ -526,7 +528,7 @@ export function Grid<R extends { id: string }>({
   );
 }
 
-/** A pick cell's editor: a checklist, grouped, under the cell. Enter or leaving it commits; Escape cancels. */
+/** A pick cell's editor: a checklist, grouped, under the cell. Enter, Escape or leaving it keeps what is ticked. */
 function PickEditor({
   label,
   anchor,
@@ -534,7 +536,6 @@ function PickEditor({
   value,
   onChange,
   onDone,
-  onCancel,
 }: {
   label: string;
   /** The cell the checklist opens under. */
@@ -543,7 +544,6 @@ function PickEditor({
   value: string;
   onChange: (value: string) => void;
   onDone: (move: "none" | "blur") => void;
-  onCancel: () => void;
 }) {
   const chosen = new Set(value.split(",").filter(Boolean));
   const toggle = (id: string) => {
@@ -593,11 +593,8 @@ function PickEditor({
       onDoubleClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.key === "Escape") {
-          e.preventDefault();
-          settled.current = true;
-          onCancel();
-        } else if (e.key === "Enter") {
+        // The boxes change the choice as they are ticked, so Escape closes the list and keeps it, as a click outside does.
+        if (e.key === "Escape" || e.key === "Enter") {
           e.preventDefault();
           settled.current = true;
           onDone("none");

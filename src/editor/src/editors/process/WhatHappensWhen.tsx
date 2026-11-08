@@ -9,12 +9,14 @@ import { Field, Select } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/misc";
 import { indexLookup } from "@/model/index";
 import { TRIGGER_LABELS as L } from "@/model/labels";
-import { subjectsOf } from "@/model/process";
+import { subjectsOf, transitionLabel } from "@/model/process";
 import { rightStateOptions } from "@/model/rights";
 import { sequenceRows } from "@/model/triggerPoints";
 import { describeVerb, verbGroups } from "@/model/verbList";
 import { useVerbs } from "@/verbs/useVerbs";
+import { useObjectFields } from "../actor/useObjectFields";
 import { getTriggerSequence } from "./api";
+import { useSetContext } from "./SetsEditor";
 import { useGridTargets, type ProcessContext } from "./shared";
 
 export function WhatHappensWhen({ pc }: { pc: ProcessContext }) {
@@ -30,6 +32,10 @@ export function WhatHappensWhen({ pc }: { pc: ProcessContext }) {
   const states = rightStateOptions(process);
   const entities = subjectsOf(process).flatMap((s) => (s.entity ? [s.entity] : []));
   const stateName = new Map(states.map((s) => [s.value, s.label]));
+  const transitionName = new Map((process.transitions ?? []).map((t) => [t.id, transitionLabel(process, t)]));
+  // Attributes and links are not in the model index: their names come from the subjects, as the grid's Where column reads them.
+  const setContext = useSetContext(process);
+  const objectFields = useObjectFields(entities);
   const answer = useQuery({
     queryKey: ["trigger-sequence", pc.id, hash, verb, state, entity],
     queryFn: ({ signal }) => getTriggerSequence(pc.id, { verb, state, entity }, signal),
@@ -43,7 +49,17 @@ export function WhatHappensWhen({ pc }: { pc: ProcessContext }) {
         point: pointName,
         lifecycle: lifecycleName,
         where: (key, ids) =>
-          ids.map((id) => (key === "states" || key === "targets" ? (stateName.get(id) ?? "?") : (lookup.byId.get(id)?.name ?? "?"))).join(", "),
+          ids
+            .map((id) =>
+              key === "states" || key === "targets"
+                ? (stateName.get(id) ?? "?")
+                : key === "transitions"
+                  ? (transitionName.get(id) ?? "?")
+                  : key === "attributes" || key === "ends"
+                    ? (setContext.names.name(id) ?? objectFields.nameOf(id))
+                    : (lookup.byId.get(id)?.name ?? "?"),
+            )
+            .join(", "),
       })
     : [];
   return (
@@ -99,17 +115,15 @@ export function WhatHappensWhen({ pc }: { pc: ProcessContext }) {
       ) : null}
       {verb && answer.data ? (
         <ol className="flex flex-col" aria-label={L.happens.list(describeVerb(verb, verbs.own)?.label ?? verb)} data-testid="sequence-list">
-          {rows.map((r) => (
+          {rows.map((r, i) => (
             <li
               key={r.key}
               className="flex h-[var(--mq-row-h)] items-center gap-2 border-b border-default px-1 text-12"
               data-testid="sequence-row"
-              data-order={r.order}
+              data-order={i + 1}
             >
-              <span className="w-5 shrink-0 text-right text-secondary">{r.order}</span>
-              <span className="w-44 shrink-0 truncate text-secondary" title={r.step}>
-                {r.step}
-              </span>
+              <span className="w-5 shrink-0 text-right text-secondary">{i + 1}</span>
+              <span className="w-80 shrink-0 text-secondary">{r.step}</span>
               {r.point ? (
                 <>
                   <Button
