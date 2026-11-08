@@ -101,6 +101,7 @@ public sealed partial class ModelStore
         ["right"] = ExprSiteKind.Right,
         ["trigger"] = ExprSiteKind.Trigger,
         ["trigger-set"] = ExprSiteKind.TriggerSet,
+        ["approval"] = ExprSiteKind.Approval,
     };
 
     /// <summary>
@@ -229,7 +230,7 @@ public sealed partial class ModelStore
         if (request.Text is not null && pointer is null)
         {
             if (!SiteKinds.TryGetValue(request.Site!, out var kind))
-                throw new ArgumentException($"site must be check, value, guard, set, right, trigger, trigger-set or the pointer of a site, not '{request.Site}'.", nameof(request));
+                throw new ArgumentException($"site must be check, value, guard, set, right, trigger, trigger-set, approval or the pointer of a site, not '{request.Site}'.", nameof(request));
             if (kind is ExprSiteKind.Trigger or ExprSiteKind.TriggerSet)
             {
                 // Text for a trigger point names its lifecycle, or the trigger point itself (trigger-points-design.md section 9).
@@ -249,7 +250,7 @@ public sealed partial class ModelStore
 
             return ExprSites.Free(snapshot, element, kind)
                 ?? throw new ArgumentException($"{AKind(element)} has no {request.Site} site: a table, stereotype, entity or constraint has checks, an entity derived values, "
-                    + "a process or an operation guards, a lifecycle or a named right a right's condition.", nameof(request));
+                    + "a process or an operation guards, a lifecycle or a named right a right's condition, a process a named signature's when (approval).", nameof(request));
         }
 
         var matches = sites.Where(s => (sub is null || string.Equals(s.SubId, sub, StringComparison.Ordinal))
@@ -281,6 +282,8 @@ public sealed partial class ModelStore
     {
         if (site.Kind == ExprSiteKind.Right)
             return (null, "A right's condition reads the object, the actor and states where the right is checked, not a table: it runs as JavaScript only.");
+        if (site.Kind == ExprSiteKind.Approval)
+            return (null, "A named signature's when reads the object, the context and states when its round starts, not a table: it runs as JavaScript only.");
         switch (element)
         {
             case Table table:

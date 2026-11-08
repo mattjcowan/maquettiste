@@ -706,7 +706,9 @@ internal sealed class TriggerSequences
     /// <summary>
     /// What runs, in order, when a verb happens in a lifecycle (decision 36, <c>get_trigger_sequence</c>): the built-in steps of decision 18
     /// that apply to the verb, and each trigger point that can run, as <see cref="For"/> picks them. A place the filter doesn't give is left
-    /// open, but for attributes and ends, where a run fails closed: only checks narrowed by them are listed.
+    /// open, but for attributes and ends, where a run fails closed: only checks narrowed by them are listed. <c>reject</c>, <c>ignore</c> and
+    /// <c>withdraw</c> at a transition whose gate has stages, or with no transition in a lifecycle that has such a gate, list the signatures row
+    /// and the response's effect, as <c>sign</c> does (signoff-design.md section 9).
     /// </summary>
     /// <param name="lifecycle">The acting lifecycle.</param>
     /// <param name="verb">The verb's key.</param>
@@ -759,7 +761,12 @@ internal sealed class TriggerSequences
             Builtin(6, "guards");
         }
 
-        var gated = verb == "sign" || chart.Transitions.Any(t =>
+        // A response at an approval (signoff-design.md sections 9 and 17): reject, ignore and withdraw answer a transition whose gate has stages,
+        // inline or through a gate policy, so the signatures row (7a to 7f) applies there, and the effect is the response's. A transition given
+        // names its gate below; with none, any approval of the lifecycle may take the response. A plain gate answers as before.
+        var responds = filter.Transition is null && verb is "reject" or "ignore" or "withdraw"
+            && chart.Transitions.Any(t => Validation.ApprovalRules.GateOf(_model, t.Transition) is { UsesStages: true });
+        var gated = verb == "sign" || responds || chart.Transitions.Any(t =>
             (filter.Transition is { } id ? string.Equals(t.Transition.Id, id, StringComparison.Ordinal)
                 : string.Equals(t.Transition.Verb ?? t.Event?.Verb, verb, StringComparison.Ordinal))
             && (t.Transition.Gate is not null || t.Transition.GatePolicy is not null));

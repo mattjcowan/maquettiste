@@ -327,7 +327,9 @@ function TransitionSection({ pc, transition: t }: { pc: ProcessContext; transiti
       <SectionTitle>Gate</SectionTitle>
       <p className="text-12" data-testid="transition-gate">
         {t.gate
-          ? `${t.gate.displayName || t.gate.name}: ${t.gate.required ?? 1} of ${t.gate.signers?.length ?? 0} signers (edit it on the Gates tab)`
+          ? t.gate.stages?.length
+            ? `${t.gate.displayName || t.gate.name}: an approval with ${t.gate.stages.flatMap((st) => st.signatures ?? []).length} named signatures (edit it on the Gates tab)`
+            : `${t.gate.displayName || t.gate.name}: ${t.gate.required ?? 1} of ${t.gate.signers?.length ?? 0} signers (edit it on the Gates tab)`
           : trigger === "event"
             ? "None: add one from the transition's row."
             : "Only a transition on an event can have a gate."}

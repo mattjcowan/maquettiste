@@ -107,6 +107,10 @@ public sealed class ResolvedCoverageTests
         // Part 2: a named trigger point (decision 33), as an RTriggerPoint of kind trigger-point.
         new("named trigger point", "trigger-point.json", "", typeof(RTriggerPoint)),
 
+        // Approvals (signoff-design.md section 7): a gate's stages and their named signatures resolve as an RGateStage and an RNamedSignature.
+        new("gate stage", "process.json", "$defs/gateStage", typeof(RGateStage)),
+        new("named signature", "process.json", "$defs/namedSignature", typeof(RNamedSignature)),
+
         // Vocabularies, mappings and diagrams.
         new("stereotype", "stereotype.json", "", typeof(RStereotypeDefinition)),
         new("category", "category-tree.json", "categories/[]", typeof(RCategory)),

@@ -114,6 +114,8 @@ internal static class ModelIndexer
         _ when type == typeof(ProcessInvoke) => "invoke",
         _ when type == typeof(ProcessGate) => "gate",
         _ when type == typeof(GateMeaning) => "meaning",
+        _ when type == typeof(GateStage) => "gate-stage",
+        _ when type == typeof(NamedSignature) => "named-signature",
         _ when type == typeof(ProcessSubject) => "subject",
         _ when type == typeof(ProcessRight) => "process-right",
         _ when type == typeof(ProcessTriggerPoint) => "process-trigger-point",
@@ -137,7 +139,8 @@ internal static class ModelIndexer
     {
         "attribute", "enum-member", "end", "column", "category", "schema", "reference-field", "row", "state", "transition", "event",
         "guard", "action", "invoke", "gate", "meaning", "step", "binding", "key", "operation-member", "outcome", "error", "member",
-        "parameter", "subject", "object", "participant", "holding", "verb", "set", "process-right", "process-trigger-point",
+        "parameter", "subject", "object", "participant", "holding", "verb", "set", "process-right", "process-trigger-point", "gate-stage",
+        "named-signature",
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>
@@ -702,6 +705,29 @@ internal static class ModelIndexer
     }
 
     /// <summary>
+    /// A process row's members for the approvals naming key (signoff-design.md section 7), each left at its default unless they apply:
+    /// whether a gate on its transitions has stages, the gate policies its transitions use, and for a library the gates with stages it holds.
+    /// </summary>
+    private static ElementSummary WithApprovals(ElementSummary row, Element element)
+    {
+        if (element is not Process process)
+            return row;
+        var inline = false;
+        SortedSet<string>? policies = null;
+        foreach (var transition in process.Transitions)
+        {
+            inline |= transition.Gate is { UsesStages: true };
+            if (transition.GatePolicy is { } policy)
+                (policies ??= new(StringComparer.Ordinal)).Add(policy);
+        }
+
+        var approvals = SortedKeys(process.Gates.Where(static g => g.UsesStages).Select(static g => g.Id));
+        if (!inline && policies is null && approvals is null)
+            return row;
+        return row with { InlineApproval = inline, GatePolicyUses = policies is null ? null : [.. policies], ApprovalGatePolicies = approvals };
+    }
+
+    /// <summary>
     /// The hash of a kind's id set. A library counts apart from itself as a process that runs, since <c>model.processes</c> and
     /// <c>model.process_libraries</c> list them apart; a model with no library hashes as ids alone.
     /// </summary>
@@ -849,7 +875,7 @@ internal static class ModelIndexer
     /// <summary>The index row of an element (E4 and E5 members included; a custom element's type and member count,
     /// next-phase-2-design.md section 4.2).</summary>
     private static ElementSummary Summarize(Element element, string hash, string path, PropertySchemaSet schemas, IReadOnlyList<string>? actors) =>
-        WithTriggerPoints(WithRights(new(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, hash, path, element.Category, element.Stereotypes,
+        WithApprovals(WithTriggerPoints(WithRights(new(element.Id, element.KindName, element.Name, PackageOf(element), element.Tags, hash, path, element.Category, element.Stereotypes,
             DisplayName: element.DisplayName,
             Database: element switch
             {
@@ -936,7 +962,18 @@ internal static class ModelIndexer
                 _ => null,
             },
             Rights: element is Process { Rights.Count: > 0 } withRights ? withRights.Rights.Count : null,
-            Access: element is Right access ? AccessName(access.Access) : null), element), element);
+            Access: element is Right access ? AccessName(access.Access) : null,
+            Approvals: element is Process approvalProcess && ApprovalGates(approvalProcess).Count() is > 0 and var approvals ? approvals : null,
+            Signatures: element is Process signatureProcess && ApprovalGates(signatureProcess).Sum(static g => g.AllSignatures.Count()) is > 0 and var signatures
+                ? signatures
+                : null), element), element), element);
+
+    /// <summary>
+    /// A process's gates that have stages (signoff-design.md section 9): each transition's inline gate in transition order, then a library's gate
+    /// policies in file order. A gate policy another process uses counts on its library's row only.
+    /// </summary>
+    private static IEnumerable<ProcessGate> ApprovalGates(Process process) =>
+        process.Transitions.Select(static t => t.Gate).Concat(process.Gates).OfType<ProcessGate>().Where(static g => g.UsesStages);
 
     /// <summary>The entities a process's entity entries name, in entry order (a stereotype entry is not counted).</summary>
     private static List<string> EntityEntries(Process process) => [.. process.Subjects.Select(s => s.Entity).OfType<string>()];

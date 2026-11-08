@@ -65,7 +65,14 @@ test("a lifecycle opens on its chart and every tab shows its part of the process
   await expect(editor.getByTestId("event-payload")).toContainText("Payload of issue");
 
   await tab(editor, "Gates").click();
-  await expect(editor.getByText("No gates")).toBeVisible();
+  // The lifecycle's one gate is an approval: its stage and a grid of two named signatures, with no single list of signers.
+  await expect(editor.getByTestId("gate-form")).toHaveCount(1);
+  await expect(editor.getByTestId("approval-stage")).toHaveText("Review");
+  await expect(rowsOf(editor, "signatures-grid")).toHaveCount(2);
+  await expect(cell(rowsOf(editor, "signatures-grid").first(), "when")).toContainText("subject.total > 10000");
+  await expect(cell(rowsOf(editor, "signatures-grid").nth(1), "notBy")).toHaveText("Promote");
+  await expect(editor.getByTestId("gate-required")).toHaveCount(0);
+  await expect(editor.getByTestId("back-to-signers")).toBeDisabled();
   await tab(editor, "Context").click();
   await expect(editor.getByTestId("attribute-grid")).toBeVisible();
   await tab(editor, "Scenarios").click();
@@ -180,4 +187,27 @@ test("a scenario opens from the Scenarios tab and replays with each step's statu
   await scenario.getByTestId("scenario-editor-replay").click();
   await expect(scenario.getByTestId("replay-failure")).toContainText("Step 2 (MQ9302)");
   await expect(page.getByTestId("inspector-scenario")).toContainText("PurchaseApproval");
+});
+
+test("at 1440 px the signatures grid shows Needed when and Why, and a scenario's grid shows Response, Signature and Replay", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const editor = await openProcess(page, "InvoiceLifecycle");
+  // Whether a cell of the column sits fully inside the scrolling frame of its grid.
+  const visible = (grid: Locator, column: string) =>
+    grid
+      .locator(`td[data-column="${column}"]`)
+      .first()
+      .evaluate((th) => {
+        const frame = th.closest("div.overflow-x-auto")!.getBoundingClientRect();
+        const box = th.getBoundingClientRect();
+        return box.left >= frame.left - 1 && box.right <= frame.right + 1;
+      });
+  await tab(editor, "Gates").click();
+  const signatures = editor.getByTestId("signatures-grid");
+  for (const column of ["when", "notBy", "why"]) expect(await visible(signatures, column), column).toBe(true);
+  await tab(editor, "Scenarios").click();
+  await rowsOf(editor, "scenarios-grid").first().getByTestId("scenario-open").click();
+  const scenario = page.getByTestId("element-editor").and(page.locator('[data-kind="scenario"]'));
+  const steps = scenario.getByTestId("steps-grid");
+  for (const column of ["status", "response", "signature"]) expect(await visible(steps, column), column).toBe(true);
 });

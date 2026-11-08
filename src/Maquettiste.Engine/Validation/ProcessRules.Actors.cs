@@ -120,6 +120,12 @@ internal static partial class ProcessRules
                 var where = $"gate '{gate.Name}' of process '{process.Name}'";
                 Check(gate.Signers, "/transitions/" + N(i) + "/gate/signers", gate.Id, where);
                 Check(gate.RequiredActors, "/transitions/" + N(i) + "/gate/requiredActors", gate.Id, where);
+                ApprovalRules.ForEachSignature(gate, "/transitions/" + N(i) + "/gate", (signature, at) =>
+                {
+                    var named = $"signature '{signature.Name}' of {where}";
+                    Check(signature.Signers, at + "/signers", signature.Id, named);
+                    Check(signature.RequiredActors, at + "/requiredActors", signature.Id, named);
+                });
             }
 
             if (t.GatePolicy is { } policy && ProcessLibraries.Owner(model, policy, "gate") is { } library)
@@ -127,6 +133,11 @@ internal static partial class ProcessRules
                 var used = library.Gates.First(g => string.Equals(g.Id, policy, StringComparison.Ordinal));
                 Check([.. used.Signers.Concat(used.RequiredActors)], "/transitions/" + N(i) + "/gatePolicy", t.Id,
                     $"gate '{used.Name}' of library '{library.Name}', used by process '{process.Name}'", indexed: false);
+                foreach (var signature in used.AllSignatures)
+                {
+                    Check([.. signature.Signers.Concat(signature.RequiredActors)], "/transitions/" + N(i) + "/gatePolicy", t.Id,
+                        $"signature '{signature.Name}' of gate '{used.Name}' of library '{library.Name}', used by process '{process.Name}'", indexed: false);
+                }
             }
         }
 

@@ -2193,6 +2193,7 @@ right of the title row shows them. It opens on **Chart**. The tabs:
   payload attributes.
 - **Gates**: one form per gate: its name, the required count out of the signers (saved when you leave the field or press
   Enter), signers, required actors, **Allow repeat signer**, **Reason required**, the meanings and the audit attributes.
+  **Use named signatures** turns a gate into an approval, with a grid of signatures (see "Approvals").
 - **Context**: the process's context attributes, in the attribute grid.
 - **Scenarios**: the process's scenarios with their status; each row's buttons **Replay**, **Open** and **Refresh the
   expectations** (from a replay); Enter opens a scenario, R replays it, Shift+R refreshes its expectations and
@@ -2268,7 +2269,7 @@ its room; expand it with the chevron on that row (the choice is remembered in th
 - **Start**: the context attributes as a form, with their defaults, and the **Clock start**. Editing a value restarts
   the simulation. **From scenario…** loads a scenario's start and steps as the inputs.
 - **Enabled**: one row per input the process can take now: an event with its actor (only the actors the event allows),
-  its payload fields, and for a gated event the signer, the meaning and the reason; a guard without an expression shows
+  its payload fields, and for a gated event the signer, the meaning and the reason (for an approval, also the response and the signature); a guard without an expression shows
   a true/false toggle whose value is recorded as an assumption. **Raise** (Enter on the row) sends it; the keys 1 to 9
   raise the first nine rows. A refused input stays in the trace with its reason.
 - **Time**: the next timer due, and **Advance** by a duration (the next timer by default); the clock starts at
@@ -2432,6 +2433,94 @@ partial method that the team's half fills in, with each set printed in the comme
 it returns the context. A new hook fails the build until the team writes it. An action that also has an expression keeps its
 generated code. A guard that uses `current_actor()` or `in_state` is left to a person. `process-docs` adds a **Sets** column. Templates
 read `action.sets`, `set.attribute` and `set.value`, so a pack with an object to write to can write the assignments itself.
+
+### Approvals: named signatures, rejection and "not by"
+
+A plain gate asks for a count of signatures from one list of signers. An **approval** is a gate that asks for several **named
+signatures**, each with its own signers and count. Use it when, for example, a release needs one engineer and one controller, and
+a quality lead too when the cost is high.
+
+A gate with today's fields works exactly as before. Nothing changes until you turn a gate into an approval.
+
+**Turning a gate into an approval.** In the process editor's **Gates** tab, press **Use named signatures**. The gate becomes one
+stage, named after the gate, holding one signature that takes the gate's signers, count, required actors and repeat setting. Add
+more signatures with **Add signature**. **Back to one list of signers** reverses it while the approval has one signature with no
+**Needed when** and no **Not by**. The gate keeps its meanings, its reason setting and its audit attributes, which apply to every
+signature. Part 1 holds one stage. A later release will add several stages that run in rounds.
+
+**What a signature says.** Each row of the grid has:
+
+- **Name** and **Why**, so a reader knows what the signature is for.
+- **Signers**: the actors whose members may give it.
+- **Required**: how many signatures it needs.
+- **Required actors**: actors that must each give at least one of them.
+- **Repeat signer**: whether one person may count twice on this signature.
+- **Needed when**: a condition on the object. The signature is needed unless the condition is false.
+- **Not by**: people who may not give it (see below).
+
+A signature is **complete** when it has its count and each required actor has signed. The approval is complete when every needed
+signature is complete. The signature that completes it makes the move, as with a plain gate.
+
+**Needed when.** The condition reads the object (`subject.cost > 10000`), the process's context, `in_state` and `now()`. It is
+judged when the object enters the state the move leaves, after the move that brought it there has run its actions and sets, and
+again after a rejection. It is not judged again at each signature. When the engine can't work it out, the signature is needed:
+missing data never drops a signature. When no signature is needed, the approval is complete at once and the next occurrence of
+the event makes the move. A gate policy's signature takes no condition.
+
+**Not by.** The list names verbs and moves, such as the verb `promote` or the move **Submit**. Whoever did one of them since the
+object entered the state may not give this signature. The move that brought the object there counts. So "not the person who
+submitted it" is a **Not by** of the verb or move that entered the review. An automatic move is done by nobody, so it excludes
+nobody. Only verbs and moves the lifecycle itself sees can be named: moves, signature verbs, `complete`, and verbs its events
+name. A gate policy may name verbs only, since its moves belong to no one lifecycle. A person who signed the approval that made a
+move counts as having done that move, so "the release approvers are not the review approvers" is a **Not by** naming the reviewed
+move.
+
+**One person, one signature.** One person gives one response that counts on an approval, across all its signatures. Turn on **One
+person may give several signatures** on the gate to allow more. **Repeat signer** is separate: it lets one person count twice on
+one signature.
+
+**The four responses.** Anyone who may sign may answer an approval in one of four ways:
+
+| Response | What it does |
+| --- | --- |
+| **Sign** | Gives a signature. The default. |
+| **Reject** | A veto. It clears every signature gathered and moves nothing. The approval starts again, so **Needed when** is judged again. One rejection is enough. A person who signed may still reject; a person who ignored may not. |
+| **Ignore** (abstain) | Finishes that person on the signature and leaves the count as it is. It does not meet a required actor. If a required actor can then never sign, the approval waits until someone rejects or the object leaves the state. |
+| **Withdraw** | Takes back that person's latest signature. They may sign again. With no signature of theirs, it is refused. |
+
+A move on rejection is an ordinary move whose verb is `reject`, with its own guard and rights. So one input is either the veto or
+the move. A team that wants both sends the response, then the move. Leaving the state discards the signatures, as with a plain
+gate. Rights and trigger points on `sign`, `reject`, `ignore` and `withdraw` run for these responses. A signature's signers count
+as allowed for all four.
+
+A gate without named signatures takes `sign` only.
+
+**Which signature a response answers.** A step may name the signature. When it doesn't, the engine picks one, the same way every
+time. For sign and ignore, it picks the first needed, incomplete signature the person may fill, preferring one where they meet a
+required actor that has not signed. For withdraw, it picks the person's latest signature. For reject, the first needed signature
+whose signers the person meets.
+
+**Refusals.** An approval adds two refusals to the ones a gate has: a person kept off by **Not by** is refused as excluded, and a
+withdraw with nothing to take back is refused as not signed. A person who has already answered is refused as a repeat.
+
+**In a scenario.** On a step for a gated event, the **Response** cell offers Sign, Reject, Ignore (abstain) and Withdraw (the
+project's hidden verbs are left out), and the **Signature** cell names the signature, or shows "Picked by the engine". A step's
+expectations gain **Signatures**: the count after the step, for each signature you list. A difference is MQ9311, and **Update
+expectations from replay** fills it in. Recording writes it for each step that answers an approval. The **Refusal** cell offers
+the two new refusals. Both cells are offered only on a step whose event is gated by an approval; anywhere else a response or
+signature is MQ9305. The audit records each response with its signature and stage (`signed`, `rejected`, `ignored`, `withdrawn`).
+
+**In the simulation panel.** For each approval, the panel lists its signatures: whether each is needed, how many are counted, how
+many are required and who has answered. The enabled input offers Reject, Ignore and Withdraw beside Sign, with a signature
+picker. After a rejection, the panel shows that the approval was cleared.
+
+**Generated code and documents.** `csharp-dapper` writes approvals only for a process that has one. Each **Needed when** becomes a
+method you write, in `<Process>ApprovalConditions`; answer true when you can't tell. The command's envelope takes the response
+(`Response`) and the signature (`Signature`). The pack's README has the steps. `process-docs` shows a table of signatures for each
+approval, and what each response does.
+
+**Limits.** Generated code can't tell when an instance that was already waiting entered its state, so **Not by** misses what was done
+before the gate got stages. Part 1 has one stage, with no rounds, delegation, reminders or password check.
 
 ### Libraries: shared guards, actions and gate policies
 
@@ -2716,7 +2805,7 @@ decided it, the ids that decide it (`by`) and the other lifecycles involved (`de
 **Verb**. Its keys: `verb`, `values` (for `modify` on the subject, **Set values**, attribute id to value, such as `amount=5`), and
 `end` and `object` for a link (**Link end** and **Linked object**). The step acts as its actor, or as its participant. Object verbs,
 link verbs and your own verbs may be steps. Moves, signatures and task completion keep their own steps. `override`,
-`set-state`, `reject`, `ignore`, `withdraw`, `delegate`, `route` and `claim` are not steps yet (MQ9305). `freeze` and `thaw` are steps.
+`set-state`, `delegate`, `route` and `claim` are not steps yet (MQ9305). To reject, ignore or withdraw at an approval, give an event step a `response` (see "Approvals"). `freeze` and `thaw` are steps.
 A step that does not fit is MQ9305. A `read` step may also name **Attributes**, the attributes it reads.
 
 - An accepted `modify` applies its values to the object, and later guards and sets read them. They show in `valuesChanged` and in
@@ -2907,7 +2996,7 @@ points first.
 ### The rules for processes (MQ9xxx)
 
 Every rule below has a row in **Settings › Validation**, where its severity can be changed. The structural rules (MQ9001
-to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9211, MQ9501, MQ9601 to MQ9606, MQ9701 to MQ9707, MQ9801 to MQ9803, MQ9901 to MQ9906 and MQ8101 to MQ8107) run on every save and every `validate`; MQ9019 is the answer
+to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9211, MQ9501, MQ9601 to MQ9606, MQ9701 to MQ9707, MQ9801 to MQ9803, MQ9901 to MQ9906 and MQ8101 to MQ8107 and MQ8201 to MQ8202) run on every save and every `validate`; MQ9019 is the answer
 to a refused batch operation. The scenario rules (MQ93xx, MQ9307 and MQ9308 among them) and MQ9502 to MQ9507 come from replaying
 scenarios: `validate` replays every scenario of the processes it checks, **Verify scenarios** and `maquettiste process
 verify` replay on request, and the simulation panel shows them for its own run. A replay finding is reported on a save but
@@ -2939,7 +3028,7 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9020 | error | A library holds what only a running process has (states, an initial state, transitions, context, events, a subject, a bound attribute, an action that raises events or sets data, or a guard with a condition), or a process that is not a library has no states or lists gates of its own | Move the item, or change `use` |
 | MQ9021 | error | A transition sets both `gate` and `gatePolicy`, or its `gatePolicy` names a gate that no library holds | Keep one, or point at a library's gate |
 | MQ9022 | error | A process invoke or a scenario names a library, which has no states to run | Name a running process |
-| MQ9101 | error | A gate needs more signatures than its signers can give | |
+| MQ9101 | error | A gate, or a named signature, needs more signatures than its signers can give; or an approval needs more different people than its signatures' signers can give, without **One person may give several signatures** | |
 | MQ9102 | error | A gate's required actors are not all among its signers, counting the members of a signer | **Add to signers** |
 | MQ9103 | error | A gate on a transition whose trigger is not an event, or two gates on one source and event | |
 | MQ9104 | error | A gate without meanings | |
@@ -2970,6 +3059,9 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ8105 | error | An after-commit action with sets | **Make it a with-change action** |
 | MQ8106 | warning | A with-change action that reaches outside systems: a rollback cannot undo the call | **Make it after commit** |
 | MQ8107 | warning | A trigger point that can never run, such as a move verb that no event or transition names | **Remove it** |
+| MQ8201 | error | An approval's shape is wrong: a gate with named signatures that also has its own signers, count, required actors or repeat setting, or **One person may give several signatures** on a gate without them | Remove the key |
+| MQ8202 | error | A named signature's **Not by** or **Needed when** does not fit: a move that is not its lifecycle's, a move in a gate policy, a verb its lifecycle's runs cannot see, or a condition on a gate policy's signature | Remove the entry or key |
+| MQ9311 | error | The signatures counted after a step differ from the step's expected **Signatures** | **Update expectations from replay** |
 | MQ9310 | error | A step's check warnings or trigger points differ from what it expects | **Update expectations from replay** |
 | MQ9309 | warning | A step is refused as frozen because an earlier step froze the subject or the link (an event that names `freeze`, or a `freeze` step), and it does not expect that refusal. Names the freezing step | **Update expectations from replay** |
 | MQ9308 | error | A refused step's `refusal` or `refusedBy` differs from the replay's: the first check that fails names both | **Update expectations from replay** |

@@ -513,17 +513,35 @@ public sealed class RGate : RProcessNode
     /// <summary>The transitions that use the gate: its one transition, or, for a library's gate, each that names it, across processes.</summary>
     public RList<RTransition> UsedBy { get; internal set; } = RList<RTransition>.Empty;
 
-    /// <summary>The number of signatures needed.</summary>
+    /// <summary>The number of signatures needed. On an approval it stays 1 and means nothing: its signatures carry their own counts.</summary>
     public int Required { get; internal set; } = 1;
 
-    /// <summary>The actors whose members may sign.</summary>
+    /// <summary>The actors whose members may sign. Empty on an approval, whose signatures name their own.</summary>
     public RList<RActor> Signers { get; internal set; } = RList<RActor>.Empty;
 
-    /// <summary>The actors each of which must give at least one signature.</summary>
+    /// <summary>The actors each of which must give at least one signature. Empty on an approval.</summary>
     public RList<RActor> RequiredActors { get; internal set; } = RList<RActor>.Empty;
 
-    /// <summary>Whether one signer may count twice.</summary>
+    /// <summary>Whether one signer may count twice. False on an approval, whose signatures say it for themselves.</summary>
     public bool AllowRepeatSigner { get; internal set; }
+
+    /// <summary>
+    /// The approval's stages in file order (signoff-design.md section 7), each holding named signatures; empty for a gate without stages,
+    /// which reads exactly as before. Keyed on the process's file, or the library's for a gate policy.
+    /// </summary>
+    public RList<RGateStage> Stages { get; internal set; } = RList<RGateStage>.Empty;
+
+    /// <summary>Whether the gate is an approval: it has stages.</summary>
+    public bool UsesStages => Stages.Count > 0;
+
+    /// <summary>Every stage's named signatures in file order, stage by stage; empty for a gate without stages.</summary>
+    public RList<RNamedSignature> AllSignatures { get; internal set; } = RList<RNamedSignature>.Empty;
+
+    /// <summary>
+    /// On an approval: whether one person may give more than one response that counts on it, across its signatures (signoff-design.md
+    /// decision 16). False on a gate without stages.
+    /// </summary>
+    public bool AllowSignerAcrossSignatures { get; internal set; }
 
     /// <summary>Whether each signature must carry a reason.</summary>
     public bool ReasonRequired { get; internal set; }
@@ -536,10 +554,104 @@ public sealed class RGate : RProcessNode
 
     /// <summary>
     /// The audit record shape (phase-3-design.md section 2.3): <c>instance</c>, <c>process</c>, <c>gate</c>, <c>transition</c>,
-    /// <c>sequence</c>, <c>signer</c>, <c>actor</c>, <c>meaning</c>, <c>reason</c>, <c>at</c>, <c>outcome</c>, then one field per audit
-    /// attribute.
+    /// <c>sequence</c>, <c>signer</c>, <c>actor</c>, <c>meaning</c>, <c>reason</c>, <c>at</c>, <c>outcome</c>, on an approval then
+    /// <c>signature</c> and <c>stage</c> (signoff-design.md decision 19), then one field per audit attribute.
     /// </summary>
     public RList<RAuditField> Audit { get; internal set; } = RList<RAuditField>.Empty;
+}
+
+/// <summary>A stage of an approval (signoff-design.md decision 4): named signatures only.</summary>
+public sealed class RGateStage : RProcessNode
+{
+    /// <inheritdoc/>
+    public override string Kind => "gate-stage";
+
+    /// <summary>The name, unique among the gate's stages.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The approval that holds the stage.</summary>
+    public RGate Gate { get; internal set; } = null!;
+
+    /// <summary>The stage's signatures, in file order: the order the engine picks one in when a step names none.</summary>
+    public RList<RNamedSignature> Signatures { get; internal set; } = RList<RNamedSignature>.Empty;
+}
+
+/// <summary>
+/// A named signature of an approval (signoff-design.md decision 3): who may give it and how many, whether it is needed, and who may not
+/// give it. It is complete when it has <see cref="Required"/> signatures and each required actor has signed.
+/// </summary>
+public sealed class RNamedSignature : RProcessNode
+{
+    /// <inheritdoc/>
+    public override string Kind => "named-signature";
+
+    /// <summary>The name, unique among the gate's signatures, across its stages.</summary>
+    public string Name { get; internal set; } = "";
+
+    /// <summary>The approval that holds the signature.</summary>
+    public RGate Gate { get; internal set; } = null!;
+
+    /// <summary>The stage that holds the signature.</summary>
+    public RGateStage Stage { get; internal set; } = null!;
+
+    /// <summary>The number of signatures needed.</summary>
+    public int Required { get; internal set; } = 1;
+
+    /// <summary>The actors whose members may give the signature.</summary>
+    public RList<RActor> Signers { get; internal set; } = RList<RActor>.Empty;
+
+    /// <summary>The actors each of which must give at least one of these signatures.</summary>
+    public RList<RActor> RequiredActors { get; internal set; } = RList<RActor>.Empty;
+
+    /// <summary>Whether one person may count twice on this signature.</summary>
+    public bool AllowRepeatSigner { get; internal set; }
+
+    /// <summary>
+    /// Whether the signature is needed, typed at the approval site and judged when its round starts (signoff-design.md decision 7): only
+    /// false means not needed. <see langword="null"/> when it has none, when it does not type, and on a gate policy's signature.
+    /// </summary>
+    public RExpression? When { get; internal set; }
+
+    /// <summary>
+    /// Who may not give the signature (signoff-design.md decision 15), in file order: whoever did one of these verbs or moves since the
+    /// object entered the gated move's source state.
+    /// </summary>
+    public RList<RNotBy> NotBy { get; internal set; } = RList<RNotBy>.Empty;
+}
+
+/// <summary>An entry of a named signature's <c>not_by</c> (signoff-design.md decision 15): a verb, or a transition of the lifecycle.</summary>
+public sealed class RNotBy : IResolvedObject
+{
+    /// <summary>The signature's id, then <c>/not-by/</c> and the entry's index: an entry is no element of the model.</summary>
+    public string Id { get; internal set; } = "";
+
+    /// <inheritdoc/>
+    public string Kind => "not-by";
+
+    /// <inheritdoc/>
+    public IReadOnlyList<string> Dependencies { get; internal set; } = [];
+
+    /// <summary>For a verb entry, the verb; <see langword="null"/> for a transition entry, or when its key names no verb of <c>model.verbs</c>.</summary>
+    public RVerb? Verb { get; internal set; }
+
+    /// <summary>For a verb entry, the verb's key as written, set even when <see cref="Verb"/> is not; <see langword="null"/> for a transition entry.</summary>
+    public string? VerbKey { get; internal set; }
+
+    /// <summary>For a transition entry, the lifecycle's transition; <see langword="null"/> for a verb entry, or one that does not resolve.</summary>
+    public RTransition? Transition { get; internal set; }
+
+    /// <summary>For a transition entry, the transition's id as written, for the records.</summary>
+    internal string? TransitionId { get; set; }
+}
+
+/// <summary>A number of signatures a scenario step expects counted for one named signature (signoff-design.md decision 27).</summary>
+public sealed class RSignatureCount
+{
+    /// <summary>The named signature.</summary>
+    public RNamedSignature Signature { get; internal set; } = null!;
+
+    /// <summary>The number of signatures expected counted for it after the step.</summary>
+    public int Count { get; internal set; }
 }
 
 /// <summary>What a signature on a gate means.</summary>
@@ -615,8 +727,14 @@ public sealed class RActor : RElement
     /// <summary>The events that name the actor among their actors, in process order then event order.</summary>
     public RList<REvent> Events { get; internal set; } = RList<REvent>.Empty;
 
-    /// <summary>The gates the actor may sign, in process order then transition priority.</summary>
+    /// <summary>The gates the actor may sign, in process order then transition priority; an approval when one of its signatures names it.</summary>
     public RList<RGate> Gates { get; internal set; } = RList<RGate>.Empty;
+
+    /// <summary>
+    /// The named signatures that name the actor among their signers or required actors (signoff-design.md section 7), by process then file
+    /// order, the libraries' first as in <see cref="Gates"/>. It keys on the actor's referrers, as <see cref="Gates"/> does.
+    /// </summary>
+    public RList<RNamedSignature> Signatures { get; internal set; } = RList<RNamedSignature>.Empty;
 
     /// <summary>
     /// The rights that name the actor directly, in <c>actors</c> or <c>except</c> (rights-design.md section 6): the named rights in
@@ -803,6 +921,18 @@ public sealed class RStep : RObject
     /// <summary>The signing person's identity, for a gated event, as the file gives it.</summary>
     public string? Signer { get; internal set; }
 
+    /// <summary>
+    /// How the step answers an approval on its event (signoff-design.md decision 25): <c>sign</c> (also for a step that gives none, and for
+    /// a step that is no event), <c>reject</c>, <c>ignore</c> or <c>withdraw</c>.
+    /// </summary>
+    public string Response { get; internal set; } = "sign";
+
+    /// <summary>
+    /// The approval's named signature the step answers (signoff-design.md decision 8); <see langword="null"/> when the engine picks it, or
+    /// when the id names no signature of the process's gates.
+    /// </summary>
+    public RNamedSignature? Signature { get; internal set; }
+
     /// <summary>The meaning of the signature.</summary>
     public RMeaning? Meaning { get; internal set; }
 
@@ -945,4 +1075,10 @@ public sealed class RExpectation
     /// expects none or checks nothing. An id that does not resolve is left out.
     /// </summary>
     public RList<RTriggerPoint> TriggerPoints { get; internal set; } = RList<RTriggerPoint>.Empty;
+
+    /// <summary>
+    /// The signatures expected counted after the step (signoff-design.md decision 27), each with its named signature, in the gate's file
+    /// order (stage, then signature); empty when the file expects none. An id that names no signature of the process's gates is left out.
+    /// </summary>
+    public IReadOnlyList<RSignatureCount> Signatures { get; internal set; } = [];
 }

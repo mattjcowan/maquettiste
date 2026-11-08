@@ -324,6 +324,14 @@ public sealed class ResolvedModel
     public RList<RProcess> TriggerLifecycles { get; internal init; } = RList<RProcess>.Empty;
 
     /// <summary>
+    /// The processes that use an approval (signoff-design.md decision 29): one of their transitions carries a gate with stages, inline or
+    /// through a gate policy; by name then id. Empty in a project without approvals, so a template asks
+    /// <c>model.approval_lifecycles.size &gt; 0</c> to learn whether the project uses them. The list keys only on the approvals naming key
+    /// (<c>ap:approvals</c>), whose hash never changes in a project without approvals.
+    /// </summary>
+    public RList<RProcess> ApprovalLifecycles { get; internal init; } = RList<RProcess>.Empty;
+
+    /// <summary>
     /// The named trigger points (trigger-points-design.md decision 33), by name then id. Empty in a project without them; the list keys on
     /// the trigger point kind alone, as <c>model.rights</c> keys on the right kind.
     /// </summary>

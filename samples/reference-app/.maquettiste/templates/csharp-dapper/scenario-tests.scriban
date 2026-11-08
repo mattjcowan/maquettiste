@@ -237,7 +237,15 @@ func envelope(step)
   if step.reason
     $parts = $parts + ", Reason: " + (json step.reason)
   end
-  ret "new ProcessEnvelope(" + $parts + ")"
+  # The response and the signature a step gives an approval (signoff-design.md decision 25).
+  $init = ""
+  if step.response && step.response != "sign"
+    $init = "Response = SignatureResponse." + (pascal step.response)
+  end
+  if step.signature
+    $init = $init + ($init == "" ? "" : ", ") + "Signature = " + (json step.signature.name)
+  end
+  ret "new ProcessEnvelope(" + $parts + ")" + ($init == "" ? "" : " { " + $init + " }")
 end
 func command(step)
   if step.input == "time"
@@ -270,7 +278,7 @@ func step_text(step)
   else if step.input == "invoke-done" || step.input == "invoke-error"
     ret step.input + " " + step.invoke.name + $by
   end
-  ret step.event.name + $by + (signer(step) ? ", signed by " + signer(step) : "")
+  ret step.event.name + $by + (signer(step) ? ", signed by " + signer(step) : "") + (step.response && step.response != "sign" ? ", responding " + step.response : "") + (step.signature ? " on " + step.signature.name : "")
 end
 # Freezing (rights-design.md decisions 16 to 19 and 28). A scenario's frozen keys reach only its own test. Whether the subject, and
 # each link of it, is frozen before a step is worked out from the file: the start, then each accepted freeze or thaw, from a verb
@@ -583,6 +591,9 @@ public sealed class {{ test }}
 {{- end }}
 {{- if step.expect.state_paths.size > 0 }}
         Assert.Equal<string>([{{ for x in step.expect.state_paths }}{{ if !for.first }}, {{ end }}{{ json x }}{{ end }}], result.States);
+{{- end }}
+{{- for x in step.expect.signatures }}
+        Assert.Equal({{ x.count }}, result.Approvals.Values.Sum(a => a.Signed.Count(s => s.Signature == {{ json x.signature.id }}))); // {{ x.signature.gate.name }}, {{ x.signature.name }}
 {{- end }}
 {{- changed = [] }}
 {{- for a in p.context }}{{ if has(step.expect.context, a.name) }}{{ changed[changed.size] = a }}{{ end }}{{ end }}

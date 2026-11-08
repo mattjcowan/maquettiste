@@ -104,7 +104,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Conditions on the object's data | O S V | Part: guards read the context and the event, **not the object**. 4.1 |
 | Conditions on related objects (all affected items, a BOM audit) | O | Part: a guard reads to-one links and their state with `in_state`; to-many ("every affected item") is still **No** |
 | A condition that hides a transition, apart from one that refuses it | F | No: one guard does both |
-| Where a rejection goes | E O | Part: as another transition |
+| Where a rejection goes | E O | Part: a rejection is a veto that moves nothing; a move on rejection is another transition whose verb is `reject` (0.19.0) |
 | Which state comes next depends on which signature was met (`branch`) | E | Part: as separate transitions, but a source and event can carry only one gate |
 | A move back that is always there (`demote`) | E W | Part: each is declared |
 | The same person can't make two moves in a row | S | Part: a gate's `allowRepeatSigner` |
@@ -128,7 +128,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Order when several run | O S | Yes: one fixed order for every verb, named points before a lifecycle's, then the list's order |
 | Points on types with no lifecycle, or one rule for many types | E O | Yes: named trigger points, with covers and except (0.18.0) |
 | The same three kinds at every point: check, override, action | E | Yes: check, action and a narrow replace |
-| Points on each sign-off event: approve, reject, ignore, withdraw | E Own | Part: `sign` only; the rest come with richer sign-off |
+| Points on each sign-off event: approve, reject, ignore, withdraw | E Own | Yes: at an approval (0.19.0); a plain gate takes `sign` only |
 | Points on other state events: promote, demote, override, enable, disable, schedule | E | Part: promote and demote, and your own verbs an event names; `override` and `set-state` wait for scenario steps |
 | **Points on every operation on an object, not a fixed few:** create, copy, delete, connect, disconnect, freeze, thaw, lock, unlock, revise, check in or out, remove a file, grant, revoke, and changing an attribute, description, name, owner, type, policy or vault | E O Own | Yes: any verb, built-in or your own, with places by state, type, attribute and link end |
 | Points on a relationship's operations: create, delete, change an attribute, freeze, thaw | E Own | Yes: `connect`, `disconnect`, `freeze`, `thaw`, `read` and `modify` through an end |
@@ -154,10 +154,10 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | How many must sign | S O | Yes: `required` |
 | Everyone in a group, or anyone | O | Part: by count |
 | Weighted votes | A | No |
-| Approve, reject, ignore, with a separate list of who may do each | E O | Part: `meanings` and one list of signers; no reject path |
-| Whether a signature is needed, and from whom, decided by a condition or a routine over the object's data (`filter`) | E Own | **No** |
-| Several named signatures on one state | E | **No**: one gate per transition |
-| A signature withdrawn (`unsign`) | E | **No** |
+| Approve, reject, ignore, with a separate list of who may do each | E O | Yes: an approval's signers count as allowed for sign, reject, ignore and withdraw, and rights narrow each verb (0.19.0) |
+| Whether a signature is needed, and from whom, decided by a condition or a routine over the object's data (`filter`) | E Own | Yes: a named signature's `when` (0.19.0); in generated code the team writes it |
+| Several named signatures on one state | E | Yes: an approval's named signatures (0.19.0) |
+| A signature withdrawn (`unsign`) | E | Yes: the response `withdraw` (0.19.0) |
 | Approvers, observers, acknowledgers | O | **No**: signers only |
 | Reviewers set per lifecycle role, mapped to people | W O | Part: actors, with no mapping |
 | Person, role, group and organization told apart, with membership | E W O N | **No**: planned in the actors design (0.14.0) |
@@ -165,7 +165,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Signing again with a password | S O | **No** |
 | Signing authority handed to someone else | E O N | **No** |
 | Claiming a task from a group, and an escalation chain | N | **No** |
-| Separation of duties: one person can't hold two roles on one object, or approve what they submitted | N | Part: a gate's `allowRepeatSigner`, within one gate only |
+| Separation of duties: one person can't hold two roles on one object, or approve what they submitted | N | Part: yes for "approve what they submitted" (`notBy`, 0.19.0); no for one person never holding two roles on one object |
 | Reminders and escalation | O | **No**: a timer could express it |
 | Steps in series or parallel | T W A | **Part**: invokes and orchestrations; 4.3 |
 | One sign-off policy shared by many moves | Own | Yes: gate policies (#33) |

@@ -38,6 +38,10 @@ triggers = model.trigger_lifecycles.size > 0 || model.trigger_points.size > 0
 # Whether a named trigger point exists (decisions 33 and 34): only then does the chart take the named points that cover its subject, which
 # run before every lifecycle's at each moment.
 named = model.trigger_points.size > 0
+# Whether a lifecycle uses an approval (signoff-design.md decision 29): only then are SignatureResponse, the envelope's Response and
+# Signature, the gates' stages and signatures, the snapshot's Approvals and Acts, the new refusals and outcomes, and the interpreter's
+# approvals written. model.approval_lifecycles keys only on the approvals naming key.
+approvals = model.approval_lifecycles.size > 0
 # Whether refusals name what refused (decision 28): in a project that uses rights or trigger points. With rights the ids come from the
 # rights' table, else from the chart's own.
 refusals = rights || triggers
@@ -136,7 +140,36 @@ public enum GateOutcome
 
     /// <summary>The signatures were discarded because the source state was exited.</summary>
     Discarded,
+{{- if approvals }}
+
+    /// <summary>A rejection vetoed the approval: its signatures were cleared and nothing moved (signoff-design.md decision 10).</summary>
+    Rejected,
+
+    /// <summary>A person abstained on a named signature: they are finished on it and its count is unchanged.</summary>
+    Ignored,
+
+    /// <summary>A person took back their latest signature on a named signature.</summary>
+    Withdrawn,
+{{- end }}
 }
+{{- if approvals }}
+
+/// <summary>What a signer answers an approval (signoff-design.md decision 9): the occurrence's verb is the response.</summary>
+public enum SignatureResponse
+{
+    /// <summary>Give a signature (the default).</summary>
+    Sign,
+
+    /// <summary>Veto the approval: its signatures are cleared and nothing moves.</summary>
+    Reject,
+
+    /// <summary>Abstain: the person is finished on the signature and its count is unchanged.</summary>
+    Ignore,
+
+    /// <summary>Take back the person's latest signature.</summary>
+    Withdraw,
+}
+{{- end }}
 
 /// <summary>Why an input was refused (the texts the model's simulation reports).</summary>
 public static class Refusals
@@ -158,6 +191,14 @@ public static class Refusals
 
     /// <summary>The gate requires a reason.</summary>
     public const string GateReason = "gate-reason";
+{{- if approvals }}
+
+    /// <summary>The person did a verb or move the signature's notBy names since the object entered the move's source state (signoff-design.md decision 15).</summary>
+    public const string GateExcluded = "gate-excluded";
+
+    /// <summary>The person has no signature to withdraw.</summary>
+    public const string GateNotSigned = "gate-not-signed";
+{{- end }}
 {{- if rights }}
 
     /// <summary>A right denies the verb (rights-design.md decision 12).</summary>
@@ -415,7 +456,45 @@ public sealed record GateDefinition(string Id, string Name, int Required, IReadO
 
         return meaning;
     }
+{{- if approvals }}
+
+    /// <summary>The approval's stages, each holding named signatures (signoff-design.md decision 1); empty for a gate without stages, which
+    /// counts its own signers.</summary>
+    public IReadOnlyList<StageDefinition> Stages { get; init; } = [];
+
+    /// <summary>Whether one person may give more than one response that counts on the approval, across its signatures (decision 16).</summary>
+    public bool AllowSignerAcrossSignatures { get; init; }
+{{- end }}
 }
+{{- if approvals }}
+
+/// <summary>A stage of an approval: its named signatures (signoff-design.md decision 4).</summary>
+/// <param name="Id">The model id.</param>
+/// <param name="Name">The stage name.</param>
+/// <param name="Signatures">The named signatures, in file order.</param>
+public sealed record StageDefinition(string Id, string Name, IReadOnlyList<SignatureDefinition> Signatures);
+
+/// <summary>A named signature of an approval (signoff-design.md decision 3): complete when it has <paramref name="Required"/> signatures
+/// and each required actor has signed.</summary>
+/// <param name="Id">The model id.</param>
+/// <param name="Name">The signature name.</param>
+/// <param name="Required">The signatures needed.</param>
+/// <param name="Signers">The actors that may give it.</param>
+/// <param name="RequiredActors">The actors each of which must give it at least once.</param>
+/// <param name="AllowRepeatSigner">Whether one person may count twice on it.</param>
+public sealed record SignatureDefinition(string Id, string Name, int Required, IReadOnlyList<string> Signers, IReadOnlyList<string> RequiredActors, bool AllowRepeatSigner)
+{
+    /// <summary>The text of the condition that decides whether it is needed, asked of the lifecycle's IApprovalConditions when its round
+    /// starts (decision 7); null when it is always needed.</summary>
+    public string? When { get; init; }
+
+    /// <summary>The keys of the verbs whose doer since the source state was entered may not give it (its notBy, decision 15).</summary>
+    public IReadOnlyList<string> NotByVerbs { get; init; } = [];
+
+    /// <summary>The ids of the transitions whose doer since the source state was entered may not give it (its notBy).</summary>
+    public IReadOnlyList<string> NotByTransitions { get; init; } = [];
+}
+{{- end }}
 
 /// <summary>A process's chart as static data: states in document order (the root first), transitions in priority order.</summary>
 public sealed class ChartDefinition
@@ -577,6 +656,12 @@ public sealed class ChartDefinition
 
     /// <summary>The gates.</summary>
     public IReadOnlyList<GateDefinition> Gates { get; }
+{{- if approvals }}
+
+    /// <summary>Whether the chart keeps the record of acts that a signature's notBy reads (signoff-design.md decision 28): set for a lifecycle
+    /// one of whose approvals has a notBy.</summary>
+    public bool RecordsActs { get; init; }
+{{- end }}
 
     /// <summary>The state with a path, or null.</summary>
     /// <param name="path">The dotted path.</param>
@@ -645,6 +730,15 @@ public sealed class ProcessSnapshot<TContext>
 
     /// <summary>The signatures collected on gated transitions, by transition id.</summary>
     public Dictionary<string, List<SignatureEntry>> Signatures { get; set; } = [];
+{{- if approvals }}
+
+    /// <summary>The progress of the approvals on gated transitions whose source is active, by transition id (signoff-design.md decision 7).</summary>
+    public Dictionary<string, ApprovalProgress> Approvals { get; set; } = [];
+
+    /// <summary>Who did which verb and which move, kept while a signature's notBy may read it (signoff-design.md decision 28); empty unless
+    /// the chart records acts.</summary>
+    public List<ActRecord> Acts { get; set; } = [];
+{{- end }}
 
     /// <summary>Whether the root reached a final state.</summary>
     public bool Final { get; set; }
@@ -706,7 +800,45 @@ public sealed record TimerEntry(string Transition, DateTimeOffset Due, long Sequ
 /// <param name="Actor">The actor signed as.</param>
 /// <param name="Meaning">The meaning's name.</param>
 /// <param name="Reason">The reason.</param>
-public sealed record SignatureEntry(string Signer, string Actor, string? Meaning, string? Reason);
+public sealed record SignatureEntry(string Signer, string Actor, string? Meaning, string? Reason)
+{{- if approvals }}
+{
+    /// <summary>On an approval, the id of the named signature the entry is for; null on a gate without stages.</summary>
+    public string? Signature { get; init; }
+
+    /// <summary>On an approval, the id of that signature's stage.</summary>
+    public string? Stage { get; init; }
+}
+
+/// <summary>An approval's progress on a gated transition (signoff-design.md decisions 7 to 16): when its round started, which named
+/// signatures it needs, and each person's response. With nothing needed it is complete, and the gated event's next occurrence moves.</summary>
+public sealed class ApprovalProgress
+{
+    /// <summary>When the round started, on the instance's clock.</summary>
+    public DateTimeOffset Started { get; set; }
+
+    /// <summary>The input sequence number at which the gated transition's source was entered, from which a notBy reads the record of acts
+    /// (0 unless the chart records acts).</summary>
+    public long Entered { get; set; }
+
+    /// <summary>The ids of the named signatures the round needs, in file order: those whose condition was not false when it started.</summary>
+    public List<string> Needed { get; set; } = [];
+
+    /// <summary>The signatures counted, in the order given; a withdraw takes one back out.</summary>
+    public List<SignatureEntry> Signed { get; set; } = [];
+
+    /// <summary>The abstentions, in the order given: each finishes its person on its signature.</summary>
+    public List<SignatureEntry> Ignored { get; set; } = [];
+}
+
+/// <summary>An act of a person, which a signature's notBy reads (signoff-design.md decision 28).</summary>
+/// <param name="Sequence">The input's sequence number in the instance: acts are ordered by input, not by time.</param>
+/// <param name="Signer">The person's identity.</param>
+/// <param name="Verb">The verb's key, or null.</param>
+/// <param name="Transition">The transition's id for a move, or null.</param>
+public sealed record ActRecord(long Sequence, string Signer, string? Verb, string? Transition);
+{{- else }};
+{{- end }}
 
 /// <summary>The envelope every command carries.</summary>
 /// <param name="Instance">The instance identity.</param>
@@ -714,7 +846,18 @@ public sealed record SignatureEntry(string Signer, string Actor, string? Meaning
 /// <param name="Signer">The signing person's identity, for gated events.</param>
 /// <param name="Meaning">The meaning of the signature (a name).</param>
 /// <param name="Reason">The reason of the signature.</param>
-public sealed record ProcessEnvelope(string Instance, string? Actor = null, string? Signer = null, string? Meaning = null, string? Reason = null);
+public sealed record ProcessEnvelope(string Instance, string? Actor = null, string? Signer = null, string? Meaning = null, string? Reason = null)
+{{- if approvals }}
+{
+    /// <summary>What the signer answers an approval (signoff-design.md decision 9): sign, the default, reject, ignore or withdraw.</summary>
+    public SignatureResponse Response { get; init; }
+
+    /// <summary>The name of the named signature the response answers, as <see cref="ProcessEnvelope.Meaning"/> takes the meaning's name (the
+    /// audit records and the snapshot keep the signature's id); null lets the interpreter pick it (decision 8).</summary>
+    public string? Signature { get; init; }
+}
+{{- else }};
+{{- end }}
 
 /// <summary>A command of a process: every event command and built-in command carries an envelope.</summary>
 public interface IProcessCommand
@@ -776,6 +919,35 @@ public interface IStatechartBehaviour<TContext>
     /// <returns>The names, in declaration order.</returns>
     IReadOnlyList<string> Changed(TContext before, TContext after);
 }
+{{- if approvals }}
+
+/// <summary>What a named signature's condition receives when its round starts (signoff-design.md section 10).</summary>
+/// <typeparam name="TContext">The process's context type.</typeparam>
+/// <param name="Instance">The instance identity.</param>
+/// <param name="Context">The context.</param>
+/// <param name="Lifecycle">The lifecycle's name.</param>
+/// <param name="Gate">The gate's name.</param>
+/// <param name="Stage">The stage's name.</param>
+/// <param name="Signature">The named signature's name.</param>
+/// <param name="States">The paths of the active states, all levels, in document order.</param>
+public sealed record ApprovalCall<TContext>(string Instance, TContext Context, string Lifecycle, string Gate, string Stage, string Signature, IReadOnlyList<string> States);
+
+/// <summary>
+/// Whether a named signature with a condition (its when) is needed (signoff-design.md section 10). Generated code can't read the object
+/// yet, so a lifecycle's Handlers class implements this when one of its signatures has a condition, each answered by a method of its
+/// &lt;Lifecycle&gt;ApprovalConditions. Without it every signature is needed, the safe choice.
+/// </summary>
+/// <typeparam name="TContext">The process's context type.</typeparam>
+public interface IApprovalConditions<TContext>
+    where TContext : class
+{
+    /// <summary>Whether a signature is needed, asked when its round starts.</summary>
+    /// <param name="signature">The named signature's id.</param>
+    /// <param name="call">The call.</param>
+    /// <returns>Whether it is needed.</returns>
+    bool Needed(string signature, ApprovalCall<TContext> call);
+}
+{{- end }}
 {{- if has_relative }}
 
 /// <summary>
@@ -907,6 +1079,26 @@ public sealed class ManualClock(DateTimeOffset start) : IProcessClock
 public sealed record GateAuditRecord(string Instance, string Process, string Gate, string Transition, long Sequence, string? Signer, string? Actor, string? Meaning,
     string? Reason, DateTimeOffset At, GateOutcome Outcome, IReadOnlyDictionary<string, object?> Attributes)
 {
+{{- if approvals }}
+    /// <summary>On an approval, the id of the named signature the record is about; null on a record about the whole approval, and on a gate
+    /// without stages.</summary>
+    public string? Signature { get; init; }
+
+    /// <summary>The id of that signature's stage, or null.</summary>
+    public string? Stage { get; init; }
+
+    /// <summary>The outcome's text: signed, completed, refused, discarded, rejected, ignored or withdrawn.</summary>
+    public string OutcomeText => Outcome switch
+    {
+        GateOutcome.Signed => "signed",
+        GateOutcome.Completed => "completed",
+        GateOutcome.Refused => "refused",
+        GateOutcome.Rejected => "rejected",
+        GateOutcome.Ignored => "ignored",
+        GateOutcome.Withdrawn => "withdrawn",
+        _ => "discarded",
+    };
+{{- else }}
     /// <summary>The outcome's text: signed, completed, refused or discarded.</summary>
     public string OutcomeText => Outcome switch
     {
@@ -915,6 +1107,7 @@ public sealed record GateAuditRecord(string Instance, string Process, string Gat
         GateOutcome.Refused => "refused",
         _ => "discarded",
     };
+{{- end }}
 
     /// <summary>An audit attribute's value, or the type's default.</summary>
     /// <typeparam name="T">The value type.</typeparam>
@@ -1111,6 +1304,11 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                 run.SetRefusal(selection.Reason);
                 return;
             }
+{{- if approvals }}
+
+            // Whoever sent the event did its moves (signoff-design.md decision 28); a gated move's acts are recorded when it completes.
+            run.Sent(selection.Transitions);
+{{- end }}
 
             if (selection.Transitions.Count > 0)
                 run.Microstep(selection.Transitions);
@@ -1130,12 +1328,15 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 {{- if freezing }}
     /// <param name="frozen">Whether the object, or a link of it, is frozen (IFrozenState); the team's FrozenState when null.</param>
 {{- end }}
+{{- if approvals }}
+    /// <param name="signer">The person who ends a human task: they did complete and its move, which a signature's notBy reads.</param>
+{{- end }}
     /// <returns>The result.</returns>
-    public StepResult<TContext> Complete(ProcessSnapshot<TContext> snapshot, string invoke, bool failed, string? actor{{ if rights }}, IReadOnlyList<string>? held = null{{ end }}{{ if freezing }}, {{ rights_ns }}.IFrozenState? frozen = null{{ end }})
+    public StepResult<TContext> Complete(ProcessSnapshot<TContext> snapshot, string invoke, bool failed, string? actor{{ if rights }}, IReadOnlyList<string>? held = null{{ end }}{{ if freezing }}, {{ rights_ns }}.IFrozenState? frozen = null{{ end }}{{ if approvals }}, string? signer = null{{ end }})
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(invoke);
-        var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor)){{ if rights || freezing }} { {{ if rights }}Held = held ?? []{{ end }}{{ if rights && freezing }}, {{ end }}{{ if freezing }}Frozen = frozen{{ end }} }{{ end }};
+        var run = new Run(this, snapshot, (failed ? "invoke-error:" : "invoke-done:") + invoke, new ProcessEnvelope(snapshot.Instance, actor{{ if approvals }}, signer{{ end }})){{ if rights || freezing }} { {{ if rights }}Held = held ?? []{{ end }}{{ if rights && freezing }}, {{ end }}{{ if freezing }}Frozen = frozen{{ end }} }{{ end }};
         if (Chart.Invoke(invoke) is not { } found || !run.Pending.Contains(found))
             return run.Refuse(Refusals.NoTransition);
         if (found.Kind == InvokeKind.HumanTask && found.Actors.Count > 0 && (actor is null || !{{ has_members ? (actors_type + ".Allows(found.Actors, actor)") : "found.Actors.Contains(actor, StringComparer.Ordinal)" }}{{ resolves("snapshot", "actor", "new ProcessEnvelope(snapshot.Instance, actor)") }}))
@@ -1167,6 +1368,10 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             run.Pending.Remove(found);
 {{- if triggers && verb_keys["complete"] }}
             run.Completed(selection.Transitions);
+{{- end }}
+{{- if approvals }}
+            if (found.Kind == InvokeKind.HumanTask)
+                run.Ended(selection.Transitions);
 {{- end }}
             run.Microstep(selection.Transitions);
             run.RunToCompletion();
@@ -1311,6 +1516,21 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                 if (_chart.Transition(id) is { } transition)
                     _signatures[transition] = [.. list];
             }
+{{- if approvals }}
+
+            foreach (var (id, approval) in snapshot.Approvals)
+            {
+                if (_chart.Transition(id) is { } transition)
+                    _approvals[transition] = new ApprovalProgress { Started = approval.Started, Entered = approval.Entered, Needed = [.. approval.Needed], Signed = [.. approval.Signed], Ignored = [.. approval.Ignored] };
+            }
+
+            _acts.AddRange(snapshot.Acts);
+
+            // The input's sequence number for the record of acts: one past the highest an act or an approval's entry holds, so what this
+            // input does orders after everything kept (signoff-design.md decision 28).
+            if (_chart.RecordsActs)
+                _sequence = Math.Max(_acts.Select(a => a.Sequence).DefaultIfEmpty().Max(), _approvals.Values.Select(a => a.Entered).DefaultIfEmpty().Max()) + 1;
+{{- end }}
         }
 
         public DateTimeOffset Clock { get; set; }
@@ -1406,6 +1626,13 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                             continue;
                         }
 
+{{- if approvals }}
+
+                        // A response other than sign selects only gated moves with an open approval (signoff-design.md decision 9).
+                        if (external && Response != SignatureResponse.Sign && !OpenApproval(t))
+                            continue;
+{{- end }}
+
                         tried[t] = false;
                         if (!Guard(t))
                         {
@@ -1421,7 +1648,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                                 continue;
                             }
 
-                            if (CheckSigner(t, gate) is { } refusal)
+                            if ({{ approvals ? "CheckGate" : "CheckSigner" }}(t, gate) is { } refusal)
                             {
                                 Fail(refusal, 2{{ if rights }}, refusal == Refusals.Right ? _signRefusedBy : gate.Id{{ else if triggers }}, gate.Id{{ end }});
                                 continue;
@@ -1451,7 +1678,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 
             var selected = RemoveConflicts(enabled, t =>
             {
-                if (t.Gate is not { } gate || {{ triggers ? "Signed" : "Sign" }}(t, gate))
+                if (t.Gate is not { } gate || {{ triggers ? "Signed" : (approvals ? "Admit" : "Sign") }}(t, gate))
                     return true;
                 consumed = true; // the occurrence signed an incomplete gate: accepted, and the transition waits for more signatures
                 return false;
@@ -1603,7 +1830,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             {
                 foreach (var t in _chart.Candidates(s, TriggerKind.Event, name))
                 {
-                    if (t.Gate is { } gate && {{ has_members ? (actors_type + ".Allows(gate.Signers, actor)") : "gate.Signers.Contains(actor, StringComparer.Ordinal)" }})
+                    if (t.Gate is { } gate && {{ approvals ? "SignersAllow(t, gate, actor)" : (has_members ? (actors_type + ".Allows(gate.Signers, actor)") : "gate.Signers.Contains(actor, StringComparer.Ordinal)") }})
                         yield return gate.Id;
                 }
             }
@@ -1759,6 +1986,32 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             var call = NewCall(verb ?? default, States(verb, SourceStates(t))) with { Entered = EnteredBy(t), Transition = t.Id };
             var candidate = new Candidate(verb, call);
             var completes = true;
+{{- if approvals }}
+
+            // On an approval the response's verb runs where sign's run (signoff-design.md decision 17); one that needs nothing moves as a move
+            // without a gate.
+            var gated = t.Gate is { } open && (!IsApproval(open) || OpenApproval(t)) ? t.Gate : null;
+            if (gated is { } gate)
+            {
+                var response = IsApproval(gate) ? Response : SignatureResponse.Sign;
+                if (ResponseVerb(response) is { } responding && Responders(responding) is { Count: > 0 } signing)
+                {
+                    candidate.Sign = Ready(signing, responding, call with { Verb = responding });
+                    if (!candidate.Sign.Passed)
+                        return RefuseSignature(t, gate, candidate.Sign);
+                }
+
+                completes = response == SignatureResponse.Sign && WouldComplete(t, gate);
+            }
+
+            if (completes && verb is { } v && Lifecycles(v, call.States) is { Count: > 0 } lifecycles)
+            {
+                candidate.Lifecycles = lifecycles;
+                candidate.Move = Ready(lifecycles, v, call);
+                if (!candidate.Move.Passed)
+                    return gated is { } g ? RefuseSignature(t, g, candidate.Move) : candidate.Move.RefusedBy;
+            }
+{{- else }}
             if (t.Gate is { } gate)
             {
 {{- if verb_keys["sign"] }}
@@ -1786,6 +2039,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                 if (!candidate.Move.Passed)
                     return t.Gate is { } g ? RefuseSignature(t, g, candidate.Move) : candidate.Move.RefusedBy;
             }
+{{- end }}
 
             _candidates[t] = candidate;
             return null;
@@ -1808,13 +2062,17 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 
         private string? RefuseSignature(TransitionDefinition t, GateDefinition gate, {{ rights_ns }}.TriggerPointOutcome outcome)
         {
-            Audit(gate, t, _envelope?.Signer, _envelope?.Actor, Meaning(gate), _envelope?.Reason, GateOutcome.Refused, AuditValues);
+            Audit(gate, t, _envelope?.Signer, _envelope?.Actor, Meaning(gate), _envelope?.Reason, GateOutcome.Refused, AuditValues{{ if approvals }}, IsApproval(gate) ? _picks.GetValueOrDefault(t) : null{{ end }});
             return outcome.RefusedBy;
         }
 
         // Whether this occurrence would complete the gate, worked out without counting it.
         private bool WouldComplete(TransitionDefinition t, GateDefinition gate)
         {
+{{- if approvals }}
+            if (IsApproval(gate))
+                return WouldRespond(t, gate);
+{{- end }}
             var signatures = new List<SignatureEntry>(_signatures.TryGetValue(t, out var existing) ? existing : []);
             signatures.Add(new SignatureEntry(_envelope?.Signer ?? "", _envelope?.Actor ?? "", Meaning(gate), _envelope?.Reason));
             return signatures.Count >= Math.Max(1, gate.Required)
@@ -1843,10 +2101,10 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         {
 {{- if named }}
             if (!_candidates.TryGetValue(t, out var candidate))
-                return Sign(t, gate);
+                return {{ approvals ? "Admit" : "Sign" }}(t, gate);
 {{- else }}
             if (Steps is not { } steps || !_candidates.TryGetValue(t, out var candidate))
-                return Sign(t, gate);
+                return {{ approvals ? "Admit" : "Sign" }}(t, gate);
 {{- end }}
             ListRan(candidate.Sign, null);
             if (candidate.Move is not null)
@@ -1856,8 +2114,11 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             }
 
             Write(candidate.Sign, null);
-            var complete = Sign(t, gate);
-{{- if verb_keys["sign"] }}
+            var complete = {{ approvals ? "Admit" : "Sign" }}(t, gate);
+{{- if approvals }}
+            if (candidate.Sign is not null && ResponseVerb(IsApproval(gate) ? Response : SignatureResponse.Sign) is { } responding)
+                Change(Responders(responding), responding, [candidate.Call with { Verb = responding }]);
+{{- else if verb_keys["sign"] }}
             if (candidate.Sign is not null)
                 Change({{ named ? ("Own(" + verb_type + ".Sign)") : "[steps]" }}, {{ verb_type }}.Sign, [candidate.Call with { Verb = {{ verb_type }}.Sign }]);
 {{- end }}
@@ -2011,11 +2272,20 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             var meaning = Meaning(gate);
             signatures.Add(new SignatureEntry(_envelope!.Signer!, _envelope.Actor!, meaning, _envelope.Reason));
             Audit(gate, t, _envelope.Signer, _envelope.Actor, meaning, _envelope.Reason, GateOutcome.Signed, AuditValues);
+{{- if approvals }}
+            RecordAct(_envelope.Signer, "sign", null);
+{{- end }}
             var complete = signatures.Count >= Math.Max(1, gate.Required)
                 && gate.RequiredActors.All(a => signatures.Any(s => {{ has_members ? (actors_type + ".Accepts(a, s.Actor)") : "string.Equals(s.Actor, a, StringComparison.Ordinal)" }}));
             if (complete)
             {
                 Audit(gate, t, _envelope.Signer, _envelope.Actor, meaning, _envelope.Reason, GateOutcome.Completed, AuditValues);
+{{- if approvals }}
+
+                // The gated move is done by everyone whose signature counted (signoff-design.md decision 15).
+                foreach (var s in signatures)
+                    RecordAct(s.Signer, MoveVerb(t), t.Id);
+{{- end }}
                 signatures.Clear();
             }
 
@@ -2026,6 +2296,374 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             IReadOnlyDictionary<string, object?> attributes) =>
             _audit.Add(new GateAuditRecord(_snapshot.Instance, _chart.ProcessId, gate.Id, t.Id, ++_auditSequence, signer, _chart.ActorId(actor),
                 gate.MeaningId(meaning), reason, Clock, outcome, attributes));
+{{- if approvals }}
+
+        // ---- approvals (signoff-design.md sections 8 and 10) ----
+
+        private readonly Dictionary<TransitionDefinition, ApprovalProgress> _approvals = [];
+        private readonly List<ActRecord> _acts = [];
+
+        // The named signature each gated candidate answers in this input, from row 7 to its admit.
+        private readonly Dictionary<TransitionDefinition, SignatureDefinition> _picks = [];
+
+        // The entry of the source of each approval that completed in this input, kept for the round that starts again where its move stays.
+        private readonly Dictionary<TransitionDefinition, long> _restart = [];
+
+        // The input's sequence number for the record of acts, worked out when the run loads.
+        private long _sequence;
+
+        private SignatureResponse Response => _envelope?.Response ?? SignatureResponse.Sign;
+
+        private static bool IsApproval(GateDefinition gate) => gate.Stages.Count > 0;
+
+        // An approval's named signatures in file order: stage, then signature.
+        private static IEnumerable<SignatureDefinition> Signatures(GateDefinition gate) => gate.Stages.SelectMany(s => s.Signatures);
+
+        private static StageDefinition StageOf(GateDefinition gate, SignatureDefinition signature) => gate.Stages.First(s => s.Signatures.Contains(signature));
+
+        private static string ResponseKey(SignatureResponse response) => response switch
+        {
+            SignatureResponse.Reject => "reject",
+            SignatureResponse.Ignore => "ignore",
+            SignatureResponse.Withdraw => "withdraw",
+            _ => "sign",
+        };
+{{- if rights || triggers }}
+
+        // The verb a response does, which its rights and trigger points speak of (decisions 17 and 18); null when the project has no such verb.
+        private static {{ verb_type }}? ResponseVerb(SignatureResponse response) => response switch
+        {
+            SignatureResponse.Reject => {{ verb_keys["reject"] ? (verb_type + ".Reject") : "null" }},
+            SignatureResponse.Ignore => {{ verb_keys["ignore"] ? (verb_type + ".Ignore") : "null" }},
+            SignatureResponse.Withdraw => {{ verb_keys["withdraw"] ? (verb_type + ".Withdraw") : "null" }},
+            _ => {{ verb_keys["sign"] ? (verb_type + ".Sign") : "null" }},
+        };
+{{- end }}
+{{- if triggers }}
+
+        // The steps a response's verb runs at an approval, where sign's run (decision 17).
+        private List<{{ rights_ns }}.ITriggerPointSteps> Responders({{ verb_type }} verb) => {{ named ? "Own(verb)" : "Steps is { } own && own.Speaks(verb) ? [own] : []" }};
+
+        // Whether this response would complete the approval, worked out without counting it: nothing is needed, or a signature on the picked
+        // signature completes the round.
+        private bool WouldRespond(TransitionDefinition t, GateDefinition gate)
+        {
+            var approval = ApprovalOf(t, gate);
+            return approval.Needed.Count == 0 || (Response == SignatureResponse.Sign && _picks.TryGetValue(t, out var picked)
+                && RoundDone(gate, approval, [.. approval.Signed, new SignatureEntry(_envelope?.Signer ?? "", _envelope?.Actor ?? "", null, null) { Signature = picked.Id }]));
+        }
+{{- end }}
+{{- if rights }}
+
+        // Whether an actor's signing counts as an allow for the gated event (decision 18): a gate's signers; an approval's, the signers of the
+        // signatures its round needs; an approval that needs nothing is checked as a move without a gate (decision 7).
+        private bool SignersAllow(TransitionDefinition t, GateDefinition gate, string actor) =>
+            !IsApproval(gate) ? Allows(gate.Signers, actor) : ApprovalOf(t, gate) is { Needed.Count: > 0 } approval && Allows(NeededSigners(gate, approval), actor);
+{{- end }}
+
+        private static bool Allows(IReadOnlyList<string> actors, string actor) => {{ has_members ? (actors_type + ".Allows(actors, actor)") : "actors.Contains(actor, StringComparer.Ordinal)" }};
+
+        private static bool Accepts(string required, string actor) => {{ has_members ? (actors_type + ".Accepts(required, actor)") : "string.Equals(actor, required, StringComparison.Ordinal)" }};
+
+        // The person an input is (decision 15): the envelope's signer; nobody for a time input or an automatic move.
+        private string? Person() => _envelope?.Signer is { Length: > 0 } signer ? signer : null;
+{{- if model.verbs.size > 0 }}
+
+        // The verb a move does, as the record of acts keeps it: its event's, else its own; null without one.
+        private string? MoveVerb(TransitionDefinition t) => (t.Trigger == TriggerKind.Event ? _chart.Event(t.Key)?.Verb : t.Verb) is { } verb ? global::{{ base_ns }}.Verbs.Key(verb) : null;
+{{- else }}
+
+        // The verb a move does, as the record of acts keeps it: none, since no event or move of the project names a verb.
+        private static string? MoveVerb(TransitionDefinition t) => null;
+{{- end }}
+
+        // Records an act of a person, only in a chart that keeps the record (decision 28); nobody's act is never recorded.
+        private void RecordAct(string? person, string? verb, string? transition)
+        {
+            if (_chart.RecordsActs && !string.IsNullOrEmpty(person) && (verb is not null || transition is not null))
+                _acts.Add(new ActRecord(_sequence, person, verb, transition));
+        }
+
+        // Whoever sent an event did the moves it takes that have no gate.
+        public void Sent(IReadOnlyList<TransitionDefinition> transitions)
+        {
+            foreach (var t in transitions)
+            {
+                if (t.Gate is null)
+                    RecordAct(Person(), MoveVerb(t), t.Id);
+            }
+        }
+
+        // A person who ends a human task did complete and its moves (decision 28); another invoke's end is nobody's.
+        public void Ended(IReadOnlyList<TransitionDefinition> transitions)
+        {
+            RecordAct(Person(), "complete", null);
+            foreach (var t in transitions)
+                RecordAct(Person(), MoveVerb(t), t.Id);
+        }
+
+        // Drops the acts no waiting notBy can read (decision 28): those older than the earliest entry of an active source of an approval with
+        // a notBy; all of them when there is none.
+        private void TrimActs()
+        {
+            if (_acts.Count == 0)
+                return;
+            long? earliest = null;
+            foreach (var (t, approval) in _approvals)
+            {
+                if (_config.Contains(t.Source) && Signatures(t.Gate!).Any(s => s.NotByVerbs.Count > 0 || s.NotByTransitions.Count > 0)
+                    && (earliest is null || approval.Entered < earliest))
+                    earliest = approval.Entered;
+            }
+
+            _acts.RemoveAll(a => earliest is null || a.Sequence < earliest);
+        }
+
+        // The approval of a gated move whose source is active; its round starts now if it has not (it starts on entry, so this is a fallback).
+        private ApprovalProgress ApprovalOf(TransitionDefinition t, GateDefinition gate) =>
+            _approvals.TryGetValue(t, out var approval) ? approval : StartApproval(t, gate, _sequence);
+
+        // Whether a gated move holds an open approval: one with something needed.
+        private bool OpenApproval(TransitionDefinition t) => t.Gate is { } gate && IsApproval(gate) && ApprovalOf(t, gate).Needed.Count > 0;
+
+        // Starts the round (decision 7): a signature with a condition is needed unless the lifecycle's IApprovalConditions says it isn't;
+        // without one, every signature is needed.
+        private ApprovalProgress StartApproval(TransitionDefinition t, GateDefinition gate, long entered)
+        {
+            var approval = new ApprovalProgress { Started = Clock, Entered = entered };
+            var states = Call().States;
+            foreach (var stage in gate.Stages)
+            {
+                foreach (var signature in stage.Signatures)
+                {
+                    if (signature.When is null || _owner._behaviour is not IApprovalConditions<TContext> conditions
+                        || conditions.Needed(signature.Id, new ApprovalCall<TContext>(_snapshot.Instance, Context, _chart.ProcessName, gate.Name, stage.Name, signature.Name, states)))
+                        approval.Needed.Add(signature.Id);
+                }
+            }
+
+            _approvals[t] = approval;
+            return approval;
+        }
+
+        // Round 1 starts when the object enters a gated move's source state, and again where a gated move completed without leaving it.
+        private void StartApprovals(IReadOnlyList<TransitionDefinition> transitions, List<StateDefinition> arrived)
+        {
+            foreach (var s in arrived)
+            {
+                foreach (var t in s.Transitions)
+                {
+                    if (t.Trigger == TriggerKind.Event && t.Gate is { } gate && IsApproval(gate))
+                        StartApproval(t, gate, _sequence);
+                }
+            }
+
+            foreach (var t in transitions)
+            {
+                if (t.Gate is { } gate && IsApproval(gate) && _config.Contains(t.Source) && !arrived.Contains(t.Source))
+                    StartApproval(t, gate, _restart.TryGetValue(t, out var entered) ? entered : _sequence);
+            }
+        }
+
+        // Whether a signature has its count and each of its required actors signed, among the signatures given.
+        private static bool IsComplete(SignatureDefinition signature, IEnumerable<SignatureEntry> signed)
+        {
+            var own = signed.Where(s => string.Equals(s.Signature, signature.Id, StringComparison.Ordinal)).ToList();
+            return own.Count >= Math.Max(1, signature.Required) && signature.RequiredActors.All(a => own.Any(s => Accepts(a, s.Actor)));
+        }
+
+        // Whether every signature the round needs is complete with the signatures given (decision 4).
+        private static bool RoundDone(GateDefinition gate, ApprovalProgress approval, IReadOnlyList<SignatureEntry> signed) =>
+            Signatures(gate).Where(s => approval.Needed.Contains(s.Id)).All(s => IsComplete(s, signed));
+
+        // The signers of the signatures the round needs, in file order, each once.
+        private static List<string> NeededSigners(GateDefinition gate, ApprovalProgress approval) =>
+            [.. Signatures(gate).Where(s => approval.Needed.Contains(s.Id)).SelectMany(s => s.Signers).Distinct(StringComparer.Ordinal)];
+
+        // Row 7c (decision 15): the person did a verb or move the signature's notBy names since the object entered the gated move's source
+        // state, the move that entered it included.
+        private bool Excluded(SignatureDefinition signature, ApprovalProgress approval, string? person) =>
+            person is not null && (signature.NotByVerbs.Count > 0 || signature.NotByTransitions.Count > 0)
+            && _acts.Any(a => a.Sequence >= approval.Entered && string.Equals(a.Signer, person, StringComparison.Ordinal)
+                && ((a.Verb is not null && signature.NotByVerbs.Contains(a.Verb, StringComparer.Ordinal))
+                    || (a.Transition is not null && signature.NotByTransitions.Contains(a.Transition, StringComparer.Ordinal))));
+
+        // Row 7d by response (decision 14): an earlier answer of the person on this approval blocks the response.
+        private static bool Repeated(GateDefinition gate, ApprovalProgress approval, SignatureDefinition signature, SignatureResponse response, string? person)
+        {
+            bool Mine(SignatureEntry e) => string.Equals(e.Signer, person, StringComparison.Ordinal);
+            bool Here(SignatureEntry e) => Mine(e) && string.Equals(e.Signature, signature.Id, StringComparison.Ordinal);
+            var elsewhere = !gate.AllowSignerAcrossSignatures && approval.Signed.Concat(approval.Ignored).Any(e => Mine(e) && !Here(e));
+            return response switch
+            {
+                SignatureResponse.Sign => (approval.Signed.Any(Here) && !signature.AllowRepeatSigner) || approval.Ignored.Any(Here) || elsewhere,
+                SignatureResponse.Ignore => approval.Signed.Any(Here) || approval.Ignored.Any(Here) || elsewhere,
+                SignatureResponse.Reject => approval.Ignored.Any(e => Here(e) || (Mine(e) && !gate.AllowSignerAcrossSignatures)),
+                _ => false,
+            };
+        }
+
+        // A gate's row 7: a gate without stages checks its signers; an approval with something needed, the signature the response answers;
+        // an approval that needs nothing is checked as a move without a gate (decision 7).
+        private string? CheckGate(TransitionDefinition t, GateDefinition gate) =>
+            !IsApproval(gate) ? CheckSigner(t, gate) : ApprovalOf(t, gate) is { Needed.Count: > 0 } approval ? CheckApproval(t, gate, approval) : null;
+
+        // Row 7 of decision 14 on an approval: the signature the response answers (the envelope's, else the one decision 8 picks), then its
+        // signers, the lifecycle's denies on the response's verb, notBy, an earlier answer, nothing to withdraw and a reason, in that order. A
+        // refused attempt is audited refused, with the signature when one was found.
+        private string? CheckApproval(TransitionDefinition t, GateDefinition gate, ApprovalProgress approval)
+        {
+            var actor = _envelope?.Actor;
+            var signer = _envelope?.Signer;
+            var response = Response;
+            _picks.Remove(t);
+            string? refusal = null;
+            SignatureDefinition? signature;
+            if (_envelope?.Signature is { } named && Signatures(gate).FirstOrDefault(s => string.Equals(s.Name, named, StringComparison.Ordinal)) is { } given)
+            {
+                // A signature the round doesn't need asks nobody to sign: no one meets its signers now.
+                signature = given;
+                if (!approval.Needed.Contains(given.Id))
+                    refusal = Refusals.GateSigner;
+            }
+            else
+            {
+                (signature, refusal) = Pick(gate, approval, response, actor, signer);
+            }
+
+            if (refusal is null && signature is not null)
+            {
+                if (actor is null || string.IsNullOrEmpty(signer) || !Allows(signature.Signers, actor){{ resolves("_snapshot", "actor", "_envelope!") | string.replace "!Resolves(" "!_owner.Resolves(" }})
+                    refusal = Refusals.GateSigner;
+{{- if rights }}
+                else if (ResponseVerb(response) is { } verb && CheckRights(verb, [gate.Id]) is { Allowed: false } denied)
+                {
+                    refusal = denied.Refusal;
+                    _signRefusedBy = denied.RefusedBy;
+                }
+{{- end }}
+                else if (Excluded(signature, approval, signer))
+                    refusal = Refusals.GateExcluded;
+                else if (Repeated(gate, approval, signature, response, signer) || (response == SignatureResponse.Sign && IsComplete(signature, approval.Signed)))
+                    refusal = Refusals.GateRepeat;
+                else if (response == SignatureResponse.Withdraw
+                    && !approval.Signed.Any(s => string.Equals(s.Signer, signer, StringComparison.Ordinal) && string.Equals(s.Signature, signature.Id, StringComparison.Ordinal)))
+                    refusal = Refusals.GateNotSigned;
+                else if (gate.ReasonRequired && string.IsNullOrWhiteSpace(_envelope?.Reason))
+                    refusal = Refusals.GateReason;
+            }
+
+            if (signature is not null)
+                _picks[t] = signature;
+            if (refusal is not null)
+                Audit(gate, t, signer, actor, Meaning(gate), _envelope?.Reason, GateOutcome.Refused, AuditValues, signature);
+            return refusal;
+        }
+
+        // Decision 8's pick, the same way every time: withdraw takes the person's latest signature in the round; reject the first needed
+        // signature whose signers the person meets, complete or not; sign and ignore, among the needed signatures not complete, the first the
+        // person may fill (rows 7a, 7c and 7d) where they meet a required actor not yet signed, else the first they may fill, else the first
+        // whose signers they meet, so that row 7 refuses on it: for sign complete or not (a complete one as gate-repeat), for ignore not
+        // complete only, as a complete signature leaves the person nothing to answer (gate-signer when none is left).
+        private (SignatureDefinition? Signature, string? Refusal) Pick(GateDefinition gate, ApprovalProgress approval, SignatureResponse response, string? actor, string? signer)
+        {
+            var needed = Signatures(gate).Where(s => approval.Needed.Contains(s.Id)).ToList();
+            bool Meets(SignatureDefinition s) => actor is not null && !string.IsNullOrEmpty(signer) && Allows(s.Signers, actor);
+            if (response == SignatureResponse.Withdraw)
+            {
+                var latest = approval.Signed.LastOrDefault(s => string.Equals(s.Signer, signer, StringComparison.Ordinal))?.Signature;
+                return needed.FirstOrDefault(s => string.Equals(s.Id, latest, StringComparison.Ordinal)) is { } mine ? (mine, null) : (null, Refusals.GateNotSigned);
+            }
+
+            if (response == SignatureResponse.Reject)
+                return needed.FirstOrDefault(Meets) is { } first ? (first, null) : (null, Refusals.GateSigner);
+            SignatureDefinition? fill = null, met = null;
+            foreach (var s in needed)
+            {
+                var complete = IsComplete(s, approval.Signed);
+                if (!Meets(s) || (complete && response == SignatureResponse.Ignore))
+                    continue;
+                met ??= s;
+                if (complete || Excluded(s, approval, signer) || Repeated(gate, approval, s, response, signer))
+                    continue;
+                if (s.RequiredActors.Any(a => Accepts(a, actor!) && !approval.Signed.Any(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal) && Accepts(a, c.Actor))))
+                    return (s, null);
+                fill ??= s;
+            }
+
+            return (fill ?? met) is { } picked ? (picked, null) : (null, Refusals.GateSigner);
+        }
+
+        // An admitted occurrence: a response on an approval, else a signature on a gate.
+        private bool Admit(TransitionDefinition t, GateDefinition gate) => IsApproval(gate) ? Respond(t, gate) : Sign(t, gate);
+
+        // The response's effect on an approval, already checked by row 7 (decisions 7 and 10 to 13): with nothing needed the occurrence
+        // completes it; a signature is counted, and completes it when every signature the round needs is complete; an ignore finishes the
+        // person on the signature; a withdraw takes their latest signature on it back; a rejection clears the approval and starts its round
+        // again. Whether the move follows.
+        private bool Respond(TransitionDefinition t, GateDefinition gate)
+        {
+            var approval = ApprovalOf(t, gate);
+            var meaning = Meaning(gate);
+            var signer = _envelope?.Signer;
+            var actor = _envelope?.Actor;
+            var reason = _envelope?.Reason;
+            if (approval.Needed.Count == 0)
+            {
+                // Nothing is needed: the move runs as if there were no gate, done by whoever sent it.
+                Audit(gate, t, signer, actor, meaning, reason, GateOutcome.Completed, AuditValues);
+                RecordAct(Person(), MoveVerb(t), t.Id);
+                Close(t, approval);
+                return true;
+            }
+
+            var signature = _picks[t];
+            var entry = new SignatureEntry(signer!, actor!, meaning, reason) { Signature = signature.Id, Stage = StageOf(gate, signature).Id };
+            RecordAct(signer, ResponseKey(Response), null);
+            switch (Response)
+            {
+                case SignatureResponse.Sign:
+                    approval.Signed.Add(entry);
+                    Audit(gate, t, signer, actor, meaning, reason, GateOutcome.Signed, AuditValues, signature);
+                    if (!RoundDone(gate, approval, approval.Signed))
+                        return false;
+                    Audit(gate, t, signer, actor, meaning, reason, GateOutcome.Completed, AuditValues);
+
+                    // A gated move is done by everyone whose signature counted toward the approval that made it (decision 15).
+                    foreach (var s in approval.Signed)
+                        RecordAct(s.Signer, MoveVerb(t), t.Id);
+                    Close(t, approval);
+                    return true;
+                case SignatureResponse.Ignore:
+                    approval.Ignored.Add(entry);
+                    Audit(gate, t, signer, actor, meaning, reason, GateOutcome.Ignored, AuditValues, signature);
+                    return false;
+                case SignatureResponse.Withdraw:
+                    var at = approval.Signed.FindLastIndex(s => string.Equals(s.Signer, signer, StringComparison.Ordinal) && string.Equals(s.Signature, signature.Id, StringComparison.Ordinal));
+                    if (at >= 0)
+                        approval.Signed.RemoveAt(at);
+                    Audit(gate, t, signer, actor, meaning, reason, GateOutcome.Withdrawn, AuditValues, signature);
+                    return false;
+                default:
+                    // A veto: it clears every signature of this approval and moves nothing; its round starts again at once (decision 10).
+                    Audit(gate, t, signer, actor, meaning, reason, GateOutcome.Rejected, AuditValues, signature);
+                    StartApproval(t, gate, approval.Entered);
+                    return false;
+            }
+        }
+
+        // A completed approval ends; where its move stays in the source, StartApprovals starts its round again from the same entry.
+        private void Close(TransitionDefinition t, ApprovalProgress approval)
+        {
+            _restart[t] = approval.Entered;
+            _approvals.Remove(t);
+        }
+
+        private void Audit(GateDefinition gate, TransitionDefinition t, string? signer, string? actor, string? meaning, string? reason, GateOutcome outcome,
+            IReadOnlyDictionary<string, object?> attributes, SignatureDefinition? signature) =>
+            _audit.Add(new GateAuditRecord(_snapshot.Instance, _chart.ProcessId, gate.Id, t.Id, ++_auditSequence, signer, _chart.ActorId(actor),
+                gate.MeaningId(meaning), reason, Clock, outcome, attributes) { Signature = signature?.Id, Stage = signature is null ? null : StageOf(gate, signature).Id });
+{{- end }}
 
         // ---- microstep ----
 
@@ -2121,10 +2759,16 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             }
 
             var doneQueued = new HashSet<StateDefinition>();
+{{- if approvals }}
+            var arrived = new List<StateDefinition>();
+{{- end }}
             foreach (var s in toEnter.OrderBy(s => s.Index))
             {
                 if (s.IsRoot || !_config.Add(s))
                     continue;
+{{- if approvals }}
+                arrived.Add(s);
+{{- end }}
                 foreach (var action in s.Entry)
                     RunAction(action);
                 foreach (var timer in s.Timers)
@@ -2162,6 +2806,12 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                     }
                 }
             }
+{{- if approvals }}
+
+            // Approvals start once the entering move's actions and sets have run, and again where a gated move completed without leaving its
+            // source (signoff-design.md decision 7).
+            StartApprovals(transitions, arrived);
+{{- end }}
 {{- if triggers }}
 
             // After the entry actions, the with-the-change points; after-commit points are queued.
@@ -2199,7 +2849,17 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 
             foreach (var t in s.Transitions)
             {
+{{- if approvals }}
+                // Leaving discards an approval's progress too, audited when it holds any response, ignores included (signoff-design.md section 8).
+                if (t.Gate is { } approvalGate && IsApproval(approvalGate))
+                {
+                    if (_approvals.Remove(t, out var approval) && (approval.Signed.Count > 0 || approval.Ignored.Count > 0))
+                        Audit(approvalGate, t, null, null, null, null, GateOutcome.Discarded, new Dictionary<string, object?>());
+                }
+                else if (t.Gate is { } gate && _signatures.TryGetValue(t, out var signatures) && signatures.Count > 0)
+{{- else }}
                 if (t.Gate is { } gate && _signatures.TryGetValue(t, out var signatures) && signatures.Count > 0)
+{{- end }}
                 {
                     Audit(gate, t, null, null, null, null, GateOutcome.Discarded, new Dictionary<string, object?>());
                     signatures.Clear();
@@ -2366,6 +3026,11 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             _snapshot.Pending = [.. Pending.OrderBy(p => p.State).ThenBy(p => p.Name, StringComparer.Ordinal).Select(p => p.Name)];
             _snapshot.Signatures = _signatures.Where(p => p.Value.Count > 0).OrderBy(p => p.Key.Index)
                 .ToDictionary(p => p.Key.Id, p => p.Value.ToList(), StringComparer.Ordinal);
+{{- if approvals }}
+            TrimActs();
+            _snapshot.Approvals = _approvals.OrderBy(p => p.Key.Index).ToDictionary(p => p.Key.Id, p => p.Value, StringComparer.Ordinal);
+            _snapshot.Acts = [.. _acts];
+{{- end }}
             return new StepResult<TContext>
             {
                 Accepted = _refusal is null,

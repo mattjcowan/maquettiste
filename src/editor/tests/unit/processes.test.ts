@@ -54,8 +54,8 @@ describe("Processes explorer", () => {
     expect(labels(f, child(f, actors, "Systems"))).toEqual(["ProcurementSystem"]);
     const rows = ["People", "Roles", "Systems"].flatMap((t) => childKeys(f, child(f, actors, t)));
     expect(rows.map((k) => nodeOf(f, k)!.secondary)).toEqual([
-      "person · persona · acts in 1 process",
-      "role · acts in 1 process",
+      "person · persona · acts in 2 processes",
+      "role · acts in 2 processes",
       "external system · acts in 1 process",
     ]);
   });

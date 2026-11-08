@@ -1,0 +1,77 @@
+{
+  "kind": "scenario",
+  "id": "01JAP0000000000000000000N1",
+  "name": "submitterExcluded",
+  "process": "01JAP0000000000000000000C1",
+  "description": "The submitter may not sign the engineering signature, and nothing is withdrawn before anyone signed.",
+  "start": {
+    "context": {},
+    "at": "2026-11-08T09:00:00Z"
+  },
+  "steps": [
+    {
+      "id": "01JAP000000000000000000N11",
+      "input": "event",
+      "event": "01JAP0000000000000000000V1",
+      "actor": "01JAP0000000000000000000R1",
+      "signer": "ana",
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JAP0000000000000000000S2"
+        ]
+      }
+    },
+    {
+      "id": "01JAP000000000000000000N12",
+      "input": "event",
+      "event": "01JAP0000000000000000000V2",
+      "actor": "01JAP0000000000000000000R1",
+      "signer": "ana",
+      "signature": "01JAP000000000000000000G11",
+      "expect": {
+        "accepted": false,
+        "states": [
+          "01JAP0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAP000000000000000000G11": 0
+        }
+      }
+    },
+    {
+      "id": "01JAP000000000000000000N13",
+      "input": "event",
+      "event": "01JAP0000000000000000000V2",
+      "actor": "01JAP0000000000000000000R3",
+      "signer": "dee",
+      "signature": "01JAP000000000000000000G13",
+      "response": "withdraw",
+      "reason": "Taken back.",
+      "expect": {
+        "accepted": false,
+        "states": [
+          "01JAP0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAP000000000000000000G13": 0,
+          "01JAP000000000000000000G11": 0
+        }
+      }
+    },
+    {
+      "id": "01JAP000000000000000000N14",
+      "input": "event",
+      "event": "01JAP0000000000000000000V3",
+      "actor": "01JAP0000000000000000000R3",
+      "signer": "dee",
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JAP0000000000000000000S1"
+        ]
+      }
+    }
+  ],
+  "outcome": "active"
+}

@@ -67,6 +67,13 @@ internal static class RightsGrid
     // snapshot, so a project's grids work each one out once.
     private static readonly ConditionalWeakTable<ModelSnapshot, ConcurrentDictionary<(string Actor, string Verb, string Lifecycle, bool Frozen), Cell?>> OthersByModel = new();
 
+    // The responses an approval takes (signoff-design.md decision 9).
+    private static readonly string[] ResponseVerbs = ["sign", "reject", "ignore", "withdraw"];
+
+    // A gate's signers; an approval's are its signatures' signers, in file order, each once: the grid can't judge which are needed.
+    private static IReadOnlyList<string> SignersOf(ProcessGate gate) =>
+        gate.UsesStages ? [.. gate.AllSignatures.SelectMany(s => s.Signers).Distinct(StringComparer.Ordinal)] : gate.Signers;
+
     /// <summary>The answer of a cell's own lifecycle, or of one cell for one entity.</summary>
     private sealed record Cell(string Answer, bool ByDefault, IReadOnlyList<string> By, IReadOnlyList<string> DependsOn)
     {
@@ -118,8 +125,12 @@ internal static class RightsGrid
         foreach (var t in chart.Transitions)
         {
             if (t.Gate is { } gate)
-                named.UnionWith(gate.Signers);
+                named.UnionWith(SignersOf(gate));
         }
+
+        // A lifecycle with an approval lists its responses (signoff-design.md decision 18); others list them only where a right or event names them.
+        if (chart.Transitions.Any(t => t.Gate is { UsesStages: true }))
+            verbKeys.UnionWith(ResponseVerbs);
 
         var actors = named.Select(model.Get<Actor>).OfType<Actor>().OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.Id, StringComparer.Ordinal)
             .Select(a => (string?)a.Id).Append(null).ToList();
@@ -248,9 +259,10 @@ internal static class RightsGrid
         {
             if (string.Equals(t.Event!.Verb, verb, StringComparison.Ordinal) && !closed.Any(l => string.Equals(l.Owner, t.Event.Id, StringComparison.Ordinal)))
                 closed.Add(new RightsList(t.Event.Id, t.Event.Actors));
-            if (t.Gate is { Signers.Count: > 0 } gate && (verb == "sign" || string.Equals(t.Event.Verb, verb, StringComparison.Ordinal))
+            if (t.Gate is { } gate && SignersOf(gate) is { Count: > 0 } listed
+                && (verb == "sign" || (gate.UsesStages && ResponseVerbs.Contains(verb, StringComparer.Ordinal)) || string.Equals(t.Event.Verb, verb, StringComparison.Ordinal))
                 && !signers.Any(l => string.Equals(l.Owner, gate.Id, StringComparison.Ordinal)))
-                signers.Add(new RightsList(gate.Id, gate.Signers));
+                signers.Add(new RightsList(gate.Id, listed));
         }
 
         if (verb == "complete")

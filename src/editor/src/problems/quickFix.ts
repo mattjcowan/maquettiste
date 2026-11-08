@@ -7,7 +7,8 @@ import type { Diagnostic, ModelJson } from "@/api/types";
 import { atPointer, clone } from "@/lib/json";
 import { classifyAttribute } from "@/model/binding";
 import { newId } from "@/lib/ids";
-import { subjectsOf, uniqueName, type SubjectDoc } from "@/model/process";
+import { reorderStages } from "@/model/approvals";
+import { subjectsOf, uniqueName, type GateDoc, type SubjectDoc } from "@/model/process";
 import { builtInVerbs } from "@/model/verbs";
 import type { VerbFix } from "@/verbs/verbFixes";
 
@@ -62,6 +63,9 @@ const EDITOR_FIXES = new Set([
   "MQ8105",
   "MQ8106",
   "MQ8107",
+  "MQ8201",
+  "MQ8202",
+  "MQ8203",
   "MQ3116",
 ]);
 
@@ -73,10 +77,11 @@ export function hasQuickFix(rule: string, catalogFix: string | null | undefined)
 
 /**
  * True when the fix of a finding in an unsaved draft can still be offered: it edits the project's verbs, not the draft
- * (MQ9701, "add it to the project's verbs"). Every other fix reads the saved document and waits for the draft to save.
+ * (MQ9701, "add it to the project's verbs") or rewrites the draft itself (MQ8201, which the server would refuse to save as it
+ * is). Every other fix reads the saved document and waits for the draft to save.
  */
 export function hasDraftQuickFix(rule: string): boolean {
-  return rule === "MQ9701";
+  return rule === "MQ9701" || rule === "MQ8201";
 }
 
 const str = (value: unknown): string | undefined => (typeof value === "string" && value ? value : undefined);
@@ -207,6 +212,28 @@ function rightFix(rule: string, element: ModelJson, pointer: string): { json: Mo
     default:
       return null;
   }
+}
+
+/**
+ * The quick fixes of MQ8201 to MQ8203 (signoff-design.md sections 6 and 11): MQ8201 and MQ8202 remove the key or the entry (a `notBy`
+ * left empty goes with its key), MQ8203 puts the approval's stages in round order. Every one is a plain update of the process.
+ */
+function approvalFix(rule: string, element: ModelJson, pointer: string): { json: ModelJson; label: string } | null {
+  if (rule === "MQ8203") {
+    const gatePointer = /^(.*?)\/stages(\/|$)/.exec(pointer)?.[1];
+    if (gatePointer === undefined) return null;
+    const next = clone(element);
+    const gate = atPointer(next, gatePointer) as GateDoc | undefined;
+    return gate && reorderStages(gate) ? { json: next, label: "Reorder the stages" } : null;
+  }
+  const entry = /^(.*\/notBy)\/\d+$/.exec(pointer);
+  const json = removeAt(element, pointer);
+  if (!json) return null;
+  if (entry) {
+    const list = atPointer(json, entry[1]);
+    if (Array.isArray(list) && list.length === 0) delete (atPointer(json, parent(entry[1])) as Json)[last(entry[1])];
+  }
+  return { json, label: entry ? "Remove the entry" : "Remove the key" };
 }
 
 /**
@@ -511,6 +538,13 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
     case "MQ8107": {
       if (element.kind !== "process" && element.kind !== "trigger-point") return null;
       const fix = triggerPointFix(d.rule, element, pointer);
+      return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;
+    }
+    case "MQ8201":
+    case "MQ8202":
+    case "MQ8203": {
+      if (element.kind !== "process") return null;
+      const fix = approvalFix(d.rule, element, pointer);
       return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;
     }
     case "MQ9016": {

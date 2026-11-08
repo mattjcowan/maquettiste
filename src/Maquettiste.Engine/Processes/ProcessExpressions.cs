@@ -150,7 +150,8 @@ public sealed class ProcessExpressions
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process) && !ExprSites.TriggerData(process))
+        if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process) && !ExprSites.TriggerData(process)
+            && !ExprSites.ApprovalData(process))
             return Get(process);
         return ByModel.GetOrCreateValue(model).GetValue(process, p =>
         {
@@ -330,6 +331,21 @@ public sealed class ProcessExpressions
             }
         }
 
+        // Each named signature's when of an approval on a transition (signoff-design.md decision 7), lowered at an approval site under the
+        // signature's id: true or unknown means needed, so only false answers false (EvaluateApproval).
+        foreach (var transition in process.Use == ProcessUse.Library ? [] : process.Transitions)
+        {
+            if (transition.Gate is not { UsesStages: true } gate)
+                continue;
+            foreach (var signature in gate.AllSignatures)
+            {
+                if (signature.When is null || ExprResolution.Type(model, process, signature.Id) is not { } typed)
+                    continue;
+                var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Approval, ExprResolution.ApiColumns(model, signature.Id, path));
+                lowered.Add(Of(signature.Id, js, typed.Typed, ExprSites.ReadsSubject(process, typed.Typed), null));
+            }
+        }
+
         return lowered;
 
         static LoweredCondition Of(string id, string js, TypedExpr typed, bool readsSubject, LoweredSet? set) =>
@@ -388,6 +404,7 @@ public sealed class ProcessExpressions
     /// <returns><see langword="true"/> when they are cached.</returns>
     internal static bool IsCached(ModelSnapshot model, Process process) =>
         process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process) && !ExprSites.TriggerData(process)
+            && !ExprSites.ApprovalData(process)
             ? IsCached(process)
             : (ByModel.TryGetValue(model, out var processes) && processes.TryGetValue(process, out _)) || IsCachedByContent(model, process);
 
@@ -675,6 +692,25 @@ public sealed class ProcessExpressionSession : IDisposable
             return new ExpressionResult(null, RuleCatalog.Create("MQ9502", $"{label} threw working out '{set.Name}': {Detail(ex.Diagnostic.Message)}", id, null, null));
         }
     }
+
+    /// <summary>
+    /// Judges whether a named signature is needed when its round starts (signoff-design.md decision 7): its <c>when</c>, compiled under the
+    /// signature's id when it types (<see cref="Conditions"/> holds the id), over a row of the context and the object, with no payload and
+    /// nobody acting. Only false means not needed: the answer is <see langword="true"/> when the condition holds or is unknown. A signature
+    /// whose <c>when</c> did not compile is needed, the safe choice; the caller checks <see cref="Conditions"/> first.
+    /// </summary>
+    /// <param name="signatureId">The named signature's id.</param>
+    /// <param name="label">"Signature 'name'", for messages.</param>
+    /// <param name="context">The context object.</param>
+    /// <param name="subject">The object, after the entering move's actions and sets; an empty object when there is none.</param>
+    /// <param name="running">The running chart's states (a JSON object of process id to state ids), or <see langword="null"/> when not read.</param>
+    /// <param name="now">The simulation's clock.</param>
+    /// <param name="seed">The seed of <c>Math.random</c>, which no condition reads.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The result: a <see cref="bool"/>, whether the signature is needed, or MQ9502 or MQ9503.</returns>
+    internal ExpressionResult EvaluateApproval(string signatureId, string label, JsonElement context, JsonElement subject, JsonElement? running, string now,
+        string seed, CancellationToken ct) =>
+        EvaluateCondition(signatureId, label, context, NoObject, subject, running, now, null, seed, ct);
 
     // The arguments a lowered function takes: the row and the clock, and the identity when it reads current_actor() or in_state.
     private object?[] Args(string id, JsonElement row, string now, string? actor) =>

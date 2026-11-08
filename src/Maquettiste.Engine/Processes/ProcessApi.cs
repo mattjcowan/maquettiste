@@ -151,6 +151,13 @@ public sealed record EnabledTrigger(string Trigger, string? Event, string? Invok
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? ChecksUnknown { get; init; }
+
+    /// <summary>
+    /// The responses the trigger's event takes at an approval, in the order <c>sign</c>, <c>reject</c>, <c>ignore</c>, <c>withdraw</c>
+    /// (signoff-design.md decision 26); <see langword="null"/>, and left out of the JSON, when none.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<SignatureResponse>? Responses { get; init; }
 }
 
 /// <summary>A gate's progress.</summary>
@@ -173,14 +180,45 @@ public sealed record ScheduledTimer(string Transition, string DueAt);
 /// <param name="Actor">The actor signed as.</param>
 /// <param name="Meaning">The meaning id.</param>
 /// <param name="Reason">The reason.</param>
-public sealed record GateSignature(string Signer, string Actor, string? Meaning, string? Reason);
+public sealed record GateSignature(string Signer, string Actor, string? Meaning, string? Reason)
+{
+    /// <summary>
+    /// On an approval, the id of the named signature it counts for (signoff-design.md decision 26); <see langword="null"/>, and left out of
+    /// the JSON, on a gate without stages.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Signature { get; init; }
+}
 
 /// <summary>A gate of an active state.</summary>
 /// <param name="Gate">The gate id.</param>
 /// <param name="Transition">The gated transition.</param>
 /// <param name="Signatures">The signatures collected.</param>
 /// <param name="Satisfied">Whether the count and the required actors are covered.</param>
-public sealed record GateState(string Gate, string Transition, IReadOnlyList<GateSignature> Signatures, bool Satisfied);
+public sealed record GateState(string Gate, string Transition, IReadOnlyList<GateSignature> Signatures, bool Satisfied)
+{
+    /// <summary>
+    /// On an approval, its stages in file order, each with its signatures (signoff-design.md decision 26); <see langword="null"/>, and left
+    /// out of the JSON, on a gate without stages.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ApprovalStageState>? Stages { get; init; }
+}
+
+/// <summary>A stage of an approval in a simulation's gate state (signoff-design.md decision 26).</summary>
+/// <param name="Stage">The stage id.</param>
+/// <param name="Complete">Whether each of its signatures is complete or not needed.</param>
+/// <param name="Signatures">Its signatures, in file order.</param>
+public sealed record ApprovalStageState(string Stage, bool Complete, IReadOnlyList<ApprovalSignatureState> Signatures);
+
+/// <summary>A named signature of an approval in a simulation's gate state (signoff-design.md decision 26).</summary>
+/// <param name="Signature">The named signature id.</param>
+/// <param name="Needed">Whether it is needed: its <c>when</c> was not false when its round started.</param>
+/// <param name="Counted">The signatures counted for it.</param>
+/// <param name="Required">The signatures it needs.</param>
+/// <param name="Finished">The identities of the people who answered it (signed or ignored), in the order they first did.</param>
+/// <param name="Complete">Whether it has its count and each of its required actors signed.</param>
+public sealed record ApprovalSignatureState(string Signature, bool Needed, int Counted, int Required, IReadOnlyList<string> Finished, bool Complete);
 
 /// <summary>The response of <c>simulate</c> (phase-3-design.md section 4.4).</summary>
 /// <param name="ProcessHash">The hash of the process document simulated (the draft's when one was sent).</param>
@@ -314,7 +352,7 @@ public static class ProcessApi
     /// <returns>The steps, or null.</returns>
     public static IReadOnlyList<ScenarioStep>? ReadInputs(IReadOnlyList<JsonElement>? steps, out string? error) => ReadInputs(steps, null, null, out error);
 
-    /// <summary>Reads simulation inputs, resolving event, actor, invoke and guard (assume) names to ids as <see cref="ResolveNames"/> does.</summary>
+    /// <summary>Reads simulation inputs, resolving event, actor, invoke, signature and guard (assume) names to ids as <see cref="ResolveNames"/> does.</summary>
     /// <param name="steps">The steps.</param>
     /// <param name="process">The process whose names resolve, or null.</param>
     /// <param name="snapshot">The model whose actor names resolve, or null.</param>
@@ -355,7 +393,7 @@ public static class ProcessApi
 
     /// <summary>
     /// Replaces names with ids in one input step: <c>event</c>, <c>invoke</c> and the keys of <c>assume</c> (guards) by the process's
-    /// names, <c>actor</c> by the model's actor names. A value that is already an id, or that no single element is named, is left as is
+    /// names, <c>actor</c> by the model's actor names, <c>signature</c> by the names of the signatures of the approvals on the step's event. A value that is already an id, or that no single element is named, is left as is
     /// (an unknown one is then reported as usual).
     /// </summary>
     /// <param name="step">The step, changed in place.</param>
@@ -369,6 +407,11 @@ public static class ProcessApi
         Replace("invoke", StatechartModel.Get(process, null).Invokes.Values.Select(i => (i.Invoke.Id, i.Invoke.Name)));
         if (snapshot is not null)
             Replace("actor", snapshot.All<Actor>().Select(a => (a.Id, a.Name)));
+        // A signature by its name among the approvals on the step's event, inline or through a gate policy (signoff-design.md decision 8).
+        var raised = step["event"] is JsonValue ev && ev.TryGetValue<string>(out var eventId) ? eventId : null;
+        Replace("signature", process.Transitions.Where(t => raised is null || string.Equals(t.Event, raised, StringComparison.Ordinal))
+            .Select(t => snapshot is null ? t.Gate : Validation.ApprovalRules.GateOf(snapshot, t)).OfType<ProcessGate>()
+            .SelectMany(g => g.AllSignatures).Select(s => (s.Id, s.Name)).Distinct());
         if (step["assume"] is JsonObject assume)
         {
             var guards = (snapshot is null ? process : ProcessLibraries.Effective(snapshot, process)).Guards.Select(g => (g.Id, g.Name)).ToList();
@@ -666,6 +709,12 @@ public static class ProcessApi
         foreach (var t in ActiveTransitions(chart, interpreter).Where(t => t.Gate is not null && t.Trigger == TransitionTrigger.Event))
         {
             var gate = t.Gate!;
+            if (gate.UsesStages)
+            {
+                gates.Add(ApprovalState(t.Id, gate, interpreter.ApprovalAt(t.Id), membership));
+                continue;
+            }
+
             var signed = signatures.TryGetValue(t.Id, out var list) ? list : [];
             var satisfied = signed.Count >= Math.Max(1, gate.Required) && gate.RequiredActors.All(a => signed.Any(s => membership.Accepts(a, s.Actor)));
             gates.Add(new GateState(gate.Id, t.Id, [.. signed.Select(s => new GateSignature(s.Signer, s.Actor, s.Meaning, s.Reason))], satisfied));
@@ -674,6 +723,29 @@ public static class ProcessApi
         return new SimulationResult(processHash, [.. traces.Where(t => t.Index >= from)], interpreter.Configuration, interpreter.Context, enabled,
             [.. interpreter.Pending.Select(p => new PendingInvoke(p.Invoke, p.State))],
             [.. interpreter.Timers.Select(t => new ScheduledTimer(t.Transition, Iso(t.DueAt)))], gates, interpreter.IsFinal, traces[^1].Clock, diagnostics);
+    }
+
+    // An approval's gate state (signoff-design.md decision 26): the signatures counted in the order given, satisfied only when nothing is needed,
+    // and each stage with its signatures' needs and counts. One whose round hasn't started reads as needing every signature.
+    private static GateState ApprovalState(string transition, ProcessGate gate, ApprovalProgress? approval, ActorMembership membership)
+    {
+        var counted = approval?.Counted ?? [];
+        bool Needed(NamedSignature s) => approval?.Needed.Contains(s.Id) ?? true;
+        bool Complete(NamedSignature s)
+        {
+            var own = counted.Where(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal)).ToList();
+            return own.Count >= Math.Max(1, s.Required) && s.RequiredActors.All(a => own.Any(c => membership.Accepts(a, c.Actor)));
+        }
+
+        ApprovalSignatureState Of(NamedSignature s) => new(s.Id, Needed(s), counted.Count(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal)),
+            Math.Max(1, s.Required),
+            [.. (approval?.Answers ?? []).Where(a => string.Equals(a.Signature, s.Id, StringComparison.Ordinal)).Select(a => a.Person).Distinct(StringComparer.Ordinal)],
+            Complete(s));
+        return new GateState(gate.Id, transition, [.. counted.Select(c => new GateSignature(c.Signer, c.Actor, c.Meaning, c.Reason) { Signature = c.Signature })],
+            approval is { Waiting: true })
+        {
+            Stages = [.. gate.Stages!.Select(st => new ApprovalStageState(st.Id, st.Signatures.All(s => !Needed(s) || Complete(s)), [.. st.Signatures.Select(Of)]))],
+        };
     }
 
     /// <summary>Verifies scenarios of a process against the model.</summary>
@@ -787,6 +859,15 @@ public static class ProcessApi
             node["values"] = values;
         }
 
+        // The signatures counted after a step that answered an approval (signoff-design.md decision 27).
+        if (expect.Signatures is { Count: > 0 } signatures)
+        {
+            var counts = new JsonObject();
+            foreach (var (id, count) in signatures.OrderBy(p => p.Key, StringComparer.Ordinal))
+                counts[id] = count;
+            node["signatures"] = counts;
+        }
+
         // The checks that warned, and on request the trigger points that ran (trigger-points-design.md decision 28), each only when not empty.
         if (expect.CheckWarnings is { Count: > 0 } warned)
             node["checkWarnings"] = new JsonArray([.. warned.Select(id => (JsonNode?)JsonValue.Create(id))]);
@@ -794,6 +875,9 @@ public static class ProcessApi
             node["triggerPoints"] = new JsonArray([.. ran.Select(id => (JsonNode?)JsonValue.Create(id))]);
         return node;
     }
+
+    private static readonly IReadOnlyList<SignatureResponse> AllResponses =
+        [SignatureResponse.Sign, SignatureResponse.Reject, SignatureResponse.Ignore, SignatureResponse.Withdraw];
 
     private static string Iso(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'", CultureInfo.InvariantCulture);
 
@@ -856,7 +940,20 @@ public static class ProcessApi
                 continue;
             GateProgress? gate = null;
             IReadOnlyList<string> actors = ev.Actors;
-            if (candidates.FirstOrDefault(t => t.Gate is not null) is { } gated)
+            IReadOnlyList<SignatureResponse>? responses = null;
+            if (candidates.FirstOrDefault(t => t.Gate is not null) is { Gate.UsesStages: true } approvalMove)
+            {
+                // An approval (signoff-design.md decision 26): the round's needed signatures give the count and, when the event names no
+                // actors, the signers; it takes every response while something is needed, and only sign when nothing is.
+                var approval = interpreter.ApprovalAt(approvalMove.Id);
+                var open = approvalMove.Gate!.AllSignatures.Where(s => approval?.Needed.Contains(s.Id) ?? true).ToList();
+                gate = new GateProgress(open.Sum(s => approval?.Counted.Count(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal)) ?? 0),
+                    open.Sum(s => Math.Max(1, s.Required)));
+                if (actors.Count == 0)
+                    actors = [.. open.SelectMany(s => s.Signers).Distinct(StringComparer.Ordinal)];
+                responses = open.Count == 0 ? [SignatureResponse.Sign] : AllResponses;
+            }
+            else if (candidates.FirstOrDefault(t => t.Gate is not null) is { } gated)
             {
                 var have = signatures.TryGetValue(gated.Id, out var list) ? list.Count : 0;
                 gate = new GateProgress(have, Math.Max(1, gated.Gate!.Required));
@@ -867,6 +964,7 @@ public static class ProcessApi
             result.Add(new EnabledTrigger("event", ev.Id, null, [.. candidates.Select(t => t.Id)], WithMembers(actors), candidates.Any(Unknown), gate)
             {
                 ChecksUnknown = ChecksUnknown(candidates),
+                Responses = responses,
             });
         }
 

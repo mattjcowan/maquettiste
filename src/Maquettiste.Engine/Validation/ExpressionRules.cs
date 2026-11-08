@@ -140,6 +140,7 @@ internal static class ExprSites
                 AddSets(sites, model, process);
                 AddRights(sites, model, process);
                 AddTriggerPoints(sites, model, process);
+                AddApprovals(sites, model, process);
                 break;
             case Constraint constraint:
                 sites.Add(new ExprSite("/condition", constraint.Condition, false, constraint.Id, ExprSiteKind.Check, _ => { }) { Constraint = constraint });
@@ -173,6 +174,32 @@ internal static class ExprSites
                     sites.Add(TriggerSite(model, process, point, at + "/condition", condition, point.Id, null));
                 for (var j = 0; j < point.Sets.Count; j++)
                     sites.Add(TriggerSite(model, process, point, Ptr.At(at + "/sets", j) + "/value", point.Sets[j].Value, point.Sets[j].Id, point.Sets[j].Attribute));
+            }
+        }
+
+        // Each named signature's when of an approval on one of the process's transitions (signoff-design.md decision 7), at an approval site: the
+        // process's context and its subjects under subject, and no payload, since no event is given when a round starts. A gate policy's
+        // signature takes no when (MQ8202), so a library has no such site.
+        static void AddApprovals(List<ExprSite> sites, ModelSnapshot model, Process process)
+        {
+            for (var i = 0; i < process.Transitions.Count; i++)
+            {
+                if (process.Transitions[i].Gate is not { Stages: { } stages })
+                    continue;
+                for (var j = 0; j < stages.Count; j++)
+                {
+                    for (var k = 0; k < stages[j].Signatures.Count; k++)
+                    {
+                        var signature = stages[j].Signatures[k];
+                        if (signature.When is not { } when)
+                            continue;
+                        var at = Ptr.At(Ptr.At(Ptr.At("/transitions", i) + "/gate/stages", j) + "/signatures", k) + "/when";
+                        sites.Add(new ExprSite(at, when, false, signature.Id, ExprSiteKind.Approval, s => Process(s, model, process, []))
+                        {
+                            Lifecycles = new ModelLifecycles(model, process, null),
+                        });
+                    }
+                }
             }
         }
 
@@ -230,7 +257,8 @@ internal static class ExprSites
     /// A site for an expression written as text and not stored anywhere yet (<c>preview_expression</c> with <c>text</c> and a site
     /// kind): the scope a site of <paramref name="kind"/> on the element reads. A check at a table, a stereotype or a constraint (its
     /// parameters); a check or a value, of no required type, at an entity; a guard at an operation, or at a process, where the payload
-    /// of every event reads under <c>event</c>. <see langword="null"/> when the element has no site of that kind.
+    /// of every event reads under <c>event</c>; a named signature's <c>when</c> at a process that is not a library, with no payload.
+    /// <see langword="null"/> when the element has no site of that kind.
     /// </summary>
     /// <param name="model">The snapshot.</param>
     /// <param name="element">The element the text is written on.</param>
@@ -253,8 +281,19 @@ internal static class ExprSites
         (Constraint constraint, ExprSiteKind.Check) => new ExprSite("/condition", null, false, constraint.Id, kind, _ => { }) { Constraint = constraint },
         (Process { Use: ProcessUse.Lifecycle } lifecycle, ExprSiteKind.Right) => RightSite(model, lifecycle, "", null, lifecycle.Id, null),
         (Right right, ExprSiteKind.Right) => NamedRightSite(model, right, null) with { Tree = null },
+        // A named signature's when not saved yet (signoff-design.md decision 7): what every approval site of the process reads.
+        (Process { Use: not ProcessUse.Library } process, ExprSiteKind.Approval) => new ExprSite("", null, false, process.Id, kind, s => Process(s, model, process, []))
+        {
+            Lifecycles = new ModelLifecycles(model, process, null),
+        },
         _ => null,
     };
+
+    /// <summary>Whether a process holds a named signature with a <c>when</c> on one of its transitions' gates (signoff-design.md decision 7).</summary>
+    /// <param name="process">The process.</param>
+    /// <returns>Whether one does.</returns>
+    internal static bool ApprovalData(Process process) =>
+        process.Use != ProcessUse.Library && process.Transitions.Any(t => t.Gate is { UsesStages: true } gate && gate.AllSignatures.Any(s => s.When is not null));
 
     /// <summary>The key a trigger point's <c>when</c> is typed and lowered by: the point's id is its condition's.</summary>
     /// <param name="pointId">The trigger point's id.</param>
@@ -1408,7 +1447,7 @@ internal static class ExprSites
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if (process.Guards.All(g => g.Condition is null) && !SetsData(process) && !TriggerData(process))
+        if (process.Guards.All(g => g.Condition is null) && !SetsData(process) && !TriggerData(process) && !ApprovalData(process))
             return null;
         return SubjectDepths.GetValue(model, static _ => new()).GetValue(process, p =>
         {
@@ -1442,7 +1481,9 @@ internal static class ExprSites
     internal static IEnumerable<string> ConditionIds(Process process) =>
         process.Guards.Where(g => g.Condition is not null).Select(g => g.Id).Concat(process.Actions.SelectMany(a => a.Sets).Select(s => s.Id))
             .Concat(process.Use != ProcessUse.Lifecycle ? [] : process.TriggerPoints.SelectMany(t =>
-                (t.When is null ? Enumerable.Empty<string>() : [WhenKey(t.Id)]).Concat(t.Condition is null ? [] : [t.Id]).Concat(t.Sets.Select(s => s.Id))));
+                (t.When is null ? Enumerable.Empty<string>() : [WhenKey(t.Id)]).Concat(t.Condition is null ? [] : [t.Id]).Concat(t.Sets.Select(s => s.Id))))
+            .Concat(process.Use == ProcessUse.Library ? [] : process.Transitions.SelectMany(t => t.Gate is { UsesStages: true } gate
+                ? gate.AllSignatures.Where(s => s.When is not null).Select(s => s.Id) : []));
 
     /// <summary>The processes a process invokes, directly or through the processes it invokes, each once and never itself, in walk order.</summary>
     /// <param name="model">The model.</param>
@@ -1553,6 +1594,9 @@ internal static class ExpressionRules
                 report.Add("MQ3102", site.Kind == ExprSiteKind.Set
                     ? $"The set's value reads the context attribute '{shadowed.Name}', but a value reads the event's payload under that name, so the set is left out; "
                         + "rename the context attribute."
+                    : site.Kind == ExprSiteKind.Approval
+                    ? $"The named signature's when reads the context attribute '{shadowed.Name}', but a condition's row holds the event under that name, so the "
+                        + "when is left out; rename the context attribute."
                     : $"The guard reads the context attribute '{shadowed.Name}', but a condition reads the event's payload under that name, so "
                         + "the guard is left a stub; rename the context attribute.", site.Pointer, site.SubId);
             }

@@ -75,6 +75,12 @@ public sealed record CommandResult(bool Accepted, string? Refusal, IReadOnlyList
 
     /// <summary>Why the input stopped short (a macrostep over the microstep bound), or null; the instance kept the state it reached.</summary>
     public string? Failure { get; init; }
+{{- if model.approval_lifecycles.size > 0 }}
+
+    /// <summary>The progress of the instance's approvals after the command, by transition id, as its snapshot holds it (signoff-design.md
+    /// section 10); empty for a lifecycle without one.</summary>
+    public IReadOnlyDictionary<string, ApprovalProgress> Approvals { get; init; } = new Dictionary<string, ApprovalProgress>();
+{{- end }}
 {{- if model.rights_lifecycles.size > 0 }}
 
     /// <summary>The id of the element that refused the command (the event or invoke, the right, the lifecycle whose default denies, the
@@ -105,7 +111,18 @@ public sealed record CommandResult(bool Accepted, string? Refusal, IReadOnlyList
 /// <param name="Signer">The signing person, for a gated event.</param>
 /// <param name="Meaning">The meaning of the signature.</param>
 /// <param name="Reason">The reason of the signature.</param>
-public record EventRequest(string? Actor = null, string? Signer = null, string? Meaning = null, string? Reason = null);
+public record EventRequest(string? Actor = null, string? Signer = null, string? Meaning = null, string? Reason = null)
+{{- if model.approval_lifecycles.size > 0 }}
+{
+    /// <summary>What the signer answers an approval: sign, the default, reject, ignore or withdraw (the envelope's Response).</summary>
+    public SignatureResponse Response { get; init; }
+
+    /// <summary>The name of the named signature the response answers, as Meaning takes the meaning's name; null lets the interpreter pick
+    /// it (the envelope's Signature).</summary>
+    public string? Signature { get; init; }
+}
+{{- else }};
+{{- end }}
 
 /// <summary>The body of an event endpoint whose event has a payload.</summary>
 /// <typeparam name="TPayload">The payload type.</typeparam>

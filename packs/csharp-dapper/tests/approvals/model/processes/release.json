@@ -1,0 +1,240 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JAD0000000000000000000C1",
+  "name": "Release",
+  "package": "01JAD0000000000000000000P1",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JAD0000000000000000000B1",
+      "entity": "01JAD0000000000000000000E1"
+    }
+  ],
+  "description": "A document's release: an approval of named signatures before it is approved, and another before it is published.",
+  "context": [
+    {
+      "id": "01JAD0000000000000000000X1",
+      "name": "cost",
+      "type": "decimal",
+      "default": 0
+    }
+  ],
+  "events": [
+    {
+      "id": "01JAD0000000000000000000V1",
+      "name": "submit",
+      "verb": "promote"
+    },
+    {
+      "id": "01JAD0000000000000000000V2",
+      "name": "approve"
+    },
+    {
+      "id": "01JAD0000000000000000000V3",
+      "name": "sendBack",
+      "verb": "reject"
+    },
+    {
+      "id": "01JAD0000000000000000000V4",
+      "name": "publish"
+    }
+  ],
+  "rights": [
+    {
+      "id": "01JAD0000000000000000000Q1",
+      "name": "QualityMayNotVeto",
+      "access": "deny",
+      "actors": [
+        "01JAD0000000000000000000R2"
+      ],
+      "verbs": [
+        "reject"
+      ]
+    }
+  ],
+  "triggerPoints": [
+    {
+      "id": "01JAD0000000000000000000K1",
+      "name": "VetoCheck",
+      "type": "check",
+      "verbs": [
+        "reject"
+      ],
+      "transitions": [
+        "01JAD0000000000000000000T2"
+      ],
+      "description": "The team's check on a veto of the release approval."
+    }
+  ],
+  "states": [
+    {
+      "id": "01JAD0000000000000000000S1",
+      "name": "Draft"
+    },
+    {
+      "id": "01JAD0000000000000000000S2",
+      "name": "Review"
+    },
+    {
+      "id": "01JAD0000000000000000000S3",
+      "name": "Approved"
+    },
+    {
+      "id": "01JAD0000000000000000000S4",
+      "name": "Published",
+      "type": "final"
+    }
+  ],
+  "initial": "01JAD0000000000000000000S1",
+  "transitions": [
+    {
+      "id": "01JAD0000000000000000000T1",
+      "source": "01JAD0000000000000000000S1",
+      "event": "01JAD0000000000000000000V1",
+      "targets": [
+        "01JAD0000000000000000000S2"
+      ]
+    },
+    {
+      "id": "01JAD0000000000000000000T2",
+      "source": "01JAD0000000000000000000S2",
+      "event": "01JAD0000000000000000000V2",
+      "targets": [
+        "01JAD0000000000000000000S3"
+      ],
+      "gate": {
+        "id": "01JAD0000000000000000000G1",
+        "name": "Release",
+        "displayName": "Release approval",
+        "stages": [
+          {
+            "id": "01JAD0000000000000000000H1",
+            "name": "Review",
+            "signatures": [
+              {
+                "id": "01JAD0000000000000000000N1",
+                "name": "Engineering",
+                "signers": [
+                  "01JAD0000000000000000000R1"
+                ],
+                "required": 2,
+                "notBy": [
+                  {
+                    "verb": "promote"
+                  },
+                  {
+                    "transition": "01JAD0000000000000000000T1"
+                  }
+                ],
+                "description": "Two engineers who did not submit it."
+              },
+              {
+                "id": "01JAD0000000000000000000N2",
+                "name": "Quality",
+                "signers": [
+                  "01JAD0000000000000000000R2"
+                ],
+                "requiredActors": [
+                  "01JAD0000000000000000000R2"
+                ]
+              },
+              {
+                "id": "01JAD0000000000000000000N3",
+                "name": "FinanceCheck",
+                "signers": [
+                  "01JAD0000000000000000000R3"
+                ],
+                "when": {
+                  "text": "subject.cost > 10000"
+                },
+                "description": "Needed for costs above 10,000."
+              },
+              {
+                "id": "01JAD0000000000000000000N4",
+                "name": "ApprovalConditions",
+                "signers": [
+                  "01JAD0000000000000000000R2"
+                ],
+                "when": {
+                  "text": "subject.cost > 100000"
+                }
+              }
+            ]
+          }
+        ],
+        "meanings": [
+          {
+            "id": "01JAD0000000000000000000M1",
+            "name": "approved"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JAD0000000000000000000T3",
+      "source": "01JAD0000000000000000000S2",
+      "event": "01JAD0000000000000000000V3",
+      "targets": [
+        "01JAD0000000000000000000S1"
+      ]
+    },
+    {
+      "id": "01JAD0000000000000000000T4",
+      "source": "01JAD0000000000000000000S3",
+      "event": "01JAD0000000000000000000V4",
+      "targets": [
+        "01JAD0000000000000000000S4"
+      ],
+      "gate": {
+        "id": "01JAD0000000000000000000G2",
+        "name": "ReleaseFinance",
+        "stages": [
+          {
+            "id": "01JAD0000000000000000000H2",
+            "name": "Publish",
+            "signatures": [
+              {
+                "id": "01JAD0000000000000000000N5",
+                "name": "Check",
+                "signers": [
+                  "01JAD0000000000000000000R3"
+                ],
+                "when": {
+                  "text": "subject.cost > 50000"
+                }
+              },
+              {
+                "id": "01JAD0000000000000000000N6",
+                "name": "Editor",
+                "signers": [
+                  "01JAD0000000000000000000R1",
+                  "01JAD0000000000000000000R3"
+                ],
+                "allowRepeatSigner": true
+              },
+              {
+                "id": "01JAD0000000000000000000N8",
+                "name": "check",
+                "signers": [
+                  "01JAD0000000000000000000R3"
+                ],
+                "when": {
+                  "text": "subject.cost > 75000"
+                },
+                "description": "A second finance check, whose method name clashes with two others."
+              }
+            ]
+          }
+        ],
+        "allowSignerAcrossSignatures": true,
+        "meanings": [
+          {
+            "id": "01JAD0000000000000000000M2",
+            "name": "published"
+          }
+        ]
+      }
+    }
+  ]
+}

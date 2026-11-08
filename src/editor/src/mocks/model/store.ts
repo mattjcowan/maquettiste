@@ -1579,6 +1579,15 @@ function e5(json: Json): Partial<ElementSummary> {
     if (Array.isArray(json.rights) && json.rights.length) out.rights = json.rights.length;
     // The count of its trigger points, only when above zero (trigger-points-design.md section 9); its verbs list theirs too.
     if (Array.isArray(json.triggerPoints) && json.triggerPoints.length) (out as Record<string, unknown>).triggerPoints = json.triggerPoints.length;
+    // The gates with stages (approvals), inline or in a library, and their named signatures, each only when above zero (signoff-design.md section 9).
+    const gates = [
+      ...(Array.isArray(json.transitions) ? (json.transitions as Json[]).flatMap((t) => (t.gate ? [t.gate as Json] : [])) : []),
+      ...(Array.isArray(json.gates) ? (json.gates as Json[]) : []),
+    ].filter((g) => Array.isArray(g.stages) && g.stages.length);
+    if (gates.length) {
+      out.approvals = gates.length;
+      out.signatures = gates.reduce((n, g) => n + (g.stages as Json[]).reduce((m, st) => m + (Array.isArray(st.signatures) ? st.signatures.length : 0), 0), 0);
+    }
   }
   // A named right's access and the verbs it names (maquettiste-index/e13).
   if (kind === "right") {

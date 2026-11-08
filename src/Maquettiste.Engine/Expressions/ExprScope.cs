@@ -228,9 +228,10 @@ public sealed class ExprScope
     public ExprScope(ExprSiteKind site)
     {
         Site = site;
-        AllowsNow = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right or ExprSiteKind.Trigger or ExprSiteKind.TriggerSet;
-        AllowsNavigation = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right or ExprSiteKind.Trigger or ExprSiteKind.TriggerSet;
+        AllowsNow = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right or ExprSiteKind.Trigger or ExprSiteKind.TriggerSet or ExprSiteKind.Approval;
+        AllowsNavigation = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right or ExprSiteKind.Trigger or ExprSiteKind.TriggerSet or ExprSiteKind.Approval;
         AllowsActor = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right or ExprSiteKind.Trigger or ExprSiteKind.TriggerSet;
+        AllowsState = AllowsActor || site == ExprSiteKind.Approval;
         Old = site is ExprSiteKind.Trigger or ExprSiteKind.TriggerSet ? new ExprContainer() : null;
         _sets = new(StringComparer.Ordinal);
         _refs = new(StringComparer.Ordinal);
@@ -255,6 +256,7 @@ public sealed class ExprScope
         AllowsNow = true;
         AllowsNavigation = false;
         AllowsActor = false;
+        AllowsState = false;
         ConstraintId = constraint.Id;
         ElementId = constraint.Id;
         Pointer = "/condition";
@@ -276,6 +278,12 @@ public sealed class ExprScope
     /// (MQ3104, object-effects-design.md decisions 5 and 9).
     /// </summary>
     public bool AllowsActor { get; init; }
+
+    /// <summary>
+    /// Whether <c>in_state</c> may be read: wherever <c>current_actor()</c> may, and at a named signature's <c>when</c>, which reads a
+    /// lifecycle's state but not whoever acts (signoff-design.md decision 7).
+    /// </summary>
+    public bool AllowsState { get; init; }
 
     /// <summary>What <c>in_state</c> reads at the site; <see langword="null"/> where no lifecycle can be read.</summary>
     internal IExprLifecycles? Lifecycles { get; init; }

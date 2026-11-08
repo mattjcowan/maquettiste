@@ -12,6 +12,7 @@ import { referencesOf, subElementIds } from "./refs";
 import { bindingDiagnostics } from "./lifecycleRules";
 import { verbDiagnostics, verbGlobalsOf, type VerbGlobals } from "./verbs";
 import { relativeUseDiagnostics } from "./relativeRules";
+import { approvalDiagnostics } from "./approvalRules";
 import { rightDiagnostics } from "./rightRules";
 import { assumeKindDiagnostics, namedTriggerDiagnostics, triggerDiagnostics } from "./triggerRules";
 import { appliesToEntities, Coverage } from "./coverage";
@@ -365,6 +366,9 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   // MQ9901 to MQ9906 and MQ3001 between a lifecycle's inline rights (rightRules.ts)
   if ((kind === "process" || kind === "right") && ctx.all)
     rightDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
+  // MQ8201, MQ8202 and the MQ3001 cases of an approval's stages and signatures (approvalRules.ts)
+  if (kind === "process")
+    approvalDiagnostics(json, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
   // MQ8101 to MQ8107 and the MQ3001 cases of a lifecycle's trigger points (triggerRules.ts)
   if (kind === "process" && ctx.all)
     triggerDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));

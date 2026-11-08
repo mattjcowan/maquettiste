@@ -59,6 +59,14 @@ export function failureSentence(failure: ReplayFailure, step: FailedStep | undef
       return checks.length ? RL.failedAcceptByCheck(where, checks.join(" or ")) : RL.failedAccept(where);
     }
   }
+  if (failure.rule === "MQ9311" && failure.expected && typeof failure.expected === "object") {
+    // The counts by named signature, as "Finance 1, Manager 0" (a signature that is gone reads "(deleted)").
+    const counts = (value: unknown) =>
+      Object.entries((value ?? {}) as Record<string, number>)
+        .map(([id, n]) => `${name(id) ?? RL.deleted} ${n}`)
+        .join(", ") || "no signature";
+    return RL.failedSignatures(where, counts(failure.expected), counts(failure.actual));
+  }
   if (failure.rule === "MQ9310") {
     const expected = (failure.expected ?? {}) as { checkWarnings?: unknown; triggerPoints?: unknown };
     const actual = (failure.actual ?? {}) as { checkWarnings?: unknown; triggerPoints?: unknown };

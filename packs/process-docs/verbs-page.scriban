@@ -20,6 +20,7 @@ What events, automatic moves and operations do. A verb is stored by its key.
 {{- for o in v.operations }}{{ uses[uses.size] = "operation " + (md_code o.name) }}{{ end }}
 {{- for r in v.rights }}{{ uses[uses.size] = "right " + (md_code r.name) }}{{ end }}
 {{- for tp in v.trigger_points }}{{ uses[uses.size] = "trigger point " + (md_code tp.name) }}{{ end }}
+{{- if v.key == "reject" || v.key == "ignore" || v.key == "withdraw" }}{{ for l in model.approval_lifecycles }}{{ for g in l.gates }}{{ if g.uses_stages }}{{ uses[uses.size] = "approval " + (md_code g.name) + " in " + (md_cell l.display_name) }}{{ end }}{{ end }}{{ end }}{{ end }}
 | {{ md_cell v.display_name }}{{ v.hidden ? " (hidden)" : "" }} | {{ md_code v.key }} | {{ v.group }} | {{ md_cell v.description }} | {{ uses | array.join ", " }} |
 {{- end }}
 {{ end -}}

@@ -179,14 +179,18 @@ public sealed partial class StatechartInterpreter
     /// <summary>Runs one input as a macrostep, for a participant: <c>current_actor()</c> reads its identity when the step gives no signer.</summary>
     /// <param name="input">The input; its <c>expect</c> is ignored.</param>
     /// <param name="identity">The participant's identity as text (its name when it has none), or <see langword="null"/>.</param>
+    /// <param name="pick">
+    /// The named signature picked with the actor the participant acts as (signoff-design.md decision 8), or <see langword="null"/> for the step's
+    /// own or one picked in the step; the trace still echoes the input as given.
+    /// </param>
     /// <returns>The trace.</returns>
-    internal StepTrace Step(ScenarioStep input, string? identity)
+    internal StepTrace Step(ScenarioStep input, string? identity, string? pick = null)
     {
         ArgumentNullException.ThrowIfNull(input);
         if (!_started)
             Start();
         _index++;
-        _scope = new Scope(input) { Identity = identity };
+        _scope = new Scope(input) { Identity = identity, Pick = pick };
         var before = Snapshot();
         // A word in assume names a check the team writes of a lifecycle the step reaches (MQ9305, trigger-points-design.md decision 26).
         if (_options.Triggers is { } triggers && input.Assume.Count > 0 && triggers.AssumeProblem(input) is { } problem)
@@ -272,6 +276,13 @@ public sealed partial class StatechartInterpreter
             {
                 RefuseSelection(selection);
                 return false;
+            }
+
+            // Whoever sent the event did its moves (signoff-design.md decision 28); a gated move's acts are recorded when it completes.
+            foreach (var t in selection.Transitions)
+            {
+                if (t.Gate is null)
+                    RecordAct(target, Person(), MoveVerb(t), t.Id);
             }
 
             if (selection.Transitions.Count > 0)
@@ -396,6 +407,14 @@ public sealed partial class StatechartInterpreter
             found.Instance.Pending.RemoveAll(p => ReferenceEquals(p.Invoke, found.Invoke));
             if (completion is not null)
                 RunLater(completion, []);
+            // A person who ends a human task did complete and its move (signoff-design.md decision 28); another invoke's end is nobody's.
+            if (_scope.HumanTask)
+            {
+                RecordAct(found.Instance, Person(), "complete", null);
+                foreach (var t in selection.Transitions)
+                    RecordAct(found.Instance, Person(), MoveVerb(t), t.Id);
+            }
+
             Microstep(found.Instance, selection.Transitions);
             RunToCompletion(found.Instance);
             Propagate(found.Instance);
@@ -491,6 +510,7 @@ public sealed partial class StatechartInterpreter
 
         if (prepared is not null)
             RunLater(prepared, []);
+        RecordAct(_root, Person(), verb, null);
     }
 
     // An accepted freeze or thaw (rights-design.md decision 16): of the subject, or with an end of its link to the object. Freezing what is
@@ -573,8 +593,9 @@ public sealed partial class StatechartInterpreter
     }
 
     // The gates on the transitions an event can take from the active states, whose signers count as an allow for it (rights-design.md
-    // decision 14); guards are not consulted, since rights are checked before any guard picks a transition.
-    private static List<RightsList> GateSigners(Instance inst, string eventId)
+    // decision 14); guards are not consulted, since rights are checked before any guard picks a transition. An approval's are the signers of
+    // the signatures its round needs; one that needs nothing is checked as a move without a gate (signoff-design.md decisions 7 and 18).
+    private List<RightsList> GateSigners(Instance inst, string eventId)
     {
         var gates = new List<RightsList>();
         var seen = new HashSet<ChartTransition>(ReferenceEqualityComparer.Instance);
@@ -586,8 +607,12 @@ public sealed partial class StatechartInterpreter
                     break;
                 foreach (var t in inst.Chart.Candidates(s, TransitionTrigger.Event, eventId))
                 {
-                    if (seen.Add(t) && t.Gate is { } gate && !gates.Any(g => string.Equals(g.Owner, gate.Id, StringComparison.Ordinal)))
+                    if (!seen.Add(t) || t.Gate is not { } gate || gates.Any(g => string.Equals(g.Owner, gate.Id, StringComparison.Ordinal)))
+                        continue;
+                    if (!gate.UsesStages)
                         gates.Add(new RightsList(gate.Id, gate.Signers));
+                    else if (ApprovalOf(inst, t, gate) is { Waiting: false } approval)
+                        gates.Add(new RightsList(gate.Id, NeededSigners(gate, approval)));
                 }
             }
         }
@@ -636,8 +661,24 @@ public sealed partial class StatechartInterpreter
                         break;
                     foreach (var t in target.Chart.Candidates(s, TransitionTrigger.Event, ev.Id))
                     {
+                        // A response other than sign is offered only by an open approval (signoff-design.md decision 9).
+                        if (input.Response != SignatureResponse.Sign && !OpenApproval(target, t))
+                            continue;
                         if (!seen.Add(t) || Guard(target, t) != true)
                             continue;
+                        if (t.Gate is { UsesStages: true } approvalGate)
+                        {
+                            // The round's needed signatures, for the pick with the actor (decision 8); nothing needed moves as without a gate.
+                            var approval = ApprovalOf(target, t, approvalGate);
+                            moves.Add(approval.Waiting ? new ActingMove(null, []) : new ActingMove(approvalGate, [])
+                            {
+                                Signatures = NeededSignatures(target, t, approvalGate, approval, identity, input.Response),
+                                Latest = Latest(approval, identity),
+                                LatestActor = approval.Counted.LastOrDefault(c => string.Equals(c.Signer, identity, StringComparison.Ordinal))?.Actor,
+                            });
+                            continue;
+                        }
+
                         var signed = target.Signatures.TryGetValue(t.Id, out var list) ? list : [];
                         moves.Add(t.Gate is { } gate
                             ? new ActingMove(gate, [.. gate.RequiredActors.Where(a => !signed.Any(x => Accepts(a, x.Actor))).Distinct(StringComparer.Ordinal)])
@@ -762,6 +803,9 @@ public sealed partial class StatechartInterpreter
                         continue;
                     }
 
+                    // A response other than sign selects only gated moves with an open approval (signoff-design.md decision 9).
+                    if (external && _scope.Input is { Response: not SignatureResponse.Sign } && !OpenApproval(inst, t))
+                        continue;
                     tried[t] = false;
                     if (Guard(inst, t) != true)
                     {
@@ -777,8 +821,12 @@ public sealed partial class StatechartInterpreter
                             continue;
                         }
 
-                        // Checked now, signed only when the transition survives conflict removal (a preempted gate gets no signature).
-                        if (CheckSigner(inst, t, gate) is { } refusal)
+                        // Checked now, signed only when the transition survives conflict removal (a preempted gate gets no signature). An
+                        // approval with nothing needed is checked as a move without a gate (signoff-design.md decision 7).
+                        var check = !gate.UsesStages ? CheckSigner(inst, t, gate)
+                            : ApprovalOf(inst, t, gate) is { Waiting: false } approval ? CheckApproval(inst, t, gate, approval)
+                            : null;
+                        if (check is { } refusal)
                         {
                             Fail(refusal.Refusal, 2, refusal.By);
                             continue;
@@ -1208,11 +1256,15 @@ public sealed partial class StatechartInterpreter
         var (meaning, attributes) = AuditFields(input, gate);
         signatures.Add(new Signature(input.Signer!, input.Actor!, meaning, input.Reason));
         Audit(inst, gate, t, input.Signer, input.Actor, meaning, input.Reason, GateOutcome.Signed, attributes);
+        RecordAct(inst, input.Signer, "sign", null);
         var complete = signatures.Count >= Math.Max(1, gate.Required)
             && gate.RequiredActors.All(a => signatures.Any(s => Accepts(a, s.Actor)));
         if (complete)
         {
             Audit(inst, gate, t, input.Signer, input.Actor, meaning, input.Reason, GateOutcome.Completed, attributes);
+            // The gated move is done by everyone whose signature counted (signoff-design.md decision 15).
+            foreach (var s in signatures)
+                RecordAct(inst, s.Signer, MoveVerb(t), t.Id);
             signatures.Clear();
         }
 
@@ -1301,11 +1353,15 @@ public sealed partial class StatechartInterpreter
         }
 
         var doneQueued = new HashSet<ChartState>(ReferenceEqualityComparer.Instance);
+        var arrived = new List<ChartState>();
         foreach (var s in toEnter.OrderBy(s => s.Order))
         {
             if (s.IsRoot || !inst.Config.Add(s))
                 continue;
             entered.Add(s.Id);
+            arrived.Add(s);
+            if (inst.RecordsActs)
+                inst.EnteredAt[s.Id] = _index;
             foreach (var id in s.State?.Entry ?? [])
             {
                 if (inst.Chart.Actions.TryGetValue(id, out var action))
@@ -1338,6 +1394,10 @@ public sealed partial class StatechartInterpreter
             }
         }
 
+        // Approvals start once the entering move's actions and sets have run (signoff-design.md decision 7).
+        if (inst.HasApprovals)
+            StartApprovals(inst, transitions, arrived);
+
         // With-the-change points after the entry actions; after-commit points are queued for the end of the step.
         if (taken is not null)
         {
@@ -1365,6 +1425,14 @@ public sealed partial class StatechartInterpreter
             inst.Children.Remove(invoke.Id);
         foreach (var t in s.Transitions)
         {
+            // Leaving discards an approval's progress, audited when it holds any response, ignores included (signoff-design.md section 8).
+            if (t.Gate is { UsesStages: true } approvalGate)
+            {
+                if (inst.Approvals.Remove(t.Id, out var approval) && approval.Holds)
+                    Audit(inst, approvalGate, t, null, null, null, null, GateOutcome.Discarded, ImmutableDictionary<string, JsonElement>.Empty);
+                continue;
+            }
+
             if (t.Gate is { } gate && inst.Signatures.TryGetValue(t.Id, out var signatures) && signatures.Count > 0)
             {
                 Audit(inst, gate, t, null, null, null, null, GateOutcome.Discarded, ImmutableDictionary<string, JsonElement>.Empty);
@@ -1571,6 +1639,8 @@ public sealed partial class StatechartInterpreter
                 (values ??= new(StringComparer.Ordinal))[id] = value;
         }
 
+        TrimActs();
+        var (counts, answered) = SignatureCounts();
         var diagnostics = _scope.Diagnostics.Distinct().ToList();
         return new StepTrace(_index, _scope.Input, _scope.Refusal is null, _scope.Refusal, _scope.Microsteps, _scope.Guards, _scope.Audit,
             Configuration, Snapshot(), changed, ClockText(), _root.Done, diagnostics)
@@ -1586,6 +1656,8 @@ public sealed partial class StatechartInterpreter
             CheckWarnings = _scope.CheckWarnings.Count > 0 ? [.. _scope.CheckWarnings] : null,
             Frozen = _frozen,
             FrozenBy = _scope.Refusal == Refusals.Frozen ? FrozeBy(_scope.Input) : null,
+            SignatureCounts = counts,
+            AnsweredSignatures = answered,
         };
     }
 
@@ -1717,6 +1789,12 @@ public sealed partial class StatechartInterpreter
         public List<(ProcessInvoke Invoke, ChartState State)> Pending { get; } = [];
         public SortedDictionary<string, Instance> Children { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, List<Signature>> Signatures { get; } = new(StringComparer.Ordinal);
+        // Approvals by gated transition, and the record of acts with each active state's entry (signoff-design.md decisions 7 and 28).
+        public bool HasApprovals { get; } = chart.Transitions.Any(t => t.Gate is { UsesStages: true });
+        public bool RecordsActs { get; } = KeepsActs(chart);
+        public Dictionary<string, ApprovalProgress> Approvals { get; } = new(StringComparer.Ordinal);
+        public List<Act> Acts { get; } = [];
+        public Dictionary<string, int> EnteredAt { get; } = new(StringComparer.Ordinal);
         public Queue<Internal> Queue { get; } = new();
         public bool Done { get; set; }
         public bool Reported { get; set; }
@@ -1738,6 +1816,9 @@ public sealed partial class StatechartInterpreter
         public bool HumanTask { get; set; }
         public bool Thaws { get; set; }
         public string? Identity { get; init; }
+        // The named signature picked with the participant's actor, and the approvals the step answered (signoff-design.md decisions 8 and 27).
+        public string? Pick { get; init; }
+        public List<ProcessGate> Answered { get; } = [];
         public Dictionary<string, JsonElement> ValuesBefore { get; } = new(StringComparer.Ordinal);
         public List<string> Notes { get; } = [];
         public List<MicrostepTrace> Microsteps { get; } = [];

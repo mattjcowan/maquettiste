@@ -12215,6 +12215,16 @@
               "type": "string"
             }
           },
+          "approvals": {
+            "description": "The number of a process's gates that have stages (signoff-design.md section 9), inline or in a library, on process rows that\nhave at least one. Left out otherwise, so rows of projects without approvals do not change.\n",
+            "type": "integer",
+            "minimum": 1
+          },
+          "signatures": {
+            "description": "The number of named signatures across a process's approvals (signoff-design.md section 9), on process rows that have at least\none. Left out otherwise.\n",
+            "type": "integer",
+            "minimum": 1
+          },
           "actors": {
             "description": "The actors a process names anywhere in its document (event senders, gate signers, invokes and so on), as ids sorted\nordinally, on process rows (libraries too) that name at least one. Only ids of actors that exist count. Left out when the\nprocess names none. The explorer reads it to show where an actor acts.\n",
             "type": "array",
@@ -14804,7 +14814,7 @@
               "string",
               "null"
             ],
-            "description": "With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`) or `trigger-set` (a value a trigger point sets, with `attribute`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form."
+            "description": "With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`), `trigger-set` (a value a trigger point sets, with `attribute`) or `approval` (a named signature's `when` not saved yet, with `element` its process: the object under `subject`, the context and `in_state`, but no payload and no `current_actor()`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form."
           },
           "attribute": {
             "type": [
@@ -17210,7 +17220,7 @@
       },
       "GateRecord": {
         "x-engine-record": "Maquettiste.Engine.GateRecord",
-        "description": "An approval gate on a transition.",
+        "description": "A signature gate on a transition, or a library's gate policy. A gate with `stages` is an approval (signoff-design.md decision 1):\nits `required`, `signers`, `requiredActors` and `allowRepeatSigner` are empty or at their defaults, and its named signatures carry\nthem.\n",
         "allOf": [
           {
             "$ref": "#/components/schemas/ProcessNodeAnnotations"
@@ -17281,10 +17291,133 @@
                 "items": {
                   "$ref": "#/components/schemas/AuditFieldRecord"
                 }
+              },
+              "stages": {
+                "description": "An approval's stages in file order (signoff-design.md section 7); absent on a gate without stages.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/GateStage"
+                }
+              },
+              "allowSignerAcrossSignatures": {
+                "description": "Whether one person may give more than one response that counts on the approval (signoff-design.md decision 16); absent unless true.",
+                "type": "boolean",
+                "const": true
               }
             }
           }
         ]
+      },
+      "GateStage": {
+        "x-engine-record": "Maquettiste.Engine.GateStageRecord",
+        "description": "A stage of an approval (part kind `gate-stage`, signoff-design.md decision 4), holding named signatures.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "displayName",
+          "description",
+          "signatures"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "signatures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedSignature"
+            }
+          }
+        }
+      },
+      "NamedSignature": {
+        "x-engine-record": "Maquettiste.Engine.NamedSignatureRecord",
+        "description": "A signature an approval needs (part kind `named-signature`, signoff-design.md decision 3): its signers and count, needed unless\nits `when` is false when its round starts, and not by whoever did a `notBy` verb or move since the object entered the gated move's\nsource state.\n",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "displayName",
+          "description",
+          "stage",
+          "signers",
+          "required",
+          "requiredActors",
+          "allowRepeatSigner",
+          "notBy"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stage": {
+            "description": "The id of the stage that holds it.",
+            "type": "string"
+          },
+          "signers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "required": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "requiredActors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowRepeatSigner": {
+            "type": "boolean"
+          },
+          "when": {
+            "description": "The condition, typed at the `Approval` site; left out when it has none or it does not type, and on a gate policy's signature.",
+            "$ref": "#/components/schemas/ExpressionRecord"
+          },
+          "notBy": {
+            "description": "The entries in file order, each a verb key or a transition id.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "verb": {
+                  "type": "string"
+                },
+                "transition": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
       },
       "MeaningRecord": {
         "x-engine-record": "Maquettiste.Engine.MeaningRecord",
@@ -17785,6 +17918,20 @@
               "null"
             ]
           },
+          "response": {
+            "type": "string",
+            "description": "The step's response to an approval (signoff-design.md decision 25), as written; absent when the step gives none (a signature).",
+            "enum": [
+              "sign",
+              "reject",
+              "ignore",
+              "withdraw"
+            ]
+          },
+          "signature": {
+            "type": "string",
+            "description": "The id of the named signature the step answers (signoff-design.md decision 25); absent when the engine picks it."
+          },
           "payload": {
             "type": "object",
             "additionalProperties": true
@@ -17848,7 +17995,7 @@
           },
           "actsAs": {
             "type": "string",
-            "description": "With participant: the id of the actor the engine's replay ran the step as. It is the step's actor when given; else it is\nworked out from the moves the step could make when it ran: for a gated move, a required actor of the gate not yet signed,\nelse a signer the event's actors also accept, else the first signer the participant satisfies; otherwise the first of the\nevent's or human task's actors it satisfies, or the participant's actor when that list is empty. Absent for a step that\nnames no participant, when the participant satisfies none (the replay refuses the step by actor), and when the replay did\nnot reach the step.\n"
+            "description": "With participant: the id of the actor the engine's replay ran the step as. It is the step's actor when given; else it is\nworked out from the moves the step could make when it ran: for a gated move, a required actor of the gate not yet signed,\nelse a signer the event's actors also accept, else the first signer the participant satisfies; otherwise the first of the\nevent's or human task's actors it satisfies, or the participant's actor when that list is empty. On an approval\n(signoff-design.md decision 8), the same rule runs within the named signature the step answers, picked together with it.\nAbsent for a step that names no participant, when the participant satisfies none (the replay refuses the step by actor),\nand when the replay did not reach the step.\n"
           }
         }
       },
@@ -17895,7 +18042,9 @@
               "guard",
               "actor",
               "gate-signer",
+              "gate-excluded",
               "gate-repeat",
+              "gate-not-signed",
               "gate-reason",
               "right",
               "default",
@@ -17919,6 +18068,14 @@
             "description": "The ids of the trigger points the step expects to run, in run order (trigger-points-design.md decision 28); absent when the file gives none.",
             "items": {
               "type": "string"
+            }
+          },
+          "signatures": {
+            "type": "object",
+            "description": "The signatures the step expects counted after it, by named signature id (signoff-design.md decision 27); absent when the file gives none.",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
             }
           }
         }
@@ -25234,6 +25391,20 @@
               "null"
             ]
           },
+          "response": {
+            "description": "How the step answers an approval on its event (signoff-design.md decision 25): `sign` (the default), `reject` (a veto: it\nclears the approval's signatures and moves nothing), `ignore` (abstain: it finishes the person on the signature and leaves the\ncount) or `withdraw` (it takes back the person's latest signature). Only on an event step whose event is gated by an approval\n(MQ9305). Left out of a trace's echo when it is `sign`.\n",
+            "type": "string",
+            "enum": [
+              "sign",
+              "reject",
+              "ignore",
+              "withdraw"
+            ]
+          },
+          "signature": {
+            "description": "The id of the approval's named signature the step answers (signoff-design.md decision 8); the engine picks one when absent, by\nthe same rule every time. Left out of a trace's echo when absent; the audit names the signature picked.\n",
+            "type": "string"
+          },
           "meaning": {
             "type": [
               "string",
@@ -25555,7 +25726,9 @@
               "guard",
               "actor",
               "gate-signer",
+              "gate-excluded",
               "gate-repeat",
+              "gate-not-signed",
               "gate-reason",
               "right",
               "default",
@@ -25617,7 +25790,7 @@
             "$ref": "#/components/schemas/Ulid"
           },
           "actsAs": {
-            "description": "The actor a step with a participant acted as (actors-design.md decision 15), worked out from the moves the step could make\nwhen it ran: for a gated move, a required actor of the gate not yet signed, else a signer the event's actors also accept,\nelse the first signer the participant satisfies; otherwise the first of the event's or human task's actors it satisfies, or\nthe participant's actor when that list is empty. The input echoes the filled-in step: its actor is this actor and its\nsigner the participant's identity when the step gave none. Left out for a step that names no participant, and when the\nparticipant satisfies none of the actors it could act as. The mock backend fills it and echoes the input the same way.\n",
+            "description": "The actor a step with a participant acted as (actors-design.md decision 15), worked out from the moves the step could make\nwhen it ran: for a gated move, a required actor of the gate not yet signed, else a signer the event's actors also accept,\nelse the first signer the participant satisfies; otherwise the first of the event's or human task's actors it satisfies, or\nthe participant's actor when that list is empty. On an approval (signoff-design.md decision 8), the same rule runs within\nthe named signature the step answers, picked together with it; the input still echoes the step's own `signature`, and the\naudit names the one picked. The input echoes the filled-in step: its actor is this actor and its\nsigner the participant's identity when the step gave none. Left out for a step that names no participant, and when the\nparticipant satisfies none of the actors it could act as. The mock backend fills it and echoes the input the same way.\n",
             "$ref": "#/components/schemas/Ulid"
           },
           "valuesChanged": {
@@ -25922,17 +26095,29 @@
             "type": "string"
           },
           "outcome": {
+            "description": "`signed`, `completed`, `refused` or `discarded`; on an approval also `rejected` (a veto cleared it), `ignored` (a person\nabstained on a signature) and `withdrawn` (a person took back a signature) (signoff-design.md decision 19).\n",
             "type": "string",
             "enum": [
               "signed",
               "completed",
               "refused",
-              "discarded"
+              "discarded",
+              "rejected",
+              "ignored",
+              "withdrawn"
             ]
           },
           "attributes": {
             "type": "object",
             "additionalProperties": true
+          },
+          "signature": {
+            "description": "On an approval, the id of the named signature the record is about (signoff-design.md decision 19). Left out on a gate without stages, and on a record about the whole approval.",
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "stage": {
+            "description": "On an approval, the id of the stage of `signature`. Left out when `signature` is.",
+            "$ref": "#/components/schemas/Ulid"
           }
         }
       },
@@ -25995,6 +26180,7 @@
             }
           },
           "gate": {
+            "description": "The gate's signatures so far and the count it needs, for a gated event. On an approval (signoff-design.md decision 26), `have`\ncounts the signatures on the current round's needed signatures and `need` is the sum of their `required`; and, when the event\nnames no actors, `actors` lists the signers of those signatures in file order, with their members.\n",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/GateProgress"
@@ -26003,6 +26189,19 @@
                 "type": "null"
               }
             ]
+          },
+          "responses": {
+            "description": "The responses the trigger's event takes at an approval, in the order `sign`, `reject`, `ignore`, `withdraw`\n(signoff-design.md decision 26). Left out when the event's gate has no stages.\n",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "sign",
+                "reject",
+                "ignore",
+                "withdraw"
+              ]
+            }
           }
         }
       },
@@ -26081,6 +26280,10 @@
               "string",
               "null"
             ]
+          },
+          "signature": {
+            "description": "On an approval, the id of the named signature it counts for (signoff-design.md decision 26). Left out on a gate without stages.",
+            "$ref": "#/components/schemas/Ulid"
           }
         }
       },
@@ -26107,7 +26310,82 @@
             }
           },
           "satisfied": {
-            "description": "Whether the gate has enough signatures and each required actor signed, a signature counting for a required actor when its actor is that actor or one of its members at any depth.",
+            "description": "Whether the gate has enough signatures and each required actor signed, a signature counting for a required actor when its actor\nis that actor or one of its members at any depth. On an approval (signoff-design.md decision 26), true only when nothing is\nneeded: the approval is complete and waits for the event's next occurrence; otherwise the occurrence that completes it moves at\nonce.\n",
+            "type": "boolean"
+          },
+          "stages": {
+            "description": "On an approval, its stages in file order, each with its signatures (signoff-design.md decision 26). Left out on a gate without stages.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalStageState"
+            }
+          }
+        }
+      },
+      "ApprovalStageState": {
+        "x-engine-record": "Maquettiste.Engine.Processes.ApprovalStageState",
+        "description": "A stage of an approval in a simulation's gate state (signoff-design.md decision 26).",
+        "type": "object",
+        "required": [
+          "stage",
+          "complete",
+          "signatures"
+        ],
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "complete": {
+            "description": "Whether each of its signatures is complete or not needed.",
+            "type": "boolean"
+          },
+          "signatures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalSignatureState"
+            }
+          }
+        }
+      },
+      "ApprovalSignatureState": {
+        "x-engine-record": "Maquettiste.Engine.Processes.ApprovalSignatureState",
+        "description": "A named signature of an approval in a simulation's gate state (signoff-design.md decision 26).",
+        "type": "object",
+        "required": [
+          "signature",
+          "needed",
+          "counted",
+          "required",
+          "finished",
+          "complete"
+        ],
+        "properties": {
+          "signature": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "needed": {
+            "description": "Whether it is needed. Its `when` was judged when its round started; only false means not needed.",
+            "type": "boolean"
+          },
+          "counted": {
+            "description": "The signatures counted for it.",
+            "type": "integer",
+            "minimum": 0
+          },
+          "required": {
+            "description": "The signatures it needs.",
+            "type": "integer",
+            "minimum": 1
+          },
+          "finished": {
+            "description": "The identities of the people who answered it, by signing or ignoring, in the order they first did.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "complete": {
+            "description": "Whether it has its count and each of its required actors signed.",
             "type": "boolean"
           }
         }
@@ -38366,6 +38644,149 @@
         ],
         "additionalProperties": false
       },
+      "notBy": {
+        "title": "Not by",
+        "description": "An entry of a named signature's notBy: a verb (a move verb, a signature verb, complete, or a verb an event of the lifecycle names), or a transition of the lifecycle (MQ8202).",
+        "type": "object",
+        "x-order": [
+          "verb",
+          "transition"
+        ],
+        "properties": {
+          "verb": {
+            "$ref": "#/components/schemas/verbRef"
+          },
+          "transition": {
+            "$ref": "#/components/schemas/id"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "verb"
+            ]
+          },
+          {
+            "required": [
+              "transition"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      },
+      "namedSignature": {
+        "title": "Named signature",
+        "description": "A signature an approval needs (part kind named-signature): who may give it and how many, needed only when its condition holds, and not by whoever did a named verb or move since the object entered the gated move's source state. It is complete when it has required signatures and each required actor has signed.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "signers",
+          "required",
+          "requiredActors",
+          "allowRepeatSigner",
+          "when",
+          "notBy",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "description": "Unique among the signatures of the gate, across its stages (MQ3001).",
+            "$ref": "#/components/schemas/identifier"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "signers": {
+            "description": "The actors whose members may give this signature.",
+            "$ref": "#/components/schemas/idList",
+            "minItems": 1
+          },
+          "required": {
+            "description": "The number of signatures needed.",
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "requiredActors": {
+            "description": "Actors each of which must give at least one of these signatures (a subset of signers).",
+            "$ref": "#/components/schemas/idList",
+            "default": []
+          },
+          "allowRepeatSigner": {
+            "description": "Whether one person may count twice on this signature.",
+            "type": "boolean",
+            "default": false
+          },
+          "when": {
+            "description": "The signature is needed unless this is false; true or unknown means needed. Judged when its round starts: on entering the gated move's source state, after the entering move's actions and sets, and again after a rejection. It reads the object under subject, the process's context, in_state and now(), not current_actor() or a payload (MQ3102). Not on a gate policy's signature (MQ8202).",
+            "$ref": "#/components/schemas/expr"
+          },
+          "notBy": {
+            "description": "Who may not give this signature: whoever did one of these verbs or moves since the object entered the gated move's source state, the entering move included. A gated move is done by everyone whose signature counted toward it. A gate policy names verbs only (MQ8202).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/notBy"
+            },
+            "default": []
+          },
+          "description": {
+            "description": "Why the signature is needed.",
+            "$ref": "#/components/schemas/description"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "signers"
+        ],
+        "additionalProperties": false
+      },
+      "gateStage": {
+        "title": "Gate stage",
+        "description": "A stage of an approval (part kind gate-stage): named signatures only. A stage is complete when each of its signatures is complete or not needed.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "signatures",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "description": "Unique among the gate's stages (MQ3001).",
+            "$ref": "#/components/schemas/identifier"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "signatures": {
+            "description": "The stage's named signatures, in the order the engine picks them when a step names none.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/namedSignature"
+            },
+            "minItems": 1
+          },
+          "description": {
+            "$ref": "#/components/schemas/description"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "signatures"
+        ],
+        "additionalProperties": false
+      },
       "meaning": {
         "title": "Meaning",
         "description": "What a signature means.",
@@ -38404,10 +38825,12 @@
           "id",
           "name",
           "displayName",
+          "stages",
           "required",
           "signers",
           "requiredActors",
           "allowRepeatSigner",
+          "allowSignerAcrossSignatures",
           "reasonRequired",
           "meanings",
           "auditAttributes",
@@ -38425,29 +38848,44 @@
           "displayName": {
             "type": "string"
           },
+          "stages": {
+            "description": "Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). One stage for now.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/gateStage"
+            },
+            "minItems": 1,
+            "maxItems": 1
+          },
           "required": {
-            "description": "The number of signatures needed.",
+            "description": "The number of signatures needed. A gate without stages only (MQ8201).",
             "type": "integer",
             "minimum": 1,
             "default": 1
           },
           "signers": {
-            "description": "The actors whose members may sign.",
+            "description": "The actors whose members may sign. Required on a gate without stages; never on one with stages (MQ8201).",
             "$ref": "#/components/schemas/idList",
-            "minItems": 1
+            "minItems": 1,
+            "default": []
           },
           "requiredActors": {
-            "description": "Actors each of which must give at least one signature (a subset of signers).",
+            "description": "Actors each of which must give at least one signature (a subset of signers). A gate without stages only (MQ8201).",
             "$ref": "#/components/schemas/idList",
             "default": []
           },
           "allowRepeatSigner": {
-            "description": "Whether one signer may count twice.",
+            "description": "Whether one signer may count twice. A gate without stages only (MQ8201).",
+            "type": "boolean",
+            "default": false
+          },
+          "allowSignerAcrossSignatures": {
+            "description": "With stages: whether one person may give more than one response that counts on the approval, across its signatures. Without it, a signature or an ignore is the person's one response. A gate with stages only (MQ8201).",
             "type": "boolean",
             "default": false
           },
           "reasonRequired": {
-            "description": "Whether each signature must carry a reason.",
+            "description": "Whether each signature, and with stages each response, must carry a reason.",
             "type": "boolean",
             "default": false
           },
@@ -38480,12 +38918,28 @@
             "default": {}
           }
         },
-        "required": [
-          "id",
-          "name",
-          "signers",
-          "meanings"
-        ],
+        "if": {
+          "not": {
+            "required": [
+              "stages"
+            ]
+          }
+        },
+        "then": {
+          "required": [
+            "id",
+            "name",
+            "signers",
+            "meanings"
+          ]
+        },
+        "else": {
+          "required": [
+            "id",
+            "name",
+            "meanings"
+          ]
+        },
         "additionalProperties": false
       },
       "subject": {
@@ -39971,10 +40425,12 @@
               "id",
               "name",
               "displayName",
+              "stages",
               "required",
               "signers",
               "requiredActors",
               "allowRepeatSigner",
+              "allowSignerAcrossSignatures",
               "reasonRequired",
               "meanings",
               "auditAttributes",
@@ -39992,29 +40448,44 @@
               "displayName": {
                 "type": "string"
               },
+              "stages": {
+                "description": "Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). One stage for now.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/gateStage"
+                },
+                "minItems": 1,
+                "maxItems": 1
+              },
               "required": {
-                "description": "The number of signatures needed.",
+                "description": "The number of signatures needed. A gate without stages only (MQ8201).",
                 "type": "integer",
                 "minimum": 1,
                 "default": 1
               },
               "signers": {
-                "description": "The actors whose members may sign.",
+                "description": "The actors whose members may sign. Required on a gate without stages; never on one with stages (MQ8201).",
                 "$ref": "#/components/schemas/idList",
-                "minItems": 1
+                "minItems": 1,
+                "default": []
               },
               "requiredActors": {
-                "description": "Actors each of which must give at least one signature (a subset of signers).",
+                "description": "Actors each of which must give at least one signature (a subset of signers). A gate without stages only (MQ8201).",
                 "$ref": "#/components/schemas/idList",
                 "default": []
               },
               "allowRepeatSigner": {
-                "description": "Whether one signer may count twice.",
+                "description": "Whether one signer may count twice. A gate without stages only (MQ8201).",
+                "type": "boolean",
+                "default": false
+              },
+              "allowSignerAcrossSignatures": {
+                "description": "With stages: whether one person may give more than one response that counts on the approval, across its signatures. Without it, a signature or an ignore is the person's one response. A gate with stages only (MQ8201).",
                 "type": "boolean",
                 "default": false
               },
               "reasonRequired": {
-                "description": "Whether each signature must carry a reason.",
+                "description": "Whether each signature, and with stages each response, must carry a reason.",
                 "type": "boolean",
                 "default": false
               },
@@ -40047,11 +40518,170 @@
                 "default": {}
               }
             },
+            "if": {
+              "not": {
+                "required": [
+                  "stages"
+                ]
+              }
+            },
+            "then": {
+              "required": [
+                "id",
+                "name",
+                "signers",
+                "meanings"
+              ]
+            },
+            "else": {
+              "required": [
+                "id",
+                "name",
+                "meanings"
+              ]
+            },
+            "additionalProperties": false
+          },
+          "gateStage": {
+            "title": "Gate stage",
+            "description": "A stage of an approval (part kind gate-stage): named signatures only. A stage is complete when each of its signatures is complete or not needed.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "signatures",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "description": "Unique among the gate's stages (MQ3001).",
+                "$ref": "#/components/schemas/identifier"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "signatures": {
+                "description": "The stage's named signatures, in the order the engine picks them when a step names none.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/namedSignature"
+                },
+                "minItems": 1
+              },
+              "description": {
+                "$ref": "#/components/schemas/description"
+              }
+            },
             "required": [
               "id",
               "name",
+              "signatures"
+            ],
+            "additionalProperties": false
+          },
+          "namedSignature": {
+            "title": "Named signature",
+            "description": "A signature an approval needs (part kind named-signature): who may give it and how many, needed only when its condition holds, and not by whoever did a named verb or move since the object entered the gated move's source state. It is complete when it has required signatures and each required actor has signed.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
               "signers",
-              "meanings"
+              "required",
+              "requiredActors",
+              "allowRepeatSigner",
+              "when",
+              "notBy",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "description": "Unique among the signatures of the gate, across its stages (MQ3001).",
+                "$ref": "#/components/schemas/identifier"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "signers": {
+                "description": "The actors whose members may give this signature.",
+                "$ref": "#/components/schemas/idList",
+                "minItems": 1
+              },
+              "required": {
+                "description": "The number of signatures needed.",
+                "type": "integer",
+                "minimum": 1,
+                "default": 1
+              },
+              "requiredActors": {
+                "description": "Actors each of which must give at least one of these signatures (a subset of signers).",
+                "$ref": "#/components/schemas/idList",
+                "default": []
+              },
+              "allowRepeatSigner": {
+                "description": "Whether one person may count twice on this signature.",
+                "type": "boolean",
+                "default": false
+              },
+              "when": {
+                "description": "The signature is needed unless this is false; true or unknown means needed. Judged when its round starts: on entering the gated move's source state, after the entering move's actions and sets, and again after a rejection. It reads the object under subject, the process's context, in_state and now(), not current_actor() or a payload (MQ3102). Not on a gate policy's signature (MQ8202).",
+                "$ref": "#/components/schemas/expr"
+              },
+              "notBy": {
+                "description": "Who may not give this signature: whoever did one of these verbs or moves since the object entered the gated move's source state, the entering move included. A gated move is done by everyone whose signature counted toward it. A gate policy names verbs only (MQ8202).",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/notBy"
+                },
+                "default": []
+              },
+              "description": {
+                "description": "Why the signature is needed.",
+                "$ref": "#/components/schemas/description"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "signers"
+            ],
+            "additionalProperties": false
+          },
+          "notBy": {
+            "title": "Not by",
+            "description": "An entry of a named signature's notBy: a verb (a move verb, a signature verb, complete, or a verb an event of the lifecycle names), or a transition of the lifecycle (MQ8202).",
+            "type": "object",
+            "x-order": [
+              "verb",
+              "transition"
+            ],
+            "properties": {
+              "verb": {
+                "$ref": "#/components/schemas/verbRef"
+              },
+              "transition": {
+                "$ref": "#/components/schemas/id"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "verb"
+                ]
+              },
+              {
+                "required": [
+                  "transition"
+                ]
+              }
             ],
             "additionalProperties": false
           },
@@ -40472,6 +41102,8 @@
           "participant",
           "actor",
           "signer",
+          "response",
+          "signature",
           "meaning",
           "reason",
           "payload",
@@ -40522,6 +41154,20 @@
           "signer": {
             "description": "The signing person's identity, for gated events; the participant's identity when absent.",
             "type": "string"
+          },
+          "response": {
+            "description": "How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count) or withdraw (takes back the person's latest signature). Only on an event step whose event is gated by an approval (MQ9305).",
+            "enum": [
+              "sign",
+              "reject",
+              "ignore",
+              "withdraw"
+            ],
+            "default": "sign"
+          },
+          "signature": {
+            "description": "The id of the approval's named signature the step answers; the engine picks one when absent. Only on an event step whose event is gated by an approval, and a signature of that gate (MQ9305).",
+            "$ref": "#/components/schemas/id"
           },
           "meaning": {
             "$ref": "#/components/schemas/id"
@@ -40591,7 +41237,8 @@
               "context",
               "values",
               "checkWarnings",
-              "triggerPoints"
+              "triggerPoints",
+              "signatures"
             ],
             "properties": {
               "accepted": {
@@ -40606,7 +41253,9 @@
                   "guard",
                   "actor",
                   "gate-signer",
+                  "gate-excluded",
                   "gate-repeat",
+                  "gate-not-signed",
                   "gate-reason",
                   "right",
                   "default",
@@ -40653,6 +41302,17 @@
               "triggerPoints": {
                 "description": "The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked.",
                 "$ref": "#/components/schemas/idList"
+              },
+              "signatures": {
+                "description": "The number of signatures counted after the step, by id of a named signature of the approval the step answers (MQ9305). Only the listed signatures are compared (MQ9311).",
+                "type": "object",
+                "propertyNames": {
+                  "$ref": "#/components/schemas/id"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0
+                }
               }
             },
             "required": [],
@@ -41045,6 +41705,8 @@
               "participant",
               "actor",
               "signer",
+              "response",
+              "signature",
               "meaning",
               "reason",
               "payload",
@@ -41095,6 +41757,20 @@
               "signer": {
                 "description": "The signing person's identity, for gated events; the participant's identity when absent.",
                 "type": "string"
+              },
+              "response": {
+                "description": "How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count) or withdraw (takes back the person's latest signature). Only on an event step whose event is gated by an approval (MQ9305).",
+                "enum": [
+                  "sign",
+                  "reject",
+                  "ignore",
+                  "withdraw"
+                ],
+                "default": "sign"
+              },
+              "signature": {
+                "description": "The id of the approval's named signature the step answers; the engine picks one when absent. Only on an event step whose event is gated by an approval, and a signature of that gate (MQ9305).",
+                "$ref": "#/components/schemas/id"
               },
               "meaning": {
                 "$ref": "#/components/schemas/id"
@@ -41164,7 +41840,8 @@
                   "context",
                   "values",
                   "checkWarnings",
-                  "triggerPoints"
+                  "triggerPoints",
+                  "signatures"
                 ],
                 "properties": {
                   "accepted": {
@@ -41179,7 +41856,9 @@
                       "guard",
                       "actor",
                       "gate-signer",
+                      "gate-excluded",
                       "gate-repeat",
+                      "gate-not-signed",
                       "gate-reason",
                       "right",
                       "default",
@@ -41226,6 +41905,17 @@
                   "triggerPoints": {
                     "description": "The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked.",
                     "$ref": "#/components/schemas/idList"
+                  },
+                  "signatures": {
+                    "description": "The number of signatures counted after the step, by id of a named signature of the approval the step answers (MQ9305). Only the listed signatures are compared (MQ9311).",
+                    "type": "object",
+                    "propertyNames": {
+                      "$ref": "#/components/schemas/id"
+                    },
+                    "additionalProperties": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
                   }
                 },
                 "required": [],

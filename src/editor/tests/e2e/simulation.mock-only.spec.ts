@@ -57,7 +57,8 @@ async function expectRowHeights(panel: Locator) {
     .locator('[data-testid$="-row"]')
     .evaluateAll((els) => els.map((e) => ({ id: e.getAttribute("data-testid"), h: Math.round(e.getBoundingClientRect().height) })));
   expect(heights.length).toBeGreaterThan(5);
-  expect(heights.filter((x) => x.h !== ROW_H)).toEqual([]);
+  // A trace row wraps a long label or state list instead of clipping it, so it is at least one row high; every other row is exactly one.
+  expect(heights.filter((x) => (x.id === "trace-row" ? x.h < ROW_H : x.h !== ROW_H))).toEqual([]);
 }
 
 test("raises inputs by Enter and by number key, advances time, and deletes a trace input", async ({ page }) => {

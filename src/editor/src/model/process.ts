@@ -50,10 +50,42 @@ export interface MeaningDoc {
   description?: unknown;
 }
 
+/** One entry of a named signature's `notBy`: a verb key or a transition id (signoff-design.md decision 15). */
+export interface NotByDoc {
+  verb?: string;
+  transition?: string;
+}
+
+/** A named signature of an approval (signoff-design.md decision 3). */
+export interface NamedSignatureDoc {
+  id: string;
+  name: string;
+  displayName?: string;
+  signers: string[];
+  required?: number;
+  requiredActors?: string[];
+  allowRepeatSigner?: boolean;
+  when?: Json;
+  notBy?: NotByDoc[];
+  description?: unknown;
+}
+
+/** A stage of an approval: named signatures only. Part 1 holds exactly one. */
+export interface GateStageDoc {
+  id: string;
+  name: string;
+  displayName?: string;
+  signatures: NamedSignatureDoc[];
+  description?: unknown;
+}
+
 export interface GateDoc {
   id: string;
   name: string;
   displayName?: string;
+  /** An approval's stages; a gate with stages carries its counts on the signatures (MQ8201). */
+  stages?: GateStageDoc[];
+  allowSignerAcrossSignatures?: boolean;
   required?: number;
   signers?: string[];
   requiredActors?: string[];
@@ -214,6 +246,10 @@ export interface ProcessDoc {
 /** What a step assumes a check the team writes does (trigger-points-design.md decision 26). */
 export type CheckWord = "pass" | "warning" | "error";
 
+/** The responses to an approval, in the order the editor offers them. */
+export const APPROVAL_RESPONSES = ["sign", "reject", "ignore", "withdraw"] as const;
+export type ApprovalResponse = (typeof APPROVAL_RESPONSES)[number];
+
 export interface StepDoc {
   id: string;
   input?: (typeof STEP_INPUTS)[number];
@@ -236,8 +272,14 @@ export interface StepDoc {
   attributes?: string[];
   end?: string;
   object?: string;
+  /** How the step answers an approval on its event (signoff-design.md decision 25); absent: a signature. */
+  response?: ApprovalResponse;
+  /** The named signature the step answers; absent: the engine picks one (decision 8). */
+  signature?: string;
   expect?: {
     accepted?: boolean;
+    /** The signatures counted after the step, by named signature id (decision 27). */
+    signatures?: Record<string, number>;
     states?: string[];
     context?: Json;
     values?: Json;
@@ -473,6 +515,16 @@ function dropRightStates(process: ProcessDoc, gone: ReadonlySet<string>): void {
  * everywhere (trigger-points-design.md section 9).
  */
 export function dropTriggerPointRefs(process: ProcessDoc, gone: { states?: ReadonlySet<string>; transitions?: ReadonlySet<string> }): void {
+  // A named signature's Not by names a move; a move that goes leaves no entry behind (MQ8202), and an emptied list goes with its key.
+  const moves = gone.transitions;
+  if (moves?.size)
+    for (const t of process.transitions ?? [])
+      for (const stage of t.gate?.stages ?? [])
+        for (const sig of stage.signatures) {
+          if (!sig.notBy?.some((n) => n.transition !== undefined && moves.has(n.transition))) continue;
+          sig.notBy = sig.notBy.filter((n) => n.transition === undefined || !moves.has(n.transition));
+          if (!sig.notBy.length) delete sig.notBy;
+        }
   if (!process.triggerPoints) return;
   const lists = [
     ["states", gone.states],
@@ -815,6 +867,8 @@ export interface GateForm {
   requiredActors: string[];
   /** Required actors that are not signers (MQ9102). */
   strayRequired: string[];
+  /** The gate has stages: it is an approval, and its counts are on its signatures. */
+  approval: boolean;
 }
 
 /** One form per gated transition, in transition order. */
@@ -835,6 +889,7 @@ export function gateForms(process: ProcessDoc): GateForm[] {
         signers,
         requiredActors,
         strayRequired: requiredActors.filter((a) => !signers.includes(a)),
+        approval: !!t.gate.stages?.length,
       },
     ];
   });
@@ -921,6 +976,10 @@ export interface StepRow {
   /** The checks the step expects to warn, and the trigger points it expects to run, in order (names). */
   checkWarnings: string;
   triggerPoints: string;
+  /** An approval step's response key (empty: a signature), the signature's name, and the signatures expected counted (names). */
+  response: string;
+  signature: string;
+  signatures: string;
 }
 
 /** `name=value` pairs of a map keyed by attribute (or guard) id, names from `names`. */
@@ -987,6 +1046,10 @@ export function stepRows(
   for (const g of process?.guards ?? []) ids.set(g.id, g.name);
   for (const t of process?.transitions ?? []) if (t.gate) ids.set(t.gate.id, t.gate.name);
   if (process) ids.set(process.id, process.name);
+  const signatureNames = new Map<string, string>();
+  for (const t of process?.transitions ?? [])
+    for (const st of t.gate?.stages ?? []) for (const sg of st.signatures ?? []) signatureNames.set(sg.id, sg.displayName || sg.name);
+  for (const [id, n] of signatureNames) ids.set(id, n);
   const name = (id: string | undefined) => (id ? (ids.get(id) ?? "?") : "");
   return scenario.steps.map((s, i) => {
     const input = s.input ?? "event";
@@ -999,7 +1062,8 @@ export function stepRows(
       participant: name(s.participant),
       actor: name(s.actor),
       signer: s.signer ?? "",
-      meaning: name(s.meaning),
+      // A meaning belongs to a signature: Ignore, Reject and Withdraw carry none.
+      meaning: s.response && s.response !== "sign" ? "" : name(s.meaning),
       reason: s.reason ?? "",
       payload: mapText(s.payload, attrs),
       assume: mapText(s.assume as Json | undefined, guards),
@@ -1016,6 +1080,9 @@ export function stepRows(
       refusedBy: s.expect?.refusedBy ? name(s.expect.refusedBy) : "",
       checkWarnings: (s.expect?.checkWarnings ?? []).map(name).join(", "),
       triggerPoints: (s.expect?.triggerPoints ?? []).map(name).join(", "),
+      response: s.response ?? "",
+      signature: name(s.signature),
+      signatures: mapText(s.expect?.signatures, signatureNames),
     };
   });
 }
@@ -1040,6 +1107,10 @@ export function actorUses(process: ProcessDoc, actor: string): string[] {
     if (!g) continue;
     if (g.signers?.includes(actor) || g.requiredActors?.includes(actor))
       out.push(`${process.name}: gate ${g.displayName || g.name}${g.requiredActors?.includes(actor) ? " (required)" : ""}`);
+    for (const s of g.stages ?? [])
+      for (const sig of s.signatures ?? [])
+        if (sig.signers?.includes(actor) || sig.requiredActors?.includes(actor))
+          out.push(`${process.name}: gate ${g.displayName || g.name}, signature ${sig.name}${sig.requiredActors?.includes(actor) ? " (required)" : ""}`);
   }
   return out;
 }

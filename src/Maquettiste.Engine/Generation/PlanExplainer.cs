@@ -266,8 +266,12 @@ internal static class PlanExplainer
         "exports" => ExportsOf(key) is (var pack, { } id)
             ? "The exports of " + (Label(id, nameOf) ?? "element " + id) + " from " + pack
             : "The model exports of " + key[3..],
-        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? StereotypeCoverage(key) ?? VerbNaming(key) ?? RightsNamingWords(key) ?? TriggerNamingWords(key) ?? FreezingNamingWords(key) ?? "Input " + key,
+        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? StereotypeCoverage(key) ?? VerbNaming(key) ?? RightsNamingWords(key) ?? TriggerNamingWords(key) ?? FreezingNamingWords(key) ?? ApprovalNamingWords(key) ?? "Input " + key,
     };
+
+    /// <summary>The <c>ap:approvals</c> key's words (signoff-design.md section 7): "The approvals the lifecycles state". Its cause kind stays <c>inputs</c>.</summary>
+    private static string? ApprovalNamingWords(string key) =>
+        string.Equals(key, Planning.ApprovalNaming.Key, StringComparison.Ordinal) ? "The approvals the lifecycles state" : null;
 
     /// <summary>The <c>vn:verbs</c> key's words (verbs-design.md section 6): "The verbs the model names". Its cause kind stays <c>inputs</c>.</summary>
     private static string? VerbNaming(string key) =>

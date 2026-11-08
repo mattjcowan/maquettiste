@@ -119,7 +119,9 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
       const base = { fromId: use.holder ?? id, pointer: use.pointer, field: "verb", toId: verb };
       // A right's verbs are a list: the entry leaves it, and the right goes with its last verb (rights-design.md section 8).
       const at = use.owner === "right" || use.owner === "trigger-point" ? rightVerbAt(doc, use.pointer) : null;
-      if (!at) out.push({ ...base, required: false });
+      // A project verb named in a signature's notBy: the entry goes, and dropping it widens nothing that could occur (signoff-design.md section 9).
+      if (use.owner === "not-by") out.push({ ...base, required: false, removeItem: use.pointer.slice(0, use.pointer.lastIndexOf("/")) });
+      else if (!at) out.push({ ...base, required: false });
       else if (!at.last) out.push({ ...base, required: false, removeItem: use.pointer });
       else if (at.whole) out.push({ ...base, required: false, removeItem: at.right, drops: true });
       else out.push({ ...base, required: true });
@@ -307,6 +309,21 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
         arr(gate.requiredActors).forEach((a, j) =>
           push(`/transitions/${i}/gate/requiredActors/${j}`, "requiredActors", a, false, `/transitions/${i}/gate/requiredActors/${j}`),
         );
+        // An approval's named signatures (signoff-design.md section 9): signers follow what a gate's signers do, required actors leave
+        // their list, and the ids a `when` reads are required (a delete is refused, or takes the signature, and with its last one the gate).
+        arr(gate.stages).forEach((stage, s) =>
+          arr(stage.signatures).forEach((sig, j) => {
+            const at = `/transitions/${i}/gate/stages/${s}/signatures/${j}`;
+            const holder = str(sig.id) ?? id;
+            const from = (pointer: string, field: string, to: unknown, required: boolean, removeItem?: string) => {
+              const toId = str(to);
+              if (toId && !own.has(toId) && toId !== id) out.push({ fromId: holder, pointer, field, toId, required, removeItem });
+            };
+            arr(sig.signers).forEach((a, k) => from(`${at}/signers/${k}`, "signers", a, true));
+            arr(sig.requiredActors).forEach((a, k) => from(`${at}/requiredActors/${k}`, "requiredActors", a, false, `${at}/requiredActors/${k}`));
+            treeIds(sig.when, `${at}/when`, (pointer, field, to) => from(pointer, field, to, true));
+          }),
+        );
       });
       break;
     }
@@ -332,6 +349,15 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
               removeItem: `/participants/${i}/holds/${j}`,
             });
         });
+      });
+      // The named signature a step answers is optional (a delete clears the key, and the engine picks again); the keys of its expected
+      // signature counts are signature ids (a delete drops the entry, and an empty map goes).
+      arr(doc.steps).forEach((st, i) => {
+        push(`/steps/${i}/signature`, "signature", st.signature, false);
+        const signatures = (st.expect as Json | undefined)?.signatures;
+        if (signatures && typeof signatures === "object")
+          for (const key of Object.keys(signatures as Json))
+            out.push({ fromId: str(st.id) ?? id, pointer: `/steps/${i}/expect/signatures/${key}`, field: "signatures", toId: key, required: false });
       });
       // A step's assume words are keyed by the id of a check (trigger-points-design.md decision 26): a delete clears the entry. Boolean
       // entries are guards' and stay as they are.
@@ -529,6 +555,13 @@ export function subElementIds(doc: Json): string[] {
     collect(doc.triggerPoints);
     arr(doc.triggerPoints).forEach((t) => collect(t.sets));
     arr(doc.actions).forEach((a) => collect(a.sets));
+    // The stages and named signatures of every approval, inline or in a library.
+    const stagesOf = (gate: Json | undefined) =>
+      arr(gate?.stages).forEach((stage) => {
+        if (str(stage.id)) ids.push(stage.id as string);
+        collect(stage.signatures);
+      });
+    arr(doc.gates).forEach(stagesOf);
     const states = (list: unknown) =>
       arr(list).forEach((st) => {
         if (str(st.id)) ids.push(st.id as string);
@@ -541,6 +574,7 @@ export function subElementIds(doc: Json): string[] {
       const gate = t.gate as Json | undefined;
       if (gate && str(gate.id)) ids.push(gate.id as string);
       if (gate) collect(gate.meanings);
+      stagesOf(gate);
     });
   }
   if (doc.kind === "scenario") {

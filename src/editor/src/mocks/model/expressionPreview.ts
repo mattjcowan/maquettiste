@@ -58,6 +58,18 @@ export function previewExpression(entries: Iterable<Entry>, req: Request) {
     if (!req.site) return { preview: null, diagnostics: [diagnostic("MQ3101", "Text to preview needs a site.", element)] };
     text = req.text.trim();
     if (!text) return { preview: null, diagnostics: [diagnostic("MQ3101", "The expression is empty.", element)] };
+    // A signature's `when` (site `approval`) names its lifecycle and is a condition: true or false, never a text or a number.
+    if (req.site === "approval") {
+      const holder = all.find((e) => e.id === element)?.json;
+      if (!holder || holder.kind !== "process")
+        return {
+          preview: null,
+          diagnostics: [diagnostic("MQ3101", "A signature's condition is previewed in its lifecycle; name the lifecycle as the element.", element)],
+        };
+      const type = typeOfText(text);
+      if (type === "string" || type === "int32" || type === "datetimeoffset")
+        return { preview: null, diagnostics: [diagnostic("MQ3101", `A signature's condition must be true or false, not ${type}.`, element)] };
+    }
     if ((text.match(/\(/g) ?? []).length !== (text.match(/\)/g) ?? []).length)
       return { preview: null, diagnostics: [diagnostic("MQ3101", "The expression does not parse: the parentheses do not match.", element)] };
   } else {

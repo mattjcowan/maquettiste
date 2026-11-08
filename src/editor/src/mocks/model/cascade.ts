@@ -50,6 +50,8 @@ const NOUNS: Record<string, string> = {
   states: "state",
   rights: "right",
   triggerPoints: "trigger point",
+  stages: "stage",
+  signatures: "signature",
 };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -101,7 +103,7 @@ function removeAt(json: Json, pointer: string, item: boolean): void {
     if (parts.length === 1 && parts[0] === "triggerPoints" && parent.length === 0) delete json.triggerPoints;
     // A named trigger point left with no exception or no sets is written without the key.
     if (parts.length === 1 && json.kind === "trigger-point" && parent.length === 0 && ["exceptEntities", "sets"].includes(parts[0])) delete json[parts[0]];
-    if (parent.length === 0 && parts.length >= 1 && parts[parts.length - 1] === "except") {
+    if (parent.length === 0 && parts.length >= 1 && ["except", "notBy"].includes(parts[parts.length - 1])) {
       let holder: unknown = json;
       for (const p of parts.slice(0, -1)) holder = (holder as Json)[p];
       if (holder && typeof holder === "object") delete (holder as Json).except;
@@ -115,7 +117,15 @@ function removeAt(json: Json, pointer: string, item: boolean): void {
         if (holder && typeof holder === "object" && parts.length > 1) delete (holder as Json)[key];
       }
     }
-  } else if (parent && typeof parent === "object") delete (parent as Json)[last];
+  } else if (parent && typeof parent === "object") {
+    delete (parent as Json)[last];
+    // A step's expected signature counts left empty are written without the map.
+    if (parts[parts.length - 1] === "signatures" && Object.keys(parent as Json).length === 0 && parts.length >= 2) {
+      let holder: unknown = json;
+      for (const p of parts.slice(0, -1)) holder = (holder as Json)[p];
+      if (holder && typeof holder === "object") delete (holder as Json).signatures;
+    }
+  }
 }
 
 /** Ids held under `pointer` in `json` (the removed sub-element and what it nests). */
@@ -296,7 +306,16 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
         });
         continue;
       }
-      const holder = ref.fromId !== doc.id ? pointerOf(doc.json, ref.fromId) : null;
+      let holder = ref.fromId !== doc.id ? pointerOf(doc.json, ref.fromId) : null;
+      // An approval's last signature takes the gate with it: a gate with stages needs one (signoff-design.md section 9).
+      const lastSignature = holder ? /^(.*)\/stages\/\d+\/signatures\/\d+$/.exec(holder) : null;
+      if (holder && lastSignature) {
+        const gate = at(doc.json, lastSignature[1]) as Json | undefined;
+        const left = arr(gate?.stages)
+          .flatMap((st) => arr(st.signatures))
+          .filter((sg) => !mine.some((o) => o.remove && o.pointer === pointerOf(doc.json, String(sg.id))));
+        if (left.length <= 1) holder = lastSignature[1];
+      }
       if (holder && !(doc.json.kind === "relation" && holder.startsWith("/ends/"))) {
         const kept = mine.filter((o) => o.pointer !== holder && !o.pointer.startsWith(`${holder}/`));
         kept.push({ pointer: holder, item: true, remove: true, ref });

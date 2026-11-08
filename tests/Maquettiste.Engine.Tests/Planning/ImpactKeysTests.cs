@@ -58,6 +58,44 @@ public sealed class ImpactKeysTests
         Assert.True(keys.IsTouched("k:trigger-point"));
     }
 
+    // A library with one gate policy, with stages or with today's fields, and an orchestration whose one move uses it or not
+    // (signoff-design.md section 7).
+    private static string Policies(bool stages) => $$"""
+        { "kind": "process", "id": "01J92P0VZZ00000000000000A1", "name": "Policies", "package": "{{BillingPackage}}", "use": "library",
+          "gates": [ { "id": "01J92P0VZZ00000000000000A2", "name": "Release", "meanings": [ { "id": "01J92P0VZZ00000000000000A3", "name": "approved" } ],
+            {{(stages
+                ? """ "stages": [ { "id": "01J92P0VZZ00000000000000A4", "name": "Review", "signatures": [ { "id": "01J92P0VZZ00000000000000A5", "name": "Clerk", "signers": [ "01J92P0VZZ00000000000000A9" ] } ] } ] """
+                : """ "signers": [ "01J92P0VZZ00000000000000A9" ] """)}} } ] }
+        """;
+
+    private const string Clerk = """{ "kind": "actor", "id": "01J92P0VZZ00000000000000A9", "name": "Clerk", "package": "01J92P0V01KDRN8GX5PGYCNKSX", "type": "role" }""";
+
+    private static string Flow(bool usesPolicy) => $$"""
+        { "kind": "process", "name": "Flow", "package": "{{BillingPackage}}", "use": "orchestration",
+          "states": [ { "id": "01J92P0VZZ00000000000000B1", "name": "Open" }, { "id": "01J92P0VZZ00000000000000B2", "name": "Done" } ],
+          "events": [ { "id": "01J92P0VZZ00000000000000B3", "name": "finish" } ],
+          "transitions": [ { "id": "01J92P0VZZ00000000000000B4", "source": "01J92P0VZZ00000000000000B1", "event": "01J92P0VZZ00000000000000B3",
+            "targets": [ "01J92P0VZZ00000000000000B2" ]{{(usesPolicy ? ", \"gatePolicy\": \"01J92P0VZZ00000000000000A2\"" : "")}} } ] }
+        """;
+
+    [Fact]
+    public async Task The_approvals_naming_key_is_touched_only_when_a_process_starts_using_an_approval()
+    {
+        await using var s = await BillingStore.OpenAsync();
+        // A process without approvals, and an unused gate policy with stages: a process changes, the key's hash does not.
+        var (plain, _) = await KeysAsync(s, Create(Clerk), Create(Policies(stages: false)), Create(Flow(usesPolicy: true)));
+        Assert.False(plain.IsTouched(ApprovalNaming.Key));
+        var (unused, _) = await KeysAsync(s, Create(Clerk), Create(Policies(stages: true)), Create(Flow(usesPolicy: false)));
+        Assert.False(unused.IsTouched(ApprovalNaming.Key));
+        // A change to no process leaves it alone too.
+        var (entity, _) = await KeysAsync(s, Update(s, Invoice, e => e["description"] = "A bill."));
+        Assert.False(entity.IsTouched(ApprovalNaming.Key));
+
+        // The first process that uses a gate policy with stages.
+        var (first, _) = await KeysAsync(s, Create(Clerk), Create(Policies(stages: true)), Create(Flow(usesPolicy: true)));
+        Assert.True(first.IsTouched(ApprovalNaming.Key));
+    }
+
     [Fact]
     public async Task An_element_key_is_touched_when_its_document_is_written_or_deleted()
     {

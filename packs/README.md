@@ -153,6 +153,16 @@ Templates are [Scriban](https://github.com/scriban/scriban). The context has `mo
   without rights, and keyed only on the rights naming key, so `model.rights_lifecycles.size > 0` asks whether the project uses rights).
   `model.freezing.used` says whether the project uses freezing (an event, a transition or a right names `freeze` or `thaw`, or a right has
   `while_frozen`); it keys only on the freezing naming key, whose hash never changes in a project that doesn't freeze.
+- Approvals (empty lists in a project without them): a gate with stages is an approval, with `stages`, `uses_stages`,
+  `all_signatures` (every stage's in file order) and `allow_signer_across_signatures`; its own `signers`, `required_actors` and
+  `required` are then empty or 1, and its `audit` adds `signature` and `stage` and the outcomes `rejected`, `ignored` and `withdrawn`. A
+  stage has `name`, `display_name`, `description`, `gate` and `signatures`; a named signature `name`, `display_name`, `description`
+  (why), `gate`, `stage`, `signers`, `required`, `required_actors`, `allow_repeat_signer`, `when` (typed at the approval site; null on
+  a gate policy's signature) and `not_by` (each entry's `verb`, `verb_key` or `transition`). `actor.signatures` lists the named
+  signatures that name the actor. A step has `response` (`sign` unless it gives `reject`, `ignore` or `withdraw`) and `signature`,
+  and its `expect.signatures` lists `signature` and `count`. `model.approval_lifecycles` lists the processes that use an approval,
+  inline or through a gate policy, by name; it keys only on the approvals naming key, so `model.approval_lifecycles.size > 0` asks
+  whether the project uses approvals.
 - `schema_diff.<database>` when the pack sets `"usesSchemaDiff": true`: `from_revision`, `to_revision`, `is_empty` and ordered
   `tables` (`kind` added/renamed/altered/dropped, `columns`, constraint and index changes).
 - Definitions: `model.stereotypes` (one per key, by key: `key`, `name`, `applies_to`, the `attributes` it adds,

@@ -1,0 +1,132 @@
+{
+  "kind": "process",
+  "id": "01JAP0000000000000000000C1",
+  "name": "DocumentLifecycle",
+  "package": "01JAP0000000000000000000P1",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JAP0000000000000000000B1",
+      "entity": "01JAP0000000000000000000E1"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JAP0000000000000000000V1",
+      "name": "submit",
+      "verb": "promote"
+    },
+    {
+      "id": "01JAP0000000000000000000V2",
+      "name": "approve"
+    },
+    {
+      "id": "01JAP0000000000000000000V3",
+      "name": "sendBack",
+      "verb": "reject"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JAP0000000000000000000S1",
+      "name": "Draft"
+    },
+    {
+      "id": "01JAP0000000000000000000S2",
+      "name": "Review"
+    },
+    {
+      "id": "01JAP0000000000000000000S3",
+      "name": "Approved",
+      "type": "final"
+    }
+  ],
+  "initial": "01JAP0000000000000000000S1",
+  "transitions": [
+    {
+      "id": "01JAP0000000000000000000T1",
+      "source": "01JAP0000000000000000000S1",
+      "event": "01JAP0000000000000000000V1",
+      "targets": [
+        "01JAP0000000000000000000S2"
+      ]
+    },
+    {
+      "id": "01JAP0000000000000000000T2",
+      "source": "01JAP0000000000000000000S2",
+      "event": "01JAP0000000000000000000V2",
+      "targets": [
+        "01JAP0000000000000000000S3"
+      ],
+      "gate": {
+        "id": "01JAP0000000000000000000G1",
+        "name": "Release",
+        "displayName": "Release approval",
+        "reasonRequired": false,
+        "meanings": [
+          {
+            "id": "01JAP0000000000000000000G2",
+            "name": "approved"
+          }
+        ],
+        "stages": [
+          {
+            "id": "01JAP0000000000000000000G3",
+            "name": "Review",
+            "displayName": "Review round",
+            "signatures": [
+              {
+                "id": "01JAP000000000000000000G11",
+                "name": "Engineering",
+                "signers": [
+                  "01JAP0000000000000000000R1"
+                ],
+                "required": 2,
+                "notBy": [
+                  {
+                    "verb": "promote"
+                  },
+                  {
+                    "transition": "01JAP0000000000000000000T1"
+                  }
+                ],
+                "description": "Two engineers who did not submit it."
+              },
+              {
+                "id": "01JAP000000000000000000G12",
+                "name": "Quality",
+                "displayName": "Quality check",
+                "signers": [
+                  "01JAP0000000000000000000R2"
+                ],
+                "requiredActors": [
+                  "01JAP0000000000000000000R2"
+                ]
+              },
+              {
+                "id": "01JAP000000000000000000G13",
+                "name": "Finance",
+                "signers": [
+                  "01JAP0000000000000000000R3"
+                ],
+                "allowRepeatSigner": true,
+                "when": {
+                  "text": "subject.cost > 10000"
+                },
+                "description": "Needed for costs above 10,000."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JAP0000000000000000000T3",
+      "source": "01JAP0000000000000000000S2",
+      "event": "01JAP0000000000000000000V3",
+      "targets": [
+        "01JAP0000000000000000000S1"
+      ]
+    }
+  ]
+}

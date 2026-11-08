@@ -1,0 +1,67 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JAD0000000000000000000C2",
+  "name": "MemoLifecycle",
+  "package": "01JAD0000000000000000000P1",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JAD0000000000000000000B2",
+      "entity": "01JAD0000000000000000000E1"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JAD0000000000000000000W1",
+      "name": "approve"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JAD0000000000000000000S5",
+      "name": "Open"
+    },
+    {
+      "id": "01JAD0000000000000000000S6",
+      "name": "Closed",
+      "type": "final"
+    }
+  ],
+  "initial": "01JAD0000000000000000000S5",
+  "transitions": [
+    {
+      "id": "01JAD0000000000000000000T5",
+      "source": "01JAD0000000000000000000S5",
+      "event": "01JAD0000000000000000000W1",
+      "targets": [
+        "01JAD0000000000000000000S6"
+      ],
+      "gate": {
+        "id": "01JAD0000000000000000000G3",
+        "name": "Approval",
+        "stages": [
+          {
+            "id": "01JAD0000000000000000000H3",
+            "name": "Review",
+            "signatures": [
+              {
+                "id": "01JAD0000000000000000000N7",
+                "name": "Reviewer",
+                "signers": [
+                  "01JAD0000000000000000000R1"
+                ]
+              }
+            ]
+          }
+        ],
+        "meanings": [
+          {
+            "id": "01JAD0000000000000000000M3",
+            "name": "approved"
+          }
+        ]
+      }
+    }
+  ]
+}

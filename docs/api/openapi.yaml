@@ -8252,6 +8252,18 @@ components:
           uniqueItems: true
           items:
             type: string
+        approvals:
+          description: |
+            The number of a process's gates that have stages (signoff-design.md section 9), inline or in a library, on process rows that
+            have at least one. Left out otherwise, so rows of projects without approvals do not change.
+          type: integer
+          minimum: 1
+        signatures:
+          description: |
+            The number of named signatures across a process's approvals (signoff-design.md section 9), on process rows that have at least
+            one. Left out otherwise.
+          type: integer
+          minimum: 1
         actors:
           description: |
             The actors a process names anywhere in its document (event senders, gate signers, invokes and so on), as ids sorted
@@ -9738,8 +9750,10 @@ components:
           type: [string, 'null']
           description: >-
             With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's
-            condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`) or
-            `trigger-set` (a value a trigger point sets, with `attribute`), or the pointer of one of the element's sites. `current_actor()`
+            condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`),
+            `trigger-set` (a value a trigger point sets, with `attribute`) or `approval` (a named signature's `when` not saved yet, with
+            `element` its process: the object under `subject`, the context and `in_state`, but no payload and no `current_actor()`), or
+            the pointer of one of the element's sites. `current_actor()`
             and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger
             point sites, with no SQL form.
         attribute:
@@ -11028,7 +11042,10 @@ components:
             type: string
     GateRecord:
       x-engine-record: Maquettiste.Engine.GateRecord
-      description: An approval gate on a transition.
+      description: |
+        A signature gate on a transition, or a library's gate policy. A gate with `stages` is an approval (signoff-design.md decision 1):
+        its `required`, `signers`, `requiredActors` and `allowRepeatSigner` are empty or at their defaults, and its named signatures carry
+        them.
       allOf:
       - $ref: '#/components/schemas/ProcessNodeAnnotations'
       - type: object
@@ -11069,6 +11086,79 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/AuditFieldRecord'
+          stages:
+            description: An approval's stages in file order (signoff-design.md section 7); absent on a gate without stages.
+            type: array
+            items:
+              $ref: '#/components/schemas/GateStage'
+          allowSignerAcrossSignatures:
+            description: Whether one person may give more than one response that counts on the approval (signoff-design.md decision 16); absent unless true.
+            type: boolean
+            const: true
+    GateStage:
+      x-engine-record: Maquettiste.Engine.GateStageRecord
+      description: A stage of an approval (part kind `gate-stage`, signoff-design.md decision 4), holding named signatures.
+      type: object
+      required: [id, name, displayName, description, signatures]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: [string, 'null']
+        signatures:
+          type: array
+          items:
+            $ref: '#/components/schemas/NamedSignature'
+    NamedSignature:
+      x-engine-record: Maquettiste.Engine.NamedSignatureRecord
+      description: |
+        A signature an approval needs (part kind `named-signature`, signoff-design.md decision 3): its signers and count, needed unless
+        its `when` is false when its round starts, and not by whoever did a `notBy` verb or move since the object entered the gated move's
+        source state.
+      type: object
+      required: [id, name, displayName, description, stage, signers, required, requiredActors, allowRepeatSigner, notBy]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: [string, 'null']
+        stage:
+          description: The id of the stage that holds it.
+          type: string
+        signers:
+          type: array
+          items:
+            type: string
+        required:
+          type: integer
+          minimum: 1
+        requiredActors:
+          type: array
+          items:
+            type: string
+        allowRepeatSigner:
+          type: boolean
+        when:
+          description: The condition, typed at the `Approval` site; left out when it has none or it does not type, and on a gate policy's signature.
+          $ref: '#/components/schemas/ExpressionRecord'
+        notBy:
+          description: The entries in file order, each a verb key or a transition id.
+          type: array
+          items:
+            type: object
+            properties:
+              verb:
+                type: string
+              transition:
+                type: string
     MeaningRecord:
       x-engine-record: Maquettiste.Engine.MeaningRecord
       description: A meaning of a gate's signature.
@@ -11340,6 +11430,13 @@ components:
           type: [string, 'null']
         reason:
           type: [string, 'null']
+        response:
+          type: string
+          description: The step's response to an approval (signoff-design.md decision 25), as written; absent when the step gives none (a signature).
+          enum: [sign, reject, ignore, withdraw]
+        signature:
+          type: string
+          description: The id of the named signature the step answers (signoff-design.md decision 25); absent when the engine picks it.
         payload:
           type: object
           additionalProperties: true
@@ -11384,9 +11481,10 @@ components:
             With participant: the id of the actor the engine's replay ran the step as. It is the step's actor when given; else it is
             worked out from the moves the step could make when it ran: for a gated move, a required actor of the gate not yet signed,
             else a signer the event's actors also accept, else the first signer the participant satisfies; otherwise the first of the
-            event's or human task's actors it satisfies, or the participant's actor when that list is empty. Absent for a step that
-            names no participant, when the participant satisfies none (the replay refuses the step by actor), and when the replay did
-            not reach the step.
+            event's or human task's actors it satisfies, or the participant's actor when that list is empty. On an approval
+            (signoff-design.md decision 8), the same rule runs within the named signature the step answers, picked together with it.
+            Absent for a step that names no participant, when the participant satisfies none (the replay refuses the step by actor),
+            and when the replay did not reach the step.
     ExpectationRecord:
       x-engine-record: Maquettiste.Engine.ExpectationRecord
       description: What a step expects.
@@ -11413,7 +11511,7 @@ components:
         refusal:
           type: string
           description: The refusal the step expects (rights-design.md decision 26); absent when the file gives none.
-          enum: [no-transition, guard, actor, gate-signer, gate-repeat, gate-reason, right, default, frozen, check]
+          enum: [no-transition, guard, actor, gate-signer, gate-excluded, gate-repeat, gate-not-signed, gate-reason, right, default, frozen, check]
         refusedBy:
           type: string
           description: The id of the element the step expects to refuse it (rights-design.md decision 26); absent when the file gives none.
@@ -11427,6 +11525,12 @@ components:
           description: The ids of the trigger points the step expects to run, in run order (trigger-points-design.md decision 28); absent when the file gives none.
           items:
             type: string
+        signatures:
+          type: object
+          description: The signatures the step expects counted after it, by named signature id (signoff-design.md decision 27); absent when the file gives none.
+          additionalProperties:
+            type: integer
+            minimum: 0
     OperationRecord:
       x-engine-record: Maquettiste.Engine.OperationRecord
       description: 'A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors; the events it fires and what it requires by id.'
@@ -15103,6 +15207,19 @@ components:
           type: [string, 'null']
         signer:
           type: [string, 'null']
+        response:
+          description: |
+            How the step answers an approval on its event (signoff-design.md decision 25): `sign` (the default), `reject` (a veto: it
+            clears the approval's signatures and moves nothing), `ignore` (abstain: it finishes the person on the signature and leaves the
+            count) or `withdraw` (it takes back the person's latest signature). Only on an event step whose event is gated by an approval
+            (MQ9305). Left out of a trace's echo when it is `sign`.
+          type: string
+          enum: [sign, reject, ignore, withdraw]
+        signature:
+          description: |
+            The id of the approval's named signature the step answers (signoff-design.md decision 8); the engine picks one when absent, by
+            the same rule every time. Left out of a trace's echo when absent; the audit names the signature picked.
+          type: string
         meaning:
           type: [string, 'null']
         reason:
@@ -15287,7 +15404,7 @@ components:
         refusal:
           description: Why the input was refused, the first check that failed (rights-design.md decision 12); null when accepted.
           type: [string, 'null']
-          enum: [no-transition, guard, actor, gate-signer, gate-repeat, gate-reason, right, default, frozen, check, null]
+          enum: [no-transition, guard, actor, gate-signer, gate-excluded, gate-repeat, gate-not-signed, gate-reason, right, default, frozen, check, null]
         microsteps:
           type: array
           items:
@@ -15332,7 +15449,9 @@ components:
             The actor a step with a participant acted as (actors-design.md decision 15), worked out from the moves the step could make
             when it ran: for a gated move, a required actor of the gate not yet signed, else a signer the event's actors also accept,
             else the first signer the participant satisfies; otherwise the first of the event's or human task's actors it satisfies, or
-            the participant's actor when that list is empty. The input echoes the filled-in step: its actor is this actor and its
+            the participant's actor when that list is empty. On an approval (signoff-design.md decision 8), the same rule runs within
+            the named signature the step answers, picked together with it; the input still echoes the step's own `signature`, and the
+            audit names the one picked. The input echoes the filled-in step: its actor is this actor and its
             signer the participant's identity when the step gave none. Left out for a step that names no participant, and when the
             participant satisfies none of the actors it could act as. The mock backend fills it and echoes the input the same way.
           $ref: '#/components/schemas/Ulid'
@@ -15526,11 +15645,20 @@ components:
         at:
           type: string
         outcome:
+          description: |
+            `signed`, `completed`, `refused` or `discarded`; on an approval also `rejected` (a veto cleared it), `ignored` (a person
+            abstained on a signature) and `withdrawn` (a person took back a signature) (signoff-design.md decision 19).
           type: string
-          enum: [signed, completed, refused, discarded]
+          enum: [signed, completed, refused, discarded, rejected, ignored, withdrawn]
         attributes:
           type: object
           additionalProperties: true
+        signature:
+          description: On an approval, the id of the named signature the record is about (signoff-design.md decision 19). Left out on a gate without stages, and on a record about the whole approval.
+          $ref: '#/components/schemas/Ulid'
+        stage:
+          description: On an approval, the id of the stage of `signature`. Left out when `signature` is.
+          $ref: '#/components/schemas/Ulid'
     EnabledTrigger:
       x-engine-record: Maquettiste.Engine.Processes.EnabledTrigger
       type: object
@@ -15566,9 +15694,21 @@ components:
           items:
             $ref: '#/components/schemas/Ulid'
         gate:
+          description: |
+            The gate's signatures so far and the count it needs, for a gated event. On an approval (signoff-design.md decision 26), `have`
+            counts the signatures on the current round's needed signatures and `need` is the sum of their `required`; and, when the event
+            names no actors, `actors` lists the signers of those signatures in file order, with their members.
           oneOf:
             - $ref: '#/components/schemas/GateProgress'
             - type: 'null'
+        responses:
+          description: |
+            The responses the trigger's event takes at an approval, in the order `sign`, `reject`, `ignore`, `withdraw`
+            (signoff-design.md decision 26). Left out when the event's gate has no stages.
+          type: array
+          items:
+            type: string
+            enum: [sign, reject, ignore, withdraw]
     GateProgress:
       x-engine-record: Maquettiste.Engine.Processes.GateProgress
       type: object
@@ -15609,6 +15749,9 @@ components:
           type: [string, 'null']
         reason:
           type: [string, 'null']
+        signature:
+          description: On an approval, the id of the named signature it counts for (signoff-design.md decision 26). Left out on a gate without stages.
+          $ref: '#/components/schemas/Ulid'
     GateState:
       x-engine-record: Maquettiste.Engine.Processes.GateState
       type: object
@@ -15623,7 +15766,58 @@ components:
           items:
             $ref: '#/components/schemas/GateSignature'
         satisfied:
-          description: Whether the gate has enough signatures and each required actor signed, a signature counting for a required actor when its actor is that actor or one of its members at any depth.
+          description: |
+            Whether the gate has enough signatures and each required actor signed, a signature counting for a required actor when its actor
+            is that actor or one of its members at any depth. On an approval (signoff-design.md decision 26), true only when nothing is
+            needed: the approval is complete and waits for the event's next occurrence; otherwise the occurrence that completes it moves at
+            once.
+          type: boolean
+        stages:
+          description: On an approval, its stages in file order, each with its signatures (signoff-design.md decision 26). Left out on a gate without stages.
+          type: array
+          items:
+            $ref: '#/components/schemas/ApprovalStageState'
+    ApprovalStageState:
+      x-engine-record: Maquettiste.Engine.Processes.ApprovalStageState
+      description: A stage of an approval in a simulation's gate state (signoff-design.md decision 26).
+      type: object
+      required: [stage, complete, signatures]
+      properties:
+        stage:
+          $ref: '#/components/schemas/Ulid'
+        complete:
+          description: Whether each of its signatures is complete or not needed.
+          type: boolean
+        signatures:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApprovalSignatureState'
+    ApprovalSignatureState:
+      x-engine-record: Maquettiste.Engine.Processes.ApprovalSignatureState
+      description: A named signature of an approval in a simulation's gate state (signoff-design.md decision 26).
+      type: object
+      required: [signature, needed, counted, required, finished, complete]
+      properties:
+        signature:
+          $ref: '#/components/schemas/Ulid'
+        needed:
+          description: Whether it is needed. Its `when` was judged when its round started; only false means not needed.
+          type: boolean
+        counted:
+          description: The signatures counted for it.
+          type: integer
+          minimum: 0
+        required:
+          description: The signatures it needs.
+          type: integer
+          minimum: 1
+        finished:
+          description: The identities of the people who answered it, by signing or ignoring, in the order they first did.
+          type: array
+          items:
+            type: string
+        complete:
+          description: Whether it has its count and each of its required actors signed.
           type: boolean
     SimulationResult:
       x-engine-record: Maquettiste.Engine.Processes.SimulationResult

@@ -355,7 +355,8 @@ export function stepVerbs(process: Pick<ProcessDoc, "events" | "transitions">, s
   for (const t of moves) {
     const verb = t.verb ?? (input === "event" ? (process.events ?? []).find((e) => e.id === step.event)?.verb : undefined);
     if (verb) verbs.add(verb);
-    if (t.gate) verbs.add("sign");
+    // On an approval the step's response is the verb whose points run (signoff-design.md decision 17).
+    if (t.gate) verbs.add(t.gate.stages?.length ? (step.response ?? "sign") : "sign");
   }
   return verbs;
 }

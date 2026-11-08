@@ -368,7 +368,7 @@ function TriggerDialog({
 }
 
 /** Only if and a check's condition: one expression in the value box, with its preview. Apply writes it; empty removes it. */
-function ExpressionDialog({
+export function ExpressionDialog({
   title,
   hint,
   placeholder,
@@ -376,12 +376,15 @@ function ExpressionDialog({
   request,
   onApply,
   onClose,
+  testid = "trigger-expression",
 }: {
   title: string;
   hint: string;
   placeholder: string;
   initial: string;
   request: Parameters<typeof ValueBox>[0]["request"];
+  /** The test id of the dialog; its Apply button adds `-apply`. */
+  testid?: string;
   onApply: (text: string) => void;
   onClose: () => void;
 }) {
@@ -391,7 +394,7 @@ function ExpressionDialog({
       <DialogContent title={title} wide>
         <form
           className="flex flex-col gap-2"
-          data-testid="trigger-expression-dialog"
+          data-testid={`${testid}-dialog`}
           onSubmit={(e) => {
             e.preventDefault();
             // Text left as it was keeps the stored tree.
@@ -400,12 +403,12 @@ function ExpressionDialog({
           }}
         >
           <p className="text-12 text-secondary">{hint}</p>
-          <ValueBox id="trigger-expression" label={title} initial={initial} onChange={setText} request={request} placeholder={placeholder} condition />
+          <ValueBox id={testid} label={title} initial={initial} onChange={setText} request={request} placeholder={placeholder} condition />
           <div className="flex justify-end gap-2">
             <Button type="button" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary" data-testid="trigger-expression-apply">
+            <Button type="submit" variant="primary" data-testid={`${testid}-apply`}>
               Apply
             </Button>
           </div>

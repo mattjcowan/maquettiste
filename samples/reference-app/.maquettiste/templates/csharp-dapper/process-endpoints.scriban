@@ -9,6 +9,8 @@ include "_process.scriban"
 p = process
 name = p_name(p)
 route = "/processes/" + (kebab p.name)
+# Where the project uses approvals, the request's Response and Signature reach the envelope (signoff-design.md decision 9).
+approvals = model.approval_lifecycles.size > 0
 if pack.params.endpointsFolder != ""
 -}}
 {{- capture content -}}
@@ -54,7 +56,7 @@ public static partial class {{ name }}Endpoints
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(dispatcher);
-        var command = new {{ cmd }}(new ProcessEnvelope(instance, request.Actor, request.Signer, request.Meaning, request.Reason))
+        var command = new {{ cmd }}(new ProcessEnvelope(instance, request.Actor, request.Signer, request.Meaning, request.Reason){{ if approvals }} { Response = request.Response, Signature = request.Signature }{{ end }})
 {{- if body != "EventRequest" }}
         {
 {{- for a in e.payload }}

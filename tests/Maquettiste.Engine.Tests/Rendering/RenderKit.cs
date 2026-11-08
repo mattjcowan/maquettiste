@@ -190,6 +190,7 @@ internal static class Adhoc
         Rights = model.Rights,
         RightsLifecycles = model.RightsLifecycles,
         TriggerLifecycles = model.TriggerLifecycles,
+        ApprovalLifecycles = model.ApprovalLifecycles,
         TriggerPoints = model.TriggerPoints,
         Freezing = model.Freezing,
         Operations = model.Operations,

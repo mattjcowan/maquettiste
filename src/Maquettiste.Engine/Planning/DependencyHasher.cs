@@ -232,6 +232,8 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "tn" => string.Equals(key, TriggerNaming.Key, StringComparison.Ordinal) ? TriggerNaming.Hash(model) : Absent,
             // Whether the project uses freezing (rights-design.md decision 28): one flag, so its hash never changes in a project that doesn't.
             "fn" => string.Equals(key, FreezingNaming.Key, StringComparison.Ordinal) ? FreezingNaming.Hash(model) : Absent,
+            // Which processes use an approval, inline or through a gate policy (signoff-design.md section 7).
+            "ap" => string.Equals(key, ApprovalNaming.Key, StringComparison.Ordinal) ? ApprovalNaming.Hash(model) : Absent,
             _ => Absent,
         };
     }

@@ -18,7 +18,7 @@ export interface VerbUse {
   /** The event, transition or operation that holds it. */
   holder: string | null;
   key: string;
-  owner: "event" | "transition" | "operation" | "right" | "trigger-point" | "step";
+  owner: "event" | "transition" | "operation" | "right" | "trigger-point" | "step" | "not-by";
 }
 
 /** Every use of a verb in a document (the three places of decisions 11 to 13), in file order. */
@@ -39,6 +39,20 @@ export function verbUses(doc: Json): VerbUse[] {
         if (typeof key === "string") out.push({ pointer: `/rights/${i}/verbs/${j}`, holder: str(r.id), key, owner: "right" });
       }),
     );
+    // The verbs of its named signatures' notBy, inline or in a library's gate policies (signoff-design.md decision 15).
+    const gates = [
+      ...arr(doc.transitions).map((t, i) => ({ gate: t.gate as Json | undefined, at: `/transitions/${i}/gate` })),
+      ...arr(doc.gates).map((gate, i) => ({ gate, at: `/gates/${i}` })),
+    ];
+    for (const { gate, at } of gates)
+      arr(gate?.stages).forEach((stage, s) =>
+        arr(stage.signatures).forEach((sig, j) =>
+          arr(sig.notBy).forEach((n, k) => {
+            const key = str(n.verb);
+            if (key !== null) out.push({ pointer: `${at}/stages/${s}/signatures/${j}/notBy/${k}/verb`, holder: str(sig.id), key, owner: "not-by" });
+          }),
+        ),
+      );
     // The verbs of its trigger points (trigger-points-design.md section 9).
     arr(doc.triggerPoints).forEach((t, i) =>
       (Array.isArray(t.verbs) ? (t.verbs as unknown[]) : []).forEach((key, j) => {
@@ -54,6 +68,9 @@ export function verbUses(doc: Json): VerbUse[] {
     arr(doc.steps).forEach((st, i) => {
       const key = str(st.verb);
       if (st.input === "verb" && key !== null) out.push({ pointer: `/steps/${i}/verb`, holder: str(st.id), key, owner: "step" });
+      // A response is a built-in verb's key (signoff-design.md decision 25); a hidden one is MQ9704.
+      const response = str(st.response);
+      if (st.input === "event" && response !== null) out.push({ pointer: `/steps/${i}/response`, holder: str(st.id), key: response, owner: "step" });
     });
   } else if (doc.kind === "operation") {
     const key = str(doc.verb);
@@ -225,6 +242,7 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
         json.rights = arr(json.rights).filter((r) => !(typeof r.right === "string" && gone.has(r.right)));
       dropRightsWithoutVerbs(json);
       dropTriggerPointsWithoutVerbs(json, gonePoints);
+      dropEmptyNotBy(json);
     }
     // A step's word entries for a trigger point that went, and its id in the expected check warnings and trigger points.
     if (gonePoints.size)
@@ -257,6 +275,22 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
   // Writes that change nothing are skipped.
   for (const [id, doc] of [...changed]) if (JSON.stringify(doc) === JSON.stringify(docs.get(id))) changed.delete(id);
   return { changed, deleted: [...gone].sort() };
+}
+
+/** A notBy entry whose verb a remove took is empty: it leaves its list, and an empty list is written without the key. */
+function dropEmptyNotBy(json: Json): void {
+  const clean = (gate: Json | undefined) =>
+    arr(gate?.stages).forEach((stage) =>
+      arr(stage.signatures).forEach((sig) => {
+        if (!Array.isArray(sig.notBy)) return;
+        const kept = arr(sig.notBy).filter((n) => n.verb !== undefined || n.transition !== undefined);
+        if (kept.length) sig.notBy = kept;
+        else delete sig.notBy;
+      }),
+    );
+  if (json.kind !== "process") return;
+  arr(json.transitions).forEach((t) => clean(t.gate as Json | undefined));
+  arr(json.gates).forEach(clean);
 }
 
 /** Takes the verbs marked gone out of a document's rights; a right whose last verb goes goes too (rights-design.md section 8). */

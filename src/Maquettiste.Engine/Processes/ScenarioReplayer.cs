@@ -160,6 +160,8 @@ public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOn
                     // The checks that warned, which only a project with trigger points has; each written only when not empty.
                     CheckWarnings = t.CheckWarnings,
                     TriggerPoints = (triggerPoints || expected?.TriggerPoints is not null) && ran is { Count: > 0 } ? ran : null,
+                    // The signatures counted after an accepted step that answered an approval (signoff-design.md decision 27).
+                    Signatures = t.AnsweredSignatures,
                 };
             })],
             Final ? ScenarioOutcome.Final : ScenarioOutcome.Active);
@@ -350,6 +352,21 @@ public static class ScenarioReplayer
                 first ??= Fail("MQ9307", message, expect.Values, valuesChanged, pointer + "/expect/values");
             }
 
+            // The signatures counted after the step (signoff-design.md decision 27): only the listed named signatures, each by its count.
+            if (expect.Signatures is { Count: > 0 } wanted)
+            {
+                var counts = trace.SignatureCounts;
+                var actual = new SortedDictionary<string, int>(StringComparer.Ordinal);
+                foreach (var key in wanted.Keys)
+                    actual[key] = counts is not null && counts.TryGetValue(key, out var n) ? n : 0;
+                if (wanted.Any(p => actual[p.Key] != p.Value))
+                {
+                    var listed = new SortedDictionary<string, int>(wanted.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal), StringComparer.Ordinal);
+                    var message = $"{At(i)}{Describe(c, step)} leaves {Counted(c, actual)} counted, but expect.signatures lists {Counted(c, listed)}; fix the approval or the steps, or update the expectations from a replay.";
+                    first ??= Fail("MQ9311", message, listed, actual, pointer + "/expect/signatures");
+                }
+            }
+
             return first;
 
             // A refusal by actor of a step with a participant names the participant and what it failed (MQ9301).
@@ -364,6 +381,14 @@ public static class ScenarioReplayer
                 return new ScenarioFailure(i, rule, message, JsonSerializer.SerializeToElement(expected), JsonSerializer.SerializeToElement(actual));
             }
         }
+    }
+
+    // Named signatures with their counts, for MQ9311: "signature 'Engineering' 1, signature 'Quality' 0".
+    private static string Counted(StatechartModel chart, IReadOnlyDictionary<string, int> counts)
+    {
+        var names = chart.Transitions.Select(t => t.Gate).OfType<ProcessGate>().SelectMany(g => g.AllSignatures)
+            .GroupBy(s => s.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Name, StringComparer.Ordinal);
+        return string.Join(", ", counts.Select(p => $"signature '{(names.TryGetValue(p.Key, out var name) ? name : p.Key)}' {p.Value.ToString(CultureInfo.InvariantCulture)}"));
     }
 
     /// <summary>The interpreter a replay runs: the scenario's subject is the object it sees (lifecycle-design.md decision 22).</summary>
@@ -385,6 +410,8 @@ public static class ScenarioReplayer
             return (At(index) + participant.Message, participant.Field);
         if (VerbStepFields.Check(runtime, chart.Process, cast, step) is { } verbStep)
             return (At(index) + verbStep.Message, verbStep.Field);
+        if (ApprovalStepFields.Check(runtime.Model, chart, step) is { } approval)
+            return (At(index) + approval.Message, approval.Field);
         if (step.Input != StepInput.Event || step.Event is null || !chart.Events.TryGetValue(step.Event, out var ev))
             return null;
         var gates = chart.Transitions.Where(t => t.Trigger == TransitionTrigger.Event && string.Equals(t.Transition.Event, step.Event, StringComparison.Ordinal))
