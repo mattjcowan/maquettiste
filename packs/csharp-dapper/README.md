@@ -621,7 +621,7 @@ dry run are each behind a parameter, `bulkLoadBypass` and `dryRun`, both off by 
 - **The bypass** (`bulkLoadBypass`). A call to a runner may set `SkipOptional`. The runner honours it only when `ITriggerBypass.Allows`
   says yes, skips every check and action not marked `noBypass`, and logs each skip through `ITriggerBypass.Skipped`. A replace always runs:
   it is the verb's effect, so skipping it would turn an "archive, never remove" delete into a real one. Your `Dispatch/TriggerBypass.cs`
-  (written once) refuses until you write it; each runner also takes another bypass. With the parameter off, `noBypass` has no effect in this
+  (written once) refuses until you write it; a runner's constructor also takes an optional bypass of its own, for tests. With the parameter off, `noBypass` has no effect in this
   pack, since nothing can skip. If you turn it off after it was on, delete `Dispatch/TriggerBypass.cs`: it implements an interface that is
   no longer written, so the build fails until you do.
 - **The dry run** (`dryRun`). A call to a runner may set `DryRun`. The runner runs freezing, rights, before actions and checks, then stops:

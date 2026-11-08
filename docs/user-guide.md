@@ -2745,8 +2745,8 @@ creating, changing, deleting, connecting or freezing an object can check the cha
 is saved. A lifecycle holds its trigger points in its **Trigger points** tab, after **Rights**. They are optional. A project that states
 none keeps its files, output, findings, replays and tool answers.
 
-Only lifecycles hold trigger points. An orchestration or a library with `triggerPoints` is MQ8101. Trigger points on types with no
-lifecycle are not available yet.
+A lifecycle holds its own trigger points. An orchestration or a library with `triggerPoints` is MQ8101. For a type with no lifecycle, or
+for one rule shared by many types, use [named trigger points](#named-trigger-points) below.
 
 **The three types.**
 
@@ -2841,7 +2841,8 @@ to write it from.
 optionally a state and a type, and lists what runs, in order: the built-in steps that apply, then each trigger point as a link. Points of
 other lifecycles show their lifecycle's name. It shows the saved lifecycle. The MCP tool `get_trigger_sequence` and
 `maquettiste process trigger-sequence <lifecycle> --verb <key>` give the same steps (`--state`, `--entity`, `--attribute`, `--end` and
-`--transition` narrow them). The `process-docs` pack writes the same lists on the lifecycle's page.
+`--transition` narrow them). The `process-docs` pack writes the same lists on the lifecycle's page. A type with no lifecycle gets a
+**What happens when** view too, and it lists the type's named points.
 
 **In scenarios.**
 
@@ -2867,6 +2868,41 @@ per-type runner. The pack's README has the steps. `process-docs` adds a Trigger 
 `process.trigger_points`, `model.trigger_lifecycles` and `verb.trigger_points`.
 
 **Upgrading.** An older engine refuses a `triggerPoints` list, `old.` and the new `assume` words. The file format version stays 1.
+
+#### Named trigger points
+
+A **named trigger point** is a trigger point that lives in its own file, outside any lifecycle. It is for two cases. A type such as a
+customer has no lifecycle, and still needs a number on create or an archive on delete. Or one rule, such as "an approved item may not
+change", must hold for many types, and you want to write it once. Find them in the **Trigger points** folder of the explorer. Each opens
+in its own editor, the same grid as a lifecycle's tab, without the columns for states, moves and into-states, since those belong to one
+lifecycle. Where you need a state, use `in_state` in **Only if**. They are optional. A project with none is unchanged.
+
+**Covers and Except.** **Covers** (`subjects`) lists the types and stereotypes the point is for. It runs for every object of a type listed,
+of a type derived from one, and of a type that carries a stereotype listed. **Except** (`exceptEntities`) lists types to leave out, so
+"every approvable type but memos" is one file. What the point reads and sets must be held, under one id, by every type it covers. The
+editor shows **Runs for**, the engine's own list of the types the point reaches.
+
+**Never skipped by a bulk load** (`noBypass`) marks a check or action that must run even when a bulk load asks to skip optional ones. See
+the limits below. A replace is never skipped.
+
+**The order.** At each moment, named points run before a lifecycle's points. Among named points, the one whose covered type is the
+farthest base runs first. At one depth, points that name the type come before points that come through a stereotype, then they go by
+name. A named point on a move, a signature or a task verb runs only inside the lifecycle that owns the move, for a type it covers. It never
+runs in an orchestration, and never in "What happens when" for a type alone. A list of trigger points that names a verb shows the named
+points first.
+
+**In scenarios.** Named points run in a replay like any trigger point. A step's `assume` may name one, and a step may expect it in
+**Trigger points**, in the order the engine runs them. Simulation never skips anything: it ignores any bulk-load or dry-run request.
+
+**Limits.**
+
+- Generated process code runs only the named points that cover every subject of a multi-subject process. A point that covers only some
+  of the subjects is not asked there. Simulation asks it.
+- The bulk-load bypass and the dry run exist only in generated `csharp-dapper` code, and only when the pack parameters `bulkLoadBypass` and
+  `dryRun` are on (both are off). With `bulkLoadBypass` off, **Never skipped by a bulk load** has no effect, since nothing can skip. With
+  it on, a bypass still needs the team's own `TriggerBypass.cs` to allow it. A permitted bypass never skips a replace.
+- When a process's named points name a type derived from its subject, the generated code asks the team's `EntityOf` for the object's own
+  type. The team writes it.
 
 ### The rules for processes (MQ9xxx)
 
