@@ -52,9 +52,18 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
   const nameOf = (id: string) => String(byId.get(id)?.name ?? id);
   const name = String(json.name ?? "");
   const points = arr(json.triggerPoints);
-  if (json.triggerPoints === undefined) return;
+  if (!points.length) return;
   if (json.use !== "lifecycle") {
-    emit("MQ8101", "error", `'${name}' is not a lifecycle, so it holds no trigger points; only lifecycles do. Remove the key.`, "/triggerPoints");
+    // One finding for each point, as the engine reports (an empty list is no finding).
+    points.forEach((t, i) =>
+      emit(
+        "MQ8101",
+        "error",
+        `Trigger point '${String(t.name ?? "")}' is on ${json.use === "library" ? "a library" : "an orchestration"}; only lifecycles hold trigger points. Remove it.`,
+        `/triggerPoints/${i}`,
+        str(t.id) ?? undefined,
+      ),
+    );
     return;
   }
   const states = allStates(json);
@@ -67,10 +76,35 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
   const held = (ids: string[], kind: "attribute" | "end"): Set<string> =>
     new Set(ids.length ? commonFields(ids.map((e) => objectFields(e, src).filter((f) => f.kind === kind))).map((f) => f.id) : []);
   const eventVerbs = new Set(events.flatMap((e) => (str(e.verb) ? [e.verb as string] : [])));
-  const moveVerbs = new Set([...eventVerbs, ...arr(json.transitions).flatMap((t) => (str(t.verb) ? [t.verb as string] : []))]);
-  const guardNames = new Set(arr(json.guards).flatMap((g) => (str(g.name) ? [String(g.name).toLowerCase()] : [])));
+  // The guards of the process as it runs: its own, and the library guards its transitions name (the engine's effective process).
+  const usedGuards = new Set(arr(json.transitions).flatMap((t) => (str(t.guard) ? [t.guard as string] : [])));
+  const guardNames = new Set([
+    ...arr(json.guards).flatMap((g) => (str(g.name) ? [String(g.name)] : [])),
+    ...entries.flatMap((e) =>
+      e.json.kind === "process" && e.json.use === "library"
+        ? arr(e.json.guards).flatMap((g) => (usedGuards.has(String(g.id)) && str(g.name) ? [String(g.name)] : []))
+        : [],
+    ),
+  ]);
   const taken = new Map<string, number>();
-  const replacesDelete = points.filter((t) => t.type === "replace" && strings(t.verbs).includes("delete"));
+  // The entities each lifecycle governs, and which of them a point runs for: its entities and what derives from them (decision 12).
+  const entities = entries.filter((e) => e.json.kind === "entity");
+  const governedBy = (lifecycle: Json) => entities.filter((e) => coverage.governs(lifecycle, e.id)).map((e) => e.id);
+  const chainIds = (e: string) => entityChain(e, (id) => byId.get(id)).map((d) => String(d.id));
+  const coversOf = (t: Json, governed: string[]) => {
+    const named = strings(t.entities);
+    return named.length ? governed.filter((e) => chainIds(e).some((x) => named.includes(x))) : governed;
+  };
+  const mineGoverned = governedBy(json);
+  const replacedDelete = new Set(
+    entries.flatMap((e) =>
+      e.json.kind === "process" && e.json.use === "lifecycle"
+        ? arr(e.json.id === json.id ? points : e.json.triggerPoints)
+            .filter((t) => t.type === "replace" && strings(t.verbs).includes("delete"))
+            .flatMap((t) => coversOf(t, e.json.id === json.id ? mineGoverned : governedBy(e.json)))
+        : [],
+    ),
+  );
   points.forEach((t, i) => {
     const at = `/triggerPoints/${i}`;
     const id = str(t.id) ?? undefined;
@@ -78,7 +112,8 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
     const type = t.type;
     const verbs = strings(t.verbs);
     // MQ3001: names are unique among the lifecycle's trigger points and apart from its guards.
-    const key = String(t.name ?? "").toLowerCase();
+    // Names compare exactly, and one point gets one finding (the engine's CheckNames).
+    const key = String(t.name ?? "");
     if (key) {
       if (taken.has(key))
         emit(
@@ -88,15 +123,17 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
           `${at}/name`,
           id,
         );
-      else taken.set(key, i + 1);
-      if (guardNames.has(key))
-        emit(
-          "MQ3001",
-          "error",
-          `Trigger point name '${String(t.name)}' is also the name of a guard of '${name}', so a step's assume could not tell them apart.`,
-          `${at}/name`,
-          id,
-        );
+      else {
+        taken.set(key, i + 1);
+        if (guardNames.has(key))
+          emit(
+            "MQ3001",
+            "error",
+            `Trigger point name '${String(t.name)}' is also the name of a guard of '${name}', so a step's assume could not tell them apart.`,
+            `${at}/name`,
+            id,
+          );
+      }
     }
     // MQ8101: the shape.
     if (type === "action" && t.timing === undefined)
@@ -117,13 +154,8 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
         id,
       );
     if (type === "action" && t.timing === "with-change" && arr(t.sets).length && verbs.includes("delete")) {
-      const mine = strings(t.entities);
-      // A replace on delete covers it when it covers every entity this point covers: one with no entities covers all.
-      const covers = replacesDelete.some((r) => {
-        const theirs = strings(r.entities);
-        return theirs.length === 0 || (mine.length > 0 && mine.every((e) => theirs.includes(e)));
-      });
-      if (!covers)
+      // Some replace on delete, of this or another lifecycle, must cover every entity this point covers (derived entities included).
+      if (coversOf(t, mineGoverned).some((e) => !replacedDelete.has(e)))
         emit(
           "MQ8101",
           "error",
@@ -206,20 +238,23 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
     }
     // MQ8103: a replace on a verb that does not allow it.
     if (type === "replace" && !allowsReplace(verbs))
-      emit(
-        "MQ8103",
-        "error",
-        `${label} replaces ${verbs.filter((v) => !REPLACE_VERBS.has(v)).join(", ")}, but only delete, disconnect, copy and revise allow a replace. Make it an action.`,
-        `${at}/type`,
-        id,
-      );
+      verbs.forEach((v, k) => {
+        if (!REPLACE_VERBS.has(v))
+          emit(
+            "MQ8103",
+            "error",
+            `${label} replaces ${v}, whose effect cannot be replaced; only delete, disconnect, copy and revise allow a replace. Make it an action.`,
+            `${at}/verbs/${k}`,
+            id,
+          );
+      });
     // MQ8105 and MQ8106: the moment against what the point does.
     if (type === "action" && t.timing === "after-commit" && arr(t.sets).length)
       emit(
         "MQ8105",
         "error",
         `${label} runs after commit, but sets values: once the change is saved, setting the object is a new change. Make it a with-change action.`,
-        `${at}/timing`,
+        `${at}/sets`,
         id,
       );
     if (type === "action" && t.timing === "with-change" && t.outside === true)
@@ -231,8 +266,14 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
         id,
       );
     // MQ8107: a trigger point that can never run.
-    if (verbs.length && neverRuns(t, verbs, json, eventVerbs, moveVerbs))
-      emit("MQ8107", "warning", `${label} can never run: ${deadReason(t, verbs)}. Remove it.`, at, id);
+    if (verbs.length && neverRuns(t, verbs, json))
+      emit(
+        "MQ8107",
+        "warning",
+        `${label} can never run: no event or transition of its lifecycle does its verbs, or no input can do them yet. Remove it.`,
+        `${at}/verbs`,
+        id,
+      );
   });
   // MQ8104: two replaces that can apply to one verb on one entity, in this lifecycle or another that governs it.
   const mine = points.map((t, i) => ({ t, i })).filter(({ t }) => t.type === "replace");
@@ -259,28 +300,27 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
         "MQ8104",
         "error",
         `The trigger point '${String(t.name)}' replaces a verb on an entity that '${String(earlier ? earlier.t.name : elsewhere!.r.name)}'${elsewhere ? ` of '${String(elsewhere.o.json.name)}'` : ""} already replaces. Only one replace can apply to one verb on one entity. Narrow one with entities.`,
-        `/triggerPoints/${i}/verbs`,
+        `/triggerPoints/${i}`,
         str(t.id) ?? undefined,
       );
   });
 }
 
-/** Whether a trigger point can run: a verb that something can do, and a move among the transitions it names. */
-function neverRuns(t: Json, verbs: string[], json: Json, eventVerbs: ReadonlySet<string>, moveVerbs: ReadonlySet<string>): boolean {
-  const dead = (v: string) => (isMoveVerb(v) ? !moveVerbs.has(v) : NO_INPUT.has(v) ? !eventVerbs.has(v) : false);
-  if (verbs.every(dead)) return true;
+/**
+ * Whether a trigger point can never run: every one of its verbs fails. A verb runs when an event of the lifecycle does it (through a
+ * transition it names, if it names any); a move verb also when a transition does it; any other verb unless no input can do it yet.
+ * This is the engine's CanRun, so `sign` on a point narrowed by transitions is the designed signature place and never dead.
+ */
+function neverRuns(t: Json, verbs: string[], json: Json): boolean {
   const named = strings(t.transitions);
-  if (!named.length) return false;
-  const events = new Map(arr(json.events).map((e) => [String(e.id), e]));
-  return !arr(json.transitions).some((tr) => {
-    if (!named.includes(String(tr.id))) return false;
-    const verb = str(tr.verb) ?? str(events.get(String(tr.event))?.verb);
-    return verb !== null && verbs.includes(verb);
-  });
-}
-
-function deadReason(t: Json, verbs: string[]): string {
-  return strings(t.transitions).length
-    ? `none of the moves it names has ${verbs.join(" or ")} as its verb`
-    : `no event or transition of its lifecycle does ${verbs.join(" or ")}`;
+  const transitions = arr(json.transitions);
+  const canRun = (verb: string): boolean => {
+    const byEvent = arr(json.events).some(
+      (e) => e.verb === verb && (!named.length || transitions.some((tr) => tr.event === e.id && named.includes(String(tr.id)))),
+    );
+    if (byEvent) return true;
+    if (isMoveVerb(verb)) return transitions.some((tr) => tr.verb === verb && (!named.length || named.includes(String(tr.id))));
+    return !NO_INPUT.has(verb);
+  };
+  return !verbs.some(canRun);
 }

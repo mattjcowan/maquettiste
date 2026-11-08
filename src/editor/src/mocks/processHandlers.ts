@@ -19,7 +19,7 @@ import { syncCodesOf } from "./model/syncCodes";
 import { report } from "./model/store";
 import { Membership } from "./model/membership";
 import { rightsGrid } from "./model/rightsCheck";
-import { sequenceOf } from "./model/triggerRun";
+import { resolveCheckNames, sequenceOf } from "./model/triggerRun";
 import { entityChain } from "@/model/objectFields";
 
 type Json = Record<string, unknown>;
@@ -406,13 +406,14 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
     return null;
   };
   // Refresh expectations (the batch operation of the store) replays the scenario with the same lookups as a verify.
-  model.scenarioReplay = (doc, scenario) => {
+  model.scenarioReplay = (doc, scenario, triggerPoints) => {
     const cast = castOf({}, scenario);
     const replayed = replay(doc, scenario.start as never, arr(scenario.steps), {
       ...actorLookup(),
       ...effectOptions(doc),
       ...(cast && !("error" in cast) ? { objects: cast.objects, subject: cast.subject } : {}),
       participants: arr(scenario.participants),
+      recordTriggerPoints: triggerPoints === true,
     });
     return replayed.complete ? { expects: replayed.expects, outcome: replayed.outcome } : null;
   };
@@ -452,13 +453,14 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         next: start + limit < rows.length ? String(start + limit) : null,
       });
     }),
-    // What runs, in order, when a verb happens (trigger-points-design.md decision 36). Simpler than the engine's: this lifecycle's points only.
+    // What runs, in order, when a verb happens (trigger-points-design.md decision 36). Simpler in one way: this lifecycle's points only.
     rawHttp.get(url("/api/processes/:id/trigger-sequence"), ({ params, request }) => {
       const entry = find(String(params.id));
       if (!entry) return missing(String(params.id));
       const q = new URL(request.url).searchParams;
       const verb = q.get("verb");
       if (!verb) return bad("verb is required.");
+      if (entry.json.use !== "lifecycle") return bad("Only a lifecycle has trigger points; this process is not one.");
       const steps = sequenceOf(
         entry.json,
         {
@@ -514,7 +516,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       // request's `start` is ignored), as the engine does.
       const scenarioSteps = scenarioEntry ? arr(scenarioEntry.json.steps) : [];
       const scenarioStart = scenarioEntry?.json.start && typeof scenarioEntry.json.start === "object" ? (scenarioEntry.json.start as Json) : null;
-      const steps = [...scenarioSteps, ...arr(value.steps)];
+      const steps = [...scenarioSteps, ...arr(value.steps).map((st) => resolveCheckNames(st, doc, effectOptions(doc).lifecycles ?? []))];
       const from = typeof value.from === "number" ? value.from : -1;
       const result = simulate(doc, (scenarioEntry ? scenarioStart : start) as never, steps, {
         from,
@@ -545,7 +547,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const requestPeople = arr(value.participants);
       const rawSteps = (value.steps as Json[]).map((st) => {
         const hit = typeof st.participant === "string" ? requestPeople.find((x) => x.id === st.participant || x.name === st.participant) : undefined;
-        return hit ? { ...st, participant: hit.id } : st;
+        return resolveCheckNames(hit ? { ...st, participant: hit.id } : st, entry.json, effectOptions(entry.json).lifecycles ?? []);
       });
       // The expectations come from a replay of the inputs, as the engine's record fills them (refusals as accepted: false).
       const replayed = replay(entry.json, start as never, rawSteps, {

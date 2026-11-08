@@ -36,7 +36,7 @@ import {
 } from "@/model/process";
 import { domIdOf, EditorLayout, useCodeGenerationTab, useEditorContext, type EditorContext } from "../EditorFrame";
 import { Grid, type GridColumn, type GridOption } from "../process/Grid";
-import { recordTriggerPoints, refreshScenario, verifyScenario } from "../process/api";
+import { refreshScenario, verifyScenario } from "../process/api";
 import { failureSentence } from "./replayFailure";
 import { useActors, useProblems, rowProblems } from "../process/shared";
 import { ScenarioStatusBadge } from "../process/ScenariosTab";
@@ -161,6 +161,18 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const objectFields = useObjectFields(starts);
   const usedRights = (processDoc?.rights ?? []).flatMap((r) => (r.right ? [r.right] : []));
   const namedRights = useElements(usedRights).byId;
+  // The trigger points that can act on a step: this lifecycle's, and those of the other lifecycles that have some (an object verb or an own
+  // verb also runs the points of every lifecycle that governs the object). Another lifecycle's are named `Lifecycle.Name`.
+  const otherLifecycles = (useIndex().data ?? []).filter(
+    (r) => r.kind === "process" && !!(r as { triggerPoints?: number }).triggerPoints && r.id !== scenario.process,
+  );
+  const otherDocs = useElements(otherLifecycles.map((r) => r.id)).byId;
+  const allPoints = [
+    ...(processDoc?.triggerPoints ?? []).map((t) => ({ t, label: t.name })),
+    ...otherLifecycles.flatMap((r) =>
+      ((otherDocs.get(r.id)?.json as unknown as ProcessDoc | undefined)?.triggerPoints ?? []).map((t) => ({ t, label: `${r.name}.${t.name}` })),
+    ),
+  ];
   // What a verb step's link and a refusal point at: relation ends, the process's rights (inline or named) and other lifecycles.
   const more = new Map<string, string>();
   for (const f of objectFields.fields) more.set(f.id, f.name);
@@ -177,7 +189,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
     for (const e of processDoc.events ?? []) refusers.push({ value: e.id, label: e.name });
     for (const t of processDoc.transitions ?? []) if (t.gate) refusers.push({ value: t.gate.id, label: t.gate.displayName || t.gate.name });
     for (const g of processDoc.guards ?? []) refusers.push({ value: g.id, label: g.name });
-    for (const t of processDoc.triggerPoints ?? []) refusers.push({ value: t.id, label: t.name });
+    for (const { t, label } of allPoints) refusers.push({ value: t.id, label });
   }
   for (const o of refusers) more.set(o.value, o.label);
   // A refusing element that is in none of these and not in the model any more reads "(deleted)".
@@ -199,7 +211,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const triggers = !!processDoc?.triggerPoints?.length || rows.some((r) => r.checkWarnings || r.triggerPoints);
   const refusals = rows.some((r) => r.refusal || r.refusedBy) || verbSteps || !!processDoc?.rights?.length || triggers;
   // The team-code checks a step's Assume cell can set, each with Pass, Warning or Error (decision 26).
-  const teamChecks = new Set((processDoc?.triggerPoints ?? []).filter(isTeamCheck).map((t) => t.id));
+  const teamChecks = new Set(allPoints.filter(({ t }) => isTeamCheck(t)).map(({ t }) => t.id));
   const names = stepNames(processDoc, actorNames);
   const states = processDoc ? [...stateIndex(processDoc).values()].map((i) => ({ id: i.state.id, name: i.path })) : [];
   const events: GridOption[] = (processDoc?.events ?? []).map((e) => ({ value: e.id, label: e.name }));
@@ -293,7 +305,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
             width: "min-w-24",
             value: (r: StepRow) => r.checkWarnings,
             editValue: (r: StepRow) => (step(r)?.expect?.checkWarnings ?? []).join(","),
-            options: () => (processDoc?.triggerPoints ?? []).filter((t) => t.type === "check").map((t) => ({ value: t.id, label: t.name })),
+            options: () => allPoints.filter(({ t }) => t.type === "check").map(({ t, label }) => ({ value: t.id, label })),
           },
           {
             key: "triggerPoints",
@@ -488,12 +500,9 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const updateExpectations = async () => {
     setBusy(true);
     try {
-      const refused = await refreshScenario(qc, store, scenario.id);
+      // One update: with "Also record trigger points" the same operation writes the points that ran (decision 28).
+      const refused = await refreshScenario(qc, store, scenario.id, alsoRecord);
       if (refused) store.getState().notify(`${RL.updateExpectations}: ${refused}`, "error");
-      else if (alsoRecord) {
-        const failed = await recordTriggerPoints(qc, store, scenario.process, scenario.id);
-        if (failed) store.getState().notify(`${TL.alsoRecord}: ${failed}`, "error");
-      }
     } finally {
       setBusy(false);
     }

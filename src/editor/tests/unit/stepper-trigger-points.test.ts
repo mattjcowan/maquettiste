@@ -2,7 +2,7 @@
 // steps, other lifecycles' points for object verbs, `assume` words, create values, and the four behaviours the owner asked to keep exact.
 import { describe, expect, it } from "vitest";
 import { replay, simulate } from "@/mocks/model/stepper";
-import { sequenceOf } from "@/mocks/model/triggerRun";
+import { resolveCheckNames, sequenceOf } from "@/mocks/model/triggerRun";
 
 type Json = Record<string, unknown>;
 
@@ -149,8 +149,10 @@ describe("the behaviours the owner asked to keep exact", () => {
     const step = asked.trace[1];
     expect(step.accepted).toBe(true);
     expect(step.configuration).toEqual(["B"]);
-    expect(runs(step)).toEqual(["hold:refused"]);
-    expect(step.notes?.join(" ")).toContain("automatic move was not taken");
+    // The step stays accepted, so the refusing check is named in a note and not listed as a refused run (section A, item 1).
+    expect(runs(step)).toEqual([]);
+    expect(step.notes?.filter((n) => n.includes("automatic move"))).toHaveLength(1);
+    expect(step.notes?.join(" ")).toContain("Check 'hold' refused an automatic move");
     // Passing, the move is taken.
     expect(asked.trace[2].refusal).toBe("no-transition");
     expect(simulate(doc, null, [{ event: "go" }], options).trace[1].configuration).toEqual(["C"]);
@@ -242,9 +244,16 @@ describe("other lifecycles' points, and the trace members", () => {
     expect(runs(simulate(acting, null, [verbStep("modify")], { ...options, lifecycles: [acting, other, quiet] }).trace[1])).not.toContain("never:passed");
   });
 
-  it("keys a word by Lifecycle.Name, and lists the team-code checks an enabled trigger reaches in checksUnknown", () => {
-    const step = simulate(acting, null, [verbStep("modify", { assume: { "Alpha.theirs": "warning" } })], { ...options, lifecycles: [acting, other] }).trace[1];
-    expect(step.checkWarnings).toEqual(["theirs"]);
+  it("keys a word by id only, resolves Lifecycle.Name in a request's input, and lists the team-code checks an enabled trigger reaches in checksUnknown", () => {
+    const withLifecycles = { ...options, lifecycles: [acting, other] };
+    const byId = simulate(acting, null, [verbStep("modify", { assume: { theirs: "warning" } })], withLifecycles).trace[1];
+    expect(byId.checkWarnings).toEqual(["theirs"]);
+    // A name is no key in a file (item 8): the check passes, as with no word.
+    const byName = simulate(acting, null, [verbStep("modify", { assume: { "Alpha.theirs": "warning" } })], withLifecycles).trace[1];
+    expect(byName.checkWarnings).toBeUndefined();
+    // A request's names turn into ids first, as the engine's ResolveNames does.
+    const resolved = resolveCheckNames(verbStep("modify", { assume: { "Alpha.theirs": "warning", own: "pass", flag: true } }), acting, [acting, other]);
+    expect(resolved.assume).toEqual({ theirs: "warning", own: "pass", flag: true });
     const doc = lifecycle({
       events: [ev("go")],
       transitions: [tr("t", "A", { event: "go", targets: ["B"], verb: "promote" })],
@@ -297,9 +306,149 @@ describe("the mock's get_trigger_sequence", () => {
 
   it("narrows by state and ends with a built-in effect and with-change step when no point does", () => {
     const steps = sequenceOf(doc, { verb: "delete", state: "A" }, chain);
-    expect(steps.map((s) => s.step)).toEqual(["frozen", "checks", "effect", "with-change"]);
+    expect(steps.map((s) => s.step)).toEqual(["frozen", "checks", "effect"]);
     expect(steps.some((s) => s.triggerPoint === "w")).toBe(false);
     expect(steps.find((s) => s.step === "effect")!.triggerPoint).toBe("r");
-    expect(sequenceOf(doc, { verb: "read" }, chain).map((s) => s.step)).toEqual(["effect", "with-change"]);
+    // The engine has no built-in with-change row (finding 12); an own verb has no built-in effect.
+    expect(sequenceOf(doc, { verb: "read" }, chain).map((s) => s.step)).toEqual(["effect"]);
+    expect(sequenceOf(doc, { verb: "archive" }, chain)).toEqual([]);
+  });
+});
+
+describe("the mock matches the engine (review section A and findings 11, 12)", () => {
+  it("item 2: an invoke-done pick keeps the first check over a guard, whatever the order", () => {
+    const doc = lifecycle({
+      guards: [{ id: "g1", name: "g1" }],
+      states: [st("A", { invoke: [{ id: "inv", name: "inv", type: "service" }] }), st("B"), st("C")],
+      transitions: [
+        tr("viaCheck", "A", { trigger: "invoke-done", invoke: "inv", targets: ["B"], verb: "promote" }),
+        tr("viaGuard", "A", { trigger: "invoke-done", invoke: "inv", targets: ["C"], guard: "g1" }),
+      ],
+      triggerPoints: [point("hold", { type: "check", verbs: ["promote"] })],
+    });
+    const step = simulate(doc, null, [{ input: "invoke-done", invoke: "inv", assume: { hold: "error", g1: false } }], options).trace[1];
+    expect([step.refusal, step.refusedBy]).toEqual(["check", "hold"]);
+  });
+
+  it("item 3: an event that names delete runs its with-change sets; a verb delete with no replace skips them with one note", () => {
+    const doc = lifecycle({
+      events: [ev("remove", { verb: "delete" })],
+      transitions: [tr("t", "A", { event: "remove", targets: ["B"] })],
+      triggerPoints: [
+        point("archive", { type: "replace", verbs: ["delete"], states: ["C"] }),
+        point("stamp", { type: "action", timing: "with-change", verbs: ["delete"], sets: [{ id: "x", attribute: "note", value: { value: "gone" } }] }),
+      ],
+    });
+    const event = simulate(doc, null, [{ event: "remove" }], options).trace[1];
+    expect(runs(event)).toEqual(["stamp:ran"]);
+    expect(event.valuesChanged).toEqual({ note: "gone" });
+    const open = lifecycle({ ...doc, triggerPoints: [point("archive", { type: "replace", verbs: ["delete"] })] });
+    expect(simulate(open, null, [{ event: "remove" }], options).trace[1].notes?.join(" ")).toContain("replace 'archive' does not run");
+    const verb = simulate(doc, null, [verbStep("delete")], options).trace[1];
+    expect(runs(verb)).toEqual(["stamp:skipped"]);
+    expect(verb.notes?.filter((n) => n.includes("sets of trigger point 'stamp' were skipped"))).toHaveLength(1);
+  });
+
+  it("item 4: a recording writes triggerPoints only when some ran, and a refresh keeps asking where a step already expects them", () => {
+    const doc = lifecycle({
+      triggerPoints: [point("c", { type: "check", verbs: ["read"] })],
+    });
+    const steps = [verbStep("read"), verbStep("modify", { values: { total: 1 } })];
+    const asked = replay(doc, null, steps, { ...options, recordTriggerPoints: true }).expects;
+    expect(asked[0].triggerPoints).toEqual(["c"]);
+    expect("triggerPoints" in asked[1]).toBe(false);
+    const kept = replay(
+      doc,
+      null,
+      [
+        { ...steps[0], expect: { triggerPoints: ["c"] } },
+        { ...steps[1], expect: { triggerPoints: ["c"] } },
+      ],
+      options,
+    ).expects;
+    expect(kept[0].triggerPoints).toEqual(["c"]);
+    expect("triggerPoints" in kept[1]).toBe(false);
+    expect("triggerPoints" in replay(doc, null, steps, options).expects[0]).toBe(false);
+  });
+
+  it("item 5: a create with values is applied, so no 'did not apply' note", () => {
+    const doc = lifecycle({ triggerPoints: [] });
+    const step = simulate(doc, null, [verbStep("create", { values: { total: 1 } })], options).trace[1];
+    expect(step.notes?.join(" ") ?? "").not.toContain("did not apply");
+    expect(simulate(doc, null, [verbStep("create")], options).trace[1].notes?.join(" ")).toContain("did not apply");
+  });
+
+  it("item 6: a move's states place matches its source, the active states inside it and its ancestors, never another region", () => {
+    const doc = lifecycle({
+      events: [ev("go", { verb: "promote" })],
+      states: [
+        st("P", {
+          type: "parallel",
+          states: [
+            st("R1", { type: "compound", states: [st("A"), st("B")], initial: "A" }),
+            st("R2", { type: "compound", states: [st("X"), st("Y")], initial: "X" }),
+          ],
+        }),
+      ],
+      transitions: [tr("t", "A", { event: "go", targets: ["B"] }), tr("sw", "X", { event: "flip", targets: ["Y"] })],
+      triggerPoints: [
+        point("inSource", { type: "check", verbs: ["promote"], states: ["A"] }),
+        point("inX", { type: "check", verbs: ["promote"], states: ["X"] }),
+        point("inY", { type: "check", verbs: ["promote"], states: ["Y"] }),
+        point("inR1", { type: "check", verbs: ["promote"], states: ["R1"] }),
+      ],
+    });
+    const step = simulate({ ...doc, events: [ev("go", { verb: "promote" }), ev("flip")] }, null, [{ event: "flip" }, { event: "go" }], options).trace[2];
+    expect(runs(step)).toEqual(["inSource:passed", "inR1:passed"]);
+  });
+
+  it("item 6: a transition on a compound source matches a state inside it that is active", () => {
+    const doc = lifecycle({
+      events: [ev("go", { verb: "promote" })],
+      states: [st("C", { type: "compound", states: [st("S1"), st("S2")], initial: "S1" }), st("D")],
+      transitions: [tr("t", "C", { event: "go", targets: ["D"] })],
+      triggerPoints: [point("inner", { type: "check", verbs: ["promote"], states: ["S1"] })],
+    });
+    expect(runs(simulate(doc, null, [{ event: "go" }], options).trace[1])).toEqual(["inner:passed"]);
+  });
+
+  it("item 7: checksUnknown lists sign's checks before the move's", () => {
+    const gate = { id: "g", name: "g", required: 1, signers: ["Finance"], meanings: [{ id: "m", name: "approved" }] };
+    const doc = lifecycle({
+      events: [ev("approve")],
+      transitions: [tr("t", "A", { event: "approve", targets: ["B"], verb: "promote", gate })],
+      triggerPoints: [point("move", { type: "check", verbs: ["promote"] }), point("signs", { type: "check", verbs: ["sign"] })],
+    });
+    expect(simulate(doc, null, [], options).enabled[0].checksUnknown).toEqual(["signs", "move"]);
+  });
+
+  it("finding 11: a point that reads the event's payload runs on a move only, never on a verb step", () => {
+    const doc = lifecycle({
+      events: [ev("archive", { verb: "archive", payload: [{ id: "reason", name: "reason" }] })],
+      transitions: [tr("t", "A", { event: "archive", targets: ["B"] })],
+      triggerPoints: [point("why", { type: "check", verbs: ["archive"], condition: { op: "isNotNull", args: [path("reason")] } })],
+    });
+    expect(runs(simulate(doc, null, [verbStep("archive")], options).trace[1])).toEqual([]);
+    expect(runs(simulate(doc, null, [{ event: "archive", payload: { reason: "x" } }], options).trace[1])).toEqual(["why:passed"]);
+  });
+
+  it("finding 12: the sequence lists closed lists, no-move, guards and signatures as the engine does, and drops a replace once a transition is given", () => {
+    const gate = { id: "g", name: "g", required: 1, signers: ["Finance"], meanings: [{ id: "m", name: "approved" }] };
+    const doc = lifecycle({
+      events: [ev("approve")],
+      transitions: [tr("t", "A", { event: "approve", targets: ["B"], verb: "promote", gate })],
+      triggerPoints: [point("r", { type: "replace", verbs: ["delete"] })],
+    });
+    const chain = (e: string) => [e];
+    expect(sequenceOf(doc, { verb: "promote" }, chain).map((s) => s.step)).toEqual(["closed-lists", "no-move", "guards", "signatures", "effect"]);
+    expect(sequenceOf(doc, { verb: "delete", transition: "t" }, chain).map((s) => s.step)).toEqual([
+      "frozen",
+      "closed-lists",
+      "no-move",
+      "guards",
+      "signatures",
+      "effect",
+    ]);
+    expect(sequenceOf(doc, { verb: "sign" }, chain).map((s) => s.step)).toEqual(["closed-lists", "no-move", "guards", "signatures", "effect"]);
   });
 });

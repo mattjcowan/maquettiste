@@ -152,7 +152,7 @@ export class MockModel {
    * The expectations a replay of a scenario gives (the process handlers set this: the interpreter needs their actor and
    * object lookups). Null when the replay cannot run to the last step.
    */
-  scenarioReplay: ((process: Json, scenario: Json) => { expects: Json[]; outcome: "final" | "active" } | null) | null = null;
+  scenarioReplay: ((process: Json, scenario: Json, triggerPoints?: boolean) => { expects: Json[]; outcome: "final" | "active" } | null) | null = null;
 
   constructor(
     seed: Seed,
@@ -1084,7 +1084,8 @@ export class MockModel {
         }
         const scenario = existing.json as Json;
         const process = candidate.get(String(scenario.process ?? ""))?.json as Json | undefined;
-        const observed = process && this.scenarioReplay ? this.scenarioReplay(process, scenario) : null;
+        const observed =
+          process && this.scenarioReplay ? this.scenarioReplay(process, scenario, (op as { triggerPoints?: boolean | null }).triggerPoints === true) : null;
         if (!observed) {
           items.push({ outcome: "saved", id: existing.id, hash: existing.hash, current: null, diagnostics: [], referrers: [], changes: null });
           continue;

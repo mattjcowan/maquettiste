@@ -3,6 +3,8 @@
 // sequence handler lists them. The engine's TriggerSequence is the reference; the mock answers a simpler question there (this
 // lifecycle's points only), and the editor never works out a sequence itself.
 
+import { builtInVerb } from "@/model/verbList";
+
 type Json = Record<string, unknown>;
 
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -40,12 +42,38 @@ export interface Place {
   /** The attributes the step reads or changes, or null when it does not say. */
   attributes: readonly string[] | null;
   end: string | null;
+  /** No move is given and none is meant: a point narrowed to moves is listed (a sequence or an unknown-checks question, not a run). */
+  openMove?: boolean;
 }
 
 export interface Match {
   ok: boolean;
   /** An `attributes` or `ends` key was met without the step saying which: a check runs, an action does not (decision 10). */
   assumed: boolean;
+}
+
+/** Whether a tree reads one of the event payload's attributes by a path of its own (`old.` paths never do), as the engine's ReadsPayload. */
+function readsPayload(tree: unknown, payload: ReadonlySet<string>): boolean {
+  if (Array.isArray(tree)) return tree.some((x) => readsPayload(x, payload));
+  if (!tree || typeof tree !== "object") return false;
+  const t = tree as Json;
+  if (Array.isArray(t.path) && t.old !== true && typeof t.path[0] === "string" && payload.has(t.path[0])) return true;
+  return Object.values(t).some((v) => readsPayload(v, payload));
+}
+
+/** The attribute ids the events of a lifecycle carry. */
+const payloadOf = (lifecycle: Json): Set<string> =>
+  new Set(arr(lifecycle.events).flatMap((e) => arr(e.payload).flatMap((a) => (typeof a.id === "string" ? [a.id] : []))));
+
+/**
+ * Whether a point only makes sense on a move: it names targets or transitions, or reads the event's payload in its `when`, condition
+ * or set values (a verb step carries no payload, trigger-points-design.md decision 4).
+ */
+function moveOnly(t: Json, lifecycle: Json): boolean {
+  if (strs(t.targets).length || strs(t.transitions).length) return true;
+  const payload = payloadOf(lifecycle);
+  if (!payload.size) return false;
+  return readsPayload(t.when, payload) || readsPayload(t.condition, payload) || arr(t.sets).some((x) => readsPayload(x.value, payload));
 }
 
 /** Whether a point runs for the place: its verbs, then each narrowing key that is set. */
@@ -55,8 +83,9 @@ export function matchPoint(t: Json, lifecycle: Json, place: Place): Match {
   const own = lifecycle.id === place.acting;
   const transitions = strs(t.transitions);
   const targets = strs(t.targets);
-  if (transitions.length && !(own && place.transition !== undefined && transitions.includes(place.transition))) return no;
-  if (targets.length && !(own && place.targets && targets.some((x) => place.targets!.has(x)))) return no;
+  if (moveOnly(t, lifecycle) && !(own && place.transition !== undefined) && !place.openMove) return no;
+  if (transitions.length && place.transition !== undefined && !transitions.includes(place.transition)) return no;
+  if (targets.length && place.transition !== undefined && place.targets && !targets.some((x) => place.targets!.has(x))) return no;
   const states = strs(t.states);
   if (states.length) {
     const active = place.statesOf(lifecycle);
@@ -83,13 +112,10 @@ export function matchPoint(t: Json, lifecycle: Json, place: Place): Match {
 export type CheckWord = "pass" | "warning" | "error";
 export const CHECK_WORDS: readonly string[] = ["pass", "warning", "error"];
 
-/** A team-code check's assumed outcome: an entry keyed by its id, its name, or `Lifecycle.Name`; without one, none (the check passes). */
-export function assumedWord(assume: Record<string, unknown>, t: Json, lifecycle: Json): CheckWord | null {
-  for (const key of [String(t.id), `${String(lifecycle.id)}.${String(t.name)}`, `${String(lifecycle.name)}.${String(t.name)}`, String(t.name)]) {
-    const v = assume[key];
-    if (typeof v === "string" && CHECK_WORDS.includes(v)) return v as CheckWord;
-  }
-  return null;
+/** A team-code check's assumed outcome: an entry keyed by its id only (decision 26: names turn into ids in a simulate input, never in a file); without one, none (the check passes). */
+export function assumedWord(assume: Record<string, unknown>, t: Json): CheckWord | null {
+  const v = assume[String(t.id)];
+  return typeof v === "string" && CHECK_WORDS.includes(v) ? (v as CheckWord) : null;
 }
 
 /** The ids of a state and its ancestors in a state tree, innermost first; empty when the id is none of them. */
@@ -100,6 +126,29 @@ export function statePath(list: unknown, id: string): string[] {
     if (inner.length) return [...inner, String(s.id)];
   }
   return [];
+}
+
+/**
+ * A simulate or record input's `assume` words keyed by a check's name become the check's id, as the engine's ResolveNames does (decision 26):
+ * this lifecycle's by its name, another's as `Lifecycle.Name` or `LifecycleId.Name`; a key that is an id, or names none or two, stays.
+ * A scenario's own steps are read from the file, where keys are ids only.
+ */
+export function resolveCheckNames(step: Json, own: Json, lifecycles: readonly Json[]): Json {
+  const assume = step.assume;
+  if (!assume || typeof assume !== "object") return step;
+  const names: [string, string][] = [];
+  for (const l of lifecycles.length ? lifecycles : [own])
+    for (const t of pointsOf(l).filter((p) => p.type === "check")) {
+      if (l.id === own.id) names.push([String(t.name), String(t.id)]);
+      names.push([`${String(l.name)}.${String(t.name)}`, String(t.id)], [`${String(l.id)}.${String(t.name)}`, String(t.id)]);
+    }
+  const ids = new Set(names.map(([, id]) => id));
+  const out: Json = {};
+  for (const [key, value] of Object.entries(assume as Json)) {
+    const hits = typeof value === "string" && !ids.has(key) ? [...new Set(names.filter(([n]) => n === key).map(([, id]) => id))] : [];
+    out[hits.length === 1 && !(hits[0] in (assume as Json)) ? hits[0] : key] = value;
+  }
+  return { ...step, assume: out };
 }
 
 // ------------------------------------------------------------------ get_trigger_sequence (the mock's simpler answer)
@@ -131,37 +180,50 @@ export interface SequenceQuery {
   transition?: string;
 }
 
+const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
+
 const ORDER: Record<Moment, number> = { before: 8, checks: 9, effect: 10, "with-change": 11, "after-commit": 12 };
-const MOVE_VERBS = new Set(["promote", "demote", "override", "set-state"]);
 
 /**
- * What runs, in order, when a verb happens in this lifecycle. Simpler than the engine's: this lifecycle's trigger points only, never
- * another lifecycle's, and a built-in step only where the lifecycle has the thing behind it. `chainOf` gives an entity and its bases.
+ * What runs, in order, when a verb happens in this lifecycle: the built-in rows and the points as the engine's TriggerSequence lists them.
+ * Simpler in one way: this lifecycle's trigger points and rights only, never another lifecycle's. `chainOf` gives an entity and its bases.
  */
 export function sequenceOf(lifecycle: Json, query: SequenceQuery, chainOf: (entity: string) => readonly string[]): SequenceStep[] {
   const steps: SequenceStep[] = [];
   const builtIn = (order: number, step: string) => steps.push({ order, step });
-  const rights = lifecycle.rightsDefault !== undefined || arr(lifecycle.rights).length > 0;
+  const group = builtInVerb(query.verb)?.group;
+  const byEvent = group === "move" || group === "signature" || query.transition !== undefined;
   if (["modify", "connect", "disconnect", "delete"].includes(query.verb)) builtIn(1, "frozen");
-  if (rights) {
-    builtIn(3, "denies");
-    builtIn(4, "defaults");
-  }
-  if (MOVE_VERBS.has(query.verb)) {
+  if (byEvent || group === "task") builtIn(2, "closed-lists");
+  if (arr(lifecycle.rights).some((r) => r.access === "deny" && strs(r.verbs).includes(query.verb))) builtIn(3, "denies");
+  if (lifecycle.rightsDefault === "deny") builtIn(4, "defaults");
+  if (byEvent) {
     builtIn(5, "no-move");
     builtIn(6, "guards");
   }
-  if (query.verb === "sign") builtIn(7, "signatures");
+  const eventVerb = (id: unknown) => str(arr(lifecycle.events).find((e) => e.id === id)?.verb);
+  const gated =
+    query.verb === "sign" ||
+    arr(lifecycle.transitions).some(
+      (t) =>
+        (query.transition !== undefined ? t.id === query.transition : (str(t.verb) ?? eventVerb(t.event)) === query.verb) &&
+        (t.gate !== undefined || t.gatePolicy !== undefined),
+    );
+  if (gated && byEvent) builtIn(7, "signatures");
   const place: Place = {
     verb: query.verb,
     acting: String(lifecycle.id),
-    ...(query.transition ? { transition: query.transition } : {}),
+    ...(query.transition ? { transition: query.transition } : { openMove: true }),
     statesOf: () => (query.state ? new Set(statePath(lifecycle.states, query.state)) : null),
     entities: query.entity ? [chainOf(query.entity)] : [],
     attributes: query.attributes ?? null,
     end: query.end ?? null,
   };
-  const points = pointsOf(lifecycle).flatMap((t) => (matchPoint(t, lifecycle, place).ok ? [{ t, moment: momentOf(t) }] : []));
+  // A move's effect is its move: a replace is not listed once a transition is given.
+  const points = pointsOf(lifecycle).flatMap((t) => {
+    const moment = momentOf(t);
+    return (moment !== "effect" || !query.transition) && matchPoint(t, lifecycle, place).ok ? [{ t, moment }] : [];
+  });
   const listed = (moment: Moment) =>
     points
       .filter((p) => p.moment === moment)
@@ -175,11 +237,9 @@ export function sequenceOf(lifecycle: Json, query: SequenceQuery, chainOf: (enti
         return step;
       });
   steps.push(...listed("before"), ...listed("checks"));
-  const replaces = listed("effect");
+  const replaces = listed("effect").slice(0, 1);
   if (replaces.length) steps.push(...replaces);
-  else builtIn(10, "effect");
-  steps.push(...listed("with-change"));
-  if (!points.some((p) => p.moment === "with-change")) builtIn(11, "with-change");
-  steps.push(...listed("after-commit"));
+  else if (group !== undefined || query.transition) builtIn(10, "effect");
+  steps.push(...listed("with-change"), ...listed("after-commit"));
   return steps.sort((a, b) => a.order - b.order);
 }

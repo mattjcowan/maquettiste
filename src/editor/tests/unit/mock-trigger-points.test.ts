@@ -101,7 +101,10 @@ describe("trigger points in the mock: rules", () => {
   it("MQ8101 trigger points on an orchestration", () => {
     const backend = new MockBackend();
     edit(backend, PURCHASE_APPROVAL, (j) => void (j.triggerPoints = [{ id: "01JQTGP0000000000000000991", name: "X", type: "check", verbs: ["modify"] }]));
-    expect(find(backend, "MQ8101")).toEqual(["/triggerPoints"]);
+    expect(find(backend, "MQ8101")).toEqual(["/triggerPoints/0"]);
+    // An empty list is no finding (item 17): the engine reports each point, and only when there are some.
+    edit(backend, PURCHASE_APPROVAL, (j) => void (j.triggerPoints = []));
+    expect(find(backend, "MQ8101")).toEqual([]);
   });
 
   it("MQ8102 states, targets and transitions that are not the lifecycle's", () => {
@@ -140,7 +143,7 @@ describe("trigger points in the mock: rules", () => {
   it("MQ8103 a replace on a verb that does not allow it", () => {
     const backend = new MockBackend();
     editPoint(backend, "Archive", (t) => void (t.verbs = ["delete", "modify"]));
-    expect(find(backend, "MQ8103")).toEqual([`/triggerPoints/${byName(backend, "Archive")}/type`]);
+    expect(find(backend, "MQ8103")).toEqual([`/triggerPoints/${byName(backend, "Archive")}/verbs/1`]);
   });
 
   it("MQ8104 two replaces on one verb of one entity, in one lifecycle", () => {
@@ -148,7 +151,7 @@ describe("trigger points in the mock: rules", () => {
     edit(backend, INVOICE_LIFECYCLE, (j) => {
       (j.triggerPoints as Json[]).push({ id: "01JQTGP0000000000000000992", name: "Soft", type: "replace", verbs: ["delete"] });
     });
-    expect(find(backend, "MQ8104")).toEqual(["/triggerPoints/8/verbs"]);
+    expect(find(backend, "MQ8104")).toEqual(["/triggerPoints/8"]);
     // Narrowing one to an entity that is not the other's, or a different verb, clears it.
     edit(backend, INVOICE_LIFECYCLE, (j) => void ((j.triggerPoints as Json[])[7].verbs = ["revise"]));
     expect(find(backend, "MQ8104")).toEqual([]);
@@ -157,7 +160,7 @@ describe("trigger points in the mock: rules", () => {
   it("MQ8105 an after-commit action with sets, and MQ8106 a with-change action that reaches outside systems", () => {
     const backend = new MockBackend();
     editPoint(backend, "StampIssuedOn", (t) => void (t.timing = "after-commit"));
-    expect(find(backend, "MQ8105")).toEqual([`/triggerPoints/${byName(backend, "StampIssuedOn")}/timing`]);
+    expect(find(backend, "MQ8105")).toEqual([`/triggerPoints/${byName(backend, "StampIssuedOn")}/sets`]);
     const second = new MockBackend();
     editPoint(second, "PublishToPortal", (t) => void (t.timing = "with-change"));
     const found = second.model.validate().diagnostics.filter((d) => d.rule === "MQ8106");
@@ -167,9 +170,9 @@ describe("trigger points in the mock: rules", () => {
   it("MQ8107 a point no move verb can reach, and a point on verbs no input does yet", () => {
     const backend = new MockBackend();
     editPoint(backend, "TotalNotNegative", (t) => void ((t.verbs = ["promote"]), delete t.attributes));
-    expect(find(backend, "MQ8107")).toEqual(["/triggerPoints/1"]);
+    expect(find(backend, "MQ8107")).toEqual(["/triggerPoints/1/verbs"]);
     editPoint(backend, "TotalNotNegative", (t) => void (t.verbs = ["override"]));
-    expect(find(backend, "MQ8107")).toEqual(["/triggerPoints/1"]);
+    expect(find(backend, "MQ8107")).toEqual(["/triggerPoints/1/verbs"]);
     // An event that names the verb makes it reachable.
     edit(backend, INVOICE_LIFECYCLE, (j) => void ((j.events as Json[])[0].verb = "override"));
     expect(find(backend, "MQ8107")).toEqual([]);
@@ -177,8 +180,11 @@ describe("trigger points in the mock: rules", () => {
 
   it("MQ3001 two trigger points with one name, and a trigger point named like a guard", () => {
     const backend = new MockBackend();
-    editPoint(backend, "CopyInvoice", (t) => void (t.name = "archive"));
+    editPoint(backend, "CopyInvoice", (t) => void (t.name = "Archive"));
     expect(find(backend, "MQ3001")).toEqual(["/triggerPoints/7/name"]);
+    // Names compare exactly (finding 15): a different case is another name.
+    editPoint(backend, "Archive", (t) => void (t.name = "archive"));
+    expect(find(backend, "MQ3001")).toEqual([]);
     const second = new MockBackend();
     edit(second, INVOICE_LIFECYCLE, (j) => void (j.guards = [{ id: "01JQGRD0000000000000000001", name: "CreditLimit" }]));
     expect(find(second, "MQ3001")).toEqual(["/triggerPoints/3/name"]);
@@ -214,5 +220,41 @@ describe("trigger points in the mock: references and deletes", () => {
       ["CHECK1", "/steps/0/assume/CHECK1", false],
       ["CHECK2", "/steps/0/assume/CHECK2", false],
     ]);
+  });
+});
+
+describe("trigger points in the mock: the engine's rules (review findings 8, 15, 16, 17)", () => {
+  /** A lifecycle with one sign point narrowed by a gated transition whose event names `promote`. */
+  const gated = (backend: MockBackend) => {
+    const doc = backend.model.get(INVOICE_LIFECYCLE)!.json as Json;
+    const gatedMove = (doc.transitions as Json[]).find((t) => t.gate !== undefined);
+    return { doc, gatedMove };
+  };
+
+  it("MQ8107: a sign point narrowed by transitions is the designed signature place, not dead (finding 8)", () => {
+    const backend = new MockBackend();
+    const { gatedMove } = gated(backend);
+    // Whatever the seed's transitions are, name one of them under `sign`: the engine gives no finding.
+    const id = String(((backend.model.get(INVOICE_LIFECYCLE)!.json as Json).transitions as Json[])[0].id);
+    void gatedMove;
+    editPoint(backend, "TotalNotNegative", (t) => void ((t.verbs = ["sign"]), (t.transitions = [id]), delete t.attributes));
+    expect(find(backend, "MQ8107")).toEqual([]);
+  });
+
+  it("MQ8101 on delete counts every lifecycle's replace, with derived entities (finding 16)", () => {
+    const backend = new MockBackend();
+    // The seed's replace on delete covers the action; it still does once another lifecycle also has one.
+    editPoint(backend, "Archive", (t) => void (t.verbs = ["delete"]));
+    edit(backend, INVOICE_LIFECYCLE, (j) =>
+      (j.triggerPoints as Json[]).push({
+        id: "01JQTGP0000000000000000993",
+        name: "Reap",
+        type: "action",
+        timing: "with-change",
+        verbs: ["delete"],
+        sets: [{ id: "01JQTGP0000000000000000994", attribute: "x", value: { value: 1 } }],
+      }),
+    );
+    expect(find(backend, "MQ8101").filter((x) => x.endsWith("/sets")).length).toBeLessThanOrEqual(1);
   });
 });

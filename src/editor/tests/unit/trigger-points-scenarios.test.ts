@@ -152,7 +152,9 @@ describe("the simulation panel's lines and rows", () => {
       ...simulate(auto as never, null, [{ event: "go", assume: { back: "error" } }] as never, { subjectEntity: "E" }),
     } as unknown as SimulationResult;
     const lines = lastStepLines(run.trace[1], namesOf(auto as never, new Map()));
-    expect(lines.some((l) => l.kind === "trigger" && l.text.includes("left out") && l.tone === "warning")).toBe(true);
+    // The refused check is a note, not a listed run (the step stays accepted).
+    expect(lines.some((l) => l.kind === "note" && l.text.includes("refused an automatic move"))).toBe(true);
+    expect(lines.some((l) => l.kind === "trigger" && l.badge?.text === "refused")).toBe(false);
     // The enabled event reaches `hold` of the first doc; its row offers a word, defaulting to Pass, and the input carries it.
     const open = result([]);
     const [row] = enabledRows(open, process, names, []);

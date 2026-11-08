@@ -211,6 +211,7 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
       else delete holder[lastSegment(use.pointer)];
     }
   }
+  const gonePoints = new Set<string>();
   if (!rename) {
     // Uses of a right that is going leave every lifecycle, touched or not.
     if (gone.size)
@@ -221,8 +222,27 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
       if (json.kind === "process" && Array.isArray(json.rights))
         json.rights = arr(json.rights).filter((r) => !(typeof r.right === "string" && gone.has(r.right)));
       dropRightsWithoutVerbs(json);
-      dropTriggerPointsWithoutVerbs(json);
+      dropTriggerPointsWithoutVerbs(json, gonePoints);
     }
+    // A step's word entries for a trigger point that went, and its id in the expected check warnings and trigger points.
+    if (gonePoints.size)
+      for (const [id, doc] of docs) {
+        if (doc.kind !== "scenario") continue;
+        const names = (st: Json) => {
+          const expect = st.expect as Json | undefined;
+          return (
+            Object.keys((st.assume as Json | undefined) ?? {}).some((k) => gonePoints.has(k)) ||
+            [expect?.checkWarnings, expect?.triggerPoints].some((l) => Array.isArray(l) && l.some((x) => gonePoints.has(String(x))))
+          );
+        };
+        if (!arr(doc.steps).some(names)) continue;
+        for (const st of arr(working(id, doc).steps)) {
+          if (st.assume && typeof st.assume === "object") for (const k of Object.keys(st.assume as Json)) if (gonePoints.has(k)) delete (st.assume as Json)[k];
+          const expect = st.expect as Json | undefined;
+          for (const list of ["checkWarnings", "triggerPoints"])
+            if (expect && Array.isArray(expect[list])) expect[list] = (expect[list] as unknown[]).filter((x) => !gonePoints.has(String(x)));
+        }
+      }
   }
   const target = arr(vocabulary.verbs).find((v) => v.key === to);
   const json = working(String(vocabulary.id), vocabulary);
@@ -254,12 +274,14 @@ function dropRightsWithoutVerbs(json: Json): void {
 }
 
 /** Takes the verbs marked gone out of a lifecycle's trigger points; one whose last verb goes goes too (trigger-points-design.md section 9). */
-function dropTriggerPointsWithoutVerbs(json: Json): void {
+function dropTriggerPointsWithoutVerbs(json: Json, gone: Set<string>): void {
   if (!Array.isArray(json.triggerPoints)) return;
   const kept = arr(json.triggerPoints).filter((t) => {
     if (!Array.isArray(t.verbs)) return true;
     t.verbs = (t.verbs as unknown[]).filter((v) => v !== null);
-    return (t.verbs as unknown[]).length > 0;
+    if ((t.verbs as unknown[]).length > 0) return true;
+    gone.add(String(t.id));
+    return false;
   });
   if (kept.length) json.triggerPoints = kept;
   else delete json.triggerPoints;

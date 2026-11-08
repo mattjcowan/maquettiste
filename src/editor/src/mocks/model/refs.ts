@@ -25,6 +25,7 @@ const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
 /** The built-in type keywords (schemas/v1/common.json builtinType): a type slot holding one names no element. */
 const BUILTIN: ReadonlySet<string> = new Set(BUILTIN_TYPES);
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 
 function attributeRefs(owner: string, base: string, attributes: unknown, out: Ref[]): void {
   arr(attributes).forEach((a, i) => {
@@ -322,6 +323,15 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
           for (const [key, value] of Object.entries(assume as Json))
             if (typeof value === "string")
               out.push({ fromId: str(st.id) ?? id, pointer: `/steps/${i}/assume/${key}`, field: "assume", toId: key, required: false });
+      });
+      // The checks a step expects to have warned, and the trigger points it expects to have run, are listed by id: a delete clears the item.
+      arr(doc.steps).forEach((st, i) => {
+        const expect = st.expect as Json | undefined;
+        for (const list of ["checkWarnings", "triggerPoints"] as const)
+          strings(expect?.[list]).forEach((to, j) => {
+            const pointer = `/steps/${i}/expect/${list}/${j}`;
+            out.push({ fromId: str(st.id) ?? id, pointer, field: list, toId: to, required: false, removeItem: pointer });
+          });
       });
       // A step's expected values are keyed by attribute id: a delete clears the key.
       arr(doc.steps).forEach((st, i) => {

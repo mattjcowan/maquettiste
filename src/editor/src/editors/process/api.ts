@@ -8,8 +8,6 @@ import * as endpoints from "@/api/endpoints";
 import { applyBatchResult, applySaveResult, indexQuery, keys } from "@/api/queries";
 import type { ModelJson } from "@/api/types";
 import { subjectsOf } from "@/model/process";
-import { ranPoints } from "@/model/triggerPoints";
-import { simulateProcess } from "./simulation/api";
 import { recordVerify, type VerifyResult } from "@/explorer/processApi";
 import { applyQuickFix } from "@/problems/applyQuickFix";
 import type { EditorStore } from "@/state/store";
@@ -136,50 +134,22 @@ export async function applySyncEnum(qc: QueryClient, store: EditorStore, process
   return result;
 }
 
-/** Rewrites a scenario's expectations from a replay (refresh-scenario); null when saved, else the refusal. */
-export async function refreshScenario(qc: QueryClient, store: EditorStore, scenario: string): Promise<string | null> {
+/**
+ * Rewrites a scenario's expectations from a replay (refresh-scenario); null when saved, else the refusal. `triggerPoints` also writes each
+ * step's `expect.triggerPoints` in the same update (trigger-points-design.md decision 28); without it they are rewritten only where a step
+ * already expects them.
+ */
+export async function refreshScenario(qc: QueryClient, store: EditorStore, scenario: string, triggerPoints = false): Promise<string | null> {
   const before = await endpoints.getElement(scenario);
-  const result = await endpoints.applyBatch({ operations: [{ op: "refresh-scenario", id: scenario }] } as never);
+  const result = await endpoints.applyBatch({
+    operations: [{ op: "refresh-scenario", id: scenario, ...(triggerPoints ? { triggerPoints: true } : {}) }],
+  } as never);
   if (!endpoints.isBatchResult(result)) return result.diagnostics[0]?.message ?? "The batch did not parse.";
   if (result.outcome !== "saved") return result.items.find((i) => i.outcome !== "saved")?.diagnostics[0]?.message ?? result.outcome;
   applyBatchResult(qc, result);
   const after = await refetch(qc, scenario);
   store.getState().pushUndo({
     label: "Refresh expectations",
-    ids: [scenario],
-    before: [before.json as ModelJson],
-    after: [after.json as ModelJson],
-    afterHashes: [after.hash],
-  });
-  void qc.invalidateQueries({ queryKey: keys.validation });
-  return null;
-}
-
-/**
- * "Also record trigger points" (trigger-points-design.md decision 28): after Update expectations, writes each step's `expect.triggerPoints`
- * from a simulation of the saved scenario (the points that ran, in order, `skipped` ones left out). The batch operation that updates the
- * other expectations has no option for it, so this is a second, separate change; null when saved, else the refusal.
- */
-export async function recordTriggerPoints(qc: QueryClient, store: EditorStore, process: string, scenario: string): Promise<string | null> {
-  const simulated = await simulateProcess(process, { scenario });
-  if (simulated.kind === "invalid") return simulated.diagnostics[0]?.message ?? "The scenario could not be replayed.";
-  const before = await endpoints.getElement(scenario);
-  const json = structuredClone(before.json) as { steps?: { expect?: Record<string, unknown> }[] };
-  const trace = simulated.result.trace.filter((t) => t.index >= 0);
-  (json.steps ?? []).forEach((step, i) => {
-    const ran = ranPoints(trace.find((t) => t.index === i)?.triggerPoints);
-    const expect = { ...(step.expect ?? {}) };
-    if (ran.length) expect.triggerPoints = ran;
-    else delete expect.triggerPoints;
-    step.expect = expect;
-  });
-  const result = await endpoints.applyBatch({ operations: [{ op: "update", id: scenario, expectedHash: before.hash, element: json }] } as never);
-  if (!endpoints.isBatchResult(result)) return result.diagnostics[0]?.message ?? "The batch did not parse.";
-  if (result.outcome !== "saved") return result.items.find((i) => i.outcome !== "saved")?.diagnostics[0]?.message ?? result.outcome;
-  applyBatchResult(qc, result);
-  const after = await refetch(qc, scenario);
-  store.getState().pushUndo({
-    label: "Record trigger points",
     ids: [scenario],
     before: [before.json as ModelJson],
     after: [after.json as ModelJson],

@@ -449,10 +449,7 @@ export function lastStepLines(
   // Check warnings, in amber, each once.
   if (entry.checkWarnings?.length)
     lines.push({ kind: "trigger", text: TL.panel.warningLine(entry.checkWarnings.map((id) => names.element(id)).join(", ")), tone: "warning" });
-  // An automatic move a check left out: the step that led to it stays accepted.
-  if (entry.accepted)
-    for (const r of (entry.triggerPoints ?? []).filter((x) => x.outcome === "refused"))
-      lines.push({ kind: "trigger", text: TL.panel.leftOut(names.element(r.triggerPoint)), tone: "warning" });
+  // An automatic move a check left out is named in a note (the step stays accepted and no refused run is listed), so the notes below say it.
   for (const m of entry.microsteps)
     for (const a of m.actions) {
       lines.push({

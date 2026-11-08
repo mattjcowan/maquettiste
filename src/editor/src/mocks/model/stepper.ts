@@ -1027,7 +1027,7 @@ class Interpreter {
     } else if (verb === "delete" && !input.end) {
       this.deleted = true;
       this.scope.notes.push("The object was deleted, so the run stopped; the outcome is read from the chart as it stood.");
-    } else if (!(prepared && verb === "create")) this.scope.notes.push(`The run checked ${verb} but did not apply it.`);
+    } else if (!(verb === "create" && (prepared || Object.keys(values).length))) this.scope.notes.push(`The run checked ${verb} but did not apply it.`);
     if (prepared) {
       this.runLater(prepared, "with-change", seen, { gone: this.deleted && !replaced });
       this.runLater(prepared, "after-commit", seen);
@@ -1068,7 +1068,11 @@ class Interpreter {
       // For a move, the source of the acting lifecycle; for anything else the object's states in the lifecycle.
       statesOf: (l) =>
         edge && l.id === acting.id
-          ? new Set([edge.source, ...ancestorsOf(edge.source)].filter((n) => !n.isRoot).map((n) => n.id))
+          ? new Set(
+              [edge.source, ...ancestorsOf(edge.source), ...[...this.config].filter((n) => isDescendantOf(n, edge.source))]
+                .filter((n) => !n.isRoot)
+                .map((n) => n.id),
+            )
           : this.activeOf(l, o.create === true),
       entities: this.entityChains(),
       attributes: o.attributes ?? null,
@@ -1139,6 +1143,13 @@ class Interpreter {
             `The step names no ${strsOf(t.ends).length ? "link end" : "attribute"}, so the check '${String(t.name)}' ran as if it applied.`,
           );
       }
+    // A move keeps its own effect (decision 16): a replace on the verb does not run, and a note says so. The sets of with-change actions
+    // still run on delete (the object stays), so they are not skipped here.
+    if (!verbStep)
+      for (const f of found.filter((x) => x.moment === "effect")) {
+        const note = `An event that names '${verb}' still does its move, so replace '${String(f.t.name)}' does not run.`;
+        if (!this.scope.notes.includes(note)) this.scope.notes.push(note);
+      }
     const proposed = { ...start };
     const prepared: Prepared = { verb, old, proposed, fills: [], runs: [], warnings: [], refused: null, later: new Map(), listed: false };
     const env = () => this.subjectEnv(proposed, old);
@@ -1167,7 +1178,7 @@ class Interpreter {
         else if (v !== true) outcome = warning ? "warned" : "refused";
       } else {
         // A check the team writes: the word the step assumes. A warning check never refuses, so its "error" counts as a warning.
-        const word = assumedWord(assume, t, l);
+        const word = assumedWord(assume, t);
         assumed = true;
         outcome = word === "warning" ? "warned" : word === "error" ? (warning ? "warned" : "refused") : "passed";
       }
@@ -1231,8 +1242,9 @@ class Interpreter {
 
   /** An automatic move a check left out: the step that led to it stays accepted, and the trace names the check (decision 18). */
   private leftOut(refused: { run: TriggerRunJson; name: string }) {
-    this.scope.triggerRuns.push(refused.run);
-    this.scope.notes.push(`An automatic move was not taken: the check '${refused.name}' refused it. The step that led to it is still accepted.`);
+    // The step stays accepted, so the check is named in a note and not listed as a refused run (decision 18); one note for each pass.
+    const note = `Check '${refused.name}' refused an automatic move, so it was not taken; the step that led to it is still accepted.`;
+    if (!this.scope.notes.includes(note)) this.scope.notes.push(note);
   }
 
   private warn(ids: string[]) {
@@ -1321,7 +1333,7 @@ class Interpreter {
     if (!this.triggers) return [];
     const out = new Set<string>();
     for (const t of edges)
-      for (const verb of [t.verb, t.gate ? "sign" : null]) {
+      for (const verb of [t.gate ? "sign" : null, t.verb]) {
         if (!verb) continue;
         const place = this.placeFor(verb, { edge: t });
         for (const l of this.lifecyclesFor(verb))
@@ -1467,15 +1479,19 @@ class Interpreter {
       if (this.guard(t) === true) {
         const refusing = this.triggerRefusal(t, own);
         if (!refusing) return { transitions: [t], reason };
-        reason = "check";
-        by = refusing.run.triggerPoint;
-        run = refusing.run;
+        // A check outranks a guard as the reason; the first of each is kept (decision 18).
+        if (reason !== "check") {
+          reason = "check";
+          by = refusing.run.triggerPoint;
+          run = refusing.run;
+        }
         if (!own) this.leftOut(refusing);
         continue;
       }
-      reason = "guard";
-      by = t.guard ? String(t.guard.id) : undefined;
-      run = undefined;
+      if (reason === "no-transition") {
+        reason = "guard";
+        by = t.guard ? String(t.guard.id) : undefined;
+      }
     }
     return { transitions: [], reason, by, ...(run ? { run } : {}) };
   }
@@ -2242,8 +2258,10 @@ export function replay(doc: Json, start: { context?: Json; at?: string } | null 
     }
     // The checks that warned are written in a project that uses trigger points; the points that ran only when asked (decision 28).
     if (t.checkWarnings?.length) expect.checkWarnings = t.checkWarnings;
-    if (options.recordTriggerPoints && t.triggerPoints)
-      expect.triggerPoints = t.triggerPoints.filter((r) => r.outcome !== "skipped").map((r) => r.triggerPoint);
+    // Written only when some ran: a step that expected points and now has none drops the key (as the engine's Observed does).
+    const ran = (t.triggerPoints ?? []).filter((r) => r.outcome !== "skipped").map((r) => r.triggerPoint);
+    const expected = (steps[t.index]?.expect as Json | undefined)?.triggerPoints !== undefined;
+    if ((options.recordTriggerPoints || expected) && ran.length) expect.triggerPoints = ran;
     return expect;
   });
   return { complete, expects, outcome: result.final ? "final" : "active", diagnostics: result.diagnostics };
