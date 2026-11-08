@@ -48,6 +48,11 @@ internal static class ExprSql
                 problems.Add(new Diagnostic("MQ3104", DiagnosticSeverity.Error, "A trigger point's expression has no SQL form; it runs where the verb runs.",
                     columns.ElementId, columns.FilePath, e.Pointer, null, null));
                 return null;
+            case ExprSiteKind.Approval:
+                // A named signature's when is judged where the approval runs (signoff-design.md decision 7); no database reads it.
+                problems.Add(new Diagnostic("MQ3104", DiagnosticSeverity.Error, "A named signature's when has no SQL form; it runs where the approval runs.",
+                    columns.ElementId, columns.FilePath, e.Pointer, null, null));
+                return null;
             default:
             {
                 var guard = Node("call", call: "coalesce", args: [PredValue(writer.Pred(e, null)), Literal(false, "bool")]);

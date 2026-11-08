@@ -154,6 +154,7 @@ public static class ExprTyper
         ExprSiteKind.Guard => "guard",
         ExprSiteKind.Right => "right's condition",
         ExprSiteKind.Trigger => "trigger point's condition",
+        ExprSiteKind.Approval => "named signature's when",
         _ => "rule condition",
     };
 
@@ -262,6 +263,13 @@ public static class ExprTyper
             {
                 if (e.CurrentActor != true)
                     return Malformed(pointer, "'actor' must be true.");
+                if (scope.Site == ExprSiteKind.Approval && scope.ConstraintId is null)
+                {
+                    // Nobody acts when a signature's round starts (signoff-design.md decision 7).
+                    Report("MQ3102", pointer, "current_actor() is whoever acts, and nobody acts when a named signature's round starts; read the object or the context instead.");
+                    return null;
+                }
+
                 if (!scope.AllowsActor)
                 {
                     Report("MQ3104", pointer, "current_actor() is whoever acts; only a guard or a value an action sets may read it.");
@@ -370,6 +378,8 @@ public static class ExprTyper
                         : scope.Site is ExprSiteKind.Trigger or ExprSiteKind.TriggerSet
                             ? "The site has no member with the id '" + path[^1] + "'; a trigger point reads the object under subject and old, and a move's payload, "
                                 + "never the context."
+                            : scope.Site == ExprSiteKind.Approval
+                                ? "The site has no member with the id '" + path[^1] + "'; a named signature's when reads the object under subject and the context, never a payload."
                             : "The site has no member with the id '" + path[^1] + "'.");
                 return null;
             }
@@ -880,7 +890,7 @@ public static class ExprTyper
                 return Malformed(pointer, "'inState' lists at least one state.");
             if (of is { Count: 0 })
                 return Malformed(pointer, "'of' lists at least one relation end; leave it out to read the object itself.");
-            if (!scope.AllowsActor || scope.Lifecycles is not { } lifecycles)
+            if (!scope.AllowsState || scope.Lifecycles is not { } lifecycles)
             {
                 Report("MQ3104", pointer, "in_state reads a lifecycle's state; only a guard or a value an action sets may read it.");
                 return null;

@@ -1313,7 +1313,8 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     private static bool UsesThroughLibraryGate(ModelSnapshot model, Process process, string actorId) =>
         process.Transitions.Any(t => t.GatePolicy is { } policy && Processes.ProcessLibraries.Owner(model, policy, "gate") is { } library
             && library.Gates.Any(g => string.Equals(g.Id, policy, StringComparison.Ordinal)
-                && (g.Signers.Contains(actorId, StringComparer.Ordinal) || g.RequiredActors.Contains(actorId, StringComparer.Ordinal))));
+                && (g.Signers.Contains(actorId, StringComparer.Ordinal) || g.RequiredActors.Contains(actorId, StringComparer.Ordinal)
+                    || g.AllSignatures.Any(s => s.Signers.Contains(actorId, StringComparer.Ordinal) || s.RequiredActors.Contains(actorId, StringComparer.Ordinal)))));
 
     // Whether a process document names an actor anywhere (the index row's actors).
     private static bool NamesActor(ModelSnapshot model, Process process) =>

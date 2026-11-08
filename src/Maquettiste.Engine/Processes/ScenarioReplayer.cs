@@ -385,6 +385,8 @@ public static class ScenarioReplayer
             return (At(index) + participant.Message, participant.Field);
         if (VerbStepFields.Check(runtime, chart.Process, cast, step) is { } verbStep)
             return (At(index) + verbStep.Message, verbStep.Field);
+        if (ApprovalStepFields.Check(runtime.Model, chart, step) is { } approval)
+            return (At(index) + approval.Message, approval.Field);
         if (step.Input != StepInput.Event || step.Event is null || !chart.Events.TryGetValue(step.Event, out var ev))
             return null;
         var gates = chart.Transitions.Where(t => t.Trigger == TransitionTrigger.Event && string.Equals(t.Transition.Event, step.Event, StringComparison.Ordinal))

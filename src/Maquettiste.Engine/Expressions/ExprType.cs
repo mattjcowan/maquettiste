@@ -42,6 +42,13 @@ public enum ExprSiteKind
 
     /// <summary>A value a trigger point sets: typed as a set's value is, against its attribute, and reads what a <see cref="Trigger"/> site reads.</summary>
     TriggerSet,
+
+    /// <summary>
+    /// A named signature's <c>when</c> (signoff-design.md decision 7): only false means the signature is not needed, so true or unknown passes,
+    /// as at a check. It is judged when the signature's round starts, and reads the object under <c>subject</c> (to-one paths too), the process's
+    /// context, <c>now()</c> and <c>in_state</c>; never <c>current_actor()</c>, since nobody acts when a round starts, a payload or <c>old</c>.
+    /// </summary>
+    Approval,
 }
 
 /// <summary>

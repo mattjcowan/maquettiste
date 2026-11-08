@@ -167,6 +167,7 @@ internal static partial class ProcessRules
             var at = "/transitions/" + N(i) + "/gate";
             gates.Add((gate.Name, at, gate.Id));
             Unique("meaning", gate.Meanings.Select((m, j) => (m.Name, at + "/meanings/" + N(j), m.Id)), "gate '" + gate.Name + "'");
+            ApprovalNames(gate, at);
         }
 
         for (var i = 0; i < process.Gates.Count; i++)
@@ -175,12 +176,24 @@ internal static partial class ProcessRules
             var at = "/gates/" + N(i);
             gates.Add((gate.Name, at, gate.Id));
             Unique("meaning", gate.Meanings.Select((m, j) => (m.Name, at + "/meanings/" + N(j), m.Id)), "gate '" + gate.Name + "'");
+            ApprovalNames(gate, at);
         }
 
         Unique("gate", gates);
         UsedNames("gate", gates.Select(g => g.Item1), uses.Where(u => u.Gate is not null).Select(u => (u.Gate!.Name, u.Pointer, u.Gate.Id)));
         // An inline right's name is unique among the lifecycle's inline rights (rights-design.md decision 3); a use has no name of its own.
         Unique("right", process.Rights.Select((r, i) => (r.Right is null ? r.Name ?? "" : "", "/rights/" + N(i), r.Id)));
+
+        // An approval's stages each have their own name, and so do its signatures, across its stages (signoff-design.md section 6).
+        void ApprovalNames(ProcessGate gate, string at)
+        {
+            if (gate.Stages is not { } stages)
+                return;
+            Unique("stage", stages.Select((s, j) => (s.Name, at + "/stages/" + N(j), s.Id)), "gate '" + gate.Name + "'");
+            var signatures = new List<(string, string, string)>();
+            ApprovalRules.ForEachSignature(gate, at, (signature, pointer) => signatures.Add((signature.Name, pointer, signature.Id)));
+            Unique("signature", signatures, "gate '" + gate.Name + "'");
+        }
 
         // A library member's name must not clash with an own node's or another member's where code meets them: a pack generates one method per name.
         void UsedNames(string what, IEnumerable<string> own, IEnumerable<(string Name, string Pointer, string Id)> used)
@@ -589,6 +602,39 @@ internal static partial class ProcessRules
         var signers = gate.Signers.Distinct(StringComparer.Ordinal).Select(id => context.Model.Get<Actor>(id)).ToList();
         if (!gate.AllowRepeatSigner && signers.Count > 0 && signers.All(a => a is { Type: ActorType.Person }) && gate.Required > signers.Count)
             report.Add("MQ9101", $"{name} needs {N(gate.Required)} signatures, but its signers are {N(signers.Count)} person actor(s) and a signer may not sign twice; lower required, add signers, or allow repeat signers.", pointer + "/required", gate.Id);
+        if (gate.UsesStages)
+            CheckSignatures(context, membership, name, gate, pointer, report);
+    }
+
+    // MQ9102 and MQ9101 on each named signature of an approval, as on a gate (signoff-design.md section 6), then MQ9101 on the approval: without
+    // allowSignerAcrossSignatures each person gives one response that counts on it (decision 16), so it needs as many different people as its
+    // signatures need together. Only person actors are counted, as for a gate.
+    private static void CheckSignatures(ValidationContext context, ActorMembership membership, string name, ProcessGate gate, string pointer, Report report)
+    {
+        var people = new HashSet<string>(StringComparer.Ordinal);
+        var allPeople = true;
+        var needed = 0;
+        ApprovalRules.ForEachSignature(gate, pointer, (signature, at) =>
+        {
+            var what = $"Signature '{signature.Name}' of {char.ToLowerInvariant(name[0])}{name[1..]}";
+            for (var i = 0; i < signature.RequiredActors.Count; i++)
+            {
+                if (!membership.Allows(signature.Signers, signature.RequiredActors[i]))
+                    report.Add("MQ9102", $"{what} requires a signature from {ActorName(context, signature.RequiredActors[i])}, which is not one of its signers; add it to the signature's signers.", at + "/requiredActors/" + N(i), signature.Id);
+            }
+
+            var signers = signature.Signers.Distinct(StringComparer.Ordinal).Select(id => context.Model.Get<Actor>(id)).ToList();
+            var persons = signers.Count > 0 && signers.All(a => a is { Type: ActorType.Person });
+            if (!signature.AllowRepeatSigner && persons && signature.Required > signers.Count)
+                report.Add("MQ9101", $"{what} needs {N(signature.Required)} signatures, but its signers are {N(signers.Count)} person actor(s) and a signer may not sign twice; lower required, add signers, or allow repeat signers.", at + "/required", signature.Id);
+            allPeople &= persons;
+            people.UnionWith(signature.Signers);
+            // With repeat signing one person may give all of a signature's count, but each required actor still signs it.
+            needed += signature.AllowRepeatSigner ? Math.Max(1, signature.RequiredActors.Distinct(StringComparer.Ordinal).Count()) : signature.Required;
+        });
+
+        if (!gate.AllowSignerAcrossSignatures && allPeople && people.Count > 0 && needed > people.Count)
+            report.Add("MQ9101", $"{name} needs {N(needed)} different people across its signatures, but their signers are {N(people.Count)} person actor(s) and one person gives one signature of an approval; lower required, add signers, or allow one person several signatures (allowSignerAcrossSignatures).", pointer + "/stages", gate.Id);
     }
 
     // MQ9105.
@@ -605,6 +651,16 @@ internal static partial class ProcessRules
                 if (!membership.Allows(e.Actors, gate.Signers[i]) && !IsRelative(context.Model, gate.Signers[i]))
                     report.Add("MQ9105", $"{name} lists signer {ActorName(context, gate.Signers[i])}, but event '{e.Name}' may only be raised by {Names(e.Actors.Select(a => ActorName(context, a)))}; add the signer to the event's actors.", pointer + "/signers/" + N(i), gate.Id);
             }
+
+            // An approval's signers are its signatures' (signoff-design.md section 6).
+            ApprovalRules.ForEachSignature(gate, pointer, (signature, at) =>
+            {
+                for (var i = 0; i < signature.Signers.Count; i++)
+                {
+                    if (!membership.Allows(e.Actors, signature.Signers[i]) && !IsRelative(context.Model, signature.Signers[i]))
+                        report.Add("MQ9105", $"{name} lists signer {ActorName(context, signature.Signers[i])} in signature '{signature.Name}', but event '{e.Name}' may only be raised by {Names(e.Actors.Select(a => ActorName(context, a)))}; add the signer to the event's actors.", at + "/signers/" + N(i), signature.Id);
+                }
+            });
         }
     }
 

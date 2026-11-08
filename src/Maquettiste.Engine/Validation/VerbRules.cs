@@ -59,6 +59,24 @@ internal static class VerbRules
                         CheckUse(context.Model, point.Verbs[k], Ptr.At(Ptr.At("/triggerPoints", i) + "/verbs", k), point.Id, $"Trigger point '{point.Name}'", report);
                 }
 
+                // A named signature's notBy verbs (signoff-design.md section 6), on a transition's gate or a library's gate policy.
+                for (var i = 0; i < process.Transitions.Count; i++)
+                {
+                    if (process.Transitions[i].Gate is { } gate)
+                        CheckNotBy(context.Model, gate, Ptr.At("/transitions", i) + "/gate", report);
+                }
+
+                for (var i = 0; i < process.Gates.Count; i++)
+                    CheckNotBy(context.Model, process.Gates[i], Ptr.At("/gates", i), report);
+                break;
+            case Scenario scenario:
+                // A step's response is a built-in verb's key (signoff-design.md decision 25): a hidden one is named at the step.
+                for (var i = 0; i < scenario.Steps.Count; i++)
+                {
+                    if (scenario.Steps[i] is { Response: not SignatureResponse.Sign } step)
+                        CheckUse(context.Model, ResponseKey(step.Response), Ptr.At("/steps", i) + "/response", step.Id, $"Step {Ptr.N(i + 1)}", report);
+                }
+
                 break;
             case Operation { Verb: { } operationVerb } operation:
                 CheckUse(context.Model, operationVerb, "/verb", operation.Id, $"Operation '{operation.Name}'", report);
@@ -73,6 +91,28 @@ internal static class VerbRules
                 break;
         }
     }
+
+    // MQ9701 and MQ9704 on each verb a gate's named signatures name in notBy.
+    private static void CheckNotBy(ModelSnapshot model, ProcessGate gate, string gatePointer, Report report) =>
+        ApprovalRules.ForEachSignature(gate, gatePointer, (signature, at) =>
+        {
+            for (var k = 0; k < signature.NotBy.Count; k++)
+            {
+                if (signature.NotBy[k].Verb is { } verb)
+                    CheckUse(model, verb, Ptr.At(at + "/notBy", k) + "/verb", signature.Id, $"Signature '{signature.Name}' of gate '{gate.Name}'", report);
+            }
+        });
+
+    /// <summary>The built-in verb's key of a response (signoff-design.md decision 9).</summary>
+    /// <param name="response">The response.</param>
+    /// <returns>The key: <c>sign</c>, <c>reject</c>, <c>ignore</c> or <c>withdraw</c>.</returns>
+    internal static string ResponseKey(SignatureResponse response) => response switch
+    {
+        SignatureResponse.Reject => "reject",
+        SignatureResponse.Ignore => "ignore",
+        SignatureResponse.Withdraw => "withdraw",
+        _ => "sign",
+    };
 
     /// <summary>MQ9701 for a key neither built in nor the project's own; MQ9704 for a hidden built-in verb.</summary>
     private static void CheckUse(ModelSnapshot model, string key, string pointer, string id, string who, Report report)

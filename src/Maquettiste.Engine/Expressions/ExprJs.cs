@@ -18,7 +18,8 @@ internal static class ExprJs
         var body = new Writer(columns).Value(e, null, null);
         return site switch
         {
-            ExprSiteKind.Check => "(row) => mq.passes(" + body + ")",
+            // A named signature is needed unless its when is false (signoff-design.md decision 7): unknown passes, as at a check.
+            ExprSiteKind.Check or ExprSiteKind.Approval => "(row) => mq.passes(" + body + ")",
             ExprSiteKind.Value or ExprSiteKind.Set or ExprSiteKind.TriggerSet => "(row) => mq.out(" + body + ", " + Str(e.Type.Kind) + ")",
             _ => "(row) => mq.holds(" + body + ")",
         };

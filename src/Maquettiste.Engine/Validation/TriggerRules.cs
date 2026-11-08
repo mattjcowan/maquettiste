@@ -20,6 +20,9 @@ internal static class TriggerRules
     /// <summary>The verbs no input can do yet (MQ8107), unless an event names one.</summary>
     private static readonly HashSet<string> NotYet = new(StringComparer.Ordinal) { "override", "set-state", "claim", "reject", "ignore", "withdraw", "delegate", "route" };
 
+    /// <summary>The responses other than sign that an approval takes (signoff-design.md decision 9): doable in a lifecycle with an approval.</summary>
+    private static readonly HashSet<string> ApprovalResponses = new(StringComparer.Ordinal) { "reject", "ignore", "withdraw" };
+
     public static void Check(ValidationContext context, Element element, Report report)
     {
         if (element is TriggerPoint named)
@@ -50,7 +53,7 @@ internal static class TriggerRules
             var at = Ptr.At("/triggerPoints", i);
             CheckShape(model, point, at, () => Covers(model, point, governed), report);
             CheckPlaces(model, process, point, at, governed, states, transitions, report);
-            CheckRuns(process, point, at, report);
+            CheckRuns(model, process, point, at, report);
         }
 
         CheckReplaces(model, process, governed, report);
@@ -146,12 +149,16 @@ internal static class TriggerRules
                     Ptr.At(at + "/transitions", k), point.Id);
         }
 
-        var moves = point.Verbs.All(v => ExprSites.IsMoveVerb(v) || v == "sign" || (!BuiltInVerbs.IsBuiltIn(v) && process.Events.Any(e => e.Verb == v)));
+        // In a lifecycle with an approval, reject, ignore and withdraw answer it on a gated move (signoff-design.md decision 17).
+        var approval = ApprovalRules.UsesApproval(model, process);
+        var moves = point.Verbs.All(v => ExprSites.IsMoveVerb(v) || v == "sign" || (approval && ApprovalResponses.Contains(v))
+            || (!BuiltInVerbs.IsBuiltIn(v) && process.Events.Any(e => e.Verb == v)));
+        var fit = approval ? "move verbs, sign, reject, ignore, withdraw, and own verbs its events send" : "move verbs, sign, and own verbs its events send";
         if (!moves && point.Targets.Count > 0)
-            report.Add("MQ8102", $"Trigger point '{name}' names targets beside a verb that makes no move of this lifecycle; targets fit move verbs, sign, and own verbs its events send. Remove them.",
+            report.Add("MQ8102", $"Trigger point '{name}' names targets beside a verb that makes no move of this lifecycle; targets fit {fit}. Remove them.",
                 at + "/targets", point.Id);
         if (!moves && point.Transitions.Count > 0)
-            report.Add("MQ8102", $"Trigger point '{name}' names transitions beside a verb that makes no move of this lifecycle; transitions fit move verbs, sign, and own verbs its events send. Remove them.",
+            report.Add("MQ8102", $"Trigger point '{name}' names transitions beside a verb that makes no move of this lifecycle; transitions fit {fit}. Remove them.",
                 at + "/transitions", point.Id);
         if (point.Attributes.Count > 0 && (point.Ends.Count > 0 || !point.Verbs.All(v => v is "read" or "modify")))
             report.Add("MQ8102", $"Trigger point '{name}' names attributes beside {(point.Ends.Count > 0 ? "ends" : "a verb other than read and modify")}; remove them.", at + "/attributes", point.Id);
@@ -324,8 +331,10 @@ internal static class TriggerRules
             CheckNamedReplace(model, points, named, report);
         }
 
-        // MQ8107: verbs no input can do yet. Other verbs may run on any covered object, with or without a lifecycle.
-        if (point.Verbs.Count > 0 && point.Verbs.All(NotYet.Contains))
+        // MQ8107: verbs no input can do yet. Other verbs may run on any covered object, with or without a lifecycle. Reject, ignore and withdraw
+        // can be done when a lifecycle that governs an entity it covers has an approval (signoff-design.md decision 17).
+        if (point.Verbs.Count > 0 && point.Verbs.All(NotYet.Contains)
+            && !(point.Verbs.Any(ApprovalResponses.Contains) && GovernedByApproval(model, points.Covers(named))))
             report.Add("MQ8107", $"Trigger point '{name}' can never run: no input can do its verbs yet. Remove it.", "/verbs", named.Id);
     }
 
@@ -361,8 +370,9 @@ internal static class TriggerRules
 
     // ---- MQ8107 ----
 
-    private static void CheckRuns(Process process, ProcessTriggerPoint point, string at, Report report)
+    private static void CheckRuns(ModelSnapshot model, Process process, ProcessTriggerPoint point, string at, Report report)
     {
+        var approval = ApprovalRules.UsesApproval(model, process);
         if (point.Verbs.Count == 0 || point.Verbs.Any(CanRun))
             return;
         report.Add("MQ8107", $"Trigger point '{point.Name}' can never run: no event or transition of lifecycle '{process.Name}' does its verbs, or no input can do them yet. Remove it.",
@@ -374,11 +384,19 @@ internal static class TriggerRules
                 return true;
             if (ExprSites.IsMoveVerb(verb))
                 return process.Transitions.Any(t => t.Verb == verb && (point.Transitions.Count == 0 || point.Transitions.Contains(t.Id, StringComparer.Ordinal)));
+            // A response answers an approval on its gated move (signoff-design.md decision 17).
+            if (approval && ApprovalResponses.Contains(verb))
+                return point.Transitions.Count == 0 || process.Transitions.Any(t => point.Transitions.Contains(t.Id, StringComparer.Ordinal) && ApprovalRules.GateOf(model, t) is { UsesStages: true });
             return !NotYet.Contains(verb);
         }
     }
 
     // ---- helpers ----
+
+    /// <summary>Whether a lifecycle with an approval governs one of the entities (signoff-design.md decision 17).</summary>
+    private static bool GovernedByApproval(ModelSnapshot model, IReadOnlyList<Entity> entities) =>
+        entities.Count > 0 && model.All<Process>().Any(p => p.Use == ProcessUse.Lifecycle && ApprovalRules.UsesApproval(model, p)
+            && entities.Any(e => SubjectCoverage.Governs(model, p, e)));
 
     /// <summary>The entities a lifecycle governs (its subjects, their derived entities and a stereotype's carriers), by name.</summary>
     private static IReadOnlyList<Entity> Governed(ModelSnapshot model, Process lifecycle) =>
