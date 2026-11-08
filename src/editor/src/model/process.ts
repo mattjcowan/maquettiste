@@ -50,10 +50,42 @@ export interface MeaningDoc {
   description?: unknown;
 }
 
+/** One entry of a named signature's `notBy`: a verb key or a transition id (signoff-design.md decision 15). */
+export interface NotByDoc {
+  verb?: string;
+  transition?: string;
+}
+
+/** A named signature of an approval (signoff-design.md decision 3). */
+export interface NamedSignatureDoc {
+  id: string;
+  name: string;
+  displayName?: string;
+  signers: string[];
+  required?: number;
+  requiredActors?: string[];
+  allowRepeatSigner?: boolean;
+  when?: Json;
+  notBy?: NotByDoc[];
+  description?: unknown;
+}
+
+/** A stage of an approval: named signatures only. Part 1 holds exactly one. */
+export interface GateStageDoc {
+  id: string;
+  name: string;
+  displayName?: string;
+  signatures: NamedSignatureDoc[];
+  description?: unknown;
+}
+
 export interface GateDoc {
   id: string;
   name: string;
   displayName?: string;
+  /** An approval's stages; a gate with stages carries its counts on the signatures (MQ8201). */
+  stages?: GateStageDoc[];
+  allowSignerAcrossSignatures?: boolean;
   required?: number;
   signers?: string[];
   requiredActors?: string[];
@@ -815,6 +847,8 @@ export interface GateForm {
   requiredActors: string[];
   /** Required actors that are not signers (MQ9102). */
   strayRequired: string[];
+  /** The gate has stages: it is an approval, and its counts are on its signatures. */
+  approval: boolean;
 }
 
 /** One form per gated transition, in transition order. */
@@ -835,6 +869,7 @@ export function gateForms(process: ProcessDoc): GateForm[] {
         signers,
         requiredActors,
         strayRequired: requiredActors.filter((a) => !signers.includes(a)),
+        approval: !!t.gate.stages?.length,
       },
     ];
   });
@@ -1040,6 +1075,10 @@ export function actorUses(process: ProcessDoc, actor: string): string[] {
     if (!g) continue;
     if (g.signers?.includes(actor) || g.requiredActors?.includes(actor))
       out.push(`${process.name}: gate ${g.displayName || g.name}${g.requiredActors?.includes(actor) ? " (required)" : ""}`);
+    for (const s of g.stages ?? [])
+      for (const sig of s.signatures ?? [])
+        if (sig.signers?.includes(actor) || sig.requiredActors?.includes(actor))
+          out.push(`${process.name}: gate ${g.displayName || g.name}, signature ${sig.name}${sig.requiredActors?.includes(actor) ? " (required)" : ""}`);
   }
   return out;
 }

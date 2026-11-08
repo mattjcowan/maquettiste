@@ -5,6 +5,7 @@
 // except entry the same right's actors name. MQ3001 reports two inline rights of one lifecycle with one name. The rules that
 // read a condition need the expression engine, which the mock lacks, so a condition is only checked for the ids it names.
 import type { Diagnostic } from "@/api/types";
+import { gateSignerIds } from "@/model/approvals";
 import { commonFields, objectFields } from "@/model/objectFields";
 import { subjectsOf } from "@/model/process";
 import { ATTRIBUTE_VERBS, LINK_VERBS } from "@/model/rights";
@@ -200,7 +201,7 @@ export function rightDiagnostics(json: Json, all: () => Iterable<ModelEntry>, em
   if (!denies) return;
   // MQ9905: under deny, an event or a human task no one can ever do.
   const signers = (event: string) =>
-    arr(json.transitions).some((t) => t.event === event && arr(t.gate ? [t.gate] : []).some((g) => strings(g.signers).length > 0));
+    arr(json.transitions).some((t) => t.event === event && arr(t.gate ? [t.gate] : []).some((g) => gateSignerIds(g).length > 0));
   arr(json.events).forEach((e, i) => {
     const verb = str(e.verb);
     const reach = strings(e.actors).length > 0 || signers(String(e.id)) || (verb !== null && allowing.has(verb));

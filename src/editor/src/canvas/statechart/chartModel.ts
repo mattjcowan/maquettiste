@@ -141,10 +141,24 @@ export function edgeLabel(process: ProcessDoc, t: TransitionDoc, names: Names = 
 export function gateBadge(t: TransitionDoc, actorNames: ReadonlyMap<string, string> = new Map()): GateBadge | null {
   const gate = t.gate;
   if (!gate) return null;
+  const name = gate.displayName || gate.name;
+  // An approval counts per named signature: its badge says how many signatures it has, the tooltip lists them.
+  if (gate.stages?.length) {
+    const sigs = gate.stages.flatMap((st) => st.signatures ?? []);
+    const signers = [...new Set(sigs.flatMap((sg) => sg.signers ?? []))].map((a) => actorNames.get(a) ?? a);
+    const required = sigs.reduce((n, sg) => n + (sg.required ?? 1), 0);
+    const list = sigs.map((sg) => `${sg.name} (${sg.required ?? 1})`).join(", ");
+    return {
+      text: `${sigs.length} sig.`,
+      required,
+      of: signers.length,
+      signers,
+      title: `${name}: ${sigs.length === 1 ? "1 signature" : `${sigs.length} signatures`}: ${list}`,
+    };
+  }
   const signers = (gate.signers ?? []).map((a) => actorNames.get(a) ?? a);
   const required = gate.required ?? 1;
   const of = signers.length;
-  const name = gate.displayName || gate.name;
   return { text: `${required} of ${of}`, required, of, signers, title: CHART_LABELS.gateTitle(name, required, of, signers.join(", ")) };
 }
 

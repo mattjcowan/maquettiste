@@ -1055,3 +1055,47 @@ export const PARTICIPANT_LABELS = {
   actsAs: (actor: string) => `acts as ${actor}`,
   noActsAs: "satisfies none of the actors it needs",
 } as const;
+
+/** The Gates tab's approval texts (signoff-design.md section 11). */
+export const APPROVAL_LABELS = {
+  use: "Use named signatures",
+  useTip:
+    "Turns this gate into an approval: one stage holding one named signature that takes the signers, count, required actors and repeat setting you have now. Add more signatures after.",
+  back: "Back to one list of signers",
+  backTip: "Turns the approval back into a plain gate with one list of signers. Only when it has one signature with no Needed when and no Not by.",
+  backBlocked: "Only an approval with one signature that has no Needed when and no Not by can go back to one list of signers.",
+  stage: "Stage",
+  acrossSignatures: "One person may give several signatures",
+  acrossSignaturesTip: "Without this, a person gives at most one signature or ignore on the whole approval.",
+  add: "Add signature",
+  columns: {
+    name: "Name",
+    signers: "Signers",
+    required: "Required",
+    requiredActors: "Required actors",
+    repeat: "Repeat signer",
+    when: "Needed when",
+    notBy: "Not by",
+    why: "Why",
+  },
+  tips: {
+    signers: "The actors whose members may give this signature.",
+    required: "How many signatures this one needs.",
+    requiredActors: "Actors that must each give at least one of this signature's signatures. Each must be one of the signers.",
+    repeat: "One person may count twice on this signature.",
+    when: "This signature is needed unless the condition is false when the approval starts. Empty: always needed.",
+    notBy: "Who may not give it: whoever did one of these verbs or moves since the object entered the gated move's source state.",
+    why: "Why this signature is needed.",
+  },
+  always: "Always",
+  noOne: "No one",
+  notByTitle: (name: string) => `Not by, ${name}`,
+  notByHint: "Whoever did one of these verbs or moves since the object entered this move's source state cannot give this signature.",
+  notByVerbs: "Verbs",
+  notByMoves: "Moves",
+  whenTitle: (name: string) => `Needed when, ${name}`,
+  whenHint: "Judged when the approval starts. Only false means not needed: true or unknown means needed. Empty means always needed.",
+  whenPlaceholder: "subject.cost > 10000",
+  lastSignature: "An approval needs at least one signature. Use Back to one list of signers instead.",
+  empty: "No signatures yet.",
+} as const;

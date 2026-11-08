@@ -4,6 +4,7 @@
 // verb answers yes. `except` never grants. A condition the mock cannot read says nothing in a run and "depends" in the grid.
 // Part 2: freezing refuses first and no allow lifts it (decisions 17 and 18); a right with `whileFrozen` holds only while frozen; and
 // `read` and `modify` are answered per attribute (decision 21), where attributes not known fail closed.
+import { gateSignerIds } from "@/model/approvals";
 import { builtInVerbs } from "@/model/verbs";
 import type { Membership } from "./membership";
 
@@ -240,7 +241,7 @@ function closedLists(doc: Json, active: ReadonlySet<string>, verb: string): { id
   // A gate's signers count as an allow for `sign` and for the gated event's verb.
   for (const t of taken) {
     const gate = t.gate as Json | undefined;
-    const signers = strs(gate?.signers);
+    const signers = gateSignerIds(gate);
     if (!gate || !signers.length) continue;
     const ev = events.find((e) => e.id === t.event);
     if (verb === "sign" || ev?.verb === verb) out.push({ id: String(gate.id), list: signers, signers: true });
@@ -269,7 +270,7 @@ export function rightsGrid(
     if (str(ev.verb)) verbSet.add(String(ev.verb));
   }
   const gates = arr(lifecycle.transitions).flatMap((t) => (t.gate ? [t.gate as Json] : []));
-  for (const g of gates) strs(g.signers).forEach((a) => actorSet.add(a));
+  for (const g of gates) gateSignerIds(g).forEach((a) => actorSet.add(a));
   const walk = (list: unknown) =>
     arr(list).forEach((s) => {
       for (const i of arr(s.invoke)) if (i.type === "human-task") strs(i.actors).forEach((a) => actorSet.add(a));

@@ -65,7 +65,14 @@ test("a lifecycle opens on its chart and every tab shows its part of the process
   await expect(editor.getByTestId("event-payload")).toContainText("Payload of issue");
 
   await tab(editor, "Gates").click();
-  await expect(editor.getByText("No gates")).toBeVisible();
+  // The lifecycle's one gate is an approval: its stage and a grid of two named signatures, with no single list of signers.
+  await expect(editor.getByTestId("gate-form")).toHaveCount(1);
+  await expect(editor.getByTestId("approval-stage")).toHaveText("Review");
+  await expect(rowsOf(editor, "signatures-grid")).toHaveCount(2);
+  await expect(cell(rowsOf(editor, "signatures-grid").first(), "when")).toContainText("subject.total > 10000");
+  await expect(cell(rowsOf(editor, "signatures-grid").nth(1), "notBy")).toHaveText("Promote");
+  await expect(editor.getByTestId("gate-required")).toHaveCount(0);
+  await expect(editor.getByTestId("back-to-signers")).toBeDisabled();
   await tab(editor, "Context").click();
   await expect(editor.getByTestId("attribute-grid")).toBeVisible();
   await tab(editor, "Scenarios").click();
