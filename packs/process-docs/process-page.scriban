@@ -118,7 +118,7 @@ In priority order: among the transitions of one source and one trigger, the firs
 | # | Source | Trigger | Guard | Targets | Actions | Gate |{{ if move_verbs }} Verb |{{ end }}
 | --- | --- | --- | --- | --- | --- | --- |{{ if move_verbs }} --- |{{ end }}
 {{- for t in p.transitions }}
-| {{ for.index + 1 }} | {{ md_code t.source.path }} | {{ trigger_text(t) }} | {{ t.guard ? (md_code t.guard.name) : "" }} | {{ t.is_targetless ? "none (stays in the source)" : code_paths(t.targets) }}{{ t.external ? " (external)" : "" }} | {{ code_names(t.actions) }} | {{ t.gate ? (md_code t.gate.name) + " (" + t.gate.required + " of " + t.gate.signers.size + ")" : "" }} |{{ if move_verbs }} {{ t.verb ? (md_code t.verb.key) : "" }} |{{ end }}
+| {{ for.index + 1 }} | {{ md_code t.source.path }} | {{ trigger_text(t) }} | {{ t.guard ? (md_code t.guard.name) : "" }} | {{ t.is_targetless ? "none (stays in the source)" : code_paths(t.targets) }}{{ t.external ? " (external)" : "" }} | {{ code_names(t.actions) }} | {{ t.gate ? (md_code t.gate.name) + " (" + gate_count(t.gate) + ")" : "" }} |{{ if move_verbs }} {{ t.verb ? (md_code t.verb.key) : "" }} |{{ end }}
 {{- end }}
 {{- end }}
 {{- if p.gates.size > 0 }}
@@ -133,19 +133,43 @@ and changes no state. Leaving the source state discards the signatures.
 
 - Name: {{ md_code g.name }}
 {{ if g.transition }}- On: transition {{ numbers[g.transition.id] }}, {{ trigger_text(g.transition) }} from {{ md_code g.transition.source.path }}{{ if !g.transition.is_targetless }} to {{ code_paths(g.transition.targets) }}{{ end }}{{ else }}- On: {{ for t in p.transitions }}{{ if t.gate == g }}transition {{ numbers[t.id] }}, {{ end }}{{ end }}a gate from a library{{ end }}
+{{- if g.uses_stages }}
+- One person may give several signatures: {{ g.allow_signer_across_signatures ? "yes (a person may answer more than one of its signatures)" : "no (each person gives at most one response that counts)" }}
+{{- else }}
 - Signatures required: {{ g.required }}, from {{ actor_links(g.signers, "../") }}
 {{- if g.required_actors.size > 0 }}
 - Required actors: at least one signature from each of {{ actor_links(g.required_actors, "../") }}
 {{- end }}
 - Repeat signer: {{ g.allow_repeat_signer ? "allowed (one person may count more than once)" : "not allowed (each signature from a different person)" }}
+{{- end }}
 - Reason: {{ g.reason_required ? "required with each signature" : "optional" }}
 - Meanings: {{ for m in g.meanings }}{{ for.first ? "" : ", " }}{{ md_code m.name }}{{ if m.display_name != m.name }} ({{ md_cell m.display_name }}){{ end }}{{ end }}
 {{- if g.description }}
 
 {{ g.description }}
 {{- end }}
+{{- if g.uses_stages }}
 
-The audit record, one per signature attempt and per outcome of the gate:
+#### Approval
+
+A signer answers the approval with a response on the gated event. Sign counts one signature on a named signature, and the occurrence
+that completes the last needed signature makes the move. Reject is a veto: it clears every signature of the approval, moves nothing and
+starts the approval again. Ignore (abstain) finishes that person on the signature and leaves the count. Withdraw takes back the person's
+latest signature. A signature is needed unless its condition is false when the approval starts: when the object enters the source
+state, after a rejection, and after the gated move completes without leaving it. Leaving the source state discards every response.
+{{- for st in g.stages }}
+
+Stage {{ md_code st.name }}{{ if st.display_name != st.name }} ({{ md_cell st.display_name }}){{ end }}:{{ if st.description }} {{ md_inline(st.description) }}{{ end }}
+
+| Signature | Signers | Required | Required actors | Repeat signer | Needed when | Not by | Why |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+{{- for s in st.signatures }}
+| {{ md_code s.name }}{{ if s.display_name != s.name }} ({{ md_cell s.display_name }}){{ end }} | {{ actor_links(s.signers, "../") }} | {{ s.required }} | {{ actor_links(s.required_actors, "../") }} | {{ s.allow_repeat_signer ? "allowed" : "no" }} | {{ s.when ? (md_code s.when.text) : "always" }} | {{ not_by_text(s, numbers) }} | {{ md_inline(s.description) }} |
+{{- end }}
+{{- end }}
+{{- end }}
+
+The audit record, one per {{ g.uses_stages ? "response" : "signature attempt" }} and per outcome of the {{ g.uses_stages ? "approval" : "gate" }}:
 
 | Field | Type | Required | Values | Description |
 | --- | --- | --- | --- | --- |
@@ -319,7 +343,7 @@ Started when their state is entered and cancelled when it is left.
 {{- raises = [] }}
 {{- for e in p.events }}{{ if has_actor(e.actors, a) }}{{ raises[raises.size] = md_code e.name }}{{ end }}{{ end }}
 {{- signs = [] }}
-{{- for g in p.gates }}{{ if has_actor(g.signers, a) }}{{ signs[signs.size] = (md_code g.name) + (has_actor(g.required_actors, a) ? " (required)" : "") }}{{ end }}{{ end }}
+{{- for g in p.gates }}{{ if has_actor(g.signers, a) }}{{ signs[signs.size] = (md_code g.name) + (has_actor(g.required_actors, a) ? " (required)" : "") }}{{ end }}{{ for s in g.all_signatures }}{{ if has_actor(s.signers, a) || has_actor(s.required_actors, a) }}{{ signs[signs.size] = (md_code (g.name + "." + s.name)) + (has_actor(s.required_actors, a) ? " (required)" : "") }}{{ end }}{{ end }}{{ end }}
 {{- tasks = [] }}
 {{- for i in p.invokes }}{{ if has_actor(i.actors, a) }}{{ tasks[tasks.size] = md_code i.name }}{{ end }}{{ end }}
 | {{ actor_link(a, "../") }} | {{ a.type }}{{ if a.relative }}, {{ relative_text(a, subject_words(p)) }}{{ end }} | {{ raises | array.join ", " }} | {{ signs | array.join ", " }} | {{ tasks | array.join ", " }} |

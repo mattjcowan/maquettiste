@@ -50,6 +50,24 @@ public sealed class McpSurfaceTests
     }
 
     [Fact]
+    public async Task The_process_tools_describe_approvals()
+    {
+        // signoff-design.md section 9: a step's response and signature, the gate state's stages, expect.signatures and MQ9311, the
+        // responses at an approval in what happens when, and the resolved model's stages.
+        var ct = TestContext.Current.CancellationToken;
+        await using var session = await McpSession.StartAsync(ct: ct);
+        var tools = (await session.Client.ListToolsAsync(cancellationToken: ct)).ToDictionary(t => t.Name, t => t.Description ?? "", StringComparer.Ordinal);
+        foreach (var text in new[] { "signer, response, signature, meaning", "reject (a veto", "gate-excluded", "gate-not-signed", "also stages", "lists responses" })
+            Assert.Contains(text, tools["simulate_process"], StringComparison.Ordinal);
+        Assert.Contains("signatures: the signatures counted after it", tools["record_scenario"], StringComparison.Ordinal);
+        Assert.Contains("response and signature are written as given", tools["record_scenario"], StringComparison.Ordinal);
+        Assert.Contains("MQ9311", tools["verify_scenarios"], StringComparison.Ordinal);
+        Assert.Contains("reject, ignore and withdraw are answered too", tools["get_trigger_sequence"], StringComparison.Ordinal);
+        Assert.Contains("allowSignerAcrossSignatures", tools["get_resolved_model"], StringComparison.Ordinal);
+        Assert.Contains("named signature's when", tools["preview_expression"], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task The_read_tools_are_the_catalog_the_editor_assistant_shares()
     {
         var ct = TestContext.Current.CancellationToken;

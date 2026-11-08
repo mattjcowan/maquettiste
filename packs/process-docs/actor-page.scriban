@@ -60,10 +60,12 @@
 {{- end }}
 {{- events = [] }}
 {{- gates = [] }}
+{{- signatures = [] }}
 {{- tasks = [] }}
 {{- for p in a.processes }}
 {{- for e in p.events }}{{ if has_actor(e.actors, a) }}{{ events[events.size] = { process: p, event: e } }}{{ end }}{{ end }}
 {{- for g in p.gates }}{{ if has_actor(g.signers, a) }}{{ gates[gates.size] = { process: p, gate: g } }}{{ end }}{{ end }}
+{{- for g in p.gates }}{{ for s in g.all_signatures }}{{ if has_actor(s.signers, a) || has_actor(s.required_actors, a) }}{{ signatures[signatures.size] = { process: p, gate: g, signature: s } }}{{ end }}{{ end }}{{ end }}
 {{- for i in p.invokes }}{{ if has_actor(i.actors, a) }}{{ tasks[tasks.size] = { process: p, invoke: i } }}{{ end }}{{ end }}
 {{- end }}
 {{- if events.size > 0 }}
@@ -95,6 +97,18 @@
 | --- | --- | --- | --- | --- |
 {{- for x in gates }}
 | {{ md_cell x.gate.display_name }} ({{ md_code x.gate.name }}) | {{ process_link(x.process, "../") }} | {{ if x.gate.transition }}{{ md_code x.gate.transition.label }} from {{ md_code x.gate.transition.source.path }}{{ else }}a gate from a library{{ end }} | {{ x.gate.required }} of {{ actor_links(x.gate.signers, "../") }} | {{ has_actor(x.gate.required_actors, a) ? "required" : "counts toward the total" }} |
+{{- end }}
+{{- end }}
+{{- if signatures.size > 0 }}
+
+## Signatures it gives
+
+The named signatures of approvals that name it, beside the gates it signs.
+
+| Signature | Approval | Process | Transition | Signatures | Its signature |
+| --- | --- | --- | --- | --- | --- |
+{{- for x in signatures }}
+| {{ md_code x.signature.name }}{{ if x.signature.display_name != x.signature.name }} ({{ md_cell x.signature.display_name }}){{ end }} | {{ md_cell x.gate.display_name }} ({{ md_code x.gate.name }}) | {{ process_link(x.process, "../") }} | {{ if x.gate.transition }}{{ md_code x.gate.transition.label }} from {{ md_code x.gate.transition.source.path }}{{ else }}a gate from a library{{ end }} | {{ x.signature.required }} of {{ actor_links(x.signature.signers, "../") }} | {{ has_actor(x.signature.required_actors, a) ? "required" : "counts toward the total" }} |
 {{- end }}
 {{- end }}
 {{- if tasks.size > 0 }}
@@ -133,6 +147,17 @@
             end
             row = through[seen[key]]
             row.via[row.via.size] = m
+          end
+          for s in g.all_signatures
+            if has_actor(s.signers, m) && !has_actor(s.signers, a)
+              key = "signature:" + s.id
+              if seen[key] == null
+                seen[key] = through.size
+                through[through.size] = { what: "Signature " + (md_code s.name) + " of " + (md_code g.name), process: p, via: [] }
+              end
+              row = through[seen[key]]
+              row.via[row.via.size] = m
+            end
           end
         end
         for i in p.invokes

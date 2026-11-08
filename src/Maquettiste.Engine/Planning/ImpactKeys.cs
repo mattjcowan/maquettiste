@@ -115,6 +115,9 @@ internal sealed class ImpactKeys
                 && !string.Equals(RightsNaming.Hash(_before), RightsNaming.Hash(_candidate), StringComparison.Ordinal),
             "tn" => Changes(e => e is Process or TriggerPoint)
                 && !string.Equals(TriggerNaming.Hash(_before), TriggerNaming.Hash(_candidate), StringComparison.Ordinal),
+            // A process's gates, or a library's gate policies (signoff-design.md section 7).
+            "ap" => Changes(e => e is Process)
+                && !string.Equals(ApprovalNaming.Hash(_before), ApprovalNaming.Hash(_candidate), StringComparison.Ordinal),
             "fn" => Changes(e => e is Process or Right)
                 && !string.Equals(FreezingNaming.Hash(_before), FreezingNaming.Hash(_candidate), StringComparison.Ordinal),
             _ => true,

@@ -36,6 +36,9 @@ internal sealed partial class ResolveRun
     private List<RActor> _actorOrder = [];
     private List<RScenario> _scenarioOrder = [];
 
+    // The processes that use an approval, by name then id (model.approval_lifecycles); empty in a project without approvals.
+    private List<RProcess> _approvalLifecycles = [];
+
     /// <summary>A process's nodes by id, for its scenarios' references.</summary>
     private sealed class ProcessLookup
     {
@@ -48,6 +51,9 @@ internal sealed partial class ResolveRun
         public Dictionary<string, RInvoke> Invokes { get; } = new(StringComparer.Ordinal);
 
         public Dictionary<string, RMeaning> Meanings { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>The named signatures of the process's approvals and of the gate policies it uses, by id.</summary>
+        public Dictionary<string, RNamedSignature> Signatures { get; } = new(StringComparer.Ordinal);
 
         /// <summary>Context attribute names by id.</summary>
         public Dictionary<string, string> Context { get; } = new(StringComparer.Ordinal);
@@ -67,6 +73,8 @@ internal sealed partial class ResolveRun
         public List<REvent> Events { get; } = [];
 
         public List<RGate> Gates { get; } = [];
+
+        public List<RNamedSignature> Signatures { get; } = [];
 
         /// <summary>The referrers keys of the library gates the actor signs: a process that starts naming one changes the actor's lists.</summary>
         public List<string> LibraryGateKeys { get; } = [];
@@ -182,6 +190,10 @@ internal sealed partial class ResolveRun
             BuildProcess(sources[r.Id], r, uses);
         }
 
+        // The processes that use an approval, inline or through a gate policy, by name then id (model.approval_lifecycles).
+        _approvalLifecycles = [.. _processOrder.Where(p => ApprovalRules.UsesApproval(Model, sources[p.Id]))
+            .OrderBy(p => p.Name, StringComparer.Ordinal).ThenBy(p => p.Id, StringComparer.Ordinal)];
+
         // Named trigger points (part 2) resolve once every process is built and before the scenarios, whose expectations and traces name them.
         if (NamedTriggerPoints.Of(Model).Any)
         {
@@ -211,6 +223,7 @@ internal sealed partial class ResolveRun
             actor.Processes = new RList<RProcess>(own?.Processes ?? [], keys);
             actor.Events = new RList<REvent>(own?.Events ?? [], keys);
             actor.Gates = new RList<RGate>(own?.Gates ?? [], keys);
+            actor.Signatures = new RList<RNamedSignature>(own?.Signatures ?? [], keys);
             actor.Rights = RightsOf(actor);
         }
 
@@ -886,10 +899,73 @@ internal sealed partial class ResolveRun
             }
 
             gate.Meanings = new RList<RMeaning>(meanings, nodeKeys);
+            // Empty on a gate without stages, keyed on the file all the same, so its first stage renders again what read them.
+            gate.Stages = new RList<RGateStage>([], nodeKeys);
+            gate.AllSignatures = new RList<RNamedSignature>([], nodeKeys);
+            if (g.Stages is { Count: > 0 } stages)
+                BuildStages(gate, g, stages);
             var audit = Attributes(g.AuditAttributes, gate, lookup.Audit);
             gate.AuditAttributes = new RList<RAttribute>(audit, nodeKeys);
             gate.Audit = new RList<RAuditField>(AuditFields(gate, audit, gateDeps.ToList()), nodeKeys);
             return gate;
+        }
+
+        // An approval's stages and named signatures (signoff-design.md section 7), keyed on the process's file, or the library's for a gate
+        // policy, as the gate's other members are. A signature's when is typed at the approval site; a gate policy's has none (MQ8202). A
+        // notBy transition waits for the process's transitions, and a notBy verb for model.verbs.
+        var notByTransitions = new List<(RNotBy Entry, string Transition)>();
+        void BuildStages(RGate gate, ProcessGate g, IReadOnlyList<GateStage> stages)
+        {
+            var built = new List<RGateStage>();
+            var all = new List<RNamedSignature>();
+            foreach (var st in stages)
+            {
+                var stage = Node(new RGateStage { Name = st.Name, Gate = gate }, st.Id);
+                FillNode(stage, st.DisplayName ?? st.Name, st.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
+                var own = new List<RNamedSignature>();
+                foreach (var ns in st.Signatures)
+                {
+                    var signature = Node(new RNamedSignature
+                    {
+                        Name = ns.Name, Gate = gate, Stage = stage, Required = ns.Required, AllowRepeatSigner = ns.AllowRepeatSigner,
+                    }, ns.Id);
+                    FillNode(signature, ns.DisplayName ?? ns.Name, ns.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
+                    var signatureDeps = DepsOf(signature);
+                    signature.Signers = ActorsOf(ns.Signers, signatureDeps);
+                    signature.RequiredActors = ActorsOf(ns.RequiredActors, signatureDeps);
+                    if (ns.When is not null && process.Use != ProcessUse.Library)
+                        signature.When = BuildCondition(ns.Id, ExprSiteKind.Approval, signatureDeps);
+                    var entries = new List<RNotBy>(ns.NotBy.Count);
+                    for (var k = 0; k < ns.NotBy.Count; k++)
+                    {
+                        var entry = new RNotBy { Id = ns.Id + "/not-by/" + k.ToString(System.Globalization.CultureInfo.InvariantCulture), Dependencies = nodeKeys, VerbKey = ns.NotBy[k].Verb, TransitionId = ns.NotBy[k].Verb is null ? ns.NotBy[k].Transition : null };
+                        if (ns.NotBy[k].Verb is { } verbKey)
+                        {
+                            var known = entry;
+                            _verbFills.Add((verbOf, vocabularyKeys) =>
+                            {
+                                known.Verb = verbOf(verbKey);
+                                known.Dependencies = [.. nodeKeys, .. vocabularyKeys];
+                            });
+                        }
+                        else if (ns.NotBy[k].Transition is { } transitionId)
+                            notByTransitions.Add((entry, transitionId));
+                        entries.Add(entry);
+                    }
+
+                    signature.NotBy = new RList<RNotBy>(entries, nodeKeys);
+                    own.Add(signature);
+                    lookup.Signatures.TryAdd(ns.Id, signature);
+                }
+
+                stage.Signatures = new RList<RNamedSignature>(own, nodeKeys);
+                built.Add(stage);
+                all.AddRange(own);
+            }
+
+            gate.Stages = new RList<RGateStage>(built, nodeKeys);
+            gate.AllSignatures = new RList<RNamedSignature>(all, nodeKeys);
+            gate.AllowSignerAcrossSignatures = g.AllowSignerAcrossSignatures;
         }
 
         // Transitions in priority order, with the editor's edge label.
@@ -945,6 +1021,8 @@ internal sealed partial class ResolveRun
                         lookup.Meanings.TryAdd(m.Id, m);
                     foreach (var a in shared.AuditAttributes)
                         lookup.Audit.TryAdd(a.Id, a.Name);
+                    foreach (var signature in shared.AllSignatures)
+                        lookup.Signatures.TryAdd(signature.Id, signature);
                 }
             }
 
@@ -954,6 +1032,8 @@ internal sealed partial class ResolveRun
             list.Add(transition);
         }
 
+        foreach (var (entry, transitionId) in notByTransitions)
+            entry.Transition = transitions.FirstOrDefault(t => string.Equals(t.Id, transitionId, StringComparison.Ordinal));
         foreach (var state in states.Values)
             state.TransitionsOut = new RList<RTransition>(bySource.GetValueOrDefault(state) ?? [], nodeKeys);
         foreach (var ev in events)
@@ -1071,6 +1151,21 @@ internal sealed partial class ResolveRun
                     if (process.Use == ProcessUse.Library && gate.Transition is null)
                         u.LibraryGateKeys.Add(Keys.Referrers(gate.Id));
                 });
+
+            // An approval's signatures name their own signers and required actors (signoff-design.md section 7).
+            foreach (var signature in gate.AllSignatures)
+            {
+                foreach (var actor in signature.Signers.Concat(signature.RequiredActors).Distinct())
+                    Use(actor, u =>
+                    {
+                        if (!u.Gates.Contains(gate))
+                            u.Gates.Add(gate);
+                        if (!u.Signatures.Contains(signature))
+                            u.Signatures.Add(signature);
+                        if (process.Use == ProcessUse.Library && gate.Transition is null && !u.LibraryGateKeys.Contains(Keys.Referrers(gate.Id)))
+                            u.LibraryGateKeys.Add(Keys.Referrers(gate.Id));
+                    });
+            }
         }
 
         r.Actors = new RList<RActor>(referenced.OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.Id, StringComparer.Ordinal), actorListKeys);
@@ -1093,12 +1188,27 @@ internal sealed partial class ResolveRun
         Add("transition", "id", true, "The gated transition.");
         Add("sequence", "int64", true, "The record's order within the instance.");
         Add("signer", "string", false, "The signing person's identity, supplied by the host (never an actor id); none on a discarded record.");
-        Add("actor", "id", false, "The actor the signer signs as (one of the gate's signers); none on a discarded record.");
+        Add("actor", "id", false, gate.UsesStages
+            ? "The actor the signer answers as (one of the named signature's signers); none on a discarded record."
+            : "The actor the signer signs as (one of the gate's signers); none on a discarded record.");
         Add("meaning", "id", false, "The meaning of the signature; none on a discarded record.");
         Add("reason", "text", false, gate.ReasonRequired ? "The signature's reason: required on every signature." : "The signature's reason, when given.");
         Add("at", "datetimeoffset", true, "When the record was made, from the host's clock.");
-        Add("outcome", "string", true, "signed, completed, refused (an attempt the gate did not count) or discarded (the source state was exited).",
-            ["signed", "completed", "refused", "discarded"]);
+        if (gate.UsesStages)
+        {
+            // An approval's records name the signature and stage, and gain the responses' outcomes (signoff-design.md decision 19).
+            Add("outcome", "string", true, "signed, completed, refused (an attempt the approval did not count), discarded (the source state was exited), "
+                + "rejected (a veto cleared the approval), ignored (a person abstained on a signature) or withdrawn (a person took back a signature).",
+                ["signed", "completed", "refused", "discarded", "rejected", "ignored", "withdrawn"]);
+            Add("signature", "id", false, "The named signature the record is about; none on a record about the whole approval.");
+            Add("stage", "id", false, "The stage of the signature; none when the record names no signature.");
+        }
+        else
+        {
+            Add("outcome", "string", true, "signed, completed, refused (an attempt the gate did not count) or discarded (the source state was exited).",
+                ["signed", "completed", "refused", "discarded"]);
+        }
+
         foreach (var attribute in attributes)
             Add(attribute.Name, attribute.Type.Builtin ?? attribute.Type.Name, attribute.Required, attribute.Description, null, attribute);
         return fields;
@@ -1184,6 +1294,8 @@ internal sealed partial class ResolveRun
                     AfterTicks = ProcessText.Ticks(step.After),
                     Actor = step.Actor is null ? null : _actors.GetValueOrDefault(step.Actor),
                     Signer = step.Signer,
+                    Response = ResolutionValues.Kebab(step.Response),
+                    Signature = step.Signature is null ? null : lookup.Signatures.GetValueOrDefault(step.Signature),
                     Meaning = step.Meaning is null ? null : lookup.Meanings.GetValueOrDefault(step.Meaning),
                     Reason = step.Reason,
                     Payload = ByName(step.Payload, lookup.Payload, lookup.Audit, lookup.Context),
@@ -1299,6 +1411,16 @@ internal sealed partial class ResolveRun
                         r.Expect.CheckWarnings = ExpectedTriggerPoints(warnings, keys);
                     if (expect.TriggerPoints is { Count: > 0 } ran)
                         r.Expect.TriggerPoints = ExpectedTriggerPoints(ran, keys);
+                    if (expect.Signatures is { Count: > 0 } counted)
+                    {
+                        // In the gate's file order (signoff-design.md decision 27); an id of no signature of the process is left out.
+                        var signatureOrder = lookup.Signatures.Values.ToList();
+                        r.Expect.Signatures = [.. counted
+                            .Select(kv => (Signature: lookup.Signatures.GetValueOrDefault(kv.Key), kv.Value))
+                            .Where(x => x.Signature is not null)
+                            .OrderBy(x => signatureOrder.IndexOf(x.Signature!))
+                            .Select(x => new RSignatureCount { Signature = x.Signature!, Count = x.Value })];
+                    }
                     if (expect.Values.Count > 0)
                     {
                         // The object's values by name (object-effects-design.md decision 4): the names its attributes' holders give.

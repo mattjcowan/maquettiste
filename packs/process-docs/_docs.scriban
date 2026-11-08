@@ -303,13 +303,35 @@ func edge_container(t)
   ret ""
 end
 
-# The edge label of a transition: the editor's label, and "(gate N of M)" when a gate guards it.
+# The edge label of a transition: the editor's label, and "(gate N of M)" when a gate guards it, or "(approval, N signatures)" when the
+# gate has stages (signoff-design.md section 10).
 func edge_label(t)
   $label = t.label
   if t.gate
-    $label = $label + " (gate " + t.gate.required + " of " + t.gate.signers.size + ")"
+    $label = $label + (t.gate.uses_stages ? " (" + gate_count(t.gate) + ")" : " (gate " + t.gate.required + " of " + t.gate.signers.size + ")")
   end
   ret diagram_text $label
+end
+
+# A gate's count for the transitions table: "N of M" (required of signers), or "approval, N signatures" for a gate with stages, whose
+# named signatures carry the counts (signoff-design.md section 10).
+func gate_count(g)
+  if g.uses_stages
+    ret "approval, " + g.all_signatures.size + (g.all_signatures.size == 1 ? " signature" : " signatures")
+  end
+  ret g.required + " of " + g.signers.size
+end
+
+# Who may not give a named signature (signoff-design.md decision 15): each verb as "verb `key`", each move as "transition N".
+func not_by_text(s, numbers)
+  $text = ""
+  for $e in s.not_by
+    $item = $e.verb_key ? "verb " + (md_code $e.verb_key) : ($e.transition ? "transition " + numbers[$e.transition.id] : "")
+    if $item != ""
+      $text = $text + ($text == "" ? "" : ", ") + $item
+    end
+  end
+  ret $text
 end
 
 # The lines of one state inside its container's block, with its own block when it has children.

@@ -136,6 +136,13 @@ public sealed class ResolvedNullContractTests
         ["RTriggerVerb"] = "trigger points: ResolvedTriggerTests",
         ["RTriggerPointRun"] = "trigger points: the replay's trace, which the simulation fills",
         ["RTriggerPointSubject"] = "named trigger points: ResolvedNamedTriggerTests",
+
+        // Approvals (signoff-design.md section 7): no fixture model holds one, so that their golden output stays as it was;
+        // ResolvedApprovalTests resolves them.
+        ["RGateStage"] = "approvals: ResolvedApprovalTests",
+        ["RNamedSignature"] = "approvals: ResolvedApprovalTests",
+        ["RNotBy"] = "approvals: ResolvedApprovalTests",
+        ["RSignatureCount"] = "approvals: ResolvedApprovalTests",
     };
 
     [Fact]

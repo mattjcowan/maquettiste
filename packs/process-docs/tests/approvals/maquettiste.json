@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "name": "approvals",
+  "packs": {
+    "process-docs": {
+      "output": "out"
+    }
+  }
+}
