@@ -44,6 +44,14 @@ export const ALWAYS = "Always";
 /** Whether the gate is an approval: it has stages. */
 export const isApproval = (gate: Pick<GateDoc, "stages">): boolean => !!gate.stages?.length;
 
+/** The approvals an event's moves are gated by, in file order. */
+export const approvalsOfEvent = (process: Pick<ProcessDoc, "transitions"> | undefined, event: string | undefined): GateDoc[] =>
+  event ? (process?.transitions ?? []).flatMap((t) => (t.event === event && t.gate && isApproval(t.gate) ? [t.gate] : [])) : [];
+
+/** Whether some move of the process is gated by an approval. */
+export const hasApproval = (process: Pick<ProcessDoc, "transitions"> | undefined): boolean =>
+  (process?.transitions ?? []).some((t) => !!t.gate && isApproval(t.gate));
+
 /** An approval's signatures in file order (stage, then signature). */
 export const signaturesOf = (gate: Pick<GateDoc, "stages">): NamedSignatureDoc[] => (gate.stages ?? []).flatMap((s) => s.signatures ?? []);
 

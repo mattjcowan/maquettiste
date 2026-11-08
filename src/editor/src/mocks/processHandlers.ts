@@ -13,7 +13,7 @@ import { mentions, replayable, type Recording } from "./recorded";
 
 const kebab = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 import { MOCK_FAILURES } from "./model/processSeed";
-import { normalizeInput, PARTICIPANT_TEXTS, readAt, replay, simulate, unsatisfiedLists } from "./model/stepper";
+import { normalizeInput, PARTICIPANT_TEXTS, readAt, replay, signatureCounts, simulate, unsatisfiedLists } from "./model/stepper";
 import { enumDrift, schemaDiagnostics } from "./model/validate";
 import { syncCodesOf } from "./model/syncCodes";
 import { report } from "./model/store";
@@ -316,6 +316,9 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const expect = st.expect as Json | undefined;
       return (
         st.verb !== undefined ||
+        st.response !== undefined ||
+        st.signature !== undefined ||
+        expect?.signatures !== undefined ||
         expect?.refusal !== undefined ||
         expect?.refusedBy !== undefined ||
         expect?.checkWarnings !== undefined ||
@@ -417,6 +420,21 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         message: `Step ${t.index + 1}: the checks that warned or the trigger points that ran differ from expect.checkWarnings or expect.triggerPoints; fix the trigger points or update the expectations from a replay.`,
         expected: { checkWarnings: expect.checkWarnings ?? null, triggerPoints: expect.triggerPoints ?? null },
         actual: { checkWarnings: warned, triggerPoints: ran },
+      };
+    }
+    // MQ9311: the signatures counted after a step that answered an approval, against expect.signatures (only the ids listed are compared).
+    for (const t of result.trace) {
+      if (t.index < 0) continue;
+      const expected = (steps[t.index].expect as Json | undefined)?.signatures as Json | undefined;
+      if (!expected) continue;
+      const counted = signatureCounts.get(t) ?? {};
+      if (Object.entries(expected).every(([id, n]) => (counted[id] ?? 0) === n)) continue;
+      return {
+        step: t.index,
+        rule: "MQ9311",
+        message: `Step ${t.index + 1}: the signatures counted after the step differ from expect.signatures; fix the step or update the expectations from a replay.`,
+        expected,
+        actual: Object.fromEntries(Object.keys(expected).map((id) => [id, counted[id] ?? 0])),
       };
     }
     // MQ9307: the values a step set against its expect.values (exactly the attributes the step changed).

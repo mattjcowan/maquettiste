@@ -246,6 +246,10 @@ export interface ProcessDoc {
 /** What a step assumes a check the team writes does (trigger-points-design.md decision 26). */
 export type CheckWord = "pass" | "warning" | "error";
 
+/** The responses to an approval, in the order the editor offers them. */
+export const APPROVAL_RESPONSES = ["sign", "reject", "ignore", "withdraw"] as const;
+export type ApprovalResponse = (typeof APPROVAL_RESPONSES)[number];
+
 export interface StepDoc {
   id: string;
   input?: (typeof STEP_INPUTS)[number];
@@ -268,8 +272,14 @@ export interface StepDoc {
   attributes?: string[];
   end?: string;
   object?: string;
+  /** How the step answers an approval on its event (signoff-design.md decision 25); absent: a signature. */
+  response?: ApprovalResponse;
+  /** The named signature the step answers; absent: the engine picks one (decision 8). */
+  signature?: string;
   expect?: {
     accepted?: boolean;
+    /** The signatures counted after the step, by named signature id (decision 27). */
+    signatures?: Record<string, number>;
     states?: string[];
     context?: Json;
     values?: Json;
@@ -956,6 +966,10 @@ export interface StepRow {
   /** The checks the step expects to warn, and the trigger points it expects to run, in order (names). */
   checkWarnings: string;
   triggerPoints: string;
+  /** An approval step's response key (empty: a signature), the signature's name, and the signatures expected counted (names). */
+  response: string;
+  signature: string;
+  signatures: string;
 }
 
 /** `name=value` pairs of a map keyed by attribute (or guard) id, names from `names`. */
@@ -1022,6 +1036,10 @@ export function stepRows(
   for (const g of process?.guards ?? []) ids.set(g.id, g.name);
   for (const t of process?.transitions ?? []) if (t.gate) ids.set(t.gate.id, t.gate.name);
   if (process) ids.set(process.id, process.name);
+  const signatureNames = new Map<string, string>();
+  for (const t of process?.transitions ?? [])
+    for (const st of t.gate?.stages ?? []) for (const sg of st.signatures ?? []) signatureNames.set(sg.id, sg.displayName || sg.name);
+  for (const [id, n] of signatureNames) ids.set(id, n);
   const name = (id: string | undefined) => (id ? (ids.get(id) ?? "?") : "");
   return scenario.steps.map((s, i) => {
     const input = s.input ?? "event";
@@ -1051,6 +1069,9 @@ export function stepRows(
       refusedBy: s.expect?.refusedBy ? name(s.expect.refusedBy) : "",
       checkWarnings: (s.expect?.checkWarnings ?? []).map(name).join(", "),
       triggerPoints: (s.expect?.triggerPoints ?? []).map(name).join(", "),
+      response: s.response ?? "",
+      signature: name(s.signature),
+      signatures: mapText(s.expect?.signatures, signatureNames),
     };
   });
 }

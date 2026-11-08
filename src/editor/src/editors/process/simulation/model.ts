@@ -6,7 +6,7 @@
 import type { AttributeDoc } from "@/api/types";
 import { RIGHT_LABELS as RL, SIMULATION_LABELS as L, TRIGGER_LABELS as TL } from "@/model/labels";
 import { builtInVerb, labelOfKey } from "@/model/verbList";
-import { stateIndex, transitionLabel, type EventDoc, type ProcessDoc, type ScenarioDoc } from "@/model/process";
+import { stateIndex, transitionLabel, type ApprovalResponse, type EventDoc, type ProcessDoc, type ScenarioDoc } from "@/model/process";
 import type { CheckWord } from "@/model/process";
 import type { EnabledTrigger, ScenarioVerification, SimInput, SimulationResult, StepTrace } from "./api";
 
@@ -31,6 +31,8 @@ export interface Names {
   why(id: string): string;
   /** The verb an event names, when it names one. */
   eventVerb?(id: string): string | undefined;
+  /** A named signature of an approval, by id. */
+  signature?(id: string | null | undefined): string;
 }
 
 /** Display names for the ids an answer carries: state paths, event, invoke, actor, guard, action and gate names. */
@@ -53,9 +55,11 @@ export function namesOf(
   for (const e of process.events ?? []) for (const a of e.payload ?? []) attributes.set(a.id, a.name);
   const meanings = new Map<string, string>();
   const gates = new Map<string, string>();
+  const signatures = new Map<string, string>();
   const transitions = new Map<string, string>();
   for (const t of process.transitions ?? []) {
     transitions.set(t.id, transitionLabel(process, t));
+    for (const st of t.gate?.stages ?? []) for (const sg of st.signatures ?? []) signatures.set(sg.id, sg.displayName || sg.name);
     if (t.gate) {
       gates.set(t.gate.id, t.gate.displayName || t.gate.name);
       for (const m of t.gate.meanings ?? []) meanings.set(m.id, m.name);
@@ -77,6 +81,7 @@ export function namesOf(
     eventVerb: (id) => (process.events ?? []).find((e) => e.id === id)?.verb ?? undefined,
     meaning: of(meanings),
     gate: (id) => gates.get(id) ?? id,
+    signature: of(signatures),
     why: (id) => {
       const own = (process.rights ?? []).find((r) => r.id === id || r.right === id);
       const text = typeof own?.description === "string" ? own.description : "";
@@ -121,6 +126,9 @@ export interface EnabledRow {
   anyActor: boolean;
   payload: AttributeDoc[];
   gate: { have: number; need: number; meanings: Option[]; reasonRequired: boolean } | null;
+  /** On an approval, the responses its event takes (from the answer's `responses`) and its named signatures, for the picker. Empty on a plain gate. */
+  responses: ApprovalResponse[];
+  signatures: Option[];
   /** The stub guards (no expression) of the candidate transitions, whose results the input assumes. */
   assume: Option[];
   /** The checks the team writes that the candidates reach (`checksUnknown`), whose outcome the input assumes: Pass, Warning or Error. */
@@ -135,6 +143,9 @@ export interface RowValue {
   signer: string;
   meaning: string;
   reason: string;
+  /** On an approval: the response (`sign`, `reject`, `ignore`, `withdraw`) and the named signature; empty means the engine picks it. */
+  response: string;
+  signature: string;
   assume: Record<string, boolean | CheckWord>;
   after: string;
 }
@@ -183,6 +194,8 @@ export function enabledRows(result: SimulationResult, process: ProcessDoc, names
               reasonRequired: !!gated.reasonRequired,
             }
           : null,
+      responses: e.gate && gated?.stages?.length ? (e.responses ?? ["sign"]) : [],
+      signatures: (gated?.stages ?? []).flatMap((st) => (st.signatures ?? []).map((sg) => ({ id: sg.id, name: sg.displayName || sg.name }))),
       assume,
       checks: (e.checksUnknown ?? []).map((id) => ({ id, name: names.element(id) })),
     };
@@ -233,6 +246,8 @@ export function defaultRowValue(row: EnabledRow, result: SimulationResult): RowV
     signer: row.gate ? `signer${row.gate.have + 1}` : "",
     meaning: row.gate?.meanings[0]?.id ?? "",
     reason: "",
+    response: "sign",
+    signature: "",
     assume: { ...Object.fromEntries(row.assume.map((g) => [g.id, true])), ...Object.fromEntries(row.checks.map((c) => [c.id, "pass" as const])) },
     after: row.trigger === "time" ? (nextDue(result)?.after ?? "PT1H") : "",
   };
@@ -263,6 +278,9 @@ export function inputOf(row: EnabledRow, value: RowValue): SimInput {
     if (value.signer.trim()) input.signer = value.signer.trim();
     if (value.meaning) input.meaning = value.meaning;
     if (value.reason.trim()) input.reason = value.reason.trim();
+    // An approval's response and signature; a signature with the engine's pick is left out.
+    if (row.responses.length && value.response && value.response !== "sign") input.response = value.response as ApprovalResponse;
+    if (row.signatures.length && value.signature) input.signature = value.signature;
   }
   const payload = Object.fromEntries(
     row.payload
@@ -281,6 +299,49 @@ export function inputOf(row: EnabledRow, value: RowValue): SimInput {
 }
 
 // ------------------------------------------------------------------ time and pending
+
+/** One approval in the answer: its stages, and each signature's needed, counted and required and the people who finished it. */
+export interface ApprovalRow {
+  gate: string;
+  name: string;
+  /** Nothing is needed: the approval waits for the event's next occurrence. */
+  satisfied: boolean;
+  stages: {
+    name: string;
+    complete: boolean;
+    signatures: { id: string; name: string; needed: boolean; counted: number; required: number; finished: string[]; complete: boolean }[];
+  }[];
+}
+
+/** The approvals of the answer's gate state (a gate without stages has none), by name. */
+export function approvalRows(result: SimulationResult, process: ProcessDoc, names: Names): ApprovalRow[] {
+  const stages = new Map<string, string>();
+  for (const t of process.transitions ?? []) for (const st of t.gate?.stages ?? []) stages.set(st.id, st.displayName || st.name);
+  return (result.gates ?? []).flatMap((g) =>
+    g.stages?.length
+      ? [
+          {
+            gate: g.gate,
+            name: names.gate(g.gate),
+            satisfied: g.satisfied,
+            stages: g.stages.map((st) => ({
+              name: stages.get(st.stage) ?? st.stage,
+              complete: st.complete,
+              signatures: st.signatures.map((s) => ({
+                id: s.signature,
+                name: names.signature?.(s.signature) ?? s.signature,
+                needed: s.needed,
+                counted: s.counted,
+                required: s.required,
+                finished: s.finished,
+                complete: s.complete,
+              })),
+            })),
+          },
+        ]
+      : [],
+  );
+}
 
 /** An ISO 8601 duration for a span in milliseconds (days, hours, minutes, seconds). */
 export function durationText(ms: number): string {
@@ -469,7 +530,14 @@ export function lastStepLines(
   for (const r of entry.audit)
     lines.push({
       kind: "audit",
-      text: L.auditLine(names.gate(r.gate), r.outcome, r.signer ?? "", names.actor(r.actor), names.meaning(r.meaning)),
+      text: L.auditLine(
+        names.gate(r.gate),
+        L.auditOutcomes[r.outcome] ?? r.outcome,
+        r.signer ?? "",
+        names.actor(r.actor),
+        names.meaning(r.meaning),
+        r.signature ? (names.signature?.(r.signature) ?? "") : "",
+      ),
       tone: r.outcome === "refused" ? "danger" : r.outcome === "completed" ? "success" : "neutral",
     });
   for (const d of entry.diagnostics) lines.push({ kind: "diagnostic", text: `${d.rule} ${d.message}`, tone: d.severity === "error" ? "danger" : "warning" });
@@ -492,16 +560,18 @@ export function inputLabel(input: SimInput, names: Names, filled?: { actor?: str
           : kind === "verb"
             ? L.verbInput((builtInVerb(input.verb ?? "")?.displayName ?? labelOfKey(input.verb ?? "")).toLowerCase())
             : names.event(input.event);
+  // An approval's response other than sign reads after the event: "approve (reject)".
+  const answered = input.response && input.response !== "sign" ? `${head} (${(L.responseWords[input.response] ?? input.response).toLowerCase()})` : head;
   const actor = input.actor || (input.participant ? filled?.actor : undefined);
   const signer = input.signer || (input.participant ? filled?.signer : undefined);
   // A participant's step reads "approve by SalesApprover, acting as Approver, signed by erin".
   if (input.participant) {
-    const parts = [`${head} ${L.asParticipant(names.participant(input.participant))}`];
+    const parts = [`${answered} ${L.asParticipant(names.participant(input.participant))}`];
     if (actor) parts.push(L.actingAs(names.actor(actor)));
     if (signer) parts.push(L.bySigner(signer));
     return parts.join(", ");
   }
-  const parts = [head];
+  const parts = [answered];
   if (actor) parts.push(L.asActor(names.actor(actor)));
   if (signer) parts.push(L.bySigner(signer));
   return parts.join(" ");

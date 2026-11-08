@@ -221,6 +221,8 @@ export function atomicStates(doc: Json): { id: string; active: Set<string>; node
   return out;
 }
 
+const APPROVAL_RESPONSES = ["sign", "reject", "ignore", "withdraw"];
+
 /** The closed lists of the cell: events that name the verb and can be sent from the state, its human tasks, its gates' signers. */
 function closedLists(doc: Json, active: ReadonlySet<string>, verb: string): { id: string; list: string[]; signers: boolean }[] {
   const out: { id: string; list: string[]; signers: boolean }[] = [];
@@ -244,7 +246,9 @@ function closedLists(doc: Json, active: ReadonlySet<string>, verb: string): { id
     const signers = gateSignerIds(gate);
     if (!gate || !signers.length) continue;
     const ev = events.find((e) => e.id === t.event);
-    if (verb === "sign" || ev?.verb === verb) out.push({ id: String(gate.id), list: signers, signers: true });
+    // An approval's signers may also reject, ignore and withdraw (signoff-design.md decision 18).
+    const answers = arr(gate.stages).length ? APPROVAL_RESPONSES : ["sign"];
+    if (answers.includes(verb) || ev?.verb === verb) out.push({ id: String(gate.id), list: signers, signers: true });
   }
   return out;
 }
@@ -271,6 +275,8 @@ export function rightsGrid(
   }
   const gates = arr(lifecycle.transitions).flatMap((t) => (t.gate ? [t.gate as Json] : []));
   for (const g of gates) gateSignerIds(g).forEach((a) => actorSet.add(a));
+  // Only a lifecycle with an approval lists the verbs it is answered with.
+  if (gates.some((g) => arr(g.stages).length)) APPROVAL_RESPONSES.forEach((v) => verbSet.add(v));
   const walk = (list: unknown) =>
     arr(list).forEach((s) => {
       for (const i of arr(s.invoke)) if (i.type === "human-task") strs(i.actors).forEach((a) => actorSet.add(a));

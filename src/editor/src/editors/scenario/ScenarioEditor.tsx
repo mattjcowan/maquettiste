@@ -23,6 +23,7 @@ import {
   idsOfNames,
   parseMapText,
   stateIndex,
+  APPROVAL_RESPONSES,
   stepNames,
   stepRows,
   stepStatuses,
@@ -41,7 +42,8 @@ import { failureSentence } from "./replayFailure";
 import { useActors, useProblems, rowProblems } from "../process/shared";
 import { ScenarioStatusBadge } from "../process/ScenariosTab";
 import { ObjectsGrid, ParticipantsGrid } from "./ParticipantsGrid";
-import { PARTICIPANT_LABELS as PL, RIGHT_LABELS as RL, TRIGGER_LABELS as TL } from "@/model/labels";
+import { PARTICIPANT_LABELS as PL, RIGHT_LABELS as RL, SCENARIO_APPROVAL_LABELS as SL, TRIGGER_LABELS as TL } from "@/model/labels";
+import { approvalsOfEvent, hasApproval, signaturesOf } from "@/model/approvals";
 import { EFFECT_LABELS as EL } from "@/model/effectLabels";
 import { CHECK_WORD_LABELS, canWarnAt, isTeamCheck, parseAssume, reachableChecks, stepVerbs } from "@/model/triggerPoints";
 
@@ -221,6 +223,8 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const meanings: GridOption[] = (processDoc?.transitions ?? []).flatMap((t) => (t.gate?.meanings ?? []).map((m) => ({ value: m.id, label: m.name })));
   const none = { value: "", label: "(none)" };
   const step = (row: StepRow) => scenario.steps[row.index];
+  /** A step answers an approval when it is an event step and its event is gated by one. */
+  const answers = (row: StepRow) => row.input === "event" && approvalsOfEvent(processDoc, step(row)?.event).length > 0;
 
   const columns: GridColumn<StepRow>[] = [
     { key: "index", label: "#", kind: "readonly", width: "w-8", value: (r) => String(r.index + 1) },
@@ -384,7 +388,53 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       mono: true,
       value: (r) => r.values,
     },
+    ...(hasApproval(processDoc)
+      ? [
+          {
+            key: "signatures",
+            label: SL.signatures,
+            tooltip: SL.signaturesTip,
+            kind: "readonly" as const,
+            width: "min-w-28",
+            value: (r: StepRow) => r.signatures,
+          },
+        ]
+      : []),
     { key: "signer", label: "Signer", kind: "text", width: "min-w-20", value: (r) => r.signer },
+    ...(hasApproval(processDoc)
+      ? [
+          {
+            key: "response",
+            label: SL.response,
+            tooltip: SL.responseTip,
+            kind: "select" as const,
+            width: "min-w-24",
+            // Offered only on a step whose event is gated by an approval; the verbs the project hides are left out.
+            locked: (r: StepRow) => !answers(r),
+            value: (r: StepRow) => (answers(r) ? (SL.responseWords[r.response || "sign"] ?? r.response) : ""),
+            editValue: (r: StepRow) => step(r)?.response ?? "sign",
+            options: (r: StepRow) =>
+              APPROVAL_RESPONSES.filter((x) => x === "sign" || !verbs.hidden.has(x) || x === step(r)?.response).map((x) => ({
+                value: x,
+                label: SL.responseWords[x],
+              })),
+          },
+          {
+            key: "signature",
+            label: SL.signature,
+            tooltip: SL.signatureTip,
+            kind: "select" as const,
+            width: "min-w-24",
+            locked: (r: StepRow) => !answers(r),
+            value: (r: StepRow) => (answers(r) ? r.signature || SL.picked : ""),
+            editValue: (r: StepRow) => step(r)?.signature ?? "",
+            options: (r: StepRow) => [
+              { value: "", label: SL.picked },
+              ...approvalsOfEvent(processDoc, step(r)?.event).flatMap((g) => signaturesOf(g).map((sg) => ({ value: sg.id, label: sg.displayName || sg.name }))),
+            ],
+          },
+        ]
+      : []),
     {
       key: "meaning",
       label: "Meaning",
@@ -452,7 +502,11 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       if (!s) return;
       if (key === "input") {
         setOpt(s, "input", v === "event" ? undefined : v);
-        if (v !== "event") delete s.event;
+        if (v !== "event") {
+          delete s.event;
+          delete s.response;
+          delete s.signature;
+        }
         if (v !== "time") delete s.after;
         if (v !== "invoke-done" && v !== "invoke-error") delete s.invoke;
         if (v !== "verb") {
@@ -464,6 +518,11 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         } else if (!s.verb && verbOptions[0]) s.verb = verbOptions.find((o) => o.value === "modify")?.value ?? verbOptions[0].value;
       } else if (key === "on") {
         setOpt(s, row.input === "event" ? "event" : row.input === "time" ? "after" : row.input === "verb" ? "verb" : "invoke", v.trim());
+        // A response and signature answer an approval on the event; another event has none to answer.
+        if (row.input === "event" && !approvalsOfEvent(processDoc, v.trim()).length) {
+          delete s.response;
+          delete s.signature;
+        }
         if (row.input === "verb" && v.trim() !== "read") delete s.attributes;
       } else if (key === "refusal" || key === "refusedBy") {
         // A refusal expected is a refused step: the reason or the refuser also says so.
@@ -473,7 +532,9 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
           expect.accepted = false;
         } else delete expect[key];
         setOpt(s, "expect", expect);
-      } else if (key === "end" || key === "object") setOpt(s, key, v.trim());
+      } else if (key === "response") setOpt(s, "response", v === "sign" ? undefined : v);
+      else if (key === "signature") setOpt(s, "signature", v);
+      else if (key === "end" || key === "object") setOpt(s, key, v.trim());
       else if (key === "attributes") setOpt(s, "attributes", v.split(",").filter(Boolean));
       else if (key === "setValues") setOpt(s, "values", parseValuesText(v, valueNames).values);
       else if (key === "participant" || key === "actor" || key === "meaning" || key === "signer" || key === "reason") setOpt(s, key, v.trim());

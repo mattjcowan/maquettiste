@@ -582,6 +582,8 @@ export const SIMULATION_LABELS = {
     "gate-signer": "the signer is not one of the gate's signers",
     "gate-repeat": "this signer already signed the gate",
     "gate-reason": "the gate needs a reason with each signature",
+    "gate-excluded": "the person did a verb or move the signature's Not by names",
+    "gate-not-signed": "the person has no signature to withdraw",
     right: "a right denies it",
     default: "nothing allows it, and the lifecycle denies by default",
     frozen: "it is frozen, and freezing refuses changes until a thaw",
@@ -601,8 +603,25 @@ export const SIMULATION_LABELS = {
   unknownAttributesRefused: (attributes: string) =>
     `No attribute was picked, and unknown attributes are refused because the right names attribute ${attributes}. Pick an attribute under Do.`,
   transitionLine: (transitions: string) => `Took ${transitions}`,
-  auditLine: (gate: string, outcome: string, signer: string, actor: string, meaning: string) =>
-    `${gate}: ${outcome}${signer ? ` by ${signer}` : ""}${actor ? ` as ${actor}` : ""}${meaning ? ` (${meaning})` : ""}`,
+  auditLine: (gate: string, outcome: string, signer: string, actor: string, meaning: string, signature = "") =>
+    `${gate}${signature ? `, ${signature}` : ""}: ${outcome}${signer ? ` by ${signer}` : ""}${actor ? ` as ${actor}` : ""}${meaning ? ` (${meaning})` : ""}`,
+  /** An approval's audit outcomes in the line, each in its own words; the rest are shown as the engine names them. */
+  auditOutcomes: {
+    rejected: "rejected, so the approval was cleared and starts again",
+    ignored: "ignored (abstained)",
+    withdrawn: "withdrawn",
+  } as Record<string, string>,
+  /** The Approvals section and the response and signature fields of an enabled approval. */
+  approvals: "Approvals",
+  noApprovals: "No approval is open.",
+  approvalWaiting: "Nothing is needed; the next occurrence moves.",
+  signatureState: (name: string, needed: boolean, counted: number, required: number) => (needed ? `${name}: ${counted} of ${required}` : `${name}: not needed`),
+  finishedBy: (people: string) => `finished: ${people}`,
+  signatureComplete: "complete",
+  response: "Response",
+  signature: "Signature",
+  enginePicks: "Picked by the engine",
+  responseWords: { sign: "Sign", reject: "Reject", ignore: "Ignore (abstain)", withdraw: "Withdraw" } as Record<string, string>,
   changedLine: (changes: string) => `Context: ${changes}`,
   incomplete: "The replay stopped here; the inputs after it did not run.",
   // Trace
@@ -986,6 +1005,8 @@ export const RIGHT_LABELS = {
     "gate-signer": "Signer not listed",
     "gate-repeat": "Repeat signer",
     "gate-reason": "Reason missing",
+    "gate-excluded": "Excluded signer",
+    "gate-not-signed": "Nothing to withdraw",
     right: "Right",
     default: "Default",
     frozen: "Frozen",
@@ -1054,6 +1075,18 @@ export const PARTICIPANT_LABELS = {
   /** Show the row's step text in the simulation panel and the trace. */
   actsAs: (actor: string) => `acts as ${actor}`,
   noActsAs: "satisfies none of the actors it needs",
+} as const;
+
+/** The scenario editor's cells for an approval (signoff-design.md section 11). */
+export const SCENARIO_APPROVAL_LABELS = {
+  response: "Response",
+  responseTip: "How the step answers the approval on its event. Only on a step whose event is gated by an approval. Empty: Sign.",
+  responseWords: { sign: "Sign", reject: "Reject", ignore: "Ignore (abstain)", withdraw: "Withdraw" } as Record<string, string>,
+  signature: "Signature",
+  signatureTip: "The named signature the step answers. Empty: the engine picks it, the same way every time.",
+  picked: "Picked by the engine",
+  signatures: "Signatures",
+  signaturesTip: "The signatures counted after the step, by name; filled in by Update from replay",
 } as const;
 
 /** The Gates tab's approval texts (signoff-design.md section 11). */

@@ -25,7 +25,7 @@ import { indexLookup } from "@/model/index";
 import { RIGHT_LABELS as RL, SIMULATION_LABELS as L, TRIGGER_LABELS as TL } from "@/model/labels";
 import { CHECK_WORD_LABELS, CHECK_WORDS, isTeamCheck, reachableChecks, triggerPointsOf } from "@/model/triggerPoints";
 import { summaryFromDocument } from "@/model/model";
-import type { CheckWord, ParticipantDoc, ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
+import type { CheckWord, ParticipantDoc, ProcessDoc, ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
 import { verifyScenario } from "../api";
 import { attributeLabels, castValues, entityChain } from "./castNames";
 import { objectStatesText, type StateChoiceGroup } from "@/model/effects";
@@ -47,6 +47,7 @@ import {
   mergeRowEdit,
   namesOf,
   nextDue,
+  approvalRows,
   pendingRows,
   replayRows,
   replaySummary,
@@ -67,7 +68,7 @@ const SMALL = "h-5 px-1.5 text-12";
 
 const NO_PARTICIPANTS: readonly ParticipantDoc[] = [];
 
-type SectionId = "start" | "cast" | "enabled" | "time" | "pending" | "configuration" | "lastStep" | "trace" | "replay";
+type SectionId = "start" | "cast" | "enabled" | "time" | "pending" | "approvals" | "configuration" | "lastStep" | "trace" | "replay";
 
 interface ReplayState {
   scenario: ScenarioDoc;
@@ -493,6 +494,9 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
               L.time,
               <TimeSection result={result} live={live} names={names} onAdvance={(after) => update((s) => addInput(s, { input: "time", after }))} />,
             )}
+            {result && approvalRows(result, process, names).length
+              ? section("approvals", L.approvals, <ApprovalsSection result={result} process={process} names={names} />)
+              : null}
             {section(
               "pending",
               L.pending,
@@ -967,7 +971,9 @@ function EnabledRowView({
     e.stopPropagation();
     onRaise(true);
   };
-  const { own } = useVerbs();
+  const { own, hidden } = useVerbs();
+  // An approval's responses, without the verbs the project hides (the first is always offered, as the default).
+  const responses = row.responses.filter((r) => r === "sign" || !hidden.has(r));
   // An event takes an actor; an invoke result only when its task names the actors who may complete it.
   const needsActor = row.trigger === "event" || ((row.trigger === "invoke-done" || row.trigger === "invoke-error") && !row.anyActor);
   return (
@@ -1095,6 +1101,47 @@ function EnabledRowView({
               data-testid="enabled-signer"
             />
           </div>
+          {responses.length ? (
+            <>
+              <div className={cn(ROW, "pl-6")} data-testid="enabled-field-row" onKeyDown={onKey}>
+                <label className="w-24 shrink-0 truncate text-secondary" htmlFor={`sim-${row.key}-response`}>
+                  {L.response}
+                </label>
+                <select
+                  id={`sim-${row.key}-response`}
+                  className={cn(FIELD, "flex-1")}
+                  value={value.response || "sign"}
+                  onChange={(e) => onEdit({ response: e.target.value })}
+                  data-testid="enabled-response"
+                >
+                  {responses.map((r) => (
+                    <option key={r} value={r}>
+                      {L.responseWords[r] ?? r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={cn(ROW, "pl-6")} data-testid="enabled-field-row" onKeyDown={onKey}>
+                <label className="w-24 shrink-0 truncate text-secondary" htmlFor={`sim-${row.key}-signature`}>
+                  {L.signature}
+                </label>
+                <select
+                  id={`sim-${row.key}-signature`}
+                  className={cn(FIELD, "flex-1")}
+                  value={value.signature}
+                  onChange={(e) => onEdit({ signature: e.target.value })}
+                  data-testid="enabled-signature"
+                >
+                  <option value="">{L.enginePicks}</option>
+                  {row.signatures.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : null}
           <div className={cn(ROW, "pl-6")} data-testid="enabled-field-row" onKeyDown={onKey}>
             <label className="w-24 shrink-0 truncate text-secondary" htmlFor={`sim-${row.key}-meaning`}>
               {L.meaning}
@@ -1205,6 +1252,47 @@ function TimeSection({ result, live, names, onAdvance }: { result: SimulationRes
         </Button>
       </div>
     </div>
+  );
+}
+
+function ApprovalsSection({ result, process, names }: { result: SimulationResult; process: ProcessDoc; names: Names }) {
+  const rows = approvalRows(result, process, names);
+  if (!rows.length) return <Note>{L.noApprovals}</Note>;
+  return (
+    <ul aria-label={L.approvals}>
+      {rows.map((a) => (
+        <li key={a.gate} data-testid="approval-row" data-gate={a.name}>
+          <div className={ROW}>
+            <span className="min-w-0 flex-1 truncate font-medium" title={a.name}>
+              {a.name}
+            </span>
+            {a.satisfied ? <span className="truncate text-secondary">{L.approvalWaiting}</span> : null}
+          </div>
+          {a.stages.flatMap((st) =>
+            st.signatures.map((s) => (
+              <div key={s.id} className={cn(ROW, "pl-6")} data-testid="approval-signature" data-signature={s.name}>
+                <span
+                  className={cn("min-w-0 flex-1 truncate", !s.needed && "text-secondary")}
+                  title={L.signatureState(s.name, s.needed, s.counted, s.required)}
+                >
+                  {L.signatureState(s.name, s.needed, s.counted, s.required)}
+                </span>
+                {s.finished.length ? (
+                  <span className="min-w-0 truncate text-secondary" title={L.finishedBy(s.finished.join(", "))}>
+                    {L.finishedBy(s.finished.join(", "))}
+                  </span>
+                ) : null}
+                {s.complete ? (
+                  <Badge tone="success" data-testid="approval-complete">
+                    {L.signatureComplete}
+                  </Badge>
+                ) : null}
+              </div>
+            )),
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -115,6 +115,9 @@ export function verbUsage(rows: readonly ElementSummary[]): Map<string, VerbUsag
   };
   for (const r of rows) {
     if (r.kind === "process") for (const key of r.verbs ?? []) entry(key).processes++;
+    // An approval answers with reject, ignore and withdraw (signoff-design.md decision 9), so it uses them without naming them.
+    if (r.kind === "process" && (r.approvals ?? 0) > 0)
+      for (const key of APPROVAL_VERBS) entry(key).approvals = (entry(key).approvals ?? 0) + (r.approvals ?? 0);
     else if (r.kind === "operation" && r.verb) entry(r.verb).operations++;
     // A named right's verbs (a lifecycle's own rights are in its row's verbs, counted with the process).
     else if (r.kind === "right") for (const key of r.verbs ?? []) entry(key).rights = (entry(key).rights ?? 0) + 1;
@@ -131,15 +134,22 @@ export interface VerbUsage {
   rights?: number;
   /** Named trigger points; listed first wherever trigger points naming a verb are listed. */
   triggerPoints?: number;
+  /** Approvals, for the verbs an approval is answered with (`reject`, `ignore`, `withdraw`). */
+  approvals?: number;
 }
 
-export const isUsed = (u: VerbUsage | undefined): boolean => !!u && (u.processes > 0 || u.operations > 0 || (u.rights ?? 0) > 0 || (u.triggerPoints ?? 0) > 0);
+/** The verbs an approval is answered with, beside `sign`. */
+const APPROVAL_VERBS = ["reject", "ignore", "withdraw"] as const;
+
+export const isUsed = (u: VerbUsage | undefined): boolean =>
+  !!u && (u.processes > 0 || u.operations > 0 || (u.rights ?? 0) > 0 || (u.triggerPoints ?? 0) > 0 || (u.approvals ?? 0) > 0);
 
 /** The elements that name a verb key, from the index rows: named trigger points first (in index order), then the rest in index order. */
 export function verbUsers(rows: readonly ElementSummary[], key: string): ElementSummary[] {
   const users = rows.filter(
     (r) =>
       ((r.kind === "process" || r.kind === "right" || r.kind === "trigger-point") && (r.verbs ?? []).includes(key)) ||
+      (r.kind === "process" && (r.approvals ?? 0) > 0 && (APPROVAL_VERBS as readonly string[]).includes(key)) ||
       (r.kind === "operation" && r.verb === key),
   );
   return [...users.filter((r) => r.kind === "trigger-point"), ...users.filter((r) => r.kind !== "trigger-point")];
@@ -163,5 +173,6 @@ export function usageText(u: VerbUsage | undefined): string {
   if (u.processes) parts.push(`${u.processes} ${u.processes === 1 ? "process" : "processes"}`);
   if (u.operations) parts.push(`${u.operations} ${u.operations === 1 ? "operation" : "operations"}`);
   if (u.rights) parts.push(`${u.rights} named ${u.rights === 1 ? "right" : "rights"}`);
+  if (u.approvals) parts.push(`${u.approvals} ${u.approvals === 1 ? "approval" : "approvals"}`);
   return parts.join(", ");
 }
