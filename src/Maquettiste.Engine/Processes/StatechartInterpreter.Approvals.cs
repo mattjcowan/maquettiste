@@ -315,7 +315,7 @@ public sealed partial class StatechartInterpreter
     /// Row 7 of decision 14 on an approval with something needed: the signature the step answers (the one picked with the actor, else the
     /// step's own, else picked here by the response's rule for the step's actor), then its signers, the lifecycle's denies on the response's verb,
     /// <c>notBy</c>, an earlier answer, nothing to withdraw and a reason, in that order; a delegation then needs the person it goes to among the
-    /// signature's <c>delegateTo</c>. An answer on behalf of a delegator has the delegation in place of the signers (signoff-design.md decision
+    /// signature's <c>delegateTo</c>, and someone other than the delegator. An answer on behalf of a delegator has the delegation in place of the signers (signoff-design.md decision
     /// 34). A refused attempt is audited <c>refused</c> with the signature when one was picked. <see langword="null"/> when the response may go
     /// on, its signature kept for the admit.
     /// </summary>
@@ -390,7 +390,16 @@ public sealed partial class StatechartInterpreter
             else if (gate.ReasonRequired && string.IsNullOrWhiteSpace(input.Reason))
                 refusal = Refusals.GateReason;
             else if (response == SignatureResponse.Delegate && !DelegatesTo(signature))
+            {
+                Note("The person it goes to isn't one of the actors this signature may be delegated to.");
                 refusal = Refusals.GateSigner;
+            }
+            else if (response == SignatureResponse.Delegate && string.Equals(_scope.Parties!.DelegateTo, input.Signer, StringComparison.Ordinal))
+            {
+                // A delegation goes to someone else: the delegator's own delegate answer would finish them, and nobody could answer for them.
+                Note("A signer can't delegate a signature to themselves; delegate it to someone else.");
+                refusal = Refusals.GateSigner;
+            }
         }
 
         if (signature is not null)

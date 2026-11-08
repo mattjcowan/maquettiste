@@ -1165,6 +1165,97 @@ public sealed class CompileTests
         }
     }
 
+    [Fact]
+    public async Task Approval_rounds_run_the_moves_checks_when_an_answer_on_behalf_completes_the_approval()
+    {
+        // signoff-design.md decision 34: an answer on behalf counts as the delegator's actor, so when it meets the controller required actor
+        // and completes the approval, the move's trigger points run before the move, as in the engine. A check on approve's verb refuses it:
+        // the scenario test agrees with the replay (refused by the check, still in review), and the host's test sees the refusal audited with
+        // its OnBehalfOf, and a delegation to the delegator themselves refused gate-signer.
+        using var repo = PackRepo.ApprovalRounds();
+        repo.EditJson(".maquettiste/model/processes/deal.json", deal =>
+        {
+            deal["events"]![1]!["verb"] = "promote";
+            deal["triggerPoints"] = System.Text.Json.Nodes.JsonNode.Parse("""
+                [ { "id": "01JAE0000000000000000000Q1", "name": "WithinBudget", "type": "check", "verbs": [ "promote" ],
+                    "targets": [ "01JAE0000000000000000000S3" ], "description": "The deal fits the budget." } ]
+                """);
+        });
+        File.Delete(repo.PathOf(".maquettiste/model/scenarios/deal/lapse.json"));
+        repo.EditJson(".maquettiste/model/scenarios/deal/rounds.json", rounds =>
+        {
+            rounds.AsObject().Remove("outcome");
+            var last = rounds["steps"]![6]!.AsObject();
+            last["assume"] = System.Text.Json.Nodes.JsonNode.Parse("""{ "01JAE0000000000000000000Q1": "error" }""");
+            last["expect"] = System.Text.Json.Nodes.JsonNode.Parse("""
+                { "accepted": false, "refusal": "check", "refusedBy": "01JAE0000000000000000000Q1", "states": [ "01JAE0000000000000000000S2" ] }
+                """);
+        });
+        await repo.GenerateCleanlyAsync();
+        Assert.Contains("_behalf.TryGetValue(t, out var behalf) ? behalf.Actor : _envelope?.Actor", repo.Read("out/Runtime/Statechart.g.cs"), StringComparison.Ordinal);
+
+        Replace("out/Processes/Deal/DealHandlers.cs", "public static partial bool SignoffLegalStage(ApprovalCall<DealContext> call) =>\n        throw new NotImplementedException(\"The condition of stage Legal of gate Signoff of Deal is not implemented yet.\");",
+            "public static partial bool SignoffLegalStage(ApprovalCall<DealContext> call) => call.Context.Cost > 50000m;");
+        Replace("out/Processes/Deal/DealHandlers.cs", "public static partial bool SignoffBoardStage(ApprovalCall<DealContext> call) =>\n        throw new NotImplementedException(\"The condition of stage Board of gate Signoff of Deal is not implemented yet.\");",
+            "public static partial bool SignoffBoardStage(ApprovalCall<DealContext> call) => call.Context.Cost > 100000m;");
+        Replace("out/Processes/Deal/DealHandlers.cs", "private partial bool IsDeputyController(ProcessSnapshot<DealContext> snapshot, ProcessEnvelope envelope) => false;",
+            "private partial bool IsDeputyController(ProcessSnapshot<DealContext> snapshot, ProcessEnvelope envelope) => envelope.Signer is \"dora\" or \"carl\";");
+        Replace("out/Processes/Deal/DealTriggerPoints.cs", "throw new NotImplementedException(\"Trigger point WithinBudget of lifecycle Deal is not implemented yet.\")", "false");
+        var host = ApprovalRoundsScenarioHost[..ApprovalRoundsScenarioHost.IndexOf("public sealed class ApprovalRoundTests", StringComparison.Ordinal)]
+            .Replace("var host = new ProcessHost(clock);", "var host = new ProcessHost(clock);\n        TriggerPointStandIn.Current = new ScenarioTriggers();", StringComparison.Ordinal);
+        await BuildAndRunScenarioTestsAsync(repo, "approval-rounds-check", host + OnBehalfCheckTests, 3);
+
+        void Replace(string path, string stub, string with)
+        {
+            var text = repo.Read(path);
+            Assert.Contains(stub, text, StringComparison.Ordinal);
+            repo.Write(path, text.Replace(stub, with, StringComparison.Ordinal));
+        }
+    }
+
+    // The host's test of the approval-rounds check case: a delegation to the delegator is refused gate-signer, and the team's check, which
+    // refuses, runs on the answer on behalf that completes the approval; its refusal keeps OnBehalfOf on the audit.
+    private const string OnBehalfCheckTests = """
+        public sealed class OnBehalfCheckTests
+        {
+            [Fact]
+            public void The_moves_check_refuses_an_answer_on_behalf_that_completes_the_approval()
+            {
+                var host = new ProcessHost(new ManualClock(new DateTimeOffset(2026, 11, 9, 9, 0, 0, TimeSpan.Zero)));
+                var machine = new DealMachine(new DealHandlers(), host, host, host);
+                var review = machine.Submit(machine.Start("d5", new DealContext { Cost = 20000m }).Snapshot, new DealSubmitCommand(new ProcessEnvelope("d5", Actors.Engineer, "ana")));
+                var signed = machine.Approve(review.Snapshot, new DealApproveCommand(new ProcessEnvelope("d5", Actors.Engineer, "ben")));
+                Assert.True(signed.Accepted, signed.Refusal);
+
+                var self = machine.Approve(signed.Snapshot, new DealApproveCommand(new ProcessEnvelope("d5", Actors.Controller, "carl") { Response = SignatureResponse.Delegate, DelegateTo = "carl", Reauthenticated = true }));
+                Assert.Equal(Refusals.GateSigner, self.Refusal);
+                Assert.Equal([GateOutcome.Refused], self.Audit.Select(a => a.Outcome));
+
+                var delegated = machine.Approve(self.Snapshot, new DealApproveCommand(new ProcessEnvelope("d5", Actors.Controller, "carl") { Response = SignatureResponse.Delegate, DelegateTo = "dora", Reauthenticated = true }));
+                Assert.True(delegated.Accepted, delegated.Refusal);
+                var behalf = machine.Approve(delegated.Snapshot, new DealApproveCommand(new ProcessEnvelope("d5", Actors.DeputyController, "dora") { OnBehalfOf = "carl", Reauthenticated = true }));
+                Assert.False(behalf.Accepted);
+                Assert.Equal<string>(["Review"], behalf.States);
+                var record = Assert.Single(behalf.Audit);
+                Assert.Equal((GateOutcome.Refused, "dora", "carl"), (record.Outcome, record.Signer, record.OnBehalfOf));
+                Assert.DoesNotContain(behalf.Snapshot.Approvals["01JAE0000000000000000000T2"].Signed, s => s.Signature == "01JAE0000000000000000000N2");
+            }
+
+            [Fact]
+            public void A_snapshot_written_before_rounds_reads_as_the_lowest_round()
+            {
+                var host = new ProcessHost(new ManualClock(new DateTimeOffset(2026, 11, 9, 9, 0, 0, TimeSpan.Zero)));
+                var machine = new DealMachine(new DealHandlers(), host, host, host);
+                var review = machine.Submit(machine.Start("d6", new DealContext { Cost = 20000m }).Snapshot, new DealSubmitCommand(new ProcessEnvelope("d6", Actors.Engineer, "ana")));
+                review.Snapshot.Approvals["01JAE0000000000000000000T2"].Round = 0;
+                var signed = machine.Approve(review.Snapshot, new DealApproveCommand(new ProcessEnvelope("d6", Actors.Engineer, "ben")));
+                Assert.True(signed.Accepted, signed.Refusal);
+                Assert.Equal(2, signed.Snapshot.Approvals["01JAE0000000000000000000T2"].Round);
+                Assert.Equal<string>(["01JAE0000000000000000000N2"], signed.Snapshot.Approvals["01JAE0000000000000000000T2"].Needed);
+            }
+        }
+        """;
+
     // The test host of the approval-rounds case: the dispatcher over the lifecycle, and the checks the scenario can't make: a round's
     // completion moves nothing and skips a stage, ApprovalNotices.Due lists stable ids at the round's start plus each delay, a response
     // without Reauthenticated is refused, a delegation can't be passed on, and an answer on behalf counts as the delegator's actor.

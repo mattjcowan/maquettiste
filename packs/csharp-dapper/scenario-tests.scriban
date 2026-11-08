@@ -256,24 +256,27 @@ func envelope(step)
   end
   # The response and the signature a step gives an approval (signoff-design.md decision 25).
   $init = ""
-  if step.response && step.response != "sign"
+  # Without a signature that may be delegated (MQ9305), the generated code has no delegation to give: the step's is left out, so the test
+  # still builds.
+  $undelegable = !model.approvals_use_delegation && (step.response == "delegate" || step.delegate_to || step.on_behalf_of)
+  if step.response && step.response != "sign" && !(step.response == "delegate" && $undelegable)
     $init = "Response = SignatureResponse." + (pascal step.response)
   end
   if step.signature
     $init = $init + ($init == "" ? "" : ", ") + "Signature = " + (json step.signature.name)
   end
   # Whom a delegation goes to, and whom an answer is on behalf of, by their identities (signoff-design.md decision 34).
-  if step.delegate_to
+  if step.delegate_to && !$undelegable
     $init = $init + ($init == "" ? "" : ", ") + "DelegateTo = " + (json ("" + step.delegate_to.identity))
   end
-  if step.on_behalf_of
+  if step.on_behalf_of && !$undelegable
     $init = $init + ($init == "" ? "" : ", ") + "OnBehalfOf = " + (json ("" + step.on_behalf_of.identity))
   end
   # The replay takes the check of a signature that asks for the person's identity again as done, and so does the test (decision 36).
   if reauthenticates(step)
     $init = $init + ($init == "" ? "" : ", ") + "Reauthenticated = true"
   end
-  ret "new ProcessEnvelope(" + $parts + ")" + ($init == "" ? "" : " { " + $init + " }")
+  ret "new ProcessEnvelope(" + $parts + ")" + ($init == "" ? "" : " { " + $init + " }") + ($undelegable ? " /* no signature may be delegated, so the step's delegation is left out */" : "")
 end
 func command(step)
   if step.input == "time"

@@ -309,6 +309,7 @@ public sealed class ApprovalPart2ReplayTests
             Step(ApproveEvent, "vic", ""","onBehalfOf":"dee" """));
         var t = result.Trace;
         Assert.Equal(Refusals.GateSigner, t[4].Refusal); // Ben is no deputy
+        Assert.Contains("The person it goes to isn't one of the actors this signature may be delegated to.", t[4].Notes ?? []);
         Assert.Equal([(GateOutcome.Refused, ControllerSig)], Audit(t[4]));
         Assert.Equal([(GateOutcome.Delegated, ControllerSig)], Audit(t[5]));
         Assert.Equal(("Dee", Controller, "Vic"), (t[5].Audit[0].Signer, t[5].Audit[0].Actor, t[5].Audit[0].DelegateTo));
@@ -326,6 +327,13 @@ public sealed class ApprovalPart2ReplayTests
         var text = JsonSerializer.Serialize(t[5].Audit[0], EngineJson.Options);
         Assert.Contains("\"outcome\":\"delegated\"", text, StringComparison.Ordinal);
         Assert.Contains("\"delegateTo\":\"Vic\"", text, StringComparison.Ordinal);
+
+        // A delegation goes to someone else (decision 34): Vic, acting as a controller, can't hand the signature to themselves.
+        var self = await SimulateAsync(store, Doc(100), Step(SubmitEvent, "ana"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "quinn"),
+            Json($$"""{"event":"{{ApproveEvent}}","actor":"{{Controller}}","signer":"Vic","response":"delegate","delegateTo":"vic"}"""));
+        Assert.Equal(Refusals.GateSigner, self.Trace[4].Refusal);
+        Assert.Equal([(GateOutcome.Refused, ControllerSig)], Audit(self.Trace[4]));
+        Assert.Contains("A signer can't delegate a signature to themselves; delegate it to someone else.", self.Trace[4].Notes ?? []);
 
         // Mid-way, the gate state lists both people as finished, and the enabled trigger offers delegate.
         var mid = await SimulateAsync(store, Doc(100), Step(SubmitEvent, "ana"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "quinn"),

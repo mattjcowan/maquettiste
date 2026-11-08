@@ -1353,7 +1353,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             foreach (var (id, approval) in snapshot.Approvals)
             {
                 if (_chart.Transition(id) is { } transition)
-                    _approvals[transition] = new ApprovalProgress { Started = approval.Started, Entered = approval.Entered, Needed = [.. approval.Needed], Signed = [.. approval.Signed], Ignored = [.. approval.Ignored], Round = approval.Round, Skipped = [.. approval.Skipped], Delegated = [.. approval.Delegated], Notices = [.. approval.Notices] };
+                    _approvals[transition] = new ApprovalProgress { Started = approval.Started, Entered = approval.Entered, Needed = [.. approval.Needed], Signed = [.. approval.Signed], Ignored = [.. approval.Ignored], Round = Restored(transition, approval.Round), Skipped = [.. approval.Skipped], Delegated = [.. approval.Delegated], Notices = [.. approval.Notices] };
             }
 
             _acts.AddRange(snapshot.Acts);
@@ -1738,6 +1738,11 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             }
         }
 
+        // The current round of a restored approval: a snapshot written before the gate had rounds holds none, and reads as the gate's lowest
+        // round, so an approval in flight doesn't start that round again over the signatures it counted.
+        private static int Restored(TransitionDefinition t, int round) =>
+            round > 0 || t.Gate is not { Stages.Count: > 0 } gate ? round : gate.Stages.Min(s => s.Round);
+
         // The round after the current one, or null when it is the last (decision 33).
         private static int? LaterRound(GateDefinition gate, ApprovalProgress approval) =>
             gate.Stages.Where(s => s.Round > approval.Round).Select(s => (int?)s.Round).Min();
@@ -1876,8 +1881,12 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                     refusal = Refusals.GateNotSigned;
                 else if (gate.ReasonRequired && string.IsNullOrWhiteSpace(_envelope?.Reason))
                     refusal = Refusals.GateReason;
-                else if (response == SignatureResponse.Delegate && !DelegatesTo(signature))
+                else if (response == SignatureResponse.Delegate && (!DelegatesTo(signature) || string.Equals(_envelope?.DelegateTo, signer, StringComparison.Ordinal)))
+                {
+                    // The person it goes to must meet one of the signature's delegateTo actors, and be someone else: a signer can't delegate a
+                    // signature to themselves, as their own delegate answer finishes them and nobody could answer for them.
                     refusal = Refusals.GateSigner;
+                }
                 else if (signature.Reauthenticate && _envelope?.Reauthenticated != true)
                     refusal = Refusals.GateReauthenticate;
             }

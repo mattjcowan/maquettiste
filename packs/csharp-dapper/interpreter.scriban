@@ -1708,7 +1708,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             foreach (var (id, approval) in snapshot.Approvals)
             {
                 if (_chart.Transition(id) is { } transition)
-                    _approvals[transition] = new ApprovalProgress { Started = approval.Started, Entered = approval.Entered, Needed = [.. approval.Needed], Signed = [.. approval.Signed], Ignored = [.. approval.Ignored]{{ if rounds }}, Round = approval.Round, Skipped = [.. approval.Skipped]{{ end }}{{ if delegation }}, Delegated = [.. approval.Delegated]{{ end }}{{ if notices }}, Notices = [.. approval.Notices]{{ end }} };
+                    _approvals[transition] = new ApprovalProgress { Started = approval.Started, Entered = approval.Entered, Needed = [.. approval.Needed], Signed = [.. approval.Signed], Ignored = [.. approval.Ignored]{{ if rounds }}, Round = Restored(transition, approval.Round), Skipped = [.. approval.Skipped]{{ end }}{{ if delegation }}, Delegated = [.. approval.Delegated]{{ end }}{{ if notices }}, Notices = [.. approval.Notices]{{ end }} };
             }
 
             _acts.AddRange(snapshot.Acts);
@@ -2249,7 +2249,8 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 
         private string? RefuseSignature(TransitionDefinition t, GateDefinition gate, {{ rights_ns }}.TriggerPointOutcome outcome)
         {
-            Audit(gate, t, _envelope?.Signer, _envelope?.Actor, Meaning(gate), _envelope?.Reason, GateOutcome.Refused, AuditValues{{ if approvals }}, IsApproval(gate) ? _picks.GetValueOrDefault(t) : null{{ end }});
+            Audit(gate, t, _envelope?.Signer, _envelope?.Actor, Meaning(gate), _envelope?.Reason, GateOutcome.Refused, AuditValues{{ if approvals }}, IsApproval(gate) ? _picks.GetValueOrDefault(t) : null{{ end }}{{ if delegation }},
+                _behalf.GetValueOrDefault(t)?.Signer{{ end }});
             return outcome.RefusedBy;
         }
 
@@ -2548,12 +2549,13 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         private List<{{ rights_ns }}.ITriggerPointSteps> Responders({{ verb_type }} verb) => {{ named ? "Own(verb)" : "Steps is { } own && own.Speaks(verb) ? [own] : []" }};
 
         // Whether this response would complete the approval, worked out without counting it: nothing is needed, or a signature on the picked
-        // signature completes the round.
+        // signature completes the round{{ if delegation }}, counted as the delegator's actor when it is given on their behalf (decision 34), as
+        // Respond counts it{{ end }}.
         private bool WouldRespond(TransitionDefinition t, GateDefinition gate)
         {
             var approval = ApprovalOf(t, gate);
             return approval.Needed.Count == 0 || (Response == SignatureResponse.Sign && _picks.TryGetValue(t, out var picked)
-                && RoundDone(gate, approval, [.. approval.Signed, new SignatureEntry(_envelope?.Signer ?? "", _envelope?.Actor ?? "", null, null) { Signature = picked.Id }]){{ if rounds }}
+                && RoundDone(gate, approval, [.. approval.Signed, new SignatureEntry(_envelope?.Signer ?? "", {{ if delegation }}_behalf.TryGetValue(t, out var behalf) ? behalf.Actor : {{ end }}_envelope?.Actor ?? "", null, null) { Signature = picked.Id }]){{ if rounds }}
                 && LaterRoundsEmpty(gate, approval){{ end }});
         }
 {{- if rounds }}
@@ -2683,6 +2685,11 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                     return;
             }
         }
+
+        // The current round of a restored approval: a snapshot written before the gate had rounds holds none, and reads as the gate's lowest
+        // round, so an approval in flight doesn't start that round again over the signatures it counted.
+        private static int Restored(TransitionDefinition t, int round) =>
+            round > 0 || t.Gate is not { Stages.Count: > 0 } gate ? round : gate.Stages.Min(s => s.Round);
 
         // The round after the current one, or null when it is the last (decision 33).
         private static int? LaterRound(GateDefinition gate, ApprovalProgress approval) =>
@@ -2875,8 +2882,12 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                 else if (gate.ReasonRequired && string.IsNullOrWhiteSpace(_envelope?.Reason))
                     refusal = Refusals.GateReason;
 {{- if delegation }}
-                else if (response == SignatureResponse.Delegate && !DelegatesTo(signature))
+                else if (response == SignatureResponse.Delegate && (!DelegatesTo(signature) || string.Equals(_envelope?.DelegateTo, signer, StringComparison.Ordinal)))
+                {
+                    // The person it goes to must meet one of the signature's delegateTo actors, and be someone else: a signer can't delegate a
+                    // signature to themselves, as their own delegate answer finishes them and nobody could answer for them.
                     refusal = Refusals.GateSigner;
+                }
 {{- end }}
 {{- if reauth }}
                 else if (signature.Reauthenticate && _envelope?.Reauthenticated != true)
