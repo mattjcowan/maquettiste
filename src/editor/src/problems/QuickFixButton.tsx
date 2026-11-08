@@ -91,6 +91,11 @@ export function QuickFixButton({
           `${fix.label}: done.`,
         );
       }
+      // A fix of an unsaved draft rewrites the draft; the server holds no valid document to update.
+      if (draft && fix.kind === "update") {
+        drafts.edit(fix.id, () => fix.json, { label: fix.label });
+        return report(null, `${fix.label}: done.`);
+      }
       if (fix.kind === "verb") return report(await applyVerbFix(services, fix), `${fix.label}: done.`);
       if (fix.kind === "open") return void focusProcess(fix.process, fix.tab, fix.node);
       if (fix.kind === "sync-enum")

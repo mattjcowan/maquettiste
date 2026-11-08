@@ -1514,6 +1514,8 @@ function TraceSection({
             aria-current={r.index === selected ? "step" : undefined}
             className={cn(
               ROW,
+              // A long label or state list wraps onto more lines instead of being clipped; a short one keeps the one dense row.
+              "h-auto min-h-[var(--mq-row-h)] py-0.5",
               "cursor-default focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
               r.index === selected && "bg-accent-subtle",
               !r.ran && "text-disabled",
@@ -1526,7 +1528,7 @@ function TraceSection({
             data-accepted={r.ran ? String(r.accepted) : undefined}
           >
             <span className="w-4 shrink-0 text-right text-11 text-secondary">{r.index >= 0 ? r.index + 1 : ""}</span>
-            <span className="min-w-[7rem] flex-[3] basis-auto truncate" title={r.label}>
+            <span className="min-w-[7rem] flex-[3] basis-auto break-words" title={r.label}>
               {r.label}
             </span>
             {!r.ran ? (
@@ -1541,13 +1543,13 @@ function TraceSection({
                 {RL.refusalWords[r.refusal ?? ""] ?? r.refusal}
               </Badge>
             ) : (
-              <span className="flex max-w-[35%] items-center gap-1">
+              <span className="flex min-w-0 max-w-[40%] items-center gap-1">
                 {r.froze ? (
                   <Badge tone="accent" data-testid="trace-froze">
                     {r.froze}
                   </Badge>
                 ) : null}
-                <span className="truncate text-11 text-secondary" title={r.states}>
+                <span className="break-words text-11 text-secondary" title={r.states}>
                   {r.states}
                 </span>
               </span>

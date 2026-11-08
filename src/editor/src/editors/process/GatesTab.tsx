@@ -376,8 +376,8 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
       label: A.columns.when,
       tooltip: A.tips.when,
       kind: "popover",
-      width: "w-28",
-      clip: "max-w-28",
+      width: "w-24",
+      clip: "max-w-24",
       mono: true,
       value: (r) => r.when || ALWAYS,
       onOpen: (r) => setDialog({ kind: "when", id: r.id }),
@@ -392,7 +392,7 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
       value: (r) => r.notBy,
       onOpen: (r) => setDialog({ kind: "notBy", id: r.id }),
     },
-    { key: "why", label: A.columns.why, tooltip: A.tips.why, kind: "text", width: "min-w-28", clip: "max-w-32", value: (r) => r.why },
+    { key: "why", label: A.columns.why, tooltip: A.tips.why, kind: "text", width: "min-w-24", clip: "max-w-32", value: (r) => r.why },
   ];
   const stage = stageOf(g);
   return (
@@ -406,6 +406,9 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
           <span className="font-normal text-secondary">)</span>
         </span>
       </SectionTitle>
+      <p className="text-11 text-secondary" data-testid="approval-stage-hint">
+        {A.stageHint}
+      </p>
       {refused ? (
         <p role="alert" className="text-12 text-danger" data-testid="approval-refused">
           {refused}

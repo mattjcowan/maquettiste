@@ -1123,6 +1123,7 @@ export const APPROVAL_LABELS = {
   signaturesNeeded: "Signatures",
   stageTip:
     "A stage is a group of signatures. This approval has one stage, so every needed signature is given before the move happens. The stage takes its name from the gate.",
+  stageHint: "A stage is a group of signatures: all of them are given before the move happens.",
   backWhy: "A gate goes back to one list of signers only with one signature that has no Needed when and no Not by. Remove the others first.",
   acrossSignatures: "One person may give several signatures",
   acrossSignaturesTip: "Without this, a person gives at most one signature or ignore on the whole approval.",

@@ -1062,7 +1062,8 @@ export function stepRows(
       participant: name(s.participant),
       actor: name(s.actor),
       signer: s.signer ?? "",
-      meaning: name(s.meaning),
+      // A meaning belongs to a signature: Ignore, Reject and Withdraw carry none.
+      meaning: s.response && s.response !== "sign" ? "" : name(s.meaning),
       reason: s.reason ?? "",
       payload: mapText(s.payload, attrs),
       assume: mapText(s.assume as Json | undefined, guards),
