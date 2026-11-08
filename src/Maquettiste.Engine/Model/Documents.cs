@@ -211,6 +211,20 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [JsonIgnore]
     internal IReadOnlyList<string>? ApprovalGatePolicies { get; init; }
 
+    /// <summary>
+    /// The part 2 groups a process row's inline gates with stages use (signoff-design.md decision 32); <see cref="ApprovalGroups.None"/> when
+    /// none. For the approvals naming key only: never serialized.
+    /// </summary>
+    [JsonIgnore]
+    internal ApprovalGroups InlineApprovalGroups { get; init; }
+
+    /// <summary>
+    /// The part 2 groups each of a library row's gates with stages uses, by gate id, sorted ordinally, listing only gates that use one
+    /// (signoff-design.md decision 32); <see langword="null"/> when none does. For the approvals naming key only: never serialized.
+    /// </summary>
+    [JsonIgnore]
+    internal IReadOnlyList<(string Policy, ApprovalGroups Groups)>? ApprovalPolicyGroups { get; init; }
+
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>
         other is not null
@@ -267,7 +281,10 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && (ReferenceEquals(GatePolicyUses, other.GatePolicyUses)
             || (GatePolicyUses is not null && other.GatePolicyUses is not null && GatePolicyUses.SequenceEqual(other.GatePolicyUses, StringComparer.Ordinal)))
         && (ReferenceEquals(ApprovalGatePolicies, other.ApprovalGatePolicies)
-            || (ApprovalGatePolicies is not null && other.ApprovalGatePolicies is not null && ApprovalGatePolicies.SequenceEqual(other.ApprovalGatePolicies, StringComparer.Ordinal)));
+            || (ApprovalGatePolicies is not null && other.ApprovalGatePolicies is not null && ApprovalGatePolicies.SequenceEqual(other.ApprovalGatePolicies, StringComparer.Ordinal)))
+        && InlineApprovalGroups == other.InlineApprovalGroups
+        && (ReferenceEquals(ApprovalPolicyGroups, other.ApprovalPolicyGroups)
+            || (ApprovalPolicyGroups is not null && other.ApprovalPolicyGroups is not null && ApprovalPolicyGroups.SequenceEqual(other.ApprovalPolicyGroups)));
 
     /// <inheritdoc/>
     public override int GetHashCode() => HashCode.Combine(

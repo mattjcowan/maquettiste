@@ -4,10 +4,11 @@ using Maquettiste.Engine.Processes;
 namespace Maquettiste.Engine.Validation;
 
 /// <summary>
-/// The approval rules (signoff-design.md section 6): MQ8201 on an approval's shape and MQ8202 on a named signature's keys, at a process's
-/// gates and a library's gate policies, and at each use of a gate policy for the verbs only the using process can judge. The counting, actor
-/// and name rules that read a gate's signatures stay with the process rules. Every finding needs a gate with stages or
-/// <c>allowSignerAcrossSignatures</c>, so a model without either gives the same findings as before.
+/// The approval rules (signoff-design.md section 6): MQ8201 on an approval's shape, MQ8202 on a named signature's and a stage's keys, MQ8203
+/// on the stages' round order, and MQ8204 and MQ8205 on a signature's reminder and escalation, at a process's gates and a library's gate
+/// policies, and at each use of a gate policy for the verbs only the using process can judge. The counting, actor and name rules that read a
+/// gate's signatures stay with the process rules. Every finding needs a gate with stages or <c>allowSignerAcrossSignatures</c>, so a model
+/// without either gives the same findings as before, and MQ8203 to MQ8205 and a stage's MQ8202 need a key of part 2.
 /// </summary>
 internal static class ApprovalRules
 {
@@ -27,7 +28,22 @@ internal static class ApprovalRules
                 var name = $"gate '{gate.Name}' of library '{process.Name}'";
                 var at = Ptr.At("/gates", i);
                 CheckShape(gate, name, at, report);
-                ForEachSignature(gate, at, (signature, pointer) => CheckPolicySignature(signature, name, pointer, report));
+                CheckRounds(gate, name, at, report);
+                ForEachSignature(gate, at, (signature, pointer) =>
+                {
+                    CheckPolicySignature(signature, name, pointer, report);
+                    CheckNotices(signature, name, pointer, report);
+                });
+                for (var j = 0; j < (gate.Stages?.Count ?? 0); j++)
+                {
+                    // A gate policy's stage takes no when, as its signatures take none (decision 33).
+                    var stage = gate.Stages![j];
+                    if (stage.When is not null)
+                    {
+                        report.Add("MQ8202", $"Stage '{stage.Name}' of {name} has a when, but a gate policy has no subject to read; remove the when, or put the gate on its transition.",
+                            Ptr.At(at + "/stages", j) + "/when", stage.Id);
+                    }
+                }
             }
 
             return;
@@ -41,7 +57,12 @@ internal static class ApprovalRules
                 var name = $"gate '{gate.Name}' of process '{process.Name}'";
                 var at = Ptr.At("/transitions", i) + "/gate";
                 CheckShape(gate, name, at, report);
-                ForEachSignature(gate, at, (signature, pointer) => CheckSignature(context.Model, process, signature, name, pointer, report));
+                CheckRounds(gate, name, at, report);
+                ForEachSignature(gate, at, (signature, pointer) =>
+                {
+                    CheckSignature(context.Model, process, signature, name, pointer, report);
+                    CheckNotices(signature, name, pointer, report);
+                });
             }
             else if (t.GatePolicy is { } policy && ProcessLibraries.Owner(context.Model, policy, "gate") is { } library
                 && library.Gates.FirstOrDefault(g => string.Equals(g.Id, policy, StringComparison.Ordinal)) is { UsesStages: true } used)
@@ -60,6 +81,33 @@ internal static class ApprovalRules
     /// <returns>Whether it does.</returns>
     internal static bool UsesApproval(ModelSnapshot model, Process process) =>
         process.Use != ProcessUse.Library && process.Transitions.Any(t => GateOf(model, t) is { UsesStages: true });
+
+    /// <summary>
+    /// Whether a lifecycle uses delegation (signoff-design.md decision 20): one of its transitions carries a gate with stages, inline or through
+    /// a gate policy, with a named signature that has <c>delegateTo</c>.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process.</param>
+    /// <returns>Whether it does.</returns>
+    internal static bool UsesDelegation(ModelSnapshot model, Process process) =>
+        process.Use != ProcessUse.Library && process.Transitions.Any(t => GateOf(model, t) is { } gate && Delegable(gate));
+
+    /// <summary>Whether a gate with stages has a named signature with <c>delegateTo</c> (signoff-design.md decision 20).</summary>
+    /// <param name="gate">The gate.</param>
+    /// <returns>Whether it has.</returns>
+    internal static bool Delegable(ProcessGate gate) => gate.UsesStages && gate.AllSignatures.Any(static s => s.DelegateTo.Count > 0);
+
+    /// <summary>
+    /// The part 2 groups a lifecycle uses (signoff-design.md decision 32), on the gates of its transitions, inline or through a gate policy;
+    /// <see cref="ApprovalGroups.None"/> for a library or a lifecycle that uses part 1 only.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process.</param>
+    /// <returns>The groups.</returns>
+    internal static ApprovalGroups GroupsOf(ModelSnapshot model, Process process) =>
+        process.Use == ProcessUse.Library
+            ? ApprovalGroups.None
+            : process.Transitions.Select(t => GateOf(model, t)).OfType<ProcessGate>().Aggregate(ApprovalGroups.None, (groups, gate) => groups | ApprovalGroupMarks.Of(gate));
 
     /// <summary>The gate a transition carries: its own, else the gate policy it names; <see langword="null"/> for none or a policy no library holds.</summary>
     /// <param name="model">The model.</param>
@@ -112,6 +160,66 @@ internal static class ApprovalRules
             report.Add("MQ8201", $"{Upper(name)} has stages, so each named signature says whether one person may count twice; remove allowRepeatSigner from the gate.",
                 at + "/allowRepeatSigner", gate.Id);
         }
+    }
+
+    // ---- MQ8203 ----
+
+    // Stages are listed in round order (decision 5): each stage's round is at least the round of every stage before it.
+    private static void CheckRounds(ProcessGate gate, string name, string at, Report report)
+    {
+        if (gate.Stages is not { Count: > 1 } stages)
+            return;
+        var highest = stages[0].Round;
+        for (var j = 1; j < stages.Count; j++)
+        {
+            var stage = stages[j];
+            if (stage.Round < highest)
+            {
+                report.Add("MQ8203", $"Stage '{stage.Name}' of {name} runs in round {Ptr.N(stage.Round)}, but a stage before it runs in round {Ptr.N(highest)}; "
+                    + "list the stages in round order, so the file reads from top to bottom.", Ptr.At(at + "/stages", j) + "/round", stage.Id);
+            }
+
+            highest = Math.Max(highest, stage.Round);
+        }
+    }
+
+    // ---- MQ8204 and MQ8205 ----
+
+    // A signature's reminder and escalation (decisions 21 and 35): escalateTo and escalateAfter go together, each delay is a positive ISO 8601
+    // duration read as an after transition's is, and an escalation falls due after the reminder.
+    private static void CheckNotices(NamedSignature signature, string name, string at, Report report)
+    {
+        if (signature.EscalateTo.Count > 0 && signature.EscalateAfter is null)
+        {
+            report.Add("MQ8204", $"Signature '{signature.Name}' of {name} names escalateTo but no escalateAfter, so no escalation ever falls due; add escalateAfter, or remove escalateTo.",
+                at + "/escalateTo", signature.Id);
+        }
+
+        if (signature.EscalateAfter is not null && signature.EscalateTo.Count == 0)
+        {
+            report.Add("MQ8204", $"Signature '{signature.Name}' of {name} has escalateAfter but no escalateTo, so an escalation would go to nobody; add escalateTo, or remove escalateAfter.",
+                at + "/escalateAfter", signature.Id);
+        }
+
+        var remind = Delay(signature, signature.RemindAfter, "remindAfter", name, at, report);
+        var escalate = Delay(signature, signature.EscalateAfter, "escalateAfter", name, at, report);
+        if (remind is { } r && escalate is { } e && e <= r)
+        {
+            report.Add("MQ8205", $"Signature '{signature.Name}' of {name} escalates after {signature.EscalateAfter}, no later than its reminder after {signature.RemindAfter}, "
+                + "so the reminder never comes first; lengthen escalateAfter, or shorten remindAfter.", at + "/escalateAfter", signature.Id);
+        }
+    }
+
+    // A delay read as an after transition's is (MQ9008); null, after MQ8204, when it is not a positive duration.
+    private static TimeSpan? Delay(NamedSignature signature, string? value, string key, string name, string at, Report report)
+    {
+        if (value is null)
+            return null;
+        if (ProcessRules.IsPositiveDuration(value) && StatechartModel.ParseDuration(value) is { } span && span > TimeSpan.Zero)
+            return span;
+        report.Add("MQ8204", $"Signature '{signature.Name}' of {name} has {key} '{value}', which is not a positive ISO 8601 duration; use a form such as P2D or PT30M.",
+            at + "/" + key, signature.Id);
+        return null;
     }
 
     // ---- MQ8202 ----

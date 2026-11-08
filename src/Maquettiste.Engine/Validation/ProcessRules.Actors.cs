@@ -125,6 +125,8 @@ internal static partial class ProcessRules
                     var named = $"signature '{signature.Name}' of {where}";
                     Check(signature.Signers, at + "/signers", signature.Id, named);
                     Check(signature.RequiredActors, at + "/requiredActors", signature.Id, named);
+                    Check(signature.DelegateTo, at + "/delegateTo", signature.Id, named);
+                    Check(signature.EscalateTo, at + "/escalateTo", signature.Id, named);
                 });
             }
 
@@ -135,7 +137,7 @@ internal static partial class ProcessRules
                     $"gate '{used.Name}' of library '{library.Name}', used by process '{process.Name}'", indexed: false);
                 foreach (var signature in used.AllSignatures)
                 {
-                    Check([.. signature.Signers.Concat(signature.RequiredActors)], "/transitions/" + N(i) + "/gatePolicy", t.Id,
+                    Check([.. signature.Signers.Concat(signature.RequiredActors).Concat(signature.DelegateTo).Concat(signature.EscalateTo)], "/transitions/" + N(i) + "/gatePolicy", t.Id,
                         $"signature '{signature.Name}' of gate '{used.Name}' of library '{library.Name}', used by process '{process.Name}'", indexed: false);
                 }
             }

@@ -6,9 +6,10 @@ namespace Maquettiste.Engine.Processes;
 /// <summary>
 /// MQ9305 on a step's approval fields (signoff-design.md decision 25), judged before the step runs, as a payload is: a <c>response</c> other
 /// than sign, or a <c>signature</c>, only on an event step whose event is gated by an approval; a <c>signature</c> of such an approval; and
-/// each key of <c>expect.signatures</c> a named signature of the approval the step answers. In part 2 (decision 34): <c>delegateTo</c> only with
-/// <c>response: delegate</c>, which needs it; <c>delegate</c> or <c>onBehalfOf</c> only where a signature has <c>delegateTo</c>, and on the one the
-/// step names; never both. A step that gives none of them costs a few tests.
+/// each key of <c>expect.signatures</c> a named signature of the approval the step answers; and a delegation that fits (decision 34):
+/// <c>delegateTo</c> only with <c>response: delegate</c>, which needs it; <c>delegate</c> or <c>onBehalfOf</c> only where a signature has
+/// <c>delegateTo</c>, and a named <c>signature</c> then one that has it; never <c>delegate</c> with <c>onBehalfOf</c>. Whether an earlier step
+/// delegated to the person is left to replay. A step that gives none of them costs five tests.
 /// </summary>
 internal static class ApprovalStepFields
 {
@@ -47,7 +48,7 @@ internal static class ApprovalStepFields
         var signatures = approvals.SelectMany(g => g.AllSignatures).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
         if (step.Signature is { } signature && !signatures.Contains(signature))
             return ($"the signature '{signature}' is not a named signature of an approval on {eventName}; pick one of its signatures, or remove it.", "/signature");
-        if (Delegation(step, approvals, eventName) is { } delegation)
+        if (Delegation(approvals, step, eventName) is { } delegation)
             return delegation;
         if (expected is not null)
         {
@@ -64,24 +65,33 @@ internal static class ApprovalStepFields
         return null;
     }
 
-    // The delegation keys of a step (signoff-design.md decision 34); whether an earlier step delegated to this person is left to the run.
-    private static (string Message, string Field)? Delegation(ScenarioStep step, IReadOnlyList<ProcessGate> approvals, string eventName)
+    // A step's delegation (signoff-design.md decision 34): who it goes to only with delegate, and on whose behalf only where a signature may be
+    // delegated; a delegation can't be passed on.
+    private static (string Message, string Field)? Delegation(List<ProcessGate> approvals, ScenarioStep step, string eventName)
     {
         var delegating = step.Response == SignatureResponse.Delegate;
         if (step.DelegateTo is not null && !delegating)
-            return ("the step names delegateTo, but only a step with response 'delegate' hands a signature to someone; remove it, or give response 'delegate'.", "/delegateTo");
+        {
+            return ("the step names delegateTo, but only a delegate response hands a signature to someone; remove it, or give response 'delegate'.",
+                "/delegateTo");
+        }
+
         if (delegating && step.DelegateTo is null)
-            return ("the step gives response 'delegate' without delegateTo; name the participant the signature goes to.", "/delegateTo");
+            return ("the step gives response 'delegate', but names no delegateTo, the participant the signature goes to; add it.", "/response");
         if (delegating && step.OnBehalfOf is not null)
-            return ("the step delegates a signature it answers on behalf of someone else, but a delegation can't be passed on; remove onBehalfOf.", "/onBehalfOf");
+            return ("the step delegates on behalf of another person, but a delegation can't be passed on; remove onBehalfOf.", "/onBehalfOf");
         if (!delegating && step.OnBehalfOf is null)
             return null;
-        var field = delegating ? "/response" : "/onBehalfOf";
-        var delegable = approvals.SelectMany(g => g.AllSignatures).Where(s => s.DelegateTo.Count > 0).ToList();
+        var delegable = approvals.SelectMany(g => g.AllSignatures).Where(s => s.DelegateTo.Count > 0).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+        var what = delegating ? "gives response 'delegate'" : "answers on behalf of another person";
         if (delegable.Count == 0)
-            return ($"the step {(delegating ? "delegates a signature" : "answers on behalf of someone")}, but no signature of an approval on {eventName} has delegateTo; remove it, or let a signature be delegated.", field);
-        if (step.Signature is { } named && !delegable.Any(s => string.Equals(s.Id, named, StringComparison.Ordinal)))
-            return ($"the step {(delegating ? "delegates" : "answers on behalf of someone on")} signature '{named}', which has no delegateTo; pick a signature that may be delegated, or let this one be.", "/signature");
-        return null;
+        {
+            return ($"the step {what}, but no named signature of an approval on {eventName} has delegateTo; remove it, or let a signature be delegated.",
+                delegating ? "/response" : "/onBehalfOf");
+        }
+
+        return step.Signature is { } named && !delegable.Contains(named)
+            ? ($"the step {what}, but signature '{named}' has no delegateTo, so it can't be delegated; pick a signature with delegateTo, or remove signature.", "/signature")
+            : null;
     }
 }

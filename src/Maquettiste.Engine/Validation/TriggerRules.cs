@@ -149,11 +149,14 @@ internal static class TriggerRules
                     Ptr.At(at + "/transitions", k), point.Id);
         }
 
-        // In a lifecycle with an approval, reject, ignore and withdraw answer it on a gated move (signoff-design.md decision 17).
+        // In a lifecycle with an approval, reject, ignore and withdraw answer it on a gated move (signoff-design.md decision 17), and delegate
+        // where one of its signatures has delegateTo.
         var approval = ApprovalRules.UsesApproval(model, process);
-        var moves = point.Verbs.All(v => ExprSites.IsMoveVerb(v) || v == "sign" || (approval && ApprovalResponses.Contains(v))
+        var delegation = approval && ApprovalRules.UsesDelegation(model, process);
+        var moves = point.Verbs.All(v => ExprSites.IsMoveVerb(v) || v == "sign" || (approval && ApprovalResponses.Contains(v)) || (delegation && v == "delegate")
             || (!BuiltInVerbs.IsBuiltIn(v) && process.Events.Any(e => e.Verb == v)));
-        var fit = approval ? "move verbs, sign, reject, ignore, withdraw, and own verbs its events send" : "move verbs, sign, and own verbs its events send";
+        var fit = delegation ? "move verbs, sign, reject, ignore, withdraw, delegate, and own verbs its events send"
+            : approval ? "move verbs, sign, reject, ignore, withdraw, and own verbs its events send" : "move verbs, sign, and own verbs its events send";
         if (!moves && point.Targets.Count > 0)
             report.Add("MQ8102", $"Trigger point '{name}' names targets beside a verb that makes no move of this lifecycle; targets fit {fit}. Remove them.",
                 at + "/targets", point.Id);
@@ -332,9 +335,11 @@ internal static class TriggerRules
         }
 
         // MQ8107: verbs no input can do yet. Other verbs may run on any covered object, with or without a lifecycle. Reject, ignore and withdraw
-        // can be done when a lifecycle that governs an entity it covers has an approval (signoff-design.md decision 17).
+        // can be done when a lifecycle that governs an entity it covers has an approval (signoff-design.md decision 17), and delegate when
+        // such a lifecycle has a named signature with delegateTo.
         if (point.Verbs.Count > 0 && point.Verbs.All(NotYet.Contains)
-            && !(point.Verbs.Any(ApprovalResponses.Contains) && GovernedByApproval(model, points.Covers(named))))
+            && !(point.Verbs.Any(ApprovalResponses.Contains) && GovernedByApproval(model, points.Covers(named)))
+            && !(point.Verbs.Contains("delegate", StringComparer.Ordinal) && GovernedByApproval(model, points.Covers(named), delegation: true)))
             report.Add("MQ8107", $"Trigger point '{name}' can never run: no input can do its verbs yet. Remove it.", "/verbs", named.Id);
     }
 
@@ -373,6 +378,7 @@ internal static class TriggerRules
     private static void CheckRuns(ModelSnapshot model, Process process, ProcessTriggerPoint point, string at, Report report)
     {
         var approval = ApprovalRules.UsesApproval(model, process);
+        var delegation = approval && ApprovalRules.UsesDelegation(model, process);
         if (point.Verbs.Count == 0 || point.Verbs.Any(CanRun))
             return;
         report.Add("MQ8107", $"Trigger point '{point.Name}' can never run: no event or transition of lifecycle '{process.Name}' does its verbs, or no input can do them yet. Remove it.",
@@ -387,16 +393,23 @@ internal static class TriggerRules
             // A response answers an approval on its gated move (signoff-design.md decision 17).
             if (approval && ApprovalResponses.Contains(verb))
                 return point.Transitions.Count == 0 || process.Transitions.Any(t => point.Transitions.Contains(t.Id, StringComparer.Ordinal) && ApprovalRules.GateOf(model, t) is { UsesStages: true });
+            // Delegate hands a signature with delegateTo to someone else (signoff-design.md decision 20).
+            if (delegation && verb == "delegate")
+                return point.Transitions.Count == 0 || process.Transitions.Any(t => point.Transitions.Contains(t.Id, StringComparer.Ordinal) && ApprovalRules.GateOf(model, t) is { } gate
+                    && ApprovalRules.Delegable(gate));
             return !NotYet.Contains(verb);
         }
     }
 
     // ---- helpers ----
 
-    /// <summary>Whether a lifecycle with an approval governs one of the entities (signoff-design.md decision 17).</summary>
-    private static bool GovernedByApproval(ModelSnapshot model, IReadOnlyList<Entity> entities) =>
+    /// <summary>
+    /// Whether a lifecycle with an approval governs one of the entities (signoff-design.md decision 17); with <paramref name="delegation"/>, one
+    /// with a named signature that has delegateTo (decision 20).
+    /// </summary>
+    private static bool GovernedByApproval(ModelSnapshot model, IReadOnlyList<Entity> entities, bool delegation = false) =>
         entities.Count > 0 && model.All<Process>().Any(p => p.Use == ProcessUse.Lifecycle && ApprovalRules.UsesApproval(model, p)
-            && entities.Any(e => SubjectCoverage.Governs(model, p, e)));
+            && (!delegation || ApprovalRules.UsesDelegation(model, p)) && entities.Any(e => SubjectCoverage.Governs(model, p, e)));
 
     /// <summary>The entities a lifecycle governs (its subjects, their derived entities and a stereotype's carriers), by name.</summary>
     private static IReadOnlyList<Entity> Governed(ModelSnapshot model, Process lifecycle) =>

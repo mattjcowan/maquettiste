@@ -462,7 +462,7 @@ public sealed class ApprovalPart2ReplayTests
         (string Field, ScenarioStep Step)[] bad =
         [
             ("/delegateTo", delegate3 with { Response = SignatureResponse.Sign }),
-            ("/delegateTo", delegate3 with { DelegateTo = null }),
+            ("/response", delegate3 with { DelegateTo = null }),
             ("/onBehalfOf", delegate3 with { OnBehalfOf = ids["Ben"] }),
             ("/signature", delegate3 with { Signature = Engineering }),
             ("/delegateTo", delegate3 with { DelegateTo = "nobody" }),

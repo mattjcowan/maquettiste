@@ -151,7 +151,7 @@ public sealed class ProcessExpressions
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
         if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process) && !ExprSites.TriggerData(process)
-            && !ExprSites.ApprovalData(process) && !StageConditions(process))
+            && !ExprSites.ApprovalData(process))
             return Get(process);
         return ByModel.GetOrCreateValue(model).GetValue(process, p =>
         {
@@ -268,23 +268,6 @@ public sealed class ProcessExpressions
 
     private static readonly JsonElement NullValue = JsonDocument.Parse("null").RootElement.Clone();
 
-    // Whether a process holds a stage with a when on one of its transitions' gates (signoff-design.md decision 6).
-    private static bool StageConditions(Process process) =>
-        process.Use != ProcessUse.Library && process.Transitions.Any(t => t.Gate is { Stages: { } stages } && stages.Any(s => s.When is not null));
-
-    // A stage's when typed at the process's approval site, the scope a signature's when has (decision 6); null when it doesn't type.
-    private static TypedExpr? StageType(ModelSnapshot model, Process process, GateStage stage)
-    {
-        if (ExprResolution.Type(model, process, stage.Id) is { } found)
-            return found.Typed;
-        if (ExprSites.Free(model, process, ExprSiteKind.Approval) is not { } site || ExprSites.Of(model, process).Any(s => string.Equals(s.Key, stage.Id, StringComparison.Ordinal)))
-            return null;
-        var scope = ExprSites.Scope(model, process, model.GetDocument(process.Id), site with { Tree = stage.When, SubId = stage.Id }, text: false);
-        var problems = new List<Diagnostic>();
-        var typed = ExprTyper.Type(stage.When!, scope, problems);
-        return typed is null || problems.Any(p => p.Severity == DiagnosticSeverity.Error) ? null : typed;
-    }
-
     /// <summary>The conditions of a process's guards that type, lowered at a guard site through the API's form of values.</summary>
     private static List<LoweredCondition> Lower(ModelSnapshot model, Process process)
     {
@@ -348,27 +331,19 @@ public sealed class ProcessExpressions
             }
         }
 
-        // Each named signature's when of an approval on a transition (signoff-design.md decision 7), lowered at an approval site under the
-        // signature's id: true or unknown means needed, so only false answers false (EvaluateApproval). Each stage's when likewise, under the
-        // stage's id (decision 6): only false skips it.
+        // Each named signature's when of an approval on a transition (signoff-design.md decision 7), and each stage's (decision 6), lowered at
+        // an approval site under the signature's or the stage's id: true or unknown means needed, or run, so only false answers false
+        // (EvaluateApproval).
         foreach (var transition in process.Use == ProcessUse.Library ? [] : process.Transitions)
         {
             if (transition.Gate is not { UsesStages: true } gate)
                 continue;
-            foreach (var stage in gate.Stages!)
+            foreach (var id in ExprSites.ApprovalConditionIds(gate))
             {
-                if (stage.When is null || StageType(model, process, stage) is not { } typed)
+                if (ExprResolution.Type(model, process, id) is not { } typed)
                     continue;
-                var js = ExprLowering.ToJavaScript(typed, ExprSiteKind.Approval, ExprResolution.ApiColumns(model, stage.Id, path));
-                lowered.Add(Of(stage.Id, js, typed, ExprSites.ReadsSubject(process, typed), null));
-            }
-
-            foreach (var signature in gate.AllSignatures)
-            {
-                if (signature.When is null || ExprResolution.Type(model, process, signature.Id) is not { } typed)
-                    continue;
-                var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Approval, ExprResolution.ApiColumns(model, signature.Id, path));
-                lowered.Add(Of(signature.Id, js, typed.Typed, ExprSites.ReadsSubject(process, typed.Typed), null));
+                var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Approval, ExprResolution.ApiColumns(model, id, path));
+                lowered.Add(Of(id, js, typed.Typed, ExprSites.ReadsSubject(process, typed.Typed), null));
             }
         }
 
@@ -723,10 +698,11 @@ public sealed class ProcessExpressionSession : IDisposable
     /// Judges whether a named signature is needed when its round starts (signoff-design.md decision 7): its <c>when</c>, compiled under the
     /// signature's id when it types (<see cref="Conditions"/> holds the id), over a row of the context and the object, with no payload and
     /// nobody acting. Only false means not needed: the answer is <see langword="true"/> when the condition holds or is unknown. A signature
-    /// whose <c>when</c> did not compile is needed, the safe choice; the caller checks <see cref="Conditions"/> first.
+    /// whose <c>when</c> did not compile is needed, the safe choice; the caller checks <see cref="Conditions"/> first. A stage's <c>when</c> is
+    /// judged the same way under the stage's id (decision 6): only false skips the stage.
     /// </summary>
-    /// <param name="signatureId">The named signature's id.</param>
-    /// <param name="label">"Signature 'name'", for messages.</param>
+    /// <param name="signatureId">The named signature's id, or a stage's.</param>
+    /// <param name="label">"Signature 'name'" or "Stage 'name'", for messages.</param>
     /// <param name="context">The context object.</param>
     /// <param name="subject">The object, after the entering move's actions and sets; an empty object when there is none.</param>
     /// <param name="running">The running chart's states (a JSON object of process id to state ids), or <see langword="null"/> when not read.</param>
