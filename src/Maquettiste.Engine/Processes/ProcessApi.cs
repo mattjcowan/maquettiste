@@ -352,7 +352,7 @@ public static class ProcessApi
     /// <returns>The steps, or null.</returns>
     public static IReadOnlyList<ScenarioStep>? ReadInputs(IReadOnlyList<JsonElement>? steps, out string? error) => ReadInputs(steps, null, null, out error);
 
-    /// <summary>Reads simulation inputs, resolving event, actor, invoke and guard (assume) names to ids as <see cref="ResolveNames"/> does.</summary>
+    /// <summary>Reads simulation inputs, resolving event, actor, invoke, signature and guard (assume) names to ids as <see cref="ResolveNames"/> does.</summary>
     /// <param name="steps">The steps.</param>
     /// <param name="process">The process whose names resolve, or null.</param>
     /// <param name="snapshot">The model whose actor names resolve, or null.</param>
@@ -393,7 +393,7 @@ public static class ProcessApi
 
     /// <summary>
     /// Replaces names with ids in one input step: <c>event</c>, <c>invoke</c> and the keys of <c>assume</c> (guards) by the process's
-    /// names, <c>actor</c> by the model's actor names. A value that is already an id, or that no single element is named, is left as is
+    /// names, <c>actor</c> by the model's actor names, <c>signature</c> by the names of the signatures of the approvals on the step's event. A value that is already an id, or that no single element is named, is left as is
     /// (an unknown one is then reported as usual).
     /// </summary>
     /// <param name="step">The step, changed in place.</param>
@@ -407,6 +407,11 @@ public static class ProcessApi
         Replace("invoke", StatechartModel.Get(process, null).Invokes.Values.Select(i => (i.Invoke.Id, i.Invoke.Name)));
         if (snapshot is not null)
             Replace("actor", snapshot.All<Actor>().Select(a => (a.Id, a.Name)));
+        // A signature by its name among the approvals on the step's event, inline or through a gate policy (signoff-design.md decision 8).
+        var raised = step["event"] is JsonValue ev && ev.TryGetValue<string>(out var eventId) ? eventId : null;
+        Replace("signature", process.Transitions.Where(t => raised is null || string.Equals(t.Event, raised, StringComparison.Ordinal))
+            .Select(t => snapshot is null ? t.Gate : Validation.ApprovalRules.GateOf(snapshot, t)).OfType<ProcessGate>()
+            .SelectMany(g => g.AllSignatures).Select(s => (s.Id, s.Name)).Distinct());
         if (step["assume"] is JsonObject assume)
         {
             var guards = (snapshot is null ? process : ProcessLibraries.Effective(snapshot, process)).Guards.Select(g => (g.Id, g.Name)).ToList();

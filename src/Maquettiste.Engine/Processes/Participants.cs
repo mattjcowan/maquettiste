@@ -40,6 +40,9 @@ internal sealed record ActingMove(ProcessGate? Gate, IReadOnlyList<string> Unsig
 
     /// <summary>On an approval, the id of the person's latest signature in the round, which a withdraw takes back.</summary>
     public string? Latest { get; init; }
+
+    /// <summary>On an approval, the actor the person gave their latest signature in the round as: a withdraw acts as it.</summary>
+    public string? LatestActor { get; init; }
 }
 
 /// <summary>A needed signature of an approval's round, as the pick reads it for one person and one response (signoff-design.md decision 8).</summary>
@@ -58,8 +61,8 @@ internal static class ApprovalPick
     /// <summary>
     /// Picks the signature: for <c>withdraw</c>, the person's latest signature in the round; for <c>reject</c>, the first needed signature whose
     /// signers the person meets, complete or not; for <c>sign</c> and <c>ignore</c>, among the needed signatures not complete, the first the person
-    /// may fill (rows 7a, 7c and 7d) where they meet a required actor not yet signed, else the first they may fill, else the first whose signers
-    /// they meet, so that row 7 refuses on it. The refusal is <c>gate-not-signed</c> or <c>gate-signer</c> when nothing can be picked.
+    /// may fill (rows 7a, 7c and 7d) where they meet a required actor not yet signed, else the first they may fill, else the first needed signature
+    /// whose signers they meet, complete or not, so that row 7 refuses on it (a complete one with <c>gate-repeat</c>). The refusal is <c>gate-not-signed</c> or <c>gate-signer</c> when nothing can be picked.
     /// </summary>
     /// <param name="response">The response.</param>
     /// <param name="needed">The round's needed signatures, in file order.</param>
@@ -91,10 +94,10 @@ internal static class ApprovalPick
         (NamedSignature Signature, string Actor)? fill = null, met = null;
         foreach (var s in needed)
         {
-            if (s.Complete || actorFor(s) is not { Actor: { } actor } found)
+            if (actorFor(s) is not { Actor: { } actor } found)
                 continue;
             met ??= (s.Signature, actor);
-            if (s.Blocked)
+            if (s.Complete || s.Blocked)
                 continue;
             if (found.Required)
                 return (s.Signature, actor, null);
@@ -232,6 +235,9 @@ internal static class Participants
                 {
                     var picked = ApprovalPick.Choose(step.Response, needed, move.Latest, For);
                     (signature, actor) = (picked.Signature, picked.Actor);
+                    // A withdraw takes back the person's latest signature, as the actor they gave it as.
+                    if (step.Response == SignatureResponse.Withdraw && picked.Signature is not null && move.LatestActor is { } signedAs)
+                        actor = signedAs;
                 }
 
                 if (signature is not null && actor is not null)

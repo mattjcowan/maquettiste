@@ -50,7 +50,7 @@ public sealed class ApprovalReplayTests
         """;
 
     private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(string? signatures = null, string gateExtra = "", string points = "",
-        string moreEvents = "", string moreTransitions = "")
+        string moreEvents = "", string moreTransitions = "", Action<LoaderHarness>? more = null, bool plain = false)
     {
         var harness = new LoaderHarness();
         harness.CopyFixture("models", "process-basics");
@@ -71,14 +71,20 @@ public sealed class ApprovalReplayTests
                {"id":"{{Submit}}","source":"{{Draft}}","event":"{{SubmitEvent}}","targets":["{{Review}}"]},
                {"id":"{{Approve}}","source":"{{Review}}","event":"{{ApproveEvent}}","targets":["{{Released}}"],
                 "gate":{"id":"{{Gate}}","name":"Release","meanings":[{"id":"{{Meaning}}","name":"Approved"}]{{gateExtra}},
-                  "stages":[{"id":"{{Stage}}","name":"Review","signatures":[{{signatures ?? DefaultSignatures()}}]}]} },
+                  {{(plain ? PlainGate : $$$"""
+                  "stages":[{"id":"{{{Stage}}}","name":"Review","signatures":[{{{signatures ?? DefaultSignatures()}}}]}]
+                  """)}} } },
                {"id":"{{SendBack}}","source":"{{Review}}","event":"{{SendBackEvent}}","targets":["{{Draft}}"]}{{moreTransitions}}]{{points}} }
             """);
+        more?.Invoke(harness);
         var store = new ModelStore(harness.Options, harness.Services() with { Validator = EngineServices.Create(harness.Options).Validator });
         await store.LoadAsync(Ct);
         Assert.DoesNotContain(store.Current!.LoadDiagnostics, d => d.Severity == DiagnosticSeverity.Error);
         return (harness, store);
     }
+
+    // Today's gate, without stages: two signatures from engineers and quality leads, one of them a quality lead's.
+    private static readonly string PlainGate = $$""" "signers":["{{Engineer}}","{{QualityLead}}"],"required":2,"requiredActors":["{{QualityLead}}"] """;
 
     private static JsonElement Json(string text) => JsonDocument.Parse(text).RootElement.Clone();
 
@@ -97,9 +103,11 @@ public sealed class ApprovalReplayTests
 
     private static JsonElement Step(string ev, string who, string extra = "") => Json($$"""{"event":"{{ev}}","participant":"{{who}}"{{extra}} }""");
 
-    private static async Task<SimulationResult> SimulateAsync(ModelStore store, int cost, params JsonElement[] steps)
+    private static Task<SimulationResult> SimulateAsync(ModelStore store, int cost, params JsonElement[] steps) => SimulateAsync(store, cost, People, null, steps);
+
+    private static async Task<SimulationResult> SimulateAsync(ModelStore store, int cost, JsonElement[] people, JsonElement? start, params JsonElement[] steps)
     {
-        var call = await store.SimulateProcessAsync(Documents, new SimulateRequest { Steps = steps, Objects = Doc(cost), Subject = "o1", Participants = People }, Ct);
+        var call = await store.SimulateProcessAsync(Documents, new SimulateRequest { Steps = steps, Objects = Doc(cost), Subject = "o1", Participants = people, Start = start }, Ct);
         Assert.True(call.Status == ProcessCallStatus.Ok, call.Detail + " " + string.Join(" | ", call.Diagnostics.Select(d => d.Message)));
         return call.Value!;
     }
@@ -342,4 +350,156 @@ public sealed class ApprovalReplayTests
         Assert.True(result.Trace[4].Accepted);
         Assert.Equal([(GateOutcome.Discarded, null)], Audit(result.Trace[4]));
     }
+
+    // ---- review fixes ----
+
+    [Fact]
+    public async Task Signing_a_complete_signature_again_is_refused_gate_repeat_with_or_without_a_participant()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        var result = await SimulateAsync(store, 100, Step(SubmitEvent, "ana"), Step(ApproveEvent, "quinn"), Step(ApproveEvent, "quinn"),
+            Json($$"""{"event":"{{ApproveEvent}}","actor":"{{QualityLead}}","signer":"quinn"}"""));
+        var t = result.Trace;
+        Assert.Equal([(GateOutcome.Signed, Quality)], Audit(t[2]));
+        // Quality is complete: the repeat is refused on it, as on a gate without stages, acting as the quality lead Quinn is.
+        Assert.Equal(Refusals.GateRepeat, t[3].Refusal);
+        Assert.Equal(QualityLead, t[3].ActsAs);
+        Assert.Equal([(GateOutcome.Refused, Quality)], Audit(t[3]));
+        Assert.Equal(QualityLead, t[3].Audit[0].Actor);
+        Assert.Equal(Refusals.GateRepeat, t[4].Refusal);
+        Assert.Equal([(GateOutcome.Refused, Quality)], Audit(t[4]));
+    }
+
+    [Fact]
+    public async Task A_withdraw_acts_as_the_actor_the_person_signed_as()
+    {
+        // Max holds Engineer and Controller; the signature needs a controller, so Max signs as Controller. After that no required actor is
+        // unsigned, and the first signer Max meets would be Engineer: the withdraw still takes the signature back as Controller.
+        var signatures = $$"""{"id":"{{Engineering}}","name":"Editor","signers":["{{Engineer}}","{{Controller}}"],"required":2,"requiredActors":["{{Controller}}"]}""";
+        var (h, store) = await OpenAsync(signatures);
+        using var _ = h;
+        await using var __ = store;
+        JsonElement[] people = [.. People, Json($$"""{"id":"max","name":"Max","holds":[{"id":"h6","actor":"{{Engineer}}"},{"id":"h7","actor":"{{Controller}}"}]}""")];
+        var result = await SimulateAsync(store, 100, people, null, Step(SubmitEvent, "ana"), Step(ApproveEvent, "max"), Step(ApproveEvent, "max", ""","response":"withdraw" """));
+        Assert.Equal(Controller, result.Trace[2].ActsAs);
+        Assert.Equal(Controller, result.Trace[3].ActsAs);
+        Assert.Equal([(GateOutcome.Withdrawn, Engineering)], Audit(result.Trace[3]));
+        Assert.Equal(Controller, result.Trace[3].Audit[0].Actor);
+    }
+
+    [Fact]
+    public async Task Simulate_and_record_take_a_steps_signature_by_name_and_record_and_refresh_keep_response_and_signature()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        JsonElement[] steps = [Step(SubmitEvent, "ana"), Step(ApproveEvent, "dee", ""","response":"reject","signature":"Finance","reason":"No." """)];
+        var result = await SimulateAsync(store, 12000, steps);
+        Assert.True(result.Trace[2].Accepted);
+        Assert.Equal([(GateOutcome.Rejected, Finance)], Audit(result.Trace[2]));
+
+        var call = await store.RecordScenarioAsync(Documents, new RecordScenarioRequest { Name = "veto", Steps = steps, Objects = Doc(12000), Subject = "o1", Participants = People },
+            dryRun: false, ChangeSource.Editor, Ct);
+        Assert.True(call.Status == ProcessCallStatus.Ok, call.Detail + " " + string.Join(" | ", call.Diagnostics.Select(d => d.Message)));
+        var recorded = call.Value!.Element.GetProperty("steps")[1];
+        Assert.Equal(("reject", Finance), (recorded.GetProperty("response").GetString(), recorded.GetProperty("signature").GetString()));
+
+        var scenario = store.Current!.All<Scenario>().Single(s => s.Name == "veto");
+        var batch = store.ParseBatch(System.Text.Encoding.UTF8.GetBytes($$"""{"operations":[{"op":"refresh-scenario","id":"{{scenario.Id}}"}]}"""));
+        Assert.Empty(batch.Diagnostics);
+        await store.ApplyBatchAsync(batch.Batch!, ChangeSource.Editor, Ct);
+        var refreshed = store.Current!.Get<Scenario>(scenario.Id)!.Steps[1];
+        Assert.Equal((SignatureResponse.Reject, Finance), (refreshed.Response, refreshed.Signature));
+    }
+
+    [Fact]
+    public async Task A_required_actor_is_met_through_the_signature_actors_membership()
+    {
+        // Auditor is a member of QualityLead: a signature given as Auditor counts as a signer and meets the required QualityLead.
+        const string Auditor = "01JAPR00000000000000000009";
+        var signatures = $$"""{"id":"{{Engineering}}","name":"Engineering","signers":["{{Engineer}}","{{QualityLead}}"],"requiredActors":["{{QualityLead}}"]}""";
+        var (h, store) = await OpenAsync(signatures, more: harness => harness.Write("model/actors/auditor.json",
+            $$"""{"kind":"actor","id":"{{Auditor}}","name":"Auditor","type":"role","memberOf":["{{QualityLead}}"]}"""));
+        using var _ = h;
+        await using var __ = store;
+        var result = await SimulateAsync(store, 100, Step(SubmitEvent, "ana"), Step(ApproveEvent, "ben"),
+            Json($$"""{"event":"{{ApproveEvent}}","actor":"{{Auditor}}","signer":"ivy"}"""));
+        // Ben's signature fills the count but not the required quality lead; Ivy's, as Auditor, does, and the move follows.
+        Assert.Equal([(GateOutcome.Signed, Engineering)], Audit(result.Trace[2]));
+        Assert.Equal([Review], result.Trace[2].Configuration);
+        Assert.Equal([(GateOutcome.Signed, Engineering), (GateOutcome.Completed, null)], Audit(result.Trace[3]));
+        Assert.Equal([Released], result.Trace[3].Configuration);
+    }
+
+    [Fact]
+    public async Task Repeat_signing_is_allowed_only_on_the_signature_that_allows_it()
+    {
+        var signatures = $$"""
+            {"id":"{{Engineering}}","name":"Engineering","signers":["{{Engineer}}"],"required":2,"allowRepeatSigner":true},
+            {"id":"{{Quality}}","name":"Quality","signers":["{{QualityLead}}"],"required":2}
+            """;
+        var (h, store) = await OpenAsync(signatures);
+        using var _ = h;
+        await using var __ = store;
+        var result = await SimulateAsync(store, 100, Step(SubmitEvent, "ana"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "quinn"),
+            Step(ApproveEvent, "quinn"));
+        Assert.Equal([(GateOutcome.Signed, Engineering)], Audit(result.Trace[3]));
+        Assert.Equal([(GateOutcome.Signed, Quality)], Audit(result.Trace[4]));
+        Assert.Equal(Refusals.GateRepeat, result.Trace[5].Refusal);
+        Assert.Equal([(GateOutcome.Refused, Quality)], Audit(result.Trace[5]));
+        Assert.Equal(2, Counts(result)[Engineering]);
+        Assert.Equal(1, Counts(result)[Quality]);
+    }
+
+    [Fact]
+    public async Task A_named_trigger_point_on_reject_runs_at_the_approval_and_a_refusing_check_leaves_it()
+    {
+        const string Named = "01JAPQ00000000000000000009";
+        var (h, store) = await OpenAsync(more: harness => harness.Write("model/trigger-points/no-veto.json", $$"""
+            {"kind":"trigger-point","id":"{{Named}}","name":"NoVetoAnywhere","type":"check","timing":"before","verbs":["reject"],
+             "subjects":[{"entity":"{{Document}}"}],"condition":{{T("false")}} }
+            """));
+        using var _ = h;
+        await using var __ = store;
+        var result = await SimulateAsync(store, 100, Step(SubmitEvent, "ana"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "cleo", ""","response":"reject" """));
+        Assert.Equal(Refusals.Check, result.Trace[3].Refusal);
+        Assert.Equal(Named, result.Trace[3].RefusedBy);
+        Assert.Equal([(GateOutcome.Refused, Engineering)], Audit(result.Trace[3]));
+        Assert.Equal(1, Counts(result)[Engineering]);
+    }
+
+    [Fact]
+    public async Task Two_acts_in_one_instant_are_ordered_by_step()
+    {
+        // Every step happens at the start's instant. Engineering is not by whoever promoted the document since it entered Review: Ana's submit
+        // came before Ben's send back and resubmit, so only Ben is excluded, although all three acts share one time.
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        var result = await SimulateAsync(store, 100, People, Json("""{"at":"2026-01-01T00:00:00Z"}"""),
+            Step(SubmitEvent, "ana"), Step(SendBackEvent, "ben"), Step(SubmitEvent, "ben"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "ana"));
+        Assert.Single(result.Trace.Select(t => t.Clock).Distinct());
+        Assert.Equal(Refusals.GateExcluded, result.Trace[4].Refusal);
+        Assert.Equal([(GateOutcome.Signed, Engineering)], Audit(result.Trace[5]));
+    }
+
+    [Fact]
+    public async Task A_gate_without_stages_keeps_its_trace_byte_for_byte()
+    {
+        var (h, store) = await OpenAsync(plain: true);
+        using var _ = h;
+        await using var __ = store;
+        var result = await SimulateAsync(store, 100, Step(SubmitEvent, "ana"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "ben"), Step(ApproveEvent, "dee"),
+            Step(ApproveEvent, "quinn"));
+        var text = JsonSerializer.Serialize(result with { ProcessHash = "" }, EngineJson.Options);
+        foreach (var member in new[] { "\"signature\"", "\"stage\"", "\"stages\"", "\"responses\"", "\"response\"", "\"signatureCounts\"", "\"acts\"" })
+            Assert.DoesNotContain(member, text, StringComparison.Ordinal);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));
+        Assert.Equal(PlainTrace, hash);
+    }
+
+    // The trace and gate state of a gate without stages, its process hash left out: today's members only (checked above when it was taken).
+    private const string PlainTrace = "EB0F77DF9716FD6D257E205A38FF26D8794FFD4D6AC00CAC113CF179ABF9C50B";
 }

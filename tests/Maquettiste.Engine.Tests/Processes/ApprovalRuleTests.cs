@@ -141,6 +141,40 @@ public sealed class ApprovalRuleTests
         Assert.Empty(Hits(clean, "MQ8202"));
     }
 
+    [Fact]
+    public async Task MQ8201_flags_required_given_beside_stages_even_as_its_default()
+    {
+        var found = await ValidateAsync(AsApproval(Stages(Signature(Managers, "Managers", $$""" "signers":["{{Manager}}"] """)), gate => gate["required"] = 1));
+        Assert.Equal([At + "/required"], Hits(found, "MQ8201"));
+        // A gate without stages may still say required 1.
+        Assert.Empty(Hits(await ValidateAsync(gate => gate["required"] = 1), "MQ8201"));
+    }
+
+    [Fact]
+    public async Task A_gate_without_signers_or_stages_keeps_todays_single_finding()
+    {
+        var neither = await ValidateAsync(gate =>
+        {
+            foreach (var key in new[] { "required", "signers", "requiredActors", "meanings", "auditAttributes" })
+                gate.Remove(key);
+        });
+        var required = Assert.Single(neither, d => d.Rule == "MQ1002" && d.JsonPointer == "/transitions/5/gate");
+        Assert.Contains("Required properties [\"signers\",\"meanings\"] are not present", required.Message, StringComparison.Ordinal);
+
+        var noSigners = await ValidateAsync(gate =>
+        {
+            foreach (var key in new[] { "required", "signers", "requiredActors" })
+                gate.Remove(key);
+        });
+        Assert.Contains("Required properties [\"signers\"] are not present", Assert.Single(noSigners, d => d.Rule == "MQ1002" && d.JsonPointer == "/transitions/5/gate").Message,
+            StringComparison.Ordinal);
+
+        // With stages, signers are not needed, but meanings still are.
+        var staged = await ValidateAsync(AsApproval(Stages(Signature(Managers, "Managers", $$""" "signers":["{{Manager}}"] """)), gate => gate.Remove("meanings")));
+        Assert.Contains("Required properties [\"meanings\"] are not present", Assert.Single(staged, d => d.Rule == "MQ1002" && d.JsonPointer == "/transitions/5/gate").Message,
+            StringComparison.Ordinal);
+    }
+
     // ---- MQ8202 ----
 
     [Fact]
@@ -180,6 +214,25 @@ public sealed class ApprovalRuleTests
     }
 
     // ---- the approval site ----
+
+    [Fact]
+    public async Task Preview_reads_a_when_not_saved_yet_at_the_approval_site_of_its_process()
+    {
+        var (h, store) = await OpenAsync(null);
+        using var _ = h;
+        await using var __ = store;
+        Task<ExpressionPreview> PreviewAsync(string text, string element = P) =>
+            store.PreviewExpressionAsync(new ExpressionPreviewRequest { Element = element, Text = text, Site = "approval" }, Ct);
+
+        var context = await PreviewAsync("amount > 10000");
+        Assert.True(context.Preview is not null, string.Join("; ", context.Diagnostics.Select(d => d.Rule + " " + d.Message)));
+        Assert.Contains("10000", context.Preview!.JavaScript, StringComparison.Ordinal);
+        Assert.Contains((await PreviewAsync("current_actor() = 'x'")).Diagnostics,
+            d => d.Rule == "MQ3102" && d.Message.StartsWith("current_actor() is whoever acts, and nobody acts when a named signature's round starts", StringComparison.Ordinal));
+        Assert.Contains((await PreviewAsync("event.note = 'x'")).Diagnostics, d => d.Rule == "MQ3102");
+        // Only a process that is not a library has the site: an entity has none.
+        await Assert.ThrowsAsync<ArgumentException>(() => PreviewAsync("amount > 1", Order));
+    }
 
     private static Action<JsonObject> WithWhen(string when) =>
         AsApproval(Stages(Signature(Managers, "Managers", $$""" "signers":["{{Manager}}"],"when":{{when}} """)));
@@ -252,6 +305,37 @@ public sealed class ApprovalRuleTests
             Signature(Controller, "Controller", $$""" "signers":["{{Ana}}"] """));
         Assert.Equal([At + "/stages"], Hits(await ValidateAsync(AsApproval(stages)), "MQ9101"));
         Assert.Empty(Hits(await ValidateAsync(AsApproval(stages, gate => gate["allowSignerAcrossSignatures"] = true)), "MQ9101"));
+    }
+
+    [Fact]
+    public async Task MQ9101_counts_only_the_signatures_always_needed_across_an_approval()
+    {
+        // Two people, and signatures needing two and one of them: only when both are always needed can the approval be known to lack people.
+        static string Of(string when) => Stages(Signature(Managers, "Managers", $$""" "signers":["{{Ana}}","{{Ben}}"],"required":2 """),
+            Signature(Controller, "Controller", $$""" "signers":["{{Ana}}"]{{when}} """));
+        Assert.Equal([At + "/stages"], Hits(await ValidateAsync(AsApproval(Of(""))), "MQ9101"));
+        Assert.Empty(Hits(await ValidateAsync(AsApproval(Of(""","when":{"text":"subject.amount > 100"}"""))), "MQ9101"));
+    }
+
+    [Fact]
+    public async Task A_named_trigger_point_on_reject_is_checked_again_when_a_lifecycle_gains_or_loses_its_approval()
+    {
+        static void Named(LoaderHarness h) => h.Write("model/trigger-points/note-rejections.json", $$"""
+            {"kind":"trigger-point","id":"01JTGP00000000000000000062","name":"NoteRejections","type":"check","timing":"before","verbs":["reject"],
+             "subjects":[{"entity":"{{Order}}"}]}
+            """);
+        // Validating what a save of the lifecycle changed reaches the named point, which names neither the lifecycle nor its gate: its MQ8107
+        // shows without an approval and goes with the first one.
+        static async Task<bool> FlaggedAsync(Action<JsonObject>? gate)
+        {
+            var (h, store) = await OpenAsync(gate, Named);
+            using var _ = h;
+            await using var __ = store;
+            return (await store.ValidateAsync(new ValidationScope([P]), Ct)).Diagnostics.Any(d => d.Rule == "MQ8107");
+        }
+
+        Assert.True(await FlaggedAsync(null));
+        Assert.False(await FlaggedAsync(AsApproval(Stages(Signature(Managers, "Managers", $$""" "signers":["{{Manager}}"] """)))));
     }
 
     [Fact]

@@ -5,6 +5,7 @@ using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Json;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Loading;
 
@@ -466,9 +467,9 @@ internal sealed partial class ChangePlanner
     private void Commit(string referrerId, List<CascadeOp> ops) => _cascadeOps[referrerId] = ops;
 
     /// <summary>
-    /// An approval that delete-dependents removes (signoff-design.md section 9): the scenario steps that answered it, a step of a process
-    /// whose gated transition's event it raises, drop their <c>response</c> and <c>signature</c>, as no gate is left to answer. The gate is
-    /// one on a transition, or a library's gate policy at each transition that uses it.
+    /// An approval that delete-dependents removes (signoff-design.md section 9): a scenario step of a process whose gated transition's event it
+    /// raises drops its <c>signature</c> when that named one of the approval's signatures, and its <c>response</c> when no other approval of the
+    /// process is left on that event to answer. The gate is one on a transition, or a library's gate policy at each transition that uses it.
     /// </summary>
     private void DropAnswers(int index, string target)
     {
@@ -476,13 +477,17 @@ internal sealed partial class ChangePlanner
             || !JsonPointer.TryParse(entry.JsonPointer, out var segments))
             return;
         List<(string Process, string Event)> moves = [];
+        ProcessGate? removed = null;
         if (segments is ["transitions", var at, "gate"] && JsonPointer.TryIndex(at, out var t) && t < owner.Transitions.Count
             && owner.Transitions[t].Event is { } gated)
         {
+            removed = owner.Transitions[t].Gate;
             moves.Add((owner.Id, gated));
         }
-        else if (segments is ["gates", _])
+        else if (segments is ["gates", var g])
         {
+            if (JsonPointer.TryIndex(g, out var gi) && gi < owner.Gates.Count)
+                removed = owner.Gates[gi];
             foreach (var use in _snapshot.ReferencesTo(target).Where(r => r.Field == "gatePolicy"))
             {
                 if (_snapshot.Get<Process>(use.FromElementId) is { } user && JsonPointer.TryParse(use.JsonPointer, out var parts)
@@ -492,8 +497,13 @@ internal sealed partial class ChangePlanner
             }
         }
 
+        var signatures = (removed?.AllSignatures ?? []).Select(x => x.Id).ToHashSet(StringComparer.Ordinal);
+        bool Gone(string id) => string.Equals(id, target, StringComparison.Ordinal) || _cascadeDeleted.ContainsKey(id) || _deleted.Contains(id);
         foreach (var (process, raised) in moves.Distinct())
         {
+            // Another approval of the process on the same event, after the delete, still takes a response.
+            var answered = _snapshot.Get<Process>(process) is { } p && p.Transitions.Any(tr => string.Equals(tr.Event, raised, StringComparison.Ordinal) && !Gone(tr.Id)
+                && ApprovalRules.GateOf(_snapshot, tr) is { UsesStages: true } other && !Gone(other.Id));
             foreach (var scenarioId in _snapshot.ReferencesTo(process).Where(r => r.JsonPointer == "/process").Select(r => r.FromElementId).Distinct().Order(StringComparer.Ordinal))
             {
                 if (_cascadeDeleted.ContainsKey(scenarioId) || _deleted.Contains(scenarioId) || _batchIds.Contains(scenarioId)
@@ -503,14 +513,17 @@ internal sealed partial class ChangePlanner
                 List<CascadeOp> next = [.. ops];
                 for (var k = 0; k < scenario.Steps.Count; k++)
                 {
-                    if (!string.Equals(scenario.Steps[k].Event, raised, StringComparison.Ordinal))
+                    var step = scenario.Steps[k];
+                    if (!string.Equals(step.Event, raised, StringComparison.Ordinal))
                         continue;
                     foreach (var key in new[] { "response", "signature" })
                     {
+                        if (key == "response" ? answered : step.Signature is not { } named || !signatures.Contains(named))
+                            continue;
                         var pointer = FormattableString.Invariant($"/steps/{k}/{key}");
                         if (!JsonPointer.TryGet(referrer.Json, pointer, out _) || next.Any(o => o.Pointer == pointer || (o.Remove && IsUnder(pointer, o.Pointer))))
                             continue;
-                        next.Add(new CascadeOp(pointer, true, new ReferenceInfo(scenarioId, scenario.Steps[k].Id, pointer, key, target), index));
+                        next.Add(new CascadeOp(pointer, true, new ReferenceInfo(scenarioId, step.Id, pointer, key, target), index));
                     }
                 }
 

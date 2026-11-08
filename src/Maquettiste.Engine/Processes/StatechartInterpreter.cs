@@ -674,6 +674,7 @@ public sealed partial class StatechartInterpreter
                             {
                                 Signatures = NeededSignatures(target, t, approvalGate, approval, identity, input.Response),
                                 Latest = Latest(approval, identity),
+                                LatestActor = approval.Counted.LastOrDefault(c => string.Equals(c.Signer, identity, StringComparison.Ordinal))?.Actor,
                             });
                             continue;
                         }

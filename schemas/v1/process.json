@@ -1057,11 +1057,6 @@
           "default": {}
         }
       },
-      "required": [
-        "id",
-        "name",
-        "meanings"
-      ],
       "if": {
         "not": {
           "required": [
@@ -1071,7 +1066,17 @@
       },
       "then": {
         "required": [
-          "signers"
+          "id",
+          "name",
+          "signers",
+          "meanings"
+        ]
+      },
+      "else": {
+        "required": [
+          "id",
+          "name",
+          "meanings"
         ]
       },
       "additionalProperties": false

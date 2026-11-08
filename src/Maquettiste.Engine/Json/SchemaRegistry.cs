@@ -274,8 +274,12 @@ internal sealed class SchemaRegistry : ISchemaRegistry
                 }
             }
 
-            if (node.TryGetProperty("required", out var required) && required.ValueKind == JsonValueKind.Array
-                && required.EnumerateArray().Any(r => r.ValueKind == JsonValueKind.String && r.ValueEquals("id")))
+            if (RequiresIdKey(node))
+                _idRequired.Add(layout);
+
+            // "id" required on both branches of an if/then/else is required whatever the condition (a gate's required list, signoff-design.md
+            // section 5).
+            if (node.TryGetProperty("then", out var whenTrue) && node.TryGetProperty("else", out var whenFalse) && RequiresIdKey(whenTrue) && RequiresIdKey(whenFalse))
                 _idRequired.Add(layout);
 
             if (node.TryGetProperty("additionalProperties", out var additional) && additional.ValueKind == JsonValueKind.Object)
@@ -308,6 +312,10 @@ internal sealed class SchemaRegistry : ISchemaRegistry
             // "if"/"then" are conditions, not merged: a batch operation's conditional "required": ["id"] never makes it a mint site.
             layout.RequiresId |= _idRequired.Contains(layout) && _idCommon.Contains(layout);
         }
+
+        private static bool RequiresIdKey(JsonElement node) =>
+            node.ValueKind == JsonValueKind.Object && node.TryGetProperty("required", out var required) && required.ValueKind == JsonValueKind.Array
+            && required.EnumerateArray().Any(r => r.ValueKind == JsonValueKind.String && r.ValueEquals("id"));
 
         private static bool IsCommonId(string file, JsonElement schema) =>
             schema.ValueKind == JsonValueKind.Object && schema.TryGetProperty("$ref", out var reference) && reference.ValueKind == JsonValueKind.String

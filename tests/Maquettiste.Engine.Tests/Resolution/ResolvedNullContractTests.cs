@@ -156,6 +156,9 @@ public sealed class ResolvedNullContractTests
                 continue;
             var (node, file) = ResolvedCoverageTests.SchemaObject(target);
             var required = (node["required"] as JsonArray)?.Select(r => r!.GetValue<string>()).ToHashSet(StringComparer.Ordinal) ?? [];
+            // A key both branches of an if/then/else require is required whatever the condition (a gate's id and name).
+            if (node["then"]?["required"] is JsonArray whenTrue && node["else"]?["required"] is JsonArray whenFalse)
+                required.UnionWith(whenTrue.Select(r => r!.GetValue<string>()).Intersect(whenFalse.Select(r => r!.GetValue<string>()), StringComparer.Ordinal));
             foreach (var (property, schema) in node["properties"]!.AsObject())
             {
                 if (required.Contains(property) || ResolvedCoverageTests.NotResolvedAnywhere.ContainsKey(property) || HasDefault(schema!, file))

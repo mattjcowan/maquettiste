@@ -587,6 +587,17 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             }
         }
 
+        // MQ8107 on a named trigger point on reject, ignore or withdraw depends on whether a lifecycle that governs what it covers has an
+        // approval (signoff-design.md decision 17), inline or through a library's gate policy; neither names the other.
+        if (element is Process { Use: ProcessUse.Lifecycle or ProcessUse.Library })
+        {
+            foreach (var point in model.All<TriggerPoint>())
+            {
+                if (point.Verbs.Any(v => v is "reject" or "ignore" or "withdraw") && model.GetDocument(point.Id) is { } peer)
+                    yield return peer;
+            }
+        }
+
         // MQ4014 on a mapping depends on its database's schemas.
         if (element is Database schemaOwner)
         {

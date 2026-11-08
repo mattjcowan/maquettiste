@@ -3832,7 +3832,7 @@ export interface components {
             at?: string | null;
             /** @description Text to preview instead of a stored expression; needs `site`. */
             text?: string | null;
-            /** @description With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`) or `trigger-set` (a value a trigger point sets, with `attribute`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form. */
+            /** @description With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`), `trigger-set` (a value a trigger point sets, with `attribute`) or `approval` (a named signature's `when` not saved yet, with `element` its process: the object under `subject`, the context and `in_state`, but no payload and no `current_actor()`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form. */
             site?: string | null;
             /** @description With `site` `set`, the id of the attribute the value is for, whose type the value must fit (MQ3103). */
             attribute?: string | null;
@@ -10907,8 +10907,8 @@ export interface components {
          * @description A signature gate on an event transition: the transition fires on the occurrence that completes the gate.
          */
         gate: {
-            id: components["schemas"]["id"];
-            name: components["schemas"]["identifier"];
+            id?: components["schemas"]["id"];
+            name?: components["schemas"]["identifier"];
             displayName?: string;
             /** @description Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). One stage for now. */
             stages?: components["schemas"]["gateStage"][];
@@ -10943,7 +10943,7 @@ export interface components {
              */
             reasonRequired?: boolean;
             /** @description What a signature means. */
-            meanings: components["schemas"]["meaning"][];
+            meanings?: components["schemas"]["meaning"][];
             /**
              * @description Extra fields recorded with each signature.
              * @default []
@@ -11565,8 +11565,8 @@ export interface components {
                  * @description A signature gate on an event transition: the transition fires on the occurrence that completes the gate.
                  */
                 gate: {
-                    id: components["schemas"]["id"];
-                    name: components["schemas"]["identifier"];
+                    id?: components["schemas"]["id"];
+                    name?: components["schemas"]["identifier"];
                     displayName?: string;
                     /** @description Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). One stage for now. */
                     stages?: components["schemas"]["gateStage"][];
@@ -11601,7 +11601,7 @@ export interface components {
                      */
                     reasonRequired?: boolean;
                     /** @description What a signature means. */
-                    meanings: components["schemas"]["meaning"][];
+                    meanings?: components["schemas"]["meaning"][];
                     /**
                      * @description Extra fields recorded with each signature.
                      * @default []

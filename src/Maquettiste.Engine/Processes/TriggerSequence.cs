@@ -765,7 +765,7 @@ internal sealed class TriggerSequences
         // inline or through a gate policy, so the signatures row (7a to 7f) applies there, and the effect is the response's. A transition given
         // names its gate below; with none, any approval of the lifecycle may take the response. A plain gate answers as before.
         var responds = filter.Transition is null && verb is "reject" or "ignore" or "withdraw"
-            && chart.Transitions.Any(static t => t.Transition.Gate is { UsesStages: true });
+            && chart.Transitions.Any(t => Validation.ApprovalRules.GateOf(_model, t.Transition) is { UsesStages: true });
         var gated = verb == "sign" || responds || chart.Transitions.Any(t =>
             (filter.Transition is { } id ? string.Equals(t.Transition.Id, id, StringComparison.Ordinal)
                 : string.Equals(t.Transition.Verb ?? t.Event?.Verb, verb, StringComparison.Ordinal))

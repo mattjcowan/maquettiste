@@ -163,7 +163,7 @@ Each decision gives its confidence: **high**, **medium-high**, **medium** or **l
     - It is counted across every stage and round of the approval. A signature, an ignore and (part 2) a delegation each count as the person's response.
     - `allowRepeatSigner` still governs one signature. With both flags, a person may fill two signatures and count twice on each that allows it.
     - **A gate without stages is unchanged.** It has one signature, so the rule never applies.
-    - MQ9101 gains a case: an approval that needs more different people than its signers can give, counting only person actors, without the flag.
+    - MQ9101 gains a case: an approval that needs more different people than its signers can give, counting only person actors and only the signatures without a `when` (one with a `when` may not be needed), without the flag.
 
 ### Trigger points and rights
 

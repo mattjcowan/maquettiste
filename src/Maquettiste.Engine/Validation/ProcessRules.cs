@@ -608,12 +608,14 @@ internal static partial class ProcessRules
 
     // MQ9102 and MQ9101 on each named signature of an approval, as on a gate (signoff-design.md section 6), then MQ9101 on the approval: without
     // allowSignerAcrossSignatures each person gives one response that counts on it (decision 16), so it needs as many different people as its
-    // signatures need together. Only person actors are counted, as for a gate.
+    // signatures need together. Only person actors are counted, as for a gate, and only the signatures always needed: one with a when may not
+    // be needed, so the count is known only without it.
     private static void CheckSignatures(ValidationContext context, ActorMembership membership, string name, ProcessGate gate, string pointer, Report report)
     {
         var people = new HashSet<string>(StringComparer.Ordinal);
         var allPeople = true;
         var needed = 0;
+        var conditional = false;
         ApprovalRules.ForEachSignature(gate, pointer, (signature, at) =>
         {
             var what = $"Signature '{signature.Name}' of {char.ToLowerInvariant(name[0])}{name[1..]}";
@@ -627,6 +629,12 @@ internal static partial class ProcessRules
             var persons = signers.Count > 0 && signers.All(a => a is { Type: ActorType.Person });
             if (!signature.AllowRepeatSigner && persons && signature.Required > signers.Count)
                 report.Add("MQ9101", $"{what} needs {N(signature.Required)} signatures, but its signers are {N(signers.Count)} person actor(s) and a signer may not sign twice; lower required, add signers, or allow repeat signers.", at + "/required", signature.Id);
+            if (signature.When is not null)
+            {
+                conditional = true;
+                return;
+            }
+
             allPeople &= persons;
             people.UnionWith(signature.Signers);
             // With repeat signing one person may give all of a signature's count, but each required actor still signs it.
@@ -634,7 +642,7 @@ internal static partial class ProcessRules
         });
 
         if (!gate.AllowSignerAcrossSignatures && allPeople && people.Count > 0 && needed > people.Count)
-            report.Add("MQ9101", $"{name} needs {N(needed)} different people across its signatures, but their signers are {N(people.Count)} person actor(s) and one person gives one signature of an approval; lower required, add signers, or allow one person several signatures (allowSignerAcrossSignatures).", pointer + "/stages", gate.Id);
+            report.Add("MQ9101", $"{name} needs {N(needed)} different people across {(conditional ? "the signatures it always needs (those without when)" : "its signatures")}, but their signers are {N(people.Count)} person actor(s) and one person gives one signature of an approval; lower required, add signers, or allow one person several signatures (allowSignerAcrossSignatures).", pointer + "/stages", gate.Id);
     }
 
     // MQ9105.

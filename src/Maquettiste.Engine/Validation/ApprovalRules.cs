@@ -97,7 +97,7 @@ internal static class ApprovalRules
             return;
         }
 
-        if (gate.Required != 1)
+        if (gate.HasRequired)
             report.Add("MQ8201", $"{Upper(name)} has stages, so its named signatures carry the count; remove required from the gate.", at + "/required", gate.Id);
         if (gate.Signers.Count > 0)
             report.Add("MQ8201", $"{Upper(name)} has stages, so its named signatures name the signers; remove signers from the gate.", at + "/signers", gate.Id);

@@ -257,7 +257,8 @@ internal static class ExprSites
     /// A site for an expression written as text and not stored anywhere yet (<c>preview_expression</c> with <c>text</c> and a site
     /// kind): the scope a site of <paramref name="kind"/> on the element reads. A check at a table, a stereotype or a constraint (its
     /// parameters); a check or a value, of no required type, at an entity; a guard at an operation, or at a process, where the payload
-    /// of every event reads under <c>event</c>. <see langword="null"/> when the element has no site of that kind.
+    /// of every event reads under <c>event</c>; a named signature's <c>when</c> at a process that is not a library, with no payload.
+    /// <see langword="null"/> when the element has no site of that kind.
     /// </summary>
     /// <param name="model">The snapshot.</param>
     /// <param name="element">The element the text is written on.</param>
@@ -280,6 +281,11 @@ internal static class ExprSites
         (Constraint constraint, ExprSiteKind.Check) => new ExprSite("/condition", null, false, constraint.Id, kind, _ => { }) { Constraint = constraint },
         (Process { Use: ProcessUse.Lifecycle } lifecycle, ExprSiteKind.Right) => RightSite(model, lifecycle, "", null, lifecycle.Id, null),
         (Right right, ExprSiteKind.Right) => NamedRightSite(model, right, null) with { Tree = null },
+        // A named signature's when not saved yet (signoff-design.md decision 7): what every approval site of the process reads.
+        (Process { Use: not ProcessUse.Library } process, ExprSiteKind.Approval) => new ExprSite("", null, false, process.Id, kind, s => Process(s, model, process, []))
+        {
+            Lifecycles = new ModelLifecycles(model, process, null),
+        },
         _ => null,
     };
 

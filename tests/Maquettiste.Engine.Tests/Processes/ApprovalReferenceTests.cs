@@ -92,7 +92,8 @@ public sealed class ApprovalReferenceTests
         """;
 
     /// <summary>The process-basics fixture with the approve gate's stages, a library, another process, an own verb, Order's base and a scenario.</summary>
-    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(string? stages = null, string? triggerPoints = null, bool policy = false, string? steps = null, string? library = null)
+    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(string? stages = null, string? triggerPoints = null, bool policy = false, string? steps = null, string? library = null,
+        Action<JsonObject>? edit = null)
     {
         var h = new LoaderHarness();
         h.CopyFixture("models", "process-basics");
@@ -125,6 +126,7 @@ public sealed class ApprovalReferenceTests
 
         if (triggerPoints is not null)
             process["triggerPoints"] = JsonNode.Parse(triggerPoints);
+        edit?.Invoke(process);
         Write(h, ProcessFile, process.ToJsonString(), "process.json");
         Write(h, "model/processes/policies.json", library ?? Library, "process.json");
         Write(h, "model/processes/other.json", OtherProcess, "process.json");
@@ -285,6 +287,37 @@ public sealed class ApprovalReferenceTests
         Assert.All(steps.Take(2), s => Assert.False(s!.AsObject().ContainsKey("response") || s.AsObject().ContainsKey("signature")));
         Assert.Equal("Fine.", (string?)steps[0]!["reason"]);
         Assert.Equal("reject", (string?)steps[2]!["response"]);
+    }
+
+    [Fact]
+    public async Task An_approval_delete_dependents_takes_keeps_the_answers_of_another_approval_on_the_same_event()
+    {
+        // Two approvals on approve: the approve move's, whose one signature only Reviewer gives, and one on a move out of Draft that stays.
+        const string Release = "01JAPG00000000000000000009";
+        var (h, store) = await OpenAsync($$"""
+            [{"id":"{{Stage}}","name":"Review","signatures":[{"id":"{{Managers}}","name":"Managers","signers":["{{Reviewer}}"]}]}]
+            """, steps: $$"""
+            {"kind":"scenario","id":"{{Scenario}}","name":"Approval","process":"{{P}}",
+             "steps":[
+               {"id":"01JAPT00000000000000000001","event":"{{ApproveEvent}}","actor":"{{Finance}}","signer":"dee","response":"reject","signature":"{{Release}}","reason":"No."},
+               {"id":"01JAPT00000000000000000002","event":"{{ApproveEvent}}","actor":"{{Manager}}","signer":"ann","response":"ignore","signature":"{{Managers}}","reason":"Fine."},
+               {"id":"01JAPT00000000000000000003","event":"{{ApproveEvent}}","actor":"{{Finance}}","signer":"dee","response":"withdraw","reason":"Back."}]}
+            """, edit: process => process["transitions"]!.AsArray().Add(JsonNode.Parse($$"""
+            {"id":"01JAPG00000000000000000007","source":"01JSTA00000000000000000001","event":"{{ApproveEvent}}","targets":["01JSTA00000000000000000014"],
+             "gate":{"id":"01JAPG00000000000000000008","name":"release","meanings":[{"id":"01JAPG00000000000000000010","name":"released"}],
+               "stages":[{"id":"01JAPG00000000000000000011","name":"Final","signatures":[{"id":"{{Release}}","name":"Release","signers":["{{Finance}}"]}]}]} }
+            """)));
+        using var _ = h;
+        await using var __ = store;
+
+        await DeleteAsync(store, Reviewer, DeleteResolution.DeleteDependents);
+
+        Assert.Null(GateOf(store));
+        var steps = JsonNode.Parse(h.Read("model/scenarios/order-lifecycle/approval.json"))!["steps"]!.AsArray();
+        // The other approval's signature and every response stay, as that approval still answers them; only the gone signature is dropped.
+        Assert.Equal(("reject", Release), ((string?)steps[0]!["response"], (string?)steps[0]!["signature"]));
+        Assert.Equal(("ignore", (string?)null), ((string?)steps[1]!["response"], (string?)steps[1]!["signature"]));
+        Assert.Equal("withdraw", (string?)steps[2]!["response"]);
     }
 
     [Fact]

@@ -14814,7 +14814,7 @@
               "string",
               "null"
             ],
-            "description": "With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`) or `trigger-set` (a value a trigger point sets, with `attribute`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form."
+            "description": "With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`), `trigger-set` (a value a trigger point sets, with `attribute`) or `approval` (a named signature's `when` not saved yet, with `element` its process: the object under `subject`, the context and `in_state`, but no payload and no `current_actor()`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form."
           },
           "attribute": {
             "type": [
@@ -38918,11 +38918,6 @@
             "default": {}
           }
         },
-        "required": [
-          "id",
-          "name",
-          "meanings"
-        ],
         "if": {
           "not": {
             "required": [
@@ -38932,7 +38927,17 @@
         },
         "then": {
           "required": [
-            "signers"
+            "id",
+            "name",
+            "signers",
+            "meanings"
+          ]
+        },
+        "else": {
+          "required": [
+            "id",
+            "name",
+            "meanings"
           ]
         },
         "additionalProperties": false
@@ -40513,11 +40518,6 @@
                 "default": {}
               }
             },
-            "required": [
-              "id",
-              "name",
-              "meanings"
-            ],
             "if": {
               "not": {
                 "required": [
@@ -40527,7 +40527,17 @@
             },
             "then": {
               "required": [
-                "signers"
+                "id",
+                "name",
+                "signers",
+                "meanings"
+              ]
+            },
+            "else": {
+              "required": [
+                "id",
+                "name",
+                "meanings"
               ]
             },
             "additionalProperties": false

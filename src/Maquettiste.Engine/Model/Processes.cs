@@ -547,8 +547,14 @@ public sealed record ProcessGate : IProcessNode
     [JsonIgnore]
     public IEnumerable<NamedSignature> AllSignatures => Stages?.SelectMany(s => s.Signatures) ?? [];
 
-    /// <summary>The number of signatures needed. A gate without stages only (MQ8201).</summary>
-    public int Required { get; init; } = 1;
+    private readonly int? _required;
+
+    /// <summary>The number of signatures needed: 1 when the file leaves it out. A gate without stages only (MQ8201).</summary>
+    public int Required { get => _required ?? 1; init => _required = value; }
+
+    /// <summary>Whether the file gives <see cref="Required"/>, even as its default 1: MQ8201 flags it on a gate with stages.</summary>
+    [JsonIgnore]
+    public bool HasRequired => _required is not null;
 
     /// <summary>The actors whose members may sign. Empty on a gate with stages (MQ8201), whose signatures name their own.</summary>
     [ElementRef(ElementKind.Actor)]
