@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trigger point",
+  "description": "A named trigger point (model/trigger-points/): what runs when one of its verbs happens to an object whose entity its subjects cover, with or without a lifecycle. Its body is a lifecycle's trigger point's, without the keys that belong to one lifecycle (states, targets and transitions). At each moment it runs before the lifecycles' trigger points.",
+  "type": "object",
+  "x-order": [
+    "$schema",
+    "kind",
+    "id",
+    "name",
+    "displayName",
+    "pluralName",
+    "package",
+    "subjects",
+    "exceptEntities",
+    "type",
+    "timing",
+    "severity",
+    "verbs",
+    "entities",
+    "attributes",
+    "ends",
+    "when",
+    "condition",
+    "sets",
+    "outside",
+    "noBypass",
+    "description",
+    "rationale",
+    "decision",
+    "status",
+    "suppressions",
+    "stereotypes",
+    "excludeStereotypes",
+    "tags",
+    "category",
+    "properties",
+    "generation",
+    "source"
+  ],
+  "properties": {
+    "$schema": {
+      "$ref": "common.json#/$defs/schemaPath"
+    },
+    "kind": {
+      "const": "trigger-point"
+    },
+    "id": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "name": {
+      "description": "An identifier, unique among the named trigger points of the package (MQ3001); a refusal names it.",
+      "$ref": "common.json#/$defs/identifier",
+      "default": ""
+    },
+    "displayName": {
+      "type": "string"
+    },
+    "pluralName": {
+      "type": "string"
+    },
+    "package": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "subjects": {
+      "description": "The types it runs for, at least one: an entity, with the entities derived from it, or a stereotype, standing for every entity that carries it and the entities derived from them. Removing the last one removes the trigger point, since an empty list would run it everywhere.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/subject"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "exceptEntities": {
+      "description": "Entities it skips, each with its derived entities, though a subject covers them: the opt-out, written where the rule is. Each must be one a subject covers (MQ8102).",
+      "$ref": "common.json#/$defs/idList",
+      "uniqueItems": true,
+      "default": []
+    },
+    "type": {
+      "$ref": "common.json#/$defs/triggerBody/properties/type"
+    },
+    "timing": {
+      "$ref": "common.json#/$defs/triggerBody/properties/timing"
+    },
+    "severity": {
+      "$ref": "common.json#/$defs/triggerBody/properties/severity"
+    },
+    "verbs": {
+      "$ref": "common.json#/$defs/triggerBody/properties/verbs"
+    },
+    "entities": {
+      "description": "Entities it runs for, each with its derived entities: some of those its subjects cover (MQ8102). Empty: every entity its subjects cover, less exceptEntities. Its paths and sets name what every entity it covers holds under one id.",
+      "$ref": "common.json#/$defs/idList",
+      "uniqueItems": true,
+      "default": []
+    },
+    "attributes": {
+      "$ref": "common.json#/$defs/triggerBody/properties/attributes",
+      "default": []
+    },
+    "ends": {
+      "$ref": "common.json#/$defs/triggerBody/properties/ends",
+      "default": []
+    },
+    "when": {
+      "description": "It runs only when this is true; false or unknown skips it, and the trace says so. It reads the object under subject, its values before the verb under old, current_actor(), in_state (a state of any lifecycle) and now(); never the context or an event's payload (MQ3102).",
+      "$ref": "common.json#/$defs/triggerBody/properties/when"
+    },
+    "condition": {
+      "$ref": "common.json#/$defs/triggerBody/properties/condition"
+    },
+    "sets": {
+      "$ref": "common.json#/$defs/triggerBody/properties/sets",
+      "default": []
+    },
+    "outside": {
+      "$ref": "common.json#/$defs/triggerBody/properties/outside",
+      "default": false
+    },
+    "noBypass": {
+      "$ref": "common.json#/$defs/triggerBody/properties/noBypass",
+      "default": false
+    },
+    "description": {
+      "description": "Why. For a check, the message shown when it refuses or warns; without one, the display name, else the name.",
+      "$ref": "common.json#/$defs/description"
+    },
+    "rationale": {
+      "description": "Markdown text: why the element is shaped this way.",
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "description": "A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "status": {
+      "$ref": "common.json#/$defs/status"
+    },
+    "suppressions": {
+      "$ref": "common.json#/$defs/suppressions",
+      "default": []
+    },
+    "stereotypes": {
+      "$ref": "common.json#/$defs/keyList",
+      "default": []
+    },
+    "excludeStereotypes": {
+      "description": "Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029).",
+      "$ref": "common.json#/$defs/keyList"
+    },
+    "tags": {
+      "$ref": "common.json#/$defs/tagList",
+      "default": []
+    },
+    "category": {
+      "$ref": "common.json#/$defs/id"
+    },
+    "properties": {
+      "$ref": "common.json#/$defs/properties",
+      "default": {}
+    },
+    "generation": {
+      "$ref": "common.json#/$defs/generation",
+      "default": {}
+    },
+    "source": {
+      "$ref": "common.json#/$defs/source"
+    }
+  },
+  "required": [
+    "kind",
+    "id",
+    "name",
+    "subjects",
+    "type",
+    "verbs"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "subject": {
+      "title": "Subject",
+      "description": "A type a named trigger point runs for: an entity, with the entities derived from it; or a stereotype, standing for every entity that carries it and the entities derived from them. Names exactly one of entity and stereotype.",
+      "type": "object",
+      "x-order": [
+        "entity",
+        "stereotype"
+      ],
+      "properties": {
+        "entity": {
+          "description": "The entity. Not written together with stereotype.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "stereotype": {
+          "description": "The key of a stereotype that applies to entities (MQ2003, MQ9211): it covers every entity that carries it (package defaults, implied stereotypes and its own list, less what it excludes) and every entity derived from one. Not written together with entity.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "entity"
+          ]
+        },
+        {
+          "required": [
+            "stereotype"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

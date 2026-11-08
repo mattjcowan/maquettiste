@@ -1602,7 +1602,7 @@
     },
     "triggerBody": {
       "title": "Trigger point body",
-      "description": "What a trigger point says (trigger-points-design.md decisions 3 to 12), shared by an entry of a lifecycle's triggerPoints and, later, a named trigger point: what runs when one of its verbs happens, and where. A check has a condition, an action or a replace has sets; with neither, the body is the team's code. Each form refers to these properties one by one.",
+      "description": "What a trigger point says (trigger-points-design.md decisions 3 to 12), shared by an entry of a lifecycle's triggerPoints and a named trigger point (model/trigger-points/): what runs when one of its verbs happens, and where. A check has a condition, an action or a replace has sets; with neither, the body is the team's code. Each form refers to these properties one by one.",
       "type": "object",
       "x-order": [
         "type",
@@ -1615,7 +1615,8 @@
         "when",
         "condition",
         "sets",
-        "outside"
+        "outside",
+        "noBypass"
       ],
       "properties": {
         "type": {
@@ -1682,6 +1683,11 @@
         },
         "outside": {
           "description": "true: the team's code reaches outside systems. Simulation never runs the team's code; the trace marks the point, and generated tests record it instead of calling it. Only a point with team code may say so (MQ8101); a with-change one is warned (MQ8106).",
+          "type": "boolean",
+          "default": false
+        },
+        "noBypass": {
+          "description": "true: no bulk load ever skips the trigger point. A bulk load skips the others only where the running system's host permits it; who may is the host's permission, not the model's. Simulation never skips any.",
           "type": "boolean",
           "default": false
         }

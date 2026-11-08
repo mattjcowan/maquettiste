@@ -1,0 +1,16 @@
+{
+  "$schema": "../../.schema/v1/trigger-point.json",
+  "kind": "trigger-point",
+  "id": "01JTPN00000000000000009001",
+  "name": "KeepCustomersWithInvoices",
+  "subjects": [
+    {
+      "entity": "01JENT00000000000000000001"
+    }
+  ],
+  "type": "check",
+  "verbs": [
+    "delete"
+  ],
+  "description": "A customer with invoices is kept."
+}

@@ -21,11 +21,13 @@ public sealed class CatalogTests
 
         Assert.True(KindInfo.TryGet("custom", out var custom));
         Assert.Equal(ElementKind.Custom, custom.Kind);
-        Assert.Equal(KindInfo.All[^3], custom);
+        Assert.Equal(KindInfo.All[^4], custom);
         Assert.True(KindInfo.TryGet("verb-vocabulary", out var verbs));
-        Assert.Equal(KindInfo.All[^2], verbs);
+        Assert.Equal(KindInfo.All[^3], verbs);
         Assert.True(KindInfo.TryGet("right", out var rights));
-        Assert.Equal((KindInfo.All[^1], "model/rights", (string?)null), (rights, rights.Folder, rights.FixedFileName));
+        Assert.Equal((KindInfo.All[^2], "model/rights", (string?)null), (rights, rights.Folder, rights.FixedFileName));
+        Assert.True(KindInfo.TryGet("trigger-point", out var triggerPoints));
+        Assert.Equal((KindInfo.All[^1], "model/trigger-points", (string?)null), (triggerPoints, triggerPoints.Folder, triggerPoints.FixedFileName));
     }
 
     [Fact]

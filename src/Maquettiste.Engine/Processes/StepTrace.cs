@@ -83,13 +83,14 @@ public enum TriggerOutcome
 /// what it did.
 /// </summary>
 /// <param name="TriggerPoint">The trigger point's id.</param>
-/// <param name="Lifecycle">The id of the lifecycle whose trigger points list it.</param>
+/// <param name="Lifecycle">The id of the lifecycle whose trigger points list it; <see langword="null"/>, and left out of the JSON, for a named
+/// trigger point (decision 33).</param>
 /// <param name="Verb">The verb it ran on, by key.</param>
 /// <param name="Type">Whether it is a check, an action or a replace.</param>
 /// <param name="Timing">An action's moment; <see langword="null"/>, and left out of the JSON, for a check or a replace.</param>
 /// <param name="Outcome">What it did.</param>
 public sealed record TriggerPointRun(
-    string TriggerPoint, string Lifecycle, string Verb, TriggerPointType Type,
+    string TriggerPoint, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Lifecycle, string Verb, TriggerPointType Type,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] TriggerTiming? Timing, TriggerOutcome Outcome)
 {
     /// <summary>

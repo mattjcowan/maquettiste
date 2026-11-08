@@ -113,6 +113,9 @@ public sealed record ProcessTriggerPoint : IProcessNode
     /// <summary>Whether the team's code reaches outside systems (decision 22); only a point with team code may say so (MQ8101).</summary>
     public bool Outside { get; init; }
 
+    /// <summary>Whether no bulk load may ever skip it (decision 20); a bulk load skips the others only where the host permits it.</summary>
+    public bool NoBypass { get; init; }
+
     /// <summary>
     /// Why (localizable): for a check, the message shown when it refuses or warns. Markdown text, or a reference to a sidecar Markdown file.
     /// </summary>
@@ -121,6 +124,96 @@ public sealed record ProcessTriggerPoint : IProcessNode
     /// <summary>Whether the body is the team's code: a check with no condition, or an action or a replace with no sets.</summary>
     [JsonIgnore]
     public bool TeamCode => Type == TriggerPointType.Check ? Condition is null : Sets.Count == 0;
+}
+
+/// <summary>
+/// A named trigger point (trigger-points-design.md decision 33; <c>model/trigger-points/</c>): what runs when one of its verbs happens to an
+/// object whose entity one of its <see cref="Subjects"/> covers, with or without a lifecycle, less <see cref="ExceptEntities"/>. Its body is a
+/// lifecycle's <see cref="ProcessTriggerPoint"/>'s without the keys that belong to one lifecycle (states, targets and transitions, MQ8102). At
+/// each moment it runs before the lifecycles' trigger points (decision 34).
+/// </summary>
+public sealed record TriggerPoint : Element, IPackaged
+{
+    /// <inheritdoc/>
+    [JsonIgnore]
+    public override ElementKind Kind => ElementKind.TriggerPoint;
+
+    /// <summary>The id of the owning package, or <see langword="null"/> for the root. Its name is unique in the package (MQ3001).</summary>
+    [ElementRef(ElementKind.Package)]
+    public string? Package { get; init; }
+
+    /// <summary>The types it runs for, at least one, in file order: entities with their derived entities, or stereotypes and their carriers.</summary>
+    public required IReadOnlyList<TriggerPointSubject> Subjects { get; init; }
+
+    /// <summary>The entities it skips, each with its derived entities, though a subject covers them; each one a subject covers (MQ8102).</summary>
+    [ElementRef(ElementKind.Entity)]
+    public IReadOnlyList<string> ExceptEntities { get; init; } = [];
+
+    /// <summary>Whether it is a check, an action or a replace.</summary>
+    public required TriggerPointType Type { get; init; }
+
+    /// <summary>An action's moment; required on an action and allowed nowhere else (MQ8101).</summary>
+    public TriggerTiming? Timing { get; init; }
+
+    /// <summary>A check's severity, <see cref="TriggerSeverity.Error"/> when <see langword="null"/>; allowed only on a check (MQ8101).</summary>
+    public TriggerSeverity? Severity { get; init; }
+
+    /// <summary>The verbs it runs on, by key, at least one: built-in verbs or the project's own (MQ9701).</summary>
+    [VerbKey]
+    public required IReadOnlyList<string> Verbs { get; init; }
+
+    /// <summary>
+    /// The entities it runs for, each with its derived entities: some of those its subjects cover (MQ8102); empty for all of them. Its paths and
+    /// sets name what every entity it covers holds under one id (decision 12).
+    /// </summary>
+    [ElementRef(ElementKind.Entity)]
+    public IReadOnlyList<string> Entities { get; init; } = [];
+
+    /// <summary>The attributes a <c>read</c> or <c>modify</c> step must read or change itself; empty for any.</summary>
+    [ElementRef(IndexKinds = ["attribute"])]
+    public IReadOnlyList<string> Attributes { get; init; } = [];
+
+    /// <summary>The relation ends of the subject whose links it speaks of; empty for the object itself.</summary>
+    [ElementRef(IndexKinds = ["end"])]
+    public IReadOnlyList<string> Ends { get; init; } = [];
+
+    /// <summary>It runs only when this is true; false or unknown skips it. <see langword="null"/> for always.</summary>
+    public Expr? When { get; init; }
+
+    /// <summary>A check's condition: only true passes. <see langword="null"/> when the team writes the check (MQ8101 on another type).</summary>
+    public Expr? Condition { get; init; }
+
+    /// <summary>What an action or a replace sets on the object, as an action's sets; empty when the team writes the body.</summary>
+    public IReadOnlyList<ProcessSet> Sets { get; init; } = [];
+
+    /// <summary>Whether the team's code reaches outside systems (decision 22); only a point with team code may say so (MQ8101).</summary>
+    public bool Outside { get; init; }
+
+    /// <summary>Whether no bulk load may ever skip it (decision 20); a bulk load skips the others only where the host permits it.</summary>
+    public bool NoBypass { get; init; }
+
+    /// <summary>Whether the body is the team's code: a check with no condition, or an action or a replace with no sets.</summary>
+    [JsonIgnore]
+    public bool TeamCode => Type == TriggerPointType.Check ? Condition is null : Sets.Count == 0;
+}
+
+/// <summary>
+/// An entry of a named trigger point's <see cref="TriggerPoint.Subjects"/> (trigger-points-design.md decision 33): an entity, with the entities
+/// derived from it, or a stereotype, which covers every entity that carries it and the entities derived from them. It names exactly one of
+/// <see cref="Entity"/> and <see cref="Stereotype"/>, and has no id of its own.
+/// </summary>
+public sealed record TriggerPointSubject
+{
+    /// <summary>The entity, or <see langword="null"/> when the entry names a <see cref="Stereotype"/>.</summary>
+    [ElementRef(ElementKind.Entity)]
+    public string? Entity { get; init; }
+
+    /// <summary>
+    /// The key of the stereotype the entry stands for, or <see langword="null"/> when it names an <see cref="Entity"/>. The index records it as
+    /// a reference to the stereotype; an unknown key is MQ2003, and one whose stereotype does not apply to entities MQ9211.
+    /// </summary>
+    [StereotypeKeys]
+    public string? Stereotype { get; init; }
 }
 
 /// <summary>A word a scenario step's <c>assume</c> gives for a check the team writes (trigger-points-design.md decision 26).</summary>

@@ -104,6 +104,8 @@ public sealed class ResolvedCoverageTests
 
         // Trigger points (trigger-points-design.md section 7): an entry of a lifecycle's triggerPoints.
         new("trigger point", "process.json", "$defs/triggerPoint", typeof(RTriggerPoint)),
+        // Part 2: a named trigger point resolves as an RTriggerPoint in a later round of the same item; until then it is unresolved.
+        new("named trigger point", "trigger-point.json", "", null),
 
         // Vocabularies, mappings and diagrams.
         new("stereotype", "stereotype.json", "", typeof(RStereotypeDefinition)),
@@ -263,6 +265,9 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
+
+        // Trigger points, part 2 (trigger-points-design.md section 7), resolved in a later round of the same item: a point's noBypass.
+        ("trigger point", "noBypass"),
     ];
 
     /// <summary>
@@ -273,7 +278,7 @@ public sealed class ResolvedCoverageTests
     /// (next-phase-1-design.md section 5.5). The verb vocabulary resolves into <c>model.verbs</c> (verbs-design.md section 6): each own verb an
     /// <see cref="RVerb"/>, and its hidden built-in verbs left out unless named, so the file itself is no object.
     /// </summary>
-    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram", "verb vocabulary" };
+    private static readonly HashSet<string> Unresolved = new(StringComparer.Ordinal) { "mapping", "diagram", "verb vocabulary", "named trigger point" };
 
     [Fact]
     public void Every_property_of_every_model_file_is_a_member_of_its_resolved_object()

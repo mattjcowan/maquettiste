@@ -170,7 +170,7 @@
   {
     "id": "MQ2003",
     "defaultSeverity": "error",
-    "description": "Unknown stereotype: a key in a stereotype list, or in a process subject entry's stereotype, that names no stereotype.",
+    "description": "Unknown stereotype: a key in a stereotype list, or in a process subject entry's or a named trigger point subject's stereotype, that names no stereotype.",
     "family": "MQ20xx",
     "familyLabel": "References and vocabularies",
     "canBeOff": true
@@ -650,7 +650,7 @@
   {
     "id": "MQ3102",
     "defaultSeverity": "error",
-    "description": "An expression's path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a member path outside a rule condition, a payload attribute some using event lacks, a context attribute named event, under which a process guard's condition reads the payload, the context or a payload in a right's condition, the context at a trigger point's when, condition or set value, a payload read by a trigger point whose verbs are not all move verbs or own verbs an event of its lifecycle names, a path in a named right's condition that the subjects of a lifecycle using it do not hold (reported at the use), or an overlay's column named like an attribute of its entity, which text reads as the attribute.",
+    "description": "An expression's path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a member path outside a rule condition, a payload attribute some using event lacks, a context attribute named event, under which a process guard's condition reads the payload, the context or a payload in a right's condition, the context at a trigger point's when, condition or set value, a payload read by a trigger point whose verbs are not all move verbs or own verbs an event of its lifecycle names, or by a named trigger point, which has no lifecycle, a path in a named right's condition that the subjects of a lifecycle using it do not hold (reported at the use), or an overlay's column named like an attribute of its entity, which text reads as the attribute.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true
@@ -2475,7 +2475,7 @@
   {
     "id": "MQ8101",
     "defaultSeverity": "error",
-    "description": "A trigger point's shape is wrong: timing missing on an action, or beside a check or a replace; severity beside a type other than check; condition on an action or a replace; sets on a check; outside on a point with no team code (a check with a condition, or an action or a replace with sets); a with-change action with sets on delete that no replace on delete covers for every entity it covers; or trigger points on an orchestration or a library, which only lifecycles hold. Remove the key.",
+    "description": "A trigger point's shape is wrong: timing missing on an action, or beside a check or a replace; severity beside a type other than check; condition on an action or a replace; sets on a check; outside on a point with no team code (a check with a condition, or an action or a replace with sets); a with-change action with sets on delete that no replace on delete covers for every entity it covers; or trigger points on an orchestration or a library, which only lifecycles hold. A named trigger point's body follows the same rules. Remove the key.",
     "family": "MQ81xx",
     "familyLabel": "Trigger points",
     "canBeOff": true
@@ -2483,7 +2483,7 @@
   {
     "id": "MQ8102",
     "defaultSeverity": "error",
-    "description": "A trigger point's narrowing key does not fit: states or targets that are not states of its lifecycle; transitions that are not its transitions; targets or transitions beside a verb that is not a move verb, sign, or an own verb an event of its lifecycle names; attributes beside a verb other than read and modify, or beside ends; ends beside a verb that cannot act on a link (any but connect, disconnect, read, modify, freeze and thaw); attributes, ends or set attributes that not every entity it covers holds under one id; or entities its lifecycle does not govern. Remove the entry.",
+    "description": "A trigger point's narrowing key does not fit: states or targets that are not states of its lifecycle; transitions that are not its transitions; targets or transitions beside a verb that is not a move verb, sign, or an own verb an event of its lifecycle names; attributes beside a verb other than read and modify, or beside ends; ends beside a verb that cannot act on a link (any but connect, disconnect, read, modify, freeze and thaw); attributes, ends or set attributes that not every entity it covers holds under one id; or entities its lifecycle does not govern. On a named trigger point: states, targets or transitions, which belong to one lifecycle; entities its subjects do not cover; or exceptEntities that no subject covers. Remove the entry.",
     "family": "MQ81xx",
     "familyLabel": "Trigger points",
     "canBeOff": true
@@ -2499,7 +2499,7 @@
   {
     "id": "MQ8104",
     "defaultSeverity": "error",
-    "description": "Two replaces can apply to one verb on one entity, in one lifecycle or across the lifecycles that govern it. Their states and when are not considered, since whether both can hold is not known before a run. Narrow one with entities.",
+    "description": "Two replaces can apply to one verb on one entity: in one lifecycle, across the lifecycles that govern it, or in named trigger points that cover it, beside each other or beside a lifecycle's. Their states and when are not considered, since whether both can hold is not known before a run. Narrow one with entities, or a named one with exceptEntities.",
     "family": "MQ81xx",
     "familyLabel": "Trigger points",
     "canBeOff": true
@@ -2839,7 +2839,7 @@
   {
     "id": "MQ9211",
     "defaultSeverity": "error",
-    "description": "A subject entry names a stereotype that does not apply to entities (its appliesTo leaves out entity), so no entity can carry it; name a stereotype entities carry, or an entity.",
+    "description": "A subject entry of a process or a named trigger point names a stereotype that does not apply to entities (its appliesTo leaves out entity), so no entity can carry it; name a stereotype entities carry, or an entity.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true

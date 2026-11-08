@@ -256,8 +256,8 @@ export interface paths {
          *       `scenarios`: the matching record.
          *     - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards
          *       (a guard written in the expression language with its `condition`), actions, gates and invokes, actors by id, and a
-         *       lifecycle's `rightsDefault`, `rights` and `triggerPoints` when it has them. Named rights (`RightRecord`) come with `all`, as
-         *       verbs do.
+         *       lifecycle's `rightsDefault`, `rights` and `triggerPoints` when it has them. Named rights (`RightRecord`) and named trigger
+         *       points (`NamedTriggerPointRecord`, kind `trigger-point`) come with `all`, as verbs do.
          *     - `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,
          *       `completes`, `returns`), the errors (`code`, `input`), `fires` and `requires` by id, and the `guards` in the order
          *       they are checked, each with its `condition` and the `error` it reports.
@@ -1196,13 +1196,45 @@ export interface paths {
          * @description trigger-points-design.md decision 36 and section 9. The steps of the fixed order (decision 18) for one verb in one lifecycle:
          *     the built-in steps that apply to the verb, and each trigger point that can run, with its lifecycle, moment and places, in run
          *     order (decision 19: at each moment the acting lifecycle first, then the others by name, each in its list's order). For an object,
-         *     link or own verb, the other lifecycles that govern the subject add their points. The optional parameters narrow the answer to one
-         *     place; a point narrowed by `attributes` or `ends` is listed when the request gives none of them only if it is a check, as a run
-         *     fails closed. A project without trigger points gets the built-in steps alone. The answer reads the lifecycle and the lifecycles
-         *     that govern its subjects; the model is never resolved, and nothing is written. One page: a verb's sequence is short, so there is
-         *     no cursor. The MCP tool `get_trigger_sequence` answers the same, and the editor's What happens when view shows this answer.
+         *     link or own verb, the other lifecycles that govern the subject add their points. Named trigger points whose subjects cover an
+         *     entity the lifecycle governs (with `entity`, that entity) come before them all at each moment (decision 34): the one whose subject is the farthest base first, at one depth those
+         *     an entity brings before those a stereotype brings, then by name. The optional parameters narrow the answer to one place; a point
+         *     narrowed by `attributes` or `ends` is listed when the request gives none of them only if it is a check, as a run fails closed. A
+         *     project without trigger points gets the built-in steps alone. The answer reads the lifecycle, the lifecycles that govern its
+         *     subjects and the named trigger points; the model is never resolved, and nothing is written. One page: a verb's sequence is short,
+         *     so there is no cursor. The MCP tool `get_trigger_sequence` answers the same, and the editor's What happens when view shows this
+         *     answer. For an entity alone, with no lifecycle acting, see `getEntityTriggerSequence`.
          */
         get: operations["getTriggerSequence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model/entities/{id}/trigger-sequence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The entity's id. */
+                id: components["schemas"]["Ulid"];
+            };
+            cookie?: never;
+        };
+        /**
+         * What runs, in order, when a verb happens to an object of an entity, with no lifecycle acting
+         * @description trigger-points-design.md decisions 33, 34 and 36. The sequence of `getTriggerSequence` for an object of the entity when no
+         *     lifecycle acts: for a type with no lifecycle, such as a customer's `create`, and for the types a named trigger point runs for.
+         *     At each moment the named trigger points whose subjects cover the entity come first (decision 34), then every lifecycle that
+         *     governs the entity, by name, each in its list's order, reading every state. Only object, link and own verbs: a move, signature
+         *     or task verb happens in one lifecycle, so it is bad-request here (ask `getTriggerSequence`). The answer has no `lifecycle`. It
+         *     reads the entity, the lifecycles that govern it and the named trigger points; the model is never resolved, and nothing is
+         *     written. One page, no cursor. The MCP tool `get_trigger_sequence` answers the same when given `entity` and no `process`.
+         */
+        get: operations["getEntityTriggerSequence"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2974,7 +3006,7 @@ export interface components {
             }[];
         };
         /** @enum {string} */
-        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration" | "operation" | "custom" | "verb-vocabulary" | "right";
+        ElementKind: "package" | "entity" | "value-object" | "scalar-type" | "enum" | "relation" | "database" | "table" | "view" | "sequence" | "routine" | "database-type" | "sql-object" | "query" | "mapping" | "diagram" | "tag-vocabulary" | "category-tree" | "stereotype" | "reference-type" | "seed" | "process" | "actor" | "scenario" | "migration" | "operation" | "custom" | "verb-vocabulary" | "right" | "trigger-point";
         /** @enum {string} */
         ChangeSource: "editor" | "disk" | "cli" | "engine";
         /**
@@ -3020,9 +3052,9 @@ export interface components {
             use?: "lifecycle" | "orchestration" | "library";
             /** @description The entity a process governs, on process rows with exactly one subject in either form (`subject`, or one `subjects` entry; lifecycle-design.md decision 23) and no entry naming a stereotype (stereotype-sets-design.md section 8); the entity an operation acts on, on operation rows that have one. */
             subject?: components["schemas"]["Ulid"];
-            /** @description The entities a process's entity entries name in entry order, on process rows with two or more entity entries (lifecycle-design.md decision 23), or with one or more while any entry names a stereotype (stereotype-sets-design.md); such a row has no `subject`. Stereotype entries are not counted (`subjectStereotypes`). */
+            /** @description The entities a process's entity entries name in entry order, on process rows with two or more entity entries (lifecycle-design.md decision 23), or with one or more while any entry names a stereotype (stereotype-sets-design.md); such a row has no `subject`. Stereotype entries are not counted (`subjectStereotypes`). On trigger-point rows, the entities a named trigger point's entity subjects name, in entry order, when it has one (trigger-points-design.md section 9). */
             subjects?: components["schemas"]["Ulid"][];
-            /** @description The ids of the stereotypes a process's subject entries name, in entry order (stereotype-sets-design.md section 8), on process rows that have such an entry; an unknown key is left out. Absent when empty. */
+            /** @description The ids of the stereotypes a process's subject entries name, in entry order (stereotype-sets-design.md section 8), on process rows that have such an entry; on trigger-point rows, those a named trigger point's subjects name. An unknown key is left out. Absent when empty. */
             subjectStereotypes?: components["schemas"]["Ulid"][];
             /** @description The ids of the entities a process's stereotype entries govern (stereotype-sets-design.md decision 4), on process rows that have such an entry, each entry's carriers by qualified name, in entry order, without repeats; a carrier that an entry naming it or a base wins is left out. Index rows carry an element's own stereotype keys, not package defaults, so the explorer reads carriers from here. Absent when empty. */
             covers?: components["schemas"]["Ulid"][];
@@ -3068,11 +3100,12 @@ export interface components {
             /**
              * @description The distinct verb keys a process's events and transitions name, and those its rights and trigger points name (rights-design.md
              *     section 8, trigger-points-design.md section 9),
-             *     sorted ordinally (verbs-design.md section 7), on process rows that name at least one; a named right's verbs, on right rows.
+             *     sorted ordinally (verbs-design.md section 7), on process rows that name at least one; a named right's verbs, on right rows; a
+             *     named trigger point's verbs, on trigger-point rows.
              *     Left out when the process names none. The editor's Verbs tab counts uses from these rows.
              */
             verbs?: string[];
-            /** @description The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2). */
+            /** @description The custom kind's type, on custom element rows (next-phase-2-design.md section 4.2); a named trigger point's type, `check`, `action` or `replace`, on trigger-point rows (trigger-points-design.md section 9). */
             type?: string;
             /**
              * @description The number of entries in a lifecycle's rights, inline rights and uses of named rights (rights-design.md section 8), on process
@@ -3121,7 +3154,7 @@ export interface components {
             missing: string[];
         };
         /** @description A canonical model file (`schemas/v1/<kind>.json`), chosen by `kind`. */
-        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"] | components["schemas"]["operation"] | components["schemas"]["custom"] | components["schemas"]["verb-vocabulary"] | components["schemas"]["right-2"];
+        ModelDocument: components["schemas"]["package"] | components["schemas"]["entity"] | components["schemas"]["value-object"] | components["schemas"]["scalar-type"] | components["schemas"]["enum"] | components["schemas"]["relation"] | components["schemas"]["database"] | components["schemas"]["table"] | components["schemas"]["view"] | components["schemas"]["sequence"] | components["schemas"]["routine"] | components["schemas"]["database-type"] | components["schemas"]["sql-object"] | components["schemas"]["query"] | components["schemas"]["mapping"] | components["schemas"]["diagram"] | components["schemas"]["tag-vocabulary"] | components["schemas"]["category-tree"] | components["schemas"]["stereotype"] | components["schemas"]["reference-type"] | components["schemas"]["seed"] | components["schemas"]["process"] | components["schemas"]["actor"] | components["schemas"]["scenario"] | components["schemas"]["migration"] | components["schemas"]["operation"] | components["schemas"]["custom"] | components["schemas"]["verb-vocabulary"] | components["schemas"]["right-2"] | components["schemas"]["trigger-point"];
         /** @description A model document of any kind whose top-level `id` may be omitted (the engine assigns one). The engine validates it against `schemas/v1/<kind>.json` once the id is set; sub-element ids are required. Reference types and seeds (`reference-type`, `seed`) are documents like any other. */
         NewModelDocument: {
             kind: components["schemas"]["ElementKind"];
@@ -3600,7 +3633,7 @@ export interface components {
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
             /** @description The records, by kind, name and id (ordinal). */
-            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["CustomRecord"] | components["schemas"]["ConstraintRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"] | components["schemas"]["VerbRecord"] | components["schemas"]["RightRecord"])[];
+            items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["CustomRecord"] | components["schemas"]["ConstraintRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"] | components["schemas"]["VerbRecord"] | components["schemas"]["RightRecord"] | components["schemas"]["NamedTriggerPointRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
             next: string | null;
             /** @description When the model has errors, the errors that prevented resolution (and `items` is empty); otherwise the failures of the calculated values the page reads (MQ5010, MQ5011, MQ5013). */
@@ -3757,7 +3790,7 @@ export interface components {
         };
         /** @description What `previewExpression` previews: a stored expression (`at`), or `text` at a `site`. */
         ExpressionPreviewRequest: {
-            /** @description The id of the element, or of the check, guard, derived attribute, action, set or right, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for an inline right not yet saved names its lifecycle, with `site` `right`; text for a trigger point not yet saved names its lifecycle, with `site` `trigger`, or `trigger-set` and `attribute`. */
+            /** @description The id of the element, or of the check, guard, derived attribute, action, set or right, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for an inline right not yet saved names its lifecycle, with `site` `right`; text for a trigger point not yet saved names its lifecycle, with `site` `trigger`, or `trigger-set` and `attribute`. A named trigger point's sites, and text for it, read what every entity it covers holds under one id. */
             element: string;
             /** @description The pointer of a stored expression in the element's file, or of what holds it; omit when the element holds one, and with text. */
             at?: string | null;
@@ -4197,12 +4230,86 @@ export interface components {
              */
             outside?: true;
             /**
+             * @description Whether no bulk load may ever skip it (decision 20); left out when false.
+             * @constant
+             */
+            noBypass?: true;
+            /**
              * @description Whether the body is the team's code (a check with no condition, an action or a replace with no sets); left out when false.
              * @constant
              */
             teamCode?: true;
             /** @description The ids of the entities it runs for, in name order (decision 12) - the entities its lifecycle governs, narrowed by `entities`, each with its derived entities. */
             covers: string[];
+        };
+        /**
+         * @description A named trigger point (trigger-points-design.md decision 33): what runs when one of its verbs happens to an object whose entity
+         *     its subjects cover, with or without a lifecycle. Its members are a lifecycle's trigger point's (`TriggerPointRecord`) without
+         *     `states`, `targets` and `transitions`. Named trigger point records come with every other kind (`all`), as verb records do, and
+         *     only in a model that has named trigger points.
+         */
+        NamedTriggerPointRecord: components["schemas"]["ResolvedAnnotations"] & {
+            id: string;
+            /** @constant */
+            kind: "trigger-point";
+            name: string;
+            package: string | null;
+            /** @description Its subjects in file order, each an entity's id under `entity` or a stereotype's id under `stereotype`. */
+            subjects: components["schemas"]["TriggerPointSubjectRecord"][];
+            /** @description The ids of the entities it skips, as written; left out when it names none. */
+            exceptEntities?: string[];
+            /** @description What a refusal or a warning shows (decision 1) - the description, else the display name, else the name. */
+            message: string;
+            /** @enum {string} */
+            type: "check" | "action" | "replace";
+            /**
+             * @description An action's moment; left out for a check or a replace.
+             * @enum {string}
+             */
+            timing?: "before" | "with-change" | "after-commit";
+            /**
+             * @description A check's severity, `error` when the file gives none; left out for an action or a replace.
+             * @enum {string}
+             */
+            severity?: "error" | "warning";
+            /** @description The verb keys it runs on, in file order. */
+            verbs: string[];
+            /** @description The ids of the entities it is narrowed to, as written; left out when it names none. */
+            entities?: string[];
+            /** @description The ids of the attributes a `read` or `modify` step must read or change; left out when it names none. */
+            attributes?: string[];
+            /** @description The ids of the subject's relation ends whose links it speaks of; left out when it names none. */
+            ends?: string[];
+            /** @description It runs only when this is true; left out when it has none or it does not type. */
+            when?: components["schemas"]["ExpressionRecord"];
+            /** @description A check's condition; left out when it has none or it does not type. */
+            condition?: components["schemas"]["ExpressionRecord"];
+            /** @description What an action or a replace sets on the object, in file order; left out when it sets none. */
+            sets?: components["schemas"]["SetRecord"][];
+            /**
+             * @description Whether the team's code reaches outside systems (decision 22); left out when false.
+             * @constant
+             */
+            outside?: true;
+            /**
+             * @description Whether no bulk load may ever skip it (decision 20); left out when false.
+             * @constant
+             */
+            noBypass?: true;
+            /**
+             * @description Whether the body is the team's code (a check with no condition, an action or a replace with no sets); left out when false.
+             * @constant
+             */
+            teamCode?: true;
+            /** @description The ids of the entities it runs for, in name order - every entity a subject covers, each with its derived entities, less `exceptEntities` and theirs, narrowed by `entities`. */
+            covers: string[];
+        };
+        /** @description A subject of a named trigger point (trigger-points-design.md decision 33), as written. Exactly one member is present. */
+        TriggerPointSubjectRecord: {
+            /** @description The entity's id. */
+            entity?: string;
+            /** @description The stereotype's id. */
+            stereotype?: string;
         };
         /**
          * @description A named right (rights-design.md decision 7), with what it says and the lifecycles that use it. Right records come with every
@@ -6692,8 +6799,8 @@ export interface components {
         TriggerPointRun: {
             /** @description The trigger point's id. */
             triggerPoint: components["schemas"]["Ulid"];
-            /** @description The id of the lifecycle whose trigger points list it. */
-            lifecycle: components["schemas"]["Ulid"];
+            /** @description The id of the lifecycle whose trigger points list it; left out for a named trigger point (decision 33). */
+            lifecycle?: components["schemas"]["Ulid"];
             /** @description The verb it ran on, by key. */
             verb: string;
             /** @enum {string} */
@@ -6842,10 +6949,10 @@ export interface components {
             clock: string;
             diagnostics: components["schemas"]["Diagnostic"][];
         };
-        /** @description What runs, in order, when a verb happens in a lifecycle (trigger-points-design.md decision 36). */
+        /** @description What runs, in order, when a verb happens in a lifecycle, or to an object of an entity with no lifecycle acting (trigger-points-design.md decision 36). */
         TriggerSequence: {
-            /** @description The id of the lifecycle asked about, the acting one. */
-            lifecycle: components["schemas"]["Ulid"];
+            /** @description The id of the lifecycle asked about, the acting one; left out when an entity is asked about alone (`getEntityTriggerSequence`). */
+            lifecycle?: components["schemas"]["Ulid"];
             /** @description The verb, by key. */
             verb: string;
             /** @description The steps in run order. A built-in step has no `triggerPoint`; a trigger point's step follows the built-in step of its moment, when that applies. */
@@ -6866,8 +6973,12 @@ export interface components {
             step: "frozen" | "closed-lists" | "denies" | "defaults" | "no-move" | "guards" | "signatures" | "before" | "checks" | "effect" | "with-change" | "after-commit";
             /** @description The trigger point's id; left out for a built-in step. */
             triggerPoint?: components["schemas"]["Ulid"];
-            /** @description The id of the lifecycle whose trigger points list it; left out for a built-in step. */
+            /** @description The id of the lifecycle whose trigger points list it; left out for a built-in step and for a named trigger point. */
             lifecycle?: components["schemas"]["Ulid"];
+            /** @description A named trigger point's subjects in file order, each an entity's id under `entity` or a stereotype's id under `stereotype`; left out otherwise (trigger-points-design.md decision 33). */
+            subjects?: components["schemas"]["TriggerPointSubjectRecord"][];
+            /** @description The ids of the entities a named trigger point skips; left out when none. */
+            exceptEntities?: components["schemas"]["Ulid"][];
             /**
              * @description The trigger point's type; left out for a built-in step.
              * @enum {string}
@@ -6905,6 +7016,11 @@ export interface components {
              * @constant
              */
             outside?: true;
+            /**
+             * @description Whether no bulk load may ever skip it (trigger-points-design.md decision 20); left out when false.
+             * @constant
+             */
+            noBypass?: true;
         };
         RecordScenarioRequest: {
             name: string;
@@ -10487,6 +10603,11 @@ export interface components {
          */
         outside: boolean;
         /**
+         * @description true: no bulk load ever skips the trigger point. A bulk load skips the others only where the running system's host permits it; who may is the host's permission, not the model's. Simulation never skips any.
+         * @default false
+         */
+        noBypass: boolean;
+        /**
          * Invoke
          * @description Work a state starts on entry: a sub-process, a service task or a human task.
          */
@@ -10775,6 +10896,8 @@ export interface components {
             sets?: components["schemas"]["sets"];
             /** @default false */
             outside?: components["schemas"]["outside"];
+            /** @default false */
+            noBypass?: components["schemas"]["noBypass"];
             /** @description Why. For a check, the message shown when it refuses or warns; without one, the display name, else the name. */
             description?: components["schemas"]["description"];
         };
@@ -11008,6 +11131,8 @@ export interface components {
                     sets?: components["schemas"]["sets"];
                     /** @default false */
                     outside?: components["schemas"]["outside"];
+                    /** @default false */
+                    noBypass?: components["schemas"]["noBypass"];
                     /** @description Why. For a check, the message shown when it refuses or warns; without one, the display name, else the name. */
                     description?: components["schemas"]["description"];
                 };
@@ -12622,6 +12747,96 @@ export interface components {
             /** @default {} */
             generation?: components["schemas"]["generation"];
             source?: components["schemas"]["source"];
+        };
+        /**
+         * Subject
+         * @description A type a named trigger point runs for: an entity, with the entities derived from it; or a stereotype, standing for every entity that carries it and the entities derived from them. Names exactly one of entity and stereotype.
+         */
+        "$defs-subject": {
+            /** @description The entity. Not written together with stereotype. */
+            entity?: components["schemas"]["id"];
+            /** @description The key of a stereotype that applies to entities (MQ2003, MQ9211): it covers every entity that carries it (package defaults, implied stereotypes and its own list, less what it excludes) and every entity derived from one. Not written together with entity. */
+            stereotype?: string;
+        } & (unknown | unknown);
+        /**
+         * Trigger point
+         * @description A named trigger point (model/trigger-points/): what runs when one of its verbs happens to an object whose entity its subjects cover, with or without a lifecycle. Its body is a lifecycle's trigger point's, without the keys that belong to one lifecycle (states, targets and transitions). At each moment it runs before the lifecycles' trigger points.
+         */
+        "trigger-point": {
+            $schema?: components["schemas"]["schemaPath"];
+            /** @constant */
+            kind: "trigger-point";
+            id: components["schemas"]["id"];
+            /**
+             * @description An identifier, unique among the named trigger points of the package (MQ3001); a refusal names it.
+             * @default
+             */
+            name: components["schemas"]["identifier"];
+            displayName?: string;
+            pluralName?: string;
+            package?: components["schemas"]["id"];
+            /** @description The types it runs for, at least one: an entity, with the entities derived from it, or a stereotype, standing for every entity that carries it and the entities derived from them. Removing the last one removes the trigger point, since an empty list would run it everywhere. */
+            subjects: components["schemas"]["$defs-subject"][];
+            /**
+             * @description Entities it skips, each with its derived entities, though a subject covers them: the opt-out, written where the rule is. Each must be one a subject covers (MQ8102).
+             * @default []
+             */
+            exceptEntities?: components["schemas"]["idList"];
+            type: components["schemas"]["type"];
+            timing?: components["schemas"]["timing"];
+            severity?: components["schemas"]["severity"];
+            verbs: components["schemas"]["properties-verbs"];
+            /**
+             * @description Entities it runs for, each with its derived entities: some of those its subjects cover (MQ8102). Empty: every entity its subjects cover, less exceptEntities. Its paths and sets name what every entity it covers holds under one id.
+             * @default []
+             */
+            entities?: components["schemas"]["idList"];
+            /** @default [] */
+            attributes?: components["schemas"]["idList"];
+            /** @default [] */
+            ends?: components["schemas"]["idList"];
+            /** @description It runs only when this is true; false or unknown skips it, and the trace says so. It reads the object under subject, its values before the verb under old, current_actor(), in_state (a state of any lifecycle) and now(); never the context or an event's payload (MQ3102). */
+            when?: components["schemas"]["expr"];
+            condition?: components["schemas"]["expr"];
+            /** @default [] */
+            sets?: components["schemas"]["sets"];
+            /** @default false */
+            outside?: components["schemas"]["outside"];
+            /** @default false */
+            noBypass?: components["schemas"]["noBypass"];
+            /** @description Why. For a check, the message shown when it refuses or warns; without one, the display name, else the name. */
+            description?: components["schemas"]["description"];
+            /** @description Markdown text: why the element is shaped this way. */
+            rationale?: string;
+            /** @description A URL or a reference (such as ADR-0042) of the decision record. It is not an element id and is not checked. */
+            decision?: string;
+            status?: components["schemas"]["status"];
+            /** @default [] */
+            suppressions?: components["schemas"]["suppressions"];
+            /** @default [] */
+            stereotypes?: components["schemas"]["keyList"];
+            /** @description Stereotype keys that a database schema's or a package's defaultStereotypes would give this element, left out with the stereotypes they imply. Only defaults can be excluded (MQ2029). */
+            excludeStereotypes?: components["schemas"]["keyList"];
+            /** @default [] */
+            tags?: components["schemas"]["tagList"];
+            category?: components["schemas"]["id"];
+            /** @default {} */
+            properties?: components["schemas"]["properties"];
+            /** @default {} */
+            generation?: components["schemas"]["generation"];
+            source?: components["schemas"]["source"];
+            $defs: {
+                /**
+                 * Subject
+                 * @description A type a named trigger point runs for: an entity, with the entities derived from it; or a stereotype, standing for every entity that carries it and the entities derived from them. Names exactly one of entity and stereotype.
+                 */
+                subject: {
+                    /** @description The entity. Not written together with stereotype. */
+                    entity?: components["schemas"]["id"];
+                    /** @description The key of a stereotype that applies to entities (MQ2003, MQ9211): it covers every entity that carries it (package defaults, implied stereotypes and its own list, less what it excludes) and every entity derived from one. Not written together with entity. */
+                    stereotype?: string;
+                } & (unknown | unknown);
+            };
         };
         /** @description A name a batch declares with as and uses anywhere in the batch. */
         placeholder: string;
@@ -15497,6 +15712,63 @@ export interface operations {
                      *         {
                      *           "order": 11,
                      *           "step": "with-change"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TriggerSequence"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getEntityTriggerSequence: {
+        parameters: {
+            query: {
+                /** @description The verb, by key; an object, link or own verb. */
+                verb: string;
+                /** @description Comma-separated attribute ids the step reads or changes, for `read` and `modify`. */
+                attributes?: string;
+                /** @description A relation end id of the entity, for a verb on a link. */
+                end?: components["schemas"]["Ulid"];
+            };
+            header?: never;
+            path: {
+                /** @description The entity's id. */
+                id: components["schemas"]["Ulid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sequence. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "verb": "create",
+                     *       "steps": [
+                     *         {
+                     *           "order": 8,
+                     *           "step": "before",
+                     *           "triggerPoint": "01JQTGP0000000000000000003",
+                     *           "type": "action",
+                     *           "timing": "before",
+                     *           "subjects": [
+                     *             {
+                     *               "entity": "01JQENT0000000000000000004"
+                     *             }
+                     *           ],
+                     *           "noBypass": true
+                     *         },
+                     *         {
+                     *           "order": 10,
+                     *           "step": "effect"
                      *         }
                      *       ]
                      *     }
