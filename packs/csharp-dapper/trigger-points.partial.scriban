@@ -1,0 +1,100 @@
+{{-
+# The team's half of trigger points (unit trigger-points-companion, written once per file, trigger-points-design.md decision 30): for each
+# lifecycle with points, a stub per body, when and records method that throws until written; for each per-type runner, a stub per
+# StatesIn<Lifecycle> hook. A point added later is declared in the generated half and fails the build until its method is added here.
+include "_csharp.scriban"
+include "_process.scriban"
+if uses_triggers()
+  for l in model.trigger_lifecycles
+    name = p_name(l)
+    points = name + "TriggerPoints"
+    conditions = name + "TriggerConditions"
+    records = name + "TriggerRecords"
+    capture content
+-}}
+using System;
+using System.Threading.Tasks;
+using {{ actors_ns() }};
+
+namespace {{ ns(l) }};
+
+// The hand-written half of lifecycle {{ l.name }}'s trigger points. Maquettiste wrote this file once and never touches it again. Generated
+// code can't read the object yet: load it from call.Key or call.Instance, or read call.Old and call.New when the caller gives them. A
+// before action fills call.Proposed and writes nothing; its records method writes those values once every check passes.
+public static partial class {{ points }}
+{
+{{- for tp in l.trigger_points }}
+{{- if !for.first }}
+{{ end }}
+    // {{ tp.name }} ({{ tp.type }}{{ if tp.timing }}, {{ tp.timing }}{{ end }}){{ if tp.condition }}: {{ cs_line tp.condition.text }}{{ else if tp.sets.size > 0 }}: {{ sets_text(tp) }}{{ end }}
+{{- if tp.type == "check" }}
+    public static partial bool {{ member_name(tp.name, points) }}(TriggerPointCall call) =>
+{{- else if tp.type == "action" && tp.timing == "after-commit" }}
+    public static partial Task {{ member_name(tp.name, points) }}(TriggerPointCall call) =>
+{{- else }}
+    public static partial void {{ member_name(tp.name, points) }}(TriggerPointCall call) =>
+{{- end }}
+        throw new NotImplementedException("Trigger point {{ tp.name }} of lifecycle {{ l.name }} is not implemented yet.");
+{{- end }}
+}
+{{- whens = [] }}
+{{- for tp in l.trigger_points }}{{ if tp.when }}{{ whens[whens.size] = tp }}{{ end }}{{ end }}
+{{- if whens.size > 0 }}
+
+public static partial class {{ conditions }}
+{
+{{- for tp in whens }}
+{{- if !for.first }}
+{{ end }}
+    // {{ tp.name }} runs when: {{ cs_line tp.when.text }}
+    public static partial bool {{ member_name(tp.name, conditions) }}(TriggerPointCall call) =>
+        throw new NotImplementedException("The when of trigger point {{ tp.name }} of lifecycle {{ l.name }} is not implemented yet.");
+{{- end }}
+}
+{{- end }}
+{{- befores = [] }}
+{{- for tp in l.trigger_points }}{{ if tp.type == "action" && tp.timing == "before" }}{{ befores[befores.size] = tp }}{{ end }}{{ end }}
+{{- if befores.size > 0 }}
+
+public static partial class {{ records }}
+{
+{{- for tp in befores }}
+{{- if !for.first }}
+{{ end }}
+    // Writes what {{ tp.name }} filled in call.Proposed.
+    public static partial void {{ member_name(tp.name, records) }}(TriggerPointCall call) =>
+        throw new NotImplementedException("The records of trigger point {{ tp.name }} of lifecycle {{ l.name }} are not written yet.");
+{{- end }}
+}
+{{- end }}
+{{ end -}}
+{{-
+    file (join_path pack.params.partialFolder "Processes" name (points + ".cs")) content
+  end
+  for e in model.entities
+    if e.trigger_lifecycles.size > 0
+      capture content
+-}}
+using System;
+using System.Collections.Generic;
+
+namespace {{ actors_ns() }};
+
+// The hand-written half of the {{ e.name }} per-type runner. Maquettiste wrote this file once and never touches it again. When a call
+// doesn't give the object's states in a lifecycle, the runner asks here; null means the lifecycle doesn't govern the object.
+public sealed partial class {{ type_name(e) }}Verbs
+{
+{{- for l in e.trigger_lifecycles }}
+{{- if !for.first }}
+{{ end }}
+    private static partial IReadOnlyList<string>? StatesIn{{ p_name(l) }}(TriggerPointCall call) =>
+        throw new NotImplementedException("The states of the object in lifecycle {{ l.name }} are not read yet.");
+{{- end }}
+}
+{{ end -}}
+{{-
+      file (join_path pack.params.partialFolder "Processes" (type_name(e) + "Verbs.cs")) content
+    end
+  end
+end
+-}}

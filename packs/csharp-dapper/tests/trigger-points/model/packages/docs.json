@@ -1,0 +1,6 @@
+{
+  "$schema": "../../.schema/v1/package.json",
+  "kind": "package",
+  "id": "01JTP000000000000000000P01",
+  "name": "Docs"
+}

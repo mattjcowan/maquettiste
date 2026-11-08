@@ -717,6 +717,31 @@ internal sealed class PackRepo : IDisposable
     }
 
     /// <summary>
+    /// The csharp-dapper pack's <c>trigger-points</c> case (trigger-points-design.md section 15): a document lifecycle with a before action,
+    /// checks (one with a condition, a warning narrowed to an attribute with a when, team-code checks named CheckModify and
+    /// DocumentTriggerPoints, the second on sign), with-change actions (one named XWhen beside X), an outside after-commit action and a
+    /// replace on delete, and no rights. csharp-dapper writes to <c>out</c>, with the scenario tests under out/Tests.
+    /// </summary>
+    /// <returns>The repo.</returns>
+    public static PackRepo TriggerPoints()
+    {
+        var repo = new PackRepo();
+        var source = Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "trigger-points");
+        CopyTree(Path.Combine(source, "model"), Path.Combine(repo.Repo.ModelRoot, "model"));
+        CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper"), Path.Combine(repo.Repo.ModelRoot, "templates", "csharp-dapper"));
+        repo.Write(".maquettiste/maquettiste.json", """
+            {
+              "formatVersion": 1,
+              "name": "trigger-points",
+              "outputs": { "allow": [ { "path": "out" } ] },
+              "packs": { "csharp-dapper": { "output": "out", "parameters": { "testsFolder": "Tests" } } }
+            }
+
+            """);
+        return repo;
+    }
+
+    /// <summary>
     /// The csharp-dapper pack's <c>freezing</c> case (rights-design.md section 9, part 2): an employee lifecycle whose events name
     /// <c>freeze</c>, <c>thaw</c> and <c>modify</c>, a deny on reading or changing <c>salary</c> except to HR staff, and a <c>whileFrozen</c>
     /// deny on <c>change-owner</c>; its scenario freezes the record, is refused as frozen, and thaws it. csharp-dapper writes to <c>out</c>,

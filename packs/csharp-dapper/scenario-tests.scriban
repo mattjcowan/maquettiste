@@ -12,6 +12,35 @@ name = p_name(p)
 ctx = name + "Context"
 test = (pascal s.name) + "Tests"
 rights = uses_rights()
+triggers = uses_triggers()
+# The per-type runner a verb step goes through (trigger-points-design.md decision 30): the subject's entity's, when its governing
+# lifecycles have trigger points and the verb is an object, link or own verb; else null, and the step is checked as before.
+func runner_of(step)
+  if !triggers || !s.subject || step.input != "verb" || !step.verb
+    ret null
+  end
+  if step.verb.group == "move" || step.verb.group == "signature" || step.verb.group == "task"
+    ret null
+  end
+  ret s.subject.entity.trigger_lifecycles.size > 0 ? s.subject.entity : null
+end
+# The scenario subject's state paths in another lifecycle, else that lifecycle's initial state.
+func states_in(l)
+  $ids = {}
+  for x in l.all_states
+    $ids[x.id] = true
+  end
+  $out = []
+  for st in s.subject.states
+    if $ids[st.id]
+      $out[$out.size] = st.path
+    end
+  end
+  if $out.size == 0
+    $out[0] = initial_path(l)
+  end
+  ret $out
+end
 # The refusal a refused step asserts: the one the file expects, else the engine's replay's.
 func refusal_of(step)
   if step.expect && step.expect.refusal
@@ -239,7 +268,7 @@ if pack.params.testsFolder != ""
 {{- capture content -}}
 {{ header() }}
 using System;
-{{- if rights }}
+{{- if rights || triggers }}
 using System.Collections.Generic;
 {{- end }}
 using System.Globalization;
@@ -269,7 +298,60 @@ public sealed class {{ test }}
 {{- for step in s.steps }}
 
         // Step {{ step.index + 1 }}: {{ cs_line step_text(step) }}.{{ if step.description }} {{ cs_line step.description | string.strip }}{{ end }}
-{{- if step.input == "verb" }}
+{{- if triggers }}
+{{- for kv in step.assume }}
+{{- if (kv.value | object.typeof) == "string" }}
+        // Assumed: check {{ kv.key }} gives {{ kv.value }}; the team's code must give it.
+{{- end }}
+{{- end }}
+{{- end }}
+{{- $runner = runner_of(step) }}
+{{- if $runner }}
+{{- $n = step.index + 1 }}
+{{- $actor = verb_actor(step) }}
+        var outcome{{ $n }} = await new {{ type_name($runner) }}Verbs(new global::{{ dispatch_ns() }}.InMemoryProcessOutbox(), clock).RunAsync(global::{{ base_ns }}.Verb.{{ pascal step.verb.key }}, new TriggerPointCall
+        {
+            Key = {{ json s.subject.name }},
+            Envelope = new ProcessEnvelope(Instance{{ if $actor }}, Actor: Actors.{{ actor_member $actor }}{{ end }}),
+            Held = {{ held(step) }},
+            States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+{{- for l in $runner.trigger_lifecycles }}
+{{- if l.id == p.id }}
+                [{{ json l.name }}] = result.States ?? [],
+{{- else }}
+                [{{ json l.name }}] = [{{ for x in states_in(l) }}{{ for.first ? "" : ", " }}{{ json x }}{{ end }}],
+{{- end }}
+{{- end }}
+            },
+{{- if step.end }}
+            End = {{ json step.end.name }},
+{{- end }}
+{{- if step_attributes(step).size > 0 }}
+            Attributes = [{{ for x in step_attributes(step) }}{{ for.first ? "" : ", " }}{{ json x }}{{ end }}],
+{{- end }}
+            CommandId = "{{ s.name }}-{{ $n }}",
+        }, (_, _) => Task.CompletedTask, cancellationToken);
+{{- if step.expect }}
+{{- if step.expect.accepted }}
+        Assert.True(outcome{{ $n }}.Passed, outcome{{ $n }}.Message);
+{{- else }}
+        Assert.False(outcome{{ $n }}.Passed);
+{{- if refusal_of(step) }}
+        Assert.Equal({{ json refusal_of(step) }}, outcome{{ $n }}.Refusal);
+{{- end }}
+{{- if step.expect.refused_by }}
+        Assert.Equal({{ json step.expect.refused_by }}, outcome{{ $n }}.RefusedBy);
+{{- end }}
+{{- end }}
+{{- if step.expect.check_warnings.size > 0 }}
+        Assert.Equal<string>([{{ for x in step.expect.check_warnings }}{{ if !for.first }}, {{ end }}{{ json x.id }}{{ end }}], [.. outcome{{ $n }}.Warnings.Select(w => w.Id)]);
+{{- end }}
+{{- if step.expect.trigger_points.size > 0 }}
+        Assert.Equal<string>([{{ for x in step.expect.trigger_points }}{{ if !for.first }}, {{ end }}{{ json x.id }}{{ end }}], outcome{{ $n }}.Ran);
+{{- end }}
+{{- end }}
+{{- else if step.input == "verb" }}
 {{- if rights }}
 {{- $actor = verb_actor(step) }}
         var decision{{ step.index + 1 }} = Rights.Check(new RightRequest
@@ -367,9 +449,15 @@ public sealed class {{ test }}
 {{- if refusal_of(step) }}
         Assert.Equal({{ json refusal_of(step) }}, result.Refusal);
 {{- end }}
-{{- if rights && step.expect.refused_by }}
+{{- if (rights || triggers) && step.expect.refused_by }}
         Assert.Equal({{ json step.expect.refused_by }}, result.RefusedBy);
 {{- end }}
+{{- end }}
+{{- if triggers && step.expect.check_warnings.size > 0 }}
+        Assert.Equal<string>([{{ for x in step.expect.check_warnings }}{{ if !for.first }}, {{ end }}{{ json x.id }}{{ end }}], [.. result.CheckWarnings.Select(w => w.Id)]);
+{{- end }}
+{{- if triggers && step.expect.trigger_points.size > 0 }}
+        Assert.Equal<string>([{{ for x in step.expect.trigger_points }}{{ if !for.first }}, {{ end }}{{ json x.id }}{{ end }}], result.TriggerPoints);
 {{- end }}
 {{- if step.trace && step.trace.audit.size > 0 }}
         Assert.Equal<string>([{{ for x in step.trace.audit }}{{ if !for.first }}, {{ end }}{{ json x }}{{ end }}], [.. result.Audit.Select(a => a.OutcomeText)]);

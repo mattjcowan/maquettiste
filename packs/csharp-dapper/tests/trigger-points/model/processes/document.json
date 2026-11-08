@@ -1,0 +1,209 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JTP000000000000000000Q01",
+  "name": "Document",
+  "package": "01JTP000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JTP000000000000000000B01",
+      "entity": "01JTP000000000000000000E01"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JTP000000000000000000V01",
+      "name": "submit",
+      "verb": "promote",
+      "actors": [
+        "01JTP000000000000000000K01"
+      ]
+    },
+    {
+      "id": "01JTP000000000000000000V02",
+      "name": "approve",
+      "verb": "promote"
+    },
+    {
+      "id": "01JTP000000000000000000V03",
+      "name": "retire",
+      "verb": "delete",
+      "actors": [
+        "01JTP000000000000000000K01"
+      ]
+    }
+  ],
+  "triggerPoints": [
+    {
+      "id": "01JTP000000000000000000X01",
+      "name": "AssignNumber",
+      "type": "action",
+      "timing": "before",
+      "verbs": [
+        "create",
+        "modify"
+      ],
+      "description": "Gives the document its number."
+    },
+    {
+      "id": "01JTP000000000000000000X02",
+      "name": "TitleBeforeReview",
+      "type": "check",
+      "verbs": [
+        "promote"
+      ],
+      "targets": [
+        "01JTP000000000000000000S02"
+      ],
+      "condition": {
+        "text": "coalesce(subject.title, '') <> ''"
+      },
+      "description": "A document needs a title before it goes to review."
+    },
+    {
+      "id": "01JTP000000000000000000X03",
+      "name": "X",
+      "type": "check",
+      "severity": "warning",
+      "verbs": [
+        "modify"
+      ],
+      "attributes": [
+        "01JTP000000000000000000A03"
+      ],
+      "when": {
+        "text": "subject.price > 0"
+      },
+      "condition": {
+        "text": "coalesce(old.price, 0) = 0 or subject.price >= old.price * 0.9"
+      },
+      "description": "The price dropped by more than a tenth."
+    },
+    {
+      "id": "01JTP000000000000000000X04",
+      "name": "XWhen",
+      "type": "action",
+      "timing": "with-change",
+      "verbs": [
+        "modify"
+      ],
+      "description": "Tells the price list."
+    },
+    {
+      "id": "01JTP000000000000000000X05",
+      "name": "CheckModify",
+      "type": "check",
+      "verbs": [
+        "modify"
+      ],
+      "description": "The team's own rule for edits."
+    },
+    {
+      "id": "01JTP000000000000000000X06",
+      "name": "StampRelease",
+      "type": "action",
+      "timing": "with-change",
+      "verbs": [
+        "promote"
+      ],
+      "targets": [
+        "01JTP000000000000000000S03"
+      ]
+    },
+    {
+      "id": "01JTP000000000000000000X07",
+      "name": "PublishToPortal",
+      "type": "action",
+      "timing": "after-commit",
+      "verbs": [
+        "promote"
+      ],
+      "targets": [
+        "01JTP000000000000000000S03"
+      ],
+      "outside": true,
+      "description": "Sends the released document to the portal."
+    },
+    {
+      "id": "01JTP000000000000000000X08",
+      "name": "Archive",
+      "type": "replace",
+      "verbs": [
+        "delete"
+      ],
+      "description": "Documents are archived, never removed."
+    },
+    {
+      "id": "01JTP000000000000000000X09",
+      "name": "DocumentTriggerPoints",
+      "type": "check",
+      "verbs": [
+        "sign"
+      ],
+      "transitions": [
+        "01JTP000000000000000000T02"
+      ],
+      "description": "The signer's own rule."
+    }
+  ],
+  "states": [
+    {
+      "id": "01JTP000000000000000000S01",
+      "name": "Draft"
+    },
+    {
+      "id": "01JTP000000000000000000S02",
+      "name": "Review"
+    },
+    {
+      "id": "01JTP000000000000000000S03",
+      "name": "Released"
+    },
+    {
+      "id": "01JTP000000000000000000S04",
+      "name": "Retired",
+      "type": "final"
+    }
+  ],
+  "initial": "01JTP000000000000000000S01",
+  "transitions": [
+    {
+      "id": "01JTP000000000000000000T01",
+      "source": "01JTP000000000000000000S01",
+      "event": "01JTP000000000000000000V01",
+      "targets": [
+        "01JTP000000000000000000S02"
+      ]
+    },
+    {
+      "id": "01JTP000000000000000000T02",
+      "source": "01JTP000000000000000000S02",
+      "event": "01JTP000000000000000000V02",
+      "targets": [
+        "01JTP000000000000000000S03"
+      ],
+      "gate": {
+        "id": "01JTP000000000000000000G01",
+        "name": "approval",
+        "signers": [
+          "01JTP000000000000000000K01"
+        ],
+        "meanings": [
+          {
+            "id": "01JTP000000000000000000M01",
+            "name": "approved"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JTP000000000000000000T03",
+      "source": "01JTP000000000000000000S03",
+      "event": "01JTP000000000000000000V03",
+      "targets": [
+        "01JTP000000000000000000S04"
+      ]
+    }
+  ]
+}
