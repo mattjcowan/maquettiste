@@ -309,8 +309,9 @@ internal static class MappingRules
             return;
         }
 
-        if (DependentEnd(relation, mapping) is { } dependent && BoundTable(context, mapping.Database, relation.Ends[dependent].Entity) is { } boundId
-            && boundId != owner.Id)
+        // several-types: wave 2 — a dependent end with several types has no one bound table (part 1 maps such a relation with ignore only, MQ4009).
+        if (DependentEnd(relation, mapping) is { } dependent && relation.Ends[dependent].SingleEntity is { } dependentEntity
+            && BoundTable(context, mapping.Database, dependentEntity) is { } boundId && boundId != owner.Id)
         {
             Invalid(report, "/foreignKey", $"Foreign key '{foreignKeyId}' belongs to table '{owner.Name}', not to the table bound to the dependent end '{relation.Ends[dependent].Role}'.");
         }
@@ -335,8 +336,9 @@ internal static class MappingRules
         }
     }
 
+    // several-types: wave 2 — an end with several types is never bound in part 1, so such a relation never asks for a mapping (MQ4011).
     private static bool BothEndsBound(ValidationContext context, Relation relation, string databaseId) =>
-        relation.Ends.Count == 2 && relation.Ends.All(e => BoundTable(context, databaseId, e.Entity) is not null);
+        relation.Ends.Count == 2 && relation.Ends.All(e => e.SingleEntity is { } entityId && BoundTable(context, databaseId, entityId) is not null);
 
     private static string? BoundTable(ValidationContext context, string databaseId, string entityId)
     {

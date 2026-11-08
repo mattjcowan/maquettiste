@@ -272,7 +272,8 @@ internal static class ExprResolution
                 if (!model.TryGetEntry(navigation.Id, out var end))
                     continue;
                 names.Add(end.OwnerId);
-                var far = model.Get<Relation>(end.OwnerId)?.Ends.FirstOrDefault(e => string.Equals(e.Id, navigation.Id, StringComparison.Ordinal))?.Entity;
+                // several-types: wave 2 — a path through an end with several types depends on every covered entity (decision 20).
+                var far = model.Get<Relation>(end.OwnerId)?.Ends.FirstOrDefault(e => string.Equals(e.Id, navigation.Id, StringComparison.Ordinal))?.SingleEntity;
                 var entity = far is null ? null : model.Get<Entity>(far);
                 var seen = new HashSet<string>(StringComparer.Ordinal);
                 while (entity is not null && seen.Add(entity.Id))

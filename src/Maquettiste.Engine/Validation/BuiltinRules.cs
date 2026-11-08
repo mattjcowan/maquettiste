@@ -1065,9 +1065,11 @@ internal static partial class BuiltinRules
             else
             {
                 // MQ3016: the child is part of another composition too.
-                var child = ends[composition.Child].Entity;
-                var owners = context.CompositionsOwning(child);
-                if (owners.Length > 1 && owners[0] != report.Document)
+                // several-types: wave 2 — a child end with several types checks each covered entity (decision 9); an owner end with several
+                // types counts as one owner.
+                var child = ends[composition.Child].SingleEntity;
+                var owners = child is null ? [] : context.CompositionsOwning(child);
+                if (child is not null && owners.Length > 1 && owners[0] != report.Document)
                 {
                     var childName = model.Get<Entity>(child)?.Name ?? child;
                     report.Add("MQ3016", $"Entity '{childName}' is already owned through composition {owners[0].Path}; a composition child has one owner.",

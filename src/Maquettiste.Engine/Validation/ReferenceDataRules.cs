@@ -545,7 +545,9 @@ internal static class ReferenceDataRules
             return r.Id == relation.Id ? (relation, relation.Ends[index]) : null;
         if (target is not Entity entity || relation.Ends.Count != 2)
             return null;
-        var near = relation.Ends[1 - index].Entity;
+        // several-types: wave 2 — an entity seed's column for a relation with an end of several types is MQ7105 (decision 21).
+        if (relation.Ends[1 - index].SingleEntity is not { } near)
+            return null;
         var lineage = context.Ancestors(entity).Select(a => a.Id).Prepend(entity.Id);
         return lineage.Contains(near, StringComparer.Ordinal) ? (relation, relation.Ends[index]) : null;
     }
@@ -659,9 +661,12 @@ internal static class ReferenceDataRules
                 if (cell.ValueKind != JsonValueKind.String)
                     return ("MQ7004", $"an end cell holds a row id, not {Describe(cell)}");
                 var rowId = cell.GetString()!;
-                if (context.SeedOfRow(rowId) is not { } holder || !IsEntityOrDescendant(context, holder.Target, end.Entity))
+                // several-types: wave 2 — a seed of a relation with an end of several types is MQ7105 (decision 21); its cells aren't checked here.
+                if (end.SingleEntity is not { } endEntity)
+                    return null;
+                if (context.SeedOfRow(rowId) is not { } holder || !IsEntityOrDescendant(context, holder.Target, endEntity))
                 {
-                    var entityName = context.Model.Get<Entity>(end.Entity)?.Name ?? end.Entity;
+                    var entityName = context.Model.Get<Entity>(endEntity)?.Name ?? endEntity;
                     return ("MQ7009", $"'{rowId}' is not a row of a seed of entity '{entityName}'");
                 }
 

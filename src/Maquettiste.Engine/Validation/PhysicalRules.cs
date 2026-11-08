@@ -965,7 +965,8 @@ internal static class PhysicalRules
         var lineage = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
         for (var current = entity.Base; current is not null && lineage.Add(current);)
             current = context.Model.Get<Entity>(current)?.Base;
-        return relation.Ends.Any(e => lineage.Contains(e.Entity));
+        // several-types: wave 2 — an end with several types touches no table in part 1, which stores nothing for it (decision 22).
+        return relation.Ends.Any(e => e.SingleEntity is { } entityId && lineage.Contains(entityId));
     }
 
     private static bool IsValidColumnKeySegments(ModelSnapshot model, string key)

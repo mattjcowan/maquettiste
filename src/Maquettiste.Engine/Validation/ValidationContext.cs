@@ -526,16 +526,20 @@ internal sealed class ValidationContext
     public ImmutableArray<NavigationSite> NavigationsOn(string entityId) =>
         _navigations.Value.TryGetValue(entityId, out var list) ? list : [];
 
-    /// <summary>Returns the entities that carry a navigation of an end: the entities of every other end of the relation.</summary>
+    /// <summary>
+    /// Returns the entities that carry a navigation of an end: the entities of every other end of the relation. An other end with several
+    /// types gives none yet.
+    /// </summary>
     /// <param name="relation">The relation.</param>
     /// <param name="endIndex">The end.</param>
-    /// <returns>The entity ids, one per other end.</returns>
+    /// <returns>The entity ids, one per other one-type end.</returns>
     public static IEnumerable<string> NavigationHolders(Relation relation, int endIndex)
     {
         for (var j = 0; j < relation.Ends.Count; j++)
         {
-            if (j != endIndex)
-                yield return relation.Ends[j].Entity;
+            // several-types: wave 2 — an end with several types holds the navigation on every covered entity (decision 10, MQ3009).
+            if (j != endIndex && relation.Ends[j].SingleEntity is { } holder)
+                yield return holder;
         }
     }
 
@@ -593,7 +597,9 @@ internal sealed class ValidationContext
         {
             if (doc.Element is Relation relation && CompositionEnds(relation) is { } ends)
             {
-                var child = relation.Ends[ends.Child].Entity;
+                // several-types: wave 2 — a child end with several types makes each covered entity a child (decision 9, MQ3016).
+                if (relation.Ends[ends.Child].SingleEntity is not { } child)
+                    continue;
                 if (!map.TryGetValue(child, out var list))
                     map[child] = list = ImmutableArray.CreateBuilder<ElementDocument>();
                 list.Add(doc);

@@ -170,7 +170,7 @@
   {
     "id": "MQ2003",
     "defaultSeverity": "error",
-    "description": "Unknown stereotype: a key in a stereotype list, or in a process subject entry's or a named trigger point subject's stereotype, that names no stereotype.",
+    "description": "Unknown stereotype: a key in a stereotype list, or in a process subject entry's, a named trigger point subject's or a relation end type's stereotype, that names no stereotype.",
     "family": "MQ20xx",
     "familyLabel": "References and vocabularies",
     "canBeOff": true
@@ -298,7 +298,7 @@
   {
     "id": "MQ2020",
     "defaultSeverity": "error",
-    "description": "A reference from one package to another that its package does not depend on (dependsOn of the package or a parent).",
+    "description": "A reference from one package to another that its package does not depend on (dependsOn of the package or a parent). A relation end's entity entries in types count; its stereotype entries and anyEntity reach entities in any package and do not.",
     "family": "MQ20xx",
     "familyLabel": "References and vocabularies",
     "canBeOff": true
@@ -506,7 +506,7 @@
   {
     "id": "MQ3016",
     "defaultSeverity": "error",
-    "description": "Composition child with two owners.",
+    "description": "Composition child with two owners. A child end with several types makes each entity it covers a child; an owner end with several types counts as one owner.",
     "family": "MQ30xx",
     "familyLabel": "Model structure",
     "canBeOff": true
@@ -640,6 +640,30 @@
     "canBeOff": true
   },
   {
+    "id": "MQ3041",
+    "defaultSeverity": "error",
+    "description": "A relation end with several types (types with two or more entries or a stereotype entry, or anyEntity) where it can't be: on an n-ary relation, on both ends of a relation, or anyEntity on a composition's child end; give the end one entity, keep several types on one end, or list the types the child may be.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3042",
+    "defaultSeverity": "warning",
+    "description": "A relation end's types lists only one entity, which means the same as entity; write it as entity.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ3043",
+    "defaultSeverity": "warning",
+    "description": "A relation end's types holds an entry another entry already covers: an entity derived from a listed entity, or an entity that carries a listed stereotype; remove the entry. A warning, since carriers change with no edit to the relation.",
+    "family": "MQ30xx",
+    "familyLabel": "Model structure",
+    "canBeOff": true
+  },
+  {
     "id": "MQ3101",
     "defaultSeverity": "error",
     "description": "An expression does not parse, or a node is malformed: an unknown operator or function, a wrong number of operands.",
@@ -755,7 +779,7 @@
   {
     "id": "MQ3116",
     "defaultSeverity": "error",
-    "description": "An in_state names states of two lifecycles, a state that is not a state (a history or choice state), or a lifecycle that cannot govern the object reached (the entity, a base, a stereotype it carries or a derived entity is none of the lifecycle's subjects), or no object (a process without subjects, or a context attribute named subject, for a lifecycle other than the process's own); or its of is not a to-one path every subject holds. Remove the call.",
+    "description": "An in_state names states of two lifecycles, a state that is not a state (a history or choice state), or a lifecycle that cannot govern the object reached (the entity, a base, a stereotype it carries or a derived entity is none of the lifecycle's subjects), or no object (a process without subjects, or a context attribute named subject, for a lifecycle other than the process's own); or its of is not a to-one path every subject holds. Through a relation end with several types, the lifecycle must be able to govern one entity the end covers. Remove the call.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true
@@ -827,7 +851,7 @@
   {
     "id": "MQ4009",
     "defaultSeverity": "error",
-    "description": "Mapping option invalid for the element.",
+    "description": "Mapping option invalid for the element. A mapping of a relation with an end of several types sets only ignore.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1521,6 +1545,22 @@
     "canBeOff": true
   },
   {
+    "id": "MQ4115",
+    "defaultSeverity": "info",
+    "description": "A relation has an end with several types, and every end has a type it covers placed in a database, so that database stores nothing for the relation: no table, column or foreign key.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4116",
+    "defaultSeverity": "error",
+    "description": "A binding field, a query field or a query collection names a relation end with several types, or a navigation to one, which leads to more than one table; a field can't map it.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
     "id": "MQ5001",
     "defaultSeverity": "error",
     "description": "Property fails its extension schema.",
@@ -2187,7 +2227,7 @@
   {
     "id": "MQ7105",
     "defaultSeverity": "error",
-    "description": "A column of an entity seed names a to-many end.",
+    "description": "A column of an entity seed names a to-many end or a relation end with several types, or a seed holds rows of a relation with an end of several types; seeds can't hold such links yet.",
     "family": "MQ71xx",
     "familyLabel": "Seeds",
     "canBeOff": true
@@ -2879,7 +2919,7 @@
   {
     "id": "MQ9211",
     "defaultSeverity": "error",
-    "description": "A subject entry of a process or a named trigger point names a stereotype that does not apply to entities (its appliesTo leaves out entity), so no entity can carry it; name a stereotype entities carry, or an entity.",
+    "description": "A subject entry of a process or a named trigger point, or an entry of a relation end's types, names a stereotype that does not apply to entities (its appliesTo leaves out entity), so no entity can carry it; name a stereotype entities carry, or an entity.",
     "family": "MQ92xx",
     "familyLabel": "Lifecycles",
     "canBeOff": true
@@ -2922,7 +2962,7 @@
   {
     "id": "MQ9305",
     "defaultSeverity": "error",
-    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit or that is frozen on an object other than the subject, or an owner beside its subject's owner field or that is not one of the scenario's participants, or states that name a state of a lifecycle that cannot govern the object, two states of one lifecycle that cannot be active together, the subject's state in the process the scenario runs, or a state that disagrees with the state the object's bound value maps to; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; or a verb step is inconsistent: no verb, a verb that is not an object, link or own verb (a move, signature or task verb), values beside a verb other than modify and create or beside an end, attributes beside a verb other than read, a values attribute a set could not set or a value that does not fit its type, an end that is not the subject's, an object not linked through it (except for connect), or delete on a link; or an assume word (pass, warning or error) whose key is not a check the team writes of a lifecycle the step reaches, or that names a check with a condition (true and false, for guards, are not checked); or a response or signature on a step that is not an event step gated by an approval, a signature of another gate, or an expect.signatures key that is not a signature of the approval the step answers; or a delegation that does not fit: delegateTo without response delegate, delegate without delegateTo, delegate or onBehalfOf on an approval none of whose signatures has delegateTo or naming a signature without it, or delegate with onBehalfOf, since a delegation can't be passed on; or expect.refusal or expect.refusedBy beside accepted true; fix the step, the object or the participant.",
+    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit (through a relation end with several types, the target's entity must be one the end covers) or that is frozen on an object other than the subject, or an owner beside its subject's owner field or that is not one of the scenario's participants, or states that name a state of a lifecycle that cannot govern the object, two states of one lifecycle that cannot be active together, the subject's state in the process the scenario runs, or a state that disagrees with the state the object's bound value maps to; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; or a verb step is inconsistent: no verb, a verb that is not an object, link or own verb (a move, signature or task verb), values beside a verb other than modify and create or beside an end, attributes beside a verb other than read, a values attribute a set could not set or a value that does not fit its type, an end that is not the subject's, an object not linked through it (except for connect), a connect through a relation end with several types to an object whose entity the end does not cover, or delete on a link; or an assume word (pass, warning or error) whose key is not a check the team writes of a lifecycle the step reaches, or that names a check with a condition (true and false, for guards, are not checked); or a response or signature on a step that is not an event step gated by an approval, a signature of another gate, or an expect.signatures key that is not a signature of the approval the step answers; or a delegation that does not fit: delegateTo without response delegate, delegate without delegateTo, delegate or onBehalfOf on an approval none of whose signatures has delegateTo or naming a signature without it, or delegate with onBehalfOf, since a delegation can't be passed on; or expect.refusal or expect.refusedBy beside accepted true; fix the step, the object or the participant.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true
@@ -3111,7 +3151,7 @@
   {
     "id": "MQ9604",
     "defaultSeverity": "error",
-    "description": "An actor from the object is used where it cannot be worked out: in a process with no subjects, or with a path (or within) that does not resolve on every subject (the subject's own and inherited members and the attributes of the stereotypes it or a base carries for one subject, what every subject holds under one id for several; a stereotype entry holds its stereotype's own attributes and no relation ends, so with one a path is one step to such an attribute and within is empty), that passes through something other than a to-one relation end, or that ends at a many-valued attribute, a value object or a to-many end. Reported at the use; a library's gate or human task at each process that uses it, a named right's actors and except at each lifecycle that uses it.",
+    "description": "An actor from the object is used where it cannot be worked out: in a process with no subjects, or with a path (or within) that does not resolve on every subject (the subject's own and inherited members and the attributes of the stereotypes it or a base carries for one subject, what every subject holds under one id for several; a stereotype entry holds its stereotype's own attributes and no relation ends, so with one a path is one step to such an attribute and within is empty), that passes through something other than a to-one relation end (beyond an end with several types, a path reads what every entity the end covers holds under one id), or that ends at a many-valued attribute, a value object or a to-many end. Reported at the use; a library's gate or human task at each process that uses it, a named right's actors and except at each lifecycle that uses it.",
     "family": "MQ96xx",
     "familyLabel": "Actors",
     "canBeOff": true

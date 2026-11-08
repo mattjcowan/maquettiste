@@ -735,9 +735,11 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
                 break;
             case Relation relation:
-                if (ValidationContext.CompositionEnds(relation) is { } ends)
+                // several-types: wave 2 — a child end with several types reaches the compositions of every covered entity (decision 9), and the
+                // dependents of decision 12 (stereotype, anyEntity, mapping, database and settings changes) are not followed yet.
+                if (ValidationContext.CompositionEnds(relation) is { } ends && relation.Ends[ends.Child].SingleEntity is { } child)
                 {
-                    foreach (var peer in context.CompositionsOwning(relation.Ends[ends.Child].Entity))
+                    foreach (var peer in context.CompositionsOwning(child))
                         yield return peer;
                 }
 

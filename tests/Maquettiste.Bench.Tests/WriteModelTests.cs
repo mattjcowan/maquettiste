@@ -69,7 +69,7 @@ public sealed class WriteModelTests
             Assert.InRange(onDiagram.Count, 5, 25);
             Assert.NotNull(d.Package);
             Assert.All(d.Members.Where(m => !onDiagram.Contains(m.Element)), m =>
-                Assert.All(relations[m.Element].Ends, end => Assert.Contains(end.Entity, onDiagram)));
+                Assert.All(relations[m.Element].Ends, end => Assert.Contains(end.Entity!, onDiagram)));
         });
         Assert.Contains(diagrams, d => d.Members.Any(m => relations.ContainsKey(m.Element)));
         Assert.Equal(packages.Count, diagrams.Select(d => d.Package).Distinct(StringComparer.Ordinal).Count());

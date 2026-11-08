@@ -83,7 +83,8 @@ internal static class VerbStepFields
         var chain = SubjectCoverage.Chain(model, entity);
         if (!model.TryGetEntry(end, out var entry) || model.Get<Relation>(entry.OwnerId) is not { } relation
             || !relation.Ends.Any(e => string.Equals(e.Id, end, StringComparison.Ordinal))
-            || !relation.Ends.Any(e => !string.Equals(e.Id, end, StringComparison.Ordinal) && chain.Contains(e.Entity, StringComparer.Ordinal)))
+            // several-types: wave 2 — an end held through a covered type, and a connect step's type check (decision 18), read the end coverage helper.
+            || !relation.Ends.Any(e => !string.Equals(e.Id, end, StringComparison.Ordinal) && e.SingleEntity is { } near && chain.Contains(near, StringComparer.Ordinal)))
             return ($"end '{end}' does not lead from the subject's entity '{entity.Name}' or one of its bases; name an end of a relation of '{entity.Name}'.", "/end");
         if (!cast.Objects.Any(o => string.Equals(o.Id, objectId, StringComparison.Ordinal)))
             return ($"object '{objectId}' is not one of the scenario's objects; name one of them.", "/object");

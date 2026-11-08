@@ -1305,14 +1305,14 @@ internal static class ExprSites
     {
         foreach (var to in ends)
         {
-            var target = model.Get<Entity>(to.Entity);
+            var target = to.SingleEntity is { } targetId ? model.Get<Entity>(targetId) : null;
             container.Add(new ExprNavigation(to.Id, to.Navigation, new ExprContainer(c =>
             {
                 if (target is null)
                     return;
                 AddAttributes(c, model, AttributesOf(model, target), null);
                 AddNavigations(c, model, target, null);
-            }), to.Max == MaxCardinality.One, to.Min == 0) { Prefix = prefix, Entity = to.Entity });
+            }), to.Max == MaxCardinality.One, to.Min == 0) { Prefix = prefix, Entity = to.SingleEntity });
         }
     }
 
@@ -1328,10 +1328,14 @@ internal static class ExprSites
         {
             if (relation.Ends.Count != 2 || relation.RelationKind == RelationKind.NAry)
                 continue;
+            // several-types: wave 2 — navigations from and to an end with several types (decisions 10 and 13) are left out until the rules
+            // read the end coverage helper.
+            if (EndCoverage.HasSeveralTypes(relation))
+                continue;
             for (var k = 0; k < 2; k++)
             {
                 var (from, to) = (relation.Ends[1 - k], relation.Ends[k]);
-                if (to.Navigation.Length > 0 && chain.Contains(from.Entity))
+                if (to.Navigation.Length > 0 && from.SingleEntity is { } fromEntity && chain.Contains(fromEntity))
                     yield return (to, relation);
             }
         }

@@ -46,15 +46,35 @@ public enum RelationKind
     [JsonStringEnumMemberName("n-ary")] NAry,
 }
 
-/// <summary>One end (role) of a relation.</summary>
+/// <summary>
+/// One end (role) of a relation. It names its type in exactly one of three ways (several-types-design.md decision 1): <see cref="Entity"/>,
+/// <see cref="Types"/> or <see cref="AnyEntity"/>. <see cref="HasSeveralTypes"/> and <see cref="SingleEntity"/> answer decision 2's test
+/// from the file alone; the end coverage helper (<c>EndCoverage</c>) answers which entities an end covers.
+/// </summary>
 public sealed record RelationEnd
 {
     /// <summary>The end's id; used in physical column keys (<c>&lt;endId&gt;.&lt;keyAttrId&gt;</c>).</summary>
     public required string Id { get; init; }
 
-    /// <summary>The id of the entity at this end.</summary>
+    /// <summary>
+    /// The id of the entity at this end, or <see langword="null"/> when the end names its <see cref="Types"/> or <see cref="AnyEntity"/>.
+    /// Read <see cref="SingleEntity"/> for the one entity of a one-type end, which a one-entry <see cref="Types"/> list also has.
+    /// </summary>
     [ElementRef(ElementKind.Entity)]
-    public required string Entity { get; init; }
+    public string? Entity { get; init; }
+
+    /// <summary>
+    /// The types the end may be (several-types-design.md decision 1): entities, each with the entities derived from it, and stereotypes, each
+    /// standing for its carriers and the entities derived from them; <see langword="null"/> when the end names an <see cref="Entity"/> or
+    /// <see cref="AnyEntity"/>. At least one entry, with no exact repeats.
+    /// </summary>
+    public IReadOnlyList<RelationEndType>? Types { get; init; }
+
+    /// <summary>
+    /// <see langword="true"/> when the end may be any entity of the model; <see langword="null"/> otherwise (the schema allows only
+    /// <c>true</c>, as for an expression's <c>old</c>).
+    /// </summary>
+    public bool? AnyEntity { get; init; }
 
     /// <summary>The role name ("billTo", "approver").</summary>
     public required string Role { get; init; }
@@ -85,6 +105,41 @@ public sealed record RelationEnd
 
     /// <summary>A short description of the role.</summary>
     public string? Description { get; init; }
+
+    /// <summary>
+    /// Whether the end has several types (several-types-design.md decision 2): it is written with <see cref="AnyEntity"/>, or with a
+    /// <see cref="Types"/> list that holds two or more entries or any stereotype entry. The test reads the file only, so it never changes
+    /// when carriers change.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasSeveralTypes => AnyEntity == true || Types is { } types && (types.Count > 1 || types.Any(t => t.Stereotype is not null));
+
+    /// <summary>
+    /// The one entity of a one-type end (several-types-design.md decision 2): <see cref="Entity"/>, or the entity of a <see cref="Types"/>
+    /// list that holds a single entity entry; <see langword="null"/> for an end with several types (and for an end that names nothing, which
+    /// the schema refuses).
+    /// </summary>
+    [JsonIgnore]
+    public string? SingleEntity => HasSeveralTypes ? null : Entity ?? (Types is [{ Entity: { } only }] ? only : null);
+}
+
+/// <summary>
+/// An entry of a relation end's <see cref="RelationEnd.Types"/> (several-types-design.md decision 1), schema title "End type": an entity,
+/// with the entities derived from it, or a stereotype, which covers every entity that carries it and the entities derived from them. It names
+/// exactly one of <see cref="Entity"/> and <see cref="Stereotype"/>, and has no id of its own, as <see cref="TriggerPointSubject"/>.
+/// </summary>
+public sealed record RelationEndType
+{
+    /// <summary>The entity, or <see langword="null"/> when the entry names a <see cref="Stereotype"/>.</summary>
+    [ElementRef(ElementKind.Entity)]
+    public string? Entity { get; init; }
+
+    /// <summary>
+    /// The key of the stereotype the entry stands for, or <see langword="null"/> when it names an <see cref="Entity"/>. The index records it as
+    /// a reference to the stereotype; an unknown key is MQ2003, and one whose stereotype does not apply to entities MQ9211.
+    /// </summary>
+    [StereotypeKeys]
+    public string? Stereotype { get; init; }
 }
 
 /// <summary>The logical delete intent of a relation end.</summary>

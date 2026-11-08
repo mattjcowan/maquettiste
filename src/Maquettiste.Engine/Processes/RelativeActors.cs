@@ -75,7 +75,8 @@ internal static class RelativeActors
                 if (end.Max != MaxCardinality.One)
                     return ([], $"follows end '{EndName(model, end)}', which leads to many objects; a path follows only to-one ends");
                 resolved.Add(new RelativeStep(id, end, null));
-                if (model.Get<Entity>(end.Entity) is not { } next)
+                // several-types: wave 2 — a path beyond an end with several types reads what every covered entity holds (decision 13, MQ9604).
+                if (end.SingleEntity is not { } nextId || model.Get<Entity>(nextId) is not { } next)
                     return ([], null);
                 // A stereotype's attribute on an entity reached by navigation is not readable yet (decision 7).
                 current = [("'" + next.Name + "'", false, ExprSites.AttributesOf(model, next).ToList(), ExprSites.NavigationsOf(model, next).Select(n => n.To).ToList())];

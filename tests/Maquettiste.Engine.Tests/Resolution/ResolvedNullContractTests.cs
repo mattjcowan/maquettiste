@@ -26,6 +26,10 @@ public sealed class ResolvedNullContractTests
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> Derived = new Dictionary<string, string>(StringComparer.Ordinal)
     {
+        // Relations with several types at an end, part 1 (several-types-design.md section 7): until wave 2 resolves such an end (with a null
+        // entity), a relation with one is left out of the resolved model, so every resolved end has the entity of a one-type end.
+        ["REnd.Entity"] = "the end's entity, or the entity of its one-entry types list",
+
         // Physical objects.
         ["RDatabase.ByConvention"] = "the file's byConvention, else all without convention packages and packages with them",
         ["RColumn.Key"] = "the attribute path of a synthesized column (its overlay entry's attribute), else the column's own key",

@@ -293,12 +293,14 @@ internal static class PlanExplainer
         string.Equals(key, Planning.RightsNaming.Key, StringComparison.Ordinal) ? "The rights the lifecycles state" : null;
 
     /// <summary>
-    /// A <c>cs:&lt;stereotype key&gt;</c> or <c>sn:subjects</c> key's words (stereotype-sets-design.md section 6): "The entities that carry
-    /// stereotype approvable", "The stereotypes the processes' subjects name". Their cause kind stays <c>inputs</c>.
+    /// A <c>cs:&lt;stereotype key&gt;</c>, <c>sn:subjects</c> or <c>et:ends</c> key's words (stereotype-sets-design.md section 6,
+    /// several-types-design.md section 7): "The entities that carry stereotype approvable", "The stereotypes the processes' subjects name",
+    /// "The relation ends that name a stereotype or any entity". Their cause kind stays <c>inputs</c>.
     /// </summary>
     private static string? StereotypeCoverage(string key) =>
         key.StartsWith(Processes.SubjectCoverage.CarrierSetPrefix, StringComparison.Ordinal) && key.Length > 3 ? "The entities that carry stereotype " + key[3..]
         : string.Equals(key, Processes.SubjectCoverage.NamingKey, StringComparison.Ordinal) ? "The stereotypes the processes' subjects name"
+        : string.Equals(key, Model.EndCoverage.NamingKey, StringComparison.Ordinal) ? "The relation ends that name a stereotype or any entity"
         : null;
 
     /// <summary>

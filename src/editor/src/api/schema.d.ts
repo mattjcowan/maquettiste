@@ -168,7 +168,7 @@ export interface paths {
          *     the command palette and every canvas start from this list.
          *
          *     E5e: the response carries an `ETag`, a hash of every row's id, file hash and path and of the index format, so it
-         *     changes exactly when a row does, across server restarts too. The index format constant is `maquettiste-index/e6`.
+         *     changes exactly when a row does, across server restarts too. The index format constant is `maquettiste-index/e14`.
          *
          *     `?locale=<tag>` (a declared locale; the default locale is the same as none) fills `displayName` from that locale's fallback
          *     chain (reference-types-seeds-localization.md section 3.8) from a per-locale display-name table the host builds once per
@@ -3175,9 +3175,27 @@ export interface components {
              */
             actors?: components["schemas"]["Ulid"][];
         };
+        /**
+         * @description One end of a relation, on the relation's index row. An end names its type in one of three ways (several-types-design.md decision 1):
+         *     `entity`, a `types` list of entities and stereotypes, or `anyEntity`. `entity` is the one entity of a one-type end (written with
+         *     `entity`, or with a `types` list that holds a single entity entry) and is left out on an end with several types. The other members
+         *     are left out when unused.
+         */
         RelationEndSummary: {
-            entity: components["schemas"]["Ulid"];
+            /** @description The id of the entity at a one-type end. Absent on an end with several types. */
+            entity?: components["schemas"]["Ulid"];
             role: string;
+            /** @description The ids of the entity entries of an end that writes `types`, in entry order. Absent otherwise. */
+            entities?: components["schemas"]["Ulid"][];
+            /** @description The ids of the stereotypes the end's `types` entries name, in entry order. An unknown key is left out. Absent when empty. */
+            stereotypes?: components["schemas"]["Ulid"][];
+            /**
+             * @description Present and true when the end may be any entity. Absent otherwise.
+             * @constant
+             */
+            anyEntity?: true;
+            /** @description The ids of the entities that carry the stereotypes the end names, each entry's carriers by qualified name, then id, in entry order, without repeats. Index rows carry an element's own stereotype keys, not package defaults, so the explorer reads carriers from here. Filled after the rows, as a process row's `covers`. Absent when empty. */
+            covers?: components["schemas"]["Ulid"][];
         };
         ElementReadRequest: {
             /** @description Element or sub-element ids, at most 200. A sub-element id reads the document that holds it; each document comes back once. */
@@ -3940,7 +3958,10 @@ export interface components {
             name: string;
             attributes: string[];
         };
-        /** @description A navigation across a relation. */
+        /**
+         * @description A navigation across a relation. A navigation held through an end with several types is one record, listed in the navigations of
+         *     each type that holds it (several-types-design.md section 7).
+         */
         NavigationRecord: {
             id: string;
             name: string;
@@ -3949,8 +3970,10 @@ export interface components {
             from: string;
             /** @description The end it leads to. */
             to: string;
-            /** @description The entity it leads to. */
-            target: string;
+            /** @description The entity it leads to; null when it leads to an end with several types, whose types `targets` lists. */
+            target: string | null;
+            /** @description The types of the end it leads to, when that end has several types (the end's `types`, in order). Absent otherwise. */
+            targets?: string[];
             isCollection: boolean;
         };
         /** @description An entity's mapping to one database. */
@@ -3985,10 +4008,31 @@ export interface components {
             mappings: components["schemas"]["RelationMappingRecord"][];
             seeds: string[];
         };
-        /** @description A relation end. */
+        /**
+         * @description A relation end. On an end with several types (several-types-design.md decision 2: written with `anyEntity`, or with a `types`
+         *     list that holds two or more entries or a stereotype entry), `entity` is null and `types`, `hasSeveralTypes`, `stereotypes`,
+         *     `anyEntity` and `commonBase` say what it covers; each of these is left out on a one-type end.
+         */
         EndRecord: {
             id: string;
-            entity: string;
+            /** @description The entity at a one-type end; null on an end with several types. */
+            entity: string | null;
+            /** @description The end's types (decision 5), as entity ids - the covered entities with no covered base, in the order the entries first reach them. Absent on a one-type end. */
+            types?: string[];
+            /**
+             * @description Present and true on an end with several types. Absent on a one-type end.
+             * @constant
+             */
+            hasSeveralTypes?: true;
+            /** @description The ids of the stereotypes the end's entries name, in entry order. Absent when it names none. */
+            stereotypes?: string[];
+            /**
+             * @description Present and true when the end may be any entity. Absent otherwise.
+             * @constant
+             */
+            anyEntity?: true;
+            /** @description The nearest entity every type is or derives from, or null when the types share none. Absent on a one-type end. */
+            commonBase?: string | null;
             role: string;
             navigation: string | null;
             min: number;
@@ -8956,9 +9000,22 @@ export interface components {
             /** @default [] */
             tags?: components["schemas"]["tagList"];
             category?: components["schemas"]["id"];
-            ends: {
+            ends: ({
                 id: components["schemas"]["id"];
-                entity: components["schemas"]["id"];
+                /** @description The entity at this end; it covers the entity and every entity derived from it. Not written together with types or anyEntity. */
+                entity?: components["schemas"]["id"];
+                /** @description The types this end may be, at least one: an entity, with the entities derived from it, or a stereotype, standing for every entity that carries it and the entities derived from them. The end's types are the covered entities with no covered base, in the order the entries first reach them. A list that holds one entity means the same as entity (MQ3042); an entry another entry covers is MQ3043. Not written together with entity or anyEntity. */
+                types?: ({
+                    /** @description The entity. Not written together with stereotype. */
+                    entity?: components["schemas"]["id"];
+                    /** @description The key of a stereotype that applies to entities (MQ2003, MQ9211): it covers every entity that carries it (package defaults, implied stereotypes and its own list, less what it excludes) and every entity derived from one. A stereotype nothing carries yet covers nothing. Not written together with entity. */
+                    stereotype?: string;
+                } & (unknown | unknown))[];
+                /**
+                 * @description The end may be any entity of the model. Not written together with entity or types; never on a composition's child end (MQ3041).
+                 * @constant
+                 */
+                anyEntity?: true;
                 role: components["schemas"]["identifier"];
                 /**
                  * @description Property name generated on the opposite entity; empty means not navigable from there.
@@ -8985,7 +9042,7 @@ export interface components {
                 /** @default false */
                 ordered?: boolean;
                 description?: string;
-            }[];
+            } & (unknown | unknown | unknown))[];
             /** @default [] */
             attributes?: components["schemas"]["attribute"][];
             /** @default false */
@@ -10297,13 +10354,22 @@ export interface components {
             /** @default [] */
             members?: {
                 element: components["schemas"]["id"];
-                /** @default 0 */
+                /**
+                 * @description The x position of the element's card. On a relation with an end of several types: the x position of its junction node or box.
+                 * @default 0
+                 */
                 x?: number;
-                /** @default 0 */
+                /**
+                 * @description The y position of the element's card. On a relation with an end of several types: the y position of its junction node or box.
+                 * @default 0
+                 */
                 y?: number;
                 width?: number;
                 height?: number;
-                /** @default false */
+                /**
+                 * @description Whether the card is collapsed. On a relation with an end of several types: whether its lines are collapsed into one line to a box that lists the end's entries.
+                 * @default false
+                 */
                 collapsed?: boolean;
             }[];
             viewport?: {

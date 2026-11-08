@@ -1091,8 +1091,10 @@ internal static class ModelIndexer
     private static RelationEndSummary[] EndsOf(Relation relation)
     {
         var ends = new RelationEndSummary[relation.Ends.Count];
+        // several-types: wave 2 — an end that writes types or anyEntity fills entities, stereotypes, anyEntity and covers (WithSubjectCoverage),
+        // and the index format moves to e14 (several-types-design.md section 9); here it only leaves entity out on an end with several types.
         for (var i = 0; i < ends.Length; i++)
-            ends[i] = new RelationEndSummary(relation.Ends[i].Entity, relation.Ends[i].Role);
+            ends[i] = new RelationEndSummary(relation.Ends[i].SingleEntity, relation.Ends[i].Role);
         return ends;
     }
 

@@ -109,6 +109,8 @@ internal sealed class ImpactKeys
                 && !string.Equals(Processes.SubjectCoverage.CarrierSetHash(_before, rest), Processes.SubjectCoverage.CarrierSetHash(_candidate, rest), StringComparison.Ordinal),
             "sn" => Changes(e => e is Process)
                 && !string.Equals(Processes.SubjectCoverage.NamingHash(_before), Processes.SubjectCoverage.NamingHash(_candidate), StringComparison.Ordinal),
+            "et" => Changes(e => e is Relation)
+                && !string.Equals(EndCoverage.NamingHash(_before), EndCoverage.NamingHash(_candidate), StringComparison.Ordinal),
             "vn" => Changes(e => e is Process or Operation or VerbVocabulary or Right)
                 && !string.Equals(_before.VerbNamingHash(), _candidate.VerbNamingHash(), StringComparison.Ordinal),
             "rn" => Changes(e => e is Process or Right)

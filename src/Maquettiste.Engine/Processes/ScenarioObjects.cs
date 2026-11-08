@@ -183,14 +183,18 @@ internal static class ScenarioObjects
                 if (!model.TryGetEntry(link.End, out var entry) || model.Get<Relation>(entry.OwnerId) is not { } relation
                     || relation.Ends.FirstOrDefault(e => string.Equals(e.Id, link.End, StringComparison.Ordinal)) is not { } end)
                     continue;
+                // several-types: wave 2 — a link through a relation with an end of several types fits by the end coverage helper (decision 18,
+                // MQ9305's new text); not checked yet.
+                if (EndCoverage.HasSeveralTypes(relation))
+                    continue;
                 var target = byId.GetValueOrDefault(link.Object);
                 var targetEntity = target is null ? null : model.Get<Entity>(target.Entity);
-                var from = relation.Ends.Any(e => !string.Equals(e.Id, end.Id, StringComparison.Ordinal) && chain.Contains(e.Entity));
-                if (!from || (targetEntity is not null && !Chain(model, targetEntity).Contains(end.Entity)))
+                var from = relation.Ends.Any(e => !string.Equals(e.Id, end.Id, StringComparison.Ordinal) && e.SingleEntity is { } near && chain.Contains(near));
+                if (!from || (targetEntity is not null && (end.SingleEntity is not { } far || !Chain(model, targetEntity).Contains(far))))
                 {
                     var endName = relation.Name + "." + (string.IsNullOrEmpty(end.Role) ? end.Id : end.Role);
                     return (from
-                        ? $"Object '{obj.Name}' links to '{target!.Name}' through end '{endName}', which leads to entity '{model.Get<Entity>(end.Entity)?.Name ?? end.Entity}', not to entity '{targetEntity!.Name}' or one of its bases; link to an object of that entity, or through an end that leads to '{targetEntity.Name}'."
+                        ? $"Object '{obj.Name}' links to '{target!.Name}' through end '{endName}', which leads to entity '{model.Get<Entity>(end.SingleEntity!)?.Name ?? end.SingleEntity}', not to entity '{targetEntity!.Name}' or one of its bases; link to an object of that entity, or through an end that leads to '{targetEntity.Name}'."
                         : $"Object '{obj.Name}' links through end '{endName}', which does not lead from entity '{entity.Name}' or one of its bases; use an end of a relation of '{entity.Name}'.",
                         pointer + "/links/" + k.ToString(CultureInfo.InvariantCulture) + "/end");
                 }

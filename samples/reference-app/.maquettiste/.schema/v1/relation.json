@@ -101,13 +101,51 @@
       "items": {
         "title": "Relation end",
         "type": "object",
-        "x-order": ["id", "entity", "role", "navigation", "displayName", "pluralName", "min", "max", "onDelete", "ordered", "description"],
+        "description": "One end (role) of a relation. It names its type in exactly one way: entity (one entity, with the entities derived from it), types (several entities and stereotypes) or anyEntity. Only one end of a two-ended relation may have several types (MQ3041).",
+        "x-order": ["id", "entity", "types", "anyEntity", "role", "navigation", "displayName", "pluralName", "min", "max", "onDelete", "ordered", "description"],
         "properties": {
           "id": {
             "$ref": "common.json#/$defs/id"
           },
           "entity": {
+            "description": "The entity at this end; it covers the entity and every entity derived from it. Not written together with types or anyEntity.",
             "$ref": "common.json#/$defs/id"
+          },
+          "types": {
+            "description": "The types this end may be, at least one: an entity, with the entities derived from it, or a stereotype, standing for every entity that carries it and the entities derived from them. The end's types are the covered entities with no covered base, in the order the entries first reach them. A list that holds one entity means the same as entity (MQ3042); an entry another entry covers is MQ3043. Not written together with entity or anyEntity.",
+            "type": "array",
+            "items": {
+              "title": "End type",
+              "description": "A type a relation end may be: an entity, with the entities derived from it; or a stereotype, standing for every entity that carries it and the entities derived from them. Names exactly one of entity and stereotype.",
+              "type": "object",
+              "x-order": ["entity", "stereotype"],
+              "properties": {
+                "entity": {
+                  "description": "The entity. Not written together with stereotype.",
+                  "$ref": "common.json#/$defs/id"
+                },
+                "stereotype": {
+                  "description": "The key of a stereotype that applies to entities (MQ2003, MQ9211): it covers every entity that carries it (package defaults, implied stereotypes and its own list, less what it excludes) and every entity derived from one. A stereotype nothing carries yet covers nothing. Not written together with entity.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "oneOf": [
+                {
+                  "required": ["entity"]
+                },
+                {
+                  "required": ["stereotype"]
+                }
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "anyEntity": {
+            "description": "The end may be any entity of the model. Not written together with entity or types; never on a composition's child end (MQ3041).",
+            "const": true
           },
           "role": {
             "$ref": "common.json#/$defs/identifier"
@@ -150,7 +188,18 @@
             "type": "string"
           }
         },
-        "required": ["id", "entity", "role"],
+        "required": ["id", "role"],
+        "oneOf": [
+          {
+            "required": ["entity"]
+          },
+          {
+            "required": ["types"]
+          },
+          {
+            "required": ["anyEntity"]
+          }
+        ],
         "additionalProperties": false
       },
       "minItems": 2

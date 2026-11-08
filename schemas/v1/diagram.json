@@ -106,10 +106,12 @@
             "$ref": "common.json#/$defs/id"
           },
           "x": {
+            "description": "The x position of the element's card. On a relation with an end of several types: the x position of its junction node or box.",
             "type": "number",
             "default": 0
           },
           "y": {
+            "description": "The y position of the element's card. On a relation with an end of several types: the y position of its junction node or box.",
             "type": "number",
             "default": 0
           },
@@ -122,6 +124,7 @@
             "exclusiveMinimum": 0
           },
           "collapsed": {
+            "description": "Whether the card is collapsed. On a relation with an end of several types: whether its lines are collapsed into one line to a box that lists the end's entries.",
             "type": "boolean",
             "default": false
           }

@@ -670,8 +670,10 @@ internal sealed partial class ResolveRun
     {
         Ct.ThrowIfCancellationRequested();
         var dangling = false;
+        // several-types: wave 2 — a relation with an end of several types resolves with REnd's types, any_entity and common_base (decision 19);
+        // until then it is left out of the resolved model, as a relation with a dangling end is.
         foreach (var end in relation.Ends)
-            dangling |= !_entities.ContainsKey(end.Entity);
+            dangling |= end.SingleEntity is not { } entityId || !_entities.ContainsKey(entityId);
         if (dangling)
             return null;
 
@@ -691,7 +693,7 @@ internal sealed partial class ResolveRun
             var e = new REnd
             {
                 Id = end.Id,
-                Entity = _entities[end.Entity],
+                Entity = _entities[end.SingleEntity!],
                 Role = end.Role,
                 Navigation = end.Navigation.Length == 0 ? null : end.Navigation,
                 Min = end.Min,
@@ -701,7 +703,7 @@ internal sealed partial class ResolveRun
                 Ordered = end.Ordered,
             };
             e.Dependencies = endDeps;
-            deps.Element(end.Entity).Referrers(end.Entity);
+            deps.Element(end.SingleEntity!).Referrers(end.SingleEntity!);
             ends.Add(e);
         }
 
@@ -736,10 +738,10 @@ internal sealed partial class ResolveRun
         _relations[relation.Id] = r;
         for (var i = 0; i < relation.Ends.Count; i++)
         {
-            var entityId = relation.Ends[i].Entity;
+            var entityId = relation.Ends[i].SingleEntity!;
             var repeated = false;
             for (var j = 0; j < i && !repeated; j++)
-                repeated = string.Equals(relation.Ends[j].Entity, entityId, StringComparison.Ordinal);
+                repeated = string.Equals(relation.Ends[j].SingleEntity, entityId, StringComparison.Ordinal);
             if (!repeated)
                 ListOf(_relationsByEntity, entityId).Add(r);
         }
