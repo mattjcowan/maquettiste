@@ -1,0 +1,21 @@
+{
+  "$schema": "../../.schema/v1/trigger-point.json",
+  "kind": "trigger-point",
+  "id": "01JNT000000000000000000N08",
+  "name": "TitleWarning",
+  "package": "01JNT000000000000000000P02",
+  "subjects": [
+    {
+      "entity": "01JNT000000000000000000E02"
+    }
+  ],
+  "exceptEntities": [
+    "01JNT000000000000000000E03"
+  ],
+  "type": "check",
+  "severity": "warning",
+  "verbs": [
+    "modify"
+  ],
+  "description": "The title changed after review."
+}

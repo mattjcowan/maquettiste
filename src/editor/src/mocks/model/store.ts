@@ -116,6 +116,7 @@ const FOLDERS: Partial<Record<ElementKind, string>> = {
   actor: "model/actors",
   scenario: "model/scenarios",
   right: "model/rights",
+  "trigger-point": "model/trigger-points",
 };
 
 /** The folders of a database's element files other than tables (KindInfo: model/databases/{db}/<folder>). */
@@ -203,6 +204,13 @@ export class MockModel {
 
   /** A process row with the actors its document names (sorted, only actors that exist), as the engine's index gives them. */
   private withActors(row: ElementSummary, e: Entry): ElementSummary {
+    if (row.kind === "trigger-point") {
+      // The ids of the stereotypes a named trigger point's subjects name; an unknown key is left out.
+      const subjectStereotypes = subjectsOf(e.json).flatMap((s) =>
+        s.stereotype === undefined ? [] : ([...this.entries.values()].find((x) => x.json.kind === "stereotype" && x.json.key === s.stereotype)?.id ?? []),
+      );
+      return subjectStereotypes.length ? { ...row, subjectStereotypes } : row;
+    }
     if (row.kind !== "process") return row;
     const actors = [...new Set(referencesOf(e.json).map((r) => r.toId))].filter((id) => this.entries.get(id)?.json.kind === "actor").sort();
     const withActors = actors.length ? { ...row, actors } : row;
@@ -1577,6 +1585,16 @@ function e5(json: Json): Partial<ElementSummary> {
     out.access = json.access === "allow" ? "allow" : "deny";
     const verbs = processVerbs(json);
     if (verbs.length) out.verbs = verbs;
+  }
+  // A named trigger point's type, verbs and subjects (trigger-points-design.md section 9): `subjects` lists the entity subjects and
+  // `subjectStereotypes` the stereotypes' ids, each only when there is one.
+  if (kind === "trigger-point") {
+    out.type = json.type === "action" || json.type === "replace" ? json.type : "check";
+    const verbs = processVerbs(json);
+    if (verbs.length) out.verbs = verbs;
+    const subjects = Array.isArray(json.subjects) ? (json.subjects as Json[]) : [];
+    const entities = subjects.flatMap((s) => (typeof s.entity === "string" ? [s.entity] : []));
+    if (entities.length) out.subjects = entities;
   }
   if (kind === "actor" && typeof json.type === "string" && (ACTOR_TYPES as readonly string[]).includes(json.type)) {
     out.actorType = json.type as (typeof ACTOR_TYPES)[number];

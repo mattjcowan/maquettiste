@@ -8,8 +8,14 @@
 # companion (unit trigger-points-companion, written once), so a new body or when fails the build until written.
 include "_csharp.scriban"
 include "_process.scriban"
+include "_named.scriban"
 if uses_triggers()
 verb_type = "global::" + base_ns + ".Verb"
+# Whether the bulk-load bypass and the dry run are written (decisions 20 and 35): each behind its own pack parameter, off by default, so a
+# project keeps its bytes until it turns one on.
+bypass_on = uses_bulk_bypass()
+dry_run_on = uses_dry_run()
+run_call = dry_run_on ? "outcome.Run" : "TriggerPointOutcome.Run"
 rights = uses_rights()
 freezing = uses_freezing()
 attribute_rights = rights && uses_attribute_rights()
@@ -31,9 +37,30 @@ for v in model.verbs
 end
 runners = []
 for e in model.entities
-  if e.trigger_lifecycles.size > 0
+  if has_runner(e)
     runners[runners.size] = e
   end
+end
+# The named trigger points by package, each package once, in the order its first point comes.
+named_groups = []
+for tp in model.trigger_points
+  $key = tp.package ? tp.package.id : ""
+  $group = null
+  for $g in named_groups
+    if $g.key == $key
+      $group = $g
+    end
+  end
+  if !$group
+    $group = { key: $key, points: [] }
+    named_groups[named_groups.size] = $group
+  end
+  $group.points[$group.points.size] = tp
+end
+# The skip test of a lifecycle's point a permitted bypass may skip, followed by " && "; "" without the bypass or for a point marked noBypass.
+# A replace is never skipped: it is the verb's effect, not an extra.
+func lifecycle_skip(tp)
+  ret (bypass_on && !tp.no_bypass) ? ("!outcome.Skips(call, " + (json tp.id) + ") && ") : ""
 end
 func entity_type(e)
   ret "global::" + ns(e) + "." + type_name(e)
@@ -123,7 +150,7 @@ func place(l, tp, link, governed)
     if tp.type == "check"
       $c[$c.size] = "(call.Attributes is not { Count: > 0 } || call.Attributes.Any(a => a is " + or_pattern($names) + "))"
     else
-      $c[$c.size] = "call.Attributes is { Count: > 0 } attributes && attributes.Any(a => a is " + or_pattern($names) + ")"
+      $c[$c.size] = "call.Attributes is { Count: > 0 } && call.Attributes.Any(a => a is " + or_pattern($names) + ")"
     end
   end
   if tp.ends.size > 0
@@ -176,12 +203,15 @@ func point_text(tp)
     $text = $text + ". " + $message
   end
   if tp.type == "action" && tp.timing == "before"
-    $text = $text + ". It fills call.Proposed and must write nothing; " + p_name(tp.process) + "TriggerRecords writes once every check passes"
+    $text = $text + ". It fills call.Proposed and must write nothing; " + (tp.process ? p_name(tp.process) : "") + "TriggerRecords writes once every check passes"
   else if tp.type == "action" && tp.timing == "after-commit"
     $text = $text + ". It runs after the change is saved, may run late and may run more than once, so it must be safe to repeat"
   end
   if tp.outside
     $text = $text + ". It reaches outside systems"
+  end
+  if tp.no_bypass
+    $text = $text + ". A bulk load never skips it"
   end
   ret $text + "."
 end
@@ -262,6 +292,16 @@ public sealed record TriggerPointCall
 
     /// <summary>The caller's id for the command, which makes the per-type runner's message ids stable; the runner needs it when after-commit work is queued.</summary>
     public string? CommandId { get; init; }
+{{- if bypass_on }}
+
+    /// <summary>Whether a bulk load asks to skip the checks and actions not marked noBypass (decisions 20 and 35); a replace always runs. The per-type runner honours it only when the host's <see cref="ITriggerBypass"/> allows it, and logs each skip there.</summary>
+    public bool SkipOptional { get; init; }
+{{- end }}
+{{- if dry_run_on }}
+
+    /// <summary>Whether the per-type runner only asks (decision 35): it runs freezing, rights, before actions and checks, then stops before the records and the effect and writes nothing, so a screen can learn whether the verb would be accepted and with which warnings. Outside points are recorded, not called.</summary>
+    public bool DryRun { get; init; }
+{{- end }}
 {{- if relatives }}
 
     /// <summary>Whether the caller is an actor taken from the object, by name, which the per-type runner's rights check asks; null answers no.</summary>
@@ -307,6 +347,12 @@ public sealed class TriggerPointOutcome
     private readonly List<TriggerPointWarning> _warnings = [];
     private readonly List<(string Id, Action Write)> _records = [];
     private readonly List<TriggerPointMessage> _messages = [];
+{{- if dry_run_on }}
+    private readonly List<string> _recorded = [];
+{{- end }}
+{{- if bypass_on }}
+    private readonly List<string> _skipped = [];
+{{- end }}
 
     /// <summary>Whether nothing refused.</summary>
     public bool Passed => Refusal is null;
@@ -331,6 +377,27 @@ public sealed class TriggerPointOutcome
 
     /// <summary>The after-commit work queued, in order.</summary>
     public IReadOnlyList<TriggerPointMessage> Messages => _messages;
+{{- if dry_run_on }}
+
+    /// <summary>The outside trigger points a dry run recorded in place of calling them, in order (decision 35); an outside check recorded so counts as passing.</summary>
+    public IReadOnlyList<string> Recorded => _recorded;
+{{- end }}
+{{- if bypass_on }}
+
+    /// <summary>The trigger points a permitted bypass skipped, in order (decisions 20 and 35).</summary>
+    public IReadOnlyList<string> Skipped => _skipped;
+
+    // Whether a check or an action not marked noBypass is skipped: the call asks to skip, which the runner keeps only when the bypass allows it. Each
+    // skip is listed once.
+    internal bool Skips(TriggerPointCall call, string id)
+    {
+        if (!call.SkipOptional)
+            return false;
+        if (!_skipped.Contains(id, StringComparer.Ordinal))
+            _skipped.Add(id);
+        return true;
+    }
+{{- end }}
 
     // Records that a point runs; false when it already ran for this outcome (a point runs at most once per microstep).
     internal bool Once(string id)
@@ -356,6 +423,15 @@ public sealed class TriggerPointOutcome
     // the check's severity, and an error on a warning check warns, as in the replay (decision 26).
     internal void Check(string id, string message, bool warning, TriggerPointCall call, Func<bool> holds)
     {
+{{- if dry_run_on }}
+        // A dry run records it in place of asking it (decision 35).
+        if (call.DryRun)
+        {
+            Keep(id);
+            return;
+        }
+
+{{- end }}
         switch (TriggerPointStandIn.Current?.Check(id, call))
         {
             case null:
@@ -372,12 +448,32 @@ public sealed class TriggerPointOutcome
         }
     }
 
+{{- if dry_run_on }}
+
+    // An outside action or replace (decision 22): recorded by a dry run (decision 35), or by the stand-in when it takes it, else the team's
+    // method.
+    internal void Run(string id, TriggerPointCall call, Action body)
+    {
+        if (call.DryRun)
+            Keep(id);
+        else if (TriggerPointStandIn.Current?.Records(id, call) != true)
+            body();
+    }
+
+    private void Keep(string id)
+    {
+        if (!_recorded.Contains(id, StringComparer.Ordinal))
+            _recorded.Add(id);
+    }
+{{- else }}
+
     // An outside action or replace (decision 22): recorded by the stand-in when it takes it, else the team's method.
     internal static void Run(string id, TriggerPointCall call, Action body)
     {
         if (TriggerPointStandIn.Current?.Records(id, call) != true)
             body();
     }
+{{- end }}
 
     internal void Refuse(string refusal, string? by, string? message)
     {
@@ -428,6 +524,27 @@ public abstract class TriggerPointStandIn
     /// <returns>Whether it is recorded.</returns>
     public abstract bool Records(string id, TriggerPointCall call);
 }
+{{- if bypass_on }}
+
+/// <summary>
+/// Whether a bulk load may skip the checks and actions not marked noBypass (trigger-points-design.md decisions 20 and 35): the host's
+/// permission, as who is signed in is, not a right. The per-type runner asks it when a call sets <see cref="TriggerPointCall.SkipOptional"/>,
+/// honours the skip only when it allows it, and logs each skipped point here. Points marked noBypass, and replaces, always run. The team's
+/// TriggerBypass (Dispatch/TriggerBypass.cs) is the default; each runner takes another.
+/// </summary>
+public interface ITriggerBypass
+{
+    /// <summary>Whether the call may skip the checks and actions not marked noBypass.</summary>
+    /// <param name="call">The call: the verb, the object, the envelope.</param>
+    /// <returns>Whether it may.</returns>
+    bool Allows(TriggerPointCall call);
+
+    /// <summary>Logs one trigger point the call skipped.</summary>
+    /// <param name="call">The call.</param>
+    /// <param name="triggerPoint">The trigger point's id.</param>
+    void Skipped(TriggerPointCall call, string triggerPoint);
+}
+{{- end }}
 
 /// <summary>
 /// After-commit work (trigger-points-design.md decision 31): one message per due after-commit point, written to the outbox inside the
@@ -639,6 +756,13 @@ public static class TriggerPointRelay
 {{- end }}
 {{- end }}
 {{- end }}
+{{- for tp in model.trigger_points }}
+{{- if tp.type == "action" && tp.timing == "after-commit" }}
+            case {{ json tp.id }}:
+                await {{ named_class(tp, "Points") }}.{{ member_name(tp.name, "TriggerPoints") }}(call).ConfigureAwait(false);
+                break;
+{{- end }}
+{{- end }}
             default:
                 throw new ArgumentOutOfRangeException(nameof(message), message.TriggerPoint, "Not an after-commit trigger point of the model.");
         }
@@ -648,6 +772,13 @@ public static class TriggerPointRelay
 {{- file (join_path pack.params.generatedFolder "Processes" "TriggerPoints.cs") content -}}
 {{- for e in runners }}
 {{- name = type_name(e) + "Verbs" }}
+{{- named = e.trigger_points.size > 0 }}
+{{- capture what -}}
+{{ if named }}the named trigger points that cover it{{ if e.trigger_lifecycles.size > 0 }} and the trigger points of the lifecycles that govern it{{ end }}{{ else }}the trigger points of the lifecycles that govern it{{ end }}
+{{- if e.trigger_lifecycles.size > 0 }}
+/// ({{ for l in e.trigger_lifecycles }}{{ for.first ? "" : ", " }}{{ l.name }}{{ end }})
+{{- end }}
+{{- end }}
 {{- capture runner -}}
 {{ header() }}
 using System;
@@ -672,22 +803,36 @@ namespace {{ ns(e) }};
 public sealed record {{ type_name(e) }}VerbDone(string Entity, string? Key, string Verb, string? Actor, DateTimeOffset At, string? Replaced);
 
 /// <summary>
-/// Runs the object, link and own verbs of a {{ e.name }} done outside an event, with the trigger points of the lifecycles that govern it
-/// ({{ for l in e.trigger_lifecycles }}{{ for.first ? "" : ", " }}{{ l.name }}{{ end }}): {{ if freezing }}freezing, {{ end }}{{ if rights }}rights, {{ end }}then before actions and checks across the lifecycles, the
+/// Runs the object, link and own verbs of a {{ e.name }} done outside an event, with {{ what }}: {{ if freezing }}freezing, {{ end }}{{ if rights }}rights, {{ end }}then before actions and checks across the lifecycles, the
 /// records, the verb's effect or its replace, the with-the-change actions, and the after-commit messages and the
 /// <see cref="{{ type_name(e) }}VerbDone"/> record written to the outbox. Call it inside your own transaction: nothing is written before every
 /// check passes, an exception from the team's code passes through to you so the transaction rolls back, and the outbox's messages are
 /// stored only if it commits.
+{{- if bypass_on }}
+/// A call may set SkipOptional, which skips the checks and actions not marked noBypass only when the bypass allows it, each skip logged
+/// there; a replace always runs.
+{{- end }}
+{{- if dry_run_on }}
+/// A call may set DryRun, which stops after the checks and writes nothing, so roll your transaction back after it too.
+{{- end }}
 /// </summary>
 /// <param name="outbox">Where the after-commit messages and the history record go, inside the caller's transaction.</param>
 /// <param name="clock">The clock.</param>
 {{- if freezing }}
 /// <param name="frozen">Whether the object, or a link of it, is frozen; the team's FrozenState when null.</param>
 {{- end }}
-public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock clock{{ if freezing }}, {{ frozen_state_type() }}? frozen = null{{ end }})
+{{- if bypass_on }}
+/// <param name="bypass">Whether a call may skip the checks and actions not marked noBypass, and where each skip is logged; the team's TriggerBypass when null.</param>
+{{- end }}
+public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock clock{{ if freezing }}, {{ frozen_state_type() }}? frozen = null{{ end }}{{ if bypass_on }}, ITriggerBypass? bypass = null{{ end }})
 {
+{{- if named }}
+    /// <summary>The steps of the named trigger points that cover a {{ e.name }}, then of the lifecycles that govern it, by name.</summary>
+    public static IReadOnlyList<ITriggerPointSteps> Lifecycles { get; } = [new NamedTriggerSteps(){{ for l in e.trigger_lifecycles }}, new {{ steps_type(l) }}(){{ end }}];
+{{- else }}
     /// <summary>The steps of the lifecycles that govern a {{ e.name }}, by name.</summary>
     public static IReadOnlyList<ITriggerPointSteps> Lifecycles { get; } = [{{ for l in e.trigger_lifecycles }}{{ for.first ? "" : ", " }}new {{ steps_type(l) }}(){{ end }}];
+{{- end }}
 
     /// <summary>Runs a verb. Move, signature and task verbs are refused: they go through the process's commands.</summary>
     /// <param name="verb">The verb.</param>
@@ -708,8 +853,10 @@ public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock cloc
         }
 
 {{- end }}
+{{- if e.trigger_lifecycles.size > 0 }}
         // Create reads each lifecycle's initial state (decision 13), whatever the call gives; other verbs ask the team for the object's states
         // in a lifecycle the call doesn't give.
+{{- end }}
         var states = new Dictionary<string, IReadOnlyList<string>>(call.States, StringComparer.Ordinal);
 {{- for l in e.trigger_lifecycles }}
         if (verb == {{ verb_type }}.Create)
@@ -756,6 +903,13 @@ public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock cloc
         }
 {{- end }}
 
+{{- if bypass_on }}
+
+        // A bulk load's bypass (decisions 20 and 35): honoured only when the host allows it; points marked noBypass, and replaces, always run.
+        if (call.SkipOptional && !Bypass.Allows(call))
+            call = call with { SkipOptional = false };
+{{- end }}
+
         // Before actions, then checks, across the lifecycles (decision 19); nothing is written until every check passes.
         var lifecycles = Lifecycles.Where(l => l.Speaks(verb)).ToList();
         foreach (var l in lifecycles)
@@ -766,8 +920,27 @@ public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock cloc
                 l.Check(verb, call, outcome);
         }
 
+{{- if dry_run_on }}
+
+        // A dry run stops here (decision 35): no records, no effect, nothing in the outbox{{ if bypass_on }}, and no skip logged, since none happened{{ end }}.
+{{- if bypass_on }}
+        if (call.DryRun)
+            return outcome;
+        if (!outcome.Passed)
+            return Logged(call, outcome);
+{{- else }}
+        if (!outcome.Passed || call.DryRun)
+            return outcome;
+{{- end }}
+{{- else if bypass_on }}
+
+        if (!outcome.Passed)
+            return Logged(call, outcome);
+{{- else }}
+
         if (!outcome.Passed)
             return outcome;
+{{- end }}
         foreach (var (_, write) in outcome.Records)
             write();
         var replaced = false;
@@ -791,8 +964,18 @@ public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock cloc
 
         messages.Add(new {{ type_name(e) }}VerbDone({{ json e.name }}, call.Key, global::{{ base_ns }}.Verbs.Key(verb), call.Envelope?.Actor, Clock.Now, outcome.Replaced));
         await Outbox.WriteAsync(messages, cancellationToken).ConfigureAwait(false);
+        return {{ bypass_on ? "Logged(call, outcome)" : "outcome" }};
+    }
+{{- if bypass_on }}
+
+    // Logs each point a permitted bypass skipped, through the host's hook (decision 35).
+    private TriggerPointOutcome Logged(TriggerPointCall call, TriggerPointOutcome outcome)
+    {
+        foreach (var id in outcome.Skipped)
+            Bypass.Skipped(call, id);
         return outcome;
     }
+{{- end }}
 
     private IProcessOutbox Outbox { get; } = outbox ?? throw new ArgumentNullException(nameof(outbox));
 
@@ -801,14 +984,86 @@ public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock cloc
 
     private {{ frozen_state_type() }} Frozen { get; } = frozen ?? new {{ frozen_state_stub() }}();
 {{- end }}
+{{- if bypass_on }}
+
+    private ITriggerBypass Bypass { get; } = bypass ?? new global::{{ dispatch_ns() }}.TriggerBypass();
+{{- end }}
 {{- for l in e.trigger_lifecycles }}
 
     /// <summary>The object's active state paths in lifecycle {{ l.name }}, when the call doesn't give them; null when {{ l.name }} doesn't govern the object (implemented in {{ name }}.cs).</summary>
     private static partial IReadOnlyList<string>? StatesIn{{ p_name(l) }}(TriggerPointCall call);
 {{- end }}
+{{- if named }}
+{{- named_steps(e.trigger_points, "typeof(" + entity_type(e) + ")", [e], "a " + e.name, true) }}
+{{- end }}
 }
 {{ end -}}
 {{- file (join_path pack.params.generatedFolder (package_folder e) (name + ".g.cs")) runner -}}
+{{- end }}
+{{- for g in named_groups }}
+{{- first = g.points[0] }}
+{{- where = first.package ? ("package " + first.package.qualified_name) : "the root package" }}
+{{- capture declarations -}}
+{{ header() }}
+using System.Threading.Tasks;
+using {{ actors_ns() }};
+
+namespace {{ ns(first) }};
+
+/// <summary>The bodies of the named trigger points of {{ where }} (implemented in TriggerPoints.cs), each written once however many types it covers. Generated code can't read the object yet, so each is the team's, documented with its text.</summary>
+public static partial class TriggerPoints
+{
+{{- for tp in g.points }}
+{{- if !for.first }}
+{{ end }}
+    /// <summary>{{ point_text(tp) | escape_xml }}</summary>
+    /// <param name="call">The call.</param>
+{{- if tp.type == "check" }}
+    /// <returns>Whether the check passes.</returns>
+    public static partial bool {{ member_name(tp.name, "TriggerPoints") }}(TriggerPointCall call);
+{{- else if tp.type == "action" && tp.timing == "after-commit" }}
+    /// <returns>The task.</returns>
+    public static partial Task {{ member_name(tp.name, "TriggerPoints") }}(TriggerPointCall call);
+{{- else }}
+    public static partial void {{ member_name(tp.name, "TriggerPoints") }}(TriggerPointCall call);
+{{- end }}
+{{- end }}
+}
+{{- whens = [] }}
+{{- for tp in g.points }}{{ if tp.when }}{{ whens[whens.size] = tp }}{{ end }}{{ end }}
+{{- if whens.size > 0 }}
+
+/// <summary>The when of the named trigger points of {{ where }}: a point runs only when its when is true (implemented in TriggerPoints.cs).</summary>
+public static partial class TriggerConditions
+{
+{{- for tp in whens }}
+{{- if !for.first }}
+{{ end }}
+    /// <summary>When trigger point {{ tp.name }} runs: <c>{{ cs_line tp.when.text | escape_xml }}</c>.</summary>
+    /// <param name="call">The call.</param>
+    /// <returns>Whether it runs.</returns>
+    public static partial bool {{ member_name(tp.name, "TriggerConditions") }}(TriggerPointCall call);
+{{- end }}
+}
+{{- end }}
+{{- befores = [] }}
+{{- for tp in g.points }}{{ if tp.type == "action" && tp.timing == "before" }}{{ befores[befores.size] = tp }}{{ end }}{{ end }}
+{{- if befores.size > 0 }}
+
+/// <summary>Writes what the before actions of {{ where }} filled in the call's proposed values, called only once every check passes (implemented in TriggerPoints.cs).</summary>
+public static partial class TriggerRecords
+{
+{{- for tp in befores }}
+{{- if !for.first }}
+{{ end }}
+    /// <summary>Writes the values before action {{ tp.name }} filled{{ if tp.sets.size > 0 }}: <c>{{ sets_text(tp) | escape_xml }}</c>{{ end }}.</summary>
+    /// <param name="call">The call.</param>
+    public static partial void {{ member_name(tp.name, "TriggerRecords") }}(TriggerPointCall call);
+{{- end }}
+}
+{{- end }}
+{{ end -}}
+{{- file (join_path (named_folder(pack.params.generatedFolder, first)) "TriggerPoints.g.cs") declarations -}}
 {{- end }}
 {{- for l in model.trigger_lifecycles }}
 {{- name = p_name(l) }}
@@ -884,10 +1139,10 @@ public sealed class {{ name }}TriggerSteps : ITriggerPointSteps
         using var depth = TriggerPointDepth.Enter();
 {{- end }}
 {{- for tp in tv.before }}
-        if ({{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+        if ({{ place(l, tp, link, governed) }}{{ lifecycle_skip(tp) }}outcome.Once({{ json tp.id }}))
         {
 {{- if tp.outside }}
-            TriggerPointOutcome.Run({{ json tp.id }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
+            {{ run_call }}({{ json tp.id }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
 {{- else }}
             {{ points }}.{{ member_name(tp.name, points) }}(call);
 {{- end }}
@@ -907,7 +1162,7 @@ public sealed class {{ name }}TriggerSteps : ITriggerPointSteps
         using var depth = TriggerPointDepth.Enter();
 {{- end }}
 {{- for tp in tv.checks }}
-        if (outcome.Passed && {{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+        if (outcome.Passed && {{ place(l, tp, link, governed) }}{{ lifecycle_skip(tp) }}outcome.Once({{ json tp.id }}))
 {{- if tp.outside }}
             outcome.Check({{ json tp.id }}, {{ json tp.message }}, {{ tp.severity == "warning" ? "true" : "false" }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
 {{- else }}
@@ -930,7 +1185,7 @@ public sealed class {{ name }}TriggerSteps : ITriggerPointSteps
         if ({{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
         {
 {{- if tp.outside }}
-            TriggerPointOutcome.Run({{ json tp.id }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
+            {{ run_call }}({{ json tp.id }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
 {{- else }}
             {{ points }}.{{ member_name(tp.name, points) }}(call);
 {{- end }}
@@ -956,13 +1211,13 @@ public sealed class {{ name }}TriggerSteps : ITriggerPointSteps
 {{- for tp in tv.with_change }}
 {{- if tv.verb.key == "delete" && tp.sets.size > 0 }}
         // After a built-in delete there is no object to set (decision 16): {{ tp.name }} runs only after a replace, or on an event, whose object stays.
-        if ((call.Transition is not null || outcome.Replaced is not null) && {{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+        if ((call.Transition is not null || outcome.Replaced is not null) && {{ place(l, tp, link, governed) }}{{ lifecycle_skip(tp) }}outcome.Once({{ json tp.id }}))
 {{- else }}
-        if ({{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+        if ({{ place(l, tp, link, governed) }}{{ lifecycle_skip(tp) }}outcome.Once({{ json tp.id }}))
 {{- end }}
 
 {{- if tp.outside }}
-            TriggerPointOutcome.Run({{ json tp.id }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
+            {{ run_call }}({{ json tp.id }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
 {{- else }}
             {{ points }}.{{ member_name(tp.name, points) }}(call);
 {{- end }}
@@ -977,7 +1232,7 @@ public sealed class {{ name }}TriggerSteps : ITriggerPointSteps
         ArgumentNullException.ThrowIfNull(call);
         ArgumentNullException.ThrowIfNull(outcome);
 {{- for tp in tv.after_commit }}
-        if ({{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+        if ({{ place(l, tp, link, governed) }}{{ lifecycle_skip(tp) }}outcome.Once({{ json tp.id }}))
             outcome.Queue(Message(call, {{ json tp.id }}, {{ json tp.name }}, {{ tp.outside ? "true" : "false" }}));
 {{- end }}
     }

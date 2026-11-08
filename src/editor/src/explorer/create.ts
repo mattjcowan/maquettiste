@@ -22,10 +22,11 @@ export type CreateKind =
   | "process"
   | "actor"
   | "right"
+  | "trigger-point"
   | "scenario";
 
 /** The New actions whose dialogs are the process dialogs (explorer/processDialogs.tsx), not NewElementDialog. */
-export const PROCESS_CREATE: ReadonlySet<CreateKind> = new Set(["process", "actor", "right", "scenario"]);
+export const PROCESS_CREATE: ReadonlySet<CreateKind> = new Set(["process", "actor", "right", "trigger-point", "scenario"]);
 
 /** The menu and button label of each New action. */
 export const CREATE_LABELS: Record<CreateKind, string> = {
@@ -42,6 +43,7 @@ export const CREATE_LABELS: Record<CreateKind, string> = {
   process: "New process…",
   actor: "New actor…",
   right: "New named right…",
+  "trigger-point": "New trigger point…",
   scenario: "New scenario…",
 };
 
@@ -60,6 +62,7 @@ export const CREATED_KIND: Record<CreateKind, string> = {
   process: "process",
   actor: "actor",
   right: "right",
+  "trigger-point": "trigger-point",
   scenario: "scenario",
 };
 
@@ -72,7 +75,7 @@ export const EXPLORER_CREATE: Record<ExplorerId, readonly CreateKind[]> = {
   "reference-data": ["reference-type"],
   databases: ["database"],
   diagrams: ["diagram"],
-  processes: ["process", "actor", "right", "scenario"],
+  processes: ["process", "actor", "right", "trigger-point", "scenario"],
 };
 
 /** Everything the first-run panel of an empty model offers. */
@@ -94,6 +97,7 @@ export function folderCreate(kind: string | undefined): CreateKind | null {
     case "process":
     case "actor":
     case "right":
+    case "trigger-point":
     case "scenario":
       return kind;
     default:
@@ -256,6 +260,7 @@ export function buildElement(kind: Exclude<CreateKind, "reference-type">, input:
     case "process":
     case "actor":
     case "right":
+    case "trigger-point":
     case "scenario":
       // One batch each, built by processCreate.ts for the process dialogs.
       throw new Error(`A ${kind} is created by its own dialog.`);

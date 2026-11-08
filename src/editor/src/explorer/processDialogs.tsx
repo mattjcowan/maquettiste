@@ -2,7 +2,7 @@
 // the delete of a process with its scenarios. Each saves as one batch: one change, one undo entry.
 import { useMemo, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { applyBatchResult, elementQuery, keys, useElements, useProject } from "@/api/queries";
+import { applyBatchResult, elementQuery, keys, useElements, useIndex, useProject } from "@/api/queries";
 import * as endpoints from "@/api/endpoints";
 import type { ElementSummary, ModelJson } from "@/api/types";
 import { useServices } from "@/app/context";
@@ -13,7 +13,9 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { systemActorProblem } from "@/model/actors";
-import { ACTOR_TYPE_OPTION_LABELS, GROUP_LABELS, PROCESS_LABELS, RIGHT_LABELS } from "@/model/labels";
+import { ACTOR_TYPE_OPTION_LABELS, GROUP_LABELS, PROCESS_LABELS, RIGHT_LABELS, TRIGGER_LABELS } from "@/model/labels";
+import { indexLookup } from "@/model/index";
+import { buildNamedTriggerPoint, namedVerbOption } from "@/model/triggerPoints";
 import { verbGroups } from "@/model/verbList";
 import { useVerbs } from "@/verbs/useVerbs";
 import { newId } from "@/lib/ids";
@@ -95,6 +97,7 @@ export function ProcessCreateDialog({ kind, domain, source, forest }: { kind: Cr
   if (kind === "process") return <NewProcessDialog domain={domain} forest={forest} onClose={close} />;
   if (kind === "actor") return <NewActorDialog forest={forest} onClose={close} />;
   if (kind === "right") return <NewRightDialog forest={forest} onClose={close} />;
+  if (kind === "trigger-point") return <NewTriggerPointDialog forest={forest} onClose={close} />;
   return <NewScenarioDialog process={source ?? null} forest={forest} onClose={close} />;
 }
 
@@ -460,6 +463,86 @@ function NewRightDialog({ forest, onClose }: { forest: Forest; onClose: () => vo
           {name !== "" && problem ? <p className="text-12 text-danger">{problem}</p> : null}
           <ErrorLine error={error} />
           <Actions onCancel={onClose} disabled={!!problem || busy} testid="new-right-create" />
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** New trigger point…: a name, one verb and one entity to cover; the rest is set in the editor. */
+function NewTriggerPointDialog({ forest, onClose }: { forest: Forest; onClose: () => void }) {
+  const commit = useCommit();
+  const finish = useFinish(forest);
+  const verbs = useVerbs();
+  const index = useIndex();
+  const entities = indexLookup(index.data)
+    .ofKind("entity")
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const [name, setName] = useState("");
+  const [verb, setVerb] = useState("create");
+  const [entity, setEntity] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const options = verbGroups("trigger-point", verbs.own, verbs.hidden)
+    .map((g) => ({ ...g, options: g.options.filter((o) => namedVerbOption(o.key)) }))
+    .filter((g) => g.options.length);
+  const problem = processNameProblem(name);
+  const covered = entity || entities[0]?.id || "";
+  const save = async () => {
+    if (problem || busy || !covered) return;
+    setBusy(true);
+    try {
+      const point = buildNamedTriggerPoint({ name, verb, entity: covered, package: entities.find((e) => e.id === covered)?.package }, newId);
+      const failed = await commit(`New trigger point ${name.trim()}`, [{ op: "create", element: point }], [null]);
+      if (failed) setError(failed);
+      else {
+        onClose();
+        finish(String(point.id), "trigger-point", name.trim());
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title={CREATE_LABELS["trigger-point"]}>
+        <form
+          className="flex flex-col gap-2"
+          data-testid="new-trigger-point-dialog"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <Field label="Name" htmlFor="new-trigger-point-name">
+            <Input id="new-trigger-point-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field label={TRIGGER_LABELS.columns.does} htmlFor="new-trigger-point-verb" hint="More verbs are added in the editor.">
+            <Select id="new-trigger-point-verb" value={verb} onChange={(e) => setVerb(e.target.value)}>
+              {options.map((g) => (
+                <optgroup key={g.id} label={g.label}>
+                  {g.options.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </Select>
+          </Field>
+          <Field label={TRIGGER_LABELS.named.newCovers} htmlFor="new-trigger-point-entity" hint={TRIGGER_LABELS.named.newCoversHint}>
+            <Select id="new-trigger-point-entity" value={covered} onChange={(e) => setEntity(e.target.value)}>
+              {entities.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {name !== "" && problem ? <p className="text-12 text-danger">{problem}</p> : null}
+          {!entities.length ? <p className="text-12 text-secondary">{TRIGGER_LABELS.named.newNeedsEntity}</p> : null}
+          <ErrorLine error={error} />
+          <Actions onCancel={onClose} disabled={!!problem || busy || !covered} testid="new-trigger-point-create" />
         </form>
       </DialogContent>
     </Dialog>

@@ -100,7 +100,8 @@ public sealed partial class ModelStore
         // An own verb that shadows a built-in key (MQ9702) has no uses: they name the built-in verb, so a rename or a remove leaves them, and
         // adopting the built-in (to the same key) writes only the vocabulary. A write that would change nothing is skipped.
         var rewriteUses = !BuiltInVerbs.IsBuiltIn(key) && !string.Equals(to, key, StringComparison.Ordinal);
-        // The named rights a remove leaves with no verb: each is deleted, and its uses leave their lifecycles' rights.
+        // The named rights and named trigger points a remove leaves with no verb: each is deleted, and a named right's uses leave their
+        // lifecycles' rights.
         var goneRights = new SortedSet<string>(StringComparer.Ordinal);
         if (rewriteUses && to is null)
         {
@@ -121,6 +122,16 @@ public sealed partial class ModelStore
                 {
                     if (point.Verbs.Count > 0 && point.Verbs.All(v => string.Equals(v, key, StringComparison.Ordinal)))
                         gonePoints.Add(point.Id);
+                }
+            }
+
+            // A named trigger point left with no verb is deleted (trigger-points-design.md section 9, part 2).
+            foreach (var named in snapshot.All<TriggerPoint>())
+            {
+                if (named.Verbs.Count > 0 && named.Verbs.All(v => string.Equals(v, key, StringComparison.Ordinal)))
+                {
+                    gonePoints.Add(named.Id);
+                    goneRights.Add(named.Id);
                 }
             }
         }
@@ -169,6 +180,9 @@ public sealed partial class ModelStore
                     Rewrite(Working(document));
                     break;
                 case Right named when !goneRights.Contains(named.Id) && named.Verbs.Contains(key, StringComparer.Ordinal):
+                    RewriteList(Working(document));
+                    break;
+                case TriggerPoint namedPoint when !goneRights.Contains(namedPoint.Id) && namedPoint.Verbs.Contains(key, StringComparer.Ordinal):
                     RewriteList(Working(document));
                     break;
                 case Scenario scenario:

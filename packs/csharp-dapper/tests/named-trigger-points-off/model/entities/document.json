@@ -1,0 +1,26 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JNT000000000000000000E02",
+  "name": "Document",
+  "package": "01JNT000000000000000000P02",
+  "key": {
+    "attributes": [
+      "01JNT000000000000000000A11"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JNT000000000000000000A11",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JNT000000000000000000A12",
+      "name": "title",
+      "type": "string",
+      "length": 200
+    }
+  ]
+}

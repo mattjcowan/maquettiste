@@ -104,6 +104,8 @@ public sealed class ResolvedCoverageTests
 
         // Trigger points (trigger-points-design.md section 7): an entry of a lifecycle's triggerPoints.
         new("trigger point", "process.json", "$defs/triggerPoint", typeof(RTriggerPoint)),
+        // Part 2: a named trigger point (decision 33), as an RTriggerPoint of kind trigger-point.
+        new("named trigger point", "trigger-point.json", "", typeof(RTriggerPoint)),
 
         // Vocabularies, mappings and diagrams.
         new("stereotype", "stereotype.json", "", typeof(RStereotypeDefinition)),
@@ -181,6 +183,15 @@ public sealed class ResolvedCoverageTests
         [("right", "category")] = "RRight: one shape for named and inline rights",
         [("right", "properties")] = "RRight: one shape for named and inline rights",
         [("right", "generation")] = "RRight: one shape for named and inline rights",
+        [("named trigger point", "pluralName")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "rationale")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "decision")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "status")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "stereotypes")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "tags")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "category")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "properties")] = "RTriggerPoint: one shape for named and inline trigger points",
+        [("named trigger point", "generation")] = "RTriggerPoint: one shape for named and inline trigger points",
         // An entry of a lifecycle's rights: what an inline right says is on use.right, the "inline right" target; where it holds is on the use.
         [("process right", "name")] = "on use.right (the inline right target)",
         [("process right", "displayName")] = "on use.right (the inline right target)",

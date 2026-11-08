@@ -182,6 +182,13 @@ internal sealed partial class ResolveRun
             BuildProcess(sources[r.Id], r, uses);
         }
 
+        // Named trigger points (part 2) resolve once every process is built and before the scenarios, whose expectations and traces name them.
+        if (NamedTriggerPoints.Of(Model).Any)
+        {
+            ResolveNamedTriggerPoints();
+            _namedTriggerPointsResolved = true;
+        }
+
         // An in_state names another process's states, which exist once every process is built.
         DrainInStateFills();
         FinishRights(sources);

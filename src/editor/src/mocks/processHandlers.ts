@@ -19,8 +19,11 @@ import { syncCodesOf } from "./model/syncCodes";
 import { report } from "./model/store";
 import { Membership } from "./model/membership";
 import { rightsGrid } from "./model/rightsCheck";
-import { resolveCheckNames, sequenceOf } from "./model/triggerRun";
+import { Coverage } from "./model/coverage";
+import { namedCovered } from "./model/triggerRules";
+import { entitySequenceOf, resolveCheckNames, sequenceOf } from "./model/triggerRun";
 import { entityChain } from "@/model/objectFields";
+import { builtInVerbs } from "@/model/verbs";
 
 type Json = Record<string, unknown>;
 type StateDoc = { id: string; name: string; type?: string; initial?: string; states?: StateDoc[] };
@@ -268,7 +271,33 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
   // What the mock's interpreter reads of the object (object-effects-design.md section 7): the attributes of the subject's
   // entity with their defaults, and every lifecycle (the run's own draft in place of its saved file).
   const stereotypeOf = (key: string) => [...model.entries.values()].map((e) => e.json).find((d) => d.kind === "stereotype" && d.key === key);
+  // The named trigger points, and whether a stereotype covers an entity (the entity or a base carries it), for the stepper and the sequences.
+  const namedPoints = () => [...model.entries.values()].map((e) => e.json).filter((j) => j.kind === "trigger-point");
+  const stereotypeCovers = () => {
+    let coverage: Coverage | null = null;
+    return (key: string, entity: string) => (coverage ??= new Coverage(model.entries.values())).covers(key, entity);
+  };
+  // The entities a lifecycle's subjects name: its entity subjects and the carriers of its stereotype subjects, as the engine's SubjectsOf
+  // reads them (never every entity derived from one: an exception then still tests against the subject the process names).
+  const governedBy = (lifecycle: Json) => {
+    const coverage = new Coverage(model.entries.values());
+    return [...new Set(subjectsOf(lifecycle).flatMap((x) => (x.entity ? [x.entity] : x.stereotype ? coverage.carriers(x.stereotype) : [])))];
+  };
+  // A named trigger point's key in an assume: its package chain's names from the outermost, a dot, then its own name (the root package has none).
+  const qualifiedName = (point: Json): string => {
+    const names = [String(point.name)];
+    for (let id = point.package, hops = 0; typeof id === "string" && hops < 32; hops++) {
+      const p = model.entries.get(id)?.json;
+      if (!p) break;
+      names.unshift(String(p.name));
+      id = p.parent;
+    }
+    return names.join(".");
+  };
   const effectOptions = (doc: Json) => ({
+    namedPoints: namedPoints(),
+    stereotypeCovers: stereotypeCovers(),
+    stereotypeCarriers: (key: string) => new Coverage(model.entries.values()).carriers(key),
     attributesOf: (entity: string) =>
       bindableAttributes(model.entries.get(entity)?.json, (id) => model.entries.get(id)?.json, stereotypeOf).map((a) => ({
         id: String(a.id),
@@ -478,8 +507,65 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
           ...(q.get("transition") ? { transition: q.get("transition")! } : {}),
         },
         (id) => entityChain(id, (x) => model.entries.get(x)?.json).map((d) => String(d.id)),
+        // Named points come before the lifecycle's own, for the entity asked about or else those the lifecycle governs.
+        namedPoints(),
+        stereotypeCovers(),
+        governedBy(entry.json),
       );
       return HttpResponse.json({ lifecycle: entry.id, verb, steps });
+    }),
+    // The same for an entity alone, with no lifecycle acting (decision 36): the named points that cover it. Simpler than the engine's
+    // answer in one way (the engine's Asked also lists the lifecycles that govern the entity, with their rights steps): this lists the
+    // named points only. A lifecycle's own points are asked of the lifecycle's route, and the editor never reads this one.
+    rawHttp.get(url("/api/model/entities/:id/trigger-sequence"), ({ params, request }) => {
+      const id = String(params.id);
+      const entity = model.entries.get(id);
+      if (!entity || entity.json.kind !== "entity") return kit.problem(404, "not-found" as never, `No entity has the id ${id}.`);
+      const q = new URL(request.url).searchParams;
+      const verb = q.get("verb");
+      if (!verb) return bad("verb is required.");
+      const group = builtInVerbs.find((v) => v.key === verb)?.group;
+      if (group === "move" || group === "signature" || group === "task")
+        return bad(
+          `'${verb}' happens in one lifecycle; ask the lifecycle's trigger sequence. Only object, link and own verbs can be asked of an entity alone.`,
+        );
+      const held = (list: "attributes" | "ends", x: string) =>
+        [...model.entries.values()].some((e) => Array.isArray(e.json[list]) && (e.json[list] as Json[]).some((y) => y.id === x));
+      const attribute = (idList(q.get("attributes")) ?? []).find((a) => !held("attributes", a));
+      if (attribute) return bad(`attribute ${attribute} is not an attribute of the model.`);
+      if (q.get("end") && !held("ends", q.get("end")!)) return bad(`end ${q.get("end")} is not a relation end of the model.`);
+      const steps = entitySequenceOf(
+        {
+          verb,
+          entity: id,
+          ...(q.get("attributes") ? { attributes: idList(q.get("attributes")) } : {}),
+          ...(q.get("end") ? { end: q.get("end")! } : {}),
+        },
+        (x) => entityChain(x, (y) => model.entries.get(y)?.json).map((d) => String(d.id)),
+        namedPoints(),
+        stereotypeCovers(),
+      );
+      return HttpResponse.json({ verb, steps });
+    }),
+    // The entities a named trigger point runs for, in name order (trigger-points-design.md decision 33), read from the mock's own coverage:
+    // the subjects' entities and their derived ones, the carriers of a stereotype (package defaults and implied ones included), less the
+    // exceptions, narrowed by `entities`.
+    rawHttp.get(url("/api/model/trigger-points/:id/covers"), ({ params }) => {
+      const id = String(params.id);
+      const point = model.entries.get(id);
+      if (!point || point.json.kind !== "trigger-point") return kit.problem(404, "not-found" as never, `No trigger point has the id ${id}.`);
+      const coverage = new Coverage(model.entries.values());
+      const entities = [...model.entries.values()].filter((e) => e.json.kind === "entity");
+      const chainOf = (e: string) => entityChain(e, (x) => model.entries.get(x)?.json).map((d) => String(d.id));
+      const ids = namedCovered(
+        point.json,
+        entities.map((e) => e.id),
+        chainOf,
+        coverage,
+      );
+      const name = (e: string) => String(model.entries.get(e)?.json.name ?? "");
+      ids.sort((a, b) => (name(a) < name(b) ? -1 : name(a) > name(b) ? 1 : a < b ? -1 : a > b ? 1 : 0));
+      return HttpResponse.json({ entities: ids });
     }),
     rawHttp.post(url("/api/processes/:id/simulate"), async ({ params, request }) => {
       const entry = find(String(params.id));
@@ -522,7 +608,10 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       // request's `start` is ignored), as the engine does.
       const scenarioSteps = scenarioEntry ? arr(scenarioEntry.json.steps) : [];
       const scenarioStart = scenarioEntry?.json.start && typeof scenarioEntry.json.start === "object" ? (scenarioEntry.json.start as Json) : null;
-      const steps = [...scenarioSteps, ...arr(value.steps).map((st) => resolveCheckNames(st, doc, effectOptions(doc).lifecycles ?? []))];
+      const steps = [
+        ...scenarioSteps,
+        ...arr(value.steps).map((st) => resolveCheckNames(st, doc, effectOptions(doc).lifecycles ?? [], namedPoints(), qualifiedName)),
+      ];
       const from = typeof value.from === "number" ? value.from : -1;
       const result = simulate(doc, (scenarioEntry ? scenarioStart : start) as never, steps, {
         from,
@@ -553,7 +642,13 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const requestPeople = arr(value.participants);
       const rawSteps = (value.steps as Json[]).map((st) => {
         const hit = typeof st.participant === "string" ? requestPeople.find((x) => x.id === st.participant || x.name === st.participant) : undefined;
-        return resolveCheckNames(hit ? { ...st, participant: hit.id } : st, entry.json, effectOptions(entry.json).lifecycles ?? []);
+        return resolveCheckNames(
+          hit ? { ...st, participant: hit.id } : st,
+          entry.json,
+          effectOptions(entry.json).lifecycles ?? [],
+          namedPoints(),
+          qualifiedName,
+        );
       });
       // The expectations come from a replay of the inputs, as the engine's record fills them (refusals as accepted: false).
       const replayed = replay(entry.json, start as never, rawSteps, {

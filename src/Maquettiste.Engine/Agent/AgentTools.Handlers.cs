@@ -213,15 +213,28 @@ public sealed partial class AgentTools
     private async Task<AgentToolResult> GetTriggerSequenceAsync(ToolArguments args, CancellationToken ct)
     {
         var key = args.String("process");
+        static string? One(string? value) => string.IsNullOrEmpty(value) ? null : value;
         if (string.IsNullOrEmpty(key))
-            return BadRequest("process is required: a lifecycle's id, name or model path.");
+        {
+            // An entity with no process (part 2): an object, link or own verb with no lifecycle acting, named points first.
+            if (One(args.String("entity")) is not { } entityId)
+                return BadRequest("process is required: a lifecycle's id, name or model path; or give entity alone for an object, link or own verb.");
+            var alone = new Processes.TriggerSequenceFilter { Attributes = args.Strings("attributes") ?? [], End = One(args.String("end")) };
+            var answer = await _store.GetEntityTriggerSequenceAsync(entityId, args.String("verb"), alone, ct).ConfigureAwait(false);
+            return answer.Status switch
+            {
+                Processes.ProcessCallStatus.Ok => Ok(answer.Value),
+                Processes.ProcessCallStatus.NotFound => NotFound("entity", entityId),
+                _ => BadRequest(answer.Detail ?? "The request is not valid."),
+            };
+        }
+
         var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
         var matches = Processes.ProcessApi.Resolve(snapshot, key);
         if (matches.Count == 0)
             return NotFound("process", key);
         if (matches.Count > 1)
             return BadRequest($"'{key}' names {matches.Count} processes; pass one id: {string.Join(", ", matches.Select(m => m.Id + " (" + m.Name + ")"))}.");
-        static string? One(string? value) => string.IsNullOrEmpty(value) ? null : value;
         var filter = new Processes.TriggerSequenceFilter
         {
             State = One(args.String("state")), Entity = One(args.String("entity")), Attributes = args.Strings("attributes") ?? [],

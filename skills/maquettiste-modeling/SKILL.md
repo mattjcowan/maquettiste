@@ -228,6 +228,10 @@ must equal its bound enum's members, in order (MQ9203).
   What a trigger point sets is part of the verb: rights and freezing judge the actor's own step. In a scenario, `assume` maps a team-code check (no `condition`) to `pass`, `warning` or `error` (MQ9305 otherwise); a step may
   expect `checkWarnings` and `triggerPoints` (MQ9310); a `create` step may give `values`. An action written as team code fills nothing in a replay, so give a check the values it reads on the step. `get_trigger_sequence`
   (`process`, `verb`, `state`, `entity`, `attributes`, `end`, `transition`) lists what runs, in order. `record_scenario` writes `triggerPoints` only with `triggerPoints: true`. Never add trigger points unasked.
+- Named trigger points (kind `trigger-point`, `model/trigger-points/<name>.json`): for a type with no lifecycle, or one rule shared by many types. `subjects` (entity and stereotype ids, at least one) say what it covers, `exceptEntities`
+  what it skips; the other keys are an inline point's, except `states`, `targets` and `transitions` (MQ8102; read a state with `in_state` in `when`). `noBypass: true` keeps a check or action running when generated code skips optional points.
+  What it reads and sets must be held under one id by every covered entity. Named points run before a lifecycle's points at each moment (farthest base first, entity-brought before stereotype-brought, then by name). On a move, signature or task verb
+  one runs only inside the lifecycle that owns it, never in an orchestration. `get_trigger_sequence` takes `entity` alone for a type with no lifecycle. Simulation never bypasses. Never add one unasked.
 
 - Tools: `simulate_process` runs inputs through the engine's interpreter and keeps no state (send the whole input list each
   time; `enabled` says what can happen next); `record_scenario` saves a run as a scenario with every step's expectations

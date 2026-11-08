@@ -45,9 +45,9 @@ export function verbUses(doc: Json): VerbUse[] {
         if (typeof key === "string") out.push({ pointer: `/triggerPoints/${i}/verbs/${j}`, holder: str(t.id), key, owner: "trigger-point" });
       }),
     );
-  } else if (doc.kind === "right") {
+  } else if (doc.kind === "right" || doc.kind === "trigger-point") {
     (Array.isArray(doc.verbs) ? (doc.verbs as unknown[]) : []).forEach((key, j) => {
-      if (typeof key === "string") out.push({ pointer: `/verbs/${j}`, holder: str(doc.id), key, owner: "right" });
+      if (typeof key === "string") out.push({ pointer: `/verbs/${j}`, holder: str(doc.id), key, owner: doc.kind as "right" | "trigger-point" });
     });
   } else if (doc.kind === "scenario") {
     // A verb step names one verb (rights-design.md section 8).
@@ -194,7 +194,7 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
   if (!rename && !BUILT_IN_VERB_KEYS.has(op.verb))
     for (const [id, doc] of docs) {
       const verbs = Array.isArray(doc.verbs) ? (doc.verbs as unknown[]) : [];
-      if (doc.kind === "right" && verbs.length > 0 && verbs.every((v) => v === op.verb)) gone.add(id);
+      if ((doc.kind === "right" || doc.kind === "trigger-point") && verbs.length > 0 && verbs.every((v) => v === op.verb)) gone.add(id);
     }
   // The uses of a built-in key are not uses of the own verb: the rename and the remove leave them as they are.
   for (const [id, doc] of BUILT_IN_VERB_KEYS.has(op.verb) ? [] : docs) {
@@ -212,6 +212,8 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
     }
   }
   const gonePoints = new Set<string>();
+  // A named trigger point left with no verb goes too, and so do the scenario entries that name it.
+  for (const id of gone) if (docs.get(id)?.kind === "trigger-point") gonePoints.add(id);
   if (!rename) {
     // Uses of a right that is going leave every lifecycle, touched or not.
     if (gone.size)
@@ -259,7 +261,7 @@ export function verbOperation(docs: ReadonlyMap<string, Json>, op: VerbOp): { ch
 
 /** Takes the verbs marked gone out of a document's rights; a right whose last verb goes goes too (rights-design.md section 8). */
 function dropRightsWithoutVerbs(json: Json): void {
-  if (json.kind === "right") {
+  if (json.kind === "right" || json.kind === "trigger-point") {
     json.verbs = arr(json.verbs).filter((v) => v !== null);
     return;
   }

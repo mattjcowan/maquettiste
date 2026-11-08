@@ -20,17 +20,66 @@ end
 # methods, the per-type runners, Refusals.Check, CheckWarnings and the refusal members written. model.trigger_lifecycles keys only on
 # the trigger points naming key, so a unit that asks pays nothing in a project without trigger points.
 func uses_triggers()
-  ret model.trigger_lifecycles.size > 0
+  ret model.trigger_lifecycles.size > 0 || model.trigger_points.size > 0
 end
 
-# The other lifecycles whose trigger points a process's moves run (trigger-points-design.md decision 11): those that govern an entity the
-# process governs and have points on an object, link or own verb that an event or a transition of the process names, by name then id.
-# Each is a StatesIn<Lifecycle> hook in the team's half of the handlers, and its step methods go to the chart after the process's own.
-func trigger_others(p)
-  $out = []
-  if model.trigger_lifecycles.size == 0
-    ret $out
+# Whether the pack writes the bulk-load bypass (trigger-points-design.md decisions 20 and 35): the bulkLoadBypass parameter, off by default,
+# in a project that uses trigger points. Only then are ITriggerBypass, the team's TriggerBypass, SkipOptional and the skip tests written;
+# without it noBypass changes nothing in this pack. A pack parameter keys every unit, so turning it on or off renders the files it touches.
+func uses_bulk_bypass()
+  ret pack.params.bulkLoadBypass == true && uses_triggers()
+end
+
+# Whether the pack writes the dry run (decision 35): the dryRun parameter, off by default, in a project that uses trigger points. Only then
+# are DryRun and Recorded written.
+func uses_dry_run()
+  ret pack.params.dryRun == true && uses_triggers()
+end
+
+# Whether an entity gets a per-type runner (trigger-points-design.md decisions 30 and 33): a lifecycle that governs it has points on
+# object, link or own verbs, or a named trigger point that covers it names one.
+func has_runner(e)
+  if e.trigger_lifecycles.size > 0
+    ret true
   end
+  for $tp in e.trigger_points
+    for $v in $tp.verbs
+      if $v.group == "object" || $v.group == "link" || $v.group == "project"
+        ret true
+      end
+    end
+  end
+  ret false
+end
+
+# Whether an entity derives from another, through its bases.
+func derives_from(e, base)
+  $x = e.base
+  while $x
+    if $x.id == base.id
+      ret true
+    end
+    $x = $x.base
+  end
+  ret false
+end
+
+# The entities of a process's subjects: each subject's entity, then each stereotype subject's carriers.
+func subject_entities(p)
+  $out = []
+  for $sub in p.subjects
+    $out[$out.size] = $sub.entity
+  end
+  for $sub in p.stereotype_subjects
+    for $x in $sub.entities
+      $out[$out.size] = $x
+    end
+  end
+  ret $out
+end
+
+# The object, link and own verbs that an event or a transition of a process names, as a set of verb keys.
+func object_verbs_of(p)
   $verbs = {}
   for $x in p.events
     if $x.verb && ($x.verb.group == "object" || $x.verb.group == "link" || $x.verb.group == "project")
@@ -42,6 +91,92 @@ func trigger_others(p)
       $verbs[$x.verb.key] = true
     end
   end
+  ret $verbs
+end
+
+# The named trigger points a process runs (trigger-points-design.md decisions 33 and 34), in run order: with one entity subject, those
+# that cover it; otherwise those that cover every subject's entity (a stereotype subject's carriers too), in the order of the first. A
+# point that covers only an entity derived from a subject isn't asked. A move, signature or task verb happens in one lifecycle, so an
+# orchestration runs only the points on an object, link or own verb that an event or a transition of it names, as it runs other
+# lifecycles' points (trigger_others), and only for those verbs, as the engine (owner's answer A5).
+func named_points_of(p)
+  if model.trigger_points.size == 0
+    ret []
+  end
+  $entities = subject_entities(p)
+  $out = []
+  if $entities.size == 0
+    ret $out
+  end
+  $lifecycle = p.use == "lifecycle"
+  $verbs = $lifecycle ? {} : object_verbs_of(p)
+  for $tp in $entities[0].trigger_points
+    if !$lifecycle
+      $named = false
+      for $v in $tp.verbs
+        if $verbs[$v.key]
+          $named = true
+        end
+      end
+      if !$named
+        continue
+      end
+    end
+    $all = true
+    for $x in $entities
+      $found = false
+      for $y in $x.trigger_points
+        if $y.id == $tp.id
+          $found = true
+        end
+      end
+      if !$found
+        $all = false
+      end
+    end
+    if $all
+      $out[$out.size] = $tp
+    end
+  end
+  ret $out
+end
+
+# Whether a process's handlers give the object's own entity (IObjectEntity, decision 33): a named point it runs names, in entities or
+# exceptEntities, an entity derived from a subject's, which only the object's own type can answer at run time.
+func entity_hook(p)
+  $subjects = subject_entities(p)
+  for $tp in named_points_of(p)
+    for $e in array.concat $tp.entities $tp.except_entities
+      for $s in $subjects
+        if derives_from($e, $s)
+          ret true
+        end
+      end
+    end
+  end
+  ret false
+end
+
+# The namespace-qualified classes of a named trigger point's team methods: TriggerPoints (the body), TriggerConditions (the when) and
+# TriggerRecords (a before action's records), in its package's namespace.
+func named_class(tp, suffix)
+  ret "global::" + ns(tp) + ".Trigger" + suffix
+end
+
+# The folder of a named trigger point's package under a base folder: <base>/TriggerPoints/<package path>.
+func named_folder(base, tp)
+  ret join_path base "TriggerPoints" (tp.package ? (tp.package.qualified_name | string.replace "." "/") : "")
+end
+
+# The other lifecycles whose trigger points a process's moves run (trigger-points-design.md decision 11): those that govern an entity the
+# process governs and have points on an object, link or own verb that an event or a transition of the process names, by name then id.
+# Each is a StatesIn<Lifecycle> hook in the team's half of the handlers, and its step methods go to the chart after the process's own.
+func trigger_others(p)
+  $out = []
+  if model.trigger_lifecycles.size == 0
+    ret $out
+  end
+  $verbs = object_verbs_of(p)
   $governs = {}
   $entities = []
   for $sub in p.subjects

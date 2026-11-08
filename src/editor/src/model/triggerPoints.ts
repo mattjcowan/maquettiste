@@ -75,6 +75,7 @@ export interface TriggerPointRow {
   what: string;
   teamCode: boolean;
   outside: boolean;
+  noBypass: boolean;
   why: string;
   verbKeys: string[];
   timingKey: TriggerTiming | null;
@@ -137,6 +138,7 @@ export function triggerPointRows(process: ProcessDoc, names: TriggerNames): Trig
       what: teamCode ? TEAM_CODE : what,
       teamCode,
       outside: t.outside === true,
+      noBypass: t.noBypass === true,
       why: text(t.description),
       verbKeys: strs(t.verbs),
       timingKey,
@@ -199,7 +201,7 @@ const setList = (target: Json, key: string, ids: string[]) => {
 };
 
 /** The keys a type does not have, taken out when the type changes. */
-function fitType(t: TriggerPointDoc, type: TriggerType): void {
+export function fitPointType(t: Pick<TriggerPointDoc, "type" | "timing" | "sets" | "severity" | "condition">, type: TriggerType): void {
   t.type = type;
   if (type === "check") {
     delete t.timing;
@@ -225,8 +227,13 @@ export function setTriggerSets(process: ProcessDoc, id: string, sets: SetDoc[]):
 export function setTriggerWhere(process: ProcessDoc, id: string, where: Partial<Record<WhereKey, string[]>>): boolean {
   const t = triggerPointsOf(process).find((x) => x.id === id);
   if (!t) return false;
-  for (const key of WHERE_KEYS) if (key in where) setList(doc(t), key, where[key] ?? []);
+  setTriggerWhereOn(t, where);
   return true;
+}
+
+/** The same on one trigger point, inline or named. */
+export function setTriggerWhereOn(t: TriggerPointDoc, where: Partial<Record<WhereKey, string[]>>): void {
+  for (const key of WHERE_KEYS) if (key in where) setList(doc(t), key, where[key] ?? []);
 }
 
 /**
@@ -236,7 +243,11 @@ export function setTriggerWhere(process: ProcessDoc, id: string, where: Partial<
  */
 export function editTriggerPoint(process: ProcessDoc, id: string, key: string, value: string | boolean): boolean {
   const t = triggerPointsOf(process).find((x) => x.id === id);
-  if (!t) return false;
+  return t ? editPoint(t, key, value) : false;
+}
+
+/** The cell edits of one trigger point, inline or named (the same keys; `editTriggerPoint` finds the inline one). */
+export function editPoint(t: TriggerPointDoc, key: string, value: string | boolean): boolean {
   const raw = String(value);
   const ids = raw.split(",").filter(Boolean);
   switch (key) {
@@ -254,7 +265,7 @@ export function editTriggerPoint(process: ProcessDoc, id: string, key: string, v
     case "type":
       if (!(TRIGGER_TYPES as readonly string[]).includes(raw) || raw === t.type) return false;
       if (raw === "replace" && !allowsReplace(t.verbs ?? [])) return false;
-      fitType(t, raw as TriggerType);
+      fitPointType(t, raw as TriggerType);
       return true;
     case "timing":
       if (t.type !== "action" || !(TRIGGER_TIMINGS as readonly string[]).includes(raw)) return false;
@@ -268,6 +279,10 @@ export function editTriggerPoint(process: ProcessDoc, id: string, key: string, v
     case "outside":
       if (value === true || raw === "true") t.outside = true;
       else delete t.outside;
+      return true;
+    case "noBypass":
+      if (value === true || raw === "true") t.noBypass = true;
+      else delete t.noBypass;
       return true;
     case "when": {
       const next = raw.trim();
@@ -389,11 +404,13 @@ export interface SequenceRow {
   /** The moment's words (a built-in step's, or the moment a trigger point runs at). */
   step: string;
   /** The trigger point's id and name when the step is one; the built-in step has none. */
-  point: { id: string; name: string; lifecycle: string } | null;
+  point: { id: string; name: string; lifecycle: string | null } | null;
   /** "Check (error)", "Action, before checks", "Replace": empty for a built-in step. */
   kind: string;
   /** The lifecycle's name when the point belongs to another lifecycle than the one asked about. */
   other: string | null;
+  /** A named trigger point (kind `trigger-point`): it has no lifecycle. */
+  named: boolean;
   /** Where it runs, in words, empty for none. */
   where: string;
   conditional: boolean;
@@ -402,7 +419,7 @@ export interface SequenceRow {
 
 /** The rows of the answer `get_trigger_sequence` gave, in its order: the editor lists them, it never works a sequence out. */
 export function sequenceRows(
-  answer: { lifecycle: string; steps: readonly components["schemas"]["TriggerSequenceStep"][] },
+  answer: { lifecycle?: string; steps: readonly components["schemas"]["TriggerSequenceStep"][] },
   names: { point(id: string): string; lifecycle(id: string): string; where(key: WhereKey, ids: readonly string[]): string },
 ): SequenceRow[] {
   return answer.steps.map((s, i) => {
@@ -422,12 +439,114 @@ export function sequenceRows(
       key: `${i}:${s.triggerPoint ?? s.step}`,
       order: s.order,
       step: SEQUENCE_STEP_LABELS[s.step] ?? s.step,
-      point: s.triggerPoint ? { id: s.triggerPoint, name: names.point(s.triggerPoint), lifecycle: s.lifecycle ?? answer.lifecycle } : null,
+      point: s.triggerPoint ? { id: s.triggerPoint, name: names.point(s.triggerPoint), lifecycle: s.lifecycle ?? null } : null,
       kind,
       other: s.lifecycle && s.lifecycle !== answer.lifecycle ? names.lifecycle(s.lifecycle) : null,
+      named: !!s.triggerPoint && !s.lifecycle,
       where,
       conditional: s.when === true,
       outside: s.outside === true,
     };
   });
 }
+
+// ------------------------------------------------------------------ named trigger points (part 2, kind `trigger-point`)
+
+/** A subject of a named trigger point: an entity (its id), or a stereotype (its key). Names exactly one. */
+export interface NamedSubject {
+  entity?: string;
+  stereotype?: string;
+}
+
+/** A named trigger point (trigger-points-design.md decision 33): an inline point's body, without states, targets and transitions. */
+export interface NamedTriggerPointDoc extends Omit<TriggerPointDoc, "states" | "targets" | "transitions"> {
+  kind: "trigger-point";
+  package?: string;
+  subjects: NamedSubject[];
+  exceptEntities?: string[];
+}
+
+/** The verbs a named point's editor offers: never a move verb or `sign` (a move belongs to a lifecycle). */
+export const namedVerbOption = (key: string): boolean => !isMoveVerb(key) && key !== "sign";
+
+/** The places a named point can narrow: types, attributes and links (no states, into states or moves). */
+export const namedWhereKeys = (verbs: readonly string[]): WhereKey[] =>
+  whereKeysFor(verbs).filter((k) => k === "entities" || k === "attributes" || k === "ends");
+
+/** A picked chip's value: `entity:<id>` or `stereotype:<key>`, so one list holds both. */
+export const subjectValue = (s: NamedSubject): string => (s.entity !== undefined ? `entity:${s.entity}` : `stereotype:${s.stereotype ?? ""}`);
+
+export function parseSubjectValue(value: string): NamedSubject | null {
+  if (value.startsWith("entity:") && value.length > 7) return { entity: value.slice(7) };
+  if (value.startsWith("stereotype:") && value.length > 11) return { stereotype: value.slice(11) };
+  return null;
+}
+
+/** What a New named trigger point makes: a check on one verb of one entity, until the editor says more. */
+export function buildNamedTriggerPoint(input: { name: string; verb: string; entity: string; package?: string | null }, newId: () => string): Json {
+  return {
+    kind: "trigger-point",
+    id: newId(),
+    name: input.name.trim(),
+    ...(input.package ? { package: input.package } : {}),
+    subjects: [{ entity: input.entity }],
+    type: "check",
+    verbs: [input.verb],
+  };
+}
+
+/**
+ * Sets the subjects of a named point. The last one cannot be taken away: an empty list would run it everywhere (decision 33), so the
+ * edit is refused (false) and the list keeps what it had. `exceptEntities` entries no subject covers are left to the rule (MQ8102).
+ */
+export function setNamedSubjects(point: Pick<NamedTriggerPointDoc, "subjects">, values: readonly string[]): boolean {
+  const next = values.flatMap((v) => parseSubjectValue(v) ?? []);
+  if (!next.length) return false;
+  point.subjects = next;
+  return true;
+}
+
+/** Sets `exceptEntities`; none removes the key. */
+export function setNamedExcept(point: Pick<NamedTriggerPointDoc, "exceptEntities">, ids: readonly string[]): void {
+  if (ids.length) point.exceptEntities = [...ids];
+  else delete point.exceptEntities;
+}
+
+/** What an index row gives of an entity, for working out the types a point runs for. */
+export interface CoverRow {
+  id: string;
+  name: string;
+  base?: string | null;
+  stereotypes?: readonly string[];
+}
+
+/** An entity and the entities it derives from, nearest first. */
+function chainOf(id: string, byId: ReadonlyMap<string, CoverRow>): CoverRow[] {
+  const out: CoverRow[] = [];
+  for (let e = byId.get(id); e && !out.includes(e); e = e.base ? byId.get(e.base) : undefined) out.push(e);
+  return out;
+}
+
+/**
+ * The entities a named point runs for: those an `entity` subject names or derives from, and those that carry a `stereotype`
+ * subject's key (their own list, or a base's), less `exceptEntities` with their derived entities, and narrowed to `entities` (with
+ * theirs) when it names some. It reads only what the index holds: a stereotype a domain gives its entities by default is not
+ * seen, so the editor says the list is read from the entities' own marks.
+ */
+export function coveredEntities(point: Pick<NamedTriggerPointDoc, "subjects" | "exceptEntities" | "entities">, entities: readonly CoverRow[]): CoverRow[] {
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  const within = (e: CoverRow, ids: readonly string[]): boolean => chainOf(e.id, byId).some((c) => ids.includes(c.id));
+  const bySubject = (e: CoverRow): boolean =>
+    point.subjects.some((s) =>
+      s.entity !== undefined ? within(e, [s.entity]) : chainOf(e.id, byId).some((c) => (c.stereotypes ?? []).includes(s.stereotype ?? "\0")),
+    );
+  const except = point.exceptEntities ?? [];
+  const only = point.entities ?? [];
+  return entities
+    .filter((e) => bySubject(e) && !within(e, except) && (!only.length || within(e, only)))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+/** The entities an `exceptEntities` entry may name: those a subject covers (MQ8102), before the except list and the narrowing apply. */
+export const exceptChoices = (point: Pick<NamedTriggerPointDoc, "subjects">, entities: readonly CoverRow[]): CoverRow[] =>
+  coveredEntities({ subjects: point.subjects }, entities);

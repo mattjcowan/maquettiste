@@ -123,8 +123,11 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
   );
   // The trigger points that ran: this lifecycle's own, and other lifecycles' that an object verb reached, named from their lifecycles' files.
   const traceRuns = ((replay ? replay.simulation?.trace : session.result?.trace) ?? []).flatMap((t) => t.triggerPoints ?? []);
-  const otherLifecycles = [...new Set(traceRuns.map((r) => r.lifecycle).filter((l) => l !== id))];
+  const otherLifecycles = [...new Set(traceRuns.flatMap((r) => (r.lifecycle && r.lifecycle !== id ? [r.lifecycle] : [])))];
   const otherDocs = useElements(otherLifecycles).byId;
+  // A named trigger point has no lifecycle: its own document gives its name and its message (part 2).
+  const namedRuns = [...new Set(traceRuns.flatMap((r) => (r.lifecycle ? [] : [r.triggerPoint])))];
+  const namedDocs = useElements(namedRuns).byId;
   const pointInfo = useMemo(() => {
     const named = new Map<string, string>();
     const why = new Map<string, string>();
@@ -138,8 +141,9 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
     };
     take(id, process.triggerPoints);
     for (const [lid, d] of otherDocs) take(lid, (d.json as { triggerPoints?: unknown }).triggerPoints);
+    for (const [pid, d] of namedDocs) take(pid, [d.json]);
     return { named, why, owner };
-  }, [id, process.triggerPoints, otherDocs]);
+  }, [id, process.triggerPoints, otherDocs, namedDocs]);
   const names = useMemo(
     () => namesOf(process, actorNames, participants, new Map([...elementNames, ...pointInfo.named]), new Map([...whys, ...pointInfo.why])),
     [process, actorNames, participants, elementNames, whys, pointInfo],
@@ -1303,6 +1307,7 @@ function LastStepSection({
             ROW,
             (line.kind === "sets" || line.kind === "values" || line.kind === "refusal") && "h-auto min-h-[var(--mq-row-h)] items-start py-0.5",
             line.kind === "trigger" && "gap-1",
+            line.kind === "trigger" && line.named && "h-auto min-h-[var(--mq-row-h)] flex-wrap py-0.5",
             line.tone === "danger" && "text-danger",
             line.tone === "warning" && "text-warning",
             line.tone === "success" && "text-success",
@@ -1342,13 +1347,18 @@ function LastStepSection({
             <>
               <button
                 type="button"
-                className="min-w-0 truncate text-accent underline hover:no-underline"
+                className={cn("min-w-0 text-left text-accent underline hover:no-underline", line.named ? "break-words" : "truncate")}
                 onClick={() => onOpen(line.element!.id)}
                 title={TL.happens.open(line.element!.name)}
                 data-testid="trigger-link"
               >
                 {line.text}
               </button>
+              {line.named ? (
+                <Badge tone="neutral" data-testid="trigger-named">
+                  {TL.happens.namedPoint}
+                </Badge>
+              ) : null}
               <Badge tone={line.badge.tone} data-testid="trigger-outcome">
                 {line.badge.text}
               </Badge>

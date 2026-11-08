@@ -65,6 +65,15 @@ public sealed partial class {{ name }}Handlers
     private partial global::System.Collections.Generic.IReadOnlyList<string>? StatesIn{{ pascal l.name }}({{ call }} call) =>
         throw new NotImplementedException("The states of the object in lifecycle {{ l.name }} are not read yet.");
 {{- end }}
+{{- if entity_hook(p) }}
+{{- if stubs > 0 }}
+{{ end }}
+{{- stubs = stubs + 1 }}
+    // The entity of the instance's object: read it from your system, for example typeof(Memo) for a memo. A named trigger point that
+    // names an entity derived from the subject's tests it on this. It throws until you write it.
+    public partial Type EntityOf({{ call }} call) =>
+        throw new NotImplementedException("The entity of the object of process {{ p.name }} is not read yet.");
+{{- end }}
 }
 
 {{- if uses_rights() }}

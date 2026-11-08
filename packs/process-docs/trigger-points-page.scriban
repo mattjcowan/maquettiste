@@ -1,0 +1,36 @@
+{{-
+# The trigger points page (trigger-points-design.md section 10, part 2), written only when the model has named trigger points, so a
+# project without them gets no file: each named trigger point with what it does, the types it covers and the types it skips.
+include "_docs.scriban"
+if model.trigger_points.size > 0
+  capture content
+-}}
+{{ banner "<!--" }} -->
+
+# Trigger points
+
+Named trigger points run for every object of the types their subjects cover, with or without a lifecycle. At each moment they run
+before any lifecycle's own: the one whose subject is the farthest base first, then those an entity brings before those a stereotype
+brings, then by name.
+{{- for tp in model.trigger_points }}
+
+## {{ tp.name }}
+
+{{ tp_sentence(tp, {}) }}.
+
+- Type: {{ tp.type == "action" ? tp_type(tp) : tp.type }}{{ tp.severity ? ", " + tp.severity : "" }}
+- Does: {{ for v in tp.verbs }}{{ for.first ? "" : ", " }}{{ md_code v.key }}{{ end }}
+- Subjects: {{ for s in tp.subjects }}{{ for.first ? "" : ", " }}{{ s.entity ? (md_code s.entity.name) : "the types marked " + (md_code s.stereotype.name) }}{{ end }}
+- Runs for: {{ tp.covers.size > 0 ? code_names(tp.covers) : "no type yet" }}
+{{- if tp.except_entities.size > 0 }}
+- Skips: {{ code_names(tp.except_entities) }}
+{{- end }}
+{{- if tp.no_bypass }}
+- Never skipped by a bulk load.
+{{- end }}
+{{- end }}
+{{ end -}}
+{{-
+  file "trigger-points.md" content
+end
+-}}

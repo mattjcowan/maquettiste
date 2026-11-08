@@ -95,4 +95,7 @@ public enum ElementKind
 
     /// <summary>A named right that many lifecycles use (<c>right</c>, rights-design.md decision 7).</summary>
     [JsonStringEnumMemberName("right")] Right,
+
+    /// <summary>A named trigger point for the types its subjects cover (<c>trigger-point</c>, trigger-points-design.md decision 33).</summary>
+    [JsonStringEnumMemberName("trigger-point")] TriggerPoint,
 }

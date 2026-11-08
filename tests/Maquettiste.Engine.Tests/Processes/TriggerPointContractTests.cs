@@ -122,8 +122,9 @@ public sealed class TriggerPointContractTests
         Invalid("process.json", Point("""  "type":"check","verbs":["modify"],"states":["draft"] """), "/triggerPoints/0/states");
         Invalid("process.json", Point($$"""  "type":"check","verbs":["modify"],"entities":["{{Order}}","{{Order}}"] """), "/triggerPoints/0/entities");
         Invalid("process.json", Point("""  "type":"action","timing":"before","verbs":["create"],"sets":[{"attribute":"x","value":{"null":true} }] """), "/triggerPoints/0/sets/0");
-        // Part 2's keys are not part 1's (decisions 20 and 33).
-        Invalid("process.json", Point("""  "type":"check","verbs":["modify"],"noBypass":true """), "/triggerPoints/0");
+        // Part 2's noBypass is shared by every trigger point (decision 20); subjects and exceptEntities are a named one's only (decision 33).
+        Valid("process.json", Point("""  "type":"check","verbs":["modify"],"noBypass":true """));
+        Invalid("process.json", Point("""  "type":"check","verbs":["modify"],"noBypass":"yes" """), "/triggerPoints/0/noBypass");
         Invalid("process.json", Point($$"""  "type":"check","verbs":["modify"],"subjects":[{"entity":"{{Order}}"}] """), "/triggerPoints/0");
         Invalid("process.json", Point($$"""  "type":"check","verbs":["modify"],"exceptEntities":["{{Order}}"] """), "/triggerPoints/0");
     }

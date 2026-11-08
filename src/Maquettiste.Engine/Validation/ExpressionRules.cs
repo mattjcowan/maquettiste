@@ -147,6 +147,14 @@ internal static class ExprSites
             case Right right:
                 sites.Add(NamedRightSite(model, right, null));
                 break;
+            case TriggerPoint named:
+                if (named.When is { } namedWhen)
+                    sites.Add(NamedTriggerSite(model, named, "/when", namedWhen, named.Id, null) with { Key = WhenKey(named.Id) });
+                if (named.Condition is { } namedCondition)
+                    sites.Add(NamedTriggerSite(model, named, "/condition", namedCondition, named.Id, null));
+                for (var j = 0; j < named.Sets.Count; j++)
+                    sites.Add(NamedTriggerSite(model, named, Ptr.At("/sets", j) + "/value", named.Sets[j].Value, named.Sets[j].Id, named.Sets[j].Attribute));
+                break;
         }
 
         return sites;
@@ -355,6 +363,51 @@ internal static class ExprSites
             AddAttributes(old, model, attributes, OldPrefix);
             AddNavigations(old, model, navigations, OldPrefix);
         }
+    }
+
+    /// <summary>
+    /// A named trigger point's site (trigger-points-design.md decisions 12 to 15 and 33): a <c>when</c> or a check's condition, or with
+    /// <paramref name="attribute"/> the value of one of its sets. It reads what every entity it covers holds under one id, under
+    /// <c>subject</c> and <c>old</c>, and no payload, since it has no lifecycle.
+    /// </summary>
+    internal static ExprSite NamedTriggerSite(ModelSnapshot model, TriggerPoint point, string pointer, Expr? tree, string subId, string? attribute)
+    {
+        ExprType? type = null;
+        if (attribute is not null && NamedTriggerMembers(model, point).Attributes.FirstOrDefault(a => string.Equals(a.Id, attribute, StringComparison.Ordinal))
+            is { Collection: false } held && TypeOf(model, held.Type) is { IsAvailable: true } found)
+            type = found;
+        return new ExprSite(pointer, tree, false, subId, attribute is null ? ExprSiteKind.Trigger : ExprSiteKind.TriggerSet, s =>
+        {
+            var (attributes, navigations) = NamedTriggerMembers(model, point);
+            AddAttributes(s.Root, model, attributes, SubjectPrefix);
+            AddNavigations(s.Root, model, navigations, SubjectPrefix);
+            if (s.Old is { } old)
+            {
+                AddAttributes(old, model, attributes, OldPrefix);
+                AddNavigations(old, model, navigations, OldPrefix);
+            }
+        })
+        {
+            ValueType = type,
+            Lifecycles = new ModelLifecycles(model, null, null),
+        };
+    }
+
+    /// <summary>
+    /// What a named trigger point reads and sets on its object (trigger-points-design.md decisions 12 and 33): with <c>entities</c>, what every
+    /// entity it names holds under one id; with <c>exceptEntities</c>, what every entity it covers holds; otherwise what its subjects hold, as a
+    /// lifecycle's subjects do.
+    /// </summary>
+    /// <param name="model">The snapshot.</param>
+    /// <param name="point">The named trigger point.</param>
+    /// <returns>The attributes and the navigations.</returns>
+    internal static (IReadOnlyList<ModelAttribute> Attributes, IReadOnlyList<RelationEnd> Navigations) NamedTriggerMembers(ModelSnapshot model, TriggerPoint point)
+    {
+        var covered = point.Entities.Count == 0 && point.ExceptEntities.Count > 0 ? Processes.NamedTriggerPoints.Of(model).CoveredEntities(point) : [];
+        IEnumerable<ProcessSubject> entries = point.Entities.Count > 0 ? point.Entities.Select(id => new ProcessSubject { Id = id, Entity = id })
+            : covered.Count > 0 ? covered.Select(e => new ProcessSubject { Id = e.Id, Entity = e.Id })
+            : point.Subjects.Select((s, i) => new ProcessSubject { Id = point.Id + "/" + i, Entity = s.Entity, Stereotype = s.Stereotype });
+        return Held(model, entries, new HashSet<string>(StringComparer.Ordinal));
     }
 
     /// <summary>Whether a lifecycle's trigger points hold an expression or a set (trigger-points-design.md decision 3).</summary>
@@ -1311,10 +1364,17 @@ internal static class ExprSites
     /// <param name="process">The process.</param>
     /// <param name="typed">The guard's typed condition.</param>
     /// <returns>The depth, or <see langword="null"/>.</returns>
-    internal static int? SubjectPathDepth(Process process, TypedExpr typed)
+    internal static int? SubjectPathDepth(Process process, TypedExpr typed) =>
+        process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)) ? null : SubjectPathDepth(typed);
+
+    /// <summary>
+    /// The most navigations a path of a typed expression follows under <c>subject</c>, where no context attribute takes that name: a named
+    /// trigger point's (trigger-points-design.md decision 33), which has no context. <see langword="null"/> when it does not read the object.
+    /// </summary>
+    /// <param name="typed">The typed expression.</param>
+    /// <returns>The depth, or <see langword="null"/>.</returns>
+    internal static int? SubjectPathDepth(TypedExpr typed)
     {
-        if (process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
-            return null;
         int? depth = null;
         var pending = new Stack<TypedExpr>();
         pending.Push(typed);
@@ -1337,7 +1397,7 @@ internal static class ExprSites
     private static readonly ConditionalWeakTable<ModelSnapshot, ConditionalWeakTable<Process, StrongBox<int?>>> SubjectDepths = new();
 
     /// <summary>
-    /// The longest path under <c>subject</c> any guard condition of a process reads (<see cref="SubjectPathDepth"/>): <see langword="null"/>
+    /// The longest path under <c>subject</c> any guard condition of a process reads (<see cref="SubjectPathDepth(Process, TypedExpr)"/>): <see langword="null"/>
     /// when no condition that types reads the object, as <see cref="Processes.ProcessExpressions"/> then has no subject defaults. Typed once
     /// per model.
     /// </summary>
@@ -1535,6 +1595,27 @@ internal static class ExpressionRules
             CheckBindings(model, entity, trees, typedTrees, report);
         if (element is Process { Use: not ProcessUse.Library } owner && (ExprSites.SetsData(owner) || owner.TriggerPoints.Any(t => t.Sets.Count > 0)))
             CheckSets(model, owner, report);
+        if (element is TriggerPoint { Sets.Count: > 0 } namedPoint)
+            CheckNamedSets(model, namedPoint, report);
+    }
+
+    /// <summary>MQ9802 and MQ9803 on a named trigger point's sets, as a lifecycle's trigger point's (trigger-points-design.md decision 33).</summary>
+    private static void CheckNamedSets(ModelSnapshot model, TriggerPoint point, Report report)
+    {
+        var bound = BoundAttributes(model);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var members = ExprSites.NamedTriggerMembers(model, point).Attributes.ToDictionary(a => a.Id, StringComparer.Ordinal);
+        for (var j = 0; j < point.Sets.Count; j++)
+        {
+            var set = point.Sets[j];
+            var at = Ptr.At("/sets", j) + "/attribute";
+            if (!seen.Add(set.Attribute))
+                report.Add("MQ9803", $"Trigger point '{point.Name}' sets '{AttributeName(model, set.Attribute)}' twice; remove the second set.", at, set.Id);
+            else if (members.TryGetValue(set.Attribute, out var attribute) && attribute.Derived is not null)
+                report.Add("MQ9802", $"The set's attribute '{attribute.Name}' is derived, worked out from others; remove the set.", at, set.Id);
+            else if (attribute is not null && bound.Contains(attribute.Id))
+                report.Add("MQ9802", $"The set's attribute '{attribute.Name}' holds a lifecycle's state, which only its chart moves; remove the set.", at, set.Id);
+        }
     }
 
     /// <summary>

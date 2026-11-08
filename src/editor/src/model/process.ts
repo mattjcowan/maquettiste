@@ -180,6 +180,8 @@ export interface TriggerPointDoc {
   condition?: Json;
   sets?: SetDoc[];
   outside?: boolean;
+  /** A bulk load may not skip it (trigger-points-design.md decision 20). */
+  noBypass?: boolean;
   description?: unknown;
 }
 

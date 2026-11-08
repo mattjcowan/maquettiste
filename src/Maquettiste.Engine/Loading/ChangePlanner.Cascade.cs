@@ -133,11 +133,13 @@ internal sealed partial class ChangePlanner
         // An id inside an expression tree (next-phase-3-design.md section 3.1): a tree never loses a node, since it would mean something
         // else. remove-references refuses; delete-dependents removes what holds the tree: the check or guard, the derived value, an action's
         // set (object-effects-design.md section 8), or a constraint whole.
-        if (ExpressionHolder(reference.JsonPointer) is { } holder)
+        // A named trigger point's when and condition need the point, and a set's value its set (trigger-points-design.md section 9, part 2).
+        if ((referrer.Element is TriggerPoint ? NamedTriggerHolder(reference.JsonPointer, "value") : ExpressionHolder(reference.JsonPointer)) is { } holder)
         {
             if (mode != DeleteResolution.DeleteDependents)
             {
-                var what = referrer.Element is Right || holder.StartsWith("/rights/", StringComparison.Ordinal) ? "the right"
+                var what = referrer.Element is TriggerPoint ? (holder.Length > 0 ? "the set" : "the trigger point")
+                    : referrer.Element is Right || holder.StartsWith("/rights/", StringComparison.Ordinal) ? "the right"
                     : referrer.Element is Process && SetHolder(holder) ? "the set"
                     : referrer.Element is Process && holder.StartsWith("/triggerPoints/", StringComparison.Ordinal) ? "the trigger point"
                     : "the check or guard";
@@ -215,6 +217,27 @@ internal sealed partial class ChangePlanner
             }
         }
 
+        // A named trigger point's subjects, entities, attributes and ends (trigger-points-design.md section 9, part 2), in either resolution:
+        // the entry is dropped, but the last one left takes the point with it, since an empty list would widen it to every type or the whole
+        // object. An entry of exceptEntities is dropped, and the key with its last entry.
+        if (referrer.Element is TriggerPoint && NamedTriggerPart(reference.JsonPointer) is { } namedPart)
+        {
+            var last = Remaining(referrer.Json, namedPart.List, ops) <= 1;
+            if (last && namedPart.List != "/exceptEntities")
+            {
+                MarkCascadeDeleted(index, referrerId, "names no other " + Noun(namedPart.List[1..]) + " than " + Label(target), mode);
+                return;
+            }
+
+            var part = last ? namedPart.List : namedPart.Item;
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                return;
+            }
+        }
+
         // Links to a member of a deleted stereotype (next-phase-2-design.md sections 3.1 and 4.1): a table's or an operation's redefinition
         // of it goes whole and an exclusion of it is cleared, in both resolutions; any other keyed use of an inherited copy (an index, a key, a binding field, a
         // query) refuses remove-references, and delete-dependents removes it as it removes a deleted column's uses.
@@ -282,7 +305,8 @@ internal sealed partial class ChangePlanner
 
         // The attribute an action's set writes (object-effects-design.md section 8): a set means nothing without it, so in either resolution
         // the set goes, and the action keeps its other sets.
-        if (referrer.Element is Process && SetOfAttribute(reference.JsonPointer) is { } setEntry)
+        if ((referrer.Element is TriggerPoint ? NamedTriggerHolder(reference.JsonPointer, "attribute") : referrer.Element is Process ? SetOfAttribute(reference.JsonPointer) : null)
+            is { Length: > 0 } setEntry)
         {
             var drop = new CascadeOp(setEntry, true, reference, index);
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != setEntry && !IsUnder(o.Pointer, setEntry)), drop];
@@ -912,6 +936,38 @@ internal sealed partial class ChangePlanner
             ? (JsonPointer.Build(segments[..3]), JsonPointer.Build(segments[..2]))
             : null;
 
+    /// <summary>
+    /// Where a reference sits in a named trigger point (trigger-points-design.md section 9, part 2): <c>List</c> is its subjects, exceptEntities,
+    /// entities, attributes or ends (<c>/subjects</c>), and <c>Item</c> the entry (<c>/subjects/0</c>). <see langword="null"/> for any other
+    /// pointer: its package, its verbs, its sets and its expressions go their own ways.
+    /// </summary>
+    private static (string List, string Item)? NamedTriggerPart(string pointer)
+    {
+        if (!JsonPointer.TryParse(pointer, out var segments) || segments.Length < 2 || !JsonPointer.TryIndex(segments[1], out _))
+            return null;
+        if (segments.Length == 3 && segments[0] == "subjects" && segments[2] is "entity" or "stereotype")
+            return ("/subjects", JsonPointer.Build(segments[..2]));
+        return segments.Length == 2 && segments[0] is "exceptEntities" or "entities" or "attributes" or "ends"
+            ? ("/" + segments[0], JsonPointer.Build(segments))
+            : null;
+    }
+
+    /// <summary>
+    /// What holds a pointer of a named trigger point: <c>""</c>, the point, for its <c>when</c> or condition; its set (<c>/sets/1</c>) for the
+    /// set's <paramref name="member"/> (<c>value</c> or <c>attribute</c>); <see langword="null"/> otherwise.
+    /// </summary>
+    private static string? NamedTriggerHolder(string pointer, string member)
+    {
+        if (!JsonPointer.TryParse(pointer, out var segments) || segments.Length == 0)
+            return null;
+        if (member == "value" && segments.Length > 1 && segments[0] is "when" or "condition")
+            return "";
+        return segments.Length >= 3 && segments[0] == "sets" && JsonPointer.TryIndex(segments[1], out _) && segments[2] == member
+            && (member == "value" ? segments.Length > 3 : segments.Length == 3)
+            ? JsonPointer.Build(segments[..2])
+            : null;
+    }
+
     /// <summary>The items a list holds once the planned edits that drop one of its items are applied.</summary>
     private static int Remaining(JsonElement json, string list, IReadOnlyList<CascadeOp> ops)
     {
@@ -1340,6 +1396,7 @@ internal sealed partial class ChangePlanner
         "triggerPoints" => "trigger point",
         "targets" => "target",
         "entities" => "entity",
+        "subjects" => "subject",
         "actors" => "actor",
         "verbs" => "verb",
         "attributes" => "attribute",

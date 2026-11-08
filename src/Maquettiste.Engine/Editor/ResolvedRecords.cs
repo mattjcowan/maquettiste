@@ -546,6 +546,7 @@ public sealed record ProcessRecord(string Id, string Kind, string Name, string? 
 /// <param name="Sets">What an action or a replace sets, in file order; left out when it sets none.</param>
 /// <param name="Outside">Whether the team's code reaches outside systems (decision 22): <see langword="true"/>, or left out.</param>
 /// <param name="TeamCode">Whether the body is the team's code: <see langword="true"/>, or left out.</param>
+/// <param name="NoBypass">Whether no bulk load may ever skip it (decision 20): <see langword="true"/>, or left out.</param>
 public sealed record TriggerPointRecord(string Id, string Name, string Message, string Type, IReadOnlyList<string> Verbs, IReadOnlyList<string> Covers,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DisplayName = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Description = null,
@@ -561,7 +562,59 @@ public sealed record TriggerPointRecord(string Id, string Name, string Message, 
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? Condition = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SetRecord>? Sets = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Outside = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? TeamCode = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? NoBypass = null);
+
+/// <summary>
+/// A named trigger point (trigger-points-design.md decision 33, kind <c>trigger-point</c>): a lifecycle's trigger point's members without
+/// states, targets and transitions, with its package, subjects and exceptEntities. Records come with every other kind, as verb records do.
+/// </summary>
+/// <param name="Id">Its id.</param>
+/// <param name="Kind"><c>trigger-point</c>.</param>
+/// <param name="Name">Its name.</param>
+/// <param name="Package">The id of its package, or <see langword="null"/> for the root.</param>
+/// <param name="Subjects">Its subjects in file order: an entity's id or a stereotype's id each.</param>
+/// <param name="Message">What a refusal or a warning shows: the description, else the display name, else the name.</param>
+/// <param name="Type"><c>check</c>, <c>action</c> or <c>replace</c>.</param>
+/// <param name="Verbs">The verb keys it runs on, in file order.</param>
+/// <param name="Covers">The ids of the entities it runs for, in name order.</param>
+/// <param name="DisplayName">Its display name when it differs from its name.</param>
+/// <param name="Description">Its description.</param>
+/// <param name="ExceptEntities">The ids of the entities it skips, as written; left out when it names none.</param>
+/// <param name="Timing">An action's moment.</param>
+/// <param name="Severity">A check's severity.</param>
+/// <param name="Entities">The ids of the entities it is narrowed to; left out when it names none.</param>
+/// <param name="Attributes">The ids of the attributes a <c>read</c> or <c>modify</c> step must read or change; left out when it names none.</param>
+/// <param name="Ends">The ids of the subject's relation ends whose links it speaks of; left out when it names none.</param>
+/// <param name="When">It runs only when this is true; left out when it has none or it does not type.</param>
+/// <param name="Condition">A check's condition; left out when it has none or it does not type.</param>
+/// <param name="Sets">What an action or a replace sets, in file order; left out when it sets none.</param>
+/// <param name="Outside">Whether the team's code reaches outside systems: <see langword="true"/>, or left out.</param>
+/// <param name="NoBypass">Whether no bulk load may ever skip it: <see langword="true"/>, or left out.</param>
+/// <param name="TeamCode">Whether the body is the team's code: <see langword="true"/>, or left out.</param>
+public sealed record NamedTriggerPointRecord(string Id, string Kind, string Name, string? Package, IReadOnlyList<TriggerPointSubjectRecord> Subjects,
+    string Message, string Type, IReadOnlyList<string> Verbs, IReadOnlyList<string> Covers,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DisplayName = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Description = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? ExceptEntities = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Timing = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Severity = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Entities = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Attributes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Ends = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? When = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? Condition = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SetRecord>? Sets = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Outside = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? NoBypass = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? TeamCode = null);
+
+/// <summary>A subject of a named trigger point (trigger-points-design.md decision 33), as written: exactly one member is present.</summary>
+/// <param name="Entity">The entity's id.</param>
+/// <param name="Stereotype">The stereotype's id.</param>
+public sealed record TriggerPointSubjectRecord(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Entity = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Stereotype = null);
 
 /// <summary>
 /// One entry of a lifecycle's rights (rights-design.md decisions 1, 3 and 7): an inline right, which carries what it says and shares its id
@@ -1407,6 +1460,10 @@ public static class ResolvedRecords
             // Named rights (rights-design.md section 6) likewise, and only in a model that has them.
             foreach (var r in model.Rights)
                 yield return new Entry("right", r.Name, r.Id, () => context.Right(r), r);
+
+            // Named trigger points (trigger-points-design.md section 7) likewise, and only in a model that has them.
+            foreach (var t in model.TriggerPoints)
+                yield return new Entry("trigger-point", t.Name, t.Id, () => context.NamedTriggerPoint(t), t);
         }
 
         if (all || scope == "databases")
@@ -1650,7 +1707,18 @@ public static class ResolvedRecords
                 t.DisplayName != t.Name ? t.DisplayName : null, t.Description, t.Timing, t.Severity, Listed(t.States), Listed(t.Targets), Listed(t.Transitions),
                 Listed(t.Entities), Listed(t.Attributes), Listed(t.Ends), Expression(t.When), Expression(t.Condition),
                 t.Sets.Count == 0 ? null : [.. t.Sets.Select(x => new SetRecord(x.Id, x.Attribute.Id, Expression(x.Value)!))],
-                t.Outside ? true : null, t.TeamCode ? true : null);
+                t.Outside ? true : null, t.TeamCode ? true : null, t.NoBypass ? true : null);
+        }
+
+        public NamedTriggerPointRecord NamedTriggerPoint(RTriggerPoint t)
+        {
+            static IReadOnlyList<string>? Listed<T>(RList<T> list) where T : IResolvedObject => list.Count == 0 ? null : Ids(list);
+            return new NamedTriggerPointRecord(t.Id, t.Kind, t.Name, t.Package?.Id,
+                [.. t.Subjects.Select(s => new TriggerPointSubjectRecord(s.Entity?.Id, s.Stereotype?.Id))], t.Message, t.Type,
+                [.. t.Verbs.Select(v => v.Key)], Ids(t.Covers), t.DisplayName != t.Name ? t.DisplayName : null, t.Description, Listed(t.ExceptEntities),
+                t.Timing, t.Severity, Listed(t.Entities), Listed(t.Attributes), Listed(t.Ends), Expression(t.When), Expression(t.Condition),
+                t.Sets.Count == 0 ? null : [.. t.Sets.Select(x => new SetRecord(x.Id, x.Attribute.Id, Expression(x.Value)!))],
+                t.Outside ? true : null, t.NoBypass ? true : null, t.TeamCode ? true : null);
         }
 
         private ProcessRightRecord ProcessRight(RRightUse u)

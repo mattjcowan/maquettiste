@@ -179,6 +179,34 @@ public sealed class ProcessEndpointTests
     }
 
     [Fact]
+    public async Task Covers_lists_what_a_named_trigger_point_runs_for_with_package_defaults_and_is_404_for_any_other_id()
+    {
+        await using var host = EditorHost.CreateModel("processes");
+        const string Point = "01JQTRP0000000000000000001";
+        File.WriteAllText(host.PathOf(".maquettiste/model/vocabularies/stereotypes/approvable.json"),
+            """{"kind":"stereotype","id":"01JQSTR0000000000000000009","key":"approvable","name":"Approvable","appliesTo":["entity"]}""");
+        File.WriteAllText(host.PathOf(".maquettiste/model/packages/purchasing.json"),
+            """{"kind":"package","id":"01JQPKG0000000000000000002","name":"Purchasing","defaultStereotypes":["approvable"]}""");
+        Directory.CreateDirectory(host.PathOf(".maquettiste/model/trigger-points"));
+        File.WriteAllText(host.PathOf(".maquettiste/model/trigger-points/stamp.json"), $$"""
+            {"kind":"trigger-point","id":"{{Point}}","name":"Stamp","package":"01JQPKG0000000000000000001",
+             "subjects":[{"entity":"{{SalesOrder}}"},{"stereotype":"approvable"}],"exceptEntities":["01JQENT0000000000000000005"],
+             "type":"action","timing":"before","verbs":["create"]}
+            """);
+
+        // The package's default brings ProcessInstance and PurchaseRequest; GateSignature is excepted.
+        var covers = await host.GetAsync($"/api/model/trigger-points/{Point}/covers");
+        Assert.Equal(200, covers.Status);
+        Contract.AssertResponse(covers, "/api/model/trigger-points/{id}/covers");
+        Assert.Equal(["01JQENT0000000000000000004", "01JQENT0000000000000000003", SalesOrder],
+            covers.Json["entities"]!.AsArray().Select(n => n!.GetValue<string>()));
+
+        var missing = await host.GetAsync($"/api/model/trigger-points/{Purchase}/covers");
+        Assert.Equal(404, missing.Status);
+        Contract.AssertResponse(missing, "/api/model/trigger-points/{id}/covers");
+    }
+
+    [Fact]
     public async Task Export_then_import_into_the_process_round_trips_bytes_and_a_stale_hash_is_409()
     {
         await using var host = EditorHost.CreateModel("processes");

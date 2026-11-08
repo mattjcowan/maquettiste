@@ -393,6 +393,7 @@
         "condition",
         "sets",
         "outside",
+        "noBypass",
         "description"
       ],
       "properties": {
@@ -460,6 +461,10 @@
         },
         "outside": {
           "$ref": "common.json#/$defs/triggerBody/properties/outside",
+          "default": false
+        },
+        "noBypass": {
+          "$ref": "common.json#/$defs/triggerBody/properties/noBypass",
           "default": false
         },
         "description": {

@@ -1,0 +1,21 @@
+{
+  "$schema": "../../.schema/v1/trigger-point.json",
+  "kind": "trigger-point",
+  "id": "01JNT000000000000000000N10",
+  "name": "TitleLog",
+  "package": "01JNT000000000000000000P02",
+  "subjects": [
+    {
+      "entity": "01JNT000000000000000000E02"
+    }
+  ],
+  "type": "action",
+  "timing": "with-change",
+  "verbs": [
+    "modify"
+  ],
+  "attributes": [
+    "01JNT000000000000000000A12"
+  ],
+  "description": "Logs a document's new title."
+}

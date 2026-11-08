@@ -1,0 +1,168 @@
+{
+  "kind": "process",
+  "id": "01JTP000000000000000000C01",
+  "name": "DocumentLifecycle",
+  "package": "01JTP000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JTP000000000000000000B01",
+      "entity": "01JTP000000000000000000E01"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JTP000000000000000000V01",
+      "name": "submit",
+      "verb": "promote"
+    },
+    {
+      "id": "01JTP000000000000000000V02",
+      "name": "release",
+      "verb": "promote"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JTP000000000000000000S01",
+      "name": "Draft"
+    },
+    {
+      "id": "01JTP000000000000000000S02",
+      "name": "Review"
+    },
+    {
+      "id": "01JTP000000000000000000S03",
+      "name": "Released"
+    }
+  ],
+  "initial": "01JTP000000000000000000S01",
+  "transitions": [
+    {
+      "id": "01JTP000000000000000000T01",
+      "source": "01JTP000000000000000000S01",
+      "event": "01JTP000000000000000000V01",
+      "targets": [
+        "01JTP000000000000000000S02"
+      ]
+    },
+    {
+      "id": "01JTP000000000000000000T02",
+      "source": "01JTP000000000000000000S02",
+      "event": "01JTP000000000000000000V02",
+      "targets": [
+        "01JTP000000000000000000S03"
+      ]
+    }
+  ],
+  "triggerPoints": [
+    {
+      "id": "01JTP000000000000000000Q01",
+      "name": "AssignNumber",
+      "type": "action",
+      "timing": "before",
+      "verbs": [
+        "create"
+      ],
+      "description": "Gives the document its number, such as DOC-000123."
+    },
+    {
+      "id": "01JTP000000000000000000Q02",
+      "name": "TitleBeforeReview",
+      "displayName": "Title before review",
+      "type": "check",
+      "verbs": [
+        "promote"
+      ],
+      "targets": [
+        "01JTP000000000000000000S02"
+      ],
+      "condition": {
+        "text": "coalesce(subject.title, '') <> ''"
+      },
+      "description": "A document needs a title before it goes to review."
+    },
+    {
+      "id": "01JTP000000000000000000Q03",
+      "name": "LargePriceDrop",
+      "type": "check",
+      "severity": "warning",
+      "verbs": [
+        "modify"
+      ],
+      "attributes": [
+        "01JTP000000000000000000A03"
+      ],
+      "condition": {
+        "text": "coalesce(old.price, 0) = 0 or subject.price >= old.price * 0.9"
+      },
+      "description": "The price dropped by more than a tenth."
+    },
+    {
+      "id": "01JTP000000000000000000Q04",
+      "name": "StampRelease",
+      "type": "action",
+      "timing": "with-change",
+      "verbs": [
+        "promote"
+      ],
+      "targets": [
+        "01JTP000000000000000000S03"
+      ],
+      "sets": [
+        {
+          "id": "01JTP000000000000000000X01",
+          "attribute": "01JTP000000000000000000A04",
+          "value": {
+            "text": "now()"
+          }
+        }
+      ]
+    },
+    {
+      "id": "01JTP000000000000000000Q05",
+      "name": "PublishToPortal",
+      "type": "action",
+      "timing": "after-commit",
+      "verbs": [
+        "promote"
+      ],
+      "targets": [
+        "01JTP000000000000000000S03"
+      ],
+      "outside": true,
+      "description": "Sends the released document to the supplier portal."
+    },
+    {
+      "id": "01JTP000000000000000000Q06",
+      "name": "ApprovedForDeletion",
+      "type": "check",
+      "verbs": [
+        "delete"
+      ],
+      "outside": true,
+      "description": "The records office approves the deletion."
+    },
+    {
+      "id": "01JTP000000000000000000Q07",
+      "name": "Archive",
+      "type": "replace",
+      "verbs": [
+        "delete"
+      ],
+      "states": [
+        "01JTP000000000000000000S03"
+      ],
+      "sets": [
+        {
+          "id": "01JTP000000000000000000X02",
+          "attribute": "01JTP000000000000000000A05",
+          "value": {
+            "text": "now()"
+          }
+        }
+      ],
+      "description": "Released documents are archived, never removed."
+    }
+  ]
+}

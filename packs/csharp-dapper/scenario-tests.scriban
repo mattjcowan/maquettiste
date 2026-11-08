@@ -22,15 +22,51 @@ func runner_of(step)
   if step.verb.group == "move" || step.verb.group == "signature" || step.verb.group == "task"
     ret null
   end
-  ret s.subject.entity.trigger_lifecycles.size > 0 ? s.subject.entity : null
+  ret has_runner(s.subject.entity) ? s.subject.entity : null
 end
-# The trigger point a step's assume word names (decision 26): this lifecycle's by name, another's by "Lifecycle.Name" or "LifecycleId.Name".
+# The point of a lifecycle that an assume word names: this lifecycle's by name, another's by "Lifecycle.Name" or "LifecycleId.Name".
+func lifecycle_point(l, key)
+  for $tp in l.trigger_points
+    if (l.id == p.id && $tp.name == key) || (l.name + "." + $tp.name) == key || (l.id + "." + $tp.name) == key
+      ret $tp
+    end
+  end
+  ret null
+end
+# The trigger point a step's assume word names (decision 26), in the engine's order of keys: a named one by its id (which it takes where
+# its qualified name would clash); a point of a lifecycle the scenario reaches (this one, the others its moves run, and those that govern
+# the subject's entity); a named one by its qualified name ("Package.Name", or the name in the root package); then another lifecycle's,
+# which only a word reaches.
 func assumed_point(key)
+  for $tp in model.trigger_points
+    if $tp.id == key
+      ret $tp
+    end
+  end
+  $reached = [p]
+  for $l in trigger_others(p)
+    $reached[$reached.size] = $l
+  end
+  if s.subject
+    for $l in s.subject.entity.trigger_lifecycles
+      $reached[$reached.size] = $l
+    end
+  end
+  for $l in $reached
+    $tp = lifecycle_point($l, key)
+    if $tp
+      ret $tp
+    end
+  end
+  for $tp in model.trigger_points
+    if ($tp.package ? ($tp.package.qualified_name + "." + $tp.name) : $tp.name) == key
+      ret $tp
+    end
+  end
   for $l in model.trigger_lifecycles
-    for $tp in $l.trigger_points
-      if ($l.id == p.id && $tp.name == key) || ($l.name + "." + $tp.name) == key || ($l.id + "." + $tp.name) == key
-        ret $tp
-      end
+    $tp = lifecycle_point($l, key)
+    if $tp
+      ret $tp
     end
   end
   ret null
@@ -45,7 +81,13 @@ if triggers
       end
     end
   end
+  for $tp in model.trigger_points
+    if $tp.outside && $tp.timing != "after-commit"
+      stands_in = true
+    end
+  end
 end
+
 # The words a step assumes for outside team-code checks, as a dictionary initializer, which ScenarioTriggers answers.
 func outside_words(step)
   $out = []

@@ -124,8 +124,9 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | A point just before commit | E | Part: an action with the change, in the same unit of work |
 | A failure that does or doesn't roll the move back | A | Yes: a with-the-change action is undone on failure, an after-commit action can't undo the change |
 | Runs in line, or later (`execute immediate` or `deferred`, sync or async) | E O | Yes: with the change, or after commit (through the outbox) |
-| Triggers switched off for a session, as for a bulk load | E | No: the system's job. Part 2 adds `noBypass` and the host's bypass |
-| Order when several run | O S | Yes: one fixed order for every verb, then the list's order |
+| Triggers switched off for a session, as for a bulk load | E | Part: in generated `csharp-dapper` code only, behind `bulkLoadBypass` (off), when the team's hook allows it; `noBypass` points always run, and a replace is never skipped. Simulation never skips (0.18.0) |
+| Order when several run | O S | Yes: one fixed order for every verb, named points before a lifecycle's, then the list's order |
+| Points on types with no lifecycle, or one rule for many types | E O | Yes: named trigger points, with covers and except (0.18.0) |
 | The same three kinds at every point: check, override, action | E | Yes: check, action and a narrow replace |
 | Points on each sign-off event: approve, reject, ignore, withdraw | E Own | Part: `sign` only; the rest come with richer sign-off |
 | Points on other state events: promote, demote, override, enable, disable, schedule | E | Part: promote and demote, and your own verbs an event names; `override` and `set-state` wait for scenario steps |

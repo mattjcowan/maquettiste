@@ -1,0 +1,17 @@
+{
+  "kind": "trigger-point",
+  "id": "01JTPNAMED0000000000000002",
+  "name": "DocumentAudit",
+  "package": "01JTP000000000000000000P01",
+  "subjects": [
+    {
+      "entity": "01JTP000000000000000000E01"
+    }
+  ],
+  "type": "check",
+  "severity": "warning",
+  "verbs": [
+    "delete"
+  ],
+  "description": "The team's audit looks at every document before it goes."
+}

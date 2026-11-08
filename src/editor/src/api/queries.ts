@@ -372,7 +372,8 @@ export function applySaveResult(qc: QueryClient, result: SaveResult): void {
     else {
       const rows = qc.getQueryData<readonly ElementSummary[]>(keys.index);
       const actorIds = new Set((rows ?? []).filter((r) => r.kind === "actor").map((r) => r.id));
-      upsertIndexRow(qc, summaryFromDocument(result.current, actorIds));
+      const stereotypeIds = new Map((rows ?? []).filter((r) => r.kind === "stereotype").map((r) => [r.name, r.id]));
+      upsertIndexRow(qc, summaryFromDocument(result.current, actorIds, stereotypeIds));
     }
   }
   if (result.changes) removeIndexRows(qc, result.changes.deleted);

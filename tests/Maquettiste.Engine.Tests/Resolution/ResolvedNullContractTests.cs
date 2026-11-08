@@ -135,6 +135,7 @@ public sealed class ResolvedNullContractTests
         ["RTriggerPoint"] = "trigger points: ResolvedTriggerTests",
         ["RTriggerVerb"] = "trigger points: ResolvedTriggerTests",
         ["RTriggerPointRun"] = "trigger points: the replay's trace, which the simulation fills",
+        ["RTriggerPointSubject"] = "named trigger points: ResolvedNamedTriggerTests",
     };
 
     [Fact]

@@ -1,0 +1,66 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JNT000000000000000000Q02",
+  "name": "Revising",
+  "package": "01JNT000000000000000000P02",
+  "use": "orchestration",
+  "description": "Revises a document: touch names modify, an object verb, so the named points on modify run; push names promote, a move verb, so no named point runs.",
+  "subjects": [
+    {
+      "id": "01JNT000000000000000000B02",
+      "entity": "01JNT000000000000000000E02"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JNT000000000000000000V02",
+      "name": "touch",
+      "verb": "modify",
+      "actors": [
+        "01JNT000000000000000000K01"
+      ]
+    },
+    {
+      "id": "01JNT000000000000000000V03",
+      "name": "push",
+      "verb": "promote",
+      "actors": [
+        "01JNT000000000000000000K01"
+      ]
+    }
+  ],
+  "states": [
+    {
+      "id": "01JNT000000000000000000S03",
+      "name": "Open"
+    },
+    {
+      "id": "01JNT000000000000000000S04",
+      "name": "Touched"
+    },
+    {
+      "id": "01JNT000000000000000000S05",
+      "name": "Pushed"
+    }
+  ],
+  "initial": "01JNT000000000000000000S03",
+  "transitions": [
+    {
+      "id": "01JNT000000000000000000T02",
+      "source": "01JNT000000000000000000S03",
+      "event": "01JNT000000000000000000V02",
+      "targets": [
+        "01JNT000000000000000000S04"
+      ]
+    },
+    {
+      "id": "01JNT000000000000000000T03",
+      "source": "01JNT000000000000000000S04",
+      "event": "01JNT000000000000000000V03",
+      "targets": [
+        "01JNT000000000000000000S05"
+      ]
+    }
+  ]
+}

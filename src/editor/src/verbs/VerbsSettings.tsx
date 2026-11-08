@@ -201,7 +201,7 @@ function UsedByDialog({ verb, onClose }: { verb: { key: string }; onClose: () =>
   const users = verbUsers(index.data ?? [], verb.key);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title={`Used by ${verb.key}`} description="The processes and operations that name this verb.">
+      <DialogContent title={`Used by ${verb.key}`} description="The named trigger points, processes and operations that name this verb.">
         <p className="text-13" data-testid="verb-used-by">
           {users.length ? <ElementLinks elements={users} onOpen={onClose} /> : "Nothing names it."}
         </p>
@@ -428,7 +428,7 @@ export function VerbsSettings() {
         <colgroup>
           <col className="w-56" />
           <col />
-          <col className="w-32" />
+          <col className="w-64" />
           <col className="w-20" />
         </colgroup>
         <thead>
@@ -456,7 +456,7 @@ export function VerbsSettings() {
                       <span className="font-medium">{v.displayName}</span> <span className="font-mono text-11 text-secondary">{v.key}</span>
                     </td>
                     <td className="py-0.5 pr-2 text-12 text-secondary">{v.meaning}</td>
-                    <td className="whitespace-nowrap py-0.5 pr-2 text-12 text-secondary">{usedByCell(v.key)}</td>
+                    <td className="py-0.5 pr-2 text-12 text-secondary">{usedByCell(v.key)}</td>
                     <td className="py-0.5">
                       <label className="flex w-fit items-center gap-1 text-12 text-secondary" title={`Hide ${v.displayName} from the verb pickers`}>
                         <input type="checkbox" aria-label={`Hide ${v.key}`} checked={hidden} onChange={(e) => void toggleHidden(v.key, e.target.checked)} />

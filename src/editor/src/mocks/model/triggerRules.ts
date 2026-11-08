@@ -11,6 +11,7 @@ import { subjectsOf } from "@/model/process";
 import { LINK_VERBS } from "@/model/rights";
 import { allowsReplace, isMoveVerb, REPLACE_VERBS } from "@/model/triggerPoints";
 import { Coverage } from "./coverage";
+import { namedReach } from "./triggerRun";
 import { fieldSourcesOf } from "./relativeRules";
 import type { ModelEntry } from "./validate";
 
@@ -59,6 +60,8 @@ export function assumeKindDiagnostics(json: Json, all: () => Iterable<ModelEntry
     arr(e.json.guards).forEach((g) => str(g.id) && guards.add(g.id as string));
     arr(e.json.triggerPoints).forEach((t) => str(t.id) && checks.add(t.id as string));
   }
+  // A named trigger point's id takes a word too, never a boolean.
+  for (const e of all()) if (e.json.kind === "trigger-point" && str(e.json.id)) checks.add(e.json.id as string);
   arr(json.steps).forEach((step, i) => {
     const assume = step.assume;
     if (!assume || typeof assume !== "object") return;
@@ -310,7 +313,32 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
     const shared = strings(a.verbs).filter((v) => strings(b.verbs).includes(v));
     return shared.length > 0 && meets(covered(a, json), covered(b, other));
   };
+  // Named trigger points run before the lifecycles' and are replaces too: one that shares a verb and an entity with this lifecycle's replace
+  // is the one already there. The finding sits on the lifecycle's point; two named points are told apart by path (namedTriggerDiagnostics).
+  const namedReplaces = entries.filter((e) => e.json.kind === "trigger-point" && e.json.type === "replace");
+  const namedClash = (t: Json) =>
+    namedReplaces.find(
+      (n) =>
+        strings(n.json.verbs).some((v) => strings(t.verbs).includes(v)) &&
+        namedCovered(
+          n.json,
+          entities.map((e) => e.id),
+          chainIds,
+          coverage,
+        ).some((e) => coversOf(t, mineGoverned).includes(e)),
+    );
   mine.forEach(({ t, i }) => {
+    const named = namedClash(t);
+    if (named) {
+      emit(
+        "MQ8104",
+        "error",
+        `The trigger point '${String(t.name)}' replaces a verb on an entity that the named trigger point '${String(named.json.name)}' already replaces. Only one replace can apply to one verb on one entity. Narrow one with entities.`,
+        `/triggerPoints/${i}`,
+        str(t.id) ?? undefined,
+      );
+      return;
+    }
     const earlier = mine.find((m) => m.i < i && clash(t, m.t, json));
     const elsewhere = earlier
       ? undefined
@@ -349,4 +377,179 @@ function neverRuns(t: Json, verbs: string[], json: Json): boolean {
     return !NO_INPUT.has(verb);
   };
   return !verbs.some(canRun);
+}
+
+/** The entities (of `all`) a named trigger point covers: those a subject covers (with the entities derived from them), less `exceptEntities`, narrowed by `entities`. */
+export function namedCovered(point: Json, all: string[], chainIds: (e: string) => string[], coverage: Coverage, ignoreExcept = false): string[] {
+  const named = strings(point.entities);
+  const probe = ignoreExcept ? { ...point, exceptEntities: [] } : point;
+  return all.filter((e) => {
+    const chain = chainIds(e);
+    return namedReach(probe, chain, (key, entity) => coverage.covers(key, entity)) !== null && (!named.length || chain.some((x) => named.includes(x)));
+  });
+}
+
+/**
+ * The rules of a named trigger point (kind `trigger-point`, trigger-points-design.md decision 33): part 1's MQ8101 to MQ8107 on a point
+ * with no states, targets or transitions, MQ8102's part 2 cases (those keys, and an `exceptEntities` entry no subject covers), and MQ8104
+ * between named points (the later by path is the one that is refused; against a lifecycle's replace the finding sits on the lifecycle's).
+ */
+export function namedTriggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, emit: Emit): void {
+  if (json.kind !== "trigger-point") return;
+  const entries = [...all()];
+  const byId = new Map(entries.map((e) => [e.id, e.json]));
+  const nameOf = (id: string) => String(byId.get(id)?.name ?? id);
+  const coverage = new Coverage(entries);
+  const src = fieldSourcesOf(entries);
+  const entityIds = entries.filter((e) => e.json.kind === "entity").map((e) => e.id);
+  const chainIds = (e: string) => entityChain(e, (id) => byId.get(id)).map((d) => String(d.id));
+  const t = json;
+  const id = str(t.id) ?? undefined;
+  const label = `The trigger point '${String(t.name ?? "")}'`;
+  const type = t.type;
+  const verbs = strings(t.verbs);
+  const name = String(t.name ?? "");
+  // MQ8101: the shape.
+  if (type === "action" && t.timing === undefined)
+    emit("MQ8101", "error", `${label} is an action, so it needs a timing: before, with-change or after-commit.`, "", id);
+  if (type !== "action" && t.timing !== undefined) emit("MQ8101", "error", `${label} is not an action, so it has no timing. Remove the key.`, "/timing", id);
+  if (type !== "check" && t.severity !== undefined) emit("MQ8101", "error", `${label} is not a check, so it has no severity. Remove the key.`, "/severity", id);
+  if (type !== "check" && t.condition !== undefined)
+    emit("MQ8101", "error", `${label} is not a check, so it has no condition. Remove the key.`, "/condition", id);
+  if (type === "check" && arr(t.sets).length) emit("MQ8101", "error", `${label} is a check, so it sets nothing. Remove the key.`, "/sets", id);
+  if (t.outside === true && !teamCode(t))
+    emit("MQ8101", "error", `${label} says outside, but its body is not the team's code, so it reaches no outside system. Remove the key.`, "/outside", id);
+  // The entities it runs for, and the ones its subjects cover before the exceptions.
+  const covers = namedCovered(t, entityIds, chainIds, coverage);
+  const subjectCovers = namedCovered(t, entityIds, chainIds, coverage, true);
+  if (type === "action" && t.timing === "with-change" && arr(t.sets).length && verbs.includes("delete")) {
+    const replaced = new Set(
+      entries.flatMap((e) =>
+        e.json.kind === "process" && e.json.use === "lifecycle"
+          ? arr(e.json.triggerPoints)
+              .filter((r) => r.type === "replace" && strings(r.verbs).includes("delete"))
+              .flatMap((r) => {
+                const narrowed = strings(r.entities);
+                return entityIds.filter((x) => coverage.governs(e.json, x) && (!narrowed.length || chainIds(x).some((c) => narrowed.includes(c))));
+              })
+          : e.json.kind === "trigger-point" && e.json.type === "replace" && strings(e.json.verbs).includes("delete")
+            ? namedCovered(e.json, entityIds, chainIds, coverage)
+            : [],
+      ),
+    );
+    if (covers.some((e) => !replaced.has(e)))
+      emit(
+        "MQ8101",
+        "error",
+        `${label} sets values with the change on delete, but no replace on delete covers it, and a deleted object holds none. Remove the sets.`,
+        "/sets",
+        id,
+      );
+  }
+  // MQ8102: keys that belong to one lifecycle, and narrowing that does not fit.
+  for (const k of ["states", "targets", "transitions"] as const)
+    if (t[k] !== undefined)
+      emit("MQ8102", "error", `${label} names ${k}, which belong to one lifecycle; a named trigger point has none. Remove the ${k}.`, `/${k}`, id);
+  const attributes = strings(t.attributes);
+  const ends = strings(t.ends);
+  if (attributes.length && verbs.some((v) => v !== "read" && v !== "modify"))
+    emit("MQ8102", "error", `${label} names attributes, but it has a verb other than read and modify. Remove the attributes.`, "/attributes", id);
+  if (attributes.length && ends.length)
+    emit(
+      "MQ8102",
+      "error",
+      `${label} names attributes beside ends: with ends it speaks of links, which hold none of the subject's attributes. Remove one.`,
+      "/attributes",
+      id,
+    );
+  if (ends.length && verbs.some((v) => !LINK_VERBS.has(v)))
+    emit("MQ8102", "error", `${label} names ends, but it has a verb that cannot act on a link. Remove the ends.`, "/ends", id);
+  strings(t.entities).forEach((e, j) => {
+    if (!subjectCovers.some((c) => chainIds(c).includes(e)))
+      emit("MQ8102", "error", `${label} names the entity '${nameOf(e)}', which none of its subjects covers. Remove it.`, `/entities/${j}`, id);
+  });
+  // Part 2: an exception no subject covers.
+  const subjectOnly = namedCovered({ ...t, entities: [] }, entityIds, chainIds, coverage, true);
+  strings(t.exceptEntities).forEach((e, j) => {
+    if (!subjectOnly.some((c) => chainIds(c).includes(e)))
+      emit("MQ8102", "error", `${label} excepts the entity '${nameOf(e)}', which none of its subjects covers. Remove it.`, `/exceptEntities/${j}`, id);
+  });
+  const held = (kind: "attribute" | "end"): Set<string> =>
+    new Set(covers.length ? commonFields(covers.map((e) => objectFields(e, src).filter((f) => f.kind === kind))).map((f) => f.id) : []);
+  if (covers.length) {
+    const have = held("attribute");
+    const haveEnds = held("end");
+    attributes.forEach((a, j) => {
+      if (!have.has(a))
+        emit("MQ8102", "error", `${label} names the attribute '${nameOf(a)}', which not every entity it covers holds. Remove it.`, `/attributes/${j}`, id);
+    });
+    ends.forEach((e, j) => {
+      if (!haveEnds.has(e))
+        emit("MQ8102", "error", `${label} names the end '${nameOf(e)}', which not every entity it covers holds. Remove it.`, `/ends/${j}`, id);
+    });
+    arr(t.sets).forEach((s, j) => {
+      const a = str(s.attribute);
+      if (a && !have.has(a))
+        emit(
+          "MQ8102",
+          "error",
+          `${label} sets the attribute '${nameOf(a)}', which not every entity it covers holds. Remove the set.`,
+          `/sets/${j}/attribute`,
+          id,
+        );
+    });
+  }
+  // MQ8103: a replace on a verb that does not allow it.
+  if (type === "replace" && !allowsReplace(verbs))
+    verbs.forEach((v, k) => {
+      if (!REPLACE_VERBS.has(v))
+        emit(
+          "MQ8103",
+          "error",
+          `${label} replaces ${v}, whose effect cannot be replaced; only delete, disconnect, copy and revise allow a replace. Make it an action.`,
+          `/verbs/${k}`,
+          id,
+        );
+    });
+  // MQ8105 and MQ8106: the moment against what the point does.
+  if (type === "action" && t.timing === "after-commit" && arr(t.sets).length)
+    emit(
+      "MQ8105",
+      "error",
+      `${label} runs after commit, but sets values: once the change is saved, setting the object is a new change. Make it a with-change action.`,
+      "/sets",
+      id,
+    );
+  if (type === "action" && t.timing === "with-change" && t.outside === true)
+    emit(
+      "MQ8106",
+      "warning",
+      `${label} reaches outside systems with the change, and a rollback cannot undo the outside call. Make it after commit.`,
+      "/timing",
+      id,
+    );
+  // MQ8107: every verb is one no input can do yet.
+  if (verbs.length && verbs.every((v) => NO_INPUT.has(v)))
+    emit("MQ8107", "warning", `${label} can never run: no input can do its verbs yet. Remove it.`, "/verbs", id);
+  // MQ8104: another named replace on a verb and an entity this one replaces; the later by path is refused.
+  if (type === "replace") {
+    const mine = new Set(covers);
+    const earlier = entries
+      .filter(
+        (e) =>
+          e.json.kind === "trigger-point" &&
+          e.id !== t.id &&
+          e.json.type === "replace" &&
+          String(e.path) < String(entries.find((x) => x.id === t.id)?.path ?? ""),
+      )
+      .find((e) => strings(e.json.verbs).some((v) => verbs.includes(v)) && namedCovered(e.json, entityIds, chainIds, coverage).some((x) => mine.has(x)));
+    if (earlier)
+      emit(
+        "MQ8104",
+        "error",
+        `The trigger point '${name}' replaces a verb on an entity that '${String(earlier.json.name)}' already replaces. Only one replace can apply to one verb on one entity. Narrow one with entities.`,
+        "",
+        id,
+      );
+  }
 }

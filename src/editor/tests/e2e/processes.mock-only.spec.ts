@@ -268,3 +268,47 @@ test("picking a stereotype as the subject updates the lifecycle's explorer row",
   await expect(side.getByTestId("explorer-row-InvoiceLifecycle")).toContainText("every Audited");
   await expect(side.getByTestId("explorer-row-InvoiceLifecycle")).not.toContainText("Invoice ·");
 });
+
+test("a named trigger point has a folder after Rights, its own editor, and is made from New trigger point", async ({ page }) => {
+  const side = await openProcesses(page);
+  const folder = side.getByTestId("explorer-folder-Trigger points");
+  await expect(folder).toBeVisible();
+  await expand(page, folder);
+  const seeded = side.getByTestId("explorer-row-CustomerNumber");
+  await expect(seeded).toContainText("Action create");
+  await seeded.dblclick();
+  const editor = page.getByTestId("element-editor");
+  await expect(editor).toHaveAttribute("data-kind", "trigger-point");
+  await expect(editor.getByTestId("trigger-point-covers")).toContainText("Customer");
+  await expect(editor.getByTestId("trigger-point-no-bypass")).toBeChecked();
+  await expect(editor.getByTestId("trigger-point-runs-for")).toContainText("Customer");
+  // The last subject cannot be taken away.
+  await editor
+    .getByTestId("trigger-point-covers")
+    .getByRole("button", { name: /Remove/ })
+    .click();
+  await expect(editor.getByTestId("trigger-point-refused")).toBeVisible();
+  await editor.getByTestId("trigger-point-no-bypass").uncheck();
+  await expect(editor.getByTestId("trigger-point-no-bypass")).not.toBeChecked();
+
+  // New trigger point…: a replace is offered only for a verb that allows it.
+  await side.getByTestId("explorer-new").click();
+  await page.getByRole("menuitem", { name: "New trigger point…" }).click();
+  const dialog = page.getByTestId("new-trigger-point-dialog");
+  await dialog.getByLabel("Name").fill("ArchiveInvoice");
+  await dialog.getByLabel("Does").selectOption("revise");
+  await dialog.getByLabel("Covers").selectOption({ label: "Invoice" });
+  await dialog.getByTestId("new-trigger-point-create").click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTestId("element-editor")).toHaveAttribute("data-kind", "trigger-point");
+  await expect(side.getByTestId("explorer-row-ArchiveInvoice")).toContainText("Check revise");
+  const type = page.getByTestId("element-editor").getByTestId("trigger-point-controls").getByLabel("Type");
+  await expect(type.locator("option", { hasText: "Replace" })).toHaveCount(1);
+  await type.selectOption("replace");
+  await expect(type).toHaveValue("replace");
+  await expect(side.getByTestId("explorer-row-ArchiveInvoice")).toContainText("Replace revise");
+
+  // Search finds it.
+  await side.getByLabel("Search the model").fill("CustomerNumber");
+  await expect(side.getByTestId("explorer-row-CustomerNumber")).toBeVisible();
+});

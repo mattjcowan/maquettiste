@@ -411,6 +411,13 @@ public static class ProcessApi
                 }
             }
 
+            // A named trigger point's check (part 2) by its qualified name; a name that a lifecycle's check also takes names two, so it stays.
+            if (snapshot is not null)
+            {
+                foreach (var point in TriggerSequences.Of(snapshot).Named.Where(p => p.Type == TriggerPointType.Check))
+                    names.Add((point.Id, NamedTriggerPoints.QualifiedName(snapshot, point)));
+            }
+
             return names;
         }
 

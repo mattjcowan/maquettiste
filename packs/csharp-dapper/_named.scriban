@@ -1,0 +1,286 @@
+{{-
+# The step methods of the named trigger points one consumer runs (trigger-points-design.md decisions 30, 33 and 34): a per-type runner,
+# for the entity it runs, or a process's definition, for its subject. Include after _csharp.scriban and _process.scriban; it prints
+# nothing until named_steps is called, which writes a private nested class, NamedTriggerSteps, implementing ITriggerPointSteps. Each
+# point's methods are its package's (TriggerPoints, TriggerConditions and TriggerRecords), written once however many types it covers.
+
+# A named point's places and when as a C# condition followed by " && ", or "" when it has none (decisions 10, 12 and 33). Its entities and
+# exceptEntities are tested on the object's own type at run time (a runner's call, or in a process what IObjectEntity gives); an excepted
+# entity is tested where it derives from a subject, since the point covers no other.
+func named_place(tp, link, subjects)
+  $c = []
+  if tp.entities.size > 0
+    $covered = {}
+    for $e in tp.covers
+      $covered[$e.id] = true
+    end
+    $all = subjects.size > 0
+    for $e in subjects
+      if !$covered[$e.id]
+        $all = false
+      end
+    end
+    $parts = []
+    for $e in tp.entities
+      $parts[$parts.size] = "call.Is(typeof(global::" + ns($e) + "." + type_name($e) + "), " + ($all ? "true" : "false") + ")"
+    end
+    $c[$c.size] = "(" + ($parts | array.join " || ") + ")"
+  end
+  for $e in tp.except_entities
+    $derived = false
+    for $s in subjects
+      if derives_from($e, $s)
+        $derived = true
+      end
+    end
+    if $derived
+      $c[$c.size] = "!call.Is(typeof(global::" + ns($e) + "." + type_name($e) + "), false)"
+    end
+  end
+  if tp.attributes.size > 0
+    $names = []
+    for $a in tp.attributes
+      $names[$names.size] = json $a.name
+    end
+    if tp.type == "check"
+      $c[$c.size] = "(call.Attributes is not { Count: > 0 } || call.Attributes.Any(a => a is " + ($names | array.join " or ") + "))"
+    else
+      $c[$c.size] = "call.Attributes is { Count: > 0 } && call.Attributes.Any(a => a is " + ($names | array.join " or ") + ")"
+    end
+  end
+  if tp.ends.size > 0
+    $names = []
+    for $x in tp.ends
+      $names[$names.size] = json $x.name
+    end
+    if link && tp.type == "check"
+      $c[$c.size] = "(call.End is null || call.End is " + ($names | array.join " or ") + ")"
+    else
+      $c[$c.size] = "call.End is " + ($names | array.join " or ")
+    end
+  else if !link
+    $c[$c.size] = "call.End is null"
+  end
+  if tp.when
+    $c[$c.size] = named_class(tp, "Conditions") + "." + member_name(tp.name, "TriggerConditions") + "(call)"
+  end
+  if $c.size == 0
+    ret ""
+  end
+  ret ($c | array.join " && ") + " && "
+end
+
+# The moment a point runs at: Before, Check, Perform, With or After.
+func named_moment(tp)
+  if tp.type == "check"
+    ret "Check"
+  else if tp.type == "replace"
+    ret "Perform"
+  else if tp.timing == "before"
+    ret "Before"
+  else if tp.timing == "with-change"
+    ret "With"
+  end
+  ret "After"
+end
+
+# Whether a consumer of the named points runs a verb: a per-type runner only object, link and own verbs (it refuses the others).
+func named_runs(v, objects_only)
+  ret !objects_only || (v.group != "move" && v.group != "signature" && v.group != "task")
+end
+
+# The verbs a list of points names at a moment that its consumer runs, in the model's verb order, each with its points in run order.
+func named_verbs(points, moment, objects_only)
+  $out = []
+  for $v in model.verbs
+    if !named_runs($v, objects_only)
+      continue
+    end
+    $at = []
+    for $tp in points
+      if named_moment($tp) == moment
+        for $x in $tp.verbs
+          if $x.key == $v.key
+            $at[$at.size] = $tp
+          end
+        end
+      end
+    end
+    if $at.size > 0
+      $out[$out.size] = { verb: $v, points: $at }
+    end
+  end
+  ret $out
+end
+
+# The verbs a list of points names that its consumer runs, in the model's verb order, as C# Verb members.
+func named_speaks(points, objects_only)
+  $out = []
+  for $v in model.verbs
+    if !named_runs($v, objects_only)
+      continue
+    end
+    $named = false
+    for $tp in points
+      for $x in $tp.verbs
+        if $x.key == $v.key
+          $named = true
+        end
+      end
+    end
+    if $named
+      $out[$out.size] = "global::" + base_ns + ".Verb." + (pascal $v.key)
+    end
+  end
+  ret $out
+end
+
+# The skip test of a point a permitted bypass may skip, followed by " && "; "" without the bypass or for a point marked noBypass (decisions
+# 20 and 35). A replace is never skipped: it is the verb's effect, not an extra.
+func named_skip(tp, bypass)
+  ret (bypass && !tp.no_bypass) ? ("!outcome.Skips(call, " + (json tp.id) + ") && ") : ""
+end
+-}}
+{{- func named_steps(points, subject, subjects, what, objects_only) -}}
+{{- verb = "global::" + base_ns + ".Verb" }}
+{{- named_bypass = uses_bulk_bypass() }}
+{{- named_run = uses_dry_run() ? "outcome.Run" : "TriggerPointOutcome.Run" }}
+{{- speaks = named_speaks(points, objects_only) }}
+
+    /// <summary>
+    /// The step methods of the named trigger points that cover {{ what }}, in run order (trigger-points-design.md decision 34).
+    /// At each moment they run before every lifecycle's. Each tests its places and its when, and calls its package's TriggerPoints,
+    /// TriggerConditions and TriggerRecords. A named trigger point belongs to no lifecycle, so Lifecycle is empty.
+    /// </summary>
+    private sealed class NamedTriggerSteps : ITriggerPointSteps
+    {
+        /// <inheritdoc/>
+        public string Lifecycle => "";
+
+        /// <inheritdoc/>
+        public Type? Subject => {{ subject }};
+
+        /// <inheritdoc/>
+        public bool Speaks({{ verb }} verb) => {{ speaks.size == 0 ? "false" : ("verb is " + (speaks | array.join " or ")) }};
+{{- for m in ["Before", "Check", "With", "After"] }}
+
+        /// <inheritdoc/>
+        public void {{ m }}({{ verb }} verb, TriggerPointCall call, TriggerPointOutcome outcome)
+        {
+            ArgumentNullException.ThrowIfNull(call);
+            ArgumentNullException.ThrowIfNull(outcome);
+            switch (verb)
+            {
+{{- for g in named_verbs(points, m, objects_only) }}
+{{- link = g.verb.group == "link" }}
+                case {{ verb }}.{{ pascal g.verb.key }}:
+                {
+{{- if m != "After" }}
+                    using var depth = TriggerPointDepth.Enter();
+{{- end }}
+{{- for tp in g.points }}
+{{- body = named_class(tp, "Points") + "." + member_name(tp.name, "TriggerPoints") }}
+{{- if m == "Before" }}
+                    if ({{ named_place(tp, link, subjects) }}{{ named_skip(tp, named_bypass) }}outcome.Once({{ json tp.id }}))
+                    {
+{{- if tp.outside }}
+                        {{ named_run }}({{ json tp.id }}, call, () => {{ body }}(call));
+{{- else }}
+                        {{ body }}(call);
+{{- end }}
+                        outcome.Record({{ json tp.id }}, () => {{ named_class(tp, "Records") }}.{{ member_name(tp.name, "TriggerRecords") }}(call));
+                    }
+{{- else if m == "Check" }}
+                    if (outcome.Passed && {{ named_place(tp, link, subjects) }}{{ named_skip(tp, named_bypass) }}outcome.Once({{ json tp.id }}))
+{{- if tp.outside }}
+                        outcome.Check({{ json tp.id }}, {{ json tp.message }}, {{ tp.severity == "warning" ? "true" : "false" }}, call, () => {{ body }}(call));
+{{- else }}
+                        outcome.Check({{ json tp.id }}, {{ json tp.message }}, {{ tp.severity == "warning" ? "true" : "false" }}, {{ body }}(call));
+{{- end }}
+{{- else if m == "With" }}
+{{- if g.verb.key == "delete" && tp.sets.size > 0 }}
+                    // After a built-in delete there is no object to set (decision 16): {{ tp.name }} runs only after a replace, or on an event, whose object stays.
+                    if ((call.Transition is not null || outcome.Replaced is not null) && {{ named_place(tp, link, subjects) }}{{ named_skip(tp, named_bypass) }}outcome.Once({{ json tp.id }}))
+{{- else }}
+                    if ({{ named_place(tp, link, subjects) }}{{ named_skip(tp, named_bypass) }}outcome.Once({{ json tp.id }}))
+{{- end }}
+{{- if tp.outside }}
+                        {{ named_run }}({{ json tp.id }}, call, () => {{ body }}(call));
+{{- else }}
+                        {{ body }}(call);
+{{- end }}
+{{- else }}
+                    if ({{ named_place(tp, link, subjects) }}{{ named_skip(tp, named_bypass) }}outcome.Once({{ json tp.id }}))
+                        outcome.Queue(Message(call, {{ json tp.id }}, {{ json tp.name }}, {{ tp.outside ? "true" : "false" }}));
+{{- end }}
+{{- end }}
+                    break;
+                }
+{{- end }}
+                default:
+                    break;
+            }
+        }
+{{- end }}
+
+        /// <inheritdoc/>
+        public bool Perform({{ verb }} verb, TriggerPointCall call, TriggerPointOutcome outcome)
+        {
+            ArgumentNullException.ThrowIfNull(call);
+            ArgumentNullException.ThrowIfNull(outcome);
+            switch (verb)
+            {
+{{- for g in named_verbs(points, "Perform", objects_only) }}
+{{- link = g.verb.group == "link" }}
+                case {{ verb }}.{{ pascal g.verb.key }}:
+                {
+                    using var depth = TriggerPointDepth.Enter();
+{{- for tp in g.points }}
+{{- body = named_class(tp, "Points") + "." + member_name(tp.name, "TriggerPoints") }}
+                    if ({{ named_place(tp, link, subjects) }}outcome.Once({{ json tp.id }}))
+                    {
+{{- if tp.outside }}
+                        {{ named_run }}({{ json tp.id }}, call, () => {{ body }}(call));
+{{- else }}
+                        {{ body }}(call);
+{{- end }}
+                        outcome.Replace({{ json tp.id }});
+                        return true;
+                    }
+{{- end }}
+
+                    return false;
+                }
+{{- end }}
+                default:
+                    return false;
+            }
+        }
+
+        // An after-commit message: what the call says, with the depth it was queued at (decision 21), and no lifecycle.
+        private static TriggerPointMessage Message(TriggerPointCall call, string id, string point, bool outside) => new()
+        {
+            TriggerPoint = id,
+            Name = point,
+            Verb = global::{{ base_ns }}.Verbs.Key(call.Verb),
+            Lifecycle = "",
+            Entity = call.Entity?.FullName,
+            Key = call.Key,
+            Instance = call.Instance,
+            Envelope = call.Envelope,
+            Held = call.Held,
+            States = call.States,
+            Transition = call.Transition,
+            Entered = call.Entered,
+            Event = call.Event,
+            Payload = call.Payload,
+            End = call.End,
+            Other = call.Other,
+            Attributes = call.Attributes,
+            Proposed = new Dictionary<string, object?>(call.Proposed, StringComparer.Ordinal),
+            Depth = TriggerPointDepth.Current,
+            CommandId = call.CommandId,
+            Outside = outside,
+        };
+    }
+{{- end -}}

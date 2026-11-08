@@ -461,6 +461,10 @@ internal sealed class ValidationContext
             case Right right when right.Name.Length > 0:
                 yield return ("right|" + right.Package + "|" + right.Name, "named rights of the same package");
                 break;
+            // A named trigger point's name is unique in its package (trigger-points-design.md section 6).
+            case TriggerPoint point when point.Name.Length > 0:
+                yield return ("trigger-point|" + point.Package + "|" + point.Name, "named trigger points of the same package");
+                break;
             // A custom element's name is unique among the elements of its type in one package (next-phase-2-design.md section 4.2).
             case Custom custom when custom.Name.Length > 0:
                 yield return ("custom|" + custom.Type + "|" + custom.Package + "|" + custom.Name, "custom elements of type " + custom.Type + " in the same package");

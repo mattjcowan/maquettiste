@@ -103,7 +103,7 @@ const create = (kind: CreateKind): MenuItem => item(`new:${kind}`, CREATE_LABELS
 const createInDatabase = (kind: DatabaseObjectKind): MenuItem => item(`new-db:${kind}`, DATABASE_CREATE_LABELS[kind]);
 
 /** Kinds of the Processes explorer (phase-3-design.md 6.1). */
-const PROCESS_KINDS: ReadonlySet<string> = new Set(["process", "actor", "right", "scenario"]);
+const PROCESS_KINDS: ReadonlySet<string> = new Set(["process", "actor", "right", "trigger-point", "scenario"]);
 
 /** A process, actor or scenario row's actions (6.1, after explorer-redesign.md 1.8). */
 function processMenu(t: MenuTarget): MenuItem[] {

@@ -25,6 +25,151 @@ internal sealed partial class ResolveRun
     // The lifecycles with trigger points, by name then id (model.trigger_lifecycles); empty in a project without trigger points.
     private List<RProcess> _triggerLifecycles = [];
 
+    /// <summary>The kind key of named trigger points, on which <c>model.trigger_points</c> keys.</summary>
+    private const string TriggerPointKind = "k:trigger-point";
+
+    // The named trigger points, by name then id (model.trigger_points); empty in a project without them.
+    private List<RTriggerPoint> _namedTriggerPoints = [];
+
+    // Whether the named trigger points were resolved before the scenarios.
+    private bool _namedTriggerPointsResolved;
+
+    /// <summary>
+    /// The named trigger points (decision 33), after the entities and the lifecycles: each with its package, subjects, exceptEntities, places,
+    /// typed <c>when</c>, condition and sets, which read what every entity it covers holds, and its verbs, which wait for <c>model.verbs</c>.
+    /// Each list keys on the point's file and on what decides what it names resolves.
+    /// </summary>
+    private void ResolveNamedTriggerPoints()
+    {
+        var points = NamedTriggerPoints.Of(Model);
+        foreach (var source in points.All)
+        {
+            Ct.ThrowIfCancellationRequested();
+            var displayName = source.DisplayName ?? source.Name;
+            var description = source.Description is { } d ? d.Text ?? (d.File is null ? null : Model.GetDocument(source.Id)?.SidecarText) : null;
+            var point = new RTriggerPoint
+            {
+                Named = true,
+                Id = source.Id,
+                Name = source.Name,
+                DisplayName = displayName,
+                Description = description,
+                Message = description is { Length: > 0 } ? description : displayName.Length > 0 ? displayName : source.Name,
+                Type = ResolutionValues.Kebab(source.Type),
+                Timing = source.Type == TriggerPointType.Action && source.Timing is { } timing ? ResolutionValues.Kebab(timing) : null,
+                Severity = source.Type == TriggerPointType.Check ? ResolutionValues.Kebab(source.Severity ?? TriggerSeverity.Error) : null,
+                Outside = source.Outside,
+                TeamCode = source.TeamCode,
+                NoBypass = source.NoBypass,
+                Package = PackageOf(source.Package),
+            };
+            IReadOnlyList<string> own = [Keys.Element(source.Id)];
+            var deps = DepsOf(point).Element(source.Id);
+            if (source.Package is { } package)
+                deps.Element(package);
+
+            var subjectKeys = new DependencySet(Keys).AddRange(own);
+            var subjects = new List<RTriggerPointSubject>(source.Subjects.Count);
+            for (var i = 0; i < source.Subjects.Count; i++)
+            {
+                var entry = source.Subjects[i];
+                var subject = new RTriggerPointSubject { Id = source.Id + "/subjects/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+                if (entry.Entity is { } entityId)
+                {
+                    subjectKeys.Element(entityId);
+                    subject.Entity = _entities.GetValueOrDefault(entityId) is { Id.Length: > 0 } entity ? entity : null;
+                }
+                else if (entry.Stereotype is { } key && _stereotypeDefinitions.GetValueOrDefault(key) is { } stereotype)
+                {
+                    subjectKeys.Element(stereotype.Id);
+                    subject.Stereotype = stereotype;
+                }
+
+                if (subject.Entity is null && subject.Stereotype is null)
+                    continue;
+                subject.Dependencies = own;
+                subjects.Add(subject);
+            }
+
+            point.Subjects = new RList<RTriggerPointSubject>(subjects, subjectKeys.ToList());
+            point.ExceptEntities = EntitiesNamed(source.ExceptEntities, own);
+            point.Entities = EntitiesNamed(source.Entities, own);
+
+            var attributeKeys = new DependencySet(Keys).AddRange(own);
+            foreach (var id in source.Attributes)
+            {
+                if (Model.TryGetEntry(id, out var holder))
+                    attributeKeys.Element(holder.OwnerId);
+            }
+
+            point.Attributes = new RList<RAttribute>(source.Attributes.Select(id => _byId.GetValueOrDefault(id)).OfType<RAttribute>().Distinct(), attributeKeys.ToList());
+            var endKeys = new DependencySet(Keys).AddRange(own);
+            foreach (var id in source.Ends)
+            {
+                if (Model.TryGetEntry(id, out var relation))
+                    endKeys.Element(relation.OwnerId);
+            }
+
+            point.Ends = new RList<REnd>(source.Ends.Select(id => _byId.GetValueOrDefault(id)).OfType<REnd>().Distinct(), endKeys.ToList());
+
+            // What its expressions read is what the entities it covers hold (decision 12): they and their bases decide it, and the carrier
+            // sets of the stereotypes it names.
+            var scopeKeys = new DependencySet(Keys);
+            foreach (var entity in points.CoveredEntities(source))
+            {
+                foreach (var level in SubjectCoverage.Chain(Model, entity))
+                    scopeKeys.Element(level);
+            }
+
+            foreach (var entry in source.Subjects)
+            {
+                if (entry.Stereotype is { } key)
+                    scopeKeys.Add(SubjectCoverage.CarrierSetKey(key));
+            }
+
+            var scope = scopeKeys.ToList();
+            RExpression? Condition(string siteId, ExprSiteKind kind, DependencySet holderDeps)
+            {
+                if (ExprResolution.Type(Model, source, siteId) is not { } typed)
+                    return null;
+                var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, kind, ExprResolution.ApiColumns(Model, siteId, Model.GetDocument(source.Id)?.Path));
+                var built = ExprResolution.Build(root, m => DeclaredAttribute(m.Id), EnumMemberOf, InStateFill(null, null, holderDeps));
+                foreach (var name in ExprResolution.Names(Model, typed.Typed))
+                    holderDeps.Element(name);
+                holderDeps.AddRange(scope);
+                return built;
+            }
+
+            if (source.When is not null)
+                point.When = Condition(ExprSites.WhenKey(source.Id), ExprSiteKind.Trigger, deps);
+            if (source.Condition is not null)
+                point.Condition = Condition(source.Id, ExprSiteKind.Trigger, deps);
+            if (source.Sets.Count > 0)
+                point.Sets = TriggerSetsOf(points.Body(source), own, scope, Condition);
+
+            var verbs = source.Verbs;
+            _verbKeysNamed.UnionWith(verbs);
+            _verbFills.Add((verbOf, vocabularyKeys) =>
+                point.Verbs = new RList<RVerb>(verbs.Distinct(StringComparer.Ordinal).Select(verbOf).OfType<RVerb>(), [.. own, .. vocabularyKeys]));
+            if (_triggerPoints.TryAdd(source.Id, point))
+            {
+                _namedTriggerPoints.Add(point);
+                Register(point);
+            }
+        }
+    }
+
+    // Entities a named trigger point lists, as written: each resolving one, keyed on the point's file and on each entity's file.
+    private RList<REntity> EntitiesNamed(IReadOnlyList<string> ids, IReadOnlyList<string> own)
+    {
+        if (ids.Count == 0)
+            return new RList<REntity>([], own);
+        var keys = new DependencySet(Keys).AddRange(own);
+        foreach (var id in ids)
+            keys.Element(id);
+        return new RList<REntity>(ids.Select(id => _entities.GetValueOrDefault(id)).OfType<REntity>().Where(e => e.Id.Length > 0).Distinct(), keys.ToList());
+    }
+
     /// <summary>
     /// A lifecycle's trigger points in file order (decisions 1 to 3 and 10), each with its places, its typed <c>when</c>, condition and sets,
     /// and its verbs, which wait for <c>model.verbs</c>; then its points per verb, as the evaluator groups them. <paramref name="condition"/>
@@ -216,11 +361,18 @@ internal sealed partial class ResolveRun
             foreach (var entity in _entities.Values)
             {
                 if (entity.Id.Length > 0)
+                {
                     entity.TriggerLifecycles = new RList<RProcess>([], naming);
+                    entity.TriggerPoints = new RList<RTriggerPoint>([], [TriggerPointKind]);
+                }
             }
 
             return;
         }
+
+        if (!_namedTriggerPointsResolved)
+            ResolveNamedTriggerPoints();
+        FinishNamedTriggerPoints(sequences);
 
         _triggerLifecycles = [.. sequences.Lifecycles.Select(l => _processes.GetValueOrDefault(l.Id)).OfType<RProcess>()];
 
@@ -275,18 +427,82 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>
+    /// Each named trigger point's <c>covers</c> and each entity's <c>trigger_points</c> (decisions 33 and 34). Which entities a point covers is
+    /// decided by its file (its subjects, exceptEntities and entities), the referrers of each subject entity, its bases and each covered or
+    /// skipped entity (a new derived entity names its base), and the carrier sets of the stereotypes it names. Which points cover an entity is
+    /// decided by the naming key, the entity and its bases, and those carrier sets; their order by each listed point's name.
+    /// </summary>
+    private void FinishNamedTriggerPoints(TriggerSequences sequences)
+    {
+        var keysNamed = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var source in sequences.Named)
+        {
+            if (!_triggerPoints.TryGetValue(source.Id, out var resolved) || !resolved.Named)
+                continue;
+            var keys = new DependencySet(Keys).Element(source.Id);
+            foreach (var subject in source.Subjects)
+            {
+                if (subject.Entity is { } id && Model.Get<Entity>(id) is { } entity)
+                {
+                    foreach (var level in SubjectCoverage.Chain(Model, entity))
+                        keys.Referrers(level);
+                }
+                else if (subject.Stereotype is { } key)
+                {
+                    keys.Add(SubjectCoverage.CarrierSetKey(key));
+                    keysNamed.Add(key);
+                }
+            }
+
+            foreach (var id in source.ExceptEntities)
+                keys.Referrers(id);
+            var covered = NamedTriggerPoints.Of(Model).CoveredEntities(source);
+            foreach (var entity in covered)
+                keys.Referrers(entity.Id);
+            resolved.Covers = new RList<REntity>(sequences.Covers(source).Select(e => _entities.GetValueOrDefault(e.Id)).OfType<REntity>()
+                .Where(e => e.Id.Length > 0), keys.ToList());
+        }
+
+        List<string> carrierKeys = [TriggerNaming.Key, .. keysNamed.Select(SubjectCoverage.CarrierSetKey)];
+        foreach (var (id, source) in _entitySources)
+        {
+            if (!_entities.TryGetValue(id, out var r) || r.Id.Length == 0)
+                continue;
+            if (!sequences.Named.Any())
+            {
+                r.TriggerPoints = new RList<RTriggerPoint>([], [TriggerPointKind]);
+                continue;
+            }
+
+            var keys = new DependencySet(Keys).AddRange(carrierKeys);
+            foreach (var level in SubjectCoverage.Chain(Model, source))
+                keys.Element(level);
+            var listed = sequences.NamedFor(source).Select(p => _triggerPoints.GetValueOrDefault(p.Id)).OfType<RTriggerPoint>().ToList();
+            foreach (var point in listed)
+                keys.Element(point.Id);
+            r.TriggerPoints = new RList<RTriggerPoint>(listed, keys.ToList());
+        }
+    }
+
+    /// <summary>
     /// The trigger points that name a verb (section 7, <c>verb.trigger_points</c>): keyed on the trigger points naming key alone in a project
-    /// without trigger points, whose hash never changes there; otherwise also on the file of every lifecycle with trigger points.
+    /// without trigger points, whose hash never changes there; otherwise also on the file of every lifecycle with trigger points. The named
+    /// trigger points that name the verb come first, as they run first (part 2, decision 34), by name then id, then the lifecycles'; the list
+    /// keys on each named point's file too, so
+    /// renaming one renders the verbs page again; a project without named points gets the same list and keys.
     /// </summary>
     private RList<RTriggerPoint> TriggerPointsOf(RVerb verb)
     {
-        if (_triggerLifecycles.Count == 0)
+        if (_triggerLifecycles.Count == 0 && _namedTriggerPoints.Count == 0)
             return new RList<RTriggerPoint>([], [TriggerNaming.Key]);
         var keys = new DependencySet(Keys).Add(TriggerNaming.Key);
         foreach (var lifecycle in _triggerLifecycles)
             keys.Element(lifecycle.Id);
-        var points = _triggerLifecycles.SelectMany(l => l.TriggerPoints)
-            .Where(p => _triggerPointVerbs.TryGetValue(p.Id, out var verbs) && verbs.Contains(verb.Key, StringComparer.Ordinal));
+        foreach (var named in _namedTriggerPoints)
+            keys.Element(named.Id);
+        var points = _namedTriggerPoints.Where(p => Model.Get<TriggerPoint>(p.Id) is { } source && source.Verbs.Contains(verb.Key, StringComparer.Ordinal))
+            .Concat(_triggerLifecycles.SelectMany(l => l.TriggerPoints)
+                .Where(p => _triggerPointVerbs.TryGetValue(p.Id, out var verbs) && verbs.Contains(verb.Key, StringComparer.Ordinal)));
         return new RList<RTriggerPoint>(points, keys.ToList());
     }
     /// <summary>
@@ -297,7 +513,8 @@ internal sealed partial class ResolveRun
     /// (of every subject entity of the process when the scenario has no subject) and each other lifecycle that governs it with points on a verb a
     /// step does, with that lifecycle's file and what its points read. So it replays when another lifecycle starts governing the subject or gains
     /// a check on <c>modify</c>. A project without trigger points adds only the naming key, whose hash never changes there, and only to such
-    /// scenarios.
+    /// scenarios; and to every scenario with steps, while the project has no named trigger point, their kind set, whose hash never changes
+    /// either until the first one.
     /// </summary>
     private IReadOnlyList<string> TriggerReplayKeys(Scenario scenario)
     {
@@ -329,6 +546,14 @@ internal sealed partial class ResolveRun
             }
         }
 
+        // Named trigger points (part 2) run on every verb of an object their subjects cover, moves included, so in a project with one every
+        // scenario with steps keys on the naming key (a point added, removed, or changing its verbs, subjects or exceptEntities), on what
+        // decides coverage, and on each point that covers what its steps touch, with what that point reads. Without named points it keys on
+        // their kind set alone, whose hash never changes there, so the first named point replays a scenario that does only moves too.
+        if (sequences.Named.Count > 0 && scenario.Steps.Count > 0)
+            NamedReplayKeys(keys, scenario, running);
+        else if (scenario.Steps.Count > 0)
+            keys.Add(TriggerPointKind);
         if (done.Count == 0)
             return keys.ToList();
         keys.Add(TriggerNaming.Key);
@@ -359,6 +584,80 @@ internal sealed partial class ResolveRun
         }
 
         return keys.ToList();
+    }
+
+    /// <summary>
+    /// A scenario's replay keys for named trigger points (part 2, decisions 33 and 34): the naming key, the keys that decide which entities a
+    /// point covers (the referrers of the subject's entity and its bases, <c>sn:subjects</c>, and the carrier sets of the stereotypes the
+    /// lifecycles and the named points name), and for each named point
+    /// that covers the subject's entity (every subject of the process when the scenario has no subject) its file and what its expressions read.
+    /// </summary>
+    private void NamedReplayKeys(DependencySet keys, Scenario scenario, Process running)
+    {
+        var sequences = TriggerSequences.Of(Model);
+        var subjectObject = scenario.Objects.FirstOrDefault(o => string.Equals(o.Id, scenario.Subject, StringComparison.Ordinal));
+        var entity = subjectObject is null ? null : Model.Get<Entity>(subjectObject.Entity);
+        IReadOnlyList<Entity> entities = subjectObject is not null ? entity is null ? [] : [entity] : RightsGrid.Subjects(Model, running);
+        keys.Add(TriggerNaming.Key).Add(ProcessKind).Add(SubjectCoverage.NamingKey);
+        foreach (var key in SubjectCoverage.Of(Model).Keys)
+            keys.Add(SubjectCoverage.CarrierSetKey(key));
+        // The stereotypes only named points name: a package default or an implied stereotype that starts carrying one brings the subject under
+        // that point, and only its carrier set says so.
+        foreach (var key in sequences.Named.SelectMany(p => p.Subjects).Select(s => s.Stereotype).OfType<string>())
+            keys.Add(SubjectCoverage.CarrierSetKey(key));
+        foreach (var subject in entities)
+        {
+            foreach (var id in SubjectCoverage.Chain(Model, subject))
+                keys.Referrers(id);
+        }
+
+        if (subjectObject is not null && entity is null)
+            return;
+        foreach (var point in sequences.NamedReaching(running, entity))
+        {
+            keys.Element(point.Id);
+            var readsObject = point.Sets.Count > 0;
+            var readsStereotype = point.Sets.Any(set => ExprSites.IsStereotypeAttribute(Model, set.Attribute));
+            IEnumerable<string> sites = [.. point.When is null ? [] : new[] { ExprSites.WhenKey(point.Id) }, .. point.Condition is null ? [] : new[] { point.Id },
+                .. point.Sets.Select(set => set.Id)];
+            foreach (var site in sites)
+            {
+                if (ExprResolution.Type(Model, point, site) is not { } typed)
+                    continue;
+                readsObject = true;
+                readsStereotype |= ExprResolution.Paths(typed.Typed).Any(id => ExprSites.IsStereotypeAttribute(Model, id));
+                foreach (var name in ExprResolution.Names(Model, typed.Typed))
+                    keys.Element(name);
+                foreach (var read in Processes.ObjectStates.ReadsOf(typed.Typed))
+                {
+                    if (Model.Get<Process>(read.Lifecycle) is not { } reads)
+                        continue;
+                    keys.Element(reads.Id);
+                    foreach (var bound in reads.Subjects.Select(x => x.BoundAttribute).OfType<string>())
+                    {
+                        if (Model.TryGetEntry(bound, out var holder))
+                            keys.Element(holder.OwnerId);
+                        if (DeclaredAttribute(bound)?.Type.Enum is { } enumType)
+                            keys.Element(enumType.Id);
+                    }
+                }
+            }
+
+            if (!readsObject)
+                continue;
+            foreach (var subject in entities)
+            {
+                foreach (var id in SubjectCoverage.Chain(Model, subject))
+                {
+                    keys.Element(id);
+                    if (readsStereotype && Model.Get<Entity>(id) is { } level)
+                    {
+                        foreach (var carrying in CarryingIds(level))
+                            keys.Element(carrying);
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -476,6 +775,45 @@ internal sealed partial class ResolveRun
             var prefix = own ? "" : (shared.Contains(lifecycle.Id) ? lifecycle.Id : lifecycle.Name) + ".";
             foreach (var point in lifecycle.TriggerPoints)
                 names.TryAdd(point.Id, prefix + point.Name);
+        }
+
+        // Named trigger points (part 2): each the step reaches, or that a word names, by its qualified name; where that equals another key the
+        // step can reach (a lifecycle's check, a guard of the running process, or another named point's), by its id. Each keys on its file and
+        // on its package's chain, which its qualified name reads. Nothing in a project without them.
+        var sequences = TriggerSequences.Of(Model);
+        if (sequences.Named.Count > 0)
+        {
+            var namedReached = new List<TriggerPoint>();
+            foreach (var entity in entities)
+            {
+                foreach (var point in sequences.NamedReaching(running, entity))
+                {
+                    if (!namedReached.Contains(point))
+                        namedReached.Add(point);
+                }
+            }
+
+            if (subjectObject is null)
+                namedReached = [.. sequences.NamedReaching(running, null)];
+            foreach (var (id, value) in scenario.Steps.SelectMany(st => st.Assume))
+            {
+                if (value.Check is not null && Model.Get<TriggerPoint>(id) is { } point && !namedReached.Contains(point))
+                    namedReached.Add(point);
+            }
+
+            var taken = new HashSet<string>(names.Values, StringComparer.Ordinal);
+            taken.UnionWith(running.Guards.Select(g => g.Name));
+            var qualified = namedReached.Select(p => (Point: p, Name: NamedTriggerPoints.QualifiedName(Model, p))).ToList();
+            foreach (var (point, name) in qualified)
+            {
+                keys.Element(point.Id);
+                var chain = new HashSet<string>(StringComparer.Ordinal);
+                for (var package = point.Package is { } pid ? Model.Get<Package>(pid) : null; package is not null && chain.Add(package.Id);
+                     package = package.Parent is { } parent ? Model.Get<Package>(parent) : null)
+                    keys.Element(package.Id);
+                var clash = taken.Contains(name) || qualified.Count(q => string.Equals(q.Name, name, StringComparison.Ordinal)) > 1;
+                names.TryAdd(point.Id, clash ? point.Id : name);
+            }
         }
 
         return new CheckKeyNames(names, keys.ToList());

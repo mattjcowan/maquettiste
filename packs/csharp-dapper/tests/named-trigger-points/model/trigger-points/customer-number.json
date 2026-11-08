@@ -1,0 +1,18 @@
+{
+  "$schema": "../../.schema/v1/trigger-point.json",
+  "kind": "trigger-point",
+  "id": "01JNT000000000000000000N01",
+  "name": "CustomerNumber",
+  "package": "01JNT000000000000000000P01",
+  "subjects": [
+    {
+      "entity": "01JNT000000000000000000E01"
+    }
+  ],
+  "type": "action",
+  "timing": "before",
+  "verbs": [
+    "create"
+  ],
+  "description": "Gives a customer its number, such as C-00042."
+}

@@ -101,6 +101,25 @@ internal sealed class RunTriggers
     /// <returns>The session.</returns>
     public ProcessExpressionSession? Session(Process lifecycle) => _runtime.Session(ProcessLibraries.Chart(_model, lifecycle));
 
+    /// <summary>The expression session of a named trigger point, keyed by the point, or <see langword="null"/> when none of its expressions compiled.</summary>
+    /// <param name="point">The named trigger point.</param>
+    /// <returns>The session.</returns>
+    public ProcessExpressionSession? Session(TriggerPoint point) => _runtime.Session(point);
+
+    /// <summary>
+    /// The object's row a named trigger point's expression reads under <c>subject</c> or <c>old</c> (decision 33): with an object, its row to
+    /// the depth the expression reads, with the values given and its states, the running lifecycle's being the live ones; with no object, the
+    /// row the run holds.
+    /// </summary>
+    /// <param name="point">The named trigger point.</param>
+    /// <param name="key">The expression's key: a <c>when</c>'s, a condition's or a set's.</param>
+    /// <param name="held">The row the run holds, with the same values.</param>
+    /// <param name="values">The object's values, by attribute id, that the row holds.</param>
+    /// <param name="running">The running lifecycle's live states.</param>
+    /// <returns>The row.</returns>
+    public JsonElement Row(TriggerPoint point, string key, JsonElement held, IReadOnlyDictionary<string, JsonElement> values, IReadOnlyList<string> running) =>
+        _object is null || Prepare(point, key) is not { } prepared ? held : RowOf(prepared, values, running);
+
     /// <summary>Another lifecycle's states that an <c>in_state</c> over it reads, as a JSON object of its id to its state ids.</summary>
     /// <param name="lifecycle">The lifecycle.</param>
     /// <returns>The states.</returns>
@@ -125,8 +144,14 @@ internal sealed class RunTriggers
     {
         if (_object is null || Prepare(lifecycle, key) is not { } prepared)
             return held;
+        return RowOf(prepared, values, running);
+    }
+
+    // The object's row to the depth an expression reads, with the values given and its states, the running lifecycle's being the live ones.
+    private JsonElement RowOf(Prepared prepared, IReadOnlyDictionary<string, JsonElement> values, IReadOnlyList<string> running)
+    {
         var cast = Participants.Current(_cast, values);
-        var obj = cast.Objects.First(o => string.Equals(o.Id, _object.Id, StringComparison.Ordinal));
+        var obj = cast.Objects.First(o => string.Equals(o.Id, _object!.Id, StringComparison.Ordinal));
         var runningChart = ProcessLibraries.Chart(_model, _process);
         var live = obj with { States = [.. obj.States.Where(s => !runningChart.ById.ContainsKey(s)), .. running] };
         IReadOnlyList<ScenarioObject> objects = [.. cast.Objects.Select(o => ReferenceEquals(o, obj) ? live : o)];
@@ -158,6 +183,23 @@ internal sealed class RunTriggers
         {
             var stereotype = ExprResolution.Paths(typed.Typed).Where(a => ExprSites.IsStereotypeAttribute(_model, a)).ToHashSet(StringComparer.Ordinal);
             prepared = new Prepared(ExprSites.SubjectPathDepth(lifecycle, typed.Typed) ?? 0, stereotype, ObjectStates.ReadsOf(typed.Typed));
+        }
+
+        _prepared[id] = prepared;
+        return prepared;
+    }
+
+    // What a named trigger point's expression reads on the object, typed once per run in the point's own scope.
+    private Prepared? Prepare(TriggerPoint point, string key)
+    {
+        var id = "named|" + point.Id + "|" + key;
+        if (_prepared.TryGetValue(id, out var known))
+            return known;
+        Prepared? prepared = null;
+        if (ExprResolution.Type(_model, point, key) is { } typed)
+        {
+            var stereotype = ExprResolution.Paths(typed.Typed).Where(a => ExprSites.IsStereotypeAttribute(_model, a)).ToHashSet(StringComparer.Ordinal);
+            prepared = new Prepared(ExprSites.SubjectPathDepth(typed.Typed) ?? 0, stereotype, ObjectStates.ReadsOf(typed.Typed));
         }
 
         _prepared[id] = prepared;

@@ -110,7 +110,7 @@ export function verbUsage(rows: readonly ElementSummary[]): Map<string, VerbUsag
   const out = new Map<string, VerbUsage>();
   const entry = (key: string) => {
     let e = out.get(key);
-    if (!e) out.set(key, (e = { processes: 0, operations: 0, rights: 0 }));
+    if (!e) out.set(key, (e = { processes: 0, operations: 0, rights: 0, triggerPoints: 0 }));
     return e;
   };
   for (const r of rows) {
@@ -118,6 +118,8 @@ export function verbUsage(rows: readonly ElementSummary[]): Map<string, VerbUsag
     else if (r.kind === "operation" && r.verb) entry(r.verb).operations++;
     // A named right's verbs (a lifecycle's own rights are in its row's verbs, counted with the process).
     else if (r.kind === "right") for (const key of r.verbs ?? []) entry(key).rights = (entry(key).rights ?? 0) + 1;
+    // A named trigger point's verbs (a lifecycle's own points are in its row's verbs, counted with the process).
+    else if (r.kind === "trigger-point") for (const key of r.verbs ?? []) entry(key).triggerPoints = (entry(key).triggerPoints ?? 0) + 1;
   }
   return out;
 }
@@ -127,13 +129,20 @@ export interface VerbUsage {
   processes: number;
   operations: number;
   rights?: number;
+  /** Named trigger points; listed first wherever trigger points naming a verb are listed. */
+  triggerPoints?: number;
 }
 
-export const isUsed = (u: VerbUsage | undefined): boolean => !!u && (u.processes > 0 || u.operations > 0 || (u.rights ?? 0) > 0);
+export const isUsed = (u: VerbUsage | undefined): boolean => !!u && (u.processes > 0 || u.operations > 0 || (u.rights ?? 0) > 0 || (u.triggerPoints ?? 0) > 0);
 
-/** The processes and operations that name a verb key, from the index rows, in index order. */
+/** The elements that name a verb key, from the index rows: named trigger points first (in index order), then the rest in index order. */
 export function verbUsers(rows: readonly ElementSummary[], key: string): ElementSummary[] {
-  return rows.filter((r) => ((r.kind === "process" || r.kind === "right") && (r.verbs ?? []).includes(key)) || (r.kind === "operation" && r.verb === key));
+  const users = rows.filter(
+    (r) =>
+      ((r.kind === "process" || r.kind === "right" || r.kind === "trigger-point") && (r.verbs ?? []).includes(key)) ||
+      (r.kind === "operation" && r.verb === key),
+  );
+  return [...users.filter((r) => r.kind === "trigger-point"), ...users.filter((r) => r.kind !== "trigger-point")];
 }
 
 /**
@@ -150,6 +159,7 @@ export function verbOperationFiles(rows: readonly ElementSummary[], key: string)
 export function usageText(u: VerbUsage | undefined): string {
   if (!isUsed(u) || !u) return "unused";
   const parts = [];
+  if (u.triggerPoints) parts.push(`${u.triggerPoints} named trigger ${u.triggerPoints === 1 ? "point" : "points"}`);
   if (u.processes) parts.push(`${u.processes} ${u.processes === 1 ? "process" : "processes"}`);
   if (u.operations) parts.push(`${u.operations} ${u.operations === 1 ? "operation" : "operations"}`);
   if (u.rights) parts.push(`${u.rights} named ${u.rights === 1 ? "right" : "rights"}`);

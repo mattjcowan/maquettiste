@@ -19,7 +19,17 @@ import {
 
 const byPath = (a: ModelEntry, b: ModelEntry) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
 
-const LIFECYCLE_READS: ReadonlySet<string> = new Set(["enum", "entity", "reference-type", "seed", "scalar-type", "process", "relation", "right"]);
+const LIFECYCLE_READS: ReadonlySet<string> = new Set([
+  "enum",
+  "entity",
+  "reference-type",
+  "seed",
+  "scalar-type",
+  "process",
+  "relation",
+  "right",
+  "trigger-point",
+]);
 
 export class ModelIndex {
   /** The entries this index describes, by id (the same objects the model holds). */
@@ -101,6 +111,9 @@ export class ModelIndex {
     // The lifecycle rules read a lifecycle's subject entity, its bound attribute's type (an enum, a reference type with its seeds,
     // a scalar type) and the other lifecycles, none of which reference the process: re-check processes.
     if (all.some((e) => LIFECYCLE_READS.has(String(e.json.kind)))) for (const [id, entry] of this.snapshot) if (entry.json.kind === "process") affected.add(id);
+    // A named trigger point reads the entities it covers (their bases, stereotypes and fields), the lifecycles' replaces and the other named points.
+    if (all.some((e) => ["entity", "package", "stereotype", "process", "trigger-point", "relation"].includes(String(e.json.kind))))
+      for (const [id, entry] of this.snapshot) if (entry.json.kind === "trigger-point") affected.add(id);
     // MQ9201 on an entity reads its lifecycle process and the entity's bases, which the index holds no reference for.
     if (all.some((e) => e.json.kind === "process" || e.json.kind === "entity" || e.json.kind === "package"))
       for (const [id, entry] of this.snapshot) if (entry.json.kind === "entity" && typeof entry.json.lifecycle === "string") affected.add(id);

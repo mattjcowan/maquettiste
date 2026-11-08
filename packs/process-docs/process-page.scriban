@@ -199,6 +199,15 @@ One table per state: each actor the rights, events, tasks and gates name, then e
 {{- end }}
 {{- end }}
 {{- end }}
+{{- if model.trigger_points.size > 0 && p.use == "lifecycle" }}{{ named = [] }}{{ governed = [] }}
+{{- for s in p.subjects }}{{ governed[governed.size] = s.entity }}{{ end }}
+{{- for s in p.stereotype_subjects }}{{ for e in s.entities }}{{ governed[governed.size] = e }}{{ end }}{{ end }}
+{{- for e in governed }}{{ for tp in e.trigger_points }}{{ if !(named | array.contains tp) }}{{ named[named.size] = tp }}{{ end }}{{ end }}{{ end }}
+{{- if named.size > 0 }}
+
+Trigger points that run for the types it governs, before its own at each moment: {{ for tp in named }}{{ for.first ? "" : ", " }}[{{ md_code tp.name }}](../trigger-points.md){{ end }}.
+{{- end }}
+{{- end }}
 {{- if p.trigger_points.size > 0 }}
 
 ## Trigger points
@@ -209,7 +218,7 @@ takes the place of a verb's built-in effect. At each moment they run in the orde
 | Trigger point | Type | Does | Where | When | What it does | Severity | Outside | Why |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 {{- for tp in p.trigger_points }}
-| {{ md_code tp.name }} | {{ tp.type == "action" ? tp_type(tp) : tp.type }} | {{ for v in tp.verbs }}{{ for.first ? "" : ", " }}{{ md_code v.key }}{{ end }} | {{ tp_where(tp, numbers) }} | {{ tp.when ? (md_code tp.when.text) : "always" }} | {{ tp_what(tp) }} | {{ tp.severity ?? "" }} | {{ tp.outside ? "yes" : "" }} | {{ md_inline(tp.description) }} |
+| {{ md_code tp.name }} | {{ tp.type == "action" ? tp_type(tp) : tp.type }} | {{ for v in tp.verbs }}{{ for.first ? "" : ", " }}{{ md_code v.key }}{{ end }} | {{ tp_where(tp, numbers) }} | {{ tp.when ? (md_code tp.when.text) : "always" }} | {{ tp_what(tp) }} | {{ tp.severity ?? "" }} | {{ tp.outside ? "yes" : "" }} | {{ tp.no_bypass ? "Never skipped by a bulk load. " : "" }}{{ md_inline(tp.description) }} |
 {{- end }}
 {{- for tv in p.trigger_verbs }}{{ g = tv.verb.group }}
 

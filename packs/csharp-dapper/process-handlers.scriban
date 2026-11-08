@@ -20,6 +20,8 @@ relatives = relative_actors(p)
 rights = uses_rights()
 triggers = uses_triggers()
 hooks = lifecycle_hooks(p)
+# Whether the handlers give the object's own entity (IObjectEntity, trigger-points-design.md decision 33).
+entity_of = entity_hook(p)
 conditions = rights ? inline_conditions(p) : []
 -}}
 {{ header() }}
@@ -34,7 +36,7 @@ using {{ runtime_ns() }};
 namespace {{ ns(p) }};
 
 /// <summary>The guards and actions of process {{ p.name }}.</summary>
-public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>{{ if relatives.size > 0 }}, IActorResolver<{{ ctx }}>{{ end }}{{ if hooks.size > 0 }}, ILifecycleStates<{{ ctx }}>{{ end }}
+public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>{{ if relatives.size > 0 }}, IActorResolver<{{ ctx }}>{{ end }}{{ if hooks.size > 0 }}, ILifecycleStates<{{ ctx }}>{{ end }}{{ if entity_of }}, IObjectEntity<{{ ctx }}>{{ end }}
 {
     /// <inheritdoc/>
     public bool Guard(string guard, {{ call }} call) => guard switch
@@ -134,6 +136,13 @@ public sealed partial class {{ name }}Handlers : IStatechartBehaviour<{{ ctx }}>
     /// <summary>The object's active state paths in lifecycle {{ l.name }}, which could say no to{{ if triggers }}, or whose trigger points run on,{{ end }} a verb an event of {{ p.name }} names; none means its initial state, and null that {{ l.name }} doesn't govern the object, so it isn't asked (implemented in {{ name }}Handlers.cs).</summary>
     private partial IReadOnlyList<string>? StatesIn{{ pascal l.name }}({{ call }} call);
 {{- end }}
+{{- end }}
+{{- if entity_of }}
+
+    /// <summary>The entity of the instance's object, the subject's or one derived from it, which named trigger points test their entities and exceptEntities on (implemented in {{ name }}Handlers.cs).</summary>
+    /// <param name="call">The current call.</param>
+    /// <returns>The entity's type.</returns>
+    public partial Type EntityOf({{ call }} call);
 {{- end }}
 }
 {{- if conditions.size > 0 }}

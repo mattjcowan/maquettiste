@@ -78,14 +78,14 @@ public sealed record CommandResult(bool Accepted, string? Refusal, IReadOnlyList
 {{- if model.rights_lifecycles.size > 0 }}
 
     /// <summary>The id of the element that refused the command (the event or invoke, the right, the lifecycle whose default denies, the
-    /// guard or the gate{{ if model.trigger_lifecycles.size > 0 }}, or the check{{ end }}), or null.</summary>
+    /// guard or the gate{{ if (model.trigger_lifecycles.size > 0 || model.trigger_points.size > 0) }}, or the check{{ end }}), or null.</summary>
     public string? RefusedBy { get; init; }
-{{- else if model.trigger_lifecycles.size > 0 }}
+{{- else if (model.trigger_lifecycles.size > 0 || model.trigger_points.size > 0) }}
 
     /// <summary>The id of the element that refused the command (the event or invoke, the guard, the gate or the check), or null.</summary>
     public string? RefusedBy { get; init; }
 {{- end }}
-{{- if model.trigger_lifecycles.size > 0 }}
+{{- if (model.trigger_lifecycles.size > 0 || model.trigger_points.size > 0) }}
 
     /// <summary>The checks that warned, each once, in the order they first warned (trigger-points-design.md decision 6).</summary>
     public IReadOnlyList<global::{{ base_ns }}.Processes.TriggerPointWarning> CheckWarnings { get; init; } = [];

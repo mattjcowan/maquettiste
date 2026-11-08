@@ -1,0 +1,19 @@
+{
+  "$schema": "../../.schema/v1/trigger-point.json",
+  "kind": "trigger-point",
+  "id": "01JNT000000000000000000N05",
+  "name": "Welcome",
+  "package": "01JNT000000000000000000P01",
+  "subjects": [
+    {
+      "entity": "01JNT000000000000000000E01"
+    }
+  ],
+  "type": "action",
+  "timing": "after-commit",
+  "verbs": [
+    "create"
+  ],
+  "outside": true,
+  "description": "Sends the new customer a welcome."
+}

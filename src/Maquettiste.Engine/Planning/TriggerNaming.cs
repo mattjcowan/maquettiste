@@ -49,6 +49,22 @@ internal static class TriggerNaming
                 hash.Add("/");
             }
 
+            // Each named trigger point by id (trigger-points-design.md section 7, part 2): its verbs, its subjects and its exceptEntities.
+            // Nothing is added in a project without them, so its hash stays as it was.
+            foreach (var point in m.All<TriggerPoint>().OrderBy(p => p.Id, StringComparer.Ordinal))
+            {
+                hash.Add("named").Add(point.Id).Add("verbs");
+                foreach (var verb in point.Verbs.Order(StringComparer.Ordinal))
+                    hash.Add(verb);
+                hash.Add("subjects");
+                foreach (var subject in point.Subjects)
+                    hash.Add(subject.Entity is { } entity ? "e:" + entity : "s:" + subject.Stereotype);
+                hash.Add("except");
+                foreach (var except in point.ExceptEntities.Order(StringComparer.Ordinal))
+                    hash.Add(except);
+                hash.Add("/");
+            }
+
             return hash.Finish();
         });
     }

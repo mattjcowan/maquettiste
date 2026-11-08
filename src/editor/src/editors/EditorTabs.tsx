@@ -45,6 +45,7 @@ import { DomainEditor } from "./DomainEditor";
 import { ProcessEditor } from "./process/ProcessEditor";
 import { ActorEditor } from "./actor/ActorEditor";
 import { RightEditor } from "./right/RightEditor";
+import { TriggerPointEditor } from "./triggerPoint/TriggerPointEditor";
 import { ScenarioEditor } from "./scenario/ScenarioEditor";
 import { TableEditor } from "./database/TableEditor";
 import { ViewEditor } from "./database/ViewEditor";
@@ -370,6 +371,8 @@ export function EditorArea() {
         <ActorEditor key={tab.id} id={tab.id} />
       ) : tab.kind === "right" ? (
         <RightEditor key={tab.id} id={tab.id} />
+      ) : tab.kind === "trigger-point" ? (
+        <TriggerPointEditor key={tab.id} id={tab.id} />
       ) : tab.kind === "scenario" ? (
         <ScenarioEditor key={tab.id} id={tab.id} />
       ) : tab.kind === "table" ? (

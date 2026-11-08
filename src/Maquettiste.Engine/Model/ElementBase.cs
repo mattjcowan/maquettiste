@@ -90,6 +90,7 @@ public abstract record ElementBase
 [JsonDerivedType(typeof(Custom))]
 [JsonDerivedType(typeof(VerbVocabulary))]
 [JsonDerivedType(typeof(Right))]
+[JsonDerivedType(typeof(TriggerPoint))]
 public abstract record Element : ElementBase
 {
     /// <summary>

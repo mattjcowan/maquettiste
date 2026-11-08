@@ -140,6 +140,48 @@ public static class ProcessEndpoints
         return Answer(await store.GetTriggerSequenceAsync(id, verb, filter, ct).ConfigureAwait(false), "process", id);
     });
 
+    /// <summary>
+    /// What runs, in order, when an object, link or own verb happens to an object of an entity with no lifecycle acting (trigger-points-design.md
+    /// decisions 33, 34 and 36): the named trigger points that cover it first, then every lifecycle that governs it.
+    /// </summary>
+    /// <param name="id">The entity id.</param>
+    /// <param name="verb">The verb key: an object, link or own verb.</param>
+    /// <param name="attributes">Comma-separated attribute ids the step reads or changes.</param>
+    /// <param name="end">A relation end id of the entity.</param>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the sequence, 404 or 400.</returns>
+    [HttpGet("/api/model/entities/{id}/trigger-sequence")]
+    public static Task<IResult> EntityTriggerSequence(string id, string? verb, string? attributes, string? end, HttpContext context, ModelStore store,
+        CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        var filter = new TriggerSequenceFilter
+        {
+            End = string.IsNullOrEmpty(end) ? null : end,
+            Attributes = string.IsNullOrEmpty(attributes) ? [] : attributes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+        };
+        return Answer(await store.GetEntityTriggerSequenceAsync(id, verb, filter, ct).ConfigureAwait(false), "entity", id);
+    });
+
+    /// <summary>
+    /// The entities a named trigger point runs for (trigger-points-design.md decision 33), in name order: the same list as the record's
+    /// <c>covers</c>, package defaults included. It reads the snapshot and never resolves the model.
+    /// </summary>
+    /// <param name="id">The named trigger point's id.</param>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with <c>{ entities }</c>, or 404.</returns>
+    [HttpGet("/api/model/trigger-points/{id}/covers")]
+    public static Task<IResult> TriggerPointCovers(string id, HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        var call = await store.GetTriggerPointCoversAsync(id, ct).ConfigureAwait(false);
+        return call.Status == ProcessCallStatus.Ok ? Api.Json(new { entities = call.Value }) : Answer(call, "named trigger point", id);
+    });
+
     /// <summary>A process as an XState machine config, in canonical key order; the header counts the MQ9406 notes.</summary>
     /// <param name="id">The process id.</param>
     /// <param name="format">The format: <c>xstate</c> (the default and only one).</param>

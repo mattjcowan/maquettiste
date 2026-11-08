@@ -308,7 +308,7 @@ public sealed partial class StatechartInterpreter
 
     // A trace entry of a trigger point (decision 28).
     private static TriggerPointRun Entry(TriggerRun run, TriggerOutcome outcome, SortedDictionary<string, (string Name, JsonElement Value)>? sets = null) =>
-        new(run.Point.Id, run.Lifecycle.Id, run.Verb, run.Point.Type, run.Point.Type == TriggerPointType.Action ? run.Point.Timing : null, outcome)
+        new(run.Point.Id, run.Lifecycle?.Id, run.Verb, run.Point.Type, run.Point.Type == TriggerPointType.Action ? run.Point.Timing : null, outcome)
         {
             Outside = run.Point.Outside,
             Sets = sets is { Count: > 0 } ? sets.ToDictionary(p => p.Key, p => p.Value.Value, StringComparer.Ordinal) : null,
@@ -462,12 +462,22 @@ public sealed partial class StatechartInterpreter
 
     // What an expression of a trigger point reads (decision 13): the running lifecycle's in the root's session, over the row the run holds,
     // the event and the live states; another lifecycle's in its own session, over the row worked out for it and its states from the scenario,
-    // as a right's condition reads them (rights-design.md decision 6).
+    // as a right's condition reads them (rights-design.md decision 6). A named trigger point (decision 33) reads in its own session, keyed by the point, over the object's row as another lifecycle's point
+    // reads it, with no event, since it reads no payload.
     private Site? TriggerSite(TriggerRun run, string key, JsonElement row, IReadOnlyDictionary<string, JsonElement> values, Prepared prepared)
     {
-        var acting = string.Equals(run.Lifecycle.Id, _root.Chart.Process.Id, StringComparison.Ordinal);
         var triggers = _options.Triggers!;
-        var session = acting ? Session(_root.Chart) : triggers.Session(run.Lifecycle);
+        if (run.Lifecycle is not { } lifecycle)
+        {
+            if (run.Named is not { } named || triggers.Session(named) is not { } own || !own.Lowered.TryGetValue(key, out var reads))
+                return null;
+            var live = LiveStates();
+            var before = prepared.Old.ValueKind == JsonValueKind.Null ? prepared.Old : triggers.Row(named, key, prepared.Old, prepared.OldValues, live);
+            return new Site(own, reads, NoEvent, triggers.Row(named, key, row, values, live), null, reads.EngineOnly ? Reads(_root, reads) : Identity(), before);
+        }
+
+        var acting = string.Equals(lifecycle.Id, _root.Chart.Process.Id, StringComparison.Ordinal);
+        var session = acting ? Session(_root.Chart) : triggers.Session(lifecycle);
         if (session is null || !session.Lowered.TryGetValue(key, out var lowered))
             return null;
         if (acting)
@@ -477,8 +487,8 @@ public sealed partial class StatechartInterpreter
         }
 
         var running = LiveStates();
-        var old = prepared.Old.ValueKind == JsonValueKind.Null ? prepared.Old : triggers.Row(run.Lifecycle, key, prepared.Old, prepared.OldValues, running);
-        return new Site(session, lowered, NoEvent, triggers.Row(run.Lifecycle, key, row, values, running),
-            lowered.ReadsRunning ? triggers.Running(run.Lifecycle) : null, Identity(), old);
+        var old = prepared.Old.ValueKind == JsonValueKind.Null ? prepared.Old : triggers.Row(lifecycle, key, prepared.Old, prepared.OldValues, running);
+        return new Site(session, lowered, NoEvent, triggers.Row(lifecycle, key, row, values, running),
+            lowered.ReadsRunning ? triggers.Running(lifecycle) : null, Identity(), old);
     }
 }

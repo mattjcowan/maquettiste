@@ -104,6 +104,13 @@ public sealed class REntity : RElement
     /// </summary>
     public RList<RProcess> TriggerLifecycles { get; internal set; } = RList<RProcess>.Empty;
 
+    /// <summary>
+    /// The named trigger points that cover it (trigger-points-design.md decisions 33 and 34), in run order: the one whose subject is the
+    /// farthest base first, at one depth those an entity brings before those a stereotype brings, then by name. Their <c>entities</c> aside,
+    /// which a per-type runner tests at run time. Empty in a project without named trigger points, keyed on the trigger points naming key.
+    /// </summary>
+    public RList<RTriggerPoint> TriggerPoints { get; internal set; } = RList<RTriggerPoint>.Empty;
+
     /// <summary>The operations whose subject is the entity, in <see cref="ResolvedModel.Operations"/> order.</summary>
     public RList<ROperation> Operations { get; internal set; } = RList<ROperation>.Empty;
 }

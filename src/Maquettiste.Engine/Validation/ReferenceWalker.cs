@@ -37,7 +37,7 @@ internal sealed class ReferenceWalker
     // points; a word names a trigger point.
     private static readonly ElementRefAttribute GuardAssumption = new() { IndexKinds = ["guard"] };
 
-    private static readonly ElementRefAttribute CheckAssumption = new() { IndexKinds = ["process-trigger-point"] };
+    private static readonly ElementRefAttribute CheckAssumption = new() { IndexKinds = ["process-trigger-point", "trigger-point"] };
 
     private readonly ConcurrentDictionary<Type, PropertyMeta[]> _meta = new();
 

@@ -15,6 +15,7 @@ namespace Maquettiste.Engine.Processes;
 public sealed class ProcessRuntime : IDisposable
 {
     private readonly ConcurrentDictionary<StatechartModel, Lazy<ProcessExpressionSession?>> _sessions = new(ReferenceEqualityComparer.Instance);
+    private readonly ConcurrentDictionary<TriggerPoint, Lazy<ProcessExpressionSession?>> _namedSessions = new(ReferenceEqualityComparer.Instance);
     private readonly int _poolSize;
     private int _disposed;
 
@@ -55,6 +56,22 @@ public sealed class ProcessRuntime : IDisposable
         })).Value;
     }
 
+    /// <summary>
+    /// The expression session of a named trigger point (trigger-points-design.md decision 33), keyed by the point, or <see langword="null"/>
+    /// when none of its expressions compiled.
+    /// </summary>
+    /// <param name="point">The named trigger point.</param>
+    /// <returns>The session.</returns>
+    internal ProcessExpressionSession? Session(TriggerPoint point)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return _namedSessions.GetOrAdd(point, p => new Lazy<ProcessExpressionSession?>(() =>
+        {
+            var compiled = ProcessExpressions.Get(Model, p);
+            return compiled.Compiled.Count == 0 ? null : compiled.Open(_poolSize, CancellationToken, ProcessExpressions.LimitsIn(Model.Settings.Limits));
+        })).Value;
+    }
+
     /// <summary>The interpreter options over this runtime's model.</summary>
     /// <param name="instance">The instance identity recorded in audit records.</param>
     /// <returns>The options.</returns>
@@ -86,7 +103,7 @@ public sealed class ProcessRuntime : IDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
-        foreach (var lazy in _sessions.Values)
+        foreach (var lazy in _sessions.Values.Concat(_namedSessions.Values))
         {
             if (lazy.IsValueCreated)
                 lazy.Value?.Dispose();

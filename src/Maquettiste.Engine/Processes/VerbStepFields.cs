@@ -119,12 +119,16 @@ internal static class VerbStepFields
             StepInput.Event => process.Events.FirstOrDefault(e => string.Equals(e.Id, step.Event, StringComparison.Ordinal))?.Verb,
             _ => null,
         };
-        var reached = TriggerSequences.Of(model).Reaching(process, entity, verb);
+        var sequences = TriggerSequences.Of(model);
+        var reached = sequences.Reaching(process, entity, verb);
+        // A named trigger point's check (part 2) is reached when the point covers the object's entity, or every subject with no object.
+        var named = sequences.NamedReaching(process, entity);
         foreach (var (key, value) in step.Assume.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
             if (value.Check is not { } word)
                 continue;
-            var point = reached.SelectMany(l => l.TriggerPoints).FirstOrDefault(p => string.Equals(p.Id, key, StringComparison.Ordinal));
+            var point = reached.SelectMany(l => l.TriggerPoints).FirstOrDefault(p => string.Equals(p.Id, key, StringComparison.Ordinal))
+                ?? (named.FirstOrDefault(p => string.Equals(p.Id, key, StringComparison.Ordinal)) is { } found ? sequences.BodyOf(found) : null);
             if (point is not { Type: TriggerPointType.Check })
             {
                 return ($"assume gives {StepAssumption.Word(word)} for '{key}', which is not a check the team writes of a lifecycle this step reaches; "

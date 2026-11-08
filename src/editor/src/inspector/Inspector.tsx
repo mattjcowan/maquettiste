@@ -428,7 +428,7 @@ export function References({ id }: { id: string }) {
  * otherwise the dialog lists what each way through does and offers "Delete and clear references" and "Delete with
  * N dependents". A refused delete closes the dialog and says why in the engine's readable words.
  */
-export function DeleteButton({ id, name }: { id: string; name: string }) {
+export function DeleteButton({ id, name, text }: { id: string; name: string; text?: string }) {
   const { store, drafts } = useServices();
   const qc = useQueryClient();
   const { select } = useEditorNavigation();
@@ -466,9 +466,15 @@ export function DeleteButton({ id, name }: { id: string; name: string }) {
   };
   return (
     <>
-      <Button size="icon-sm" variant="ghost" label={`Delete ${name}`} disabled={busy} onClick={() => void start()}>
-        <Trash2 />
-      </Button>
+      {text ? (
+        <Button size="sm" variant="ghost" title={`Delete ${name}`} disabled={busy} onClick={() => void start()} data-testid="delete-text">
+          <Trash2 /> {text}
+        </Button>
+      ) : (
+        <Button size="icon-sm" variant="ghost" label={`Delete ${name}`} disabled={busy} onClick={() => void start()}>
+          <Trash2 />
+        </Button>
+      )}
       <DeletePlanDialog
         ids={plans ? [id] : null}
         title={`Delete ${name}?`}

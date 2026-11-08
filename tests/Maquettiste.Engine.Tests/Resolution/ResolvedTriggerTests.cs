@@ -330,6 +330,24 @@ public sealed class ResolvedTriggerTests
     }
 
     [Fact]
+    public void A_part_1_project_keys_the_named_point_lists_on_their_kind_set_so_a_lifecycle_points_new_verb_renders_none_of_their_readers()
+    {
+        var snapshot = Model();
+        var model = ResolutionKit.Resolve(snapshot);
+        Assert.Equal(["k:trigger-point"], model.TriggerPoints.MembershipKeys);
+        Assert.All(model.Entities.Where(e => e.Id.Length > 0), e => Assert.Equal(["k:trigger-point"], e.TriggerPoints.MembershipKeys));
+
+        // A lifecycle point gains a verb: the naming key changes, these lists' keys hold, and the scenario keeps its kind-set key.
+        var widened = Model(edit: OnProcess(Drawings, p => p with
+        {
+            TriggerPoints = [.. p.TriggerPoints.Select(x => x.Id == SketchesOnly ? x with { Verbs = [.. x.Verbs, "delete"] } : x)],
+        }));
+        Assert.NotEqual(TriggerNaming.Hash(snapshot), TriggerNaming.Hash(widened));
+        Assert.Equal(HashOf(snapshot, model.TriggerPoints.MembershipKeys), HashOf(widened, model.TriggerPoints.MembershipKeys));
+        Assert.Contains("k:trigger-point", model.Find(Step)!.Dependencies);
+    }
+
+    [Fact]
     public void A_lifecycle_lists_its_trigger_points_in_file_order_with_their_members()
     {
         var model = ResolutionKit.Resolve(Model());

@@ -375,6 +375,13 @@ export async function getTriggerSequence(
   return data;
 }
 
+/** The entities a named trigger point runs for, in name order (`GET /api/model/trigger-points/{id}/covers`): shown as given, never worked out here. */
+export async function getTriggerPointCovers(id: string, signal?: AbortSignal): Promise<string[]> {
+  const { data, response } = await api().GET("/api/model/trigger-points/{id}/covers", { params: { path: { id } }, signal });
+  if (!data) throw new ApiProblem(response.status, null, `HTTP ${response.status}`);
+  return data.entities;
+}
+
 /** Who can do what in a lifecycle (`get_rights`): every page of rows, read from the saved lifecycle. */
 export async function getRights(process: string, signal?: AbortSignal, frozen = false): Promise<RightsAnswer> {
   const rows: RightsAnswer["rows"] = [];
