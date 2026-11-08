@@ -199,6 +199,53 @@ One table per state: each actor the rights, events, tasks and gates name, then e
 {{- end }}
 {{- end }}
 {{- end }}
+{{- if p.trigger_points.size > 0 }}
+
+## Trigger points
+
+What runs when a verb happens: checks refuse or warn, actions run before the checks, with the change or after commit, and a replace
+takes the place of a verb's built-in effect. At each moment they run in the order listed.
+
+| Trigger point | Type | Does | Where | When | What it does | Severity | Outside | Why |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+{{- for tp in p.trigger_points }}
+| {{ md_code tp.name }} | {{ tp.type == "action" ? tp_type(tp) : tp.type }} | {{ for v in tp.verbs }}{{ for.first ? "" : ", " }}{{ md_code v.key }}{{ end }} | {{ tp_where(tp, numbers) }} | {{ tp.when ? (md_code tp.when.text) : "always" }} | {{ tp_what(tp) }} | {{ tp.severity ?? "" }} | {{ tp.outside ? "yes" : "" }} | {{ md_inline(tp.description) }} |
+{{- end }}
+{{- for tv in p.trigger_verbs }}{{ g = tv.verb.group }}
+
+### What happens when someone {{ someone_does(tv.verb, p) }}
+
+{{ if g == "move" }}1. Rights, the move's guard and, on a gated move, who may sign are checked.
+{{- else if g == "signature" }}1. Rights and who may sign are checked.
+{{- else if tv.verb.key == "modify" || tv.verb.key == "delete" || tv.verb.key == "connect" || tv.verb.key == "disconnect" }}1. Freezing and rights are checked.
+{{- else }}1. Rights are checked.
+{{- end }}
+{{- for tp in tv.before }}
+1. Before the checks, {{ tp_sentence(tp, numbers) }}.
+{{- end }}
+{{- for tp in tv.checks }}
+1. {{ tp_sentence(tp, numbers) }}.
+{{- end }}
+{{- if tv.replace.size > 0 }}{{ for tp in tv.replace }}
+1. In place of the built-in effect, {{ tp_sentence(tp, numbers) }}.
+{{- end }}
+{{- else if g == "move" }}
+1. The move: its exit, transition and entry actions.
+{{- else if g != "project" }}
+1. The verb's built-in effect.
+{{- end }}
+{{- for tp in tv.with_change }}
+1. With the change, {{ tp_sentence(tp, numbers) }}.
+{{- end }}
+{{- for tp in tv.after_commit }}
+1. After commit, {{ tp_sentence(tp, numbers) }}. It may run late, or more than once.
+{{- end }}
+{{- if g == "object" || g == "link" || g == "project" }}
+
+Other lifecycles that govern the object run their own trigger points at each moment too, after these.
+{{- end }}
+{{- end }}
+{{- end }}
 {{- if p.context.size > 0 }}
 
 ## Context

@@ -19,6 +19,7 @@ What events, automatic moves and operations do. A verb is stored by its key.
 {{- for t in v.transitions }}{{ if t.trigger != "event" }}{{ uses[uses.size] = "move from " + (md_code t.source.path) }}{{ end }}{{ end }}
 {{- for o in v.operations }}{{ uses[uses.size] = "operation " + (md_code o.name) }}{{ end }}
 {{- for r in v.rights }}{{ uses[uses.size] = "right " + (md_code r.name) }}{{ end }}
+{{- for tp in v.trigger_points }}{{ uses[uses.size] = "trigger point " + (md_code tp.name) }}{{ end }}
 | {{ md_cell v.display_name }}{{ v.hidden ? " (hidden)" : "" }} | {{ md_code v.key }} | {{ v.group }} | {{ md_cell v.description }} | {{ uses | array.join ", " }} |
 {{- end }}
 {{ end -}}

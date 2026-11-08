@@ -157,6 +157,14 @@ func refuser(id, p)
       ret "gate " + (md_code $g.name)
     end
   end
+  # A check (trigger-points-design.md section 10): its name and the message it shows, in whichever lifecycle holds it.
+  for $tl in model.trigger_lifecycles
+    for $tp in $tl.trigger_points
+      if $tp.id == id
+        ret (md_code $tp.name) + ": " + (md_inline $tp.message)
+      end
+    end
+  end
   ret md_code id
 end
 
@@ -426,5 +434,109 @@ func owner_fields(p)
     end
   end
   ret $out
+end
+
+# A trigger point's type, with an action's timing or a check's severity: "check", "check (warning)", "action, before the checks",
+# "replace" (trigger-points-design.md decisions 5 to 7); "warning check" for a check that only warns.
+func tp_type(tp)
+  if tp.type == "check"
+    ret tp.severity == "warning" ? "warning check" : "check"
+  end
+  if tp.type == "action"
+    ret "action, " + (tp.timing == "before" ? "before the checks" : (tp.timing == "after-commit" ? "after commit" : "with the change"))
+  end
+  ret tp.type
+end
+
+# Where a trigger point runs (decision 10), from its narrowing keys: "in `Draft`; into `Review`"; "everywhere" when it names none.
+func tp_where(tp, numbers)
+  $parts = []
+  if tp.states.size > 0
+    $parts[$parts.size] = "in " + code_paths(tp.states)
+  end
+  if tp.targets.size > 0
+    $parts[$parts.size] = "into " + code_paths(tp.targets)
+  end
+  if tp.transitions.size > 0
+    $moves = ""
+    for $t in tp.transitions
+      $moves = $moves + (for.first ? "" : ", ") + (numbers[$t.id] ?? (md_code $t.id))
+    end
+    $parts[$parts.size] = (tp.transitions.size == 1 ? "on transition " : "on transitions ") + $moves
+  end
+  if tp.entities.size > 0
+    $parts[$parts.size] = "for " + code_names(tp.entities)
+  end
+  if tp.attributes.size > 0
+    $parts[$parts.size] = "attributes " + code_names(tp.attributes)
+  end
+  if tp.ends.size > 0
+    $ends = ""
+    for $e in tp.ends
+      $ends = $ends + (for.first ? "" : ", ") + (md_code $e.name)
+    end
+    $parts[$parts.size] = "links through " + $ends
+  end
+  ret $parts.size == 0 ? "everywhere" : ($parts | array.join "; ")
+end
+
+# What a trigger point's body does (decision 3): a check's condition, an action's or a replace's sets, or "the team's code".
+func tp_what(tp)
+  if tp.team_code
+    ret "the team's code"
+  end
+  if tp.type == "check"
+    ret tp.condition ? (md_code tp.condition.text) : ""
+  end
+  $text = ""
+  for $s in tp.sets
+    $text = $text + (for.first ? "sets " : ", ") + (md_code ($s.attribute.name + " ← " + $s.value.text))
+  end
+  ret $text
+end
+
+# One trigger point as a sentence of a "What happens when" list (section 10): its name and type, what it does (a team-code body says "the
+# team's code: <why>"), a check's message, its places, its when, and whether it reaches outside systems.
+func tp_sentence(tp, numbers)
+  $why = md_inline tp.message
+  if string.ends_with $why "."
+    $why = string.slice $why 0 ($why.size - 1)
+  end
+  $text = (md_code tp.name) + " (" + tp_type(tp) + "): "
+  if tp.team_code
+    $text = $text + "the team's code: " + $why
+  else if tp.type == "check"
+    $text = $text + "passes when " + tp_what(tp) + "; otherwise it " + (tp.severity == "warning" ? "warns" : "refuses") + ": " + $why
+  else
+    $text = $text + tp_what(tp)
+  end
+  $where = tp_where(tp, numbers)
+  if $where != "everywhere"
+    $text = $text + ". Only " + $where
+  end
+  if tp.when
+    $text = $text + ". Only when " + (md_code tp.when.text)
+  end
+  if tp.outside
+    $text = $text + ". It reaches outside systems"
+  end
+  ret $text
+end
+
+# "promotes a `Document`" for a "What happens when someone ..." heading: a one-word verb key takes its third person; any other is "does
+# `<key>` to"; the object is the one subject, else an object of the process.
+func someone_does(v, p)
+  $key = v.key
+  $object = p.subject ? ((string.contains "aeiouAEIOU" (string.slice p.subject.name 0 1)) ? "an " : "a ") + (md_code p.subject.name) : "an object of " + (md_cell p.display_name)
+  if string.contains $key "-"
+    ret "does " + (md_code $key) + " to " + $object
+  end
+  if (string.ends_with $key "y") && !(string.contains "aeiou" (string.slice $key ($key.size - 2) 1))
+    ret (string.slice $key 0 ($key.size - 1)) + "ies " + $object
+  end
+  if (string.ends_with $key "s") || (string.ends_with $key "sh") || (string.ends_with $key "ch") || (string.ends_with $key "x")
+    ret $key + "es " + $object
+  end
+  ret $key + "s " + $object
 end
 -}}

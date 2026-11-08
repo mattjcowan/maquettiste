@@ -506,6 +506,8 @@ public sealed record SeedRowRecord(string Id, int Order, IReadOnlyDictionary<str
 /// left out of the JSON, when it writes none.</param>
 /// <param name="Rights">The entries of a lifecycle's rights in file order (decisions 1 and 7); <see langword="null"/>, and left out of the JSON,
 /// when it has none.</param>
+/// <param name="TriggerPoints">A lifecycle's trigger points in file order, their run order at each moment (trigger-points-design.md decisions 1
+/// and 19); <see langword="null"/>, and left out of the JSON, when it has none.</param>
 public sealed record ProcessRecord(string Id, string Kind, string Name, string? Package, string Use, string? Subject, string? BoundAttribute,
     string? BoundEnum, string? Initial, IReadOnlyList<AttributeRecord> Context, IReadOnlyList<StateRecord> States, IReadOnlyList<TransitionRecord> Transitions,
     IReadOnlyList<EventRecord> Events, IReadOnlyList<GuardRecord> Guards, IReadOnlyList<ActionRecord> Actions, IReadOnlyList<GateRecord> Gates,
@@ -516,7 +518,50 @@ public sealed record ProcessRecord(string Id, string Kind, string Name, string? 
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? CodesMap = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<StereotypeSubjectRecord>? StereotypeSubjects = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RightsDefault = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ProcessRightRecord>? Rights = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ProcessRightRecord>? Rights = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<TriggerPointRecord>? TriggerPoints = null);
+
+/// <summary>
+/// One trigger point of a lifecycle (trigger-points-design.md decisions 1 to 12): what runs when one of its verbs happens, in the places its keys
+/// name. A check has a condition, an action or a replace has sets; with neither, <paramref name="TeamCode"/> is true.
+/// </summary>
+/// <param name="Id">The id.</param>
+/// <param name="Name">The name.</param>
+/// <param name="Message">What a refusal or a warning shows: the description, else the display name, else the name.</param>
+/// <param name="Type"><c>check</c>, <c>action</c> or <c>replace</c>.</param>
+/// <param name="Verbs">The verb keys it runs on, in file order.</param>
+/// <param name="Covers">The ids of the entities it runs for, in name order (decision 12).</param>
+/// <param name="DisplayName">The display name; left out when it has none.</param>
+/// <param name="Description">Why; left out when it has none.</param>
+/// <param name="Timing">An action's moment; left out for a check or a replace.</param>
+/// <param name="Severity">A check's severity, <c>error</c> when the file gives none; left out for an action or a replace.</param>
+/// <param name="States">The ids of the states the object must be in; left out when it names none.</param>
+/// <param name="Targets">The ids of the states a move must enter; left out when it names none.</param>
+/// <param name="Transitions">The ids of the transitions a move must be, or for <c>sign</c> whose gates are signed; left out when it names none.</param>
+/// <param name="Entities">The ids of the entities it is narrowed to, as written; left out when it names none.</param>
+/// <param name="Attributes">The ids of the attributes a <c>read</c> or <c>modify</c> step must read or change; left out when it names none.</param>
+/// <param name="Ends">The ids of the subject's relation ends whose links it speaks of; left out when it names none.</param>
+/// <param name="When">It runs only when this is true; left out when it has none or it does not type.</param>
+/// <param name="Condition">A check's condition; left out when it has none or it does not type.</param>
+/// <param name="Sets">What an action or a replace sets, in file order; left out when it sets none.</param>
+/// <param name="Outside">Whether the team's code reaches outside systems (decision 22): <see langword="true"/>, or left out.</param>
+/// <param name="TeamCode">Whether the body is the team's code: <see langword="true"/>, or left out.</param>
+public sealed record TriggerPointRecord(string Id, string Name, string Message, string Type, IReadOnlyList<string> Verbs, IReadOnlyList<string> Covers,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DisplayName = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Description = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Timing = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Severity = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? States = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Targets = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Transitions = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Entities = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Attributes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Ends = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? When = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? Condition = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SetRecord>? Sets = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Outside = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? TeamCode = null);
 
 /// <summary>
 /// One entry of a lifecycle's rights (rights-design.md decisions 1, 3 and 7): an inline right, which carries what it says and shares its id
@@ -933,10 +978,16 @@ public sealed record StepRecord(string Id, int Index, string Input, string? Even
 /// the file gives none.</param>
 /// <param name="Refusal">The refusal the step expects (rights-design.md decision 26); left out when the file gives none.</param>
 /// <param name="RefusedBy">The id of the element the step expects to refuse it; left out when the file gives none.</param>
+/// <param name="CheckWarnings">The ids of the checks the step expects to warn (trigger-points-design.md decision 28); left out when the file gives
+/// none.</param>
+/// <param name="TriggerPoints">The ids of the trigger points the step expects to run, in run order (decision 28); left out when the file gives
+/// none.</param>
 public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> States, IReadOnlyList<string> StatePaths, IReadOnlyDictionary<string, object?> Context,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, object?>? Values = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Refusal = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RefusedBy = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RefusedBy = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? CheckWarnings = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? TriggerPoints = null);
 
 /// <summary>A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors, with the events it fires and
 /// what it requires by id.</summary>
@@ -1589,7 +1640,18 @@ public static class ResolvedRecords
             p.StereotypeSubjects.Count == 0 ? null : [.. p.StereotypeSubjects.Where(e => e.Stereotype is not null)
                 .Select(e => new StereotypeSubjectRecord(e.Id, e.Stereotype!.Id, e.BoundAttribute?.Id, Ids(e.Entities), e.OwnerAttribute?.Id))],
             model.Source.Get<Model.Process>(p.Id) is { Use: Model.ProcessUse.Lifecycle, RightsDefault: { } written } ? (written == Model.RightAccess.Deny ? "deny" : "allow") : null,
-            p.Rights.Count == 0 ? null : [.. p.Rights.Select(ProcessRight)]);
+            p.Rights.Count == 0 ? null : [.. p.Rights.Select(ProcessRight)],
+            p.TriggerPoints.Count == 0 ? null : [.. p.TriggerPoints.Select(TriggerPoint)]);
+
+        private static TriggerPointRecord TriggerPoint(RTriggerPoint t)
+        {
+            static IReadOnlyList<string>? Listed<T>(RList<T> list) where T : IResolvedObject => list.Count == 0 ? null : Ids(list);
+            return new TriggerPointRecord(t.Id, t.Name, t.Message, t.Type, [.. t.Verbs.Select(v => v.Key)], Ids(t.Covers),
+                t.DisplayName != t.Name ? t.DisplayName : null, t.Description, t.Timing, t.Severity, Listed(t.States), Listed(t.Targets), Listed(t.Transitions),
+                Listed(t.Entities), Listed(t.Attributes), Listed(t.Ends), Expression(t.When), Expression(t.Condition),
+                t.Sets.Count == 0 ? null : [.. t.Sets.Select(x => new SetRecord(x.Id, x.Attribute.Id, Expression(x.Value)!))],
+                t.Outside ? true : null, t.TeamCode ? true : null);
+        }
 
         private ProcessRightRecord ProcessRight(RRightUse u)
         {
@@ -1621,7 +1683,8 @@ public static class ResolvedRecords
             [.. s.Steps.Select(t => new StepRecord(t.Id, t.Index, t.Input, t.Event?.Id, t.Invoke?.Id, t.After, t.AfterMs, t.AfterTicks, t.Actor?.Id, t.Signer, t.Meaning?.Id,
                 t.Reason, Plain(t.Payload), Plain(t.Assume),
                 t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context), x.Values.Count == 0 ? null : Plain(x.Values),
-                    x.Refusal, x.RefusedBy) : null, t.Description,
+                    x.Refusal, x.RefusedBy, x.CheckWarnings.Count == 0 ? null : Ids(x.CheckWarnings),
+                    x.TriggerPoints.Count == 0 ? null : Ids(x.TriggerPoints)) : null, t.Description,
                 t.Participant?.Id, t.Participant is null ? null : t.ActsAs?.Id, t.Verb?.Key, t.Values.Count == 0 ? null : Plain(t.Values), t.End?.Id, t.Object?.Id,
                 t.Attributes.Count == 0 ? null : Ids(t.Attributes)))],
             s.Outcome, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation,

@@ -1152,6 +1152,7 @@ internal sealed partial class ResolveRun
             var participants = ResolveParticipants(s, scenario, keys);
             var traced = TraceInputs(scenario);
             var rightsKeys = RightsReplayKeys(scenario);
+            var triggerKeys = TriggerReplayKeys(scenario);
             // A check the team writes, assumed by a word (trigger-points-design.md decision 26): its key, by trigger point id. Only a scenario
             // with such a word pays for it.
             var checkKeys = scenario.Steps.Any(st => st.Assume.Values.Any(v => v.Check is not null)) ? CheckKeys(scenario) : null;
@@ -1270,6 +1271,7 @@ internal sealed partial class ResolveRun
                 foreach (var id in traced)
                     stepDeps.Element(id);
                 stepDeps.AddRange(rightsKeys);
+                stepDeps.AddRange(triggerKeys);
                 // Another lifecycle's check is keyed by that lifecycle's name, or its id when two lifecycles the scenario reaches share one.
                 if (checkKeys is not null && step.Assume.Any(a => a.Value.Check is not null && _triggerPoints.TryGetValue(a.Key, out var check)
                         && !string.Equals(check.Process?.Id, scenario.Process, StringComparison.Ordinal)))

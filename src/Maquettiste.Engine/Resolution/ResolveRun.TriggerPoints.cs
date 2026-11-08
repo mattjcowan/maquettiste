@@ -289,6 +289,126 @@ internal sealed partial class ResolveRun
             .Where(p => _triggerPointVerbs.TryGetValue(p.Id, out var verbs) && verbs.Contains(verb.Key, StringComparer.Ordinal));
         return new RList<RTriggerPoint>(points, keys.ToList());
     }
+    /// <summary>
+    /// The keys a scenario's replay adds for trigger points (section 8, "Replay keys"), as <see cref="RightsReplayKeys"/> does for rights: what the
+    /// running lifecycle's points read (<see cref="TriggerConditionKeys"/>); and when a step does an object, link or own verb (a verb step, or an
+    /// event that names one), the trigger points naming key, and in a project that uses trigger points the governing keys of the subject's entity
+    /// (of every subject entity of the process when the scenario has no subject) and each other lifecycle that governs it with points on a verb a
+    /// step does, with that lifecycle's file and what its points read. So it replays when another lifecycle starts governing the subject or gains
+    /// a check on <c>modify</c>. A project without trigger points adds only the naming key, whose hash never changes there, and only to such
+    /// scenarios.
+    /// </summary>
+    private IReadOnlyList<string> TriggerReplayKeys(Scenario scenario)
+    {
+        var keys = new DependencySet(Keys);
+        if (Model.Get<Process>(scenario.Process) is not { } running)
+            return keys.ToList();
+
+        // The running lifecycle's own points run on every input a step makes, so what they read is read whatever the steps do.
+        if (running.Use == ProcessUse.Lifecycle && running.TriggerPoints.Count > 0)
+            TriggerConditionKeys(keys, running, scenario, running);
+
+        var done = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var step in scenario.Steps)
+        {
+            var verb = step.Verb ?? (step.Event is { } eventId ? running.Events.FirstOrDefault(e => string.Equals(e.Id, eventId, StringComparison.Ordinal))?.Verb : null);
+            if (TriggerSequences.SpeaksOfObject(verb))
+                done.Add(verb!);
+        }
+
+        if (done.Count == 0)
+            return keys.ToList();
+        keys.Add(TriggerNaming.Key);
+        var sequences = TriggerSequences.Of(Model);
+        if (!sequences.Uses)
+            return keys.ToList();
+
+        var subjectObject = scenario.Objects.FirstOrDefault(o => string.Equals(o.Id, scenario.Subject, StringComparison.Ordinal));
+        IReadOnlyList<Entity> entities = subjectObject is not null
+            ? Model.Get<Entity>(subjectObject.Entity) is { } subjectEntity ? [subjectEntity] : []
+            : RightsGrid.Subjects(Model, running);
+        var coverage = SubjectCoverage.Of(Model);
+        keys.Add(ProcessKind).Add(SubjectCoverage.NamingKey);
+        foreach (var key in coverage.Keys)
+            keys.Add(SubjectCoverage.CarrierSetKey(key));
+        foreach (var entity in entities)
+        {
+            foreach (var id in SubjectCoverage.Chain(Model, entity))
+                keys.Referrers(id);
+        }
+
+        foreach (var other in sequences.Lifecycles)
+        {
+            if (string.Equals(other.Id, running.Id, StringComparison.Ordinal) || !other.TriggerPoints.Any(point => point.Verbs.Any(done.Contains))
+                || !entities.Any(e => SubjectCoverage.Governs(Model, other, e)))
+                continue;
+            keys.Element(other.Id);
+            TriggerConditionKeys(keys, other, scenario, running);
+        }
+
+        return keys.ToList();
+    }
+
+    /// <summary>
+    /// What a lifecycle's trigger points read in a replay, as <see cref="RightConditionKeys"/> keys a right's condition: the lifecycles an
+    /// <c>in_state</c> of a <c>when</c>, a condition or a set reads, each with its binding (the holder of the bound attribute and the enum of an
+    /// enum binding); and the object's row, which <c>subject.</c> and <c>old.</c> read and sets write: the entities of the scenario's objects and
+    /// of the running process's subjects with their bases, with what decides the stereotypes they carry when a point reads or sets a stereotype's
+    /// attribute. Nothing for a lifecycle whose points have no expression and no set.
+    /// </summary>
+    private void TriggerConditionKeys(DependencySet keys, Process lifecycle, Scenario scenario, Process running)
+    {
+        var readsObject = false;
+        var readsStereotype = false;
+        foreach (var point in lifecycle.TriggerPoints)
+        {
+            foreach (var set in point.Sets)
+            {
+                readsObject = true;
+                readsStereotype |= ExprSites.IsStereotypeAttribute(Model, set.Attribute);
+            }
+
+            IEnumerable<string> sites = [.. point.When is null ? [] : new[] { ExprSites.WhenKey(point.Id) }, .. point.Condition is null ? [] : new[] { point.Id },
+                .. point.Sets.Select(s => s.Id)];
+            foreach (var site in sites)
+            {
+                if (ExprResolution.Type(Model, lifecycle, site) is not { } typed)
+                    continue;
+                readsObject = true;
+                readsStereotype |= ExprResolution.Paths(typed.Typed).Any(id => ExprSites.IsStereotypeAttribute(Model, id));
+                foreach (var read in Processes.ObjectStates.ReadsOf(typed.Typed))
+                {
+                    if (Model.Get<Process>(read.Lifecycle) is not { } reads)
+                        continue;
+                    keys.Element(reads.Id);
+                    foreach (var bound in reads.Subjects.Select(s => s.BoundAttribute).OfType<string>())
+                    {
+                        if (Model.TryGetEntry(bound, out var holder))
+                            keys.Element(holder.OwnerId);
+                        if (DeclaredAttribute(bound)?.Type.Enum is { } enumType)
+                            keys.Element(enumType.Id);
+                    }
+                }
+            }
+        }
+
+        if (!readsObject)
+            return;
+        var entities = scenario.Objects.Select(o => o.Entity).Concat(running.Subjects.Select(x => x.Entity).OfType<string>()).Select(Model.Get<Entity>).OfType<Entity>();
+        foreach (var entity in entities)
+        {
+            foreach (var id in SubjectCoverage.Chain(Model, entity))
+            {
+                keys.Element(id);
+                if (readsStereotype && Model.Get<Entity>(id) is { } level)
+                {
+                    foreach (var carrying in CarryingIds(level))
+                        keys.Element(carrying);
+                }
+            }
+        }
+    }
+
     /// <summary>The keys a scenario's assumed checks take in <c>step.assume</c>, by trigger point id, and what decides them.</summary>
     /// <param name="Names">The key of each check of a lifecycle the scenario reaches, by trigger point id.</param>
     /// <param name="Keys">What decides the keys of another lifecycle's checks: which lifecycles the scenario reaches, and their files.</param>

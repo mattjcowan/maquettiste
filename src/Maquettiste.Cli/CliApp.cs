@@ -218,6 +218,9 @@ public sealed class CliApp(CliEnvironment environment)
           process sync-codes <process> <entity> <attribute>
                                 Preview giving the states codes from the attribute's type (a reference type's codes, enum
                                   members, allowedValues) and binding it; lists what is unmatched; --apply, --check, --format
+          process trigger-sequence <lifecycle> --verb <key>
+                                What runs, in order, when the verb happens: the built-in steps, then each trigger point;
+                                  --state, --entity, --attribute (repeatable), --end, --transition, --format text|json
           model export          The model as data: canonical documents, or with --resolved the resolved model's records
                                   --format json|ndjson (default json: one array), --out <file>, --fields <a,b,...>,
                                   --kind, --package <id|name>, --tag, --category, --stereotype, --query, --ids <a,b,...>;

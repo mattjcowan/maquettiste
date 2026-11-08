@@ -1,8 +1,10 @@
 using System.Text.Json;
 using Maquettiste.Engine.Hashing;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Pipeline;
 using Maquettiste.Engine.Planning;
 using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.SchemaDiff;
 using Maquettiste.Engine.Tests.Rendering;
 using Maquettiste.Testing;
 
@@ -192,6 +194,87 @@ public sealed class ResolvedTriggerTests
     private static RProcess ProcessOf(ResolvedModel model, string id) => model.Processes.Single(p => p.Id == id);
 
     private static RTriggerPoint PointOf(ResolvedModel model, string id) => Assert.IsType<RTriggerPoint>(model.Find(id));
+
+    // What a unit that read these keys hashes to over a snapshot: a changed hash renders or replays it again.
+    private static string HashOf(ModelSnapshot snapshot, IEnumerable<string> keys) =>
+        new DependencyHasher(snapshot, ResolutionKit.Resolve(snapshot), new PackSet([], []), new Dictionary<string, SchemaDiffResult>())
+            .InputHash("unit", [.. keys.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)]);
+
+    private static Func<Element, Element> OnProcess(string id, Func<Process, Process> edit) => e => e is Process p && p.Id == id ? edit(p) : e;
+
+    [Fact]
+    public void Narrowing_a_point_by_entities_leaves_what_an_entity_lists_and_its_keys_as_they_were()
+    {
+        // Drawings' only object-verb point is narrowed to Sketch; widening it lists the same lifecycles for Drawing, under keys whose hash holds.
+        var narrowed = Model();
+        var widened = Model(edit: OnProcess(Drawings, p => p with { TriggerPoints = [.. p.TriggerPoints.Select(x => x.Id == SketchesOnly ? x with { Entities = [] } : x)] }));
+        var before = ResolutionKit.Resolve(narrowed);
+        Assert.Equal(before.Entity("Drawing").TriggerLifecycles.Select(l => l.Id), ResolutionKit.Resolve(widened).Entity("Drawing").TriggerLifecycles.Select(l => l.Id));
+        Assert.Equal(TriggerNaming.Hash(narrowed), TriggerNaming.Hash(widened));
+        var document = before.Entity("Document").TriggerLifecycles.MembershipKeys;
+        Assert.Equal(HashOf(narrowed, document), HashOf(widened, document));
+
+        // covers reads entities, so it renders again.
+        var covers = PointOf(before, SketchesOnly).Covers.MembershipKeys;
+        Assert.NotEqual(HashOf(narrowed, covers), HashOf(widened, covers));
+    }
+
+    [Fact]
+    public void A_lifecycles_first_trigger_point_renders_again_what_reads_the_trigger_point_lists()
+    {
+        var none = Model(edit: OnProcess(Drawings, p => p with { TriggerPoints = [] }));
+        var model = ResolutionKit.Resolve(none);
+        var promote = model.Verbs.Single(v => v.Key == "promote").TriggerPoints;
+        Assert.DoesNotContain(promote, x => x.Id == DrawingPromote);
+        var first = Model(edit: OnProcess(Drawings, p => p with
+        {
+            TriggerPoints = [new ProcessTriggerPoint { Id = DrawingPromote, Name = "DrawingPromote", Type = TriggerPointType.Check, Verbs = ["promote"] }],
+        }));
+        Assert.NotEqual(HashOf(none, promote.MembershipKeys), HashOf(first, promote.MembershipKeys)); // the verbs page
+        Assert.NotEqual(HashOf(none, model.TriggerLifecycles.MembershipKeys), HashOf(first, model.TriggerLifecycles.MembershipKeys)); // shared units
+        var drawing = model.Entity("Drawing").TriggerLifecycles.MembershipKeys;
+        var modify = Model(edit: OnProcess(Drawings, p => p with
+        {
+            TriggerPoints = [new ProcessTriggerPoint { Id = SketchesOnly, Name = "SketchesOnly", Type = TriggerPointType.Check, Verbs = ["modify"] }],
+        }));
+        Assert.NotEqual(HashOf(none, drawing), HashOf(modify, drawing)); // a per-type runner
+    }
+
+    [Fact]
+    public void A_scenario_replays_when_another_lifecycle_with_a_modify_point_starts_governing_its_subject()
+    {
+        var before = Model();
+        var keys = ResolutionKit.Resolve(before).Find(Step)!.Dependencies;
+        Assert.Contains(TriggerNaming.Key, keys);
+        Assert.DoesNotContain("e:" + Drawings, keys);
+        var governing = Model(edit: OnProcess(Drawings, p => p with { SubjectList = [new ProcessSubject { Id = "01JRTB" + Drawings[6..], Entity = Document }] }));
+        Assert.NotEqual(HashOf(before, keys), HashOf(governing, keys));
+        Assert.Contains("e:" + Drawings, ResolutionKit.Resolve(governing).Find(Step)!.Dependencies);
+
+        // A project without trigger points: the verb step keys on the naming key, whose hash never changes there.
+        var plain = ResolutionKit.Resolve(Model(points: false)).Find(Step)!.Dependencies;
+        Assert.Contains(TriggerNaming.Key, plain);
+        Assert.DoesNotContain("e:" + Hr, plain);
+    }
+
+    [Fact]
+    public void Records_carry_trigger_points_and_expectations_only_where_present()
+    {
+        var model = ResolutionKit.Resolve(Model());
+        var documents = (ProcessRecord)Engine.ResolvedRecords.Entries(model, "processes", null).Single(e => e.Id == Documents).Project();
+        var archive = Assert.Single(documents.TriggerPoints!, t => t.Id == Archive);
+        Assert.Equal("replace", archive.Type);
+        Assert.Equal(["delete"], archive.Verbs);
+        var scenario = (ScenarioRecord)Engine.ResolvedRecords.Entries(model, "scenarios", null).Single(e => e.Id == Scenario).Project();
+        var step = Assert.Single(scenario.Steps);
+        Assert.Equal([LargePriceDrop], step.Expect!.CheckWarnings);
+        Assert.Contains(step.Assume.Values, v => v is "error");
+
+        var plain = ResolutionKit.Resolve(Model(points: false));
+        var records = Engine.ResolvedRecords.Entries(plain, "processes", null).Select(e => (ProcessRecord)e.Project()).ToList();
+        Assert.All(records, r => Assert.Null(r.TriggerPoints));
+        Assert.DoesNotContain("triggerPoints", JsonSerializer.Serialize(records, new JsonSerializerOptions(JsonSerializerDefaults.Web)), StringComparison.Ordinal);
+    }
 
     [Fact]
     public void A_project_without_trigger_points_resolves_empty_lists_keyed_on_the_naming_key_alone()

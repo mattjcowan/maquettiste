@@ -5588,7 +5588,6 @@
         "summary": "What runs, in order, when a verb happens in a lifecycle",
         "description": "trigger-points-design.md decision 36 and section 9. The steps of the fixed order (decision 18) for one verb in one lifecycle:\nthe built-in steps that apply to the verb, and each trigger point that can run, with its lifecycle, moment and places, in run\norder (decision 19: at each moment the acting lifecycle first, then the others by name, each in its list's order). For an object,\nlink or own verb, the other lifecycles that govern the subject add their points. The optional parameters narrow the answer to one\nplace; a point narrowed by `attributes` or `ends` is listed when the request gives none of them only if it is a check, as a run\nfails closed. A project without trigger points gets the built-in steps alone. The answer reads the lifecycle and the lifecycles\nthat govern its subjects; the model is never resolved, and nothing is written. One page: a verb's sequence is short, so there is\nno cursor. The MCP tool `get_trigger_sequence` answers the same, and the editor's What happens when view shows this answer.\n",
         "x-maquettiste-role": "viewer",
-        "x-maquettiste-handler": "planned",
         "parameters": [
           {
             "name": "verb",

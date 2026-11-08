@@ -266,7 +266,7 @@ internal static class PlanExplainer
         "exports" => ExportsOf(key) is (var pack, { } id)
             ? "The exports of " + (Label(id, nameOf) ?? "element " + id) + " from " + pack
             : "The model exports of " + key[3..],
-        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? StereotypeCoverage(key) ?? VerbNaming(key) ?? RightsNamingWords(key) ?? FreezingNamingWords(key) ?? "Input " + key,
+        _ => NamedInput(key) ?? ExtensionFile(key) ?? CalculatedDeclarations(key) ?? StereotypeCoverage(key) ?? VerbNaming(key) ?? RightsNamingWords(key) ?? TriggerNamingWords(key) ?? FreezingNamingWords(key) ?? "Input " + key,
     };
 
     /// <summary>The <c>vn:verbs</c> key's words (verbs-design.md section 6): "The verbs the model names". Its cause kind stays <c>inputs</c>.</summary>
@@ -276,6 +276,13 @@ internal static class PlanExplainer
     /// <summary>The <c>fn:freezing</c> key's words (rights-design.md decision 28): "Whether the project uses freezing". Its cause kind stays <c>inputs</c>.</summary>
     private static string? FreezingNamingWords(string key) =>
         string.Equals(key, Planning.FreezingNaming.Key, StringComparison.Ordinal) ? "Whether the project uses freezing" : null;
+
+    /// <summary>
+    /// The <c>tn:trigger-points</c> key's words (trigger-points-design.md section 7): "The trigger points the lifecycles state". Its cause kind
+    /// stays <c>inputs</c>.
+    /// </summary>
+    private static string? TriggerNamingWords(string key) =>
+        string.Equals(key, Planning.TriggerNaming.Key, StringComparison.Ordinal) ? "The trigger points the lifecycles state" : null;
 
     /// <summary>The <c>rn:rights</c> key's words (rights-design.md section 6): "The rights the lifecycles state". Its cause kind stays <c>inputs</c>.</summary>
     private static string? RightsNamingWords(string key) =>

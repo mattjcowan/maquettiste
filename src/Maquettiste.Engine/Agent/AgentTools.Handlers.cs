@@ -206,6 +206,36 @@ public sealed partial class AgentTools
         };
     }
 
+    /// <summary>
+    /// What runs, in order, when a verb happens in a lifecycle (trigger-points-design.md decision 36): <c>getTriggerSequence</c>, read from the
+    /// snapshot, in one page.
+    /// </summary>
+    private async Task<AgentToolResult> GetTriggerSequenceAsync(ToolArguments args, CancellationToken ct)
+    {
+        var key = args.String("process");
+        if (string.IsNullOrEmpty(key))
+            return BadRequest("process is required: a lifecycle's id, name or model path.");
+        var snapshot = await _store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var matches = Processes.ProcessApi.Resolve(snapshot, key);
+        if (matches.Count == 0)
+            return NotFound("process", key);
+        if (matches.Count > 1)
+            return BadRequest($"'{key}' names {matches.Count} processes; pass one id: {string.Join(", ", matches.Select(m => m.Id + " (" + m.Name + ")"))}.");
+        static string? One(string? value) => string.IsNullOrEmpty(value) ? null : value;
+        var filter = new Processes.TriggerSequenceFilter
+        {
+            State = One(args.String("state")), Entity = One(args.String("entity")), Attributes = args.Strings("attributes") ?? [],
+            End = One(args.String("end")), Transition = One(args.String("transition")),
+        };
+        var call = await _store.GetTriggerSequenceAsync(matches[0].Id, args.String("verb"), filter, ct).ConfigureAwait(false);
+        return call.Status switch
+        {
+            Processes.ProcessCallStatus.Ok => Ok(call.Value),
+            Processes.ProcessCallStatus.NotFound => NotFound("process", key),
+            _ => BadRequest(call.Detail ?? "The request is not valid."),
+        };
+    }
+
     private async Task<AgentToolResult> GetCalculatedAsync(ToolArguments args, CancellationToken ct)
     {
         var ids = args.Strings("ids");

@@ -3986,7 +3986,6 @@ paths:
         that govern its subjects; the model is never resolved, and nothing is written. One page: a verb's sequence is short, so there is
         no cursor. The MCP tool `get_trigger_sequence` answers the same, and the editor's What happens when view shows this answer.
       x-maquettiste-role: viewer
-      x-maquettiste-handler: planned
       parameters:
         - name: verb
           in: query
