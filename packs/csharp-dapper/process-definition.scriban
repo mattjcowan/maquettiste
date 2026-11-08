@@ -6,7 +6,8 @@ include "_process.scriban"
 include "_named.scriban"
 p = process
 name = p_name(p)
-# The named trigger points the process runs (trigger-points-design.md decisions 33 and 34), which its NamedTriggerSteps holds.
+# The named trigger points the process runs (trigger-points-design.md decisions 33 and 34), which its NamedTriggerSteps holds; in an
+# orchestration only for object, link and own verbs (A5).
 named_points = named_points_of(p)
 # State indexes: 0 is the root, then document order.
 index = {}
@@ -238,6 +239,6 @@ public static partial class {{ name }}Definition
 {{- end }}
     }
 {{- if named_points.size > 0 }}
-{{- named_steps(named_points, p.subjects.size == 1 && p.stereotype_subjects.size == 0 ? type_of_entity(p.subjects[0].entity) : "null", subject_entities(p), "the subject of " + p.name, false) }}
+{{- named_steps(named_points, p.subjects.size == 1 && p.stereotype_subjects.size == 0 ? type_of_entity(p.subjects[0].entity) : "null", subject_entities(p), "the subject of " + p.name, p.use != "lifecycle") }}
 {{- end }}
 }

@@ -616,8 +616,9 @@ dry run are each behind a parameter, `bulkLoadBypass` and `dryRun`, both off by 
   `entities` and `exceptEntities` on the call's `Entity` (give it for a derived type, such as a memo in `DocumentVerbs`). A process asks
   only the points that cover its subject: one that covers only a type derived from the subject isn't asked. When a point it asks names a
   type derived from the subject, in `entities` or `exceptEntities`, its handlers implement `IObjectEntity<TContext>`: write `EntityOf` in
-  `<Process>Handlers.cs` (it throws until written) to give the object's own type, which those tests read. Only a lifecycle runs named
-  points: an orchestration's commands run none, as in simulation.
+  `<Process>Handlers.cs` (it throws until written) to give the object's own type, which those tests read. A move, signature or task
+  verb happens in one lifecycle, so its named points run only in that lifecycle's commands. An orchestration's commands run named points
+  only for the object, link and own verbs its events and moves name, before the other lifecycles' points, as in simulation.
 - **The bypass** (`bulkLoadBypass`). A call to a runner may set `SkipOptional`. The runner honours it only when `ITriggerBypass.Allows`
   says yes, skips every check and action not marked `noBypass`, and logs each skip through `ITriggerBypass.Skipped`. A replace always runs:
   it is the verb's effect, so skipping it would turn an "archive, never remove" delete into a real one. Your `Dispatch/TriggerBypass.cs`

@@ -45,5 +45,11 @@ public static partial class Actors
     {
         /// <summary>Event release of Document.</summary>
         public static IReadOnlyList<string> DocumentRelease { get; } = [Actors.Author];
+
+        /// <summary>Event touch of Revising.</summary>
+        public static IReadOnlyList<string> RevisingTouch { get; } = [Actors.Author];
+
+        /// <summary>Event push of Revising.</summary>
+        public static IReadOnlyList<string> RevisingPush { get; } = [Actors.Author];
     }
 }

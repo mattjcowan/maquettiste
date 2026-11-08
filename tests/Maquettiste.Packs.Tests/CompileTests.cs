@@ -763,6 +763,26 @@ public sealed class CompileTests
             }
 
             """);
+        // Orchestration Revising runs the named points on modify, an object verb, and none on promote, a move verb (owner's answer A5).
+        var revising = repo.Read("out/Processes/Revising/RevisingDefinition.cs");
+        Assert.Contains("public bool Speaks(global::App.Model.Verb verb) => verb is global::App.Model.Verb.Modify;", revising, StringComparison.Ordinal);
+        Assert.DoesNotContain("01JNT000000000000000000N06", revising, StringComparison.Ordinal);
+        Assert.DoesNotContain("01JNT000000000000000000N07", revising, StringComparison.Ordinal);
+        repo.Write("out/Processes/Revising/RevisingHandlers.cs", """
+            using System;
+            using System.Collections.Generic;
+            using App.Model.Runtime;
+
+            namespace App.Model.Docs;
+
+            public sealed partial class RevisingHandlers
+            {
+                private partial IReadOnlyList<string>? StatesInDocument(StatechartCall<RevisingContext> call) => ["Draft"];
+
+                public partial Type EntityOf(StatechartCall<RevisingContext> call) => call.Instance.StartsWith("m-", StringComparison.Ordinal) ? typeof(Memo) : typeof(Document);
+            }
+
+            """);
         await BuildAndRunScenarioTestsAsync(repo, "named-trigger-points", NamedTriggerPointsScenarioHost, 2);
     }
 
@@ -814,8 +834,9 @@ public sealed class CompileTests
             {
                 var host = new ProcessHost(clock);
                 var documents = new DocumentCommandHandler(new DocumentMachine(new DocumentHandlers(), host, host, host), new DocumentStore());
+                var revising = new RevisingCommandHandler(new RevisingMachine(new RevisingHandlers(), host, host, host), new RevisingStore());
                 TriggerPointStandIn.Current = new ScenarioTriggers();
-                return Task.FromResult(new ScenarioHost(new Dispatcher(new HandlerRegistry(documents), new Pipeline(new InMemoryProcessOutbox()))));
+                return Task.FromResult(new ScenarioHost(new Dispatcher(new HandlerRegistry(documents, revising), new Pipeline(new InMemoryProcessOutbox()))));
             }
 
             public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -908,6 +929,22 @@ public sealed class CompileTests
                 Assert.True(memoReleased.Accepted, memoReleased.Refusal);
                 Assert.Equal<string>(["01JNT000000000000000000N07", "01JNT000000000000000000X01"], memoReleased.TriggerPoints);
                 Assert.Equal<string>(["lifecycle"], Docs.TriggerPoints.Stamped);
+
+                // An orchestration: its event that names modify, an object verb, runs the named check on modify, which a memo skips; its event
+                // that names promote, a move verb, runs no named point, not even the outside one, which the stand-in would answer.
+                foreach (var key in new[] { "r-1", "m-r-1" })
+                {
+                    Assert.True((await host.Dispatcher.SendAsync(new RevisingStartControl(new ProcessEnvelope(key)) { Context = new RevisingContext() }, ct)).Accepted);
+                    var touched = await host.Dispatcher.SendAsync(new RevisingTouchCommand(new ProcessEnvelope(key, Actors.Author)), ct);
+                    Assert.True(touched.Accepted, touched.Refusal);
+                    Assert.Equal<string>(key == "r-1" ? ["01JNT000000000000000000N08"] : [], touched.TriggerPoints);
+                    Assert.Equal<string>(key == "r-1" ? ["01JNT000000000000000000N08"] : [], [.. touched.CheckWarnings.Select(w => w.Id)]);
+                    Docs.TriggerPoints.Stamped.Clear();
+                    var pushed = await host.Dispatcher.SendAsync(new RevisingPushCommand(new ProcessEnvelope(key, Actors.Author)), ct);
+                    Assert.True(pushed.Accepted, pushed.Refusal);
+                    Assert.Empty(pushed.TriggerPoints);
+                    Assert.Empty(Docs.TriggerPoints.Stamped);
+                }
 
                 // Two actions narrowed by attributes on one verb, named and lifecycle, run when the title changes, named first.
                 Docs.TriggerPoints.Stamped.Clear();

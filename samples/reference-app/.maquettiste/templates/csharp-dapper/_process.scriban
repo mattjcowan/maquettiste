@@ -78,12 +78,29 @@ func subject_entities(p)
   ret $out
 end
 
+# The object, link and own verbs that an event or a transition of a process names, as a set of verb keys.
+func object_verbs_of(p)
+  $verbs = {}
+  for $x in p.events
+    if $x.verb && ($x.verb.group == "object" || $x.verb.group == "link" || $x.verb.group == "project")
+      $verbs[$x.verb.key] = true
+    end
+  end
+  for $x in p.transitions
+    if $x.verb && ($x.verb.group == "object" || $x.verb.group == "link" || $x.verb.group == "project")
+      $verbs[$x.verb.key] = true
+    end
+  end
+  ret $verbs
+end
+
 # The named trigger points a process runs (trigger-points-design.md decisions 33 and 34), in run order: with one entity subject, those
 # that cover it; otherwise those that cover every subject's entity (a stereotype subject's carriers too), in the order of the first. A
-# point that covers only an entity derived from a subject isn't asked. Only a lifecycle runs them: an orchestration runs none, as the
-# engine (owner's answer A5).
+# point that covers only an entity derived from a subject isn't asked. A move, signature or task verb happens in one lifecycle, so an
+# orchestration runs only the points on an object, link or own verb that an event or a transition of it names, as it runs other
+# lifecycles' points (trigger_others), and only for those verbs, as the engine (owner's answer A5).
 func named_points_of(p)
-  if model.trigger_points.size == 0 || p.use != "lifecycle"
+  if model.trigger_points.size == 0
     ret []
   end
   $entities = subject_entities(p)
@@ -91,7 +108,20 @@ func named_points_of(p)
   if $entities.size == 0
     ret $out
   end
+  $lifecycle = p.use == "lifecycle"
+  $verbs = $lifecycle ? {} : object_verbs_of(p)
   for $tp in $entities[0].trigger_points
+    if !$lifecycle
+      $named = false
+      for $v in $tp.verbs
+        if $verbs[$v.key]
+          $named = true
+        end
+      end
+      if !$named
+        continue
+      end
+    end
     $all = true
     for $x in $entities
       $found = false
@@ -146,17 +176,7 @@ func trigger_others(p)
   if model.trigger_lifecycles.size == 0
     ret $out
   end
-  $verbs = {}
-  for $x in p.events
-    if $x.verb && ($x.verb.group == "object" || $x.verb.group == "link" || $x.verb.group == "project")
-      $verbs[$x.verb.key] = true
-    end
-  end
-  for $x in p.transitions
-    if $x.verb && ($x.verb.group == "object" || $x.verb.group == "link" || $x.verb.group == "project")
-      $verbs[$x.verb.key] = true
-    end
-  end
+  $verbs = object_verbs_of(p)
   $governs = {}
   $entities = []
   for $sub in p.subjects

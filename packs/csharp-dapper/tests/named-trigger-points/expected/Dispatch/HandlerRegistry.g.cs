@@ -24,15 +24,22 @@ public sealed partial class HandlerRegistry
 {
     /// <summary>Creates the registry over the processes' command handlers.</summary>
     /// <param name="document">The command handler of Document.</param>
-    public HandlerRegistry(DocumentCommandHandler document)
+    /// <param name="revising">The command handler of Revising.</param>
+    public HandlerRegistry(DocumentCommandHandler document, RevisingCommandHandler revising)
     {
         ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(revising);
         All =
         [
             new HandlerRegistration<DocumentStartControl>(Commands.DocumentStartControl, c => c.Envelope, document),
             new HandlerRegistration<DocumentReleaseCommand>(Commands.DocumentReleaseCommand, c => c.Envelope, document),
             new HandlerRegistration<DocumentInvokeResultControl>(Commands.DocumentInvokeResultControl, c => c.Envelope, document),
             new HandlerRegistration<DocumentTimersDueControl>(Commands.DocumentTimersDueControl, c => c.Envelope, document),
+            new HandlerRegistration<RevisingStartControl>(Commands.RevisingStartControl, c => c.Envelope, revising),
+            new HandlerRegistration<RevisingTouchCommand>(Commands.RevisingTouchCommand, c => c.Envelope, revising),
+            new HandlerRegistration<RevisingPushCommand>(Commands.RevisingPushCommand, c => c.Envelope, revising),
+            new HandlerRegistration<RevisingInvokeResultControl>(Commands.RevisingInvokeResultControl, c => c.Envelope, revising),
+            new HandlerRegistration<RevisingTimersDueControl>(Commands.RevisingTimersDueControl, c => c.Envelope, revising),
         ];
     }
 
@@ -48,6 +55,7 @@ public sealed partial class HandlerRegistry
     {
         ArgumentNullException.ThrowIfNull(registrar);
         registrar.Add(services => new DocumentCommandHandler(Resolve<DocumentMachine>(services), Resolve<IDocumentStore>(services)));
+        registrar.Add(services => new RevisingCommandHandler(Resolve<RevisingMachine>(services), Resolve<IRevisingStore>(services)));
     }
 
     // A service provider looks services up by a type token, so this is the one place the registry names a type as a value.
@@ -69,5 +77,20 @@ public sealed partial class HandlerRegistry
 
         /// <summary>The due timers of an instance of Document.</summary>
         public static CommandDescriptor DocumentTimersDueControl { get; } = new("Document:timers-due", "Document", ":time", [], false);
+
+        /// <summary>Starts an instance of Revising.</summary>
+        public static CommandDescriptor RevisingStartControl { get; } = new("Revising:start", "Revising", ":start", [], false);
+
+        /// <summary>Event touch of Revising.</summary>
+        public static CommandDescriptor RevisingTouchCommand { get; } = new("Revising.touch", "Revising", "touch", Actors.Events.RevisingTouch, false);
+
+        /// <summary>Event push of Revising.</summary>
+        public static CommandDescriptor RevisingPushCommand { get; } = new("Revising.push", "Revising", "push", Actors.Events.RevisingPush, false);
+
+        /// <summary>An invoke result of Revising.</summary>
+        public static CommandDescriptor RevisingInvokeResultControl { get; } = new("Revising:invoke-result", "Revising", ":invoke-result", [], false);
+
+        /// <summary>The due timers of an instance of Revising.</summary>
+        public static CommandDescriptor RevisingTimersDueControl { get; } = new("Revising:timers-due", "Revising", ":time", [], false);
     }
 }
