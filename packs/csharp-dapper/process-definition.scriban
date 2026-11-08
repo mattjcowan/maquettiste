@@ -48,6 +48,33 @@ func signature_init(sig)
   if $moves.size > 0
     $parts[$parts.size] = "NotByTransitions = [" + ($moves | array.join ", ") + "]"
   end
+  # Part 2 (signoff-design.md decisions 20 to 22): only what the signature states, so a lifecycle that uses none of it keeps its bytes.
+  if sig.delegate_to.size > 0
+    $parts[$parts.size] = "DelegateTo = " + actor_list(sig.delegate_to)
+  end
+  if sig.remind_after_ticks
+    $parts[$parts.size] = "RemindAfter = TimeSpan.FromTicks(" + sig.remind_after_ticks + ")"
+  end
+  if sig.escalate_after_ticks
+    $parts[$parts.size] = "EscalateAfter = TimeSpan.FromTicks(" + sig.escalate_after_ticks + ")"
+  end
+  if sig.escalate_to.size > 0
+    $parts[$parts.size] = "EscalateTo = " + actor_list(sig.escalate_to)
+  end
+  if sig.reauthenticate
+    $parts[$parts.size] = "Reauthenticate = true"
+  end
+  ret $parts.size > 0 ? (" { " + ($parts | array.join ", ") + " }") : ""
+end
+# A stage's round and condition, as the initializer of its StageDefinition (signoff-design.md decisions 5 and 6); "" for round 1 without one.
+func stage_init(st)
+  $parts = []
+  if st.round != 1
+    $parts[$parts.size] = "Round = " + st.round
+  end
+  if st.when
+    $parts[$parts.size] = "When = " + (json st.when.text)
+  end
   ret $parts.size > 0 ? (" { " + ($parts | array.join ", ") + " }") : ""
 end
 func state_kind(s)
@@ -229,7 +256,7 @@ public static partial class {{ name }}Definition
 {{- for sig in st.signatures }}
                         new({{ json sig.id }}, {{ json sig.name }}, {{ sig.required }}, {{ actor_list(sig.signers) }}, {{ actor_list(sig.required_actors) }}, {{ sig.allow_repeat_signer ? "true" : "false" }}){{ signature_init(sig) }},
 {{- end }}
-                    ]),
+                    ]){{ stage_init(st) }},
 {{- end }}
                 ],
 {{- if g.allow_signer_across_signatures }}

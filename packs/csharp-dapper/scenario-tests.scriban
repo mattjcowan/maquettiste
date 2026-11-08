@@ -222,6 +222,23 @@ func signer(step)
   end
   ret step.participant && step.input == "event" ? ("" + step.participant.identity) : null
 end
+# Whether an event step's event is gated by an approval with a signature that asks for the person's identity again (signoff-design.md
+# decision 36).
+func reauthenticates(step)
+  if step.input != "event" || !step.event
+    ret false
+  end
+  for t in step.event.transitions
+    if t.gate
+      for sig in t.gate.all_signatures
+        if sig.reauthenticate
+          ret true
+        end
+      end
+    end
+  end
+  ret false
+end
 # The step's actor is the one it acts as (RStep.ActsAs): the step's own actor, or the one the engine worked out for its participant.
 func envelope(step)
   $parts = "Instance"
@@ -244,6 +261,17 @@ func envelope(step)
   end
   if step.signature
     $init = $init + ($init == "" ? "" : ", ") + "Signature = " + (json step.signature.name)
+  end
+  # Whom a delegation goes to, and whom an answer is on behalf of, by their identities (signoff-design.md decision 34).
+  if step.delegate_to
+    $init = $init + ($init == "" ? "" : ", ") + "DelegateTo = " + (json ("" + step.delegate_to.identity))
+  end
+  if step.on_behalf_of
+    $init = $init + ($init == "" ? "" : ", ") + "OnBehalfOf = " + (json ("" + step.on_behalf_of.identity))
+  end
+  # The replay takes the check of a signature that asks for the person's identity again as done, and so does the test (decision 36).
+  if reauthenticates(step)
+    $init = $init + ($init == "" ? "" : ", ") + "Reauthenticated = true"
   end
   ret "new ProcessEnvelope(" + $parts + ")" + ($init == "" ? "" : " { " + $init + " }")
 end
@@ -278,7 +306,19 @@ func step_text(step)
   else if step.input == "invoke-done" || step.input == "invoke-error"
     ret step.input + " " + step.invoke.name + $by
   end
-  ret step.event.name + $by + (signer(step) ? ", signed by " + signer(step) : "") + (step.response && step.response != "sign" ? ", responding " + step.response : "") + (step.signature ? " on " + step.signature.name : "")
+  ret step.event.name + $by + (signer(step) ? ", signed by " + signer(step) : "") + (step.response && step.response != "sign" ? ", responding " + step.response : "") + (step.signature ? " on " + step.signature.name : "") + (step.delegate_to ? " to " + step.delegate_to.name : "") + (step.on_behalf_of ? " on behalf of " + step.on_behalf_of.name : "")
+end
+# The notices a step expects to fall due (signoff-design.md decision 35), compared as a set: each as gate/signature/kind, by names.
+func notice_keys(step)
+  $out = []
+  for x in step.expect.notices
+    $out[$out.size] = json (x.signature.gate.name + "/" + x.signature.name + "/" + x.kind)
+  end
+  ret $out | array.join ", "
+end
+# Whether the test checks the notices a step expects: only where the project's generated code keeps them.
+func checks_notices(step)
+  ret model.approvals_use_notices && step.expect && step.expect.notices != null
 end
 # Freezing (rights-design.md decisions 16 to 19 and 28). A scenario's frozen keys reach only its own test. Whether the subject, and
 # each link of it, is frozen before a step is worked out from the file: the start, then each accepted freeze or thaw, from a verb
@@ -539,6 +579,9 @@ public sealed class {{ test }}
         // Refused as frozen in the replay. Nothing in generated code holds freezing until the project uses it (an event, a transition or a
         // right that names freeze or thaw, or a right with whileFrozen), so the step is not sent, and a refused step changes nothing.
 {{- else }}
+{{- if checks_notices(step) }}
+        var since{{ step.index + 1 }} = clock.Now;
+{{- end }}
 {{- if step.input == "time" }}
         clock.Advance(TimeSpan.FromTicks({{ step.after_ticks }}));
 {{- end }}
@@ -594,6 +637,15 @@ public sealed class {{ test }}
 {{- end }}
 {{- for x in step.expect.signatures }}
         Assert.Equal({{ x.count }}, result.Approvals.Values.Sum(a => a.Signed.Count(s => s.Signature == {{ json x.signature.id }}))); // {{ x.signature.gate.name }}, {{ x.signature.name }}
+{{- end }}
+{{- if checks_notices(step) }}
+        var notices{{ step.index + 1 }} = result.Approvals.Values.SelectMany(a => a.Notices).Where(n => n.Due > since{{ step.index + 1 }} && n.Due <= clock.Now)
+            .Select(n => n.Gate + "/" + n.Signature + "/" + (n.Kind == NoticeKind.Remind ? "remind" : "escalate")).Order(StringComparer.Ordinal);
+{{- if step.expect.notices.size == 0 }}
+        Assert.Empty(notices{{ step.index + 1 }});
+{{- else }}
+        Assert.Equal<string>([.. new[] { {{ notice_keys(step) }} }.Order(StringComparer.Ordinal)], notices{{ step.index + 1 }});
+{{- end }}
 {{- end }}
 {{- changed = [] }}
 {{- for a in p.context }}{{ if has(step.expect.context, a.name) }}{{ changed[changed.size] = a }}{{ end }}{{ end }}

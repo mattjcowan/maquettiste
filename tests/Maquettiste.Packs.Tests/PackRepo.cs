@@ -819,6 +819,32 @@ internal sealed class PackRepo : IDisposable
     }
 
     /// <summary>
+    /// The csharp-dapper pack's <c>approval-rounds</c> case (signoff-design.md section 10, part 2): lifecycle Deal with an approval in three
+    /// rounds on its approve move: Engineering in round 1; in round 2 Controller, with a required actor, delegation to deputy controllers,
+    /// a reminder, an escalation and signing again with a password, beside a Legal stage with a condition; and a Board stage with a
+    /// condition in round 3. Its scenario rounds runs every part 2 group. csharp-dapper writes to <c>out</c>, with the scenario tests under
+    /// out/Tests.
+    /// </summary>
+    /// <returns>The repo.</returns>
+    public static PackRepo ApprovalRounds()
+    {
+        var repo = new PackRepo();
+        var source = Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "approval-rounds");
+        CopyTree(Path.Combine(source, "model"), Path.Combine(repo.Repo.ModelRoot, "model"));
+        CopyTree(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper"), Path.Combine(repo.Repo.ModelRoot, "templates", "csharp-dapper"));
+        repo.Write(".maquettiste/maquettiste.json", """
+            {
+              "formatVersion": 1,
+              "name": "approval-rounds",
+              "outputs": { "allow": [ { "path": "out" } ] },
+              "packs": { "csharp-dapper": { "output": "out", "parameters": { "testsFolder": "Tests" } } }
+            }
+
+            """);
+        return repo;
+    }
+
+    /// <summary>
     /// The csharp-dapper pack's <c>freezing</c> case (rights-design.md section 9, part 2): an employee lifecycle whose events name
     /// <c>freeze</c>, <c>thaw</c> and <c>modify</c>, a deny on reading or changing <c>salary</c> except to HR staff, and a <c>whileFrozen</c>
     /// deny on <c>change-owner</c>; its scenario freezes the record, is refused as frozen, and thaws it. csharp-dapper writes to <c>out</c>,

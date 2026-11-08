@@ -333,17 +333,67 @@ func approval_conditions(p)
   ret $out
 end
 
-# The method names of <Process>ApprovalConditions by signature id (signoff-design.md section 10): <Gate><Signature> by member_name, so
-# one named like its class gets Value; when two would share a name, each after the first in id order gets the last eight characters
-# of its id appended (the random end of a ULID: its first characters are a timestamp, the same for ids minted close together), and its
-# whole id in the unlikely case that name is taken too.
+# The stages of a process's approvals that have a condition (their when), in gate then file order (signoff-design.md decision 6): one
+# method each in <Process>ApprovalConditions, which the handlers reach as IApprovalConditions.StageNeeded.
+func stage_conditions(p)
+  $out = []
+  for g in p.gates
+    for st in g.stages
+      if st.when
+        $out[$out.size] = st
+      end
+    end
+  end
+  ret $out
+end
+
+# The actors a process's named signatures may be delegated to (signoff-design.md decision 34) that aren't taken from the object, each
+# once, in gate then file order: the handlers answer for each, as IActorResolver, whether the person a signature goes to is that actor.
+func delegate_actors(p)
+  $seen = {}
+  for a in relative_actors(p)
+    $seen[a.id] = true
+  end
+  $out = []
+  for g in p.gates
+    for sig in g.all_signatures
+      for a in sig.delegate_to
+        if !$seen[a.id]
+          $seen[a.id] = true
+          $out[$out.size] = a
+        end
+      end
+    end
+  end
+  ret $out
+end
+
+# Whether a gate has a named signature that may be delegated (signoff-design.md decision 34): only then does its typed audit record
+# name whom an answer is on behalf of and where a delegation went.
+func gate_delegates(g)
+  for sig in g.all_signatures
+    if sig.delegate_to.size > 0
+      ret true
+    end
+  end
+  ret false
+end
+
+# The method names of <Process>ApprovalConditions by signature or stage id (signoff-design.md section 10): <Gate><Signature>, and
+# <Gate><Stage>Stage for a stage, by member_name, so one named like its class gets Value; when two would share a name, each after the
+# first in id order gets the last eight characters of its id appended (the random end of a ULID: its first characters are a timestamp,
+# the same for ids minted close together), and its whole id in the unlikely case that name is taken too.
 func approval_methods(p)
   $class = p_name(p) + "ApprovalConditions"
-  $sorted = array.sort approval_conditions(p) "id"
+  $all = approval_conditions(p)
+  for st in stage_conditions(p)
+    $all[$all.size] = st
+  end
+  $sorted = array.sort $all "id"
   $taken = {}
   $out = {}
   for sig in $sorted
-    $n = member_name((pascal sig.gate.name) + (pascal sig.name), $class)
+    $n = member_name((pascal sig.gate.name) + (pascal sig.name) + (sig.kind == "gate-stage" ? "Stage" : ""), $class)
     if $taken[$n]
       $base = $n
       $n = $base + (sig.id | string.slice (sig.id.size > 8 ? sig.id.size - 8 : 0))

@@ -134,6 +134,13 @@ public sealed partial record {{ rec }}
     /// <summary>{{ cs_line (f.description ?? ("Audit attribute " + f.name + ".")) | string.strip | escape_xml }}</summary>
     public {{ audit_type(f) }} {{ pascal f.name }} { get; init; }{{ if f.required && audit_type(f) == "string" }} = "";{{ end }}
 {{ end }}
+{{- if gate_delegates(g) }}
+    /// <summary>For an answer on behalf of someone who delegated the signature, the delegator's identity (signoff-design.md decision 34); none otherwise.</summary>
+    public string? OnBehalfOf { get; init; }
+
+    /// <summary>For a delegation, the identity it went to; none otherwise.</summary>
+    public string? DelegateTo { get; init; }
+{{ end }}
     /// <summary>The typed record of a runtime audit record.</summary>
     /// <param name="record">The record.</param>
     /// <returns>The typed record.</returns>
@@ -150,6 +157,10 @@ public sealed partial record {{ rec }}
 {{- else }}
             {{ pascal f.name }} = record.{{ pascal f.name }},
 {{- end }}
+{{- end }}
+{{- if gate_delegates(g) }}
+            OnBehalfOf = record.OnBehalfOf,
+            DelegateTo = record.DelegateTo,
 {{- end }}
         };
     }
