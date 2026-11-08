@@ -437,6 +437,24 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         actual: Object.fromEntries(Object.keys(expected).map((id) => [id, counted[id] ?? 0])),
       };
     }
+    // MQ9311, part 2: the notices due at a time step, compared as a set of signature and kind (decision 35).
+    for (const t of result.trace) {
+      if (t.index < 0) continue;
+      const expected = (steps[t.index].expect as Json | undefined)?.notices as { signature: string; kind: string }[] | undefined;
+      if (!Array.isArray(expected)) continue;
+      const key = (n: { signature: string; kind: string }) => `${n.signature}|${n.kind}`;
+      const actual = (t.notices ?? []).map((n) => ({ signature: n.signature, kind: n.kind }));
+      const want = new Set(expected.map(key));
+      const have = new Set(actual.map(key));
+      if (want.size === have.size && [...want].every((k) => have.has(k))) continue;
+      return {
+        step: t.index,
+        rule: "MQ9311",
+        message: `Step ${t.index + 1}: the notices due at the step differ from expect.notices; fix the step or update the expectations from a replay.`,
+        expected: { notices: expected },
+        actual: { notices: actual },
+      };
+    }
     // MQ9307: the values a step set against its expect.values (exactly the attributes the step changed).
     for (const t of result.trace) {
       if (t.index < 0) continue;

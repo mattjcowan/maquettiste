@@ -72,6 +72,16 @@ export const hasApproval = (process: Pick<ProcessDoc, "transitions"> | undefined
 /** An approval's signatures in file order (stage, then signature). */
 export const signaturesOf = (gate: Pick<GateDoc, "stages">): NamedSignatureDoc[] => (gate.stages ?? []).flatMap((s) => s.signatures ?? []);
 
+/** Whether a signature of the approvals of the event may be delegated (`delegateTo`); with no event, of any approval of the process. */
+export const mayDelegate = (process: Pick<ProcessDoc, "transitions"> | undefined, event?: string): boolean =>
+  (event === undefined ? (process?.transitions ?? []).flatMap((t) => (t.gate && isApproval(t.gate) ? [t.gate] : [])) : approvalsOfEvent(process, event)).some(
+    (g) => signaturesOf(g).some((sg) => !!sg.delegateTo?.length),
+  );
+
+/** Whether some signature of the process states a reminder or an escalation. */
+export const hasNotices = (process: Pick<ProcessDoc, "transitions"> | undefined): boolean =>
+  (process?.transitions ?? []).some((t) => !!t.gate && signaturesOf(t.gate).some((sg) => !!sg.remindAfter || !!sg.escalateAfter));
+
 /** The Details cell: the part 2 settings a signature has, in a few words. */
 export function detailsText(sig: NamedSignatureDoc): string {
   const parts: string[] = [];
@@ -486,6 +496,16 @@ export function reorderStages(gate: GateDoc): boolean {
   if (sorted.every((x, i) => x.i === i)) return false;
   gate.stages = sorted.map((x) => x.s);
   return true;
+}
+
+/** The actor ids that may give a signature that can be delegated (a signature with `delegateTo`) on a gate document: who may answer delegate. */
+export function gateDelegatorIds(gate: Json | undefined): string[] {
+  const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  const stages = Array.isArray(gate?.stages) ? (gate.stages as Json[]) : [];
+  const all = stages.flatMap((st) =>
+    (Array.isArray(st.signatures) ? (st.signatures as Json[]) : []).flatMap((sg) => (ids(sg.delegateTo).length ? ids(sg.signers) : [])),
+  );
+  return [...new Set(all)];
 }
 
 /** Every actor id that may sign a gate document (the mock's reading of one list of signers, or of the signatures of its stages). */

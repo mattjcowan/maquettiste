@@ -1143,6 +1143,27 @@ function EnabledRowView({
               </div>
             </>
           ) : null}
+          {responses.includes("delegate") && participants.length ? (
+            <div className={cn(ROW, "pl-6")} data-testid="enabled-field-row" onKeyDown={onKey}>
+              <label className="w-24 shrink-0 truncate text-secondary" htmlFor={`sim-${row.key}-delegation`}>
+                {value.response === "delegate" ? L.delegateTo : L.onBehalfOf}
+              </label>
+              <select
+                id={`sim-${row.key}-delegation`}
+                className={cn(FIELD, "flex-1")}
+                value={value.response === "delegate" ? value.delegateTo : value.onBehalfOf}
+                onChange={(e) => onEdit(value.response === "delegate" ? { delegateTo: e.target.value } : { onBehalfOf: e.target.value })}
+                data-testid={value.response === "delegate" ? "enabled-delegate-to" : "enabled-on-behalf-of"}
+              >
+                <option value="">{L.noOne}</option>
+                {participants.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <div className={cn(ROW, "pl-6")} data-testid="enabled-field-row" onKeyDown={onKey}>
             <label className="w-24 shrink-0 truncate text-secondary" htmlFor={`sim-${row.key}-meaning`}>
               {L.meaning}
@@ -1267,10 +1288,16 @@ function ApprovalsSection({ result, process, names }: { result: SimulationResult
             <span className="min-w-0 flex-1 truncate font-medium" title={a.name}>
               {a.name}
             </span>
+            {a.round !== undefined && Number.isFinite(a.round) ? (
+              <Badge tone="accent" data-testid="approval-round">
+                {L.roundLine(a.round)}
+              </Badge>
+            ) : null}
             {a.satisfied ? <span className="truncate text-secondary">{L.approvalWaiting}</span> : null}
           </div>
           {a.stages.flatMap((st) =>
             st.signatures.map((s) => (
+              // A skipped stage shows its signatures as not needed, with the stage's name and why.
               <div
                 key={s.id}
                 className={cn(ROW, "h-auto min-h-[var(--mq-row-h)] flex-wrap py-0.5 pl-6")}
@@ -1283,6 +1310,11 @@ function ApprovalsSection({ result, process, names }: { result: SimulationResult
                 >
                   {L.signatureState(s.name, s.needed, s.counted, s.required)}
                 </span>
+                {st.round !== undefined || st.skipped ? (
+                  <span className="min-w-0 break-words text-secondary" data-testid="approval-stage">
+                    {[st.name, st.round !== undefined ? L.stageRound(st.round) : "", st.skipped ? L.stageSkipped : ""].filter(Boolean).join(", ")}
+                  </span>
+                ) : null}
                 {s.finished.length ? (
                   <span className="min-w-0 break-words text-secondary" title={L.finishedBy(s.finished.join(", "))}>
                     {L.finishedBy(s.finished.join(", "))}

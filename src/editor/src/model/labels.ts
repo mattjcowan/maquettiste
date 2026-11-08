@@ -604,11 +604,22 @@ export const SIMULATION_LABELS = {
     `No attribute was picked, and unknown attributes are refused because the right names attribute ${attributes}. Pick an attribute under Do.`,
   transitionLine: (transitions: string) => `Took ${transitions}`,
   /** One audit record of a gate, in plain words by outcome; the meaning belongs to a signature only. */
-  auditLine: (gate: string, outcome: string, signer: string, actor: string, meaning: string, signature = "") => {
+  auditLine: (
+    gate: string,
+    outcome: string,
+    signer: string,
+    actor: string,
+    meaning: string,
+    signature = "",
+    part2: { onBehalfOf?: string; delegateTo?: string } = {},
+  ) => {
     const head = `${gate}${signature ? `, ${signature}` : ""}`;
-    const as = actor ? ` as ${actor}` : "";
+    // An answer for a delegator keeps both people: "erin on behalf of fiona".
+    const as = `${part2.onBehalfOf ? ` on behalf of ${part2.onBehalfOf}` : ""}${actor ? ` as ${actor}` : ""}`;
     const who = signer || "someone";
     switch (outcome) {
+      case "delegated":
+        return `${head}: ${who} delegated to ${part2.delegateTo || "someone"}${as}`;
       case "rejected":
         return `${head}: ${who} rejected${as}; the approval is cleared and starts again`;
       case "ignored":
@@ -627,8 +638,17 @@ export const SIMULATION_LABELS = {
   excludedReason: (signer: string, signature: string, did: string) =>
     `${signer || "the person"} did ${did || "a verb or move"} earlier, so cannot give the ${signature || "named"} signature`,
   /** A response other than sign, short, after the event: "issue (ignore)". */
-  responseShort: { reject: "reject", ignore: "ignore", withdraw: "withdraw" } as Record<string, string>,
+  responseShort: { reject: "reject", ignore: "ignore", withdraw: "withdraw", delegate: "delegate" } as Record<string, string>,
   byPerson: (signer: string) => `by ${signer}`,
+  /** A reminder or an escalation that fell due on a time step, with who it goes to. */
+  noticeLine: (signature: string, kind: string, recipients: string[]) =>
+    `${signature}: ${kind === "escalate" ? "escalation" : "reminder"} due${recipients.length ? `, to ${recipients.join(", ")}` : ""}`,
+  roundLine: (round: number) => `Round ${round}`,
+  stageRound: (round: number) => `round ${round}`,
+  stageSkipped: "skipped",
+  delegateTo: "Delegate to",
+  onBehalfOf: "On behalf of",
+  noOne: "(no one)",
   /** The Approvals section and the response and signature fields of an enabled approval. */
   approvals: "Approvals",
   noApprovals: "No approval is open.",
@@ -639,7 +659,7 @@ export const SIMULATION_LABELS = {
   response: "Response",
   signature: "Signature",
   enginePicks: "Picked by the engine",
-  responseWords: { sign: "Sign", reject: "Reject", ignore: "Ignore (abstain)", withdraw: "Withdraw" } as Record<string, string>,
+  responseWords: { sign: "Sign", reject: "Reject", ignore: "Ignore (abstain)", withdraw: "Withdraw", delegate: "Delegate" } as Record<string, string>,
   changedLine: (changes: string) => `Context: ${changes}`,
   incomplete: "The replay stopped here; the inputs after it did not run.",
   // Trace
@@ -1050,6 +1070,7 @@ export const RIGHT_LABELS = {
   failedPoints: (expected: string, actual: string) => `It was expected to run ${expected}, but in the replay it runs ${actual}.`,
   failedSignatures: (step: string, expected: string, actual: string) =>
     `${step} was expected to leave ${expected} signed, but in the replay it leaves ${actual}.`,
+  failedNotices: (step: string, expected: string, actual: string) => `${step} was expected to have ${expected} due, but in the replay ${actual} is due.`,
   failedAccept: (step: string) => `${step} was expected to be accepted, but in the replay it is refused.`,
   updateExpectations: "Update expectations",
   updateExpectationsTip: "Rewrite the expectations of every step from what the replay does (Shift+R in the Scenarios tab)",
@@ -1103,7 +1124,14 @@ export const PARTICIPANT_LABELS = {
 export const SCENARIO_APPROVAL_LABELS = {
   response: "Response",
   responseTip: "How the step answers the approval on its event. Only on a step whose event is gated by an approval. Empty: Sign.",
-  responseWords: { sign: "Sign", reject: "Reject", ignore: "Ignore (abstain)", withdraw: "Withdraw" } as Record<string, string>,
+  responseWords: { sign: "Sign", reject: "Reject", ignore: "Ignore (abstain)", withdraw: "Withdraw", delegate: "Delegate" } as Record<string, string>,
+  delegateTo: "Delegate to",
+  delegateToTip: "The participant the signature goes to. Only with the response Delegate; they must be a member of one of the signature's delegate-to actors.",
+  onBehalfOf: "On behalf of",
+  onBehalfOfTip:
+    "The participant who delegated the signature to the person answering; the answer counts as theirs. Only on a step whose approval has a signature that may be delegated; a delegation can't be passed on.",
+  noticesTip: "The reminders and escalations due at a time step, by signature; filled in by Update from replay",
+  notices: "Notices",
   signature: "Signature",
   signatureTip: "The named signature the step answers. Empty: the engine picks it, the same way every time.",
   picked: "Picked by the engine",

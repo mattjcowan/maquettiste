@@ -157,6 +157,9 @@ export interface RowValue {
   /** On an approval: the response (`sign`, `reject`, `ignore`, `withdraw`) and the named signature; empty means the engine picks it. */
   response: string;
   signature: string;
+  /** With the response delegate, the participant the signature goes to; otherwise the participant who delegated it to the person answering. */
+  delegateTo: string;
+  onBehalfOf: string;
   assume: Record<string, boolean | CheckWord>;
   after: string;
 }
@@ -259,6 +262,8 @@ export function defaultRowValue(row: EnabledRow, result: SimulationResult): RowV
     reason: "",
     response: "sign",
     signature: "",
+    delegateTo: "",
+    onBehalfOf: "",
     assume: { ...Object.fromEntries(row.assume.map((g) => [g.id, true])), ...Object.fromEntries(row.checks.map((c) => [c.id, "pass" as const])) },
     after: row.trigger === "time" ? (nextDue(result)?.after ?? "PT1H") : "",
   };
@@ -292,6 +297,12 @@ export function inputOf(row: EnabledRow, value: RowValue): SimInput {
     // An approval's response and signature; a signature with the engine's pick is left out.
     if (row.responses.length && value.response && value.response !== "sign") input.response = value.response as ApprovalResponse;
     if (row.signatures.length && value.signature) input.signature = value.signature;
+    // Delegate names who it goes to; every other response may answer on behalf of the person who delegated (a delegation can't be passed on).
+    if (row.responses.includes("delegate")) {
+      if (value.response === "delegate") {
+        if (value.delegateTo) input.delegateTo = value.delegateTo;
+      } else if (value.onBehalfOf) input.onBehalfOf = value.onBehalfOf;
+    }
   }
   const payload = Object.fromEntries(
     row.payload
@@ -317,9 +328,14 @@ export interface ApprovalRow {
   name: string;
   /** Nothing is needed: the approval waits for the event's next occurrence. */
   satisfied: boolean;
+  /** The current round: the lowest round with a stage neither complete nor skipped; absent when the approval has one round. */
+  round?: number;
   stages: {
     name: string;
     complete: boolean;
+    /** The stage's round, when the approval has more than one, and whether its condition skipped it. */
+    round?: number;
+    skipped?: boolean;
     signatures: { id: string; name: string; needed: boolean; counted: number; required: number; finished: string[]; complete: boolean }[];
   }[];
 }
@@ -335,9 +351,14 @@ export function approvalRows(result: SimulationResult, process: ProcessDoc, name
             gate: g.gate,
             name: names.gate(g.gate),
             satisfied: g.satisfied,
+            ...(g.stages.some((st) => st.round !== undefined)
+              ? { round: g.stages.filter((st) => !st.complete && !st.skipped).reduce((m, st) => Math.min(m, st.round ?? 1), Infinity) }
+              : {}),
             stages: g.stages.map((st) => ({
               name: stages.get(st.stage) ?? st.stage,
               complete: st.complete,
+              ...(st.round !== undefined ? { round: st.round } : {}),
+              ...(st.skipped ? { skipped: true } : {}),
               signatures: st.signatures.map((s) => ({
                 id: s.signature,
                 name: names.signature?.(s.signature) ?? s.signature,
@@ -422,6 +443,7 @@ export interface LastStepLine {
     | "note"
     | "context"
     | "audit"
+    | "notice"
     | "diagnostic"
     | "incomplete";
   text: string;
@@ -558,8 +580,20 @@ export function lastStepLines(
         names.actor(r.actor),
         names.meaning(r.meaning),
         r.signature ? (names.signature?.(r.signature) ?? "") : "",
+        { onBehalfOf: r.onBehalfOf, delegateTo: r.delegateTo },
       ),
       tone: r.outcome === "refused" ? "danger" : r.outcome === "completed" ? "success" : "neutral",
+    });
+  // The reminders and escalations a time step made due: the running system sends them, nothing moves (decision 35).
+  for (const n of entry.notices ?? [])
+    lines.push({
+      kind: "notice",
+      text: L.noticeLine(
+        names.signature?.(n.signature) ?? n.signature,
+        n.kind,
+        n.recipients.map((r) => names.actor(r)),
+      ),
+      tone: "neutral",
     });
   for (const d of entry.diagnostics) lines.push({ kind: "diagnostic", text: `${d.rule} ${d.message}`, tone: d.severity === "error" ? "danger" : "warning" });
   if (entry.incomplete) lines.push({ kind: "incomplete", text: L.incomplete, tone: "warning" });

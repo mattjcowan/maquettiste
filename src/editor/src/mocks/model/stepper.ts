@@ -279,10 +279,13 @@ export interface SimInputJson {
   response?: Response;
   /** The named signature the step answers; left out when the engine picks it. */
   signature?: string;
+  /** With `delegate`, the participant the signature goes to; and the participant who delegated it to the person answering (decision 34). */
+  delegateTo?: string;
+  onBehalfOf?: string;
 }
 
-export type Response = "sign" | "reject" | "ignore" | "withdraw";
-const RESPONSES: readonly Response[] = ["sign", "reject", "ignore", "withdraw"];
+export type Response = "sign" | "reject" | "ignore" | "withdraw" | "delegate";
+const RESPONSES: readonly Response[] = ["sign", "reject", "ignore", "withdraw", "delegate"];
 
 export interface DiagnosticJson {
   rule: string;
@@ -333,6 +336,8 @@ export interface StepTraceJson {
   triggerPoints?: TriggerRunJson[];
   /** The checks that warned, each once, in the order they first warned; left out when none. */
   checkWarnings?: string[];
+  /** The reminders and escalations that fell due during a time step (decision 35); left out when none did. */
+  notices?: { signature: string; kind: "remind" | "escalate"; recipients: string[] }[];
 }
 
 /** A trigger point that ran in a step, and what it did. */
@@ -374,6 +379,8 @@ export interface SimulationJson {
     stages?: {
       stage: string;
       complete: boolean;
+      round?: number;
+      skipped?: true;
       signatures: { signature: string; needed: boolean; counted: number; required: number; finished: string[]; complete: boolean }[];
     }[];
   }[];
@@ -485,6 +492,8 @@ export function normalizeInput(step: Json, index: number, chart: { doc: Json }, 
     ...(str(step.end) ? { end: str(step.end)! } : {}),
     ...(str(step.object) ? { object: str(step.object)! } : {}),
     ...(RESPONSES.includes(str(step.response) as Response) && step.response !== "sign" ? { response: step.response as Response } : {}),
+    ...(str(step.delegateTo) ? { delegateTo: str(step.delegateTo)! } : {}),
+    ...(str(step.onBehalfOf) ? { onBehalfOf: str(step.onBehalfOf)! } : {}),
     ...(str(step.signature) ? { signature: byName(signatureList(doc), str(step.signature)) ?? undefined } : {}),
   };
 }
@@ -492,6 +501,12 @@ export function normalizeInput(step: Json, index: number, chart: { doc: Json }, 
 /** Every named signature of the process's gates, for a step that names one. */
 function signatureList(doc: Json): Json[] {
   return arr(doc.transitions).flatMap((t) => gateSignatures(t.gate as Json | undefined));
+}
+
+/** The responses an approval takes: delegate only when a signature may be delegated (decision 34). */
+function responsesOf(gate: Json | null | undefined): Response[] {
+  const delegates = gateSignatures(gate).some((sg) => ids(sg.delegateTo).length > 0);
+  return RESPONSES.filter((r) => r !== "delegate" || delegates);
 }
 
 /** A gate's named signatures in file order (stage, then signature); empty for a gate without stages. */
@@ -518,11 +533,23 @@ interface Signature {
 
 /** An approval's progress on a gated move (signoff-design.md decisions 7 to 16): which signatures its round needs, what was counted and who answered. */
 interface Approval {
+  /** The signatures the current round needs. */
   needed: Set<string>;
+  /** Every signature judged needed in the rounds started so far, for the gate state. */
+  judged: Set<string>;
+  /** The current round (decision 33) and the stages skipped by their `when` in the rounds started. */
+  round: number;
+  skipped: Set<string>;
   counted: Signature[];
-  answered: { signer: string; signature: string; kind: "sign" | "ignore" }[];
+  answered: { signer: string; signature: string; kind: "sign" | "ignore" | "delegate" }[];
+  /** The delegations of the approval (decision 34): the delegator, the actor they answer as, the person it went to and whether it was answered. */
+  delegations: { from: string; actor: string | null; to: string; signature: string; used: boolean }[];
   /** Nothing was needed when the round started: the next occurrence moves as if there were no gate. */
   waiting: boolean;
+  /** The gated move, the instant the current round started and the notices already due in it (decision 35). */
+  edge: Edge;
+  startedAt: number;
+  noticed: Set<string>;
 }
 
 /** Who did which verb or move, by the step's sequence number (decision 28). */
@@ -558,6 +585,8 @@ interface Scope {
   checkWarnings: string[];
   /** The gated move whose approval the step answered and was accepted on, for `expect.signatures`. */
   answered?: Edge;
+  /** The reminders and escalations that fell due in a time step (decision 35). */
+  notices: { signature: string; kind: "remind" | "escalate"; recipients: string[] }[];
 }
 
 /** The signatures counted after each accepted step that answered an approval, by named signature id (kept off the answer: not in the trace's contract). */
@@ -598,6 +627,7 @@ const newScope = (input: SimInputJson | null): Scope => ({
   triggerRuns: [],
   queued: [],
   checkWarnings: [],
+  notices: [],
 });
 
 class Interpreter {
@@ -820,7 +850,9 @@ class Interpreter {
       if (approval && !approval.waiting) {
         // The signature and the actor are picked together, within that signature's signers and required actors (decision 8).
         const signer = input.signer ?? this.identityOf(p);
+        const behalf = input.onBehalfOf ? (this.participantIdentity(input.onBehalfOf) ?? "") : null;
         const actorFor = (sg: Json): string | null => {
+          if (behalf !== null) return this.behalfActor(approval, sg, behalf, signer, input.response ?? "sign");
           const counted = approval.counted.filter((c) => c.signature === sg.id);
           const required = ids(sg.requiredActors).find((r) => !counted.some((c) => this.membership.accepts(r, c.actor)) && this.satisfies(p, r));
           const mine = ids(sg.signers).filter((x) => this.satisfies(p, x));
@@ -849,6 +881,8 @@ class Interpreter {
       this.problem("MQ9305", PARTICIPANT_TEXTS.unknown(input.participant));
       return input;
     }
+    for (const other of [input.delegateTo, input.onBehalfOf])
+      if (other && !this.participants.some((x) => x.id === other)) this.problem("MQ9305", PARTICIPANT_TEXTS.unknown(other));
     const first = this.firstList(input);
     let actsAs: string | null;
     if (input.actor) {
@@ -920,7 +954,7 @@ class Interpreter {
   /** MQ9305 on a step's response and signature (decision 25), judged before the step runs: only an event step gated by an approval takes them. */
   private approvalFieldsProblem(input: SimInputJson, ev: Json): boolean {
     const response = input.response ?? "sign";
-    if (response === "sign" && !input.signature) return false;
+    if (response === "sign" && !input.signature && !input.delegateTo && !input.onBehalfOf) return false;
     const approvals = this.chart.transitions.filter((t) => t.trigger === "event" && t.key === input.event && approvalStages(t.gate)).map((t) => t.gate!);
     const name = `event '${String(ev.name)}'`;
     if (!approvals.length && response !== "sign") {
@@ -944,6 +978,25 @@ class Interpreter {
       );
       return true;
     }
+    // Part 2, decision 34: delegation needs a signature that may be delegated.
+    const fail = (message: string) => {
+      this.problem("MQ9305", message);
+      return true;
+    };
+    if (input.delegateTo && response !== "delegate")
+      return fail("The step names who it delegates to, but its response is not delegate; give the response delegate, or remove it.");
+    if (response === "delegate" && !input.delegateTo)
+      return fail("The step delegates, but names no one to delegate to; pick a participant, or change the response.");
+    if (response === "delegate" && input.onBehalfOf)
+      return fail("A delegation can't be passed on: a step that delegates can't also answer on behalf of someone; remove one.");
+    if (response === "delegate" || input.onBehalfOf) {
+      const what = response === "delegate" ? "delegates" : "answers on behalf of someone";
+      const ofGate = approvals.flatMap((g) => gateSignatures(g));
+      if (!ofGate.some((sg) => ids(sg.delegateTo).length))
+        return fail(`The step ${what}, but no signature of an approval on ${name} may be delegated; give a signature delegateTo, or remove it.`);
+      if (input.signature && !ids(ofGate.find((sg) => sg.id === input.signature)?.delegateTo).length)
+        return fail(`The step ${what} on a signature that may not be delegated; pick a signature with delegateTo, or remove it.`);
+    }
     return false;
   }
 
@@ -960,6 +1013,8 @@ class Interpreter {
     }
     if (!input.actor) this.scope.actor = this.membership.systemActor;
     this.scope.event = this.eventObject(null, input.actor, [], {});
+    // Notices fall due only on a time step (decision 35): those of the rounds running now, then those of rounds the step's own moves started.
+    this.dueNotices(end);
     while (!this.done) {
       const next = this.timers.filter((t) => t.due <= end).sort(timerOrder)[0];
       if (!next) break;
@@ -974,6 +1029,26 @@ class Interpreter {
       });
     }
     this.clock = end;
+    this.dueNotices(end);
+  }
+
+  /** Lists each reminder and escalation that fell due by `end`, once per round start, in file order (decision 35). */
+  private dueNotices(end: number) {
+    for (const approval of this.approvals.values()) {
+      if (approval.waiting) continue;
+      for (const sg of gateSignatures(approval.edge.gate)) {
+        if (!approval.needed.has(String(sg.id)) || this.sigComplete(sg, approval.counted)) continue;
+        for (const [kind, after, to] of [
+          ["remind", durationMs(str(sg.remindAfter)), ids(sg.signers)],
+          ["escalate", durationMs(str(sg.escalateAfter)), ids(sg.escalateTo)],
+        ] as const) {
+          const key = `${String(sg.id)}|${kind}`;
+          if (after === null || after <= 0 || approval.noticed.has(key) || approval.startedAt + after > end) continue;
+          approval.noticed.add(key);
+          this.scope.notices.push({ signature: String(sg.id), kind, recipients: [...to] });
+        }
+      }
+    }
   }
 
   private handleInvoke(input: SimInputJson) {
@@ -1440,7 +1515,7 @@ class Interpreter {
       const left = gateSignatures(t.gate)
         .filter((sg) => approval.needed.has(String(sg.id)) && !this.sigComplete(sg, approval.counted))
         .reduce((n, sg) => n + Math.max(1, num(sg.required) ?? 1) - approval.counted.filter((c) => c.signature === sg.id).length, 0);
-      return approval.waiting || left <= 1;
+      return approval.waiting || (left <= 1 && !this.hasLater(t, approval));
     }
     const required = Math.max(1, typeof t.gate!.required === "number" ? t.gate!.required : 1);
     return (this.signatures.get(t.id)?.length ?? 0) + 1 >= required;
@@ -1454,10 +1529,13 @@ class Interpreter {
       if (approval.waiting) return true;
       const pick = this.picks.get(t.id);
       if ((input.response ?? "sign") !== "sign" || !pick) return false;
-      return this.roundDone(t, approval, [
-        ...approval.counted,
-        { signer: input.signer!, actor: input.actor!, meaning: null, reason: null, signature: String(pick.sg.id) },
-      ]);
+      return (
+        !this.hasLater(t, approval) &&
+        this.roundDone(t, approval, [
+          ...approval.counted,
+          { signer: input.signer!, actor: input.actor!, meaning: null, reason: null, signature: String(pick.sg.id) },
+        ])
+      );
     }
     const signatures = [...(this.signatures.get(t.id) ?? [])];
     signatures.push({ signer: input.signer!, actor: input.actor!, meaning: meaningOf(input, t.gate!), reason: input.reason });
@@ -1560,7 +1638,7 @@ class Interpreter {
       // On a gated move its own checks run only on the signature that brings the gate to its count (decision 18).
       // An open approval takes every response; one that needs nothing moves as a move without a gate (decision 17).
       for (const verb of [
-        ...(t.gate && !this.waitingApproval(t) ? (this.approvalOf(t) ? RESPONSES : ["sign"]) : []),
+        ...(t.gate && !this.waitingApproval(t) ? (this.approvalOf(t) ? responsesOf(t.gate) : ["sign"]) : []),
         !t.gate || this.waitingApproval(t) || this.couldComplete(t) ? t.verb : null,
       ]) {
         if (!verb) continue;
@@ -1935,16 +2013,66 @@ class Interpreter {
 
   /** Starts a round: each signature's `when` is judged now, and only false means not needed (decision 7). */
   private startApproval(t: Edge): Approval {
-    const needed = new Set<string>();
-    for (const sg of gateSignatures(t.gate)) if (sg.when === undefined || evalTree(sg.when, this.env()) !== false) needed.add(String(sg.id));
-    const approval: Approval = { needed, counted: [], answered: [], waiting: needed.size === 0 };
+    const approval: Approval = {
+      needed: new Set(),
+      judged: new Set(),
+      round: 0,
+      skipped: new Set(),
+      counted: [],
+      answered: [],
+      delegations: [],
+      waiting: false,
+      edge: t,
+      startedAt: this.clock,
+      noticed: new Set(),
+    };
     this.approvals.set(t.id, approval);
+    this.startRound(t, approval, 0);
     return approval;
+  }
+
+  /** The rounds of an approval's stages, in order (decision 5). */
+  roundsOf(t: Edge): number[] {
+    return [...new Set(arr(t.gate?.stages).map((st) => num(st.round) ?? 1))].sort((a, b) => a - b);
+  }
+
+  /** Whether a round follows the approval's current one. */
+  private hasLater(t: Edge, approval: Approval): boolean {
+    return this.roundsOf(t).some((r) => r > approval.round);
+  }
+
+  /**
+   * Starts the first round after `after` that needs anything (decisions 6, 7 and 33): a stage's `when` is judged, then the `when` of each
+   * signature of the stages kept. A round that needs nothing is complete at once; with none left the approval waits for the next occurrence.
+   */
+  private startRound(t: Edge, approval: Approval, after: number) {
+    for (const r of this.roundsOf(t).filter((x) => x > after)) {
+      const needed = new Set<string>();
+      for (const st of arr(t.gate?.stages)) {
+        if ((num(st.round) ?? 1) !== r) continue;
+        if (st.when !== undefined && evalTree(st.when, this.env()) === false) {
+          approval.skipped.add(String(st.id));
+          continue;
+        }
+        for (const sg of arr(st.signatures)) if (sg.when === undefined || evalTree(sg.when, this.env()) !== false) needed.add(String(sg.id));
+      }
+      approval.round = r;
+      approval.needed = needed;
+      for (const id of needed) approval.judged.add(id);
+      approval.startedAt = this.clock;
+      approval.noticed = new Set();
+      if (needed.size) {
+        approval.waiting = false;
+        return;
+      }
+    }
+    approval.needed = new Set();
+    approval.waiting = true;
   }
 
   /** Whether the signature has its count and each required actor signed among the signatures given. */
   sigComplete(sg: Json, counted: Signature[], approval?: Approval): boolean {
-    if (approval && !approval.needed.has(String(sg.id))) return false;
+    if (approval && !approval.judged.has(String(sg.id))) return false;
     const mine = counted.filter((c) => c.signature === sg.id);
     return mine.length >= Math.max(1, num(sg.required) ?? 1) && ids(sg.requiredActors).every((r) => mine.some((c) => this.membership.accepts(r, c.actor)));
   }
@@ -1989,10 +2117,10 @@ class Interpreter {
     if (response === "sign")
       return (
         (here.some((a) => a.kind === "sign") && sg.allowRepeatSigner !== true) ||
-        here.some((a) => a.kind === "ignore") ||
+        here.some((a) => a.kind === "ignore" || a.kind === "delegate") ||
         (mine.length > here.length && !across)
       );
-    if (response === "ignore") return here.length > 0 || (mine.length > here.length && !across);
+    if (response === "ignore" || response === "delegate") return here.length > 0 || (mine.length > here.length && !across);
     if (response === "reject") return mine.some((a) => a.kind === "ignore" && (a.signature === sg.id || !across));
     return false;
   }
@@ -2028,7 +2156,7 @@ class Interpreter {
     }
     const needed = all.filter((sg) => approval.needed.has(String(sg.id)));
     if (response === "withdraw") {
-      const mine = [...approval.counted].reverse().find((c) => c.signer === signer);
+      const mine = [...approval.counted].reverse().find((c) => c.signer === signer && approval.needed.has(String(c.signature)));
       const sg = mine && all.find((x) => x.id === mine.signature);
       return sg && mine ? { sg, actor: mine.actor } : { refuse: "gate-not-signed" };
     }
@@ -2036,7 +2164,8 @@ class Interpreter {
       const sg = needed.find((x) => actorFor(x) !== null);
       return sg ? { sg, actor: actorFor(sg) } : { refuse: "gate-signer" };
     }
-    const open = needed.filter((sg) => !this.sigComplete(sg, approval.counted));
+    // Delegate picks among the signatures that may be delegated (decision 34).
+    const open = needed.filter((sg) => !this.sigComplete(sg, approval.counted) && (response !== "delegate" || ids(sg.delegateTo).length > 0));
     const fills = open.filter((sg) => this.mayFill(t, approval, sg, response, signer, actorFor(sg)));
     const unsigned = (sg: Json, actor: string | null) =>
       !!actor &&
@@ -2045,7 +2174,7 @@ class Interpreter {
       );
     // For sign, a signature already complete still counts as met, so the person is refused on it (gate-repeat), not as no signer (review S1).
     // For ignore it doesn't: a complete signature leaves the person nothing to answer, so with no open one met the step is refused gate-signer.
-    const met = (response === "ignore" ? open : needed).find((x) => actorFor(x) !== null);
+    const met = (response === "ignore" || response === "delegate" ? open : needed).find((x) => actorFor(x) !== null);
     const sg = fills.find((x) => unsigned(x, actorFor(x))) ?? fills[0] ?? met;
     return sg ? { sg, actor: actorFor(sg) } : { refuse: "gate-signer" };
   }
@@ -2058,14 +2187,21 @@ class Interpreter {
     const response = input.response ?? "sign";
     const signer = input.signer;
     const actor = input.actor;
-    const actorFor = (sg: Json) => (actor && signer && this.membership.allows(ids(sg.signers), actor) ? actor : null);
+    const behalf = input.onBehalfOf ? (this.participantIdentity(input.onBehalfOf) ?? "") : null;
+    const actorFor = (sg: Json) =>
+      behalf !== null
+        ? this.behalfActor(approval, sg, behalf, signer, response)
+        : actor && signer && this.membership.allows(ids(sg.signers), actor)
+          ? actor
+          : null;
     const picked = this.pick(t, approval, response, signer, actorFor, input.signature);
     let refusal: Refusal | null = null;
     if ("refuse" in picked) refusal = [picked.refuse, gateId];
     else {
       const { sg } = picked;
-      this.picks.set(t.id, { sg, actor });
-      if (!actor || !signer || !this.membership.allows(ids(sg.signers), actor)) refusal = ["gate-signer", gateId];
+      const as = actorFor(sg);
+      this.picks.set(t.id, { sg, actor: as });
+      if (!as || !signer) refusal = ["gate-signer", gateId];
       else {
         const denied = this.denyOf(response);
         if (denied) {
@@ -2076,10 +2212,29 @@ class Interpreter {
         else if (response === "sign" && this.sigComplete(sg, approval.counted)) refusal = ["gate-repeat", gateId];
         else if (response === "withdraw" && !approval.counted.some((c) => c.signer === signer && c.signature === sg.id)) refusal = ["gate-not-signed", gateId];
         else if (gate.reasonRequired === true && !(input.reason ?? "").trim()) refusal = ["gate-reason", gateId];
+        else if (response === "delegate" && !this.mayReceive(sg, input.delegateTo)) refusal = ["gate-signer", gateId];
       }
     }
     if (refusal) this.audit(gate, t, signer, actor, meaningOf(input, gate), input.reason, "refused", auditAttributes(input, gate), this.namedOf(t));
     return refusal;
+  }
+
+  /** The identity of a scenario participant, or null when there is no such participant. */
+  private participantIdentity(id: string | undefined): string | null {
+    const p = id ? this.participants.find((x) => x.id === id) : undefined;
+    return p ? this.identityOf(p) : null;
+  }
+
+  /** The actor an answer on behalf of the delegator counts as, from the delegation on the signature given to this person; null when none is open (decision 34). */
+  private behalfActor(approval: Approval, sg: Json, from: string, to: string | null, response: Response): string | null {
+    const d = approval.delegations.find((x) => x.signature === sg.id && x.from === from && x.to === to && (response === "withdraw" || !x.used));
+    return d?.actor ?? null;
+  }
+
+  /** Whether the participant is a member of one of the actors the signature may be delegated to. */
+  private mayReceive(sg: Json, participant: string | undefined): boolean {
+    const p = participant ? this.participants.find((x) => x.id === participant) : undefined;
+    return !!p && ids(sg.delegateTo).some((a) => this.satisfies(p, a));
   }
 
   /** Row 7b: a right of the acting lifecycle that denies the response's verb. */
@@ -2110,11 +2265,25 @@ class Interpreter {
     const sg = String(pick.sg.id);
     const named = { signature: sg, stage: String(pick.sg.stage) };
     this.act(response, null);
+    const behalf = input.onBehalfOf ? this.participantIdentity(input.onBehalfOf) : null;
+    const answerNamed = behalf ? { ...named, onBehalfOf: behalf } : named;
+    const actor = (behalf ? pick.actor : null) ?? input.actor!;
+    const delegation = (from: string) =>
+      approval.delegations.find((d) => d.signature === sg && d.from === from && d.to === input.signer && (response === "withdraw" || !d.used));
     if (response === "sign") {
-      approval.counted.push({ signer: input.signer!, actor: input.actor!, meaning, reason: input.reason, signature: sg });
+      approval.counted.push({ signer: input.signer!, actor, meaning, reason: input.reason, signature: sg });
       approval.answered.push({ signer: input.signer!, signature: sg, kind: "sign" });
-      audit("signed", named);
+      if (behalf) {
+        const d = delegation(behalf);
+        if (d) d.used = true;
+      }
+      audit("signed", answerNamed);
       if (!this.roundDone(t, approval, approval.counted)) return false;
+      if (this.hasLater(t, approval)) {
+        // A round other than the last is complete: the next one starts and nothing moves (decision 33).
+        this.startRound(t, approval, approval.round);
+        return false;
+      }
       audit("completed", {});
       // A gated move is done by everyone whose signature counted toward it (decision 15).
       for (const c of approval.counted) this.act(t.verb, t.id, c.signer);
@@ -2123,16 +2292,30 @@ class Interpreter {
     }
     if (response === "ignore") {
       approval.answered.push({ signer: input.signer!, signature: sg, kind: "ignore" });
-      audit("ignored", named);
+      if (behalf) {
+        const d = delegation(behalf);
+        if (d) d.used = true;
+      }
+      audit("ignored", answerNamed);
+    } else if (response === "delegate") {
+      // The delegator is finished on the signature; the person it goes to may answer on their behalf (decision 34).
+      const to = this.participantIdentity(input.delegateTo) ?? String(input.delegateTo);
+      approval.answered.push({ signer: input.signer!, signature: sg, kind: "delegate" });
+      approval.delegations.push({ from: input.signer!, actor: input.actor ?? null, to, signature: sg, used: false });
+      audit("delegated", { ...named, delegateTo: to });
     } else if (response === "withdraw") {
       const at = approval.counted.map((c) => c.signer === input.signer && c.signature === sg).lastIndexOf(true);
       if (at >= 0) approval.counted.splice(at, 1);
       const answer = approval.answered.map((a) => a.signer === input.signer && a.signature === sg && a.kind === "sign").lastIndexOf(true);
       if (answer >= 0) approval.answered.splice(answer, 1);
-      audit("withdrawn", named);
+      if (behalf) {
+        const d = delegation(behalf);
+        if (d) d.used = false;
+      }
+      audit("withdrawn", answerNamed);
     } else {
       // A veto: it clears every signature and moves nothing, and round 1 starts again at once (decision 10).
-      audit("rejected", named);
+      audit("rejected", answerNamed);
       this.startApproval(t);
     }
     return false;
@@ -2457,6 +2640,7 @@ class Interpreter {
       ...(this.frozenObject ? { frozen: true as const } : {}),
       ...(this.scope.triggerRuns.length || this.scope.queued.length ? { triggerPoints: [...this.scope.triggerRuns, ...this.scope.queued] } : {}),
       ...(this.scope.checkWarnings.length ? { checkWarnings: [...this.scope.checkWarnings] } : {}),
+      ...(this.scope.notices.length ? { notices: [...this.scope.notices] } : {}),
     };
     if (this.scope.list) unsatisfiedLists.set(trace, this.scope.list);
     const answered = this.scope.answered;
@@ -2583,9 +2767,10 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
       const approval = run.approvalOf(t);
       if (approval) {
         const sigs = gateSignatures(t.gate);
+        const multi = run.roundsOf(t).length > 1;
         const state = (sg: Json) => ({
           signature: String(sg.id),
-          needed: approval.needed.has(String(sg.id)),
+          needed: approval.judged.has(String(sg.id)),
           counted: approval.counted.filter((c) => c.signature === sg.id).length,
           required: Math.max(1, num(sg.required) ?? 1),
           finished: [...new Set(approval.answered.filter((a) => a.signature === sg.id).map((a) => a.signer))],
@@ -2598,9 +2783,15 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
           satisfied: approval.waiting,
           stages: arr(t.gate!.stages).map((st) => {
             const own = sigs.filter((sg) => sg.stage === st.id);
+            const round = num(st.round) ?? 1;
+            const skipped = approval.skipped.has(String(st.id));
+            // A round not started yet is not complete; one past its start is, when each signature judged needed is.
+            const started = round <= approval.round;
             return {
               stage: String(st.id),
-              complete: own.every((sg) => !approval.needed.has(String(sg.id)) || run.sigComplete(sg, approval.counted, approval)),
+              complete: skipped || (started && own.every((sg) => !approval.judged.has(String(sg.id)) || run.sigComplete(sg, approval.counted, approval))),
+              ...(multi ? { round } : {}),
+              ...(skipped ? { skipped: true as const } : {}),
               signatures: own.map(state),
             };
           }),
@@ -2662,7 +2853,7 @@ function enabledOf(run: Interpreter, active: Edge[]): SimulationJson["enabled"] 
         need: open.reduce((n, sg) => n + Math.max(1, num(sg.required) ?? 1), 0),
       };
       if (!actors.length) actors = [...new Set(open.flatMap((sg) => ids(sg.signers)))];
-      responses = approval.waiting ? ["sign"] : [...RESPONSES];
+      responses = approval.waiting ? ["sign"] : responsesOf(gated.gate);
     } else if (gated) {
       gate = { have: run.signatures.get(gated.id)?.length ?? 0, need: Math.max(1, typeof gated.gate!.required === "number" ? gated.gate!.required : 1) };
       if (!actors.length) actors = ids(gated.gate!.signers);
@@ -2793,6 +2984,9 @@ export function replay(doc: Json, start: { context?: Json; at?: string } | null 
     // A step that answered an approval records the signatures counted after it (decision 27).
     const counted = signatureCounts.get(t);
     if (counted) expect.signatures = counted;
+    // The notices due at a time step, written when some fell due or the step already expected some (decision 27, part 2).
+    const notices = (t.notices ?? []).map((n) => ({ signature: n.signature, kind: n.kind }));
+    if (notices.length || (steps[t.index]?.expect as Json | undefined)?.notices !== undefined) expect.notices = notices;
     // Written only when some ran: a step that expected points and now has none drops the key (as the engine's Observed does).
     const ran = (t.triggerPoints ?? []).filter((r) => r.outcome !== "skipped").map((r) => r.triggerPoint);
     const expected = (steps[t.index]?.expect as Json | undefined)?.triggerPoints !== undefined;

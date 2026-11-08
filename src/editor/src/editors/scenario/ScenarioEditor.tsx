@@ -43,7 +43,7 @@ import { useActors, useProblems, rowProblems } from "../process/shared";
 import { ScenarioStatusBadge } from "../process/ScenariosTab";
 import { ObjectsGrid, ParticipantsGrid } from "./ParticipantsGrid";
 import { PARTICIPANT_LABELS as PL, RIGHT_LABELS as RL, SCENARIO_APPROVAL_LABELS as SL, TRIGGER_LABELS as TL } from "@/model/labels";
-import { approvalsOfEvent, hasApproval, signaturesOf } from "@/model/approvals";
+import { approvalsOfEvent, hasApproval, hasNotices, mayDelegate, signaturesOf } from "@/model/approvals";
 import { EFFECT_LABELS as EL } from "@/model/effectLabels";
 import { CHECK_WORD_LABELS, canWarnAt, isTeamCheck, parseAssume, reachableChecks, stepVerbs } from "@/model/triggerPoints";
 
@@ -225,6 +225,11 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const step = (row: StepRow) => scenario.steps[row.index];
   /** A step answers an approval when it is an event step and its event is gated by one. */
   const answers = (row: StepRow) => row.input === "event" && approvalsOfEvent(processDoc, step(row)?.event).length > 0;
+  /** A step may delegate, or answer on behalf of someone, where its approval has a signature with delegateTo (decision 34). */
+  const delegates = (row: StepRow) => answers(row) && mayDelegate(processDoc, step(row)?.event);
+  const delegation = mayDelegate(processDoc) || scenario.steps.some((s) => s.delegateTo || s.onBehalfOf);
+  const notices = hasNotices(processDoc) || scenario.steps.some((s) => s.expect?.notices);
+  const participantOptions = (): GridOption[] => [none, ...(scenario.participants ?? []).map((p) => ({ value: p.id, label: p.name }))];
 
   const columns: GridColumn<StepRow>[] = [
     { key: "index", label: "#", kind: "readonly", width: "w-8", value: (r) => String(r.index + 1) },
@@ -296,7 +301,9 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
             value: (r: StepRow) => (answers(r) ? (SL.responseWords[r.response || "sign"] ?? r.response) : ""),
             editValue: (r: StepRow) => step(r)?.response ?? "sign",
             options: (r: StepRow) =>
-              APPROVAL_RESPONSES.filter((x) => x === "sign" || !verbs.hidden.has(x) || x === step(r)?.response).map((x) => ({
+              APPROVAL_RESPONSES.filter(
+                (x) => x === step(r)?.response || ((x === "sign" || !verbs.hidden.has(x)) && (x !== "delegate" || mayDelegate(processDoc, step(r)?.event))),
+              ).map((x) => ({
                 value: x,
                 label: SL.responseWords[x],
               })),
@@ -314,6 +321,32 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
               { value: "", label: SL.picked },
               ...approvalsOfEvent(processDoc, step(r)?.event).flatMap((g) => signaturesOf(g).map((sg) => ({ value: sg.id, label: sg.displayName || sg.name }))),
             ],
+          },
+        ]
+      : []),
+    ...(delegation
+      ? [
+          {
+            key: "delegateTo",
+            label: SL.delegateTo,
+            tooltip: SL.delegateToTip,
+            kind: "select" as const,
+            width: "min-w-24",
+            locked: (r: StepRow) => !delegates(r) || step(r)?.response !== "delegate",
+            value: (r: StepRow) => (delegates(r) && step(r)?.response === "delegate" ? r.delegateTo : ""),
+            editValue: (r: StepRow) => step(r)?.delegateTo ?? "",
+            options: participantOptions,
+          },
+          {
+            key: "onBehalfOf",
+            label: SL.onBehalfOf,
+            tooltip: SL.onBehalfOfTip,
+            kind: "select" as const,
+            width: "min-w-24",
+            locked: (r: StepRow) => !delegates(r) || step(r)?.response === "delegate",
+            value: (r: StepRow) => (delegates(r) && step(r)?.response !== "delegate" ? r.onBehalfOf : ""),
+            editValue: (r: StepRow) => step(r)?.onBehalfOf ?? "",
+            options: participantOptions,
           },
         ]
       : []),
@@ -450,6 +483,18 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
           },
         ]
       : []),
+    ...(notices
+      ? [
+          {
+            key: "notices",
+            label: SL.notices,
+            tooltip: SL.noticesTip,
+            kind: "readonly" as const,
+            width: "min-w-28",
+            value: (r: StepRow) => r.notices,
+          },
+        ]
+      : []),
     { key: "signer", label: "Signer", kind: "text", width: "min-w-20", value: (r) => r.signer },
     {
       key: "meaning",
@@ -507,6 +552,8 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
           delete s.event;
           delete s.response;
           delete s.signature;
+          delete s.delegateTo;
+          delete s.onBehalfOf;
         }
         if (v !== "time") delete s.after;
         if (v !== "invoke-done" && v !== "invoke-error") delete s.invoke;
@@ -524,6 +571,11 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
           delete s.response;
           delete s.signature;
         }
+        if (row.input === "event" && !mayDelegate(processDoc, v.trim())) {
+          if (s.response === "delegate") delete s.response;
+          delete s.delegateTo;
+          delete s.onBehalfOf;
+        }
         if (row.input === "verb" && v.trim() !== "read") delete s.attributes;
       } else if (key === "refusal" || key === "refusedBy") {
         // A refusal expected is a refused step: the reason or the refuser also says so.
@@ -533,8 +585,13 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
           expect.accepted = false;
         } else delete expect[key];
         setOpt(s, "expect", expect);
-      } else if (key === "response") setOpt(s, "response", v === "sign" ? undefined : v);
-      else if (key === "signature") setOpt(s, "signature", v);
+      } else if (key === "response") {
+        setOpt(s, "response", v === "sign" ? undefined : v);
+        // Delegate names who it goes to and can't answer on behalf; every other response names no one to delegate to.
+        if (v === "delegate") delete s.onBehalfOf;
+        else delete s.delegateTo;
+      } else if (key === "signature") setOpt(s, "signature", v);
+      else if (key === "delegateTo" || key === "onBehalfOf") setOpt(s, key, v);
       else if (key === "end" || key === "object") setOpt(s, key, v.trim());
       else if (key === "attributes") setOpt(s, "attributes", v.split(",").filter(Boolean));
       else if (key === "setValues") setOpt(s, "values", parseValuesText(v, valueNames).values);
