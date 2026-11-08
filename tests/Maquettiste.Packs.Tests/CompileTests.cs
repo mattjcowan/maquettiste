@@ -389,7 +389,10 @@ public sealed class CompileTests
         Assert.Contains("public static partial bool X(TriggerPointCall call);", steps, StringComparison.Ordinal);
         Assert.Contains("public static partial void XWhen(TriggerPointCall call);", steps, StringComparison.Ordinal);
         Assert.Contains("triggerSteps: new DocumentTriggerSteps()", repo.Read("out/Processes/Document/DocumentDefinition.cs"), StringComparison.Ordinal);
-        Assert.Contains("var outcome1 = await new DocumentVerbs(", repo.Read("out/Tests/Document/ReleaseTests.cs"), StringComparison.Ordinal);
+        var release = repo.Read("out/Tests/Document/ReleaseTests.cs");
+        Assert.Contains("var outcome2 = await new DocumentVerbs(", release, StringComparison.Ordinal);
+        Assert.Contains("ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal) { [\"01JTP000000000000000000X10\"] = \"error\" };", release, StringComparison.Ordinal);
+        Assert.Contains("public sealed class ScenarioTriggers : TriggerPointStandIn", repo.Read("out/Tests/ScenarioTriggers.cs"), StringComparison.Ordinal);
 
         repo.Write("out/Processes/Document/DocumentTriggerPoints.cs", TriggerPointsTeamCode);
         repo.Write("out/Processes/DocumentVerbs.cs", """
@@ -443,6 +446,7 @@ public sealed class CompileTests
             }
             public static partial void Archive(TriggerPointCall call) => Written.Add("archived");
             public static partial bool DocumentTriggerPointsValue(TriggerPointCall call) => !RefuseSign;
+            public static partial bool AskRegistry(TriggerPointCall call) => throw new InvalidOperationException("The registry was reached.");
         }
 
         public static partial class DocumentTriggerConditions
@@ -492,6 +496,7 @@ public sealed class CompileTests
                 var host = new ProcessHost(clock);
                 var outbox = new InMemoryProcessOutbox();
                 var documents = new DocumentCommandHandler(new DocumentMachine(new DocumentHandlers(), host, host, host), new DocumentStore());
+                TriggerPointStandIn.Current = new ScenarioTriggers();
                 return Task.FromResult(new ScenarioHost(new Dispatcher(new HandlerRegistry(documents), new Pipeline(outbox)), outbox));
             }
 

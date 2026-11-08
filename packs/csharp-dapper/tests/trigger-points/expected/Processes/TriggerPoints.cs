@@ -160,6 +160,33 @@ public sealed class TriggerPointOutcome
             _warnings.Add(new TriggerPointWarning(id, message));
     }
 
+    // An outside check (decision 22): the stand-in's word when one answers it, else the team's method. A word of warning warns whatever
+    // the check's severity, and an error on a warning check warns, as in the replay (decision 26).
+    internal void Check(string id, string message, bool warning, TriggerPointCall call, Func<bool> holds)
+    {
+        switch (TriggerPointStandIn.Current?.Check(id, call))
+        {
+            case null:
+                Check(id, message, warning, holds());
+                break;
+            case "warning":
+                Check(id, message, true, false);
+                break;
+            case "error":
+                Check(id, message, warning, false);
+                break;
+            default:
+                break;
+        }
+    }
+
+    // An outside action or replace (decision 22): recorded by the stand-in when it takes it, else the team's method.
+    internal static void Run(string id, TriggerPointCall call, Action body)
+    {
+        if (TriggerPointStandIn.Current?.Records(id, call) != true)
+            body();
+    }
+
     internal void Refuse(string refusal, string? by, string? message)
     {
         if (Refusal is not null)
@@ -186,6 +213,28 @@ public sealed class TriggerPointOutcome
     internal void Replace(string id) => Replaced ??= id;
 
     internal void Queue(TriggerPointMessage message) => _messages.Add(message);
+}
+
+/// <summary>
+/// Stands in for the team's code of outside trigger points (trigger-points-design.md decision 22), so a test reaches no outside system: a
+/// generated scenario test registers its ScenarioTriggers here once. With none registered, generated code calls the team's methods.
+/// </summary>
+public abstract class TriggerPointStandIn
+{
+    /// <summary>The stand-in in use, or null.</summary>
+    public static TriggerPointStandIn? Current { get; set; }
+
+    /// <summary>An outside check's outcome in place of its method: "pass", "warning" or "error"; null calls the method.</summary>
+    /// <param name="id">The trigger point's id.</param>
+    /// <param name="call">The call.</param>
+    /// <returns>The outcome, or null.</returns>
+    public abstract string? Check(string id, TriggerPointCall call);
+
+    /// <summary>Whether an outside action or replace is recorded in place of calling its method.</summary>
+    /// <param name="id">The trigger point's id.</param>
+    /// <param name="call">The call.</param>
+    /// <returns>Whether it is recorded.</returns>
+    public abstract bool Records(string id, TriggerPointCall call);
 }
 
 /// <summary>

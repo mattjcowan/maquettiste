@@ -17,7 +17,7 @@ public sealed class ReleaseTests
 {
     private const string Instance = "0196ac00-0000-0000-0000-000000003001";
 
-    /// <summary>Runs the 4 steps of Release and checks each one and the outcome (active).</summary>
+    /// <summary>Runs the 6 steps of Release and checks each one and the outcome (active).</summary>
     /// <returns>The task.</returns>
     [Fact]
     public async Task Release()
@@ -28,9 +28,20 @@ public sealed class ReleaseTests
         var result = await host.Dispatcher.SendAsync(new DocumentStartControl(new ProcessEnvelope(Instance)) { Context = new DocumentContext() }, cancellationToken);
         Assert.True(result.Accepted, result.Refusal);
 
-        // Step 1: modify by bea.
+        // Step 1: submit by bea as Author, signed by bea.
+        ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal);
+        result = await host.Dispatcher.SendAsync(new DocumentSubmitCommand(new ProcessEnvelope(Instance, Actor: Actors.Author, Signer: "bea")), cancellationToken);
+        Assert.False(result.Accepted);
+        Assert.Equal("check", result.Refusal);
+        Assert.Equal("01JTP000000000000000000X02", result.RefusedBy);
+        Assert.Equal<string>(["01JTP000000000000000000X02"], result.TriggerPoints);
+        Assert.Equal<string>([], result.Changed);
+
+        // Step 2: modify by bea.
+        // Assumed: check AskRegistry gives warning; it reaches outside systems, so ScenarioTriggers answers it.
         // Assumed: check CheckModify gives pass; the team's code must give it.
-        var outcome1 = await new DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Modify, new TriggerPointCall
+        ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal) { ["01JTP000000000000000000X10"] = "warning" };
+        var outcome2 = await new DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Modify, new TriggerPointCall
         {
             Key = "spec",
             Envelope = new ProcessEnvelope(Instance, Actor: Actors.Author),
@@ -40,25 +51,16 @@ public sealed class ReleaseTests
                 ["Document"] = result.States ?? [],
             },
             Attributes = ["price", "title"],
-            CommandId = "Release-1",
+            CommandId = "Release-2",
         }, (_, _) => Task.CompletedTask, cancellationToken);
-        Assert.True(outcome1.Passed, outcome1.Message);
+        Assert.True(outcome2.Passed, outcome2.Message);
+        Assert.Equal<string>(["01JTP000000000000000000X03", "01JTP000000000000000000X10"], [.. outcome2.Warnings.Select(w => w.Id)]);
+        Assert.Equal<string>(["01JTP000000000000000000X01", "01JTP000000000000000000X03", "01JTP000000000000000000X05", "01JTP000000000000000000X10", "01JTP000000000000000000X04"], outcome2.Ran);
 
-        // Step 2: submit by bea as Author, signed by bea.
-        result = await host.Dispatcher.SendAsync(new DocumentSubmitCommand(new ProcessEnvelope(Instance, Actor: Actors.Author, Signer: "bea")), cancellationToken);
-        Assert.True(result.Accepted, result.Refusal);
-        Assert.Equal<string>(["Review"], result.States);
-        Assert.Equal<string>([], result.Changed);
-
-        // Step 3: approve by bea as Author, signed by bea.
-        result = await host.Dispatcher.SendAsync(new DocumentApproveCommand(new ProcessEnvelope(Instance, Actor: Actors.Author, Signer: "bea")), cancellationToken);
-        Assert.True(result.Accepted, result.Refusal);
-        Assert.Equal<string>(["signed", "completed"], [.. result.Audit.Select(a => a.OutcomeText)]);
-        Assert.Equal<string>(["Released"], result.States);
-        Assert.Equal<string>([], result.Changed);
-
-        // Step 4: delete by bea.
-        var outcome4 = await new DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Delete, new TriggerPointCall
+        // Step 3: modify by bea.
+        // Assumed: check AskRegistry gives error; it reaches outside systems, so ScenarioTriggers answers it.
+        ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal) { ["01JTP000000000000000000X10"] = "error" };
+        var outcome3 = await new DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Modify, new TriggerPointCall
         {
             Key = "spec",
             Envelope = new ProcessEnvelope(Instance, Actor: Actors.Author),
@@ -67,9 +69,44 @@ public sealed class ReleaseTests
             {
                 ["Document"] = result.States ?? [],
             },
-            CommandId = "Release-4",
+            Attributes = ["price"],
+            CommandId = "Release-3",
         }, (_, _) => Task.CompletedTask, cancellationToken);
-        Assert.True(outcome4.Passed, outcome4.Message);
+        Assert.False(outcome3.Passed);
+        Assert.Equal("check", outcome3.Refusal);
+        Assert.Equal("01JTP000000000000000000X10", outcome3.RefusedBy);
+
+        // Step 4: submit by bea as Author, signed by bea.
+        ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal);
+        result = await host.Dispatcher.SendAsync(new DocumentSubmitCommand(new ProcessEnvelope(Instance, Actor: Actors.Author, Signer: "bea")), cancellationToken);
+        Assert.True(result.Accepted, result.Refusal);
+        Assert.Equal<string>(["Review"], result.States);
+        Assert.Equal<string>([], result.Changed);
+
+        // Step 5: approve by bea as Author, signed by bea.
+        ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal);
+        result = await host.Dispatcher.SendAsync(new DocumentApproveCommand(new ProcessEnvelope(Instance, Actor: Actors.Author, Signer: "bea")), cancellationToken);
+        Assert.True(result.Accepted, result.Refusal);
+        Assert.Equal<string>(["signed", "completed"], [.. result.Audit.Select(a => a.OutcomeText)]);
+        Assert.Equal<string>(["Released"], result.States);
+        Assert.Equal<string>([], result.Changed);
+
+        // Step 6: delete by bea.
+        ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal);
+        var outcome6 = await new DocumentVerbs(new global::App.Model.Dispatch.InMemoryProcessOutbox(), clock).RunAsync(global::App.Model.Verb.Delete, new TriggerPointCall
+        {
+            Key = "spec",
+            Envelope = new ProcessEnvelope(Instance, Actor: Actors.Author),
+            Held = [Actors.Author],
+            States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+                ["Document"] = result.States ?? [],
+            },
+            CommandId = "Release-6",
+        }, (_, _) => Task.CompletedTask, cancellationToken);
+        Assert.True(outcome6.Passed, outcome6.Message);
+
+        ScenarioTriggers.Assumed = null;
 
         Assert.False(result.Final);
     }

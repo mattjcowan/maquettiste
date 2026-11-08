@@ -145,6 +145,16 @@
         "01JTP000000000000000000T02"
       ],
       "description": "The signer's own rule."
+    },
+    {
+      "id": "01JTP000000000000000000X10",
+      "name": "AskRegistry",
+      "type": "check",
+      "verbs": [
+        "modify"
+      ],
+      "outside": true,
+      "description": "The registry's own rule for edits."
     }
   ],
   "states": [

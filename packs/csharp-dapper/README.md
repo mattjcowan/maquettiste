@@ -374,6 +374,7 @@ For `PurchaseApproval` in package `Purchasing`:
 | `caller-holdings` | `once`, file block | `model` | `Dispatch/CallerHoldings.cs` (in the `partialFolder`), only when the project uses rights: the team's `ICallerHoldings`, which returns no held actors until written (see Rights) |
 | `scenario-holdings` | `overwrite`, file block | `model` | `<testsFolder>/ScenarioHoldings.cs`, only when the project uses rights and `testsFolder` is set: the held actors of each step's participant |
 | `scenario-frozen` | `overwrite`, file block | `model` | `<testsFolder>/ScenarioFrozen.cs`, only when the project uses freezing and `testsFolder` is set: whether each step's subject, and a link of it, are frozen before the step |
+| `scenario-triggers` | `overwrite`, file block | `model` | `<testsFolder>/ScenarioTriggers.cs`, only when the project uses trigger points and `testsFolder` is set: each outside check's word from the step's `assume`, and the outside actions and replaces recorded in place of calling them |
 | `scenario-tests` | file blocks | `each scenario` | `<testsFolder>/PurchaseApproval/HappyPathTests.cs`: one xunit test per scenario; only when `testsFolder` is set. Each step acts as the actor the engine worked out (`step.acts_as`), and an event step by a participant signs with the participant's identity unless it names a signer |
 
 ### Lifecycle state codes
@@ -588,6 +589,14 @@ a handler that disagrees with the model's scenario fails its test. The test proj
 namespace: `static Task<ScenarioHost> StartAsync(ManualClock clock, CancellationToken cancellationToken)`, a `Dispatcher`
 property and `DisposeAsync`, wiring the stores the project chose (the gate 3 fixture's opens an in-memory SQLite database from
 the sql-ddl schema). A failing test is fixed in the model or in a handler, never in the test.
+
+With trigger points, a verb step goes through the per-type runner `<Entity>Verbs` and asserts its refusal, `refusedBy`,
+`checkWarnings` and `triggerPoints` as the scenario expects them. A check written as the team's code runs the team's method, and the
+step's `assume` word is what that method must give. A point marked `outside` never reaches an outside system in a test:
+`Tests/ScenarioTriggers.cs` (unit `scenario-triggers`) answers each outside check with the step's word (`pass` without one) and records
+each outside action or replace in place of calling it. After-commit messages are never delivered in a test. **Upgrading:** register
+it once in your `ScenarioHost`, as you do `ScenarioHoldings` and `ScenarioFrozen`: `TriggerPointStandIn.Current = new ScenarioTriggers();`.
+Until then a test calls the team's outside methods, and a step whose outcome depends on an assumed outside check fails.
 
 ## Type map
 

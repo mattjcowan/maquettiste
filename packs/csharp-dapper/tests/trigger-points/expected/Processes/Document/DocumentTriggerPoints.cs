@@ -44,6 +44,10 @@ public static partial class DocumentTriggerPoints
     // DocumentTriggerPoints (check)
     public static partial bool DocumentTriggerPointsValue(TriggerPointCall call) =>
         throw new NotImplementedException("Trigger point DocumentTriggerPoints of lifecycle Document is not implemented yet.");
+
+    // AskRegistry (check)
+    public static partial bool AskRegistry(TriggerPointCall call) =>
+        throw new NotImplementedException("Trigger point AskRegistry of lifecycle Document is not implemented yet.");
 }
 
 public static partial class DocumentTriggerConditions

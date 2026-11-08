@@ -1076,9 +1076,10 @@ internal static class ExprSites
     private static readonly ConditionalWeakTable<ModelSnapshot, ConditionalWeakTable<Process, IReadOnlySet<string>>> StereotypeReads = new();
 
     /// <summary>
-    /// The ids of the stereotype attributes a process's guard conditions read on the object itself (under <c>subject</c>, through no
-    /// navigation; stereotype-sets-design.md decision 7), typed once per model; empty when none does. A scenario's subject row and the
-    /// subject's defaults gain them only then, so a run's answers stay the same otherwise.
+    /// The ids of the stereotype attributes a process's guard conditions, and a lifecycle's trigger point conditions, <c>when</c> and set
+    /// values, read on the object itself (under <c>subject</c>, through no navigation; stereotype-sets-design.md decision 7), and those
+    /// their sets write, typed once per model; empty when none does. A scenario's subject row and the subject's defaults gain them only
+    /// then, so a run's answers stay the same otherwise.
     /// </summary>
     /// <param name="model">The model.</param>
     /// <param name="process">The process.</param>
@@ -1087,13 +1088,16 @@ internal static class ExprSites
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if ((process.Guards.All(g => g.Condition is null) && !SetsData(process)) || process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
+        if ((process.Guards.All(g => g.Condition is null) && !SetsData(process) && !TriggerPointsRead(process))
+            || process.Context.Any(a => string.Equals(a.Name, SubjectPrefix, StringComparison.Ordinal)))
             return FrozenSet<string>.Empty;
         return StereotypeReads.GetValue(model, static _ => new()).GetValue(process, p =>
         {
             HashSet<string>? read = null;
-            // A set writes its attribute into the object's row, so a stereotype's attribute it sets joins the row as one read does.
-            foreach (var set in p.Actions.SelectMany(a => a.Sets))
+            // A set writes its attribute into the object's row, so a stereotype's attribute it sets joins the row as one read does; a
+            // trigger point's set too (trigger-points-design.md decision 25).
+            var pointSets = p.Use != ProcessUse.Lifecycle ? [] : p.TriggerPoints.SelectMany(t => t.Sets);
+            foreach (var set in p.Actions.SelectMany(a => a.Sets).Concat(pointSets))
             {
                 if (IsStereotypeAttribute(model, set.Attribute))
                     (read ??= new HashSet<string>(StringComparer.Ordinal)).Add(set.Attribute);
@@ -1367,6 +1371,10 @@ internal static class ExprSites
     /// <param name="process">The process.</param>
     /// <returns>Whether one does.</returns>
     internal static bool SetsData(Process process) => process.Actions.Any(a => a.Sets.Count > 0);
+
+    // Whether a lifecycle's trigger points hold what reads or writes the object: a when, a condition or a set.
+    private static bool TriggerPointsRead(Process process) =>
+        process.Use == ProcessUse.Lifecycle && process.TriggerPoints.Any(t => t.When is not null || t.Condition is not null || t.Sets.Count > 0);
 
     /// <summary>The ids of a process's guards that hold a condition, then of its actions' sets, in document order: what reads the object.</summary>
     /// <param name="process">The process.</param>

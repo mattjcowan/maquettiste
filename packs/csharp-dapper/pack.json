@@ -260,6 +260,11 @@
       "for": "model"
     },
     {
+      "id": "scenario-triggers",
+      "template": "scenario-triggers.scriban",
+      "for": "model"
+    },
+    {
       "id": "seed-loader",
       "template": "seed-loader.scriban",
       "for": "model"

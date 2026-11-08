@@ -284,6 +284,8 @@ public sealed class DocumentTriggerSteps : ITriggerPointSteps
             outcome.Check("01JTP000000000000000000X03", "The price dropped by more than a tenth.", true, DocumentTriggerPoints.X(call));
         if (outcome.Passed && call.End is null && outcome.Once("01JTP000000000000000000X05"))
             outcome.Check("01JTP000000000000000000X05", "The team's own rule for edits.", false, DocumentTriggerPoints.CheckModify(call));
+        if (outcome.Passed && call.End is null && outcome.Once("01JTP000000000000000000X10"))
+            outcome.Check("01JTP000000000000000000X10", "The registry's own rule for edits.", false, call, () => DocumentTriggerPoints.AskRegistry(call));
     }
 
     /// <summary>The with-the-change actions of modify, in the command's unit of work.</summary>
@@ -432,6 +434,11 @@ public static partial class DocumentTriggerPoints
     /// <param name="call">The call.</param>
     /// <returns>Whether the check passes.</returns>
     public static partial bool DocumentTriggerPointsValue(TriggerPointCall call);
+
+    /// <summary>Check AskRegistry on modify: the team&apos;s code. The registry&apos;s own rule for edits.. It reaches outside systems.</summary>
+    /// <param name="call">The call.</param>
+    /// <returns>Whether the check passes.</returns>
+    public static partial bool AskRegistry(TriggerPointCall call);
 }
 
 /// <summary>The when of lifecycle Document's trigger points: a point runs only when its when is true (implemented in DocumentTriggerPoints.cs).</summary>

@@ -24,6 +24,41 @@ func runner_of(step)
   end
   ret s.subject.entity.trigger_lifecycles.size > 0 ? s.subject.entity : null
 end
+# The trigger point a step's assume word names (decision 26): this lifecycle's by name, another's by "Lifecycle.Name" or "LifecycleId.Name".
+func assumed_point(key)
+  for $l in model.trigger_lifecycles
+    for $tp in $l.trigger_points
+      if ($l.id == p.id && $tp.name == key) || ($l.name + "." + $tp.name) == key || ($l.id + "." + $tp.name) == key
+        ret $tp
+      end
+    end
+  end
+  ret null
+end
+# Whether some trigger point reaches outside systems in the command (not after commit), so each step sets ScenarioTriggers (decision 22).
+stands_in = false
+if triggers
+  for $l in model.trigger_lifecycles
+    for $tp in $l.trigger_points
+      if $tp.outside && $tp.timing != "after-commit"
+        stands_in = true
+      end
+    end
+  end
+end
+# The words a step assumes for outside team-code checks, as a dictionary initializer, which ScenarioTriggers answers.
+func outside_words(step)
+  $out = []
+  for $kv in step.assume
+    if ($kv.value | object.typeof) == "string"
+      $tp = assumed_point($kv.key)
+      if $tp && $tp.outside
+        $out[$out.size] = "[" + (json $tp.id) + "] = " + (json $kv.value)
+      end
+    end
+  end
+  ret $out | array.join ", "
+end
 # The scenario subject's state paths in another lifecycle, else that lifecycle's initial state.
 func states_in(l)
   $ids = {}
@@ -301,9 +336,17 @@ public sealed class {{ test }}
 {{- if triggers }}
 {{- for kv in step.assume }}
 {{- if (kv.value | object.typeof) == "string" }}
+{{- $tp = assumed_point(kv.key) }}
+{{- if $tp && $tp.outside }}
+        // Assumed: check {{ kv.key }} gives {{ kv.value }}; it reaches outside systems, so ScenarioTriggers answers it.
+{{- else }}
         // Assumed: check {{ kv.key }} gives {{ kv.value }}; the team's code must give it.
 {{- end }}
 {{- end }}
+{{- end }}
+{{- end }}
+{{- if stands_in }}
+        ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal){{ $words = outside_words(step) }}{{ if $words != "" }} { {{ $words }} }{{ end }};
 {{- end }}
 {{- $runner = runner_of(step) }}
 {{- if $runner }}
@@ -473,6 +516,10 @@ public sealed class {{ test }}
 {{- end }}
 {{- end }}
 {{- end }}
+{{- end }}
+{{- if stands_in }}
+
+        ScenarioTriggers.Assumed = null;
 {{- end }}
 
         Assert.{{ s.outcome == "final" ? "True" : "False" }}(result.Final);
