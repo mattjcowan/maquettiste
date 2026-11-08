@@ -446,7 +446,7 @@ token is the `typeof(T)` an `IServiceProvider` lookup needs. `CommandResult` als
 transitions and raised events, selection by active leaf in document order with conflict removal, exit and entry sets, shallow
 and deep history, `done` for compound and parallel states, timers, service and human tasks, gates with their audit records, and
 actor checks, with the same refusal reasons as the engine (`no-transition`, `guard`, `actor`, `gate-signer`, `gate-repeat`,
-`gate-reason`). When the model has actors taken from the object (the order's owner, an approver on its project), the generated code
+`gate-reason`; an approval adds `gate-excluded` and `gate-not-signed`). When the model has actors taken from the object (the order's owner, an approver on its project), the generated code
 can't read the object: the interpreter accepts such an actor only when the process's Handlers, as `IActorResolver<TContext>`,
 says the caller is that actor for the instance, and refuses it otherwise (actors-design.md decision 27). Until the team
 implements those `Is<Actor>` methods, the generated scenario tests whose steps act as an actor taken from the object fail: the
@@ -631,6 +631,30 @@ dry run are each behind a parameter, `bulkLoadBypass` and `dryRun`, both off by 
   it too.
 - **Names to avoid.** Each package with named points declares `TriggerPoints`, `TriggerConditions` and `TriggerRecords` in its namespace,
   so a child package with one of those names breaks the build (two definitions of one name). Rename the package.
+
+### Approvals
+
+A project uses approvals when a lifecycle has a gate with `stages` (signoff-design.md, part 1), inline or through a gate policy. Only then
+does the pack write anything below; a project without approvals gets the same bytes as before.
+
+- **What is written.** The shared interpreter gains `SignatureResponse` (`Sign`, `Reject`, `Ignore`, `Withdraw`), the stage and signature
+  records in each gate's definition, the refusals `GateExcluded` and `GateNotSigned`, the outcomes `Rejected`, `Ignored` and `Withdrawn`, and
+  the snapshot's `Approvals` (each approval's progress) and `Acts` (who did which verb or move, for **Not by**). `Acts` stays empty unless
+  a lifecycle has a **Not by**. `CommandResult.Approvals` returns the progress. A gate's audit record gains `Signature` and `Stage`.
+- **Upgrading, step by step.**
+  1. **Write the conditions** in `<Process>Handlers.cs`, in the class `<Process>ApprovalConditions`: one method for each signature that has
+     a **Needed when**, named `<Gate><Signature>`. Each throws until written, so the build lists what is missing. The comment above a
+     method carries the model's text. Generated code can't read the object (roadmap 4.6), so the body is yours. Answer `true` when you
+     can't tell: an unknown answer means the signature is needed.
+  2. **Pass the response.** A call sets the envelope's `Response` (`Sign` is the default) and, to answer one signature, its `Signature`.
+     Without `Signature`, the interpreter picks one by the engine's rule. The envelope's `Signer` is the person: it decides **Not by**, and
+     one person's one response.
+  3. **Read the progress** from the result's `Approvals` if your screen shows who still has to sign.
+- **The promises.** The interpreter checks a response in the engine's order and refuses it with the engine's words. A rejection clears the
+  approval and moves nothing. The condition is asked when the object enters the state and after a rejection, not at each response. If
+  `<Process>Handlers` does not answer a condition, every signature counts as needed.
+- **Limits.** The generated code does not yet record a human task's `complete` for **Not by**. The generated endpoints take only `Sign`: an
+  HTTP caller of an event can only sign; a team that wants the other responses calls the machine with its own envelope.
 
 ### Scenario tests
 
