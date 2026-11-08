@@ -234,6 +234,17 @@
       "mode": "once"
     },
     {
+      "id": "trigger-points",
+      "template": "trigger-points.scriban",
+      "for": "model"
+    },
+    {
+      "id": "trigger-points-companion",
+      "template": "trigger-points.partial.scriban",
+      "for": "model",
+      "mode": "once"
+    },
+    {
       "id": "scenario-tests",
       "template": "scenario-tests.scriban",
       "for": "each scenario"
@@ -246,6 +257,11 @@
     {
       "id": "scenario-frozen",
       "template": "scenario-frozen.scriban",
+      "for": "model"
+    },
+    {
+      "id": "scenario-triggers",
+      "template": "scenario-triggers.scriban",
       "for": "model"
     },
     {

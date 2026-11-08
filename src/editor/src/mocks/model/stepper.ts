@@ -1232,6 +1232,12 @@ class Interpreter {
     return null;
   }
 
+  /** Whether the next signature, by whoever signs, brings the gate to its count; who signs may still leave a required actor missing. */
+  private couldComplete(t: Edge): boolean {
+    const required = Math.max(1, typeof t.gate!.required === "number" ? t.gate!.required : 1);
+    return (this.signatures.get(t.id)?.length ?? 0) + 1 >= required;
+  }
+
   /** Whether this occurrence would complete the gate, worked out without counting it. */
   private wouldComplete(t: Edge): boolean {
     const input = this.scope.input!;
@@ -1333,7 +1339,8 @@ class Interpreter {
     if (!this.triggers) return [];
     const out = new Set<string>();
     for (const t of edges)
-      for (const verb of [t.gate ? "sign" : null, t.verb]) {
+      // On a gated move its own checks run only on the signature that brings the gate to its count (decision 18).
+      for (const verb of [t.gate ? "sign" : null, !t.gate || this.couldComplete(t) ? t.verb : null]) {
         if (!verb) continue;
         const place = this.placeFor(verb, { edge: t });
         for (const l of this.lifecyclesFor(verb))

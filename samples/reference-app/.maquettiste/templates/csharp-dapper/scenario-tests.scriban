@@ -12,6 +12,82 @@ name = p_name(p)
 ctx = name + "Context"
 test = (pascal s.name) + "Tests"
 rights = uses_rights()
+triggers = uses_triggers()
+# The per-type runner a verb step goes through (trigger-points-design.md decision 30): the subject's entity's, when its governing
+# lifecycles have trigger points and the verb is an object, link or own verb; else null, and the step is checked as before.
+func runner_of(step)
+  if !triggers || !s.subject || step.input != "verb" || !step.verb
+    ret null
+  end
+  if step.verb.group == "move" || step.verb.group == "signature" || step.verb.group == "task"
+    ret null
+  end
+  ret s.subject.entity.trigger_lifecycles.size > 0 ? s.subject.entity : null
+end
+# The trigger point a step's assume word names (decision 26): this lifecycle's by name, another's by "Lifecycle.Name" or "LifecycleId.Name".
+func assumed_point(key)
+  for $l in model.trigger_lifecycles
+    for $tp in $l.trigger_points
+      if ($l.id == p.id && $tp.name == key) || ($l.name + "." + $tp.name) == key || ($l.id + "." + $tp.name) == key
+        ret $tp
+      end
+    end
+  end
+  ret null
+end
+# Whether some trigger point reaches outside systems in the command (not after commit), so each step sets ScenarioTriggers (decision 22).
+stands_in = false
+if triggers
+  for $l in model.trigger_lifecycles
+    for $tp in $l.trigger_points
+      if $tp.outside && $tp.timing != "after-commit"
+        stands_in = true
+      end
+    end
+  end
+end
+# The words a step assumes for outside team-code checks, as a dictionary initializer, which ScenarioTriggers answers.
+func outside_words(step)
+  $out = []
+  for $kv in step.assume
+    if ($kv.value | object.typeof) == "string"
+      $tp = assumed_point($kv.key)
+      if $tp && $tp.outside
+        $out[$out.size] = "[" + (json $tp.id) + "] = " + (json $kv.value)
+      end
+    end
+  end
+  ret $out | array.join ", "
+end
+# A verb step's values as the runner's proposed values (decision 25), as a dictionary initializer: the subject's attribute by name.
+func proposed(step)
+  $out = []
+  for kv in step.values
+    for $a in s.subject.entity.attributes
+      if $a.name == kv.key
+        $out[$out.size] = "[" + (json kv.key) + "] = " + cs_literal(kv.value, $a)
+      end
+    end
+  end
+  ret $out | array.join ", "
+end
+# The scenario subject's state paths in another lifecycle, else that lifecycle's initial state.
+func states_in(l)
+  $ids = {}
+  for x in l.all_states
+    $ids[x.id] = true
+  end
+  $out = []
+  for st in s.subject.states
+    if $ids[st.id]
+      $out[$out.size] = st.path
+    end
+  end
+  if $out.size == 0
+    $out[0] = initial_path(l)
+  end
+  ret $out
+end
 # The refusal a refused step asserts: the one the file expects, else the engine's replay's.
 func refusal_of(step)
   if step.expect && step.expect.refusal
@@ -239,7 +315,7 @@ if pack.params.testsFolder != ""
 {{- capture content -}}
 {{ header() }}
 using System;
-{{- if rights }}
+{{- if rights || triggers }}
 using System.Collections.Generic;
 {{- end }}
 using System.Globalization;
@@ -269,7 +345,90 @@ public sealed class {{ test }}
 {{- for step in s.steps }}
 
         // Step {{ step.index + 1 }}: {{ cs_line step_text(step) }}.{{ if step.description }} {{ cs_line step.description | string.strip }}{{ end }}
-{{- if step.input == "verb" }}
+{{- if triggers }}
+{{- for kv in step.assume }}
+{{- if (kv.value | object.typeof) == "string" }}
+{{- $tp = assumed_point(kv.key) }}
+{{- if $tp && $tp.outside }}
+        // Assumed: check {{ kv.key }} gives {{ kv.value }}; it reaches outside systems, so ScenarioTriggers answers it.
+{{- else }}
+        // Assumed: check {{ kv.key }} gives {{ kv.value }}; the team's code must give it.
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if stands_in }}
+        ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal){{ $words = outside_words(step) }}{{ if $words != "" }} { {{ $words }} }{{ end }};
+{{- end }}
+{{- $runner = runner_of(step) }}
+{{- if $runner }}
+{{- $n = step.index + 1 }}
+{{- $actor = verb_actor(step) }}
+{{- if frozen_sends }}
+        ScenarioFrozen.Current = ({{ frozen_before[step.index] ? "true" : "false" }}, {{ link_before[step.index] ? "true" : "false" }});
+{{- end }}
+        var outcome{{ $n }} = await new global::{{ ns($runner) }}.{{ type_name($runner) }}Verbs(new global::{{ dispatch_ns() }}.InMemoryProcessOutbox(), clock{{ if frozen_sends }}, new ScenarioFrozen(){{ end }}).RunAsync(global::{{ base_ns }}.Verb.{{ pascal step.verb.key }}, new TriggerPointCall
+        {
+            Key = {{ json s.subject.name }},
+            Envelope = new ProcessEnvelope(Instance{{ if $actor }}, Actor: Actors.{{ actor_member $actor }}{{ end }}),
+            Held = {{ held(step) }},
+            States = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+            {
+                [{{ json p.name }}] = result.States ?? [],
+{{- $listed = {} }}
+{{- $listed[p.name] = true }}
+{{- for l in $runner.trigger_lifecycles }}
+{{- if !$listed[l.name] }}
+{{- $listed[l.name] = true }}
+                [{{ json l.name }}] = [{{ for x in states_in(l) }}{{ for.first ? "" : ", " }}{{ json x }}{{ end }}],
+{{- end }}
+{{- end }}
+{{- for x in other_names }}
+{{- if !$listed[x] }}
+                [{{ json x }}] = [{{ for y in other_states[x] }}{{ for.first ? "" : ", " }}{{ json y }}{{ end }}],
+{{- end }}
+{{- end }}
+            },
+{{- if step.end }}
+            End = {{ json step.end.name }},
+{{- end }}
+{{- if step_attributes(step).size > 0 }}
+            Attributes = [{{ for x in step_attributes(step) }}{{ for.first ? "" : ", " }}{{ json x }}{{ end }}],
+{{- end }}
+{{- $values = proposed(step) }}
+{{- if $values != "" }}
+            Proposed = new Dictionary<string, object?>(StringComparer.Ordinal) { {{ $values }} },
+{{- end }}
+            CommandId = "{{ s.name }}-{{ $n }}",
+{{- $from = rights ? object_actors(step) : [] }}
+{{- if $from.size > 0 }}
+            Resolves = actor => actor is {{ for a in $from }}{{ for.first ? "" : " or " }}Actors.{{ actor_member a }}{{ end }},
+{{- end }}
+        }, (_, _) => Task.CompletedTask, cancellationToken);
+{{- if frozen_sends }}
+        ScenarioFrozen.Current = null;
+{{- end }}
+
+{{- if step.expect }}
+{{- if step.expect.accepted }}
+        Assert.True(outcome{{ $n }}.Passed, outcome{{ $n }}.Message);
+{{- else }}
+        Assert.False(outcome{{ $n }}.Passed);
+{{- if refusal_of(step) }}
+        Assert.Equal({{ json refusal_of(step) }}, outcome{{ $n }}.Refusal);
+{{- end }}
+{{- if step.expect.refused_by }}
+        Assert.Equal({{ json step.expect.refused_by }}, outcome{{ $n }}.RefusedBy);
+{{- end }}
+{{- end }}
+{{- if step.expect.check_warnings.size > 0 }}
+        Assert.Equal<string>([{{ for x in step.expect.check_warnings }}{{ if !for.first }}, {{ end }}{{ json x.id }}{{ end }}], [.. outcome{{ $n }}.Warnings.Select(w => w.Id)]);
+{{- end }}
+{{- if step.expect.trigger_points.size > 0 }}
+        Assert.Equal<string>([{{ for x in step.expect.trigger_points }}{{ if !for.first }}, {{ end }}{{ json x.id }}{{ end }}], outcome{{ $n }}.Ran);
+{{- end }}
+{{- end }}
+{{- else if step.input == "verb" }}
 {{- if rights }}
 {{- $actor = verb_actor(step) }}
         var decision{{ step.index + 1 }} = Rights.Check(new RightRequest
@@ -367,9 +526,15 @@ public sealed class {{ test }}
 {{- if refusal_of(step) }}
         Assert.Equal({{ json refusal_of(step) }}, result.Refusal);
 {{- end }}
-{{- if rights && step.expect.refused_by }}
+{{- if (rights || triggers) && step.expect.refused_by }}
         Assert.Equal({{ json step.expect.refused_by }}, result.RefusedBy);
 {{- end }}
+{{- end }}
+{{- if triggers && step.expect.check_warnings.size > 0 }}
+        Assert.Equal<string>([{{ for x in step.expect.check_warnings }}{{ if !for.first }}, {{ end }}{{ json x.id }}{{ end }}], [.. result.CheckWarnings.Select(w => w.Id)]);
+{{- end }}
+{{- if triggers && step.expect.trigger_points.size > 0 }}
+        Assert.Equal<string>([{{ for x in step.expect.trigger_points }}{{ if !for.first }}, {{ end }}{{ json x.id }}{{ end }}], result.TriggerPoints);
 {{- end }}
 {{- if step.trace && step.trace.audit.size > 0 }}
         Assert.Equal<string>([{{ for x in step.trace.audit }}{{ if !for.first }}, {{ end }}{{ json x }}{{ end }}], [.. result.Audit.Select(a => a.OutcomeText)]);
@@ -385,6 +550,10 @@ public sealed class {{ test }}
 {{- end }}
 {{- end }}
 {{- end }}
+{{- end }}
+{{- if stands_in }}
+
+        ScenarioTriggers.Assumed = null;
 {{- end }}
 
         Assert.{{ s.outcome == "final" ? "True" : "False" }}(result.Final);

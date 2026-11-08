@@ -45,6 +45,32 @@ function covered(point: Json, process: Json): string[] {
   return own.length ? own : subjectsOf(process).flatMap((s) => s.entity ?? []);
 }
 
+/**
+ * MQ2002 on a scenario step's assume keys, typed by their value (trigger-points-design.md decision 26): a boolean names a guard, a word
+ * names a trigger point. The engine words an entry of a lifecycle's trigger points as "a trigger point". Only the two kinds an assume can
+ * mix up are told apart; any other id is MQ2001's.
+ */
+export function assumeKindDiagnostics(json: Json, all: () => Iterable<ModelEntry>, emit: Emit): void {
+  if (json.kind !== "scenario") return;
+  const guards = new Set<string>();
+  const checks = new Set<string>();
+  for (const e of all()) {
+    if (e.json.kind !== "process") continue;
+    arr(e.json.guards).forEach((g) => str(g.id) && guards.add(g.id as string));
+    arr(e.json.triggerPoints).forEach((t) => str(t.id) && checks.add(t.id as string));
+  }
+  arr(json.steps).forEach((step, i) => {
+    const assume = step.assume;
+    if (!assume || typeof assume !== "object") return;
+    for (const [key, value] of Object.entries(assume as Json)) {
+      const word = typeof value === "string";
+      const at = `/steps/${i}/assume/${key}`;
+      if (word && guards.has(key)) emit("MQ2002", "error", `'assume' references '${key}', a guard; expected a trigger point.`, at);
+      else if (!word && checks.has(key)) emit("MQ2002", "error", `'assume' references '${key}', a trigger point; expected a guard.`, at);
+    }
+  });
+}
+
 export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, emit: Emit): void {
   if (json.kind !== "process") return;
   const entries = [...all()];

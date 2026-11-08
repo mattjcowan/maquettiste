@@ -16,6 +16,90 @@ func uses_rights()
   ret model.rights_lifecycles.size > 0
 end
 
+# Whether the project uses trigger points (trigger-points-design.md decision 29): a lifecycle has triggerPoints. Only then are the step
+# methods, the per-type runners, Refusals.Check, CheckWarnings and the refusal members written. model.trigger_lifecycles keys only on
+# the trigger points naming key, so a unit that asks pays nothing in a project without trigger points.
+func uses_triggers()
+  ret model.trigger_lifecycles.size > 0
+end
+
+# The other lifecycles whose trigger points a process's moves run (trigger-points-design.md decision 11): those that govern an entity the
+# process governs and have points on an object, link or own verb that an event or a transition of the process names, by name then id.
+# Each is a StatesIn<Lifecycle> hook in the team's half of the handlers, and its step methods go to the chart after the process's own.
+func trigger_others(p)
+  $out = []
+  if model.trigger_lifecycles.size == 0
+    ret $out
+  end
+  $verbs = {}
+  for $x in p.events
+    if $x.verb && ($x.verb.group == "object" || $x.verb.group == "link" || $x.verb.group == "project")
+      $verbs[$x.verb.key] = true
+    end
+  end
+  for $x in p.transitions
+    if $x.verb && ($x.verb.group == "object" || $x.verb.group == "link" || $x.verb.group == "project")
+      $verbs[$x.verb.key] = true
+    end
+  end
+  $governs = {}
+  $entities = []
+  for $sub in p.subjects
+    $entities[$entities.size] = $sub.entity
+  end
+  for $sub in p.stereotype_subjects
+    for $x in $sub.entities
+      $entities[$entities.size] = $x
+    end
+  end
+  for $x in $entities
+    for $l in $x.trigger_lifecycles
+      $governs[$l.id] = true
+    end
+  end
+  for $l in model.trigger_lifecycles
+    if $l.id != p.id && $governs[$l.id]
+      $speaks = false
+      for $tv in $l.trigger_verbs
+        if $verbs[$tv.verb.key]
+          $speaks = true
+        end
+      end
+      if $speaks
+        $out[$out.size] = $l
+      end
+    end
+  end
+  ret $out
+end
+
+# The StatesIn<Lifecycle> hooks of a process's handlers (ILifecycleStates): the lifecycles whose rights could say no to a verb an event
+# names, then those whose trigger points its moves run (trigger_others), each once.
+func lifecycle_hooks(p)
+  $out = uses_rights() ? states_hooks(p) : []
+  for $l in trigger_others(p)
+    $seen = false
+    for $h in $out
+      if $h.id == $l.id
+        $seen = true
+      end
+    end
+    if !$seen
+      $out[$out.size] = $l
+    end
+  end
+  ret $out
+end
+
+# The initial leaf state path of a lifecycle: its initial state, then each compound state's initial, down to a leaf.
+func initial_path(l)
+  $s = l.initial
+  while $s && $s.initial
+    $s = $s.initial
+  end
+  ret $s ? $s.path : ""
+end
+
 # Whether the project uses freezing (rights-design.md decision 28): an event, a transition or a right names freeze or thaw, or a right
 # has whileFrozen. Only then are the interpreter's frozen check, Freezing.cs (IFrozenState), the FrozenState stub, Refusals.Frozen and
 # the request's frozen flags written. model.freezing keys only on the freezing naming key, so asking renders a unit again on nothing else.

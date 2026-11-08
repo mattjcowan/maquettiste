@@ -461,6 +461,12 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const verb = q.get("verb");
       if (!verb) return bad("verb is required.");
       if (entry.json.use !== "lifecycle") return bad("Only a lifecycle has trigger points; this process is not one.");
+      // An attribute or an end the model does not have is a bad request, as the engine answers (ModelStore.TriggerSequence.cs).
+      const held = (list: "attributes" | "ends", id: string) =>
+        [...model.entries.values()].some((e) => Array.isArray(e.json[list]) && (e.json[list] as Json[]).some((x) => x.id === id));
+      const attribute = (idList(q.get("attributes")) ?? []).find((a) => !held("attributes", a));
+      if (attribute) return bad(`attribute ${attribute} is not an attribute of the model.`);
+      if (q.get("end") && !held("ends", q.get("end")!)) return bad(`end ${q.get("end")} is not a relation end of the model.`);
       const steps = sequenceOf(
         entry.json,
         {

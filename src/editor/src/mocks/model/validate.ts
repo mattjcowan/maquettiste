@@ -13,7 +13,7 @@ import { bindingDiagnostics } from "./lifecycleRules";
 import { verbDiagnostics, verbGlobalsOf, type VerbGlobals } from "./verbs";
 import { relativeUseDiagnostics } from "./relativeRules";
 import { rightDiagnostics } from "./rightRules";
-import { triggerDiagnostics } from "./triggerRules";
+import { assumeKindDiagnostics, triggerDiagnostics } from "./triggerRules";
 import { appliesToEntities, Coverage } from "./coverage";
 import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
 
@@ -364,6 +364,9 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   // MQ8101 to MQ8107 and the MQ3001 cases of a lifecycle's trigger points (triggerRules.ts)
   if (kind === "process" && ctx.all)
     triggerDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
+  // MQ2002 on a scenario's assume keys: a guard's key given a word, a trigger point's key given a boolean
+  if (kind === "scenario" && ctx.all)
+    assumeKindDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
   // MQ9601, MQ9602, MQ9603 and MQ9605: an actor's memberOf and relative and the one system actor (actorRules.ts)
   if (kind === "actor" && ctx.all) out.push(...actorDiagnostics(json, entry, ctx.all()));
   // MQ9001 initial and MQ9201 (process side), as ProcessRules.cs reports them
