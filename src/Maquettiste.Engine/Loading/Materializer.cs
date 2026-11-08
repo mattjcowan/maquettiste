@@ -722,7 +722,7 @@ internal sealed partial class Materializer(ModelSnapshot snapshot, IModelResolve
         if (segments.Length == 2)
         {
             var end = resolved.Relations.SelectMany(r => r.Ends).FirstOrDefault(e => e.Id == segments[0]);
-            if (end is { IsMany: false, Opposite: { } opposite } && opposite.Entity.Id == entity.Id && end.Entity.Key is { Attributes.Count: 1 } key && key.Attributes[0].Id == segments[1])
+            if (end is { IsMany: false, Opposite.Entity: { } opposite, Entity.Key: { Attributes.Count: 1 } key } && opposite.Id == entity.Id && key.Attributes[0].Id == segments[1])
                 return end.Id;
         }
 

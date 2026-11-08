@@ -232,8 +232,7 @@ internal sealed partial class ResolveRun
             {
                 var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Guard, ExprResolution.ApiColumns(Model, source.Id, path));
                 guard.Condition = ExprResolution.Build(root, Target, EnumMemberOf, InStateFill(null, operation, deps));
-                foreach (var name in ExprResolution.Names(Model, typed.Typed))
-                    deps.Element(name);
+                ExprResolution.AddNames(Model, typed.Typed, deps);
             }
 
             Register(guard);

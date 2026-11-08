@@ -170,9 +170,14 @@ internal sealed partial class ResolveRun
                 if (_byId.GetValueOrDefault(id) is REnd end)
                 {
                     path.Add(end);
-                    if (Model.TryGetEntry(id, out var entry))
-                        deps.Element(entry.OwnerId);
-                    deps.Element(end.Entity.Id);
+                    var owner = Model.TryGetEntry(id, out var entry) ? entry.OwnerId : null;
+                    if (owner is not null)
+                        deps.Element(owner);
+                    // Through an end with several types the path depends on every covered entity (several-types-design.md decision 20).
+                    if (end.Entity is { } far)
+                        deps.Element(far.Id);
+                    else if (owner is not null && RelationSource(owner)?.Ends.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal)) is { } source)
+                        AddCoverageKeys(source, deps);
                 }
                 else if (DeclaredAttribute(id) is { } attribute)
                 {
@@ -483,7 +488,7 @@ internal sealed partial class ResolveRun
 
         // One binding for every entity the node can reach: the entity at the end of the path, else each subject the site reads.
         string? boundId = null;
-        foreach (var entity in ReachedEntities(typed, process, operation))
+        foreach (var entity in ReachedEntities(typed, process, operation, lifecycle))
         {
             var id = SubjectCoverage.EntryOf(Model, lifecycle, entity)?.BoundAttribute;
             if (id is null || (boundId is not null && !string.Equals(boundId, id, StringComparison.Ordinal)))
@@ -503,13 +508,20 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>
-    /// The entities an <c>in_state</c> can reach: the one at the end of its path; else the operation's subject; else each subject of the
-    /// process, a stereotype entry's carriers included.
+    /// The entities an <c>in_state</c> can reach: the one at the end of its path (through an end with several types, each of its types the
+    /// lifecycle governs); else the operation's subject; else each subject of the process, a stereotype entry's carriers included.
     /// </summary>
-    private List<Entity> ReachedEntities(TypedExpr typed, Process? process, Operation? operation)
+    private List<Entity> ReachedEntities(TypedExpr typed, Process? process, Operation? operation, Process lifecycle)
     {
         if (typed.Through.Count > 0)
-            return typed.Through[^1].Entity is { } id && Model.Get<Entity>(id) is { } reached ? [reached] : [];
+        {
+            // Through an end with several types: each of its types the lifecycle governs (several-types-design.md decision 15).
+            var last = typed.Through[^1];
+            if (Model.TryGetEntry(last.Id, out var owner)
+                && _relationSources.GetValueOrDefault(owner.OwnerId)?.Ends.FirstOrDefault(e => string.Equals(e.Id, last.Id, StringComparison.Ordinal)) is { HasSeveralTypes: true } end)
+                return [.. EndCoverage.TypesOf(Model, end).Where(t => SubjectCoverage.Governs(Model, lifecycle, t))];
+            return last.Entity is { } id && Model.Get<Entity>(id) is { } reached ? [reached] : [];
+        }
         if (operation is not null)
             return operation.Subject is { } subject && Model.Get<Entity>(subject) is { } entity ? [entity] : [];
         var entities = new List<Entity>();
@@ -800,8 +812,7 @@ internal sealed partial class ResolveRun
                 return declared;
             }, EnumMemberOf, InStateFill(process, null, holderDeps));
             var guardDeps = holderDeps;
-            foreach (var name in ExprResolution.Names(Model, typed.Typed))
-                guardDeps.Element(name);
+            ExprResolution.AddNames(Model, typed.Typed, guardDeps);
             if (!readsSubject)
                 return built;
             foreach (var entry in process.Subjects)

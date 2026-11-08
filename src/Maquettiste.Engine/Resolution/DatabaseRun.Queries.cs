@@ -512,6 +512,8 @@ internal sealed partial class DatabaseRun
         {
             if (entity.Attributes.FirstOrDefault(a => a.Id == reference) is { } attribute)
                 return (attribute, null, null, null);
+            if (NamesSeveralTypesEnd(run._run.Model, reference))
+                return (null, null, null, null); // MQ4116's alone (several-types-design.md decision 22)
             var dot = reference.IndexOf('.', StringComparison.Ordinal);
             if (dot > 0 && entity.Attributes.FirstOrDefault(a => a.Id == reference[..dot]) is { } owner)
             {
@@ -606,6 +608,11 @@ internal sealed partial class DatabaseRun
                 result.Name = attribute.Name;
                 if (!attribute.Collection)
                     Report("MQ4027", $"Collection {index} of query '{file.Name}' names attribute '{attribute.Name}' of entity '{entity.Name}', which is not a collection.", pointer + "/attribute");
+            }
+            else if (NamesSeveralTypesEnd(run._run.Model, c.Attribute))
+            {
+                // MQ4116's alone (several-types-design.md decision 22): the collection fills no entity.
+                result.Name = run._run.InheritedNavigations(entity?.Id ?? "").FirstOrDefault(n => n.To.Id == c.Attribute)?.Name ?? c.Attribute;
             }
             else if (entity is not null && run._run.InheritedNavigations(entity.Id).FirstOrDefault(n => n.To.Id == c.Attribute || n.Id == c.Attribute) is { } navigation)
             {

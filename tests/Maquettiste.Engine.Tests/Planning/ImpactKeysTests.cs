@@ -165,6 +165,18 @@ public sealed class ImpactKeysTests
     }
 
     [Fact]
+    public async Task The_end_naming_key_is_touched_only_when_a_relation_end_starts_naming_any_entity_or_a_stereotype()
+    {
+        await using var s = await BillingStore.OpenAsync();
+        // A relation edit that names no stereotype or any entity leaves et:ends alone (several-types-design.md section 7).
+        var (unchanged, _) = await KeysAsync(s, Update(s, "01J92P0V1BWHG0REWKSTR292RS", e => e["description"] = "Lines of an invoice."));
+        Assert.False(unchanged.IsTouched(EndCoverage.NamingKey));
+
+        var (touched, _) = await KeysAsync(s, Create($$"""{"kind":"relation","id":"01J92P0VZZ00000000000000E1","name":"Mentions","package":"{{BillingPackage}}","ends":[{"id":"01J92P0VZZ00000000000000E2","entity":"{{Invoice}}","role":"invoice","max":"*"},{"id":"01J92P0VZZ00000000000000E3","anyEntity":true,"role":"mentioned","max":"*"}]}"""));
+        Assert.True(touched.IsTouched(EndCoverage.NamingKey));
+    }
+
+    [Fact]
     public async Task An_element_key_is_not_touched_when_its_dependency_hash_is_unchanged()
     {
         await using var s = await BillingStore.OpenAsync();

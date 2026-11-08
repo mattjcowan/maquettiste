@@ -272,9 +272,22 @@ internal static class ExprResolution
                 if (!model.TryGetEntry(navigation.Id, out var end))
                     continue;
                 names.Add(end.OwnerId);
-                // several-types: wave 2 — a path through an end with several types depends on every covered entity (decision 20).
-                var far = model.Get<Relation>(end.OwnerId)?.Ends.FirstOrDefault(e => string.Equals(e.Id, navigation.Id, StringComparison.Ordinal))?.SingleEntity;
-                var entity = far is null ? null : model.Get<Entity>(far);
+                // Through an end with several types the path reads what its types share (several-types-design.md decision 13): its common base
+                // and every base of it; its entity entries are named here, and what it covers keys through CoverageKeys (decision 20).
+                var source = model.Get<Relation>(end.OwnerId)?.Ends.FirstOrDefault(e => string.Equals(e.Id, navigation.Id, StringComparison.Ordinal));
+                Entity? entity;
+                if (source is { HasSeveralTypes: true })
+                {
+                    foreach (var type in source.Types ?? [])
+                    {
+                        if (type.Entity is { } listed)
+                            names.Add(listed);
+                    }
+
+                    entity = EndCoverage.CommonBaseOf(model, source);
+                }
+                else
+                    entity = source?.SingleEntity is { } far ? model.Get<Entity>(far) : null;
                 var seen = new HashSet<string>(StringComparer.Ordinal);
                 while (entity is not null && seen.Add(entity.Id))
                 {
@@ -298,6 +311,52 @@ internal static class ExprResolution
         }
 
         return [.. names];
+    }
+
+    /// <summary>
+    /// Adds what an expression depends on to <paramref name="deps"/>: the element of each of <see cref="Names"/>, and the
+    /// <see cref="CoverageKeys"/> of the ends with several types its paths go through.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="typed">The typed expression.</param>
+    /// <param name="deps">The keys to add to.</param>
+    public static void AddNames(ModelSnapshot model, TypedExpr typed, DependencySet deps)
+    {
+        foreach (var name in Names(model, typed))
+            deps.Element(name);
+        deps.AddRange(CoverageKeys(model, typed));
+    }
+
+    /// <summary>
+    /// The keys of what the ends with several types an expression's paths go through cover (several-types-design.md decision 20): each
+    /// entity entry's referrers (which cover derived entities), <c>cs:&lt;key&gt;</c> per stereotype entry, and the entity and package kinds for
+    /// <c>anyEntity</c>. Empty for paths through one-type ends only, so their keys never change.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="typed">The typed expression.</param>
+    /// <returns>The keys, ordinal.</returns>
+    public static IReadOnlyList<string> CoverageKeys(ModelSnapshot model, TypedExpr typed)
+    {
+        DependencySet? keys = null;
+        var pending = new Stack<TypedExpr>();
+        pending.Push(typed);
+        while (pending.Count > 0)
+        {
+            var t = pending.Pop();
+            foreach (var navigation in t.Through)
+            {
+                if (model.TryGetEntry(navigation.Id, out var end)
+                    && model.Get<Relation>(end.OwnerId)?.Ends.FirstOrDefault(e => string.Equals(e.Id, navigation.Id, StringComparison.Ordinal)) is { HasSeveralTypes: true } source)
+                    ResolveRun.AddCoverageKeys(source, keys ??= new DependencySet());
+            }
+
+            if (t.Body is { } body)
+                pending.Push(body);
+            foreach (var arg in t.Args)
+                pending.Push(arg);
+        }
+
+        return keys is null ? [] : [.. keys.ToList().Order(StringComparer.Ordinal)];
     }
 
     /// <summary>

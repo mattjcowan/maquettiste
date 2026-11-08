@@ -4031,8 +4031,8 @@ export interface components {
              * @constant
              */
             anyEntity?: true;
-            /** @description The nearest entity every type is or derives from, or null when the types share none. Absent on a one-type end. */
-            commonBase?: string | null;
+            /** @description The nearest entity every type is or derives from. Absent on a one-type end, and when the types share none. */
+            commonBase?: string;
             role: string;
             navigation: string | null;
             min: number;

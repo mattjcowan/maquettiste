@@ -299,7 +299,7 @@ public sealed class OperationModelTests
         Assert.Equal(Invoice, json["subject"]!.GetValue<string>());
         Assert.False(JsonSerializer.SerializeToNode(s.Model.Summaries().First(r => r.Kind == "entity"), Web)!.AsObject().ContainsKey("effect"));
         Assert.NotEqual(row, row with { Effect = "read" });
-        Assert.Equal("maquettiste-index/e13", ModelReads.IndexFormat);
+        Assert.Equal("maquettiste-index/e14", ModelReads.IndexFormat);
     }
 
     [Fact]

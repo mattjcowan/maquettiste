@@ -182,7 +182,7 @@ internal static class SeedInput
                     Attributes(ancestor.Attributes);
                 foreach (var relation in view.Relations())
                 {
-                    // several-types: wave 2 — seed columns leave out a relation with an end of several types (decision 21, MQ7105).
+                    // Seed columns leave out a relation with an end of several types (several-types-design.md decision 21): MQ7105 refuses such a column.
                     if (relation.Ends.Count != 2 || EndCoverage.HasSeveralTypes(relation))
                         continue;
                     for (var end = 0; end < 2; end++)

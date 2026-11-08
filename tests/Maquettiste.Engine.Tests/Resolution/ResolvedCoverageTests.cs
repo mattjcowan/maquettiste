@@ -278,10 +278,6 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
-
-        // Relations with several types at an end, part 1 (several-types-design.md section 7), resolved in wave 2 of the same item as REnd's
-        // types, stereotypes and any_entity; until then such a relation is left out of the resolved model.
-        ("relation end", "types"), ("relation end", "anyEntity"),
     ];
 
     /// <summary>

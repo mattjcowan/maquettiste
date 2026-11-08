@@ -10114,8 +10114,8 @@ components:
           const: true
           description: Present and true when the end may be any entity. Absent otherwise.
         commonBase:
-          type: [string, 'null']
-          description: The nearest entity every type is or derives from, or null when the types share none. Absent on a one-type end.
+          type: string
+          description: The nearest entity every type is or derives from. Absent on a one-type end, and when the types share none.
         role:
           type: string
         navigation:

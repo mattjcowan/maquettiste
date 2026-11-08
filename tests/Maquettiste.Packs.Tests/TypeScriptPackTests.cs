@@ -125,6 +125,35 @@ public sealed class TypeScriptPackTests
     }
 
     [Fact]
+    public async Task A_navigation_to_an_end_with_several_types_is_the_union_of_its_types_and_has_no_id()
+    {
+        // Relations with several types at an end, part 1 (several-types-design.md section 10): a remark attached to one part or assembly, and
+        // mentioning any entities, in the billing fixture's package Billing.
+        const string Billing = "01J92P0V01KDRN8GX5PGYCNKSX";
+        using var repo = PackRepo.TypeScript("billing");
+        static string Entity(string id, string name, string key) =>
+            $$"""{"kind":"entity","id":"{{id}}","name":"{{name}}","package":"{{Billing}}","key":{"attributes":["{{key}}"]},"attributes":[{"id":"{{key}}","name":"id","type":"uuid","required":true}]}""";
+        repo.Write(".maquettiste/model/entities/part.json", Entity("01K9ST00000000000000000001", "Part", "01K9ST00000000000000000011"));
+        repo.Write(".maquettiste/model/entities/assembly.json", Entity("01K9ST00000000000000000002", "Assembly", "01K9ST00000000000000000012"));
+        repo.Write(".maquettiste/model/entities/remark.json", Entity("01K9ST00000000000000000003", "Remark", "01K9ST00000000000000000013"));
+        repo.Write(".maquettiste/model/relations/attached-to.json",
+            $$"""{"kind":"relation","id":"01K9ST00000000000000000021","name":"AttachedTo","package":"{{Billing}}","ends":[{"id":"01K9ST00000000000000000022","entity":"01K9ST00000000000000000003","role":"remark","max":"*","navigation":"remarks"},{"id":"01K9ST00000000000000000023","types":[{"entity":"01K9ST00000000000000000001"},{"entity":"01K9ST00000000000000000002"}],"role":"attachedTo","max":1,"navigation":"attachedTo"}]}""");
+        repo.Write(".maquettiste/model/relations/mentions.json",
+            $$"""{"kind":"relation","id":"01K9ST00000000000000000031","name":"Mentions","package":"{{Billing}}","ends":[{"id":"01K9ST00000000000000000032","entity":"01K9ST00000000000000000003","role":"remark","max":"*","navigation":""},{"id":"01K9ST00000000000000000033","anyEntity":true,"role":"mentioned","max":"*","navigation":"mentions"}]}""");
+        await repo.GenerateCleanlyAsync();
+
+        var files = Listing(repo);
+        var note = repo.Read(files.Single(f => f.EndsWith("/remark.ts", StringComparison.Ordinal)));
+        Assert.Contains("  attachedTo?: Part | Assembly;", note, StringComparison.Ordinal);
+        Assert.Contains("  mentions?: unknown[];", note, StringComparison.Ordinal);
+        Assert.DoesNotContain("attachedToId", note, StringComparison.Ordinal);
+        Assert.Contains("import type { Assembly }", note, StringComparison.Ordinal);
+        Assert.Contains("import type { Part }", note, StringComparison.Ordinal);
+        Assert.Contains("  remarks?: Remark[];", repo.Read(files.Single(f => f.EndsWith("/part.ts", StringComparison.Ordinal))), StringComparison.Ordinal);
+        Assert.Contains("  remarks?: Remark[];", repo.Read(files.Single(f => f.EndsWith("/assembly.ts", StringComparison.Ordinal))), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task The_output_type_checks_its_scenario_tests_pass_and_every_step_matches_the_engine()
     {
         var tools = await ToolsOrSkipAsync();

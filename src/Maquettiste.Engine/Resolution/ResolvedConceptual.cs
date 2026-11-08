@@ -406,14 +406,59 @@ public sealed class RRelation : RElement
     public RList<RSeed> Seeds { get; internal set; } = RList<RSeed>.Empty;
 }
 
-/// <summary>A resolved relation end.</summary>
+/// <summary>
+/// A resolved relation end. A one-type end names one entity (<see cref="Entity"/>); an end with several types (several-types-design.md
+/// decision 2: written with <c>anyEntity</c>, or with a <c>types</c> list that holds two or more entries or a stereotype entry) has a null
+/// <see cref="Entity"/> and lists its <see cref="Types"/> (section 7).
+/// </summary>
 public sealed class REnd : RObject
 {
     /// <inheritdoc/>
     public override string Kind => "end";
 
-    /// <summary>The entity at this end.</summary>
-    public REntity Entity { get; internal set; } = null!;
+    /// <summary>The entity at a one-type end; <see langword="null"/> on an end with several types, whose <see cref="Types"/> list them.</summary>
+    public REntity? Entity { get; internal set; }
+
+    /// <summary>
+    /// The entity of a one-type end, for the readers that run on one-type relations only: the database run and promotion skip a relation
+    /// with an end of several types, since part 1 stores nothing for it (several-types-design.md decision 22).
+    /// </summary>
+    internal REntity OneEntity => Entity ?? throw new InvalidOperationException("The end " + Id + " has several types; no database stores its relation in part 1.");
+
+    /// <summary>
+    /// The end's types (several-types-design.md decision 5): the entity alone on a one-type end, so a pack can always loop over it; on an end
+    /// with several types, the covered entities with no covered base, in the order the entries first reach them. Derived entities are
+    /// reached through their base.
+    /// </summary>
+    public RList<REntity> Types
+    {
+        // A one-type end's list is made on first read, so a model without such ends allocates nothing more per end.
+        get => _types ??= Entity is { } entity ? new RList<REntity>([entity], Dependencies) : RList<REntity>.Empty;
+        internal set => _types = value;
+    }
+
+    private RList<REntity>? _types;
+
+    /// <summary>Whether the end has several types (several-types-design.md decision 2), read from the file alone.</summary>
+    public bool HasSeveralTypes { get; internal set; }
+
+    /// <summary>The stereotypes the end's <c>types</c> entries name, in entry order (a key that names no stereotype is left out); empty on a one-type end.</summary>
+    public RList<RStereotypeDefinition> Stereotypes { get; internal set; } = RList<RStereotypeDefinition>.Empty;
+
+    /// <summary>Whether the end may be any entity of the model (<c>anyEntity</c>); <see langword="false"/> otherwise.</summary>
+    public bool AnyEntity { get; internal set; }
+
+    /// <summary>
+    /// The nearest entity every one of <see cref="Types"/> is or derives from (several-types-design.md decision 19): the entity itself on a
+    /// one-type end, a shared base when there is one, else <see langword="null"/>. A pack that stores links as one key to a shared base reads it.
+    /// </summary>
+    public REntity? CommonBase
+    {
+        get => HasSeveralTypes ? _commonBase : Entity;
+        internal set => _commonBase = value;
+    }
+
+    private REntity? _commonBase;
 
     /// <summary>The role name.</summary>
     public string Role { get; internal set; } = "";
@@ -474,14 +519,20 @@ public sealed class RNavigation : RObject
     /// <summary>The relation.</summary>
     public RRelation Relation { get; internal set; } = null!;
 
-    /// <summary>The end at the entity that holds the navigation.</summary>
+    /// <summary>
+    /// The end at the entity that holds the navigation. A navigation held through an end with several types is one object, listed in the
+    /// navigations of each of that end's types; its <c>From.Entity</c> is <see langword="null"/>.
+    /// </summary>
     public REnd From { get; internal set; } = null!;
 
     /// <summary>The end the navigation leads to.</summary>
     public REnd To { get; internal set; } = null!;
 
-    /// <summary>The target entity.</summary>
-    public REntity Target { get; internal set; } = null!;
+    /// <summary>The target entity; <see langword="null"/> when the navigation leads to an end with several types, whose types <see cref="Targets"/> lists.</summary>
+    public REntity? Target { get; internal set; }
+
+    /// <summary>The types of the end it leads to (<see cref="REnd.Types"/>): the target alone, or that end's types when it has several.</summary>
+    public RList<REntity> Targets => To.Types;
 
     /// <summary>Whether the navigation is a collection.</summary>
     public bool IsCollection { get; internal set; }

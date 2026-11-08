@@ -36,7 +36,7 @@ internal sealed partial class ModelTools
         [Description("A scenario id of the process: its start and steps run first, then steps.")] string? scenario = null,
         [Description("An unsaved draft of the whole process document to simulate instead of the saved one.")] JsonElement? document = null,
         [Description("The first trace index returned; -1 (default) includes the initial entry.")] int? from = null,
-        [Description("The run's objects, as a scenario's: [{ id, name, entity: <entity id>, values: { <attribute id>: value }, states?: [<state id of another lifecycle>], frozen?: true, links: [{ end: <relation end id>, object: <object id>, frozen?: true }] }]; requires subject. With scenario, its objects when absent.")] JsonElement? objects = null,
+        [Description("The run's objects, as a scenario's: [{ id, name, entity: <entity id>, values: { <attribute id>: value }, states?: [<state id of another lifecycle>], frozen?: true, links: [{ end: <relation end id>, object: <object id>, frozen?: true }] }] (through an end with several types, the object may be of any entity the end covers); requires subject. With scenario, its objects when absent.")] JsonElement? objects = null,
         [Description("The id of the object in objects the process runs for.")] string? subject = null,
         [Description("The run's participants, as a scenario's: [{ id, name, identity?, actor?: <person, external system or system actor id>, holds?: [{ id, actor: <role, group or organization id>, within?: <object id> }], object?: <object id> }]. With scenario, its participants when absent.")] JsonElement? participants = null,
         CancellationToken ct = default) => GuardAsync(async () =>
@@ -79,7 +79,7 @@ internal sealed partial class ModelTools
         [Description("The start: { context, at }.")] JsonElement? start = null,
         [Description("final or active; the replay's outcome when absent.")] string? outcome = null,
         [Description("true returns the scenario without writing it.")] bool dryRun = false,
-        [Description("The scenario's objects: [{ id, name, entity: <entity id>, values: { <attribute id>: value }, states?: [<state id of another lifecycle>], frozen?: true, links: [{ end: <relation end id>, object: <object id>, frozen?: true }] }]; requires subject.")] JsonElement? objects = null,
+        [Description("The scenario's objects: [{ id, name, entity: <entity id>, values: { <attribute id>: value }, states?: [<state id of another lifecycle>], frozen?: true, links: [{ end: <relation end id>, object: <object id>, frozen?: true }] }] (through an end with several types, the object may be of any entity the end covers); requires subject.")] JsonElement? objects = null,
         [Description("The id of the object in objects the process runs for.")] string? subject = null,
         [Description("The scenario's participants: [{ id, name, identity?, actor?: <person, external system or system actor id>, holds?: [{ id, actor: <role, group or organization id>, within?: <object id> }], object?: <object id> }]; a step names one in participant.")] JsonElement? participants = null,
         [Description("true also writes each step's expect.triggerPoints, the ids of the trigger points that ran, in run order (a new trigger point then breaks the recording, so it is left out by default).")] bool triggerPoints = false,

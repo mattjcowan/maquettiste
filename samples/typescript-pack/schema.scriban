@@ -45,7 +45,7 @@ export const {{ camel entity.name }}Schema = z.object({
   {{ camel a.name }}: {{ zod_attr(a) }},
 {{- end }}
 {{- for nav in entity.navigations }}
-{{- if !nav.is_collection && nav.target.key }}
+{{- if !nav.is_collection && nav.target && nav.target.key }}
   {{ camel nav.name }}Id: {{ zod_type nav.target.key.attributes[0].type.builtin 0 }}{{ if nav.to.min < 1 }}.optional(){{ end }},
 {{- end }}
 {{- end }}

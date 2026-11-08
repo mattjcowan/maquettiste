@@ -182,6 +182,7 @@ internal sealed partial class ResolveRun
         ResolveShared();
         ResolveSeedsAndUsages(resolvedDatabases);
         var stereotypes = ResolveStereotypeDefinitions(); // before processes: a subject entry may name a stereotype
+        ResolveEndStereotypes();
         ResolveProcesses();
         ResolveOperations();
         ResolveCustomElements();

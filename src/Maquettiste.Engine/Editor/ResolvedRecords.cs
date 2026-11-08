@@ -246,9 +246,14 @@ public sealed record AlternateKeyRecord(string Id, string Name, IReadOnlyList<st
 /// <param name="Relation">The relation's id.</param>
 /// <param name="From">The id of the end at this entity.</param>
 /// <param name="To">The id of the end it leads to.</param>
-/// <param name="Target">The id of the entity it leads to.</param>
+/// <param name="Target">The id of the entity it leads to; <see langword="null"/> when it leads to an end with several types.</param>
 /// <param name="IsCollection">Whether it leads to many.</param>
-public sealed record NavigationRecord(string Id, string Name, string Relation, string From, string To, string Target, bool IsCollection);
+/// <param name="Targets">
+/// The types of the end it leads to, as entity ids, when that end has several types (several-types-design.md section 7); left out of the
+/// JSON otherwise.
+/// </param>
+public sealed record NavigationRecord(string Id, string Name, string Relation, string From, string To, string? Target, bool IsCollection,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Targets = null);
 
 /// <summary>An entity's mapping to one database.</summary>
 /// <param name="Database">The database's id.</param>
@@ -291,9 +296,12 @@ public sealed record RelationRecord(string Id, string Kind, string Name, string?
     IReadOnlyList<string> Seeds, string DisplayName, string PluralName, string? Description, IReadOnlyList<string> Tags, string? Category,
     IReadOnlyList<string> Stereotypes, IReadOnlyDictionary<string, object?> Properties, IReadOnlyDictionary<string, GenerationHints> Generation);
 
-/// <summary>A relation end.</summary>
+/// <summary>
+/// A relation end. The members after <paramref name="Opposite"/> describe an end with several types (several-types-design.md section 7) and
+/// are left out of the JSON on a one-type end.
+/// </summary>
 /// <param name="Id">The end id.</param>
-/// <param name="Entity">The entity's id.</param>
+/// <param name="Entity">The entity's id; <see langword="null"/> on an end with several types.</param>
 /// <param name="Role">The role name.</param>
 /// <param name="Navigation">The navigation name, or <see langword="null"/>.</param>
 /// <param name="Min">The lower bound.</param>
@@ -302,7 +310,17 @@ public sealed record RelationRecord(string Id, string Kind, string Name, string?
 /// <param name="OnDelete">What deleting the other side does.</param>
 /// <param name="Ordered">Whether the end is ordered.</param>
 /// <param name="Opposite">The opposite end's id, for a binary relation.</param>
-public sealed record EndRecord(string Id, string Entity, string Role, string? Navigation, int Min, string Max, bool IsMany, string OnDelete, bool Ordered, string? Opposite);
+/// <param name="Types">The end's types as entity ids (decision 5), on an end with several types.</param>
+/// <param name="HasSeveralTypes"><see langword="true"/> on an end with several types.</param>
+/// <param name="Stereotypes">The ids of the stereotypes the end's entries name, in entry order, when it names some.</param>
+/// <param name="AnyEntity"><see langword="true"/> when the end may be any entity.</param>
+/// <param name="CommonBase">The id of the nearest entity every type is or derives from, on an end with several types whose types share one.</param>
+public sealed record EndRecord(string Id, string? Entity, string Role, string? Navigation, int Min, string Max, bool IsMany, string OnDelete, bool Ordered, string? Opposite,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Types = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? HasSeveralTypes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Stereotypes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? AnyEntity = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? CommonBase = null);
 
 /// <summary>A relation's mapping to one database.</summary>
 /// <param name="Database">The database's id.</param>
@@ -1664,7 +1682,7 @@ public static class ResolvedRecords
                 [.. e.Attributes.Select(a => Attribute(a, key))],
                 e.Key is { } pk ? new KeyRecord(Ids(pk.Attributes), pk.Strategy, [.. pk.Sequences.OrderBy(s => s.Key, StringComparer.Ordinal).Select(s => new KeySequenceRecord(DatabaseId(s.Key), s.Value.Id))]) : null,
                 [.. e.AlternateKeys.Select(a => new AlternateKeyRecord(a.Id, a.Name, Ids(a.Attributes)))],
-                [.. e.Navigations.Select(n => new NavigationRecord(n.Id, n.Name, n.Relation.Id, n.From.Id, n.To.Id, n.Target.Id, n.IsCollection))],
+                [.. e.Navigations.Select(Navigation)],
                 Ids(e.Relations),
                 [.. e.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => new EntityMappingRecord(m.Value.Database.Id, m.Value.Table.Key, m.Value.Inheritance,
                     m.Value.DiscriminatorColumn?.Key, Plain(m.Value.DiscriminatorValue), [.. m.Value.Columns.Select(c => new ColumnMappingRecord(c.AttributePath, c.Column.Key))]))],
@@ -1700,8 +1718,18 @@ public static class ResolvedRecords
             a.DisplayName!, a.PluralName!, a.Description, a.Tags, a.Category?.Id, Keys(a.Stereotypes), Plain(a.Properties), a.Generation,
             a.DescriptionColumn?.Key);
 
+        /// <summary>A navigation's record; <c>targets</c> only when it leads to an end with several types (several-types-design.md section 7).</summary>
+        private static NavigationRecord Navigation(RNavigation n) =>
+            new(n.Id, n.Name, n.Relation.Id, n.From.Id, n.To.Id, n.Target?.Id, n.IsCollection, n.To.HasSeveralTypes ? Ids(n.Targets) : null);
+
+        /// <summary>An end's record; the members of an end with several types are left out on a one-type end (several-types-design.md section 7).</summary>
+        private static EndRecord End(REnd e) => !e.HasSeveralTypes
+            ? new(e.Id, e.Entity?.Id, e.Role, e.Navigation, e.Min, e.Max, e.IsMany, e.OnDelete, e.Ordered, e.Opposite?.Id)
+            : new(e.Id, null, e.Role, e.Navigation, e.Min, e.Max, e.IsMany, e.OnDelete, e.Ordered, e.Opposite?.Id,
+                Ids(e.Types), true, e.Stereotypes.Count == 0 ? null : Ids(e.Stereotypes), e.AnyEntity ? true : null, e.CommonBase?.Id);
+
         public RelationRecord Relation(RRelation r) => new(r.Id, "relation", r.Name, r.Package?.Id, r.InverseName, r.RelationKind, r.Cardinality, r.AllowDuplicates,
-            [.. r.Ends.Select(e => new EndRecord(e.Id, e.Entity.Id, e.Role, e.Navigation, e.Min, e.Max, e.IsMany, e.OnDelete, e.Ordered, e.Opposite?.Id))],
+            [.. r.Ends.Select(End)],
             [.. r.Attributes.Select(a => Attribute(a))],
             [.. r.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => new RelationMappingRecord(DatabaseId(m.Key), m.Value.Shape, m.Value.ForeignKey?.Name,
                 m.Value.JunctionTable?.Key, m.Value.PromotedEntity?.Id))],

@@ -33,9 +33,12 @@ internal sealed class EndCoverage
 
     private readonly FrozenDictionary<string, Covered> _ends;
 
+    private readonly FrozenDictionary<string, ImmutableArray<Entity>> _carriers;
+
     private EndCoverage()
     {
         _ends = FrozenDictionary<string, Covered>.Empty;
+        _carriers = FrozenDictionary<string, ImmutableArray<Entity>>.Empty;
         Ends = [];
     }
 
@@ -63,6 +66,7 @@ internal sealed class EndCoverage
         }
 
         var orderedCarriers = carriers.ToDictionary(kv => kv.Key, kv => SubjectCoverage.Ordered(model, kv.Value), StringComparer.Ordinal);
+        _carriers = orderedCarriers.ToFrozenDictionary(StringComparer.Ordinal);
         ImmutableArray<Entity>? roots = null;
         var byEnd = new Dictionary<string, Covered>(StringComparer.Ordinal);
         foreach (var (_, end) in ends)
@@ -258,6 +262,20 @@ internal sealed class EndCoverage
         if (end.HasSeveralTypes)
             return Of(model)._ends.TryGetValue(end.Id, out var covered) ? covered.CommonBase : null;
         return end.SingleEntity is { } single ? model.Get<Entity>(single) : null;
+    }
+
+    /// <summary>
+    /// The entities that carry a stereotype a relation end names (decision 4: it is in their effective set), by qualified name, then id; empty
+    /// for a key no end names.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="key">The stereotype key.</param>
+    /// <returns>The carriers.</returns>
+    public static ImmutableArray<Entity> CarriersOf(ModelSnapshot model, string key)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(key);
+        return Of(model)._carriers.TryGetValue(key, out var carriers) ? carriers : [];
     }
 
     /// <summary>Whether an end names a stereotype or any entity: what the naming key <see cref="NamingKey"/> records.</summary>

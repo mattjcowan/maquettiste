@@ -260,13 +260,14 @@ public sealed class RelationTypesContractTests
         await using var __ = store;
         var model = store.Current!;
 
-        // Until the rules and the resolver read the end coverage helper (wave 2), a relation with an end of several types is left out of the
-        // resolved model, as one with a dangling end is; a one-entry list resolves as today's entity.
+        // A relation with an end of several types resolves with a null entity at that end (RelationTypesResolverTests reads its members); a
+        // one-entry list resolves as today's entity.
         var diagnostics = await ActorKit.ValidateAsync(h, model);
         Assert.DoesNotContain(diagnostics, d => d.Rule is "MQ2001" or "MQ1002" && (d.FilePath ?? "").Contains("/relations/", StringComparison.Ordinal));
         var resolved = Resolution.ResolutionKit.Resolve(model);
-        Assert.DoesNotContain(resolved.Relations, r => r.Id is AttachedTo or Mentions or Covers or Siblings);
-        Assert.Equal([Comment, Part], resolved.Relations.Single(r => r.Id == Single).Ends.Select(e => e.Entity.Id));
+        foreach (var id in new[] { AttachedTo, Mentions, Covers, Siblings })
+            Assert.Null(resolved.Relations.Single(r => r.Id == id).Ends[1].Entity);
+        Assert.Equal([Comment, Part], resolved.Relations.Single(r => r.Id == Single).Ends.Select(e => e.Entity!.Id));
     }
 
     // ---- the end coverage helper ----

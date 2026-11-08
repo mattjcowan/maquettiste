@@ -26,9 +26,9 @@ public sealed class ResolvedNullContractTests
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> Derived = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        // Relations with several types at an end, part 1 (several-types-design.md section 7): until wave 2 resolves such an end (with a null
-        // entity), a relation with one is left out of the resolved model, so every resolved end has the entity of a one-type end.
-        ["REnd.Entity"] = "the end's entity, or the entity of its one-entry types list",
+        // Relations with several types at an end, part 1 (several-types-design.md section 7): any_entity is false on an end that names an
+        // entity or types, so a pack can test it without a null check.
+        ["REnd.AnyEntity"] = "true when the end writes anyEntity, else false",
 
         // Physical objects.
         ["RDatabase.ByConvention"] = "the file's byConvention, else all without convention packages and packages with them",

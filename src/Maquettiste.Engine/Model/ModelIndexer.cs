@@ -989,6 +989,30 @@ internal static class ModelIndexer
     private static IEnumerable<ProcessGate> ApprovalGates(Process process) =>
         process.Transitions.Select(static t => t.Gate).Concat(process.Gates).OfType<ProcessGate>().Where(static g => g.UsesStages);
 
+    /// <summary>Whether a relation end's <c>types</c> holds a stereotype entry.</summary>
+    private static bool EndNamesStereotype(RelationEnd end) => end.Types is { } types && types.Any(t => t.Stereotype is not null);
+
+    /// <summary>An end's summary with the stereotypes its entries name, by id, and their carriers (several-types-design.md section 9).</summary>
+    private static RelationEndSummary WithStereotypes(ModelSnapshot model, RelationEndSummary summary, RelationEnd end)
+    {
+        var stereotypes = new List<string>();
+        var covers = new List<string>();
+        foreach (var entry in end.Types ?? [])
+        {
+            if (entry.Stereotype is not { } key)
+                continue;
+            if (model.GetStereotype(key) is { } stereotype)
+                stereotypes.Add(stereotype.Id);
+            foreach (var carrier in EndCoverage.CarriersOf(model, key))
+            {
+                if (!covers.Contains(carrier.Id, StringComparer.Ordinal))
+                    covers.Add(carrier.Id);
+            }
+        }
+
+        return summary with { Stereotypes = stereotypes.Count > 0 ? stereotypes : null, Covers = covers.Count > 0 ? covers : null };
+    }
+
     /// <summary>The entities a process's entity entries name, in entry order (a stereotype entry is not counted).</summary>
     private static List<string> EntityEntries(Process process) => [.. process.Subjects.Select(s => s.Entity).OfType<string>()];
 
@@ -1005,12 +1029,22 @@ internal static class ModelIndexer
     internal static IReadOnlyList<ElementSummary> WithSubjectCoverage(ModelSnapshot model, ImmutableArray<ElementSummary> rows)
     {
         var namedPoints = Processes.NamedTriggerPoints.Of(model);
-        if (!Processes.SubjectCoverage.Of(model).Any && !namedPoints.All.Any(p => p.Subjects.Any(s => s.Stereotype is not null)))
+        var endsNameStereotypes = EndCoverage.Of(model).Any && model.All<Relation>().Any(r => r.Ends.Any(EndNamesStereotype));
+        if (!Processes.SubjectCoverage.Of(model).Any && !namedPoints.All.Any(p => p.Subjects.Any(s => s.Stereotype is not null)) && !endsNameStereotypes)
             return rows;
         var result = rows.ToBuilder();
         for (var i = 0; i < result.Count; i++)
         {
             var row = result[i];
+            // A relation end that names stereotypes lists them by id (an unknown key is left out) and their carriers, each entry's by qualified
+            // name, then id, in entry order, without repeats (several-types-design.md section 9).
+            if (row.Kind == "relation")
+            {
+                if (endsNameStereotypes && row.Ends is { } summaries && model.Get<Relation>(row.Id) is { } relation && relation.Ends.Any(EndNamesStereotype))
+                    result[i] = row with { Ends = [.. summaries.Select((s, n) => n < relation.Ends.Count && EndNamesStereotype(relation.Ends[n]) ? WithStereotypes(model, s, relation.Ends[n]) : s)] };
+                continue;
+            }
+
             // A named trigger point's row names the stereotypes its subjects name, by id; an unknown key is left out (section 9, part 2).
             if (row.Kind == "trigger-point" && model.Get<TriggerPoint>(row.Id) is { } point)
             {
@@ -1088,13 +1122,24 @@ internal static class ModelIndexer
         return count;
     }
 
+    /// <summary>
+    /// A relation's ends as its row states them, from its own file (several-types-design.md section 9): the one entity of a one-type end, the
+    /// entity entries of an end that writes <c>types</c>, and <c>anyEntity</c>. The stereotypes an end names, by id, and their carriers
+    /// (<c>covers</c>) need other files, so <see cref="WithSubjectCoverage"/> fills them per snapshot.
+    /// </summary>
     private static RelationEndSummary[] EndsOf(Relation relation)
     {
         var ends = new RelationEndSummary[relation.Ends.Count];
-        // several-types: wave 2 — an end that writes types or anyEntity fills entities, stereotypes, anyEntity and covers (WithSubjectCoverage),
-        // and the index format moves to e14 (several-types-design.md section 9); here it only leaves entity out on an end with several types.
         for (var i = 0; i < ends.Length; i++)
-            ends[i] = new RelationEndSummary(relation.Ends[i].SingleEntity, relation.Ends[i].Role);
+        {
+            var end = relation.Ends[i];
+            ends[i] = new RelationEndSummary(end.SingleEntity, end.Role)
+            {
+                Entities = end.Types is { } types && types.Any(t => t.Entity is not null) ? [.. types.Select(t => t.Entity).OfType<string>()] : null,
+                AnyEntity = end.AnyEntity == true,
+            };
+        }
+
         return ends;
     }
 

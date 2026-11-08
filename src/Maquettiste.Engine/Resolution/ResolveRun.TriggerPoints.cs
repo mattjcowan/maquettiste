@@ -134,8 +134,7 @@ internal sealed partial class ResolveRun
                     return null;
                 var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, kind, ExprResolution.ApiColumns(Model, siteId, Model.GetDocument(source.Id)?.Path));
                 var built = ExprResolution.Build(root, m => DeclaredAttribute(m.Id), EnumMemberOf, InStateFill(null, null, holderDeps));
-                foreach (var name in ExprResolution.Names(Model, typed.Typed))
-                    holderDeps.Element(name);
+                ExprResolution.AddNames(Model, typed.Typed, holderDeps);
                 holderDeps.AddRange(scope);
                 return built;
             }
@@ -626,8 +625,7 @@ internal sealed partial class ResolveRun
                     continue;
                 readsObject = true;
                 readsStereotype |= ExprResolution.Paths(typed.Typed).Any(id => ExprSites.IsStereotypeAttribute(Model, id));
-                foreach (var name in ExprResolution.Names(Model, typed.Typed))
-                    keys.Element(name);
+                ExprResolution.AddNames(Model, typed.Typed, keys);
                 foreach (var read in Processes.ObjectStates.ReadsOf(typed.Typed))
                 {
                     if (Model.Get<Process>(read.Lifecycle) is not { } reads)

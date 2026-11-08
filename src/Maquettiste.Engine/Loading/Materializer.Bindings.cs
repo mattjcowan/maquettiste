@@ -430,7 +430,7 @@ internal sealed partial class Materializer
             for (var i = 0; i < 2; i++)
             {
                 var (self, other) = (relation.Ends[i], relation.Ends[1 - i]);
-                // several-types: wave 2 — field candidates skip ends with several types (decision 21); a relation with one is skipped whole here.
+                // Field candidates skip a relation with an end of several types (several-types-design.md decision 21): MQ4116 refuses such a field.
                 if (self.SingleEntity is not { } selfEntity || other.HasSeveralTypes || !mine.Contains(selfEntity) || other.Max != MaxCardinality.One
                     || !seen.Add(other.Id))
                     continue;
