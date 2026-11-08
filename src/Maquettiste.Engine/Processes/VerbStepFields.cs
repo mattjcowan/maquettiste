@@ -81,13 +81,23 @@ internal static class VerbStepFields
             || model.Get<Entity>(subject.Entity) is not { } entity)
             return ("a link step needs the scenario's objects and its subject; give them, or remove end and object.", "/end");
         var chain = SubjectCoverage.Chain(model, entity);
+        // An end with several types is held by every entity it covers (several-types-design.md decision 16).
         if (!model.TryGetEntry(end, out var entry) || model.Get<Relation>(entry.OwnerId) is not { } relation
-            || !relation.Ends.Any(e => string.Equals(e.Id, end, StringComparison.Ordinal))
-            // several-types: wave 2 — an end held through a covered type, and a connect step's type check (decision 18), read the end coverage helper.
-            || !relation.Ends.Any(e => !string.Equals(e.Id, end, StringComparison.Ordinal) && e.SingleEntity is { } near && chain.Contains(near, StringComparer.Ordinal)))
+            || relation.Ends.FirstOrDefault(e => string.Equals(e.Id, end, StringComparison.Ordinal)) is not { } far
+            || !relation.Ends.Any(e => !string.Equals(e.Id, end, StringComparison.Ordinal)
+                && (e.HasSeveralTypes ? EndCoverage.Covers(model, e, entity.Id) : e.SingleEntity is { } near && chain.Contains(near, StringComparer.Ordinal))))
             return ($"end '{end}' does not lead from the subject's entity '{entity.Name}' or one of its bases; name an end of a relation of '{entity.Name}'.", "/end");
-        if (!cast.Objects.Any(o => string.Equals(o.Id, objectId, StringComparison.Ordinal)))
+        if (cast.Objects.FirstOrDefault(o => string.Equals(o.Id, objectId, StringComparison.Ordinal)) is not { } linked)
             return ($"object '{objectId}' is not one of the scenario's objects; name one of them.", "/object");
+        // A connect through an end with several types checks the connected object's entity (decision 18); through a one-type end it doesn't,
+        // as before, so existing scenarios get no new finding.
+        if (string.Equals(verb, "connect", StringComparison.Ordinal) && far.HasSeveralTypes && model.Get<Entity>(linked.Entity) is { } linkedEntity
+            && !EndCoverage.Covers(model, far, linkedEntity.Id))
+        {
+            return ($"object '{linked.Name}' is an object of entity '{linkedEntity.Name}', but end '{relation.Name}.{far.Role}' leads to {RelationTypeRules.TypesText(model, far)}; "
+                + "connect an object of one of those, or use another end.", "/object");
+        }
+
         if (!string.Equals(verb, "connect", StringComparison.Ordinal)
             && !subject.Links.Any(l => string.Equals(l.End, end, StringComparison.Ordinal) && string.Equals(l.Object, objectId, StringComparison.Ordinal)))
         {

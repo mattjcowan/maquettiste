@@ -960,12 +960,12 @@ internal static class PhysicalRules
 
     private static bool EndTouches(ValidationContext context, string endId, Entity entity)
     {
-        if (context.Model.GetDocument(endId)?.Element is not Relation relation)
+        // A relation with an end of several types touches no table in part 1, which stores nothing for it (several-types-design.md decision 22).
+        if (context.Model.GetDocument(endId)?.Element is not Relation relation || EndCoverage.HasSeveralTypes(relation))
             return false;
         var lineage = new HashSet<string>(StringComparer.Ordinal) { entity.Id };
         for (var current = entity.Base; current is not null && lineage.Add(current);)
             current = context.Model.Get<Entity>(current)?.Base;
-        // several-types: wave 2 — an end with several types touches no table in part 1, which stores nothing for it (decision 22).
         return relation.Ends.Any(e => e.SingleEntity is { } entityId && lineage.Contains(entityId));
     }
 

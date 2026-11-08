@@ -527,19 +527,30 @@ internal sealed class ValidationContext
         _navigations.Value.TryGetValue(entityId, out var list) ? list : [];
 
     /// <summary>
-    /// Returns the entities that carry a navigation of an end: the entities of every other end of the relation. An other end with several
-    /// types gives none yet.
+    /// Returns the entities that carry a navigation of an end: the entity of every other one-type end of the relation, and the types of
+    /// every other end with several types (several-types-design.md decisions 5 and 10: a stereotype's carriers, every entity with no base for
+    /// <c>anyEntity</c>), in the end coverage helper's order. Their derived entities inherit the navigation, as today.
     /// </summary>
+    /// <param name="model">The model.</param>
     /// <param name="relation">The relation.</param>
     /// <param name="endIndex">The end.</param>
-    /// <returns>The entity ids, one per other one-type end.</returns>
-    public static IEnumerable<string> NavigationHolders(Relation relation, int endIndex)
+    /// <returns>The entity ids.</returns>
+    public static IEnumerable<string> NavigationHolders(ModelSnapshot model, Relation relation, int endIndex)
     {
         for (var j = 0; j < relation.Ends.Count; j++)
         {
-            // several-types: wave 2 — an end with several types holds the navigation on every covered entity (decision 10, MQ3009).
-            if (j != endIndex && relation.Ends[j].SingleEntity is { } holder)
-                yield return holder;
+            if (j == endIndex)
+                continue;
+            var holder = relation.Ends[j];
+            if (holder.HasSeveralTypes)
+            {
+                foreach (var type in EndCoverage.TypesOf(model, holder))
+                    yield return type.Id;
+            }
+            else if (holder.SingleEntity is { } entity)
+            {
+                yield return entity;
+            }
         }
     }
 
@@ -555,7 +566,7 @@ internal sealed class ValidationContext
                 var name = relation.Ends[i].Navigation;
                 if (name.Length == 0)
                     continue;
-                foreach (var holder in NavigationHolders(relation, i).Distinct(StringComparer.Ordinal))
+                foreach (var holder in NavigationHolders(Model, relation, i).Distinct(StringComparer.Ordinal))
                 {
                     if (!map.TryGetValue(holder, out var list))
                         map[holder] = list = ImmutableArray.CreateBuilder<NavigationSite>();
@@ -584,7 +595,10 @@ internal sealed class ValidationContext
         return null;
     }
 
-    /// <summary>Returns the composition relations whose child is an entity, in path order.</summary>
+    /// <summary>
+    /// Returns the composition relations whose child is an entity, in path order: a one-type child end's entity, and each entity a child end
+    /// with several types covers (several-types-design.md decision 9; an <c>anyEntity</c> child end, MQ3041, is left out).
+    /// </summary>
     /// <param name="entityId">The child entity id.</param>
     /// <returns>The relation documents.</returns>
     public ImmutableArray<ElementDocument> CompositionsOwning(string entityId) =>
@@ -597,12 +611,16 @@ internal sealed class ValidationContext
         {
             if (doc.Element is Relation relation && CompositionEnds(relation) is { } ends)
             {
-                // several-types: wave 2 — a child end with several types makes each covered entity a child (decision 9, MQ3016).
-                if (relation.Ends[ends.Child].SingleEntity is not { } child)
-                    continue;
-                if (!map.TryGetValue(child, out var list))
-                    map[child] = list = ImmutableArray.CreateBuilder<ElementDocument>();
-                list.Add(doc);
+                var childEnd = relation.Ends[ends.Child];
+                IEnumerable<string> children = childEnd.HasSeveralTypes
+                    ? childEnd.AnyEntity == true ? [] : EndCoverage.CoveredBy(Model, childEnd)
+                    : childEnd.SingleEntity is { } single ? [single] : [];
+                foreach (var child in children)
+                {
+                    if (!map.TryGetValue(child, out var list))
+                        map[child] = list = ImmutableArray.CreateBuilder<ElementDocument>();
+                    list.Add(doc);
+                }
             }
         }
 

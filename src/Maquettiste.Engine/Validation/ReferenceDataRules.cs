@@ -445,6 +445,13 @@ internal static class ReferenceDataRules
         if (target is Entity { Abstract: true } abstractEntity)
             report.Add("MQ7101", $"Seed '{seed.Name}' targets the abstract entity '{abstractEntity.Name}'; seed one of its concrete subtypes.", "/target");
 
+        // MQ7105 (several-types-design.md decision 21): seeds can't hold the links of a relation with an end of several types yet.
+        if (target is Relation severalTypes && EndCoverage.HasSeveralTypes(severalTypes))
+        {
+            report.Add("MQ7105", $"Seed '{seed.Name}' holds rows of relation '{severalTypes.Name}', which has an end with several types; seeds can't hold such links yet.", "/target");
+            return;
+        }
+
         var columns = ResolveColumns(context, seed, target, report);
         CheckMissingColumns(context, seed, target, columns, report);
         CheckRows(context, seed, target, columns, report);
@@ -504,6 +511,15 @@ internal static class ReferenceDataRules
             if (EndOf(context, name, target) is { } found)
             {
                 var (relation, end) = found;
+                // MQ7105 (several-types-design.md decision 21): an entity seed's column for an end of a relation with an end of several types.
+                if (target is Entity && EndCoverage.HasSeveralTypes(relation))
+                {
+                    report.Add("MQ7105", end.HasSeveralTypes
+                        ? $"Seed '{seed.Name}' has a column for end '{end.Role}', which leads to several types; seeds can't hold such links yet."
+                        : $"Seed '{seed.Name}' has a column for end '{end.Role}' of relation '{relation.Name}', which has an end with several types; seeds can't hold such links yet.", pointer);
+                    continue;
+                }
+
                 if (target is Entity && end.Max == MaxCardinality.Many)
                 {
                     report.Add("MQ7105", $"The column for end '{end.Role}' of relation '{relation.Name}' names a to-many end; the links belong in a seed of the relation.", pointer);
@@ -527,7 +543,8 @@ internal static class ReferenceDataRules
     }
 
     /// <summary>The relation end a column names, when it belongs to the target: an end of the relation itself, or for an entity the
-    /// far end of a binary relation whose near end is the entity or one of its ancestors.</summary>
+    /// far end of a binary relation whose near end is the entity or one of its ancestors, or, for a near end with several types, covers the
+    /// entity (MQ7105 refuses such a column).</summary>
     private static (Relation Relation, RelationEnd End)? EndOf(ValidationContext context, string id, Element target)
     {
         if (!context.Model.TryGetEntry(id, out var entry) || entry.Kind != "end" || context.Model.Get<Relation>(entry.OwnerId) is not { } relation)
@@ -545,7 +562,8 @@ internal static class ReferenceDataRules
             return r.Id == relation.Id ? (relation, relation.Ends[index]) : null;
         if (target is not Entity entity || relation.Ends.Count != 2)
             return null;
-        // several-types: wave 2 — an entity seed's column for a relation with an end of several types is MQ7105 (decision 21).
+        if (relation.Ends[1 - index] is { HasSeveralTypes: true } several)
+            return EndCoverage.Covers(context.Model, several, entity.Id) ? (relation, relation.Ends[index]) : null;
         if (relation.Ends[1 - index].SingleEntity is not { } near)
             return null;
         var lineage = context.Ancestors(entity).Select(a => a.Id).Prepend(entity.Id);
@@ -661,7 +679,7 @@ internal static class ReferenceDataRules
                 if (cell.ValueKind != JsonValueKind.String)
                     return ("MQ7004", $"an end cell holds a row id, not {Describe(cell)}");
                 var rowId = cell.GetString()!;
-                // several-types: wave 2 — a seed of a relation with an end of several types is MQ7105 (decision 21); its cells aren't checked here.
+                // A column for an end with several types is MQ7105 (several-types-design.md decision 21), so its cells aren't checked.
                 if (end.SingleEntity is not { } endEntity)
                     return null;
                 if (context.SeedOfRow(rowId) is not { } holder || !IsEntityOrDescendant(context, holder.Target, endEntity))

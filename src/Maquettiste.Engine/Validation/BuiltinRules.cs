@@ -34,6 +34,7 @@ internal static partial class BuiltinRules
                 CheckEntity(context, entity, report);
                 MappingRules.CheckEntityPlacement(context, entity, report);
                 ColumnTypeRules.CheckEntity(context, entity, report);
+                RelationTypeRules.CheckBindingFields(context, entity, report);
                 break;
             case ValueObject valueObject:
                 CheckValueObject(context, valueObject, report);
@@ -72,6 +73,9 @@ internal static partial class BuiltinRules
                 break;
             case Mapping mapping:
                 MappingRules.CheckMapping(context, mapping, report);
+                break;
+            case Query query:
+                RelationTypeRules.CheckQuery(context, query, report);
                 break;
             case TagVocabulary tags:
                 CheckTagVocabulary(context, tags, report);
@@ -1051,10 +1055,12 @@ internal static partial class BuiltinRules
             // MQ3009: navigation collisions on the entities that carry it.
             if (end.Navigation.Length > 0)
             {
-                foreach (var holderId in ValidationContext.NavigationHolders(relation, i).Distinct(StringComparer.Ordinal))
+                foreach (var holderId in ValidationContext.NavigationHolders(model, relation, i).Distinct(StringComparer.Ordinal))
                     CheckNavigation(context, relation, i, holderId, report);
             }
         }
+
+        RelationTypeRules.CheckRelation(context, relation, report);
 
         if (relation.RelationKind == RelationKind.Composition && ends.Count == 2)
         {
@@ -1062,11 +1068,28 @@ internal static partial class BuiltinRules
             {
                 report.Add("MQ3010", $"Composition '{relation.Name}' has no owner end: one end needs max 1.", "/ends");
             }
+            else if (ends[composition.Child] is { HasSeveralTypes: true } several)
+            {
+                // MQ3016 (several-types-design.md decision 9): a child end with several types makes each entity it covers a child, checked
+                // against its other compositions at the entry that covers it; an owner end with several types counts as one owner. An
+                // anyEntity child end is MQ3041 and is in no composition index.
+                if (several.AnyEntity != true)
+                {
+                    foreach (var child in EndCoverage.CoveredBy(model, several))
+                    {
+                        var owners = context.CompositionsOwning(child);
+                        if (owners.Length > 1 && owners[0] != report.Document)
+                        {
+                            var childName = model.Get<Entity>(child)?.Name ?? child;
+                            report.Add("MQ3016", $"Entity '{childName}' is already owned through composition {owners[0].Path}; a composition child has one owner.",
+                                Ptr.At(Ptr.At("/ends", composition.Child) + "/types", EntryCovering(model, several, child)), several.Id);
+                        }
+                    }
+                }
+            }
             else
             {
                 // MQ3016: the child is part of another composition too.
-                // several-types: wave 2 — a child end with several types checks each covered entity (decision 9); an owner end with several
-                // types counts as one owner.
                 var child = ends[composition.Child].SingleEntity;
                 var owners = child is null ? [] : context.CompositionsOwning(child);
                 if (child is not null && owners.Length > 1 && owners[0] != report.Document)
@@ -1083,6 +1106,23 @@ internal static partial class BuiltinRules
         CheckFlatDuplicates(context, relation, flat, report);
         CheckAttributes(context, relation.Attributes, report);
         MappingRules.CheckRelationBindings(context, relation, report);
+    }
+
+    // The index of the first entry of an end's types that covers an entity: an entity entry its entity or a base, a stereotype entry a carrier
+    // in its chain; 0 when none does.
+    private static int EntryCovering(ModelSnapshot model, RelationEnd end, string entityId)
+    {
+        var chain = model.Get<Entity>(entityId) is { } entity ? Processes.SubjectCoverage.Chain(model, entity) : [entityId];
+        var types = end.Types ?? [];
+        for (var j = 0; j < types.Count; j++)
+        {
+            if (types[j].Entity is { } id ? chain.Contains(id, StringComparer.Ordinal)
+                : types[j].Stereotype is { } key && chain.Exists(c => model.Get<Entity>(c) is { } link
+                    && model.EffectiveStereotypes(link).Any(a => string.Equals(a.Stereotype.Key, key, StringComparison.Ordinal))))
+                return j;
+        }
+
+        return 0;
     }
 
     private static string KindText(RelationKind kind) => kind switch
