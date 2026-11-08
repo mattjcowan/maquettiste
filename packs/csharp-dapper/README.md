@@ -577,6 +577,34 @@ rights without them gets the same bytes as before.
   project uses freezing and `testsFolder` names a folder) is the tests' `IFrozenState`: register it once in your `ScenarioHost`, in place of
   the `FrozenState` stub, as you do `ScenarioHoldings`. A step refused as frozen fails until then, and its message says so.
 
+### Trigger points
+
+A project uses trigger points when a lifecycle has `triggerPoints` (trigger-points-design.md, part 1). Only then does the pack write
+anything below; a project without them gets the same bytes as before.
+
+- **What is written.** `Processes/TriggerPoints.cs` holds `TriggerPointCall`, `TriggerPointOutcome`, `TriggerPointMessage`,
+  `ITriggerPointSteps`, the depth guard and `TriggerPointRelay`. Each lifecycle with trigger points gets `<Process>TriggerSteps`, the
+  step methods (`Before<Verb>`, `Check<Verb>`, `With<Verb>`, `After<Verb>`, and `Perform<Verb>` where there is a replace), and its
+  definition passes them to the interpreter. Each entity that such a lifecycle governs gets a runner, `<Entity>Verbs`, and a history
+  record, `<Entity>VerbDone`.
+- **Upgrading, step by step.**
+  1. **Write the stubs** in the `partialFolder`: `<Process>TriggerPoints.cs` (one method per trigger point, in the classes
+     `<Process>TriggerPoints`, `<Process>TriggerConditions` and `<Process>TriggerRecords`) and `<Entity>Verbs.cs` (the `StatesIn<Lifecycle>`
+     methods). Each throws until written, so the build lists what is missing. Until generated code can read the object (roadmap 4.6), every
+     body, `when` and condition is yours to write; each method's comment carries the model's text. A before action's body only fills
+     `call.Proposed` and writes nothing. Its records method writes the values once every check has passed.
+  2. **Register `ScenarioTriggers`** once in your `ScenarioHost`, when you use the generated scenario tests (see Scenario tests).
+  3. **Call `<Entity>Verbs.RunAsync`** from your own handlers for object, link and own verbs done outside an event, inside your own
+     transaction. It refuses move, signature and task verbs: those go through the process's commands. An exception from your code passes
+     through, so your transaction rolls back.
+  4. **Run a relay** that reads each `TriggerPointMessage` the outbox stored and calls `TriggerPointRelay.DeliverAsync(message)`. After-commit
+     work runs there. It may run late and more than once, so drop a repeat by the message's `MessageId`.
+- **The order and the promises.** Every verb runs in the engine's order. Nothing is written before every check passes. Work with the change is
+  inside the command's transaction, and a failure undoes the verb. After-commit messages are stored in the same transaction, so they exist
+  only if the change committed. More than 8 nested runs fail the command.
+- **Results.** `Refusals.Check` is the new refusal, and results gain `CheckWarnings`. A project that uses rights or trigger points
+  writes `RefusedBy`.
+
 ### Scenario tests
 
 With `testsFolder` set, each scenario becomes one xunit test: it starts the instance with the scenario's start context on a
