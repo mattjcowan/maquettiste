@@ -60,6 +60,8 @@ export function assumeKindDiagnostics(json: Json, all: () => Iterable<ModelEntry
     arr(e.json.guards).forEach((g) => str(g.id) && guards.add(g.id as string));
     arr(e.json.triggerPoints).forEach((t) => str(t.id) && checks.add(t.id as string));
   }
+  // A named trigger point's id takes a word too, never a boolean.
+  for (const e of all()) if (e.json.kind === "trigger-point" && str(e.json.id)) checks.add(e.json.id as string);
   arr(json.steps).forEach((step, i) => {
     const assume = step.assume;
     if (!assume || typeof assume !== "object") return;
@@ -378,7 +380,7 @@ function neverRuns(t: Json, verbs: string[], json: Json): boolean {
 }
 
 /** The entities (of `all`) a named trigger point covers: those a subject covers (with the entities derived from them), less `exceptEntities`, narrowed by `entities`. */
-function namedCovered(point: Json, all: string[], chainIds: (e: string) => string[], coverage: Coverage, ignoreExcept = false): string[] {
+export function namedCovered(point: Json, all: string[], chainIds: (e: string) => string[], coverage: Coverage, ignoreExcept = false): string[] {
   const named = strings(point.entities);
   const probe = ignoreExcept ? { ...point, exceptEntities: [] } : point;
   return all.filter((e) => {

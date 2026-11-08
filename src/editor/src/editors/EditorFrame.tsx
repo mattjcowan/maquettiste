@@ -239,22 +239,24 @@ export function NameAndDomain({ id, json, edit, flush, diagnostics, children }: 
 }
 
 /** Stereotype, tag and category chips. */
-export function MarkChips({ json, edit, flush }: EditorContext) {
+export function MarkChips({ json, edit, flush, stereotypes = true }: EditorContext & { stereotypes?: boolean }) {
   const rec = json as Rec;
   const vocab = useVocabularies(String(rec.kind), markDomainOf(rec));
   const category = rec.category ? [String(rec.category)] : [];
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-2" data-testid="editor-chips">
-      <ChipsEditor
-        label="Stereotypes"
-        values={(rec.stereotypes as string[] | undefined) ?? []}
-        options={vocab.stereotypes.map((s) => ({ value: s.key, label: `«${s.key}»` }))}
-        allowFree={false}
-        onChange={(values) => {
-          edit((j) => setOptional(j as Rec, "stereotypes", values.length ? values : undefined));
-          flush();
-        }}
-      />
+      {stereotypes ? (
+        <ChipsEditor
+          label="Stereotypes"
+          values={(rec.stereotypes as string[] | undefined) ?? []}
+          options={vocab.stereotypes.map((s) => ({ value: s.key, label: `«${s.key}»` }))}
+          allowFree={false}
+          onChange={(values) => {
+            edit((j) => setOptional(j as Rec, "stereotypes", values.length ? values : undefined));
+            flush();
+          }}
+        />
+      ) : null}
       <ChipsEditor
         label="Tags"
         values={(rec.tags as string[] | undefined) ?? []}

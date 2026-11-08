@@ -189,23 +189,27 @@ export function TriggerPointsTab({ pc }: { pc: ProcessContext }) {
       label: L.columns.outside,
       tooltip: L.tips.outside,
       kind: "toggle",
-      width: "w-28",
+      width: "w-44",
+      toggleLabel: L.outsideShort,
       value: (r) => (r.outside ? "yes" : ""),
       on: (r) => r.outside,
       // Only a point the team writes can reach outside systems (MQ8101).
       locked: (r) => !r.teamCode && !r.outside,
       // The second box: never skipped by a bulk load (decision 20). It sits in this cell so the grid does not widen.
       after: (r) => (
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={r.noBypass}
-          aria-label={`${L.noBypass}: ${r.name}`}
-          title={L.noBypass}
-          onClick={() => change((p) => void editTriggerPoint(p, r.id, "noBypass", !r.noBypass))}
-          className={cn("inline-block size-3 shrink-0 rounded-[3px] border border-input", r.noBypass && "border-accent bg-accent")}
-          data-testid="trigger-no-bypass"
-        />
+        <>
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={r.noBypass}
+            aria-label={`${L.noBypass}: ${r.name}`}
+            title={L.noBypass}
+            onClick={() => change((p) => void editTriggerPoint(p, r.id, "noBypass", !r.noBypass))}
+            className={cn("ml-1 inline-block size-3 shrink-0 rounded-[3px] border border-input", r.noBypass && "border-accent bg-accent")}
+            data-testid="trigger-no-bypass"
+          />
+          <span className="text-11 text-secondary">{L.noBypassShort}</span>
+        </>
       ),
     },
     { key: "why", label: L.columns.why, tooltip: L.tips.why, kind: "text", width: "min-w-28", clip: "max-w-36", value: (r) => r.why },

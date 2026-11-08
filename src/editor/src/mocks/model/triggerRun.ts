@@ -45,6 +45,8 @@ export function namedReach(t: Json, chain: readonly string[], covers: Stereotype
   return best;
 }
 
+const ordinal = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 /**
  * The named trigger points that run for an object (every chain given must be covered), in decision 34's order: the farthest base first;
  * at one depth those an entity brings before those a stereotype brings, then by name, ordinally.
@@ -60,7 +62,11 @@ export function namedFor(named: readonly Json[], chains: readonly (readonly stri
     })
     .sort(
       (a, b) =>
-        b.depth - a.depth || Number(b.entity) - Number(a.entity) || (String(a.t.name) < String(b.t.name) ? -1 : String(a.t.name) > String(b.t.name) ? 1 : 0),
+        b.depth - a.depth ||
+        Number(b.entity) - Number(a.entity) ||
+        // MQ3001 is per package, so two names can tie: the id decides, as the engine's order does.
+        ordinal(String(a.t.name), String(b.t.name)) ||
+        ordinal(String(a.t.id), String(b.t.id)),
     )
     .map((x) => x.t);
 }
@@ -183,7 +189,13 @@ export function statePath(list: unknown, id: string): string[] {
  * this lifecycle's by its name, another's as `Lifecycle.Name` or `LifecycleId.Name`; a key that is an id, or names none or two, stays.
  * A scenario's own steps are read from the file, where keys are ids only.
  */
-export function resolveCheckNames(step: Json, own: Json, lifecycles: readonly Json[]): Json {
+export function resolveCheckNames(
+  step: Json,
+  own: Json,
+  lifecycles: readonly Json[],
+  named: readonly Json[] = [],
+  qualified: (point: Json) => string = (p) => String(p.name),
+): Json {
   const assume = step.assume;
   if (!assume || typeof assume !== "object") return step;
   const names: [string, string][] = [];
@@ -192,6 +204,13 @@ export function resolveCheckNames(step: Json, own: Json, lifecycles: readonly Js
       if (l.id === own.id) names.push([String(t.name), String(t.id)]);
       names.push([`${String(l.name)}.${String(t.name)}`, String(t.id)], [`${String(l.id)}.${String(t.name)}`, String(t.id)]);
     }
+  // A named check is keyed by its qualified name (its package's name, a dot and its own; its name alone in the root package). A name that
+  // also matches a lifecycle check or a guard of the running process stays as written: the step names that one, or the id (decision 26).
+  const taken = new Set([...names.map(([n]) => n), ...arr(own.guards).map((g) => String(g.name))]);
+  for (const t of named.filter((p) => p.type === "check")) {
+    const q = qualified(t);
+    if (!taken.has(q)) names.push([q, String(t.id)]);
+  }
   const ids = new Set(names.map(([, id]) => id));
   const out: Json = {};
   for (const [key, value] of Object.entries(assume as Json)) {

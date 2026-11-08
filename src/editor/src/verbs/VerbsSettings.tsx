@@ -201,7 +201,7 @@ function UsedByDialog({ verb, onClose }: { verb: { key: string }; onClose: () =>
   const users = verbUsers(index.data ?? [], verb.key);
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent title={`Used by ${verb.key}`} description="The processes and operations that name this verb.">
+      <DialogContent title={`Used by ${verb.key}`} description="The named trigger points, processes and operations that name this verb.">
         <p className="text-13" data-testid="verb-used-by">
           {users.length ? <ElementLinks elements={users} onOpen={onClose} /> : "Nothing names it."}
         </p>

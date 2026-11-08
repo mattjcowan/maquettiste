@@ -81,6 +81,8 @@ export interface GridColumn<R> {
   onCellClick?: (row: R) => void;
   /** Custom content in place of the text (badges). */
   render?: (row: R) => ReactNode;
+  /** A short visible label after a toggle's first box (the column's header says what both boxes are about). */
+  toggleLabel?: string;
   /** A toggle's second box in the same cell, after the first (so the column does not widen). */
   after?: (row: R) => ReactNode;
 }
@@ -458,6 +460,7 @@ export function Grid<R extends { id: string }>({
                                 {column.value(row)}
                               </span>
                             )}
+                            {kind === "toggle" && column.toggleLabel ? <span className="text-11 text-secondary">{column.toggleLabel}</span> : null}
                             {kind === "toggle" ? column.after?.(row) : null}
                             {marker ? (
                               <span

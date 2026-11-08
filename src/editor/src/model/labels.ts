@@ -776,6 +776,9 @@ export const TRIGGER_LABELS = {
   },
   /** The named trigger point's editor (trigger-points-design.md section 11, part 2) and the grid's second box. */
   noBypass: "Never skipped by a bulk load",
+  /** The two boxes of the grid's Outside systems cell, as short visible labels. */
+  outsideShort: "Outside",
+  noBypassShort: "Never skipped",
   named: {
     covers: "Covers",
     coversTip: "The types it runs for: an entity with the entities derived from it, or a stereotype with every entity that carries it",
@@ -784,10 +787,17 @@ export const TRIGGER_LABELS = {
     exceptTip: "Entities it skips, with their derived entities, though Covers includes them",
     runsFor: "Runs for",
     runsForNone: "No type yet",
-    runsForNote: "Read from entity bases and the stereotypes entities name. A stereotype a domain gives its entities by default is not counted here.",
+    runsForNote:
+      "Every type its Covers reach, less Except, narrowed by Types. The engine reads the list, so a stereotype a domain gives its entities by default counts.",
+    runsForLoading: "Reading the types it runs for…",
+    runsForFailed: "Could not read the types it runs for.",
     places: "Where",
     types: "Types",
     typesTip: "Narrow it to some of the types it covers. Empty means all of them",
+    typesNone: "All of them",
+    editSets: "Edit what it sets",
+    messageNote: "The message of a check is the Why field in the details above. It is shown when the check refuses or warns.",
+    problems: "Findings",
     noMoves: "A named trigger point has no states or moves: read a state with in_state in Only if.",
     noSubject: "A named trigger point needs a type to cover.",
     newTitle: "New trigger point…",

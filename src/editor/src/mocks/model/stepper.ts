@@ -401,6 +401,8 @@ export interface StepperOptions {
   /** The named trigger points (kind `trigger-point`), and whether a stereotype (by key) covers an entity, for the ones that name stereotypes. */
   namedPoints?: Json[];
   stereotypeCovers?: StereotypeCover;
+  /** The entities that carry a stereotype themselves (by key), in name order: a run with no object tests a stereotype subject against them. */
+  stereotypeCarriers?: (key: string) => string[];
   /** Replay also records each step's `expect.triggerPoints` (the record operation's `triggerPoints: true`). */
   recordTriggerPoints?: boolean;
 }
@@ -583,6 +585,7 @@ class Interpreter {
   /** The named trigger points, which run for an object before every lifecycle's points (decision 34). */
   namedPoints: Json[] = [];
   stereotypeCovers: StereotypeCover = () => false;
+  stereotypeCarriers: (key: string) => string[] = () => [];
   entityChain: (entity: string) => string[] = (e) => [e];
   private prep = new Map<Edge, { sign: Prepared | null; move: Prepared | null }>();
   private auditSeq = 0;
@@ -684,6 +687,7 @@ class Interpreter {
     input = this.withParticipant(input);
     this.scope.input = input;
     if (this.scope.actsAs) this.scope.echo = input;
+    if (this.triggers) this.checkNamedAssume(input);
     if (input.input === "verb") this.handleVerb(input);
     else if (input.input === "time") this.handleTime(input);
     else if (input.input === "invoke-done" || input.input === "invoke-error") this.handleInvoke(input);
@@ -1071,7 +1075,37 @@ class Interpreter {
     const object = this.subjectObject();
     const entity = str(object?.entity) ?? (object ? undefined : this.subjectEntity);
     if (entity) return [this.entityChain(entity)];
-    return subjectsOf(this.chart.doc).flatMap((x) => (x.entity ? [this.entityChain(x.entity)] : []));
+    // With no object, each subject is one chain: an entity subject's own, and every carrier of a stereotype subject.
+    return subjectsOf(this.chart.doc).flatMap((x) =>
+      x.entity ? [this.entityChain(x.entity)] : x.stereotype ? this.stereotypeCarriers(x.stereotype).map((e) => this.entityChain(e)) : [],
+    );
+  }
+
+  /**
+   * The named points a verb reaches. A move, signature or task verb reaches them only inside the lifecycle that owns the move, for a
+   * covered type, never in an orchestration (trigger-points-design.md decision 34, A5); the other verbs reach them wherever they happen.
+   */
+  private namedFor(verb: string): Json[] {
+    if (ownLifecycleOnly(verb) && this.chart.doc.use !== "lifecycle") return [];
+    return this.namedHere();
+  }
+
+  /**
+   * MQ9305 on a step's assume words for named checks: a word names a named check that covers the object's entity, whatever the verb (with no
+   * object, one that covers every subject), and has no condition. Lifecycle checks are not tested by the mock, as before.
+   */
+  private checkNamedAssume(input: SimInputJson) {
+    const named = new Map(this.namedPoints.map((t) => [String(t.id), t]));
+    const reached = new Set(this.namedHere().map((t) => String(t.id)));
+    for (const [key, value] of Object.entries(input.assume)) {
+      const point = named.get(key);
+      if (typeof value !== "string" || !point) continue;
+      if (point.type === "check" && isTeamCode(point) && reached.has(key)) continue;
+      this.problem(
+        "MQ9305",
+        `assume gives ${value} for '${String(point.name)}', which is not a check the team writes of a lifecycle this step reaches; give true or false for a guard, or name such a check.`,
+      );
+    }
   }
 
   /** The states a move enters, its targets and what they enter by default, with their ancestors. */
@@ -1159,7 +1193,7 @@ class Interpreter {
   private prepare(verb: string, place: Place, start: Json, old: Json | null, verbStep: boolean): Prepared {
     const found: { l: Json; t: Json; moment: Moment }[] = [];
     // Named points run before the lifecycles' at each moment (decision 34): the list is in that order, and each moment keeps it.
-    for (const t of this.namedHere()) {
+    for (const t of this.namedFor(verb)) {
       const m = matchPoint(t, t, place);
       if (!m.ok) continue;
       found.push({ l: t, t, moment: momentOf(t) });
@@ -1376,7 +1410,7 @@ class Interpreter {
       for (const verb of [t.gate ? "sign" : null, !t.gate || this.couldComplete(t) ? t.verb : null]) {
         if (!verb) continue;
         const place = this.placeFor(verb, { edge: t });
-        for (const p of this.namedHere()) if (p.type === "check" && isTeamCode(p) && matchPoint(p, p, place).ok) out.add(String(p.id));
+        for (const p of this.namedFor(verb)) if (p.type === "check" && isTeamCode(p) && matchPoint(p, p, place).ok) out.add(String(p.id));
         for (const l of this.lifecyclesFor(verb))
           for (const p of pointsOf(l)) if (p.type === "check" && isTeamCode(p) && matchPoint(p, l, place).ok) out.add(String(p.id));
       }
@@ -2108,6 +2142,7 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
   run.named = options.namedRights ?? new Map();
   run.namedPoints = options.namedPoints ?? [];
   run.stereotypeCovers = options.stereotypeCovers ?? (() => false);
+  run.stereotypeCarriers = options.stereotypeCarriers ?? (() => []);
   run.triggers = usesTriggers([doc, ...run.lifecycles], run.namedPoints);
   run.entityChain = options.entityChain ?? ((e) => [e]);
   run.rightsOn = options.refusedBy === true || usesRights(run.lifecycles) || run.triggers;

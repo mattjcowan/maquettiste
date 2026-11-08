@@ -362,6 +362,8 @@ export interface LastStepLine {
   /** A trigger point's outcome as a badge, with its flags (assumed, outside). */
   badge?: { text: string; tone: "neutral" | "danger" | "warning" | "success" };
   flags?: { text: string; title: string }[];
+  /** A named trigger point (it belongs to no lifecycle): the panel badges it. */
+  named?: boolean;
 }
 
 /** What one trace entry did, line by line, in the order the engine reports it. */
@@ -437,6 +439,7 @@ export function lastStepLines(
       text: TL.panel.ran(names.element(r.triggerPoint), (builtInVerb(r.verb)?.displayName ?? labelOfKey(r.verb)).toLowerCase()),
       tone: "neutral",
       element: { id: r.triggerPoint, name: names.element(r.triggerPoint) },
+      ...(r.lifecycle ? {} : { named: true }),
       badge: {
         text: TL.panel.outcomes[r.outcome] ?? r.outcome,
         tone: r.outcome === "refused" ? "danger" : r.outcome === "warned" ? "warning" : r.outcome === "skipped" ? "neutral" : "success",

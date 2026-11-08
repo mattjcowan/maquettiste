@@ -215,6 +215,7 @@ function rightFix(rule: string, element: ModelJson, pointer: string): { json: Mo
  * lifecycle. The last entry of a narrowing list takes the trigger point with it: an empty list would widen it to everywhere.
  */
 function triggerPointFix(rule: string, element: ModelJson, pointer: string): { json: ModelJson; label: string } | null {
+  if (element.kind === "trigger-point") return namedTriggerPointFix(rule, element, pointer);
   const entry = /^(\/triggerPoints\/\d+)(\/|$)/.exec(pointer)?.[1];
   const done = (json: ModelJson | null, label: string) => (json ? { json, label } : null);
   const point = entry ? (atPointer(element, entry) as Json | undefined) : undefined;
@@ -255,6 +256,45 @@ function triggerPointFix(rule: string, element: ModelJson, pointer: string): { j
       return timing("after-commit", "Make it an after-commit action");
     case "MQ8107":
       return entry ? done(removeAndTidy(element, entry, "rights"), "Remove it") : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * The same fixes on a named trigger point, whose pointers start at the document (`/exceptEntities/0`, `/timing`). It has no entry to
+ * drop: the last item of an `exceptEntities` or `entities` list takes the key (an empty list would widen it), the last of `subjects` has
+ * no fix, and MQ8107 (remove the point) is the delete the editor and the explorer already have, so it is no update here.
+ */
+function namedTriggerPointFix(rule: string, element: ModelJson, pointer: string): { json: ModelJson; label: string } | null {
+  const done = (json: ModelJson | null, label: string) => (json ? { json, label } : null);
+  const timing = (value: "with-change" | "after-commit", label: string) => {
+    const next = clone(element);
+    next.timing = value;
+    return { json: next, label };
+  };
+  switch (rule) {
+    case "MQ8101":
+    case "MQ8102": {
+      if (pointer === "") return null;
+      const item = /^(\/\w+)\/\d+$/.exec(pointer)?.[1];
+      if (item) {
+        const list = atPointer(element, item) as unknown[] | undefined;
+        if (!list || (list.length === 1 && item === "/subjects")) return null;
+        return list.length === 1 ? done(removeAt(element, item), "Remove the entry") : done(removeAt(element, pointer), "Remove the entry");
+      }
+      return done(removeAt(element, pointer), rule === "MQ8101" ? "Remove the key" : "Remove the entry");
+    }
+    case "MQ8103": {
+      const next = clone(element);
+      next.type = "action";
+      next.timing = "with-change";
+      return { json: next, label: "Make it an action" };
+    }
+    case "MQ8105":
+      return timing("with-change", "Make it a with-change action");
+    case "MQ8106":
+      return timing("after-commit", "Make it an after-commit action");
     default:
       return null;
   }
@@ -469,7 +509,7 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
     case "MQ8105":
     case "MQ8106":
     case "MQ8107": {
-      if (element.kind !== "process") return null;
+      if (element.kind !== "process" && element.kind !== "trigger-point") return null;
       const fix = triggerPointFix(d.rule, element, pointer);
       return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;
     }

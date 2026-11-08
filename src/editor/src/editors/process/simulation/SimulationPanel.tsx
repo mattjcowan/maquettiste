@@ -1307,6 +1307,7 @@ function LastStepSection({
             ROW,
             (line.kind === "sets" || line.kind === "values" || line.kind === "refusal") && "h-auto min-h-[var(--mq-row-h)] items-start py-0.5",
             line.kind === "trigger" && "gap-1",
+            line.kind === "trigger" && line.named && "h-auto min-h-[var(--mq-row-h)] flex-wrap py-0.5",
             line.tone === "danger" && "text-danger",
             line.tone === "warning" && "text-warning",
             line.tone === "success" && "text-success",
@@ -1346,13 +1347,18 @@ function LastStepSection({
             <>
               <button
                 type="button"
-                className="min-w-0 truncate text-accent underline hover:no-underline"
+                className={cn("min-w-0 text-left text-accent underline hover:no-underline", line.named ? "break-words" : "truncate")}
                 onClick={() => onOpen(line.element!.id)}
                 title={TL.happens.open(line.element!.name)}
                 data-testid="trigger-link"
               >
                 {line.text}
               </button>
+              {line.named ? (
+                <Badge tone="neutral" data-testid="trigger-named">
+                  {TL.happens.namedPoint}
+                </Badge>
+              ) : null}
               <Badge tone={line.badge.tone} data-testid="trigger-outcome">
                 {line.badge.text}
               </Badge>
