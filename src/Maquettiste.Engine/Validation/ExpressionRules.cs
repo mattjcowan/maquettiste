@@ -51,6 +51,9 @@ internal sealed record ExprSite(string Pointer, Expr? Tree, bool Raw, string Sub
     /// <summary>What <c>in_state</c> reads at a guard, set or right site (object-effects-design.md decisions 7 and 8).</summary>
     public IExprLifecycles? Lifecycles { get; init; }
 
+    /// <summary>Whether an approval site is a stage's <c>when</c> rather than a named signature's (signoff-design.md decision 6), for messages.</summary>
+    public bool StageCondition { get; init; }
+
     /// <summary>
     /// The named right whose condition a lifecycle's use types here, against the lifecycle's subjects (rights-design.md decision 7): the tree
     /// lives in the named right's file, so nothing writes it here, and a finding is reported at the use. <see langword="null"/> otherwise.
@@ -177,9 +180,9 @@ internal static class ExprSites
             }
         }
 
-        // Each named signature's when of an approval on one of the process's transitions (signoff-design.md decision 7), at an approval site: the
-        // process's context and its subjects under subject, and no payload, since no event is given when a round starts. A gate policy's
-        // signature takes no when (MQ8202), so a library has no such site.
+        // Each named signature's when of an approval on one of the process's transitions (signoff-design.md decision 7), and each stage's
+        // (decision 6), at an approval site: the process's context and its subjects under subject, and no payload, since no event is given
+        // when a round starts. A gate policy's signature and stage take no when (MQ8202), so a library has no such site.
         static void AddApprovals(List<ExprSite> sites, ModelSnapshot model, Process process)
         {
             for (var i = 0; i < process.Transitions.Count; i++)
@@ -188,6 +191,16 @@ internal static class ExprSites
                     continue;
                 for (var j = 0; j < stages.Count; j++)
                 {
+                    if (stages[j].When is { } condition)
+                    {
+                        sites.Add(new ExprSite(Ptr.At(Ptr.At("/transitions", i) + "/gate/stages", j) + "/when", condition, false, stages[j].Id, ExprSiteKind.Approval,
+                            s => Process(s, model, process, []))
+                        {
+                            Lifecycles = new ModelLifecycles(model, process, null),
+                            StageCondition = true,
+                        });
+                    }
+
                     for (var k = 0; k < stages[j].Signatures.Count; k++)
                     {
                         var signature = stages[j].Signatures[k];
@@ -289,11 +302,20 @@ internal static class ExprSites
         _ => null,
     };
 
-    /// <summary>Whether a process holds a named signature with a <c>when</c> on one of its transitions' gates (signoff-design.md decision 7).</summary>
+    /// <summary>
+    /// Whether a process holds a named signature or a stage with a <c>when</c> on one of its transitions' gates (signoff-design.md decisions 6
+    /// and 7).
+    /// </summary>
     /// <param name="process">The process.</param>
     /// <returns>Whether one does.</returns>
     internal static bool ApprovalData(Process process) =>
-        process.Use != ProcessUse.Library && process.Transitions.Any(t => t.Gate is { UsesStages: true } gate && gate.AllSignatures.Any(s => s.When is not null));
+        process.Use != ProcessUse.Library && process.Transitions.Any(t => t.Gate is { UsesStages: true } gate && ApprovalConditionIds(gate).Any());
+
+    /// <summary>The ids of a gate's stages and named signatures that have a <c>when</c>, in file order: each stage, then its signatures.</summary>
+    /// <param name="gate">The gate.</param>
+    /// <returns>The ids, under which each <c>when</c> is typed and lowered.</returns>
+    internal static IEnumerable<string> ApprovalConditionIds(ProcessGate gate) =>
+        (gate.Stages ?? []).SelectMany(st => (st.When is null ? Enumerable.Empty<string>() : [st.Id]).Concat(st.Signatures.Where(s => s.When is not null).Select(s => s.Id)));
 
     /// <summary>The key a trigger point's <c>when</c> is typed and lowered by: the point's id is its condition's.</summary>
     /// <param name="pointId">The trigger point's id.</param>
@@ -716,6 +738,7 @@ internal static class ExprSites
             ValueType = site.ValueType, ElementId = site.SubId, FilePath = document?.Path, Pointer = site.Pointer,
             Names = text ? new ModelNames(model) : null,
             Lifecycles = site.Lifecycles,
+            StageCondition = site.StageCondition,
         };
         site.Fill(scope);
         AddRefs(scope, model, refs);
@@ -1483,7 +1506,7 @@ internal static class ExprSites
             .Concat(process.Use != ProcessUse.Lifecycle ? [] : process.TriggerPoints.SelectMany(t =>
                 (t.When is null ? Enumerable.Empty<string>() : [WhenKey(t.Id)]).Concat(t.Condition is null ? [] : [t.Id]).Concat(t.Sets.Select(s => s.Id))))
             .Concat(process.Use == ProcessUse.Library ? [] : process.Transitions.SelectMany(t => t.Gate is { UsesStages: true } gate
-                ? gate.AllSignatures.Where(s => s.When is not null).Select(s => s.Id) : []));
+                ? ApprovalConditionIds(gate) : []));
 
     /// <summary>The processes a process invokes, directly or through the processes it invokes, each once and never itself, in walk order.</summary>
     /// <param name="model">The model.</param>
@@ -1595,7 +1618,7 @@ internal static class ExpressionRules
                     ? $"The set's value reads the context attribute '{shadowed.Name}', but a value reads the event's payload under that name, so the set is left out; "
                         + "rename the context attribute."
                     : site.Kind == ExprSiteKind.Approval
-                    ? $"The named signature's when reads the context attribute '{shadowed.Name}', but a condition's row holds the event under that name, so the "
+                    ? $"The {(site.StageCondition ? "approval stage's" : "named signature's")} when reads the context attribute '{shadowed.Name}', but a condition's row holds the event under that name, so the "
                         + "when is left out; rename the context attribute."
                     : $"The guard reads the context attribute '{shadowed.Name}', but a condition reads the event's payload under that name, so "
                         + "the guard is left a stub; rename the context attribute.", site.Pointer, site.SubId);

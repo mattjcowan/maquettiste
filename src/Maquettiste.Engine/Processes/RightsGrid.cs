@@ -70,6 +70,9 @@ internal static class RightsGrid
     // The responses an approval takes (signoff-design.md decision 9).
     private static readonly string[] ResponseVerbs = ["sign", "reject", "ignore", "withdraw"];
 
+    // Whether one of an approval's signatures may be delegated (signoff-design.md decision 34).
+    private static bool Delegable(ProcessGate gate) => gate.AllSignatures.Any(s => s.DelegateTo.Count > 0);
+
     // A gate's signers; an approval's are its signatures' signers, in file order, each once: the grid can't judge which are needed.
     private static IReadOnlyList<string> SignersOf(ProcessGate gate) =>
         gate.UsesStages ? [.. gate.AllSignatures.SelectMany(s => s.Signers).Distinct(StringComparer.Ordinal)] : gate.Signers;
@@ -131,6 +134,9 @@ internal static class RightsGrid
         // A lifecycle with an approval lists its responses (signoff-design.md decision 18); others list them only where a right or event names them.
         if (chart.Transitions.Any(t => t.Gate is { UsesStages: true }))
             verbKeys.UnionWith(ResponseVerbs);
+        // ... and delegate where a signature may be delegated (decision 34).
+        if (chart.Transitions.Any(t => t.Gate is { UsesStages: true } gate && Delegable(gate)))
+            verbKeys.Add("delegate");
 
         var actors = named.Select(model.Get<Actor>).OfType<Actor>().OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.Id, StringComparer.Ordinal)
             .Select(a => (string?)a.Id).Append(null).ToList();
@@ -260,7 +266,8 @@ internal static class RightsGrid
             if (string.Equals(t.Event!.Verb, verb, StringComparison.Ordinal) && !closed.Any(l => string.Equals(l.Owner, t.Event.Id, StringComparison.Ordinal)))
                 closed.Add(new RightsList(t.Event.Id, t.Event.Actors));
             if (t.Gate is { } gate && SignersOf(gate) is { Count: > 0 } listed
-                && (verb == "sign" || (gate.UsesStages && ResponseVerbs.Contains(verb, StringComparer.Ordinal)) || string.Equals(t.Event.Verb, verb, StringComparison.Ordinal))
+                && (verb == "sign" || (gate.UsesStages && (ResponseVerbs.Contains(verb, StringComparer.Ordinal) || (verb == "delegate" && Delegable(gate))))
+                    || string.Equals(t.Event.Verb, verb, StringComparison.Ordinal))
                 && !signers.Any(l => string.Equals(l.Owner, gate.Id, StringComparison.Ordinal)))
                 signers.Add(new RightsList(gate.Id, listed));
         }

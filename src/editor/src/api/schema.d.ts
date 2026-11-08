@@ -4542,6 +4542,13 @@ export interface components {
             name: string;
             displayName: string;
             description: string | null;
+            /** @description The round the stage runs in (signoff-design.md decision 5); absent when it is 1. */
+            round?: number;
+            /**
+             * @description The condition that skips the stage when false, judged when its round starts (signoff-design.md decision 6), typed at the
+             *     `Approval` site; left out when it has none or it does not type, and on a gate policy's stage.
+             */
+            when?: components["schemas"]["ExpressionRecord"];
             signatures: components["schemas"]["NamedSignature"][];
         };
         /**
@@ -4567,6 +4574,19 @@ export interface components {
                 verb?: string;
                 transition?: string;
             }[];
+            /** @description The ids of the actors the signature may be delegated to (signoff-design.md decision 20); absent when it may not be. */
+            delegateTo?: string[];
+            /** @description The ISO 8601 duration after the round's start at which a reminder falls due (signoff-design.md decision 21), as written; absent when none. */
+            remindAfter?: string;
+            /** @description The ISO 8601 duration after the round's start at which an escalation falls due (signoff-design.md decision 21), as written; absent when none. */
+            escalateAfter?: string;
+            /** @description The ids of the actors an escalation goes to (signoff-design.md decision 21); absent when none. */
+            escalateTo?: string[];
+            /**
+             * @description Whether the person's identity is checked again for every response on it (signoff-design.md decision 22); absent unless true.
+             * @constant
+             */
+            reauthenticate?: true;
         };
         /** @description A meaning of a gate's signature. */
         MeaningRecord: {
@@ -4719,9 +4739,13 @@ export interface components {
              * @description The step's response to an approval (signoff-design.md decision 25), as written; absent when the step gives none (a signature).
              * @enum {string}
              */
-            response?: "sign" | "reject" | "ignore" | "withdraw";
+            response?: "sign" | "reject" | "ignore" | "withdraw" | "delegate";
             /** @description The id of the named signature the step answers (signoff-design.md decision 25); absent when the engine picks it. */
             signature?: string;
+            /** @description With response `delegate`, the id of the participant the signature is delegated to (signoff-design.md decision 34); absent when the step names none. */
+            delegateTo?: string;
+            /** @description The id of the participant on whose behalf the step answers, who delegated the signature (signoff-design.md decision 34); absent when the step names none. */
+            onBehalfOf?: string;
             payload: {
                 [key: string]: unknown;
             };
@@ -4787,6 +4811,12 @@ export interface components {
             signatures?: {
                 [key: string]: number;
             };
+            /** @description The reminders and escalations the step expects due, compared as a set (signoff-design.md decision 35); absent when the file gives none. */
+            notices?: {
+                signature: string;
+                /** @enum {string} */
+                kind: "remind" | "escalate";
+            }[];
         };
         /** @description A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors; the events it fires and what it requires by id. */
         OperationRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -6695,16 +6725,27 @@ export interface components {
             /**
              * @description How the step answers an approval on its event (signoff-design.md decision 25): `sign` (the default), `reject` (a veto: it
              *     clears the approval's signatures and moves nothing), `ignore` (abstain: it finishes the person on the signature and leaves the
-             *     count) or `withdraw` (it takes back the person's latest signature). Only on an event step whose event is gated by an approval
-             *     (MQ9305). Left out of a trace's echo when it is `sign`.
+             *     count), `withdraw` (it takes back the person's latest signature) or `delegate` (it hands the person's part to `delegateTo`, on a
+             *     signature that has `delegateTo`, decision 34). Only on an event step whose event is gated by an approval (MQ9305). Left out of
+             *     a trace's echo when it is `sign`.
              * @enum {string}
              */
-            response?: "sign" | "reject" | "ignore" | "withdraw";
+            response?: "sign" | "reject" | "ignore" | "withdraw" | "delegate";
             /**
              * @description The id of the approval's named signature the step answers (signoff-design.md decision 8); the engine picks one when absent, by
              *     the same rule every time. Left out of a trace's echo when absent; the audit names the signature picked.
              */
             signature?: string;
+            /**
+             * @description With `delegate`, the id of the participant the signature is delegated to (signoff-design.md decision 34), who must be a member
+             *     of one of the signature's `delegateTo` actors. Left out of a trace's echo when absent.
+             */
+            delegateTo?: string;
+            /**
+             * @description The id of the participant who delegated the signature to the person answering (signoff-design.md decision 34); the answer
+             *     counts as theirs, as their actor. Not with `delegate` (MQ9305). Left out of a trace's echo when absent.
+             */
+            onBehalfOf?: string;
             meaning?: string | null;
             reason?: string | null;
             payload?: {
@@ -6900,6 +6941,24 @@ export interface components {
              * @constant
              */
             frozen?: true;
+            /**
+             * @description The reminders and escalations that fell due during the step (signoff-design.md decision 35), in file order (stage, then
+             *     signature), a reminder before an escalation; a step's `expect.notices` is compared with them as a set (MQ9311). Only a time
+             *     step makes them fall due. Left out when none did.
+             */
+            notices?: components["schemas"]["ApprovalNotice"][];
+        };
+        /**
+         * @description A reminder or an escalation that fell due on an approval (signoff-design.md decisions 21 and 35). The running system sends it; it
+         *     never moves the object.
+         */
+        ApprovalNotice: {
+            /** @description The named signature's id. */
+            signature: components["schemas"]["Ulid"];
+            /** @enum {string} */
+            kind: "remind" | "escalate";
+            /** @description The ids of the actors it goes to, in file order; the signature's `signers` for `remind`, its `escalateTo` for `escalate`. */
+            recipients: components["schemas"]["Ulid"][];
         };
         /** @description A trigger point whose places matched in a step, and what it did (trigger-points-design.md decision 28). */
         TriggerPointRun: {
@@ -6990,10 +7049,11 @@ export interface components {
             at: string;
             /**
              * @description `signed`, `completed`, `refused` or `discarded`; on an approval also `rejected` (a veto cleared it), `ignored` (a person
-             *     abstained on a signature) and `withdrawn` (a person took back a signature) (signoff-design.md decision 19).
+             *     abstained on a signature) and `withdrawn` (a person took back a signature) (signoff-design.md decision 19), and `delegated`
+             *     (a person handed their part of a signature to `delegateTo`, decision 34).
              * @enum {string}
              */
-            outcome: "signed" | "completed" | "refused" | "discarded" | "rejected" | "ignored" | "withdrawn";
+            outcome: "signed" | "completed" | "refused" | "discarded" | "rejected" | "ignored" | "withdrawn" | "delegated";
             attributes: {
                 [key: string]: unknown;
             };
@@ -7001,6 +7061,13 @@ export interface components {
             signature?: components["schemas"]["Ulid"];
             /** @description On an approval, the id of the stage of `signature`. Left out when `signature` is. */
             stage?: components["schemas"]["Ulid"];
+            /**
+             * @description For an answer given on behalf of someone who delegated the signature, the delegator's identity (signoff-design.md decision 34);
+             *     `signer` is the person who answered. Left out otherwise.
+             */
+            onBehalfOf?: string;
+            /** @description For a `delegated` record, the identity the signature went to (signoff-design.md decision 34); `signer` is the delegator. Left out otherwise. */
+            delegateTo?: string;
         };
         EnabledTrigger: {
             /** @enum {string} */
@@ -7029,9 +7096,10 @@ export interface components {
             gate: components["schemas"]["GateProgress"] | null;
             /**
              * @description The responses the trigger's event takes at an approval, in the order `sign`, `reject`, `ignore`, `withdraw`
-             *     (signoff-design.md decision 26). Left out when the event's gate has no stages.
+             *     (signoff-design.md decision 26), then `delegate` when one of the approval's signatures has `delegateTo` (decision 34). Left out
+             *     when the event's gate has no stages.
              */
-            responses?: ("sign" | "reject" | "ignore" | "withdraw")[];
+            responses?: ("sign" | "reject" | "ignore" | "withdraw" | "delegate")[];
         };
         GateProgress: {
             have: number;
@@ -7073,6 +7141,16 @@ export interface components {
             /** @description Whether each of its signatures is complete or not needed. */
             complete: boolean;
             signatures: components["schemas"]["ApprovalSignatureState"][];
+            /**
+             * @description The stage's round (signoff-design.md decision 33). Left out when the approval has one round. The current round is the lowest
+             *     round with a stage that is neither complete nor skipped.
+             */
+            round?: number;
+            /**
+             * @description Whether the stage's `when` was false when its round started, so it is skipped and counts as complete (signoff-design.md decision 6). Left out when false.
+             * @constant
+             */
+            skipped?: true;
         };
         /** @description A named signature of an approval in a simulation's gate state (signoff-design.md decision 26). */
         ApprovalSignatureState: {
@@ -10876,18 +10954,44 @@ export interface components {
              * @default []
              */
             notBy?: components["schemas"]["notBy"][];
+            /**
+             * @description The actors the signature may be delegated to. A person who may give it answers delegate, naming someone who is a member of one of these actors; that person then answers on the delegator's behalf, and their signature counts as the delegator's actor.
+             * @default []
+             */
+            delegateTo?: components["schemas"]["idList"];
+            /** @description An ISO 8601 duration from when the signature's round started: a reminder then falls due to the people who may still answer, once per round start, unless the signature is complete. The running system sends it (MQ8204). */
+            remindAfter?: string;
+            /** @description An ISO 8601 duration from when the signature's round started: an escalation then falls due to escalateTo, once per round start, unless the signature is complete. Only with escalateTo (MQ8204), and later than remindAfter (MQ8205). */
+            escalateAfter?: string;
+            /**
+             * @description The actors an escalation goes to. A notice only: they may not sign unless named among the signers or in delegateTo. Only with escalateAfter (MQ8204).
+             * @default []
+             */
+            escalateTo?: components["schemas"]["idList"];
+            /**
+             * @description Whether the person's identity is checked again for every response on the signature. The running system checks it; a simulation takes it as done.
+             * @default false
+             */
+            reauthenticate?: boolean;
             /** @description Why the signature is needed. */
             description?: components["schemas"]["description"];
         };
         /**
          * Gate stage
-         * @description A stage of an approval (part kind gate-stage): named signatures only. A stage is complete when each of its signatures is complete or not needed.
+         * @description A stage of an approval (part kind gate-stage): named signatures only. A stage is complete when each of its signatures is complete or not needed, and a skipped stage counts as complete for its round.
          */
         gateStage: {
             id: components["schemas"]["id"];
             /** @description Unique among the gate's stages (MQ3001). */
             name: components["schemas"]["identifier"];
             displayName?: string;
+            /**
+             * @description The round the stage runs in. Stages of one round run side by side; the next round starts when every stage of the current round is complete or skipped. Completing a round never moves the object. Stages are listed in round order (MQ8203).
+             * @default 1
+             */
+            round?: number;
+            /** @description The stage is skipped unless this is true or unknown. Judged when its round starts, before its signatures' when. It reads what a named signature's when reads (MQ3102). Not on a gate policy's stage (MQ8202). */
+            when?: components["schemas"]["expr"];
             /** @description The stage's named signatures, in the order the engine picks them when a step names none. */
             signatures: components["schemas"]["namedSignature"][];
             description?: components["schemas"]["description"];
@@ -10910,7 +11014,7 @@ export interface components {
             id?: components["schemas"]["id"];
             name?: components["schemas"]["identifier"];
             displayName?: string;
-            /** @description Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). One stage for now. */
+            /** @description Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). Stages run in rounds: those of one round side by side, rounds one after another, listed in round order (MQ8203). */
             stages?: components["schemas"]["gateStage"][];
             /**
              * @description The number of signatures needed. A gate without stages only (MQ8201).
@@ -11568,7 +11672,7 @@ export interface components {
                     id?: components["schemas"]["id"];
                     name?: components["schemas"]["identifier"];
                     displayName?: string;
-                    /** @description Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). One stage for now. */
+                    /** @description Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). Stages run in rounds: those of one round side by side, rounds one after another, listed in round order (MQ8203). */
                     stages?: components["schemas"]["gateStage"][];
                     /**
                      * @description The number of signatures needed. A gate without stages only (MQ8201).
@@ -11615,13 +11719,20 @@ export interface components {
                 };
                 /**
                  * Gate stage
-                 * @description A stage of an approval (part kind gate-stage): named signatures only. A stage is complete when each of its signatures is complete or not needed.
+                 * @description A stage of an approval (part kind gate-stage): named signatures only. A stage is complete when each of its signatures is complete or not needed, and a skipped stage counts as complete for its round.
                  */
                 gateStage: {
                     id: components["schemas"]["id"];
                     /** @description Unique among the gate's stages (MQ3001). */
                     name: components["schemas"]["identifier"];
                     displayName?: string;
+                    /**
+                     * @description The round the stage runs in. Stages of one round run side by side; the next round starts when every stage of the current round is complete or skipped. Completing a round never moves the object. Stages are listed in round order (MQ8203).
+                     * @default 1
+                     */
+                    round?: number;
+                    /** @description The stage is skipped unless this is true or unknown. Judged when its round starts, before its signatures' when. It reads what a named signature's when reads (MQ3102). Not on a gate policy's stage (MQ8202). */
+                    when?: components["schemas"]["expr"];
                     /** @description The stage's named signatures, in the order the engine picks them when a step names none. */
                     signatures: components["schemas"]["namedSignature"][];
                     description?: components["schemas"]["description"];
@@ -11659,6 +11770,25 @@ export interface components {
                      * @default []
                      */
                     notBy?: components["schemas"]["notBy"][];
+                    /**
+                     * @description The actors the signature may be delegated to. A person who may give it answers delegate, naming someone who is a member of one of these actors; that person then answers on the delegator's behalf, and their signature counts as the delegator's actor.
+                     * @default []
+                     */
+                    delegateTo?: components["schemas"]["idList"];
+                    /** @description An ISO 8601 duration from when the signature's round started: a reminder then falls due to the people who may still answer, once per round start, unless the signature is complete. The running system sends it (MQ8204). */
+                    remindAfter?: string;
+                    /** @description An ISO 8601 duration from when the signature's round started: an escalation then falls due to escalateTo, once per round start, unless the signature is complete. Only with escalateTo (MQ8204), and later than remindAfter (MQ8205). */
+                    escalateAfter?: string;
+                    /**
+                     * @description The actors an escalation goes to. A notice only: they may not sign unless named among the signers or in delegateTo. Only with escalateAfter (MQ8204).
+                     * @default []
+                     */
+                    escalateTo?: components["schemas"]["idList"];
+                    /**
+                     * @description Whether the person's identity is checked again for every response on the signature. The running system checks it; a simulation takes it as done.
+                     * @default false
+                     */
+                    reauthenticate?: boolean;
                     /** @description Why the signature is needed. */
                     description?: components["schemas"]["description"];
                 };
@@ -11798,6 +11928,19 @@ export interface components {
             within?: components["schemas"]["id"];
         };
         /**
+         * Notice
+         * @description A reminder or an escalation a step expects due: a named signature and a kind (MQ9311).
+         */
+        notice: {
+            /** @description The id of the named signature the notice is about. */
+            signature: components["schemas"]["id"];
+            /**
+             * @description remind, to the people who may still answer, or escalate, to the signature's escalateTo.
+             * @enum {unknown}
+             */
+            kind: "remind" | "escalate";
+        };
+        /**
          * Object
          * @description An object of the scenario: an instance of an entity with its values and its links to other objects.
          */
@@ -11875,13 +12018,17 @@ export interface components {
             /** @description The signing person's identity, for gated events; the participant's identity when absent. */
             signer?: string;
             /**
-             * @description How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count) or withdraw (takes back the person's latest signature). Only on an event step whose event is gated by an approval (MQ9305).
+             * @description How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count), withdraw (takes back the person's latest signature) or delegate (hands the person's part to delegateTo, on a signature that has delegateTo). Only on an event step whose event is gated by an approval (MQ9305).
              * @default sign
              * @enum {unknown}
              */
-            response?: "sign" | "reject" | "ignore" | "withdraw";
+            response?: "sign" | "reject" | "ignore" | "withdraw" | "delegate";
             /** @description The id of the approval's named signature the step answers; the engine picks one when absent. Only on an event step whose event is gated by an approval, and a signature of that gate (MQ9305). */
             signature?: components["schemas"]["id"];
+            /** @description With response delegate: the id of the scenario's participant the signature is delegated to, who must be a member of one of the signature's delegateTo actors (MQ9305). */
+            delegateTo?: components["schemas"]["id"];
+            /** @description The id of the scenario's participant who delegated the signature to the person answering; the answer counts as theirs. Not with response delegate, since a delegation can't be passed on (MQ9305). */
+            onBehalfOf?: components["schemas"]["id"];
             meaning?: components["schemas"]["id"];
             reason?: string;
             /**
@@ -11949,6 +12096,8 @@ export interface components {
                 signatures?: {
                     [key: string]: number;
                 };
+                /** @description The reminders and escalations due at the step, each a named signature and a kind, compared as a set (MQ9311). Absent checks nothing; empty expects none. Notices fall due only on a time step. */
+                notices?: components["schemas"]["notice"][];
             };
             description?: components["schemas"]["description"];
         };
@@ -12128,13 +12277,17 @@ export interface components {
                     /** @description The signing person's identity, for gated events; the participant's identity when absent. */
                     signer?: string;
                     /**
-                     * @description How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count) or withdraw (takes back the person's latest signature). Only on an event step whose event is gated by an approval (MQ9305).
+                     * @description How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count), withdraw (takes back the person's latest signature) or delegate (hands the person's part to delegateTo, on a signature that has delegateTo). Only on an event step whose event is gated by an approval (MQ9305).
                      * @default sign
                      * @enum {unknown}
                      */
-                    response?: "sign" | "reject" | "ignore" | "withdraw";
+                    response?: "sign" | "reject" | "ignore" | "withdraw" | "delegate";
                     /** @description The id of the approval's named signature the step answers; the engine picks one when absent. Only on an event step whose event is gated by an approval, and a signature of that gate (MQ9305). */
                     signature?: components["schemas"]["id"];
+                    /** @description With response delegate: the id of the scenario's participant the signature is delegated to, who must be a member of one of the signature's delegateTo actors (MQ9305). */
+                    delegateTo?: components["schemas"]["id"];
+                    /** @description The id of the scenario's participant who delegated the signature to the person answering; the answer counts as theirs. Not with response delegate, since a delegation can't be passed on (MQ9305). */
+                    onBehalfOf?: components["schemas"]["id"];
                     meaning?: components["schemas"]["id"];
                     reason?: string;
                     /**
@@ -12202,8 +12355,23 @@ export interface components {
                         signatures?: {
                             [key: string]: number;
                         };
+                        /** @description The reminders and escalations due at the step, each a named signature and a kind, compared as a set (MQ9311). Absent checks nothing; empty expects none. Notices fall due only on a time step. */
+                        notices?: components["schemas"]["notice"][];
                     };
                     description?: components["schemas"]["description"];
+                };
+                /**
+                 * Notice
+                 * @description A reminder or an escalation a step expects due: a named signature and a kind (MQ9311).
+                 */
+                notice: {
+                    /** @description The id of the named signature the notice is about. */
+                    signature: components["schemas"]["id"];
+                    /**
+                     * @description remind, to the people who may still answer, or escalate, to the signature's escalateTo.
+                     * @enum {unknown}
+                     */
+                    kind: "remind" | "escalate";
                 };
             };
         };

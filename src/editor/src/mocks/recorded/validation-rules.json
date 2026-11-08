@@ -650,7 +650,7 @@
   {
     "id": "MQ3102",
     "defaultSeverity": "error",
-    "description": "An expression's path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a member path outside a rule condition, a payload attribute some using event lacks, a context attribute named event, under which a process guard's condition reads the payload, the context or a payload in a right's condition, the context at a trigger point's when, condition or set value, current_actor() or a payload at a named signature's when, a payload read by a trigger point whose verbs are not all move verbs or own verbs an event of its lifecycle names, or by a named trigger point, which has no lifecycle, a path in a named right's condition that the subjects of a lifecycle using it do not hold (reported at the use), or an overlay's column named like an attribute of its entity, which text reads as the attribute.",
+    "description": "An expression's path names what its site cannot read: an unknown id, a member of another entity or table, a navigation at a check or value site, a to-many navigation, a collection, a member path outside a rule condition, a payload attribute some using event lacks, a context attribute named event, under which a process guard's condition reads the payload, the context or a payload in a right's condition, the context at a trigger point's when, condition or set value, current_actor() or a payload at a named signature's or an approval stage's when, a payload read by a trigger point whose verbs are not all move verbs or own verbs an event of its lifecycle names, or by a named trigger point, which has no lifecycle, a path in a named right's condition that the subjects of a lifecycle using it do not hold (reported at the use), or an overlay's column named like an attribute of its entity, which text reads as the attribute.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true
@@ -666,7 +666,7 @@
   {
     "id": "MQ3104",
     "defaultSeverity": "error",
-    "description": "now(), current_actor() or in_state at a check site, a value site or a rule condition, directly or through a constraint (a constraint never reads current_actor() or in_state); only guards, an action's sets, a right's condition and a trigger point's when, condition and sets read the clock, the identity of whoever acts and a lifecycle's state, and a named signature's when reads the clock and a lifecycle's state. Also old. (a path with old) at any site but a trigger point's, the only sites that read the values before the verb.",
+    "description": "now(), current_actor() or in_state at a check site, a value site or a rule condition, directly or through a constraint (a constraint never reads current_actor() or in_state); only guards, an action's sets, a right's condition and a trigger point's when, condition and sets read the clock, the identity of whoever acts and a lifecycle's state, and a named signature's or an approval stage's when reads the clock and a lifecycle's state. Also old. (a path with old) at any site but a trigger point's, the only sites that read the values before the verb.",
     "family": "MQ31xx",
     "familyLabel": "Expressions",
     "canBeOff": true
@@ -2483,7 +2483,7 @@
   {
     "id": "MQ8102",
     "defaultSeverity": "error",
-    "description": "A trigger point's narrowing key does not fit: states or targets that are not states of its lifecycle; transitions that are not its transitions; targets or transitions beside a verb that is not a move verb, sign, an own verb an event of its lifecycle names, or, in a lifecycle with an approval, reject, ignore or withdraw; attributes beside a verb other than read and modify, or beside ends; ends beside a verb that cannot act on a link (any but connect, disconnect, read, modify, freeze and thaw); attributes, ends or set attributes that not every entity it covers holds under one id; or entities its lifecycle does not govern. On a named trigger point: states, targets or transitions, which belong to one lifecycle; entities its subjects do not cover; or exceptEntities that no subject covers. Remove the entry.",
+    "description": "A trigger point's narrowing key does not fit: states or targets that are not states of its lifecycle; transitions that are not its transitions; targets or transitions beside a verb that is not a move verb, sign, an own verb an event of its lifecycle names, or, in a lifecycle with an approval, reject, ignore or withdraw, and delegate where one of its signatures has delegateTo; attributes beside a verb other than read and modify, or beside ends; ends beside a verb that cannot act on a link (any but connect, disconnect, read, modify, freeze and thaw); attributes, ends or set attributes that not every entity it covers holds under one id; or entities its lifecycle does not govern. On a named trigger point: states, targets or transitions, which belong to one lifecycle; entities its subjects do not cover; or exceptEntities that no subject covers. Remove the entry.",
     "family": "MQ81xx",
     "familyLabel": "Trigger points",
     "canBeOff": true
@@ -2523,7 +2523,7 @@
   {
     "id": "MQ8107",
     "defaultSeverity": "warning",
-    "description": "A trigger point that can never run: a move verb that no event or transition of its lifecycle names, transitions none of which moves with its verb, or only verbs no input can do yet (override, set-state, claim, delegate, route, and reject, ignore and withdraw unless its lifecycle has an approval) that no event names. A named trigger point can do reject, ignore and withdraw when a lifecycle that governs an entity it covers has an approval. Remove it.",
+    "description": "A trigger point that can never run: a move verb that no event or transition of its lifecycle names, transitions none of which moves with its verb, or only verbs no input can do yet (override, set-state, claim, route, delegate unless a named signature of its lifecycle has delegateTo, and reject, ignore and withdraw unless its lifecycle has an approval) that no event names. A named trigger point can do reject, ignore and withdraw when a lifecycle that governs an entity it covers has an approval, and delegate when such a lifecycle has a named signature with delegateTo. Remove it.",
     "family": "MQ81xx",
     "familyLabel": "Trigger points",
     "canBeOff": true
@@ -2539,7 +2539,31 @@
   {
     "id": "MQ8202",
     "defaultSeverity": "error",
-    "description": "A named signature's key does not fit: a notBy transition that is not a transition of its lifecycle; a notBy transition in a gate policy, which belongs to no single lifecycle; a notBy verb its lifecycle's runs cannot see (only move verbs, signature verbs, complete and verbs its events name); or a when on a gate policy's signature, which has no subject to read. Remove the entry or key.",
+    "description": "A named signature's or an approval stage's key does not fit: a notBy transition that is not a transition of its lifecycle; a notBy transition in a gate policy, which belongs to no single lifecycle; a notBy verb its lifecycle's runs cannot see (only move verbs, signature verbs, complete and verbs its events name); or a when on a gate policy's signature or stage, which has no subject to read. Remove the entry or key.",
+    "family": "MQ82xx",
+    "familyLabel": "Approvals",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ8203",
+    "defaultSeverity": "error",
+    "description": "An approval's stages are not listed in round order: a stage's round is lower than the round of a stage before it. Stages run round by round, so the file reads from top to bottom. Reorder the stages.",
+    "family": "MQ82xx",
+    "familyLabel": "Approvals",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ8204",
+    "defaultSeverity": "error",
+    "description": "A named signature's reminder or escalation is malformed: escalateTo without escalateAfter, or escalateAfter without escalateTo; or a remindAfter or escalateAfter that is not a positive ISO 8601 duration, read as an after transition's delay is. Add or remove the key, or fix the duration.",
+    "family": "MQ82xx",
+    "familyLabel": "Approvals",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ8205",
+    "defaultSeverity": "warning",
+    "description": "A named signature's escalation falls due no later than its reminder: escalateAfter is not longer than remindAfter, so the reminder never comes first. Lengthen escalateAfter, or shorten remindAfter.",
     "family": "MQ82xx",
     "familyLabel": "Approvals",
     "canBeOff": true
@@ -2764,7 +2788,7 @@
   {
     "id": "MQ9106",
     "defaultSeverity": "info",
-    "description": "An actor no process or right references (event actors, gate signers, a named signature's signers or required actors, human tasks, a right's actors or except), directly, through a member at any depth, through an actor it is a member of at any depth, or as the membersOf of an actor from the object; use it in a process or remove it.",
+    "description": "An actor no process or right references (event actors, gate signers, a named signature's signers, required actors, delegateTo or escalateTo, human tasks, a right's actors or except), directly, through a member at any depth, through an actor it is a member of at any depth, or as the membersOf of an actor from the object; use it in a process or remove it.",
     "family": "MQ91xx",
     "familyLabel": "Actors and gates",
     "canBeOff": true
@@ -2898,7 +2922,7 @@
   {
     "id": "MQ9305",
     "defaultSeverity": "error",
-    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit or that is frozen on an object other than the subject, or an owner beside its subject's owner field or that is not one of the scenario's participants, or states that name a state of a lifecycle that cannot govern the object, two states of one lifecycle that cannot be active together, the subject's state in the process the scenario runs, or a state that disagrees with the state the object's bound value maps to; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; or a verb step is inconsistent: no verb, a verb that is not an object, link or own verb (a move, signature or task verb), values beside a verb other than modify and create or beside an end, attributes beside a verb other than read, a values attribute a set could not set or a value that does not fit its type, an end that is not the subject's, an object not linked through it (except for connect), or delete on a link; or an assume word (pass, warning or error) whose key is not a check the team writes of a lifecycle the step reaches, or that names a check with a condition (true and false, for guards, are not checked); or a response or signature on a step that is not an event step gated by an approval, a signature of another gate, or an expect.signatures key that is not a signature of the approval the step answers; or expect.refusal or expect.refusedBy beside accepted true; fix the step, the object or the participant.",
+    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit or that is frozen on an object other than the subject, or an owner beside its subject's owner field or that is not one of the scenario's participants, or states that name a state of a lifecycle that cannot govern the object, two states of one lifecycle that cannot be active together, the subject's state in the process the scenario runs, or a state that disagrees with the state the object's bound value maps to; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; or a verb step is inconsistent: no verb, a verb that is not an object, link or own verb (a move, signature or task verb), values beside a verb other than modify and create or beside an end, attributes beside a verb other than read, a values attribute a set could not set or a value that does not fit its type, an end that is not the subject's, an object not linked through it (except for connect), or delete on a link; or an assume word (pass, warning or error) whose key is not a check the team writes of a lifecycle the step reaches, or that names a check with a condition (true and false, for guards, are not checked); or a response or signature on a step that is not an event step gated by an approval, a signature of another gate, or an expect.signatures key that is not a signature of the approval the step answers; or a delegation that does not fit: delegateTo without response delegate, delegate without delegateTo, delegate or onBehalfOf on an approval none of whose signatures has delegateTo or naming a signature without it, or delegate with onBehalfOf, since a delegation can't be passed on; or expect.refusal or expect.refusedBy beside accepted true; fix the step, the object or the participant.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true
@@ -2950,7 +2974,7 @@
   {
     "id": "MQ9311",
     "defaultSeverity": "error",
-    "description": "The signatures counted after a scenario step differ from expect.signatures (only the listed named signatures are compared); fix the approval or the steps, or update the expectations from a replay.",
+    "description": "The signatures counted after a scenario step differ from expect.signatures (only the listed named signatures are compared), or the reminders and escalations due at it differ from expect.notices (compared as a set of signature and kind); fix the approval or the steps, or update the expectations from a replay.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true,

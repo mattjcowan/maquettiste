@@ -143,6 +143,7 @@ public sealed class ResolvedNullContractTests
         ["RNamedSignature"] = "approvals: ResolvedApprovalTests",
         ["RNotBy"] = "approvals: ResolvedApprovalTests",
         ["RSignatureCount"] = "approvals: ResolvedApprovalTests",
+        ["RExpectedNotice"] = "approvals, part 2: ResolvedApprovalPart2Tests",
     };
 
     [Fact]

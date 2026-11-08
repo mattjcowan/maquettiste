@@ -4,7 +4,7 @@
 // verb answers yes. `except` never grants. A condition the mock cannot read says nothing in a run and "depends" in the grid.
 // Part 2: freezing refuses first and no allow lifts it (decisions 17 and 18); a right with `whileFrozen` holds only while frozen; and
 // `read` and `modify` are answered per attribute (decision 21), where attributes not known fail closed.
-import { gateSignerIds } from "@/model/approvals";
+import { gateDelegatorIds, gateSignerIds } from "@/model/approvals";
 import { builtInVerbs } from "@/model/verbs";
 import type { Membership } from "./membership";
 
@@ -243,11 +243,12 @@ function closedLists(doc: Json, active: ReadonlySet<string>, verb: string): { id
   // A gate's signers count as an allow for `sign` and for the gated event's verb.
   for (const t of taken) {
     const gate = t.gate as Json | undefined;
-    const signers = gateSignerIds(gate);
+    // Delegate: only the signers of a signature that may be delegated (signoff-design.md decisions 18 and 34, part 2).
+    const signers = verb === "delegate" ? gateDelegatorIds(gate) : gateSignerIds(gate);
     if (!gate || !signers.length) continue;
     const ev = events.find((e) => e.id === t.event);
     // An approval's signers may also reject, ignore and withdraw (signoff-design.md decision 18).
-    const answers = arr(gate.stages).length ? APPROVAL_RESPONSES : ["sign"];
+    const answers = arr(gate.stages).length ? [...APPROVAL_RESPONSES, "delegate"] : ["sign"];
     if (answers.includes(verb) || ev?.verb === verb) out.push({ id: String(gate.id), list: signers, signers: true });
   }
   return out;

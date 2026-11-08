@@ -2,9 +2,12 @@
 // counting keys the signatures carry, or allowSignerAcrossSignatures without stages), MQ8202 a named signature's key that does not fit
 // (a notBy transition that is not the lifecycle's, a notBy transition in a gate policy, a notBy verb the lifecycle's runs cannot see,
 // a when on a gate policy's signature), and the MQ3001 cases (two stages of one gate, or two signatures of one gate, with one name).
+// Part 2: MQ8203 stages not in round order, MQ8204 the shape of a reminder and escalation (a lone escalateTo or escalateAfter, a delay
+// that is not a positive ISO 8601 duration), MQ8205 an escalation due no later than its reminder, and MQ8202 for a stage's `when` in a
+// gate policy.
 // The rules that read a `when` need the expression engine, which the mock lacks, so only its place is checked.
 import type { Diagnostic } from "@/api/types";
-import { notByVerbKeys } from "@/model/approvals";
+import { durationMs, notByVerbKeys } from "@/model/approvals";
 import type { ProcessDoc } from "@/model/process";
 import { builtInVerbs } from "@/model/verbs";
 
@@ -50,8 +53,30 @@ export function approvalDiagnostics(json: Json, emit: Emit): void {
       );
     const stageNames = new Map<string, number>();
     const signatureNames = new Map<string, string>();
+    // MQ8203: a stage whose round is lower than the round of one before it.
+    let highest = 1;
+    stages.forEach((stage, s) => {
+      const round = typeof stage.round === "number" ? stage.round : 1;
+      if (round < highest)
+        emit(
+          "MQ8203",
+          "error",
+          `The stage '${String(stage.name ?? "")}' of the gate '${gateName}' is in round ${round}, but a stage before it is in round ${highest}. List the stages in round order.`,
+          stage.round !== undefined ? `${at}/stages/${s}/round` : `${at}/stages/${s}`,
+          str(stage.id) ?? holder,
+        );
+      highest = Math.max(highest, round);
+    });
     stages.forEach((stage, s) => {
       const sAt = `${at}/stages/${s}`;
+      if (library && stage.when !== undefined)
+        emit(
+          "MQ8202",
+          "error",
+          `The stage '${String(stage.name ?? "")}' of the gate '${gateName}' is in a gate policy, which has no subject for a when to read. Remove the key.`,
+          `${sAt}/when`,
+          str(stage.id) ?? holder,
+        );
       const stageName = String(stage.name ?? "");
       if (stageName) {
         if (stageNames.has(stageName))
@@ -80,6 +105,35 @@ export function approvalDiagnostics(json: Json, emit: Emit): void {
           else signatureNames.set(key, `${s + 1}.${j + 1}`);
         }
         const label = `The signature '${key}' of the gate '${gateName}'`;
+        const hasTo = Array.isArray(sig.escalateTo) && sig.escalateTo.length > 0;
+        if (hasTo && sig.escalateAfter === undefined)
+          emit("MQ8204", "error", `${label} names who to escalate to, but has no escalateAfter. Add the delay, or remove escalateTo.`, `${at2}/escalateTo`, id);
+        if (!hasTo && sig.escalateAfter !== undefined)
+          emit("MQ8204", "error", `${label} has an escalateAfter, but no one to escalate to. Add escalateTo, or remove the delay.`, `${at2}/escalateAfter`, id);
+        const delays: Record<string, number | null> = {};
+        for (const field of ["remindAfter", "escalateAfter"] as const) {
+          if (sig[field] === undefined) continue;
+          const ms = typeof sig[field] === "string" ? durationMs(sig[field] as string) : null;
+          delays[field] = ms;
+          if (ms === null || ms <= 0)
+            emit(
+              "MQ8204",
+              "error",
+              `${label} has ${field} '${String(sig[field])}', which is not a positive ISO 8601 duration. Write it like PT4H or P2D, or remove it.`,
+              `${at2}/${field}`,
+              id,
+            );
+        }
+        const remind = delays.remindAfter;
+        const escalate = delays.escalateAfter;
+        if (remind != null && escalate != null && remind > 0 && escalate > 0 && escalate <= remind)
+          emit(
+            "MQ8205",
+            "warning",
+            `${label} escalates no later than it reminds, so the reminder never comes first. Lengthen escalateAfter.`,
+            `${at2}/escalateAfter`,
+            id,
+          );
         if (library && sig.when !== undefined)
           emit("MQ8202", "error", `${label} is in a gate policy, which has no subject for a when to read. Remove the key.`, `${at2}/when`, id);
         arr(sig.notBy).forEach((n, k) => {

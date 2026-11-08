@@ -533,8 +533,8 @@ public sealed record ProcessGate : IProcessNode
     public string? DisplayName { get; init; }
 
     /// <summary>
-    /// The approval's stages, each holding named signatures (signoff-design.md decision 1); one for now. <see langword="null"/>, and left out
-    /// of the file, for a gate without stages, which keeps today's meaning.
+    /// The approval's stages, each holding named signatures (signoff-design.md decision 1), listed in round order (decision 5).
+    /// <see langword="null"/>, and left out of the file, for a gate without stages, which keeps today's meaning.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<GateStage>? Stages { get; init; }
@@ -605,6 +605,17 @@ public sealed record GateStage : IProcessNode
     /// <summary>An optional display name (localizable).</summary>
     public string? DisplayName { get; init; }
 
+    /// <summary>
+    /// The round the stage runs in, from 1 (signoff-design.md decision 5): stages of one round run side by side, rounds one after another.
+    /// </summary>
+    public int Round { get; init; } = 1;
+
+    /// <summary>
+    /// Whether the stage runs, judged when its round starts (signoff-design.md decision 6): only false skips it. <see langword="null"/> for
+    /// always. Never on a gate policy's stage (MQ8202).
+    /// </summary>
+    public Expr? When { get; init; }
+
     /// <summary>The stage's signatures, in file order: the order the engine picks one in when a step names none.</summary>
     public required IReadOnlyList<NamedSignature> Signatures { get; init; }
 
@@ -653,6 +664,32 @@ public sealed record NamedSignature : IProcessNode
     /// </summary>
     public IReadOnlyList<NotByEntry> NotBy { get; init; } = [];
 
+    /// <summary>
+    /// The actors the signature may be delegated to (signoff-design.md decision 20); empty when it may not be. The person it goes to must be
+    /// a member of one of them.
+    /// </summary>
+    [ElementRef(ElementKind.Actor)]
+    public IReadOnlyList<string> DelegateTo { get; init; } = [];
+
+    /// <summary>
+    /// An ISO 8601 duration from when the signature's round started, after which a reminder falls due (signoff-design.md decision 21);
+    /// <see langword="null"/> for none.
+    /// </summary>
+    public string? RemindAfter { get; init; }
+
+    /// <summary>
+    /// An ISO 8601 duration from when the signature's round started, after which an escalation to <see cref="EscalateTo"/> falls due
+    /// (signoff-design.md decision 21); <see langword="null"/> for none. Only with <see cref="EscalateTo"/> (MQ8204).
+    /// </summary>
+    public string? EscalateAfter { get; init; }
+
+    /// <summary>The actors an escalation goes to (signoff-design.md decision 21); empty for none. Only with <see cref="EscalateAfter"/> (MQ8204).</summary>
+    [ElementRef(ElementKind.Actor)]
+    public IReadOnlyList<string> EscalateTo { get; init; } = [];
+
+    /// <summary>Whether the person's identity is checked again for every response on the signature (signoff-design.md decision 22).</summary>
+    public bool Reauthenticate { get; init; }
+
     /// <summary>Why the signature is needed: Markdown text, or a reference to a sidecar Markdown file (localizable).</summary>
     public Description? Description { get; init; }
 }
@@ -686,6 +723,12 @@ public enum SignatureResponse
 
     /// <summary>Taking back the person's latest signature (<c>withdraw</c>).</summary>
     [JsonStringEnumMemberName("withdraw")] Withdraw,
+
+    /// <summary>
+    /// Handing the person's part to someone in the signature's <c>delegateTo</c> (<c>delegate</c>, signoff-design.md decision 20): it
+    /// finishes the person on the signature and moves nothing.
+    /// </summary>
+    [JsonStringEnumMemberName("delegate")] Delegate,
 }
 
 /// <summary>What a signature on a gate means ("Reviewed as finance controller").</summary>
@@ -1038,6 +1081,22 @@ public sealed record ScenarioStep : IProcessNode
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Signature { get; init; }
 
+    /// <summary>
+    /// With <see cref="SignatureResponse.Delegate"/>: the scenario's participant the signature is delegated to (signoff-design.md decision
+    /// 34). <see langword="null"/>, and left out of a trace's echo, when absent.
+    /// </summary>
+    [ElementRef(IndexKinds = ["participant"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DelegateTo { get; init; }
+
+    /// <summary>
+    /// The scenario's participant who delegated the signature to the person answering (signoff-design.md decision 34); the answer counts as
+    /// theirs. <see langword="null"/>, and left out of a trace's echo, when absent.
+    /// </summary>
+    [ElementRef(IndexKinds = ["participant"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? OnBehalfOf { get; init; }
+
     /// <summary>The meaning of the signature.</summary>
     [ElementRef(IndexKinds = ["meaning"])]
     public string? Meaning { get; init; }
@@ -1165,4 +1224,33 @@ public sealed record StepExpectation
     [ElementRef(IndexKinds = ["named-signature"])]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyDictionary<string, int>? Signatures { get; init; }
+
+    /// <summary>
+    /// The reminders and escalations due at the step (signoff-design.md decisions 27 and 35; MQ9311), compared as a set;
+    /// <see langword="null"/> checks nothing, and an empty list expects none.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ExpectedNotice>? Notices { get; init; }
+}
+
+/// <summary>A reminder or an escalation a step expects due (signoff-design.md decision 35): a named signature and a kind.</summary>
+public sealed record ExpectedNotice
+{
+    /// <summary>The named signature the notice is about.</summary>
+    [ElementRef(IndexKinds = ["named-signature"])]
+    public required string Signature { get; init; }
+
+    /// <summary>Whether it is a reminder or an escalation.</summary>
+    public required NoticeKind Kind { get; init; }
+}
+
+/// <summary>The kind of a notice that falls due on an approval (signoff-design.md decision 21).</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<NoticeKind>))]
+public enum NoticeKind
+{
+    /// <summary>A reminder to the people who may still answer the signature (<c>remind</c>).</summary>
+    [JsonStringEnumMemberName("remind")] Remind,
+
+    /// <summary>An escalation to the signature's <c>escalateTo</c> actors (<c>escalate</c>).</summary>
+    [JsonStringEnumMemberName("escalate")] Escalate,
 }

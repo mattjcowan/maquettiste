@@ -283,7 +283,9 @@ public sealed partial class ModelStore
         if (site.Kind == ExprSiteKind.Right)
             return (null, "A right's condition reads the object, the actor and states where the right is checked, not a table: it runs as JavaScript only.");
         if (site.Kind == ExprSiteKind.Approval)
-            return (null, "A named signature's when reads the object, the context and states when its round starts, not a table: it runs as JavaScript only.");
+            return (null, site.StageCondition
+                ? "An approval stage's when reads the object, the context and states when its round starts, not a table: it runs as JavaScript only."
+                : "A named signature's when reads the object, the context and states when its round starts, not a table: it runs as JavaScript only.");
         switch (element)
         {
             case Table table:

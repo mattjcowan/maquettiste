@@ -154,7 +154,8 @@ public sealed record EnabledTrigger(string Trigger, string? Event, string? Invok
 
     /// <summary>
     /// The responses the trigger's event takes at an approval, in the order <c>sign</c>, <c>reject</c>, <c>ignore</c>, <c>withdraw</c>
-    /// (signoff-design.md decision 26); <see langword="null"/>, and left out of the JSON, when none.
+    /// (signoff-design.md decision 26), then <c>delegate</c> when one of the approval's signatures has <c>delegateTo</c> (decision 34);
+    /// <see langword="null"/>, and left out of the JSON, when none.
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<SignatureResponse>? Responses { get; init; }
@@ -209,7 +210,22 @@ public sealed record GateState(string Gate, string Transition, IReadOnlyList<Gat
 /// <param name="Stage">The stage id.</param>
 /// <param name="Complete">Whether each of its signatures is complete or not needed.</param>
 /// <param name="Signatures">Its signatures, in file order.</param>
-public sealed record ApprovalStageState(string Stage, bool Complete, IReadOnlyList<ApprovalSignatureState> Signatures);
+public sealed record ApprovalStageState(string Stage, bool Complete, IReadOnlyList<ApprovalSignatureState> Signatures)
+{
+    /// <summary>
+    /// The stage's round (signoff-design.md decision 33); <see langword="null"/>, and left out of the JSON, when the approval has one round.
+    /// The current round is the lowest round with a stage that is neither complete nor skipped.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? Round { get; init; }
+
+    /// <summary>
+    /// Whether the stage's <c>when</c> was false when its round started, so it is skipped and counts as complete (signoff-design.md
+    /// decision 6). Left out of the JSON when false.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Skipped { get; init; }
+}
 
 /// <summary>A named signature of an approval in a simulation's gate state (signoff-design.md decision 26).</summary>
 /// <param name="Signature">The named signature id.</param>
@@ -639,17 +655,20 @@ public static class ProcessApi
 
         for (var i = 0; i < (steps?.Count ?? 0); i++)
         {
-            if (steps![i].Participant is not { } named)
+            // A step's participant, and the participants a delegation names (signoff-design.md decision 34), by id or name.
+            var step = steps![i];
+            if (step.Participant is null && step.DelegateTo is null && step.OnBehalfOf is null)
                 continue;
-            var id = result.FirstOrDefault(p => string.Equals(p.Id, named, StringComparison.Ordinal))?.Id
-                ?? result.FirstOrDefault(p => string.Equals(p.Name, named, StringComparison.Ordinal))?.Id;
-            if (id is null)
+            string? Id(string? named) => named is null ? null
+                : result.FirstOrDefault(p => string.Equals(p.Id, named, StringComparison.Ordinal))?.Id
+                    ?? result.FirstOrDefault(p => string.Equals(p.Name, named, StringComparison.Ordinal))?.Id;
+            if (new[] { step.Participant, step.DelegateTo, step.OnBehalfOf }.FirstOrDefault(named => named is not null && Id(named) is null) is { } unknown)
             {
-                error = $"steps[{i}] names the participant {named}, which is not one of the participants; name one of them.";
+                error = $"steps[{i}] names the participant {unknown}, which is not one of the participants; name one of them.";
                 return null;
             }
 
-            steps[i] = steps[i] with { Participant = id };
+            steps[i] = step with { Participant = Id(step.Participant), DelegateTo = Id(step.DelegateTo), OnBehalfOf = Id(step.OnBehalfOf) };
         }
 
         return result;
@@ -725,12 +744,16 @@ public static class ProcessApi
             [.. interpreter.Timers.Select(t => new ScheduledTimer(t.Transition, Iso(t.DueAt)))], gates, interpreter.IsFinal, traces[^1].Clock, diagnostics);
     }
 
-    // An approval's gate state (signoff-design.md decision 26): the signatures counted in the order given, satisfied only when nothing is needed,
-    // and each stage with its signatures' needs and counts. One whose round hasn't started reads as needing every signature.
+    // An approval's gate state (signoff-design.md decisions 26 and 33): the signatures counted in the order given, satisfied only when nothing is
+    // needed, and each stage with its signatures' needs and counts, its round when the approval has more than one, and whether it was skipped.
+    // A signature whose round hasn't started reads as needed.
     private static GateState ApprovalState(string transition, ProcessGate gate, ApprovalProgress? approval, ActorMembership membership)
     {
         var counted = approval?.Counted ?? [];
-        bool Needed(NamedSignature s) => approval?.Needed.Contains(s.Id) ?? true;
+        var rounds = gate.Stages!.Select(st => st.Round).Distinct().Count() > 1;
+        var roundOf = gate.Stages!.SelectMany(st => st.Signatures.Select(s => (s.Id, st.Round))).GroupBy(p => p.Id, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().Round, StringComparer.Ordinal);
+        bool Needed(NamedSignature s) => approval is null || roundOf[s.Id] > approval.Round || (!approval.Excused.Contains(s.Id) && (roundOf[s.Id] < approval.Round || approval.Needed.Contains(s.Id)));
         bool Complete(NamedSignature s)
         {
             var own = counted.Where(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal)).ToList();
@@ -744,7 +767,11 @@ public static class ProcessApi
         return new GateState(gate.Id, transition, [.. counted.Select(c => new GateSignature(c.Signer, c.Actor, c.Meaning, c.Reason) { Signature = c.Signature })],
             approval is { Waiting: true })
         {
-            Stages = [.. gate.Stages!.Select(st => new ApprovalStageState(st.Id, st.Signatures.All(s => !Needed(s) || Complete(s)), [.. st.Signatures.Select(Of)]))],
+            Stages = [.. gate.Stages!.Select(st => new ApprovalStageState(st.Id, st.Signatures.All(s => !Needed(s) || Complete(s)), [.. st.Signatures.Select(Of)])
+            {
+                Round = rounds ? st.Round : null,
+                Skipped = approval?.Skipped.Contains(st.Id) ?? false,
+            })],
         };
     }
 
@@ -868,6 +895,13 @@ public static class ProcessApi
             node["signatures"] = counts;
         }
 
+        // The reminders and escalations due at the step (signoff-design.md decision 35), each pair once, only when some fell due.
+        if (expect.Notices is { Count: > 0 } notices)
+        {
+            node["notices"] = new JsonArray([.. notices.DistinctBy(n => (n.Signature, n.Kind))
+                .Select(n => (JsonNode?)new JsonObject { ["signature"] = n.Signature, ["kind"] = n.Kind == NoticeKind.Remind ? "remind" : "escalate" })]);
+        }
+
         // The checks that warned, and on request the trigger points that ran (trigger-points-design.md decision 28), each only when not empty.
         if (expect.CheckWarnings is { Count: > 0 } warned)
             node["checkWarnings"] = new JsonArray([.. warned.Select(id => (JsonNode?)JsonValue.Create(id))]);
@@ -951,7 +985,8 @@ public static class ProcessApi
                     open.Sum(s => Math.Max(1, s.Required)));
                 if (actors.Count == 0)
                     actors = [.. open.SelectMany(s => s.Signers).Distinct(StringComparer.Ordinal)];
-                responses = open.Count == 0 ? [SignatureResponse.Sign] : AllResponses;
+                responses = open.Count == 0 ? [SignatureResponse.Sign]
+                    : approvalMove.Gate.AllSignatures.Any(s => s.DelegateTo.Count > 0) ? [.. AllResponses, SignatureResponse.Delegate] : AllResponses;
             }
             else if (candidates.FirstOrDefault(t => t.Gate is not null) is { } gated)
             {

@@ -97,6 +97,22 @@ function removeAt(json: Json, pointer: string, item: boolean): void {
     parent.splice(Number(last), 1);
     // An actor's memberOf is left out when empty, as the engine writes it.
     if (parts.length === 1 && parts[0] === "memberOf" && parent.length === 0) delete json.memberOf;
+    // A signature left with no one to delegate to is written without delegateTo; one left with no one to escalate to, without escalateTo and
+    // its escalateAfter (an escalation that tells no one is MQ8204).
+    if (parent.length === 0 && parts.length >= 1 && ["delegateTo", "escalateTo"].includes(parts[parts.length - 1])) {
+      let holder: unknown = json;
+      for (const p of parts.slice(0, -1)) holder = (holder as Json)[p];
+      if (holder && typeof holder === "object") {
+        delete (holder as Json)[parts[parts.length - 1]];
+        if (parts[parts.length - 1] === "escalateTo") delete (holder as Json).escalateAfter;
+      }
+    }
+    // A step's expected notices left empty are written without the key.
+    if (parent.length === 0 && parts.length >= 1 && parts[parts.length - 1] === "notices") {
+      let holder: unknown = json;
+      for (const p of parts.slice(0, -1)) holder = (holder as Json)[p];
+      if (holder && typeof holder === "object") delete (holder as Json).notices;
+    }
     // A lifecycle left with no rights is written without the key, and an `except` left empty means no exception.
     if (parts.length === 1 && parts[0] === "rights" && parent.length === 0) delete json.rights;
     // So is a lifecycle left with no trigger points.

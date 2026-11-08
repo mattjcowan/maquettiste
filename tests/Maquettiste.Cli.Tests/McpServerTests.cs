@@ -68,6 +68,37 @@ public sealed class McpSurfaceTests
     }
 
     [Fact]
+    public async Task The_process_tools_describe_rounds_delegation_and_notices()
+    {
+        // signoff-design.md section 9, part 2: rounds and skipped stages, delegation and answers on behalf, notices and expect.notices; delegate in
+        // what happens when and who can do what; the resolved model's part 2 keys; a stage's when in the expression preview.
+        var ct = TestContext.Current.CancellationToken;
+        await using var session = await McpSession.StartAsync(ct: ct);
+        var tools = (await session.Client.ListToolsAsync(cancellationToken: ct)).ToDictionary(t => t.Name, t => t.Description ?? "", StringComparer.Ordinal);
+        foreach (var text in new[] { "delegateTo, onBehalfOf", "or delegate where the signature has delegateTo", "stages run in rounds", "withdrawn and delegated",
+            "notices on a time step", "skipped: true", "delegate too" })
+            Assert.Contains(text, tools["simulate_process"], StringComparison.Ordinal);
+        Assert.Contains("delegateTo and onBehalfOf, as participant ids", tools["record_scenario"], StringComparison.Ordinal);
+        Assert.Contains("expect.notices", tools["record_scenario"], StringComparison.Ordinal);
+        Assert.Contains("expect.notices", tools["verify_scenarios"], StringComparison.Ordinal);
+        Assert.Contains("so is delegate where a signature of the approval has delegateTo", tools["get_trigger_sequence"], StringComparison.Ordinal);
+        Assert.Contains("for delegate where a signature has delegateTo", tools["get_rights"], StringComparison.Ordinal);
+        Assert.Contains("remindAfter, escalateAfter, escalateTo and reauthenticate", tools["get_resolved_model"], StringComparison.Ordinal);
+        Assert.Contains("an approval stage's when", tools["preview_expression"], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_conventions_name_the_part_2_approval_keys()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var session = await McpSession.StartAsync(ct: ct);
+        var read = await session.Client.ReadResourceAsync(new Uri("maquettiste://conventions"), cancellationToken: ct);
+        var text = Assert.IsType<TextResourceContents>(Assert.Single(read.Contents)).Text;
+        foreach (var key in new[] { "`round`", "`delegateTo`", "`remindAfter`", "`escalateAfter`", "`escalateTo`", "`reauthenticate: true`", "`onBehalfOf`", "`notices:" })
+            Assert.Contains(key, text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task The_read_tools_are_the_catalog_the_editor_assistant_shares()
     {
         var ct = TestContext.Current.CancellationToken;

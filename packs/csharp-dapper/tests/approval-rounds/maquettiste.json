@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "name": "approval-rounds",
+  "outputs": {
+    "allow": [
+      {
+        "path": "out"
+      }
+    ]
+  },
+  "packs": {
+    "csharp-dapper": {
+      "output": "out",
+      "parameters": {
+        "testsFolder": "Tests",
+        "endpointsFolder": "Api"
+      }
+    }
+  }
+}

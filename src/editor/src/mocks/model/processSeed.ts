@@ -213,7 +213,7 @@ const namedTriggerPoints: Json[] = [
     description: "Gives each customer its number, such as C-00042.",
   },
 ];
-// An approval (signoff-design.md section 5) on issuing an invoice: one stage, two named signatures. Finance is needed only for a
+// An approval (signoff-design.md section 5) on issuing an invoice: a review stage with two named signatures, and a second stage in round 2. Finance is needed only for a
 // large total; the manager may not be whoever promoted the invoice. The model has no findings.
 const APR = (n: number) => `01JQAPR0000000000000000${String(n).padStart(3, "0")}`;
 export const ISSUE_APPROVAL = APR(1);
@@ -239,7 +239,33 @@ const issueApproval: Json = {
           name: "Manager",
           signers: [BUDGET_HOLDER],
           notBy: [{ verb: "promote" }],
+          delegateTo: [APPROVER],
+          remindAfter: "PT24H",
+          escalateAfter: "P3D",
+          escalateTo: [APPROVER],
           description: "Not whoever prepared the invoice.",
+        },
+      ],
+    },
+    {
+      // Round 2 starts when the review is complete. The stage is skipped unless the total isn't negative, so the default subject runs it.
+      id: APR(6),
+      name: "Release",
+      round: 2,
+      when: { text: "subject.total >= 0" },
+      signatures: [
+        {
+          id: APR(8),
+          name: "Controller",
+          signers: [APPROVER],
+          description: "Always needed in round 2.",
+        },
+        {
+          id: APR(7),
+          name: "Director",
+          signers: [APPROVER],
+          when: { text: "subject.total > 1000000" },
+          description: "Needed for totals above 1,000,000.",
         },
       ],
     },

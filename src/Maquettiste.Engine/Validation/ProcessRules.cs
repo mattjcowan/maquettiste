@@ -609,13 +609,15 @@ internal static partial class ProcessRules
     // MQ9102 and MQ9101 on each named signature of an approval, as on a gate (signoff-design.md section 6), then MQ9101 on the approval: without
     // allowSignerAcrossSignatures each person gives one response that counts on it (decision 16), so it needs as many different people as its
     // signatures need together. Only person actors are counted, as for a gate, and only the signatures always needed: one with a when may not
-    // be needed, so the count is known only without it.
+    // be needed, and one in a stage with a when may be skipped (decision 6), so the count is known only without them.
     private static void CheckSignatures(ValidationContext context, ActorMembership membership, string name, ProcessGate gate, string pointer, Report report)
     {
         var people = new HashSet<string>(StringComparer.Ordinal);
         var allPeople = true;
         var needed = 0;
         var conditional = false;
+        var skippable = (gate.Stages ?? []).Where(static st => st.When is not null).SelectMany(static st => st.Signatures).Select(static s => s.Id)
+            .ToHashSet(StringComparer.Ordinal);
         ApprovalRules.ForEachSignature(gate, pointer, (signature, at) =>
         {
             var what = $"Signature '{signature.Name}' of {char.ToLowerInvariant(name[0])}{name[1..]}";
@@ -635,6 +637,9 @@ internal static partial class ProcessRules
                 return;
             }
 
+            if (skippable.Contains(signature.Id))
+                return;
+
             allPeople &= persons;
             people.UnionWith(signature.Signers);
             // With repeat signing one person may give all of a signature's count, but each required actor still signs it.
@@ -642,7 +647,7 @@ internal static partial class ProcessRules
         });
 
         if (!gate.AllowSignerAcrossSignatures && allPeople && people.Count > 0 && needed > people.Count)
-            report.Add("MQ9101", $"{name} needs {N(needed)} different people across {(conditional ? "the signatures it always needs (those without when)" : "its signatures")}, but their signers are {N(people.Count)} person actor(s) and one person gives one signature of an approval; lower required, add signers, or allow one person several signatures (allowSignerAcrossSignatures).", pointer + "/stages", gate.Id);
+            report.Add("MQ9101", $"{name} needs {N(needed)} different people across {(skippable.Count > 0 ? "the signatures it always needs (those without when, in stages without when)" : conditional ? "the signatures it always needs (those without when)" : "its signatures")}, but their signers are {N(people.Count)} person actor(s) and one person gives one signature of an approval; lower required, add signers, or allow one person several signatures (allowSignerAcrossSignatures).", pointer + "/stages", gate.Id);
     }
 
     // MQ9105.

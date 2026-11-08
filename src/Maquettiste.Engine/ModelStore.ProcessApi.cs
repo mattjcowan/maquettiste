@@ -118,8 +118,14 @@ public sealed partial class ModelStore
             node.Remove("expect");
             ProcessApi.ResolveNames(node, process, snapshot);
             node["id"] = ids.NewId();
-            if (readSteps[stepIndex++].Participant is { } participantId)
+            var readStep = readSteps[stepIndex++];
+            if (readStep.Participant is { } participantId)
                 node["participant"] = participantId; // a participant's name given becomes its id
+            // ... and so do the participants a delegation names (signoff-design.md decision 34).
+            if (readStep.DelegateTo is { } delegateTo)
+                node["delegateTo"] = delegateTo;
+            if (readStep.OnBehalfOf is { } onBehalfOf)
+                node["onBehalfOf"] = onBehalfOf;
             steps.Add(node);
         }
 
@@ -170,7 +176,11 @@ public sealed partial class ModelStore
             foreach (var node in objectNodes)
                 Follow(node, "owner");
             foreach (var node in steps.OfType<JsonObject>())
+            {
                 Follow(node, "participant");
+                Follow(node, "delegateTo");
+                Follow(node, "onBehalfOf");
+            }
             document["participants"] = new JsonArray(nodes);
         }
 

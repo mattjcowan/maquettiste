@@ -67,14 +67,25 @@ export interface NamedSignatureDoc {
   allowRepeatSigner?: boolean;
   when?: Json;
   notBy?: NotByDoc[];
+  /** Part 2: the actors the signature may be delegated to. */
+  delegateTo?: string[];
+  /** Part 2: ISO 8601 durations from the round's start; the running system sends the notices. */
+  remindAfter?: string;
+  escalateAfter?: string;
+  escalateTo?: string[];
+  /** Part 2: the person's identity is checked again for every response. */
+  reauthenticate?: boolean;
   description?: unknown;
 }
 
-/** A stage of an approval: named signatures only. Part 1 holds exactly one. */
+/** A stage of an approval: named signatures, in a round (part 2), skipped unless its `when` holds. */
 export interface GateStageDoc {
   id: string;
   name: string;
   displayName?: string;
+  /** Stages of one round run side by side; the default is 1. */
+  round?: number;
+  when?: Json;
   signatures: NamedSignatureDoc[];
   description?: unknown;
 }
@@ -247,7 +258,7 @@ export interface ProcessDoc {
 export type CheckWord = "pass" | "warning" | "error";
 
 /** The responses to an approval, in the order the editor offers them. */
-export const APPROVAL_RESPONSES = ["sign", "reject", "ignore", "withdraw"] as const;
+export const APPROVAL_RESPONSES = ["sign", "reject", "ignore", "withdraw", "delegate"] as const;
 export type ApprovalResponse = (typeof APPROVAL_RESPONSES)[number];
 
 export interface StepDoc {
@@ -276,8 +287,14 @@ export interface StepDoc {
   response?: ApprovalResponse;
   /** The named signature the step answers; absent: the engine picks one (decision 8). */
   signature?: string;
+  /** With the response `delegate`, the id of the participant the signature goes to (decision 34). */
+  delegateTo?: string;
+  /** The id of the participant who delegated the signature to the person answering (decision 34). */
+  onBehalfOf?: string;
   expect?: {
     accepted?: boolean;
+    /** The reminders and escalations due at a time step (decision 35), compared as a set. */
+    notices?: { signature: string; kind: "remind" | "escalate" }[];
     /** The signatures counted after the step, by named signature id (decision 27). */
     signatures?: Record<string, number>;
     states?: string[];
@@ -980,6 +997,10 @@ export interface StepRow {
   response: string;
   signature: string;
   signatures: string;
+  /** The participants a step delegates to and answers for (names), and the notices expected due (signature and kind). */
+  delegateTo: string;
+  onBehalfOf: string;
+  notices: string;
 }
 
 /** `name=value` pairs of a map keyed by attribute (or guard) id, names from `names`. */
@@ -1083,6 +1104,9 @@ export function stepRows(
       response: s.response ?? "",
       signature: name(s.signature),
       signatures: mapText(s.expect?.signatures, signatureNames),
+      delegateTo: name(s.delegateTo),
+      onBehalfOf: name(s.onBehalfOf),
+      notices: (s.expect?.notices ?? []).map((n) => `${name(n.signature)} ${n.kind}`).join(", "),
     };
   });
 }

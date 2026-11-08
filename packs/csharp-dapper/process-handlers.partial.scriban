@@ -55,6 +55,14 @@ public sealed partial class {{ name }}Handlers
     // and compare it with the caller (the envelope's Signer for an event, or the host's principal). It refuses until you write it.
     private partial bool Is{{ pascal a.name }}(ProcessSnapshot<{{ ctx }}> snapshot, ProcessEnvelope envelope) => false;
 {{- end }}
+{{- for a in delegate_actors(p) }}
+{{- if stubs > 0 }}
+{{ end }}
+{{- stubs = stubs + 1 }}
+    // Whether the person a signature is delegated to (the envelope's Signer) is {{ a.name }}: look them up in your system. A delegation to
+    // someone who isn't is refused. It refuses until you write it.
+    private partial bool Is{{ pascal a.name }}(ProcessSnapshot<{{ ctx }}> snapshot, ProcessEnvelope envelope) => false;
+{{- end }}
 {{- for l in lifecycle_hooks(p) }}
 {{- if stubs > 0 }}
 {{ end }}
@@ -76,11 +84,13 @@ public sealed partial class {{ name }}Handlers
 {{- end }}
 }
 {{- approval_sigs = approval_conditions(p) }}
-{{- if approval_sigs.size > 0 }}
+{{- stage_conds = stage_conditions(p) }}
+{{- if approval_sigs.size > 0 || stage_conds.size > 0 }}
 {{- methods = approval_methods(p) }}
 
 // The conditions of the named signatures of {{ p.name }}. A signature with one is needed only when it is true, judged when its round
-// starts; read the object for the call's instance. Answer true when you can't tell: an unknown answer means needed.
+// starts; read the object for the call's instance. Answer true when you can't tell: an unknown answer means needed.{{ if stage_conds.size > 0 }} A stage with one
+// runs only when it is true, and is skipped otherwise; an unknown answer means it runs.{{ end }}
 public static partial class {{ name }}ApprovalConditions
 {
 {{- for sig in approval_sigs }}
@@ -89,6 +99,13 @@ public static partial class {{ name }}ApprovalConditions
     // {{ sig.gate.name }}, {{ sig.name }}: {{ cs_line sig.when.text }}
     public static partial bool {{ methods[sig.id] }}(ApprovalCall<{{ ctx }}> call) =>
         throw new NotImplementedException("The condition of signature {{ sig.name }} of gate {{ sig.gate.name }} of {{ p.name }} is not implemented yet.");
+{{- end }}
+{{- for st in stage_conds }}
+{{- if !for.first || approval_sigs.size > 0 }}
+{{ end }}
+    // {{ st.gate.name }}, stage {{ st.name }}: {{ cs_line st.when.text }}
+    public static partial bool {{ methods[st.id] }}(ApprovalCall<{{ ctx }}> call) =>
+        throw new NotImplementedException("The condition of stage {{ st.name }} of gate {{ st.gate.name }} of {{ p.name }} is not implemented yet.");
 {{- end }}
 }
 {{- end }}

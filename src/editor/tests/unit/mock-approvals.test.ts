@@ -46,6 +46,13 @@ describe("approvals in the mock: seed and index rows", () => {
     expect(gate.signers).toBeUndefined();
     expect(sigs(gate).map((s) => s.name)).toEqual(["Finance", "Manager"]);
     expect(sigs(gate)[0].when).toBeDefined();
+    // Round 2 runs for the default subject (the Controller is always needed); the Director keeps a Needed when that is false by default.
+    const release = (gate.stages as Json[])[1];
+    expect(release.when).toEqual({ text: "subject.total >= 0" });
+    expect((release.signatures as Json[]).map((s) => [s.name, s.when !== undefined])).toEqual([
+      ["Controller", false],
+      ["Director", true],
+    ]);
     expect(sigs(gate)[1].notBy).toEqual([{ verb: "promote" }]);
     const own = (d: Diagnostic) => /^MQ82/.test(d.rule) || ["MQ3001", "MQ9701", "MQ9704", "MQ2001", "MQ9104"].includes(d.rule);
     expect(backend.model.validate().diagnostics.filter(own)).toEqual([]);
@@ -53,7 +60,7 @@ describe("approvals in the mock: seed and index rows", () => {
 
   it("gives a process row its approvals and signatures only when above zero", () => {
     const rows = new MockBackend().model.index() as Json[];
-    expect(rows.find((r) => r.id === INVOICE_LIFECYCLE)).toMatchObject({ approvals: 1, signatures: 2 });
+    expect(rows.find((r) => r.id === INVOICE_LIFECYCLE)).toMatchObject({ approvals: 1, signatures: 4 });
     const plain = rows.find((r) => r.id === PURCHASE_APPROVAL)!;
     expect(plain.approvals).toBeUndefined();
     expect(plain.signatures).toBeUndefined();

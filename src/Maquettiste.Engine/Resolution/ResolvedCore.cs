@@ -20,6 +20,18 @@ public interface IResolvedObject
 }
 
 /// <summary>
+/// Names the dependency key a template or a script records when it reads a plain value of <see cref="ResolvedModel"/>, which has no
+/// dependencies of its own (signoff-design.md decision 32).
+/// </summary>
+/// <param name="key">The dependency key.</param>
+[AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = false)]
+internal sealed class ReadKeyAttribute(string key) : Attribute
+{
+    /// <summary>The dependency key.</summary>
+    public string Key { get; } = key;
+}
+
+/// <summary>
 /// A read-only list of resolved objects that knows which dependency keys decide its membership. Every list of resolved objects
 /// in the resolved model is an <see cref="RList{T}"/>; enumerating it, indexing it or reading its size records
 /// <see cref="MembershipKeys"/>.
@@ -330,6 +342,34 @@ public sealed class ResolvedModel
     /// (<c>ap:approvals</c>), whose hash never changes in a project without approvals.
     /// </summary>
     public RList<RProcess> ApprovalLifecycles { get; internal init; } = RList<RProcess>.Empty;
+
+    /// <summary>
+    /// Whether some lifecycle uses approval rounds (signoff-design.md decision 32): a gate with more than one stage, or a stage with a
+    /// <c>when</c>, inline or through a gate policy. It keys only on the approvals naming key (<c>ap:approvals</c>).
+    /// </summary>
+    [ReadKey(Planning.ApprovalNaming.Key)]
+    public bool ApprovalsUseRounds { get; internal init; }
+
+    /// <summary>
+    /// Whether some lifecycle uses delegation (signoff-design.md decision 32): a named signature with <c>delegateTo</c>, inline or through a
+    /// gate policy. It keys only on the approvals naming key.
+    /// </summary>
+    [ReadKey(Planning.ApprovalNaming.Key)]
+    public bool ApprovalsUseDelegation { get; internal init; }
+
+    /// <summary>
+    /// Whether some lifecycle uses reminders or escalations (signoff-design.md decision 32): a named signature with <c>remindAfter</c> or
+    /// <c>escalateAfter</c>, inline or through a gate policy. It keys only on the approvals naming key.
+    /// </summary>
+    [ReadKey(Planning.ApprovalNaming.Key)]
+    public bool ApprovalsUseNotices { get; internal init; }
+
+    /// <summary>
+    /// Whether some lifecycle asks for signing again with a password (signoff-design.md decision 32): a named signature with
+    /// <c>reauthenticate</c>, inline or through a gate policy. It keys only on the approvals naming key.
+    /// </summary>
+    [ReadKey(Planning.ApprovalNaming.Key)]
+    public bool ApprovalsUseReauthenticate { get; internal init; }
 
     /// <summary>
     /// The named trigger points (trigger-points-design.md decision 33), by name then id. Empty in a project without them; the list keys on

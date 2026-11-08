@@ -1,0 +1,169 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JAE0000000000000000000C1",
+  "name": "Deal",
+  "package": "01JAE0000000000000000000P1",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JAE0000000000000000000B1",
+      "entity": "01JAE0000000000000000000E1"
+    }
+  ],
+  "description": "An agreement's sign-off: engineering first, then finance and, for large deals, legal side by side, then the board for the largest. A deal still in review after ten days lapses.",
+  "context": [
+    {
+      "id": "01JAE0000000000000000000X1",
+      "name": "cost",
+      "type": "decimal",
+      "default": 0
+    }
+  ],
+  "events": [
+    {
+      "id": "01JAE0000000000000000000V1",
+      "name": "submit",
+      "verb": "promote"
+    },
+    {
+      "id": "01JAE0000000000000000000V2",
+      "name": "approve"
+    }
+  ],
+  "states": [
+    {
+      "id": "01JAE0000000000000000000S1",
+      "name": "Draft"
+    },
+    {
+      "id": "01JAE0000000000000000000S2",
+      "name": "Review"
+    },
+    {
+      "id": "01JAE0000000000000000000S3",
+      "name": "Approved",
+      "type": "final"
+    },
+    {
+      "id": "01JAE0000000000000000000S4",
+      "name": "Lapsed",
+      "type": "final"
+    }
+  ],
+  "initial": "01JAE0000000000000000000S1",
+  "transitions": [
+    {
+      "id": "01JAE0000000000000000000T1",
+      "source": "01JAE0000000000000000000S1",
+      "event": "01JAE0000000000000000000V1",
+      "targets": [
+        "01JAE0000000000000000000S2"
+      ]
+    },
+    {
+      "id": "01JAE0000000000000000000T2",
+      "source": "01JAE0000000000000000000S2",
+      "event": "01JAE0000000000000000000V2",
+      "targets": [
+        "01JAE0000000000000000000S3"
+      ],
+      "gate": {
+        "id": "01JAE0000000000000000000G1",
+        "name": "Signoff",
+        "stages": [
+          {
+            "id": "01JAE0000000000000000000H1",
+            "name": "Review",
+            "signatures": [
+              {
+                "id": "01JAE0000000000000000000N1",
+                "name": "Engineering",
+                "signers": [
+                  "01JAE0000000000000000000R1"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "01JAE0000000000000000000H2",
+            "name": "Finance",
+            "round": 2,
+            "signatures": [
+              {
+                "id": "01JAE0000000000000000000N2",
+                "name": "Controller",
+                "signers": [
+                  "01JAE0000000000000000000R2"
+                ],
+                "requiredActors": [
+                  "01JAE0000000000000000000R2"
+                ],
+                "delegateTo": [
+                  "01JAE0000000000000000000R3"
+                ],
+                "remindAfter": "P2D",
+                "escalateAfter": "P4D",
+                "escalateTo": [
+                  "01JAE0000000000000000000R4"
+                ],
+                "reauthenticate": true,
+                "description": "The controller, or a deputy on their behalf, signing again with a password."
+              }
+            ]
+          },
+          {
+            "id": "01JAE0000000000000000000H3",
+            "name": "Legal",
+            "round": 2,
+            "when": {
+              "text": "subject.cost > 50000"
+            },
+            "description": "Only for large deals.",
+            "signatures": [
+              {
+                "id": "01JAE0000000000000000000N3",
+                "name": "Counsel",
+                "signers": [
+                  "01JAE0000000000000000000R5"
+                ]
+              }
+            ]
+          },
+          {
+            "id": "01JAE0000000000000000000H4",
+            "name": "Board",
+            "round": 3,
+            "when": {
+              "text": "subject.cost > 100000"
+            },
+            "signatures": [
+              {
+                "id": "01JAE0000000000000000000N4",
+                "name": "Chair",
+                "signers": [
+                  "01JAE0000000000000000000R6"
+                ]
+              }
+            ]
+          }
+        ],
+        "meanings": [
+          {
+            "id": "01JAE0000000000000000000M1",
+            "name": "approved"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JAE0000000000000000000T3",
+      "source": "01JAE0000000000000000000S2",
+      "trigger": "after",
+      "after": "P10D",
+      "targets": [
+        "01JAE0000000000000000000S4"
+      ]
+    }
+  ]
+}
