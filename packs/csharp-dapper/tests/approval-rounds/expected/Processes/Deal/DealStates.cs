@@ -18,12 +18,16 @@ public static partial class DealStates
     /// <summary>State Approved (final).</summary>
     public const string Approved = "Approved";
 
+    /// <summary>State Lapsed (final).</summary>
+    public const string Lapsed = "Lapsed";
+
     /// <summary>Every state path, in document order.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
         Draft,
         Review,
         Approved,
+        Lapsed,
     ];
 
     /// <summary>The state of a path.</summary>
@@ -34,6 +38,7 @@ public static partial class DealStates
         Draft => DealState.Draft,
         Review => DealState.Review,
         Approved => DealState.Approved,
+        Lapsed => DealState.Lapsed,
         _ => throw new ArgumentOutOfRangeException(nameof(path), path, "Not a state of Deal."),
     };
 }
@@ -47,4 +52,6 @@ public enum DealState
     Review,
     /// <summary>Approved</summary>
     Approved,
+    /// <summary>Lapsed</summary>
+    Lapsed,
 }

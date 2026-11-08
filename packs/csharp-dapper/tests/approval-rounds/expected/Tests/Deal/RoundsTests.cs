@@ -43,24 +43,22 @@ public sealed class RoundsTests
         Assert.Equal<string>([], result.Changed);
 
         // Step 3: time +P2D.
-        var since3 = clock.Now;
         clock.Advance(TimeSpan.FromTicks(1728000000000));
         result = await host.Dispatcher.SendAsync(new DealTimersDueControl(new ProcessEnvelope(Instance)), cancellationToken);
         Assert.True(result.Accepted, result.Refusal);
         Assert.Equal<string>(["Review"], result.States);
-        var notices3 = result.Approvals.Values.SelectMany(a => a.Notices).Where(n => n.Due > since3 && n.Due <= clock.Now)
-            .Select(n => n.Gate + "/" + n.Signature + "/" + (n.Kind == NoticeKind.Remind ? "remind" : "escalate")).Order(StringComparer.Ordinal);
+        var notices3 = result.Notices.Select(n => n.Gate + "/" + n.Signature + "/" + (n.Kind == NoticeKind.Remind ? "remind" : "escalate"))
+            .Order(StringComparer.Ordinal);
         Assert.Equal<string>([.. new[] { "Signoff/Controller/remind" }.Order(StringComparer.Ordinal)], notices3);
         Assert.Equal<string>([], result.Changed);
 
         // Step 4: time +P2D.
-        var since4 = clock.Now;
         clock.Advance(TimeSpan.FromTicks(1728000000000));
         result = await host.Dispatcher.SendAsync(new DealTimersDueControl(new ProcessEnvelope(Instance)), cancellationToken);
         Assert.True(result.Accepted, result.Refusal);
         Assert.Equal<string>(["Review"], result.States);
-        var notices4 = result.Approvals.Values.SelectMany(a => a.Notices).Where(n => n.Due > since4 && n.Due <= clock.Now)
-            .Select(n => n.Gate + "/" + n.Signature + "/" + (n.Kind == NoticeKind.Remind ? "remind" : "escalate")).Order(StringComparer.Ordinal);
+        var notices4 = result.Notices.Select(n => n.Gate + "/" + n.Signature + "/" + (n.Kind == NoticeKind.Remind ? "remind" : "escalate"))
+            .Order(StringComparer.Ordinal);
         Assert.Equal<string>([.. new[] { "Signoff/Controller/escalate" }.Order(StringComparer.Ordinal)], notices4);
         Assert.Equal<string>([], result.Changed);
 

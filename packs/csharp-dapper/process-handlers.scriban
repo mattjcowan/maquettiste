@@ -374,7 +374,7 @@ public sealed partial class {{ name }}CommandHandler({{ name }}Machine machine, 
 {{- end }}
 
     private static CommandResult Result(StepResult<{{ ctx }}> step, IReadOnlyList<object> events) =>
-        new(step.Accepted, step.Refusal, step.States, step.Changed, step.Final, step.Context, events) { Audit = step.Audit, Failure = step.Failure{{ if rights || triggers }}, RefusedBy = step.RefusedBy{{ end }}{{ if triggers }}, CheckWarnings = step.CheckWarnings, TriggerPoints = step.TriggerPoints{{ end }}{{ if uses_approvals(p) }}, Approvals = step.Snapshot.Approvals{{ end }} };
+        new(step.Accepted, step.Refusal, step.States, step.Changed, step.Final, step.Context, events) { Audit = step.Audit, Failure = step.Failure{{ if rights || triggers }}, RefusedBy = step.RefusedBy{{ end }}{{ if triggers }}, CheckWarnings = step.CheckWarnings, TriggerPoints = step.TriggerPoints{{ end }}{{ if uses_approvals(p) }}, Approvals = step.Snapshot.Approvals{{ if model.approvals_use_notices }}, Notices = step.Notices{{ end }}{{ end }} };
 
     private static object Typed(GateAuditRecord record) => record.Gate switch
     {

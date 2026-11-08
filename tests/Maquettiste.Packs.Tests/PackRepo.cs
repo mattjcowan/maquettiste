@@ -822,8 +822,9 @@ internal sealed class PackRepo : IDisposable
     /// The csharp-dapper pack's <c>approval-rounds</c> case (signoff-design.md section 10, part 2): lifecycle Deal with an approval in three
     /// rounds on its approve move: Engineering in round 1; in round 2 Controller, with a required actor, delegation to deputy controllers,
     /// a reminder, an escalation and signing again with a password, beside a Legal stage with a condition; and a Board stage with a
-    /// condition in round 3. Its scenario rounds runs every part 2 group. csharp-dapper writes to <c>out</c>, with the scenario tests under
-    /// out/Tests.
+    /// condition in round 3, and a timer that lapses a deal still in review after ten days. Its scenario rounds runs every part 2 group, and
+    /// lapse lists the notices that fall due before the timer leaves review. csharp-dapper writes to <c>out</c>, with the scenario tests under
+    /// out/Tests and the endpoints under out/Api.
     /// </summary>
     /// <returns>The repo.</returns>
     public static PackRepo ApprovalRounds()
@@ -837,7 +838,7 @@ internal sealed class PackRepo : IDisposable
               "formatVersion": 1,
               "name": "approval-rounds",
               "outputs": { "allow": [ { "path": "out" } ] },
-              "packs": { "csharp-dapper": { "output": "out", "parameters": { "testsFolder": "Tests" } } }
+              "packs": { "csharp-dapper": { "output": "out", "parameters": { "testsFolder": "Tests", "endpointsFolder": "Api" } } }
             }
 
             """);

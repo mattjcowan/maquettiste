@@ -8,7 +8,7 @@ using App.Model.Processes;
 
 namespace App.Model.Deals;
 
-/// <summary>An agreement&apos;s sign-off: engineering first, then finance and, for large deals, legal side by side, then the board for the largest.</summary>
+/// <summary>An agreement&apos;s sign-off: engineering first, then finance and, for large deals, legal side by side, then the board for the largest. A deal still in review after ten days lapses.</summary>
 /// <remarks>The chart of process Deal (lifecycle) as the interpreter reads it.</remarks>
 public static partial class DealDefinition
 {
@@ -27,10 +27,12 @@ public static partial class DealDefinition
             new("01JAE0000000000000000000S1", "Draft", StateKind.Atomic, 0), // 1 Draft
             new("01JAE0000000000000000000S2", "Review", StateKind.Atomic, 0), // 2 Review
             new("01JAE0000000000000000000S3", "Approved", StateKind.Final, 0), // 3 Approved
+            new("01JAE0000000000000000000S4", "Lapsed", StateKind.Final, 0), // 4 Lapsed
         ],
         [
             new("01JAE0000000000000000000T1", 1, TriggerKind.Event, "submit", [2]), // submit
             new("01JAE0000000000000000000T2", 2, TriggerKind.Event, "approve", [3], gate: 0), // approve
+            new("01JAE0000000000000000000T3", 2, TriggerKind.After, "", [4], afterTicks: 8640000000000), // after 10d
         ],
         [
             new("submit", [], global::App.Model.Verb.Promote),

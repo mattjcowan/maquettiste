@@ -316,7 +316,8 @@ func notice_keys(step)
   end
   ret $out | array.join ", "
 end
-# Whether the test checks the notices a step expects: only where the project's generated code keeps them.
+# Whether the test checks the notices a step expects: only where the project's generated code keeps them. The command's Notices lists
+# them as the engine's replay does, before each timer fires and at the step's end, so those due before a timer moves the object count.
 func checks_notices(step)
   ret model.approvals_use_notices && step.expect && step.expect.notices != null
 end
@@ -579,9 +580,6 @@ public sealed class {{ test }}
         // Refused as frozen in the replay. Nothing in generated code holds freezing until the project uses it (an event, a transition or a
         // right that names freeze or thaw, or a right with whileFrozen), so the step is not sent, and a refused step changes nothing.
 {{- else }}
-{{- if checks_notices(step) }}
-        var since{{ step.index + 1 }} = clock.Now;
-{{- end }}
 {{- if step.input == "time" }}
         clock.Advance(TimeSpan.FromTicks({{ step.after_ticks }}));
 {{- end }}
@@ -639,8 +637,8 @@ public sealed class {{ test }}
         Assert.Equal({{ x.count }}, result.Approvals.Values.Sum(a => a.Signed.Count(s => s.Signature == {{ json x.signature.id }}))); // {{ x.signature.gate.name }}, {{ x.signature.name }}
 {{- end }}
 {{- if checks_notices(step) }}
-        var notices{{ step.index + 1 }} = result.Approvals.Values.SelectMany(a => a.Notices).Where(n => n.Due > since{{ step.index + 1 }} && n.Due <= clock.Now)
-            .Select(n => n.Gate + "/" + n.Signature + "/" + (n.Kind == NoticeKind.Remind ? "remind" : "escalate")).Order(StringComparer.Ordinal);
+        var notices{{ step.index + 1 }} = result.Notices.Select(n => n.Gate + "/" + n.Signature + "/" + (n.Kind == NoticeKind.Remind ? "remind" : "escalate"))
+            .Order(StringComparer.Ordinal);
 {{- if step.expect.notices.size == 0 }}
         Assert.Empty(notices{{ step.index + 1 }});
 {{- else }}

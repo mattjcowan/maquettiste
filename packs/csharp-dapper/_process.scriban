@@ -368,17 +368,6 @@ func delegate_actors(p)
   ret $out
 end
 
-# Whether a gate has a named signature that may be delegated (signoff-design.md decision 34): only then does its typed audit record
-# name whom an answer is on behalf of and where a delegation went.
-func gate_delegates(g)
-  for sig in g.all_signatures
-    if sig.delegate_to.size > 0
-      ret true
-    end
-  end
-  ret false
-end
-
 # The method names of <Process>ApprovalConditions by signature or stage id (signoff-design.md section 10): <Gate><Signature>, and
 # <Gate><Stage>Stage for a stage, by member_name, so one named like its class gets Value; when two would share a name, each after the
 # first in id order gets the last eight characters of its id appended (the random end of a ULID: its first characters are a timestamp,

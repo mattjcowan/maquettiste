@@ -112,6 +112,8 @@ The audit record, one per response and per outcome of the approval:
 | `outcome` | `string` | yes | `signed`, `completed`, `refused`, `discarded`, `rejected`, `ignored`, `withdrawn`, `delegated` | signed, completed, refused (an attempt the approval did not count), discarded (the source state was exited), rejected (a veto cleared the approval), ignored (a person abstained on a signature), withdrawn (a person took back a signature) or delegated (a person handed their part of a signature to someone else). |
 | `signature` | `id` | no |  | The named signature the record is about; none on a record about the whole approval. |
 | `stage` | `id` | no |  | The stage of the signature; none when the record names no signature. |
+| `onBehalfOf` | `string` | no |  | For an answer on behalf of someone who delegated the signature, the delegator's identity; none otherwise. |
+| `delegateTo` | `string` | no |  | For a delegation, the identity it went to; none otherwise. |
 
 ## Events
 

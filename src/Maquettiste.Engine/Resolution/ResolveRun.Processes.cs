@@ -1274,6 +1274,12 @@ internal sealed partial class ResolveRun
             }
             Add("signature", "id", false, "The named signature the record is about; none on a record about the whole approval.");
             Add("stage", "id", false, "The stage of the signature; none when the record names no signature.");
+            if (gate.AllSignatures.Any(s => s.DelegateTo.Count > 0))
+            {
+                // Where a signature may be delegated, the records name who answered on whose behalf and who a delegation went to (decision 34).
+                Add("onBehalfOf", "string", false, "For an answer on behalf of someone who delegated the signature, the delegator's identity; none otherwise.");
+                Add("delegateTo", "string", false, "For a delegation, the identity it went to; none otherwise.");
+            }
         }
         else
         {

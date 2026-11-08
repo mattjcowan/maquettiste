@@ -1,0 +1,70 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JAE0000000000000000000Y2",
+  "name": "lapse",
+  "process": "01JAE0000000000000000000C1",
+  "outcome": "final",
+  "description": "The controller's reminder and escalation fall due before the deal lapses: the time step lists both, though the timer leaves review and discards the approval.",
+  "objects": [
+    {
+      "id": "01JAE0000000000000000000K2",
+      "name": "deal",
+      "entity": "01JAE0000000000000000000E1",
+      "values": {
+        "01JAE0000000000000000000A2": 20000
+      }
+    }
+  ],
+  "subject": "01JAE0000000000000000000K2",
+  "start": {
+    "context": {
+      "01JAE0000000000000000000X1": 20000
+    },
+    "at": "2026-11-09T09:00:00Z"
+  },
+  "steps": [
+    {
+      "id": "01JAE0000000000000000000Z8",
+      "event": "01JAE0000000000000000000V1",
+      "actor": "01JAE0000000000000000000R1",
+      "signer": "ana",
+      "expect": {
+        "states": [
+          "01JAE0000000000000000000S2"
+        ]
+      }
+    },
+    {
+      "id": "01JAE0000000000000000000Z9",
+      "event": "01JAE0000000000000000000V2",
+      "actor": "01JAE0000000000000000000R1",
+      "signer": "ben",
+      "expect": {
+        "states": [
+          "01JAE0000000000000000000S2"
+        ]
+      }
+    },
+    {
+      "id": "01JAE000000000000000000Z10",
+      "input": "time",
+      "after": "P12D",
+      "expect": {
+        "states": [
+          "01JAE0000000000000000000S4"
+        ],
+        "notices": [
+          {
+            "signature": "01JAE0000000000000000000N2",
+            "kind": "remind"
+          },
+          {
+            "signature": "01JAE0000000000000000000N2",
+            "kind": "escalate"
+          }
+        ]
+      }
+    }
+  ]
+}

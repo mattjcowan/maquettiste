@@ -1072,6 +1072,11 @@ public sealed class StepResult<TContext>
     /// The instance keeps the state it reached, as the engine's interpreter does.</summary>
     public string? Failure { get; init; }
 
+    /// <summary>The reminders and escalations that fell due during a time input (<see cref="Statechart{TContext}.Tick"/>), each once: those due
+    /// by each timer's instant, listed before it fires, so a notice due before a timer moves the instance out of the approval's state is here
+    /// too, then those due by the end (signoff-design.md decision 35); empty for other inputs.</summary>
+    public IReadOnlyList<ApprovalNotice> Notices { get; init; } = [];
+
     /// <summary>The instance after the input.</summary>
     public ProcessSnapshot<TContext> Snapshot { get; init; } = null!;
 
@@ -1217,12 +1222,15 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         ArgumentNullException.ThrowIfNull(snapshot);
         var run = new Run(this, snapshot, ":time", null);
         var end = _clock.Now > run.Clock ? _clock.Now : run.Clock;
+        var since = run.Clock;
         while (!run.Done)
         {
             var next = run.Timers.Where(t => t.Due <= end).OrderBy(t => t.Due).ThenBy(t => t.Transition.Source.Index).ThenBy(t => t.Transition.Index)
                 .ThenBy(t => t.Sequence).FirstOrDefault();
             if (next is null)
                 break;
+            // Reminders and escalations due by the timer's instant fall due before it fires (signoff-design.md decision 35).
+            run.FallDue(since, next.Due);
             run.Clock = next.Due;
             run.Timers.Remove(next);
             run.Macrostep(() =>
@@ -1233,6 +1241,9 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                 run.RunToCompletion();
             });
         }
+
+        if (!run.Done)
+            run.FallDue(since, end);
 
         run.Clock = end;
         return run.Finish();
@@ -1595,6 +1606,9 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 
         private readonly Dictionary<TransitionDefinition, ApprovalProgress> _approvals = [];
         private readonly List<ActRecord> _acts = [];
+
+        // The reminders and escalations that fell due during a time step, each once (signoff-design.md decision 35).
+        private readonly List<ApprovalNotice> _due = [];
 
         // The named signature each gated candidate answers in this input, from row 7 to its admit.
         private readonly Dictionary<TransitionDefinition, SignatureDefinition> _picks = [];
@@ -2061,6 +2075,21 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             return notices;
         }
 
+        // Lists, each once, the notices of the approvals open now that fall due after since and by until. Tick calls it before each timer
+        // fires and at the step's end, as the engine's replay does, so a notice due before a timer moves the instance out of the approval's
+        // state is listed too.
+        public void FallDue(DateTimeOffset since, DateTimeOffset until)
+        {
+            foreach (var (gated, progress) in _approvals.OrderBy(p => p.Key.Index))
+            {
+                foreach (var notice in NoticesOf(gated, gated.Gate!, progress))
+                {
+                    if (notice.Due > since && notice.Due <= until && !_due.Exists(n => string.Equals(n.Id, notice.Id, StringComparison.Ordinal)))
+                        _due.Add(notice);
+                }
+            }
+        }
+
         // ---- microstep ----
 
         public void RunToCompletion()
@@ -2422,6 +2451,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
                 Unscheduled = _unscheduled,
                 At = Clock,
                 Failure = _failure,
+                Notices = _due,
                 Snapshot = _snapshot,
             };
         }

@@ -56,6 +56,10 @@ public sealed record CommandResult(bool Accepted, string? Refusal, IReadOnlyList
     /// section 10); empty for a lifecycle without one.</summary>
     public IReadOnlyDictionary<string, ApprovalProgress> Approvals { get; init; } = new Dictionary<string, ApprovalProgress>();
 
+    /// <summary>The reminders and escalations that fell due during the command, a time step, each once, including those due before a timer
+    /// moved the instance out of the approval's state (signoff-design.md decision 35); empty for other commands.</summary>
+    public IReadOnlyList<ApprovalNotice> Notices { get; init; } = [];
+
     /// <summary>A refusal without an instance.</summary>
     /// <param name="refusal">The reason.</param>
     /// <returns>The result.</returns>
@@ -75,6 +79,16 @@ public record EventRequest(string? Actor = null, string? Signer = null, string? 
     /// <summary>The name of the named signature the response answers, as Meaning takes the meaning's name; null lets the interpreter pick
     /// it (the envelope's Signature).</summary>
     public string? Signature { get; init; }
+
+    /// <summary>With the response Delegate, the identity of the person the signature goes to (the envelope's DelegateTo).</summary>
+    public string? DelegateTo { get; init; }
+
+    /// <summary>The identity of the person who delegated the signature to the signer, whose answer counts as theirs (the envelope's
+    /// OnBehalfOf).</summary>
+    public string? OnBehalfOf { get; init; }
+
+    /// <summary>Whether the host checked the signer's identity again for this response (the envelope's Reauthenticated).</summary>
+    public bool Reauthenticated { get; init; }
 }
 
 /// <summary>The body of an event endpoint whose event has a payload.</summary>

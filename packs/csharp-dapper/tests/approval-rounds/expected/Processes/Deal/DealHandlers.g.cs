@@ -157,7 +157,7 @@ public sealed partial class DealCommandHandler(DealMachine machine, IDealStore s
     }
 
     private static CommandResult Result(StepResult<DealContext> step, IReadOnlyList<object> events) =>
-        new(step.Accepted, step.Refusal, step.States, step.Changed, step.Final, step.Context, events) { Audit = step.Audit, Failure = step.Failure, Approvals = step.Snapshot.Approvals };
+        new(step.Accepted, step.Refusal, step.States, step.Changed, step.Final, step.Context, events) { Audit = step.Audit, Failure = step.Failure, Approvals = step.Snapshot.Approvals, Notices = step.Notices };
 
     private static object Typed(GateAuditRecord record) => record.Gate switch
     {

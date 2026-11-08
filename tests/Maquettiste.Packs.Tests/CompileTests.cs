@@ -1077,8 +1077,9 @@ public sealed class CompileTests
     public async Task Approval_rounds_compile_and_respond_as_the_engine_does()
     {
         // signoff-design.md section 10, part 2: rounds with skipped stages and DealApprovalConditions' stage methods (reached through
-        // IApprovalConditions.StageNeeded), delegation checked through IActorResolver, ApprovalNotices.Due, and Reauthenticated build with
-        // warnings as errors. The scenario test agrees with the engine's replay, and the host's checks pass.
+        // IApprovalConditions.StageNeeded), delegation checked through IActorResolver, ApprovalNotices.Due, Reauthenticated, and endpoints whose
+        // request carries DelegateTo, OnBehalfOf and Reauthenticated build with warnings as errors. The scenario tests agree with the engine's
+        // replay, lapse's with the notices that fall due before its timer leaves review (the command's Notices), and the host's checks pass.
         using var repo = PackRepo.ApprovalRounds();
         await repo.GenerateCleanlyAsync();
         Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "approval-rounds", "expected"), repo.PathOf("out"));
@@ -1089,6 +1090,9 @@ public sealed class CompileTests
         var test = repo.Read("out/Tests/Deal/RoundsTests.cs");
         Assert.Contains("DelegateTo = \"dora\", Reauthenticated = true", test, StringComparison.Ordinal);
         Assert.Contains("OnBehalfOf = \"carl\", Reauthenticated = true", test, StringComparison.Ordinal);
+        Assert.Contains("{ Response = request.Response, Signature = request.Signature, DelegateTo = request.DelegateTo, OnBehalfOf = request.OnBehalfOf, Reauthenticated = request.Reauthenticated }",
+            repo.Read("out/Api/Processes/Deal/Endpoints/DealEndpoints.cs"), StringComparison.Ordinal);
+        Assert.Contains("var notices3 = result.Notices.Select(", repo.Read("out/Tests/Deal/LapseTests.cs"), StringComparison.Ordinal);
 
         Replace("out/Processes/Deal/DealHandlers.cs", "public static partial bool SignoffLegalStage(ApprovalCall<DealContext> call) =>\n        throw new NotImplementedException(\"The condition of stage Legal of gate Signoff of Deal is not implemented yet.\");",
             "public static partial bool SignoffLegalStage(ApprovalCall<DealContext> call) => call.Context.Cost > 50000m;");
@@ -1096,7 +1100,62 @@ public sealed class CompileTests
             "public static partial bool SignoffBoardStage(ApprovalCall<DealContext> call) => call.Context.Cost > 100000m;");
         Replace("out/Processes/Deal/DealHandlers.cs", "private partial bool IsDeputyController(ProcessSnapshot<DealContext> snapshot, ProcessEnvelope envelope) => false;",
             "private partial bool IsDeputyController(ProcessSnapshot<DealContext> snapshot, ProcessEnvelope envelope) => envelope.Signer == \"dora\";");
-        await BuildAndRunScenarioTestsAsync(repo, "approval-rounds", ApprovalRoundsScenarioHost, 5);
+        await BuildAndRunScenarioTestsAsync(repo, "approval-rounds", ApprovalRoundsScenarioHost, 6);
+
+        void Replace(string path, string stub, string with)
+        {
+            var text = repo.Read(path);
+            Assert.Contains(stub, text, StringComparison.Ordinal);
+            repo.Write(path, text.Replace(stub, with, StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public async Task Approval_rounds_alone_compile_with_the_other_part_2_groups_left_out()
+    {
+        // signoff-design.md decision 32: a lifecycle that uses rounds alone (stages in rounds, one with a condition, and no delegation, notices
+        // or password) leaves the other groups' code out of the shared interpreter, the dispatcher, the endpoints and the lifecycle's files, and
+        // they build with warnings as errors. The scenario test agrees with the engine's replay.
+        using var repo = PackRepo.ApprovalRounds();
+        repo.EditJson(".maquettiste/model/processes/deal.json", deal =>
+        {
+            var controller = deal["transitions"]![1]!["gate"]!["stages"]![1]!["signatures"]![0]!.AsObject();
+            foreach (var key in new[] { "delegateTo", "remindAfter", "escalateAfter", "escalateTo", "reauthenticate" })
+                Assert.True(controller.Remove(key), key);
+        });
+        File.Delete(repo.PathOf(".maquettiste/model/scenarios/deal/lapse.json"));
+        repo.EditJson(".maquettiste/model/scenarios/deal/rounds.json", rounds =>
+        {
+            var steps = rounds["steps"]!.AsArray();
+            while (steps.Count > 2)
+                steps.RemoveAt(2);
+            steps.Add(System.Text.Json.Nodes.JsonNode.Parse("""
+                { "id": "01JAE0000000000000000000Z5", "event": "01JAE0000000000000000000V2", "actor": "01JAE0000000000000000000R2", "signer": "carl",
+                  "expect": { "states": [ "01JAE0000000000000000000S3" ] } }
+                """));
+            rounds.AsObject().Remove("participants");
+        });
+        await repo.GenerateCleanlyAsync();
+
+        var runtime = repo.Read("out/Runtime/Statechart.g.cs");
+        Assert.Contains("Skipped", runtime, StringComparison.Ordinal);
+        foreach (var left in new[] { "DelegateTo", "OnBehalfOf", "Reauthenticate", "ApprovalNotice", "Notices", "Delegated", "RemindAfter", "EscalateAfter" })
+            Assert.False(runtime.Contains(left, StringComparison.Ordinal), "Statechart.g.cs holds " + left);
+        foreach (var path in new[] { "out/Dispatch/Dispatch.g.cs", "out/Api/Processes/Deal/Endpoints/DealEndpoints.cs", "out/Processes/Deal/DealContracts.cs",
+            "out/Processes/Deal/DealDefinition.cs", "out/Processes/Deal/DealHandlers.g.cs", "out/Tests/Deal/RoundsTests.cs" })
+        {
+            var text = repo.Read(path);
+            foreach (var left in new[] { "DelegateTo", "OnBehalfOf", "Reauthenticate", "Notice", "RemindAfter", "EscalateAfter", "IActorResolver" })
+                Assert.False(text.Contains(left, StringComparison.Ordinal), path + " holds " + left);
+        }
+
+        Assert.Contains("public bool StageNeeded(string stage, ApprovalCall<DealContext> call) => stage switch", repo.Read("out/Processes/Deal/DealHandlers.g.cs"), StringComparison.Ordinal);
+        Replace("out/Processes/Deal/DealHandlers.cs", "public static partial bool SignoffLegalStage(ApprovalCall<DealContext> call) =>\n        throw new NotImplementedException(\"The condition of stage Legal of gate Signoff of Deal is not implemented yet.\");",
+            "public static partial bool SignoffLegalStage(ApprovalCall<DealContext> call) => call.Context.Cost > 50000m;");
+        Replace("out/Processes/Deal/DealHandlers.cs", "public static partial bool SignoffBoardStage(ApprovalCall<DealContext> call) =>\n        throw new NotImplementedException(\"The condition of stage Board of gate Signoff of Deal is not implemented yet.\");",
+            "public static partial bool SignoffBoardStage(ApprovalCall<DealContext> call) => call.Context.Cost > 100000m;");
+        await BuildAndRunScenarioTestsAsync(repo, "approval-rounds-alone",
+            ApprovalRoundsScenarioHost[..ApprovalRoundsScenarioHost.IndexOf("public sealed class ApprovalRoundTests", StringComparison.Ordinal)], 1);
 
         void Replace(string path, string stub, string with)
         {

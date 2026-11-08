@@ -11,7 +11,7 @@
       "entity": "01JAE0000000000000000000E1"
     }
   ],
-  "description": "An agreement's sign-off: engineering first, then finance and, for large deals, legal side by side, then the board for the largest.",
+  "description": "An agreement's sign-off: engineering first, then finance and, for large deals, legal side by side, then the board for the largest. A deal still in review after ten days lapses.",
   "context": [
     {
       "id": "01JAE0000000000000000000X1",
@@ -43,6 +43,11 @@
     {
       "id": "01JAE0000000000000000000S3",
       "name": "Approved",
+      "type": "final"
+    },
+    {
+      "id": "01JAE0000000000000000000S4",
+      "name": "Lapsed",
       "type": "final"
     }
   ],
@@ -150,6 +155,15 @@
           }
         ]
       }
+    },
+    {
+      "id": "01JAE0000000000000000000T3",
+      "source": "01JAE0000000000000000000S2",
+      "trigger": "after",
+      "after": "P10D",
+      "targets": [
+        "01JAE0000000000000000000S4"
+      ]
     }
   ]
 }

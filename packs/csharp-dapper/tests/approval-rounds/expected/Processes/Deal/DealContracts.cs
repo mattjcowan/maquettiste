@@ -124,7 +124,7 @@ public sealed partial record DealSignoffAuditRecord
     /// <summary>The stage of the signature; none when the record names no signature.</summary>
     public string? Stage { get; init; }
 
-    /// <summary>For an answer on behalf of someone who delegated the signature, the delegator's identity (signoff-design.md decision 34); none otherwise.</summary>
+    /// <summary>For an answer on behalf of someone who delegated the signature, the delegator&apos;s identity; none otherwise.</summary>
     public string? OnBehalfOf { get; init; }
 
     /// <summary>For a delegation, the identity it went to; none otherwise.</summary>

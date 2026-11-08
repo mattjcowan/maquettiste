@@ -58,7 +58,7 @@ func signature_init(sig)
   if sig.escalate_after_ticks
     $parts[$parts.size] = "EscalateAfter = TimeSpan.FromTicks(" + sig.escalate_after_ticks + ")"
   end
-  if sig.escalate_to.size > 0
+  if sig.escalate_to.size > 0 && model.approvals_use_notices
     $parts[$parts.size] = "EscalateTo = " + actor_list(sig.escalate_to)
   end
   if sig.reauthenticate

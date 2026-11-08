@@ -184,8 +184,11 @@ public sealed class ResolvedApprovalPart2Tests
             engineering.RemindAfter, engineering.RemindAfterMs, engineering.EscalateAfterTicks));
         Assert.Null(gate.Stages[0].When);
 
-        // A signature that may be delegated adds the delegated outcome.
+        // A signature that may be delegated adds the delegated outcome, and the fields naming the delegator and who a delegation went to.
         Assert.Equal(["signed", "completed", "refused", "discarded", "rejected", "ignored", "withdrawn", "delegated"], gate.Audit.Single(f => f.Name == "outcome").Values);
+        Assert.Equal(["instance", "process", "gate", "transition", "sequence", "signer", "actor", "meaning", "reason", "at", "outcome", "signature", "stage", "onBehalfOf", "delegateTo"],
+            gate.Audit.Select(f => f.Name));
+        Assert.Equal([("string", false), ("string", false)], gate.Audit.Where(f => f.Name is "onBehalfOf" or "delegateTo").Select(f => (f.Type, f.Required)));
     }
 
     [Fact]
@@ -274,6 +277,7 @@ public sealed class ResolvedApprovalPart2Tests
         var gate = GateOf(model);
         Assert.All(gate.Stages, s => Assert.Equal((1, null), (s.Round, s.When)));
         Assert.Equal(["signed", "completed", "refused", "discarded", "rejected", "ignored", "withdrawn"], gate.Audit.Single(f => f.Name == "outcome").Values);
+        Assert.Equal("stage", gate.Audit[^1].Name); // no delegation fields without a signature that may be delegated
 
         var processes = Engine.ResolvedRecords.Entries(model, "processes", null).Select(e => (ProcessRecord)e.Project()).ToList();
         var scenario = (ScenarioRecord)Engine.ResolvedRecords.Entries(model, "scenarios", null).Single().Project();
