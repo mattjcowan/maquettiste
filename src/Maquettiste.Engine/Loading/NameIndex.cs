@@ -226,7 +226,8 @@ internal sealed class NameIndex
         "schema" => [ElementKind.Database],
         "enum-member" => [ElementKind.Enum],
         "guard" => [ElementKind.Process, ElementKind.Operation],
-        "event" or "action" or "invoke" or "gate" or "meaning" or "state" or "process-right" or "process-trigger-point" => [ElementKind.Process],
+        "event" or "action" or "invoke" or "gate" or "meaning" or "state" or "process-right" or "process-trigger-point" or "gate-stage"
+            or "named-signature" => [ElementKind.Process],
         "end" => [ElementKind.Relation],
         "reference-field" => [ElementKind.ReferenceType],
         "row" => [ElementKind.Seed],
@@ -412,6 +413,14 @@ internal sealed class NameIndex
                 add("meaning", meaning.Id, forms.Then(gate.Name, meaning.Name));
             foreach (var attribute in gate.AuditAttributes)
                 add("attribute", attribute.Id, forms.Then(gate.Name, attribute.Name));
+
+            // An approval's stages and signatures by the gate's name (signoff-design.md decision 1): @named-signature:Documents.Release.Finance.
+            foreach (var stage in gate.Stages ?? [])
+            {
+                add("gate-stage", stage.Id, forms.Then(gate.Name, stage.Name));
+                foreach (var signature in stage.Signatures)
+                    add("named-signature", signature.Id, forms.Then(gate.Name, signature.Name));
+            }
         }
 
         // An inline right by its name (rights-design.md decision 3): @process-right:Documents.ReleasedIsReadOnly. A use has no name of its

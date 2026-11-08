@@ -184,6 +184,27 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     /// </summary>
     internal bool UsesTriggerPoints => string.Equals(Use, "lifecycle", StringComparison.Ordinal) && TriggerPoints is > 0;
 
+    /// <summary>
+    /// Whether a process row has a gate with stages on one of its transitions (signoff-design.md section 7). For the approvals naming key
+    /// only: never serialized.
+    /// </summary>
+    [JsonIgnore]
+    internal bool InlineApproval { get; init; }
+
+    /// <summary>
+    /// The distinct ids of the gate policies a process row's transitions use, sorted ordinally, whether or not they have stages
+    /// (signoff-design.md section 7); <see langword="null"/> when none. For the approvals naming key only: never serialized.
+    /// </summary>
+    [JsonIgnore]
+    internal IReadOnlyList<string>? GatePolicyUses { get; init; }
+
+    /// <summary>
+    /// The ids of a library row's gates that have stages, sorted ordinally (signoff-design.md section 7); <see langword="null"/> when none.
+    /// For the approvals naming key only: never serialized.
+    /// </summary>
+    [JsonIgnore]
+    internal IReadOnlyList<string>? ApprovalGatePolicies { get; init; }
+
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>
         other is not null
@@ -233,7 +254,12 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && (ReferenceEquals(TriggerVerbs, other.TriggerVerbs) || (TriggerVerbs is not null && other.TriggerVerbs is not null && TriggerVerbs.SequenceEqual(other.TriggerVerbs, StringComparer.Ordinal)))
         && (ReferenceEquals(Replaces, other.Replaces) || (Replaces is not null && other.Replaces is not null && Replaces.SequenceEqual(other.Replaces, StringComparer.Ordinal)))
         && (ReferenceEquals(ReplaceScopes, other.ReplaceScopes)
-            || (ReplaceScopes is not null && other.ReplaceScopes is not null && ReplaceScopes.SequenceEqual(other.ReplaceScopes, StringComparer.Ordinal)));
+            || (ReplaceScopes is not null && other.ReplaceScopes is not null && ReplaceScopes.SequenceEqual(other.ReplaceScopes, StringComparer.Ordinal)))
+        && InlineApproval == other.InlineApproval
+        && (ReferenceEquals(GatePolicyUses, other.GatePolicyUses)
+            || (GatePolicyUses is not null && other.GatePolicyUses is not null && GatePolicyUses.SequenceEqual(other.GatePolicyUses, StringComparer.Ordinal)))
+        && (ReferenceEquals(ApprovalGatePolicies, other.ApprovalGatePolicies)
+            || (ApprovalGatePolicies is not null && other.ApprovalGatePolicies is not null && ApprovalGatePolicies.SequenceEqual(other.ApprovalGatePolicies, StringComparer.Ordinal)));
 
     /// <inheritdoc/>
     public override int GetHashCode() => HashCode.Combine(

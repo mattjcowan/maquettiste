@@ -516,7 +516,11 @@ public enum InvokeType
     [JsonStringEnumMemberName("human-task")] HumanTask,
 }
 
-/// <summary>A signature gate on an event transition: the transition fires on the occurrence of its event that completes the gate.</summary>
+/// <summary>
+/// A signature gate on an event transition: the transition fires on the occurrence of its event that completes the gate. A gate with
+/// <see cref="Stages"/> is an approval (signoff-design.md decision 1): its signatures carry the signers and counts, and the gate's own are
+/// empty.
+/// </summary>
 public sealed record ProcessGate : IProcessNode
 {
     /// <inheritdoc/>
@@ -528,12 +532,27 @@ public sealed record ProcessGate : IProcessNode
     /// <summary>An optional display name (localizable).</summary>
     public string? DisplayName { get; init; }
 
-    /// <summary>The number of signatures needed.</summary>
+    /// <summary>
+    /// The approval's stages, each holding named signatures (signoff-design.md decision 1); one for now. <see langword="null"/>, and left out
+    /// of the file, for a gate without stages, which keeps today's meaning.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<GateStage>? Stages { get; init; }
+
+    /// <summary>Whether the gate is an approval: it has stages.</summary>
+    [JsonIgnore]
+    public bool UsesStages => Stages is { Count: > 0 };
+
+    /// <summary>Every stage's signatures in file order, stage by stage; empty for a gate without stages.</summary>
+    [JsonIgnore]
+    public IEnumerable<NamedSignature> AllSignatures => Stages?.SelectMany(s => s.Signatures) ?? [];
+
+    /// <summary>The number of signatures needed. A gate without stages only (MQ8201).</summary>
     public int Required { get; init; } = 1;
 
-    /// <summary>The actors whose members may sign.</summary>
+    /// <summary>The actors whose members may sign. Empty on a gate with stages (MQ8201), whose signatures name their own.</summary>
     [ElementRef(ElementKind.Actor)]
-    public required IReadOnlyList<string> Signers { get; init; }
+    public IReadOnlyList<string> Signers { get; init; } = [];
 
     /// <summary>Actors each of which must give at least one signature (a subset of <see cref="Signers"/>, MQ9102).</summary>
     [ElementRef(ElementKind.Actor)]
@@ -541,6 +560,12 @@ public sealed record ProcessGate : IProcessNode
 
     /// <summary>Whether one signer may count twice.</summary>
     public bool AllowRepeatSigner { get; init; }
+
+    /// <summary>
+    /// With stages: whether one person may give more than one response that counts on the approval, across its signatures
+    /// (signoff-design.md decision 16). A gate with stages only (MQ8201).
+    /// </summary>
+    public bool AllowSignerAcrossSignatures { get; init; }
 
     /// <summary>Whether each signature must carry a reason.</summary>
     public bool ReasonRequired { get; init; }
@@ -560,6 +585,101 @@ public sealed record ProcessGate : IProcessNode
 
     /// <summary>Custom property values, validated by extension schemas.</summary>
     public IReadOnlyDictionary<string, JsonElement> Properties { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
+}
+
+/// <summary>A stage of an approval (signoff-design.md decision 4; part kind <c>gate-stage</c>): named signatures only.</summary>
+public sealed record GateStage : IProcessNode
+{
+    /// <inheritdoc/>
+    public required string Id { get; init; }
+
+    /// <summary>The stage's name: unique among the gate's stages (MQ3001).</summary>
+    public required string Name { get; init; }
+
+    /// <summary>An optional display name (localizable).</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>The stage's signatures, in file order: the order the engine picks one in when a step names none.</summary>
+    public required IReadOnlyList<NamedSignature> Signatures { get; init; }
+
+    /// <summary>Markdown text, or a reference to a sidecar Markdown file (localizable).</summary>
+    public Description? Description { get; init; }
+}
+
+/// <summary>
+/// A signature an approval needs (signoff-design.md decision 3; part kind <c>named-signature</c>): who may give it and how many, whether it
+/// is needed, and who may not give it. It is complete when it has <see cref="Required"/> signatures and each required actor has signed.
+/// </summary>
+public sealed record NamedSignature : IProcessNode
+{
+    /// <inheritdoc/>
+    public required string Id { get; init; }
+
+    /// <summary>The signature's name: unique among the gate's signatures, across its stages (MQ3001).</summary>
+    public required string Name { get; init; }
+
+    /// <summary>An optional display name (localizable).</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>The actors whose members may give this signature.</summary>
+    [ElementRef(ElementKind.Actor)]
+    public required IReadOnlyList<string> Signers { get; init; }
+
+    /// <summary>The number of signatures needed.</summary>
+    public int Required { get; init; } = 1;
+
+    /// <summary>Actors each of which must give at least one of these signatures (a subset of <see cref="Signers"/>).</summary>
+    [ElementRef(ElementKind.Actor)]
+    public IReadOnlyList<string> RequiredActors { get; init; } = [];
+
+    /// <summary>Whether one person may count twice on this signature.</summary>
+    public bool AllowRepeatSigner { get; init; }
+
+    /// <summary>
+    /// Whether the signature is needed, judged when its round starts (signoff-design.md decision 7): only false means not needed.
+    /// <see langword="null"/> for always needed. Never on a gate policy's signature (MQ8202).
+    /// </summary>
+    public Expr? When { get; init; }
+
+    /// <summary>
+    /// Who may not give the signature (signoff-design.md decision 15): whoever did one of these verbs or moves since the object entered the
+    /// gated move's source state.
+    /// </summary>
+    public IReadOnlyList<NotByEntry> NotBy { get; init; } = [];
+
+    /// <summary>Why the signature is needed: Markdown text, or a reference to a sidecar Markdown file (localizable).</summary>
+    public Description? Description { get; init; }
+}
+
+/// <summary>An entry of a named signature's <c>notBy</c> (signoff-design.md decision 15): a verb, or a transition of the lifecycle.</summary>
+public sealed record NotByEntry
+{
+    /// <summary>A verb, by key; <see langword="null"/> when the entry names a transition.</summary>
+    [VerbKey]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Verb { get; init; }
+
+    /// <summary>A transition of the lifecycle; <see langword="null"/> when the entry names a verb.</summary>
+    [ElementRef(IndexKinds = ["transition"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Transition { get; init; }
+}
+
+/// <summary>What a signer answers an approval with (signoff-design.md decision 9): the built-in verb of the same key.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<SignatureResponse>))]
+public enum SignatureResponse
+{
+    /// <summary>A signature (<c>sign</c>), the default.</summary>
+    [JsonStringEnumMemberName("sign")] Sign,
+
+    /// <summary>A veto (<c>reject</c>): it fails the approval, clears its signatures and moves nothing.</summary>
+    [JsonStringEnumMemberName("reject")] Reject,
+
+    /// <summary>An abstention (<c>ignore</c>): it finishes the person on the signature and leaves the count.</summary>
+    [JsonStringEnumMemberName("ignore")] Ignore,
+
+    /// <summary>Taking back the person's latest signature (<c>withdraw</c>).</summary>
+    [JsonStringEnumMemberName("withdraw")] Withdraw,
 }
 
 /// <summary>What a signature on a gate means ("Reviewed as finance controller").</summary>
@@ -897,6 +1017,21 @@ public sealed record ScenarioStep : IProcessNode
     /// <summary>The signing person's identity, for gated events.</summary>
     public string? Signer { get; init; }
 
+    /// <summary>
+    /// How the step answers an approval on its event (signoff-design.md decision 25); a signature by default, which a trace's echo leaves out.
+    /// Another response only on an event step whose event is gated by an approval (MQ9305).
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public SignatureResponse Response { get; init; } = SignatureResponse.Sign;
+
+    /// <summary>
+    /// The approval's named signature the step answers (signoff-design.md decision 8); <see langword="null"/>, and left out of a trace's echo,
+    /// when the engine picks it.
+    /// </summary>
+    [ElementRef(IndexKinds = ["named-signature"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Signature { get; init; }
+
     /// <summary>The meaning of the signature.</summary>
     [ElementRef(IndexKinds = ["meaning"])]
     public string? Meaning { get; init; }
@@ -1016,4 +1151,12 @@ public sealed record StepExpectation
     [ElementRef(IndexKinds = ["process-trigger-point", "trigger-point"])]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? TriggerPoints { get; init; }
+
+    /// <summary>
+    /// The number of signatures counted after the step, by named signature id (signoff-design.md decision 27; MQ9311); only the listed
+    /// signatures are compared. <see langword="null"/> checks nothing.
+    /// </summary>
+    [ElementRef(IndexKinds = ["named-signature"])]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, int>? Signatures { get; init; }
 }

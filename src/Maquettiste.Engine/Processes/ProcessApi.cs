@@ -151,6 +151,13 @@ public sealed record EnabledTrigger(string Trigger, string? Event, string? Invok
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? ChecksUnknown { get; init; }
+
+    /// <summary>
+    /// The responses the trigger's event takes at an approval, in the order <c>sign</c>, <c>reject</c>, <c>ignore</c>, <c>withdraw</c>
+    /// (signoff-design.md decision 26); <see langword="null"/>, and left out of the JSON, when none.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<SignatureResponse>? Responses { get; init; }
 }
 
 /// <summary>A gate's progress.</summary>
@@ -173,14 +180,45 @@ public sealed record ScheduledTimer(string Transition, string DueAt);
 /// <param name="Actor">The actor signed as.</param>
 /// <param name="Meaning">The meaning id.</param>
 /// <param name="Reason">The reason.</param>
-public sealed record GateSignature(string Signer, string Actor, string? Meaning, string? Reason);
+public sealed record GateSignature(string Signer, string Actor, string? Meaning, string? Reason)
+{
+    /// <summary>
+    /// On an approval, the id of the named signature it counts for (signoff-design.md decision 26); <see langword="null"/>, and left out of
+    /// the JSON, on a gate without stages.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Signature { get; init; }
+}
 
 /// <summary>A gate of an active state.</summary>
 /// <param name="Gate">The gate id.</param>
 /// <param name="Transition">The gated transition.</param>
 /// <param name="Signatures">The signatures collected.</param>
 /// <param name="Satisfied">Whether the count and the required actors are covered.</param>
-public sealed record GateState(string Gate, string Transition, IReadOnlyList<GateSignature> Signatures, bool Satisfied);
+public sealed record GateState(string Gate, string Transition, IReadOnlyList<GateSignature> Signatures, bool Satisfied)
+{
+    /// <summary>
+    /// On an approval, its stages in file order, each with its signatures (signoff-design.md decision 26); <see langword="null"/>, and left
+    /// out of the JSON, on a gate without stages.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ApprovalStageState>? Stages { get; init; }
+}
+
+/// <summary>A stage of an approval in a simulation's gate state (signoff-design.md decision 26).</summary>
+/// <param name="Stage">The stage id.</param>
+/// <param name="Complete">Whether each of its signatures is complete or not needed.</param>
+/// <param name="Signatures">Its signatures, in file order.</param>
+public sealed record ApprovalStageState(string Stage, bool Complete, IReadOnlyList<ApprovalSignatureState> Signatures);
+
+/// <summary>A named signature of an approval in a simulation's gate state (signoff-design.md decision 26).</summary>
+/// <param name="Signature">The named signature id.</param>
+/// <param name="Needed">Whether it is needed: its <c>when</c> was not false when its round started.</param>
+/// <param name="Counted">The signatures counted for it.</param>
+/// <param name="Required">The signatures it needs.</param>
+/// <param name="Finished">The identities of the people who answered it (signed or ignored), in the order they first did.</param>
+/// <param name="Complete">Whether it has its count and each of its required actors signed.</param>
+public sealed record ApprovalSignatureState(string Signature, bool Needed, int Counted, int Required, IReadOnlyList<string> Finished, bool Complete);
 
 /// <summary>The response of <c>simulate</c> (phase-3-design.md section 4.4).</summary>
 /// <param name="ProcessHash">The hash of the process document simulated (the draft's when one was sent).</param>

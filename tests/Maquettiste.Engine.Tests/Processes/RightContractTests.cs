@@ -269,7 +269,8 @@ public sealed class RightContractTests
             """), json["rights"]), json["rights"]!.ToJsonString());
 
         // The engine's list of refusals, in the order the checks run: what expect.refusal may name.
-        Assert.Equal(["frozen", "actor", "right", "default", "no-transition", "guard", "gate-signer", "gate-repeat", "gate-reason", "check"], Refusals.All);
+        Assert.Equal(["frozen", "actor", "right", "default", "no-transition", "guard", "gate-signer", "gate-excluded", "gate-repeat", "gate-not-signed",
+            "gate-reason", "check"], Refusals.All);
         var schema = JsonNode.Parse(TestServices.Schemas.GetFileBytes("scenario.json").Span)!["$defs"]!["step"]!["properties"]!["expect"]!["properties"]!["refusal"]!["enum"]!;
         Assert.Equal(Refusals.All.Order(StringComparer.Ordinal), schema.AsArray().Select(n => n!.GetValue<string>()).Order(StringComparer.Ordinal));
     }

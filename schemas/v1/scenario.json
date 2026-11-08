@@ -374,6 +374,8 @@
         "participant",
         "actor",
         "signer",
+        "response",
+        "signature",
         "meaning",
         "reason",
         "payload",
@@ -424,6 +426,20 @@
         "signer": {
           "description": "The signing person's identity, for gated events; the participant's identity when absent.",
           "type": "string"
+        },
+        "response": {
+          "description": "How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count) or withdraw (takes back the person's latest signature). Only on an event step whose event is gated by an approval (MQ9305).",
+          "enum": [
+            "sign",
+            "reject",
+            "ignore",
+            "withdraw"
+          ],
+          "default": "sign"
+        },
+        "signature": {
+          "description": "The id of the approval's named signature the step answers; the engine picks one when absent. Only on an event step whose event is gated by an approval, and a signature of that gate (MQ9305).",
+          "$ref": "common.json#/$defs/id"
         },
         "meaning": {
           "$ref": "common.json#/$defs/id"
@@ -493,7 +509,8 @@
             "context",
             "values",
             "checkWarnings",
-            "triggerPoints"
+            "triggerPoints",
+            "signatures"
           ],
           "properties": {
             "accepted": {
@@ -508,7 +525,9 @@
                 "guard",
                 "actor",
                 "gate-signer",
+                "gate-excluded",
                 "gate-repeat",
+                "gate-not-signed",
                 "gate-reason",
                 "right",
                 "default",
@@ -555,6 +574,17 @@
             "triggerPoints": {
               "description": "The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked.",
               "$ref": "common.json#/$defs/idList"
+            },
+            "signatures": {
+              "description": "The number of signatures counted after the step, by id of a named signature of the approval the step answers (MQ9305). Only the listed signatures are compared (MQ9311).",
+              "type": "object",
+              "propertyNames": {
+                "$ref": "common.json#/$defs/id"
+              },
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
             }
           },
           "required": [],

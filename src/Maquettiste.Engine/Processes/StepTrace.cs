@@ -23,8 +23,20 @@ public static class Refusals
     /// <summary>The actor is not one of the gate's signers, or no signer identity was given.</summary>
     public const string GateSigner = "gate-signer";
 
-    /// <summary>The signer already signed and the gate does not allow a repeat signer.</summary>
+    /// <summary>
+    /// The person did a verb or a move the signature's <c>notBy</c> names, since the object entered the gated move's source state
+    /// (signoff-design.md decisions 14 and 15).
+    /// </summary>
+    public const string GateExcluded = "gate-excluded";
+
+    /// <summary>
+    /// The signer already signed and the gate does not allow a repeat signer; on an approval, an earlier answer on it blocks this response
+    /// (signoff-design.md decision 14).
+    /// </summary>
     public const string GateRepeat = "gate-repeat";
+
+    /// <summary>A withdraw finds no signature of the person's to take back (signoff-design.md decision 13).</summary>
+    public const string GateNotSigned = "gate-not-signed";
 
     /// <summary>The gate requires a reason and none was given.</summary>
     public const string GateReason = "gate-reason";
@@ -49,7 +61,8 @@ public static class Refusals
 
     /// <summary>Every refusal value, in the order the checks run, then the gate's own, then a trigger point's check: what
     /// <c>expect.refusal</c> may name.</summary>
-    public static IReadOnlyList<string> All { get; } = [Frozen, Actor, Right, Default, NoTransition, Guard, GateSigner, GateRepeat, GateReason, Check];
+    public static IReadOnlyList<string> All { get; } =
+        [Frozen, Actor, Right, Default, NoTransition, Guard, GateSigner, GateExcluded, GateRepeat, GateNotSigned, GateReason, Check];
 }
 
 /// <summary>What a trigger point did in a step (trigger-points-design.md decision 28).</summary>
@@ -163,6 +176,15 @@ public enum GateOutcome
 
     /// <summary>The source state was exited and the signatures were discarded (<c>discarded</c>).</summary>
     [JsonStringEnumMemberName("discarded")] Discarded,
+
+    /// <summary>A rejection failed the approval and cleared its signatures (<c>rejected</c>, signoff-design.md decision 10).</summary>
+    [JsonStringEnumMemberName("rejected")] Rejected,
+
+    /// <summary>A person abstained on a signature, leaving the count (<c>ignored</c>, signoff-design.md decision 12).</summary>
+    [JsonStringEnumMemberName("ignored")] Ignored,
+
+    /// <summary>A person took back their latest signature (<c>withdrawn</c>, signoff-design.md decision 13).</summary>
+    [JsonStringEnumMemberName("withdrawn")] Withdrawn,
 }
 
 /// <summary>One gate audit record (phase-3-design.md section 2.3).</summary>
@@ -180,7 +202,19 @@ public enum GateOutcome
 /// <param name="Attributes">The audit attribute values by attribute id.</param>
 public sealed record GateAuditRecord(
     string Instance, string Process, string Gate, string Transition, long Sequence, string? Signer, string? Actor, string? Meaning, string? Reason,
-    string At, GateOutcome Outcome, IReadOnlyDictionary<string, JsonElement> Attributes);
+    string At, GateOutcome Outcome, IReadOnlyDictionary<string, JsonElement> Attributes)
+{
+    /// <summary>
+    /// On an approval, the id of the named signature the record is about (signoff-design.md decision 19); <see langword="null"/>, and left
+    /// out of the JSON, on a gate without stages and for a record about the whole approval.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Signature { get; init; }
+
+    /// <summary>On an approval, the id of the stage of <see cref="Signature"/>; <see langword="null"/>, and left out of the JSON, when that is.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Stage { get; init; }
+}
 
 /// <summary>An action run in a microstep.</summary>
 /// <param name="Action">The action id.</param>

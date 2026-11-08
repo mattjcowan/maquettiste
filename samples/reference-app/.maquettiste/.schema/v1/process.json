@@ -964,10 +964,12 @@
         "id",
         "name",
         "displayName",
+        "stages",
         "required",
         "signers",
         "requiredActors",
         "allowRepeatSigner",
+        "allowSignerAcrossSignatures",
         "reasonRequired",
         "meanings",
         "auditAttributes",
@@ -985,29 +987,44 @@
         "displayName": {
           "type": "string"
         },
+        "stages": {
+          "description": "Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). One stage for now.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gateStage"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
         "required": {
-          "description": "The number of signatures needed.",
+          "description": "The number of signatures needed. A gate without stages only (MQ8201).",
           "type": "integer",
           "minimum": 1,
           "default": 1
         },
         "signers": {
-          "description": "The actors whose members may sign.",
+          "description": "The actors whose members may sign. Required on a gate without stages; never on one with stages (MQ8201).",
           "$ref": "common.json#/$defs/idList",
-          "minItems": 1
+          "minItems": 1,
+          "default": []
         },
         "requiredActors": {
-          "description": "Actors each of which must give at least one signature (a subset of signers).",
+          "description": "Actors each of which must give at least one signature (a subset of signers). A gate without stages only (MQ8201).",
           "$ref": "common.json#/$defs/idList",
           "default": []
         },
         "allowRepeatSigner": {
-          "description": "Whether one signer may count twice.",
+          "description": "Whether one signer may count twice. A gate without stages only (MQ8201).",
+          "type": "boolean",
+          "default": false
+        },
+        "allowSignerAcrossSignatures": {
+          "description": "With stages: whether one person may give more than one response that counts on the approval, across its signatures. Without it, a signature or an ignore is the person's one response. A gate with stages only (MQ8201).",
           "type": "boolean",
           "default": false
         },
         "reasonRequired": {
-          "description": "Whether each signature must carry a reason.",
+          "description": "Whether each signature, and with stages each response, must carry a reason.",
           "type": "boolean",
           "default": false
         },
@@ -1043,8 +1060,162 @@
       "required": [
         "id",
         "name",
-        "signers",
         "meanings"
+      ],
+      "if": {
+        "not": {
+          "required": [
+            "stages"
+          ]
+        }
+      },
+      "then": {
+        "required": [
+          "signers"
+        ]
+      },
+      "additionalProperties": false
+    },
+    "gateStage": {
+      "title": "Gate stage",
+      "description": "A stage of an approval (part kind gate-stage): named signatures only. A stage is complete when each of its signatures is complete or not needed.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "signatures",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "description": "Unique among the gate's stages (MQ3001).",
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "signatures": {
+          "description": "The stage's named signatures, in the order the engine picks them when a step names none.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/namedSignature"
+          },
+          "minItems": 1
+        },
+        "description": {
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "signatures"
+      ],
+      "additionalProperties": false
+    },
+    "namedSignature": {
+      "title": "Named signature",
+      "description": "A signature an approval needs (part kind named-signature): who may give it and how many, needed only when its condition holds, and not by whoever did a named verb or move since the object entered the gated move's source state. It is complete when it has required signatures and each required actor has signed.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "signers",
+        "required",
+        "requiredActors",
+        "allowRepeatSigner",
+        "when",
+        "notBy",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "description": "Unique among the signatures of the gate, across its stages (MQ3001).",
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "signers": {
+          "description": "The actors whose members may give this signature.",
+          "$ref": "common.json#/$defs/idList",
+          "minItems": 1
+        },
+        "required": {
+          "description": "The number of signatures needed.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "requiredActors": {
+          "description": "Actors each of which must give at least one of these signatures (a subset of signers).",
+          "$ref": "common.json#/$defs/idList",
+          "default": []
+        },
+        "allowRepeatSigner": {
+          "description": "Whether one person may count twice on this signature.",
+          "type": "boolean",
+          "default": false
+        },
+        "when": {
+          "description": "The signature is needed unless this is false; true or unknown means needed. Judged when its round starts: on entering the gated move's source state, after the entering move's actions and sets, and again after a rejection. It reads the object under subject, the process's context, in_state and now(), not current_actor() or a payload (MQ3102). Not on a gate policy's signature (MQ8202).",
+          "$ref": "common.json#/$defs/expr"
+        },
+        "notBy": {
+          "description": "Who may not give this signature: whoever did one of these verbs or moves since the object entered the gated move's source state, the entering move included. A gated move is done by everyone whose signature counted toward it. A gate policy names verbs only (MQ8202).",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/notBy"
+          },
+          "default": []
+        },
+        "description": {
+          "description": "Why the signature is needed.",
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "signers"
+      ],
+      "additionalProperties": false
+    },
+    "notBy": {
+      "title": "Not by",
+      "description": "An entry of a named signature's notBy: a verb (a move verb, a signature verb, complete, or a verb an event of the lifecycle names), or a transition of the lifecycle (MQ8202).",
+      "type": "object",
+      "x-order": [
+        "verb",
+        "transition"
+      ],
+      "properties": {
+        "verb": {
+          "$ref": "common.json#/$defs/verbRef"
+        },
+        "transition": {
+          "$ref": "common.json#/$defs/id"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "verb"
+          ]
+        },
+        {
+          "required": [
+            "transition"
+          ]
+        }
       ],
       "additionalProperties": false
     },
