@@ -704,6 +704,12 @@ public static class ProcessApi
         foreach (var t in ActiveTransitions(chart, interpreter).Where(t => t.Gate is not null && t.Trigger == TransitionTrigger.Event))
         {
             var gate = t.Gate!;
+            if (gate.UsesStages)
+            {
+                gates.Add(ApprovalState(t.Id, gate, interpreter.ApprovalAt(t.Id), membership));
+                continue;
+            }
+
             var signed = signatures.TryGetValue(t.Id, out var list) ? list : [];
             var satisfied = signed.Count >= Math.Max(1, gate.Required) && gate.RequiredActors.All(a => signed.Any(s => membership.Accepts(a, s.Actor)));
             gates.Add(new GateState(gate.Id, t.Id, [.. signed.Select(s => new GateSignature(s.Signer, s.Actor, s.Meaning, s.Reason))], satisfied));
@@ -712,6 +718,29 @@ public static class ProcessApi
         return new SimulationResult(processHash, [.. traces.Where(t => t.Index >= from)], interpreter.Configuration, interpreter.Context, enabled,
             [.. interpreter.Pending.Select(p => new PendingInvoke(p.Invoke, p.State))],
             [.. interpreter.Timers.Select(t => new ScheduledTimer(t.Transition, Iso(t.DueAt)))], gates, interpreter.IsFinal, traces[^1].Clock, diagnostics);
+    }
+
+    // An approval's gate state (signoff-design.md decision 26): the signatures counted in the order given, satisfied only when nothing is needed,
+    // and each stage with its signatures' needs and counts. One whose round hasn't started reads as needing every signature.
+    private static GateState ApprovalState(string transition, ProcessGate gate, ApprovalProgress? approval, ActorMembership membership)
+    {
+        var counted = approval?.Counted ?? [];
+        bool Needed(NamedSignature s) => approval?.Needed.Contains(s.Id) ?? true;
+        bool Complete(NamedSignature s)
+        {
+            var own = counted.Where(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal)).ToList();
+            return own.Count >= Math.Max(1, s.Required) && s.RequiredActors.All(a => own.Any(c => membership.Accepts(a, c.Actor)));
+        }
+
+        ApprovalSignatureState Of(NamedSignature s) => new(s.Id, Needed(s), counted.Count(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal)),
+            Math.Max(1, s.Required),
+            [.. (approval?.Answers ?? []).Where(a => string.Equals(a.Signature, s.Id, StringComparison.Ordinal)).Select(a => a.Person).Distinct(StringComparer.Ordinal)],
+            Complete(s));
+        return new GateState(gate.Id, transition, [.. counted.Select(c => new GateSignature(c.Signer, c.Actor, c.Meaning, c.Reason) { Signature = c.Signature })],
+            approval is { Waiting: true })
+        {
+            Stages = [.. gate.Stages!.Select(st => new ApprovalStageState(st.Id, st.Signatures.All(s => !Needed(s) || Complete(s)), [.. st.Signatures.Select(Of)]))],
+        };
     }
 
     /// <summary>Verifies scenarios of a process against the model.</summary>
@@ -825,6 +854,15 @@ public static class ProcessApi
             node["values"] = values;
         }
 
+        // The signatures counted after a step that answered an approval (signoff-design.md decision 27).
+        if (expect.Signatures is { Count: > 0 } signatures)
+        {
+            var counts = new JsonObject();
+            foreach (var (id, count) in signatures.OrderBy(p => p.Key, StringComparer.Ordinal))
+                counts[id] = count;
+            node["signatures"] = counts;
+        }
+
         // The checks that warned, and on request the trigger points that ran (trigger-points-design.md decision 28), each only when not empty.
         if (expect.CheckWarnings is { Count: > 0 } warned)
             node["checkWarnings"] = new JsonArray([.. warned.Select(id => (JsonNode?)JsonValue.Create(id))]);
@@ -832,6 +870,9 @@ public static class ProcessApi
             node["triggerPoints"] = new JsonArray([.. ran.Select(id => (JsonNode?)JsonValue.Create(id))]);
         return node;
     }
+
+    private static readonly IReadOnlyList<SignatureResponse> AllResponses =
+        [SignatureResponse.Sign, SignatureResponse.Reject, SignatureResponse.Ignore, SignatureResponse.Withdraw];
 
     private static string Iso(DateTimeOffset value) => value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'", CultureInfo.InvariantCulture);
 
@@ -894,7 +935,20 @@ public static class ProcessApi
                 continue;
             GateProgress? gate = null;
             IReadOnlyList<string> actors = ev.Actors;
-            if (candidates.FirstOrDefault(t => t.Gate is not null) is { } gated)
+            IReadOnlyList<SignatureResponse>? responses = null;
+            if (candidates.FirstOrDefault(t => t.Gate is not null) is { Gate.UsesStages: true } approvalMove)
+            {
+                // An approval (signoff-design.md decision 26): the round's needed signatures give the count and, when the event names no
+                // actors, the signers; it takes every response while something is needed, and only sign when nothing is.
+                var approval = interpreter.ApprovalAt(approvalMove.Id);
+                var open = approvalMove.Gate!.AllSignatures.Where(s => approval?.Needed.Contains(s.Id) ?? true).ToList();
+                gate = new GateProgress(open.Sum(s => approval?.Counted.Count(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal)) ?? 0),
+                    open.Sum(s => Math.Max(1, s.Required)));
+                if (actors.Count == 0)
+                    actors = [.. open.SelectMany(s => s.Signers).Distinct(StringComparer.Ordinal)];
+                responses = open.Count == 0 ? [SignatureResponse.Sign] : AllResponses;
+            }
+            else if (candidates.FirstOrDefault(t => t.Gate is not null) is { } gated)
             {
                 var have = signatures.TryGetValue(gated.Id, out var list) ? list.Count : 0;
                 gate = new GateProgress(have, Math.Max(1, gated.Gate!.Required));
@@ -905,6 +959,7 @@ public static class ProcessApi
             result.Add(new EnabledTrigger("event", ev.Id, null, [.. candidates.Select(t => t.Id)], WithMembers(actors), candidates.Any(Unknown), gate)
             {
                 ChecksUnknown = ChecksUnknown(candidates),
+                Responses = responses,
             });
         }
 

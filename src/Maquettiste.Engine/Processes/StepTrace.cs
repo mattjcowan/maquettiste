@@ -342,6 +342,21 @@ public sealed record StepTrace(
     [JsonIgnore]
     internal int? FrozenBy { get; init; }
 
+    /// <summary>
+    /// For an event step whose event is gated by an approval, the signatures counted after it on each such approval, by named signature id, 0
+    /// where the approval isn't open (signoff-design.md decision 27): what <c>expect.signatures</c> is compared with (MQ9311). Not part of the
+    /// trace's JSON.
+    /// </summary>
+    [JsonIgnore]
+    internal IReadOnlyDictionary<string, int>? SignatureCounts { get; init; }
+
+    /// <summary>
+    /// For an accepted step that answered an approval, the counts of <see cref="SignatureCounts"/> for that approval's signatures: what a
+    /// recording writes as <c>expect.signatures</c>. Not part of the trace's JSON.
+    /// </summary>
+    [JsonIgnore]
+    internal IReadOnlyDictionary<string, int>? AnsweredSignatures { get; init; }
+
     /// <summary>Whether a guard's result was missing (MQ9306): what followed in this input is not meaningful.</summary>
     public bool Incomplete => Guards.Any(g => g.Source == GuardSource.Missing) || Diagnostics.Any(d => d.Rule is "MQ9305" or "MQ9507");
 }

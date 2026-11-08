@@ -74,7 +74,10 @@ public sealed partial class StatechartInterpreter
         {
             if (_root.Chart.Transitions.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.Ordinal)) is not { } t)
                 continue;
-            foreach (var verb in new[] { t.Gate is not null ? "sign" : null, t.Gate is null || CouldComplete(_root, t, t.Gate) ? MoveVerb(t) : null })
+            // An open approval takes every response; one that needs nothing moves as a move without a gate (signoff-design.md decision 17).
+            var gate = t.Gate is { UsesStages: true } && !OpenApproval(_root, t) ? null : t.Gate;
+            IEnumerable<string?> verbs = gate is { UsesStages: true } ? [.. ResponseVerbs] : [gate is not null ? "sign" : null];
+            foreach (var verb in verbs.Append(gate is null || CouldComplete(_root, t, gate) ? MoveVerb(t) : null))
             {
                 if (verb is null)
                     continue;
@@ -132,14 +135,18 @@ public sealed partial class StatechartInterpreter
         _candidates.Remove(t);
         if (_options.Triggers is not { } triggers || inst.Parent is not null)
             return null;
-        var gate = external ? t.Gate : null;
+        // On an approval the response's verb runs where sign's run (signoff-design.md decision 17); one that needs nothing moves as a move
+        // without a gate.
+        var gate = external && !(t.Gate is { UsesStages: true } && !OpenApproval(inst, t)) ? t.Gate : null;
+        var response = gate is { UsesStages: true } ? _scope.Input!.Response : SignatureResponse.Sign;
         var verb = MoveVerb(t);
         if (verb is null && gate is null)
             return null;
         var notes = new List<string>();
         var source = SourceStates(t);
-        var signRun = gate is not null ? triggers.Run("sign", t.Id, source, null, null, notes) : null;
-        var moveRun = verb is not null && (gate is null || WouldComplete(inst, t, gate)) ? triggers.Run(verb, t.Id, source, null, null, notes) : null;
+        var signRun = gate is not null ? triggers.Run(VerbRules.ResponseKey(response), t.Id, source, null, null, notes) : null;
+        var moveRun = verb is not null && (gate is null || (response == SignatureResponse.Sign && WouldComplete(inst, t, gate)))
+            ? triggers.Run(verb, t.Id, source, null, null, notes) : null;
         foreach (var note in notes)
             Note(note);
         if ((signRun is null || signRun.IsEmpty) && (moveRun is null || moveRun.IsEmpty))
@@ -154,7 +161,7 @@ public sealed partial class StatechartInterpreter
             {
                 var input = _scope.Input!;
                 var (meaning, attributes) = AuditFields(input, gate);
-                Audit(inst, gate, t, input.Signer, input.Actor, meaning, input.Reason, GateOutcome.Refused, attributes);
+                Audit(inst, gate, t, input.Signer, input.Actor, meaning, input.Reason, GateOutcome.Refused, attributes, gate.UsesStages ? _picks.GetValueOrDefault(t) : null);
             }
 
             // Each refused automatic move is noted once per step, though RunToCompletion tries it again after every microstep.
@@ -167,14 +174,32 @@ public sealed partial class StatechartInterpreter
         return null;
     }
 
-    // Whether the next signature, by whoever signs, brings the gate to its count; who signs it may still leave a required actor missing.
-    private static bool CouldComplete(Instance inst, ChartTransition t, ProcessGate gate) =>
-        (inst.Signatures.TryGetValue(t.Id, out var existing) ? existing.Count : 0) + 1 >= Math.Max(1, gate.Required);
+    // Whether the next signature, by whoever signs, brings the gate to its count; who signs it may still leave a required actor missing. On an
+    // approval: at most one signature is missing across the round's needed signatures, or nothing is needed.
+    private bool CouldComplete(Instance inst, ChartTransition t, ProcessGate gate)
+    {
+        if (gate.UsesStages)
+        {
+            var approval = ApprovalOf(inst, t, gate);
+            return approval.Waiting || gate.AllSignatures.Where(s => approval.Needed.Contains(s.Id) && !Complete(s, approval.Counted))
+                .Sum(s => Math.Max(1, s.Required) - approval.Counted.Count(c => string.Equals(c.Signature, s.Id, StringComparison.Ordinal))) <= 1;
+        }
 
-    // Whether this occurrence would complete the gate, worked out without counting it, as Sign counts.
+        return (inst.Signatures.TryGetValue(t.Id, out var existing) ? existing.Count : 0) + 1 >= Math.Max(1, gate.Required);
+    }
+
+    // Whether this occurrence would complete the gate, worked out without counting it, as Sign counts. On an approval: a signature on the
+    // picked signature that completes the round.
     private bool WouldComplete(Instance inst, ChartTransition t, ProcessGate gate)
     {
         var input = _scope.Input!;
+        if (gate.UsesStages)
+        {
+            var approval = ApprovalOf(inst, t, gate);
+            return approval.Waiting || (input.Response == SignatureResponse.Sign && _picks.TryGetValue(t, out var picked)
+                && RoundDone(gate, approval, [.. approval.Counted, new CountedSignature(input.Signer!, input.Actor!, null, null, picked.Id)]));
+        }
+
         var signatures = inst.Signatures.TryGetValue(t.Id, out var existing) ? existing : [];
         return signatures.Count + 1 >= Math.Max(1, gate.Required)
             && gate.RequiredActors.All(a => signatures.Any(s => Accepts(a, s.Actor)) || Accepts(a, input.Actor!));
@@ -188,14 +213,14 @@ public sealed partial class StatechartInterpreter
     private bool Admit(Instance inst, ChartTransition t, ProcessGate gate)
     {
         if (!_candidates.TryGetValue(t, out var candidate))
-            return Sign(inst, t, gate);
+            return gate.UsesStages ? Respond(inst, t, gate) : Sign(inst, t, gate);
         if (candidate.Sign is { } sign)
         {
             List(sign, []);
             Write(sign, []);
         }
 
-        var complete = Sign(inst, t, gate);
+        var complete = gate.UsesStages ? Respond(inst, t, gate) : Sign(inst, t, gate);
         if (complete && candidate.Move is { } move)
             List(move, []);
         if (candidate.Sign is { } signed)

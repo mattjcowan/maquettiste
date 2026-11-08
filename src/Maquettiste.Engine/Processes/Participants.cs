@@ -31,9 +31,79 @@ internal sealed record ScenarioCast(IReadOnlyList<ScenarioObject> Objects, strin
 internal sealed record ActingChoice(string? Source, string? Name, IReadOnlyList<string> Actors, IReadOnlyList<ActingMove> Moves);
 
 /// <summary>One transition an event enables now.</summary>
-/// <param name="Gate">Its gate, or <see langword="null"/>.</param>
-/// <param name="Unsigned">The gate's required actors that no signature yet satisfies, in file order.</param>
-internal sealed record ActingMove(ProcessGate? Gate, IReadOnlyList<string> Unsigned);
+/// <param name="Gate">Its gate, or <see langword="null"/>; also <see langword="null"/> for an approval that needs nothing, which moves as without a gate.</param>
+/// <param name="Unsigned">The gate's required actors that no signature yet satisfies, in file order; empty on an approval.</param>
+internal sealed record ActingMove(ProcessGate? Gate, IReadOnlyList<string> Unsigned)
+{
+    /// <summary>On an approval with something needed, its round's needed signatures in file order (signoff-design.md decision 8); else <see langword="null"/>.</summary>
+    public IReadOnlyList<ActingSignature>? Signatures { get; init; }
+
+    /// <summary>On an approval, the id of the person's latest signature in the round, which a withdraw takes back.</summary>
+    public string? Latest { get; init; }
+}
+
+/// <summary>A needed signature of an approval's round, as the pick reads it for one person and one response (signoff-design.md decision 8).</summary>
+/// <param name="Signature">The named signature.</param>
+/// <param name="Complete">Whether it has its count and each of its required actors signed.</param>
+/// <param name="Unsigned">Its required actors that no signature counted on it yet satisfies, in file order.</param>
+/// <param name="Blocked">Whether rows 7c or 7d keep the person from giving the response on it.</param>
+internal sealed record ActingSignature(NamedSignature Signature, bool Complete, IReadOnlyList<string> Unsigned, bool Blocked);
+
+/// <summary>
+/// The rule that picks the named signature a response answers when the step names none (signoff-design.md decision 8), the same way every time.
+/// The engine's step and a participant's actor both use it, so the signature and the actor are picked together.
+/// </summary>
+internal static class ApprovalPick
+{
+    /// <summary>
+    /// Picks the signature: for <c>withdraw</c>, the person's latest signature in the round; for <c>reject</c>, the first needed signature whose
+    /// signers the person meets, complete or not; for <c>sign</c> and <c>ignore</c>, among the needed signatures not complete, the first the person
+    /// may fill (rows 7a, 7c and 7d) where they meet a required actor not yet signed, else the first they may fill, else the first whose signers
+    /// they meet, so that row 7 refuses on it. The refusal is <c>gate-not-signed</c> or <c>gate-signer</c> when nothing can be picked.
+    /// </summary>
+    /// <param name="response">The response.</param>
+    /// <param name="needed">The round's needed signatures, in file order.</param>
+    /// <param name="latest">The id of the person's latest signature in the round, or <see langword="null"/>.</param>
+    /// <param name="actorFor">The actor the person gives a signature as, or <see langword="null"/> when they meet none of its signers; and whether that actor is one of its required actors not yet signed.</param>
+    /// <returns>The signature and the actor, or the refusal.</returns>
+    public static (NamedSignature? Signature, string? Actor, string? Refusal) Choose(SignatureResponse response, IReadOnlyList<ActingSignature> needed, string? latest,
+        Func<ActingSignature, (string? Actor, bool Required)> actorFor)
+    {
+        ArgumentNullException.ThrowIfNull(needed);
+        ArgumentNullException.ThrowIfNull(actorFor);
+        if (response == SignatureResponse.Withdraw)
+        {
+            var mine = latest is null ? null : needed.FirstOrDefault(s => string.Equals(s.Signature.Id, latest, StringComparison.Ordinal));
+            return mine is null ? (null, null, Refusals.GateNotSigned) : (mine.Signature, actorFor(mine).Actor, null);
+        }
+
+        if (response == SignatureResponse.Reject)
+        {
+            foreach (var s in needed)
+            {
+                if (actorFor(s).Actor is { } actor)
+                    return (s.Signature, actor, null);
+            }
+
+            return (null, null, Refusals.GateSigner);
+        }
+
+        (NamedSignature Signature, string Actor)? fill = null, met = null;
+        foreach (var s in needed)
+        {
+            if (s.Complete || actorFor(s) is not { Actor: { } actor } found)
+                continue;
+            met ??= (s.Signature, actor);
+            if (s.Blocked)
+                continue;
+            if (found.Required)
+                return (s.Signature, actor, null);
+            fill ??= (s.Signature, actor);
+        }
+
+        return (fill ?? met) is { } picked ? (picked.Signature, picked.Actor, null) : (null, null, Refusals.GateSigner);
+    }
+}
 
 /// <summary>
 /// A scenario's participants (actors-design.md decisions 14 to 17): which actors a participant satisfies, the actor a step acts as by the
@@ -102,7 +172,23 @@ internal static class Participants
     /// <param name="step">The step.</param>
     /// <param name="choice">What the step can do now.</param>
     /// <returns>The actor id.</returns>
-    public static string? ActsAs(ModelSnapshot model, Process process, ScenarioCast cast, ScenarioStep step, ActingChoice choice)
+    public static string? ActsAs(ModelSnapshot model, Process process, ScenarioCast cast, ScenarioStep step, ActingChoice choice) =>
+        Pick(model, process, cast, step, choice).Actor;
+
+    /// <summary>
+    /// The actor a step acts as (<see cref="ActsAs"/>) and, on an approval, the named signature it answers, picked together (signoff-design.md
+    /// decision 8): the step's own signature, else the one the response's rule picks (<see cref="ApprovalPick"/>), each with the actor the
+    /// participant gives it as by the same rule a gate uses, within that signature's signers and required actors. An approval whose signatures
+    /// the participant can't give is passed over, as a gate is. The signature is <see langword="null"/> when the step names an actor or no
+    /// approval was picked; the step then picks inside, once.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process that runs.</param>
+    /// <param name="cast">The run's cast.</param>
+    /// <param name="step">The step.</param>
+    /// <param name="choice">What the step can do now.</param>
+    /// <returns>The actor id and the named signature id.</returns>
+    public static (string? Actor, string? Signature) Pick(ModelSnapshot model, Process process, ScenarioCast cast, ScenarioStep step, ActingChoice choice)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
@@ -110,28 +196,56 @@ internal static class Participants
         ArgumentNullException.ThrowIfNull(step);
         ArgumentNullException.ThrowIfNull(choice);
         if (step.Participant is null || step.Actor is not null)
-            return step.Actor;
+            return (step.Actor, null);
         if (cast.Participant(step.Participant) is not { } participant)
-            return null;
+            return (null, null);
         bool Satisfied(string id) => Satisfies(model, process, cast, participant, id);
         var membership = ActorMembership.Of(model);
+        // Decision 15 within a list of signers and its unsigned required actors: (a), else (b), else (c).
+        (string? Actor, bool Required) ActorFor(IReadOnlyList<string> listed, IReadOnlyList<string> unsigned)
+        {
+            if (unsigned.FirstOrDefault(Satisfied) is { } required)
+                return (required, true);
+            var signers = listed.Distinct(StringComparer.Ordinal).Where(Satisfied).ToList();
+            if (signers.Count == 0)
+                return (null, false);
+            if (choice.Actors.Count > 0 && signers.FirstOrDefault(s => choice.Actors.Any(a => membership.Accepts(a, s))) is { } accepted)
+                return (accepted, false);
+            return (signers[0], false);
+        }
+
         foreach (var move in choice.Moves)
         {
             if (move.Gate is not { } gate)
                 break;
-            if (move.Unsigned.FirstOrDefault(Satisfied) is { } required)
-                return required;
-            var signers = gate.Signers.Distinct(StringComparer.Ordinal).Where(Satisfied).ToList();
-            if (signers.Count == 0)
+            if (move.Signatures is { } needed)
+            {
+                (string? Actor, bool Required) For(ActingSignature s) => ActorFor(s.Signature.Signers, s.Unsigned);
+                NamedSignature? signature;
+                string? actor;
+                if (step.Signature is { } own && gate.AllSignatures.Any(s => string.Equals(s.Id, own, StringComparison.Ordinal)))
+                {
+                    var found = needed.FirstOrDefault(s => string.Equals(s.Signature.Id, own, StringComparison.Ordinal));
+                    (signature, actor) = found is null ? (null, null) : (found.Signature, For(found).Actor);
+                }
+                else
+                {
+                    var picked = ApprovalPick.Choose(step.Response, needed, move.Latest, For);
+                    (signature, actor) = (picked.Signature, picked.Actor);
+                }
+
+                if (signature is not null && actor is not null)
+                    return (actor, signature.Id);
                 continue;
-            if (choice.Actors.Count > 0 && signers.FirstOrDefault(s => choice.Actors.Any(a => membership.Accepts(a, s))) is { } accepted)
-                return accepted;
-            return signers[0];
+            }
+
+            if (ActorFor(gate.Signers, move.Unsigned).Actor is { } signer)
+                return (signer, null);
         }
 
         if (choice.Actors.Count == 0)
-            return participant.Actor;
-        return choice.Actors.Distinct(StringComparer.Ordinal).FirstOrDefault(Satisfied);
+            return (participant.Actor, null);
+        return (choice.Actors.Distinct(StringComparer.Ordinal).FirstOrDefault(Satisfied), null);
     }
 
     /// <summary>
@@ -156,13 +270,13 @@ internal static class Participants
             return interpreter.Step(step);
         // current_actor() reads the signer, else the participant's identity (object-effects-design.md decision 5).
         choice = interpreter.Acting(step, step.Signer ?? participant.IdentityText);
-        var actsAs = ActsAs(model, process, cast, step, choice);
+        var (actsAs, signature) = Pick(model, process, cast, step, choice);
         var effective = step with
         {
             Actor = actsAs,
             Signer = step.Signer ?? (step.Input == StepInput.Event ? participant.IdentityText : null),
         };
-        return interpreter.Step(effective, participant.IdentityText) with { ActsAs = actsAs };
+        return interpreter.Step(effective, participant.IdentityText, signature) with { ActsAs = actsAs };
     }
 
     /// <summary>
@@ -202,9 +316,12 @@ internal static class Participants
         ArgumentNullException.ThrowIfNull(participant);
         ArgumentNullException.ThrowIfNull(choice);
         var who = $"participant '{participant.Name}'";
-        if (refusal == Refusals.GateSigner && choice.Moves.Select(m => m.Gate).OfType<ProcessGate>().DistinctBy(g => g.Id).ToList() is { Count: > 0 } gates)
+        if (refusal == Refusals.GateSigner && choice.Moves.Where(m => m.Gate is not null).DistinctBy(m => m.Gate!.Id).ToList() is { Count: > 0 } gated)
         {
-            var lists = string.Join(" or ", gates.Select(g => $"the signers of gate '{g.Name}' ({Names(model, g.Signers.Distinct(StringComparer.Ordinal))})"));
+            // An approval's list is the signers of the signatures its round needs (signoff-design.md decision 8).
+            var lists = string.Join(" or ", gated.Select(m => m.Signatures is { } needed
+                ? $"the signers of approval '{m.Gate!.Name}' ({Names(model, needed.SelectMany(s => s.Signature.Signers).Distinct(StringComparer.Ordinal))})"
+                : $"the signers of gate '{m.Gate!.Name}' ({Names(model, m.Gate.Signers.Distinct(StringComparer.Ordinal))})"));
             return actsAs is null
                 ? $"{who} satisfies none of {lists}"
                 : $"{who} acts as '{Names(model, [actsAs])}', which is not one of {lists}";
