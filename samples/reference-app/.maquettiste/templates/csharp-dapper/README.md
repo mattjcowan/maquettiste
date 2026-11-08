@@ -605,6 +605,23 @@ anything below; a project without them gets the same bytes as before.
 - **Results.** `Refusals.Check` is the new refusal, and results gain `CheckWarnings`. A project that uses rights or trigger points
   writes `RefusedBy`.
 
+**Named trigger points, the bypass and the dry run** (part 2). They are written only when a named trigger point exists or a point is
+marked `noBypass`, so a project that uses part 1 alone keeps its bytes.
+
+- **Named trigger points.** Each package with named points gets `TriggerPoints/<Package>/TriggerPoints.g.cs`, the declarations of
+  `TriggerPoints`, `TriggerConditions` and `TriggerRecords` in the package's namespace, and the stubs in `TriggerPoints/<Package>/TriggerPoints.cs`
+  (in the `partialFolder`). Each method is written once, however many types its point covers. Every entity a named point covers with an
+  object, link or own verb gets a runner, `<Entity>Verbs`, also when no lifecycle governs it. Each runner, and each process's definition,
+  holds a private `NamedTriggerSteps` that runs the named points first at each moment, in the engine's order; their `entities` and
+  `exceptEntities` are tested on the object's type. A process asks only the points that cover its subject: one that covers only a type
+  derived from the subject isn't asked, since generated code can't tell the object's own type yet.
+- **The bypass.** A call to a runner may set `SkipOptional`. The runner honours it only when `ITriggerBypass.Allows` says yes, skips every
+  point not marked `noBypass`, and logs each skip through `ITriggerBypass.Skipped`. Your `Dispatch/TriggerBypass.cs` (written once) refuses
+  until you write it; each runner also takes another bypass.
+- **The dry run.** A call to a runner may set `DryRun`. The runner runs freezing, rights, before actions and checks, then stops: no records,
+  no effect, nothing in the outbox. Outside points are recorded in `TriggerPointOutcome.Recorded`, not called. Roll back your own
+  transaction after it too.
+
 ### Scenario tests
 
 With `testsFolder` set, each scenario becomes one xunit test: it starts the instance with the scenario's start context on a

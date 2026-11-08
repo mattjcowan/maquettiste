@@ -209,7 +209,9 @@ internal sealed partial class ResolveRun
             Rights = new RList<RRight>(_rightOrder, [RightKind]),
             RightsLifecycles = new RList<RProcess>(_rightsLifecycles, [RightsNaming.Key]),
             TriggerLifecycles = new RList<RProcess>(_triggerLifecycles, [TriggerNaming.Key]),
-            TriggerPoints = new RList<RTriggerPoint>(_namedTriggerPoints, [TriggerPointKind]),
+            // Empty, it keys on the trigger points naming key, which a template asking whether trigger points are used already holds, so a
+            // project without named trigger points gains no key; the first one changes that key's hash.
+            TriggerPoints = new RList<RTriggerPoint>(_namedTriggerPoints, _namedTriggerPoints.Count == 0 ? [TriggerNaming.Key] : [TriggerPointKind]),
             Freezing = RFreezing.Of(Model),
             Operations = new RList<ROperation>(_operationOrder, [OperationKind]),
             CustomElements = new RList<RCustom>(_customOrder, [CustomKind]),

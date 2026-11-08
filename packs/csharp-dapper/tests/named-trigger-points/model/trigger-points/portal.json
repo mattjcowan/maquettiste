@@ -1,0 +1,17 @@
+{
+  "$schema": "../../.schema/v1/trigger-point.json",
+  "kind": "trigger-point",
+  "id": "01JNT000000000000000000N07",
+  "name": "Portal",
+  "subjects": [
+    {
+      "entity": "01JNT000000000000000000E02"
+    }
+  ],
+  "type": "check",
+  "verbs": [
+    "promote"
+  ],
+  "outside": true,
+  "description": "The supplier portal accepts the document."
+}

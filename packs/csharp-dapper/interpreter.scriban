@@ -34,7 +34,10 @@ rights_ns = "global::" + base_ns + ".Processes"
 freezing = model.freezing.used
 # Whether the project uses trigger points (trigger-points-design.md decision 29): only then are the trigger points' rows of selection,
 # Refusals.Check, CheckWarnings, TriggerPoints and AfterCommit written. model.trigger_lifecycles keys only on the trigger points naming key.
-triggers = model.trigger_lifecycles.size > 0
+triggers = model.trigger_lifecycles.size > 0 || model.trigger_points.size > 0
+# Whether a named trigger point exists (decisions 33 and 34): only then does the chart take the named points that cover its subject, which
+# run before every lifecycle's at each moment.
+named = model.trigger_points.size > 0
 # Whether refusals name what refused (decision 28): in a project that uses rights or trigger points. With rights the ids come from the
 # rights' table, else from the chart's own.
 refusals = rights || triggers
@@ -448,10 +451,14 @@ public sealed class ChartDefinition
     /// <param name="triggerSteps">The step methods of the trigger points that run in the process: its lifecycle's own first, when it has points, then
     /// those of the other lifecycles that govern its object with points on a verb its events name, by name; none when no trigger point runs.</param>
 {{- end }}
+{{- if named }}
+    /// <param name="typeSteps">The step methods of the named trigger points that cover the process's subject, which run before every lifecycle's
+    /// at each moment (trigger-points-design.md decision 34); null when none does.</param>
+{{- end }}
     public ChartDefinition(string processId, string processName, StateDefinition[] states, TransitionDefinition[] transitions, EventDefinition[] events,
         ActionDefinition[] actions, InvokeDefinition[] invokes, GateDefinition[] gates, IReadOnlyDictionary<string, string>? actorIds = null{{ if rights }},
         {{ rights_ns }}.ProcessRights? rights = null{{ end }}{{ if triggers && !rights }}, IReadOnlyDictionary<string, string>? ids = null{{ end }}{{ if triggers }},
-        IReadOnlyList<{{ rights_ns }}.ITriggerPointSteps>? triggerSteps = null{{ end }})
+        IReadOnlyList<{{ rights_ns }}.ITriggerPointSteps>? triggerSteps = null{{ end }}{{ if named }}, {{ rights_ns }}.ITriggerPointSteps? typeSteps = null{{ end }})
     {
         _actorIds = actorIds ?? new Dictionary<string, string>(StringComparer.Ordinal);
 {{- if rights }}
@@ -462,6 +469,9 @@ public sealed class ChartDefinition
 {{- end }}
 {{- if triggers }}
         TriggerSteps = triggerSteps ?? [];
+{{- end }}
+{{- if named }}
+        TypeSteps = typeSteps;
 {{- end }}
         ArgumentNullException.ThrowIfNull(states);
         ArgumentNullException.ThrowIfNull(transitions);
@@ -542,6 +552,11 @@ public sealed class ChartDefinition
 
     /// <summary>The step methods of the trigger points that run in the process, its lifecycle's own first (trigger-points-design.md decisions 11 and 30).</summary>
     public IReadOnlyList<{{ rights_ns }}.ITriggerPointSteps> TriggerSteps { get; }
+{{- end }}
+{{- if named }}
+
+    /// <summary>The step methods of the named trigger points that cover the process's subject, which run first at each moment (trigger-points-design.md decision 34), or null.</summary>
+    public {{ rights_ns }}.ITriggerPointSteps? TypeSteps { get; }
 {{- end }}
 {{- if triggers && !rights }}
 
@@ -1643,6 +1658,13 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 
         // The lifecycle's own steps, which moves, signatures and tasks run (decision 11); null when it has no points.
         private {{ rights_ns }}.ITriggerPointSteps? Steps => _chart.TriggerSteps.FirstOrDefault(s => string.Equals(s.Lifecycle, _chart.ProcessName, StringComparison.Ordinal));
+{{- if named }}
+
+        // The steps a move's own verb, sign or complete runs (decisions 19 and 34): the named trigger points that cover the subject, then this
+        // lifecycle's, each only when it has points on the verb.
+        private List<{{ rights_ns }}.ITriggerPointSteps> Own(Verb verb) =>
+            [.. new[] { _chart.TypeSteps, Steps }.OfType<{{ rights_ns }}.ITriggerPointSteps>().Where(s => s.Speaks(verb))];
+{{- end }}
 
         // The verb a transition does: its event's, else its own (automatic moves). A move with no verb runs no trigger points.
         private Verb? VerbOf(TransitionDefinition t) => t.Trigger == TriggerKind.Event ? _chart.Event(t.Key)?.Verb : t.Verb;
@@ -1679,17 +1701,27 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             return inside.Count > 0 ? inside : [t.Source.Path];
         }
 
+{{- if named }}
+
+        // The steps whose points a verb runs (decisions 11 and 34), in run order: the named trigger points that cover the subject; this
+        // lifecycle; and for an object, link or own verb each other lifecycle with points on it that governs the object, by name. Only those
+        // with points on the verb are listed.
+        private List<{{ rights_ns }}.ITriggerPointSteps> Lifecycles(Verb verb, IReadOnlyDictionary<string, IReadOnlyList<string>> states) =>
+            [.. new[] { _chart.TypeSteps }.OfType<{{ rights_ns }}.ITriggerPointSteps>().Where(s => s.Speaks(verb)), .. _chart.TriggerSteps.Where(s => s.Speaks(verb)
+{{- else }}
+
         // The lifecycles whose points a verb runs (decision 11), in run order: this lifecycle; and for an object, link or own verb each other
         // lifecycle with points on it that governs the object, by name. Only those with points on the verb are listed.
         private List<{{ rights_ns }}.ITriggerPointSteps> Lifecycles(Verb verb, IReadOnlyDictionary<string, IReadOnlyList<string>> states) =>
             [.. _chart.TriggerSteps.Where(s => s.Speaks(verb)
+{{- end }}
                 && (string.Equals(s.Lifecycle, _chart.ProcessName, StringComparison.Ordinal) || (SpeaksOfObject(verb) && states.ContainsKey(s.Lifecycle))))];
 
         private {{ rights_ns }}.TriggerPointCall NewCall(Verb verb, IReadOnlyDictionary<string, IReadOnlyList<string>> states) => new()
         {
             Verb = verb,
             Lifecycle = _chart.ProcessName,
-            Entity = Steps?.Subject,
+            Entity = {{ named ? "(Steps ?? _chart.TypeSteps)?.Subject" : "Steps?.Subject" }},
             Instance = _snapshot.Instance,
             Envelope = _envelope,
             Held = {{ rights ? "Held" : "[]" }},
@@ -1704,7 +1736,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         public string? Checks(TransitionDefinition t)
         {
             _candidates.Remove(t);
-            if (_chart.TriggerSteps.Count == 0)
+            if (_chart.TriggerSteps.Count == 0{{ if named }} && _chart.TypeSteps is null{{ end }})
                 return null;
             var verb = VerbOf(t);
             var call = NewCall(verb ?? default, States(verb, SourceStates(t))) with { Entered = EnteredBy(t), Transition = t.Id };
@@ -1713,9 +1745,15 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             if (t.Gate is { } gate)
             {
 {{- if verb_keys["sign"] }}
+{{- if named }}
+                if (Own({{ verb_type }}.Sign) is { Count: > 0 } signing)
+                {
+                    candidate.Sign = Ready(signing, {{ verb_type }}.Sign, call with { Verb = {{ verb_type }}.Sign });
+{{- else }}
                 if (Steps is { } own && own.Speaks({{ verb_type }}.Sign))
                 {
                     candidate.Sign = Ready([own], {{ verb_type }}.Sign, call with { Verb = {{ verb_type }}.Sign });
+{{- end }}
                     if (!candidate.Sign.Passed)
                         return RefuseSignature(t, gate, candidate.Sign);
                 }
@@ -1786,8 +1824,13 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         // after-commit points are queued. On the completing occurrence the move's before actions and checks are listed with sign's.
         private bool Signed(TransitionDefinition t, GateDefinition gate)
         {
+{{- if named }}
+            if (!_candidates.TryGetValue(t, out var candidate))
+                return Sign(t, gate);
+{{- else }}
             if (Steps is not { } steps || !_candidates.TryGetValue(t, out var candidate))
                 return Sign(t, gate);
+{{- end }}
             ListRan(candidate.Sign, null);
             if (candidate.Move is not null)
             {
@@ -1799,7 +1842,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
             var complete = Sign(t, gate);
 {{- if verb_keys["sign"] }}
             if (candidate.Sign is not null)
-                Change([steps], {{ verb_type }}.Sign, [candidate.Call with { Verb = {{ verb_type }}.Sign }]);
+                Change({{ named ? ("Own(" + verb_type + ".Sign)") : "[steps]" }}, {{ verb_type }}.Sign, [candidate.Call with { Verb = {{ verb_type }}.Sign }]);
 {{- end }}
             return complete;
         }
@@ -1808,10 +1851,17 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         public {{ rights_ns }}.TriggerPointOutcome? TaskChecks()
         {
 {{- if verb_keys["complete"] }}
+{{- if named }}
+            if (Own({{ verb_type }}.Complete) is not { Count: > 0 } steps)
+                return null;
+            var call = NewCall({{ verb_type }}.Complete, States(null, Live()));
+            var outcome = Ready(steps, {{ verb_type }}.Complete, call);
+{{- else }}
             if (Steps is not { } steps || !steps.Speaks({{ verb_type }}.Complete))
                 return null;
             var call = NewCall({{ verb_type }}.Complete, States(null, Live()));
             var outcome = Ready([steps], {{ verb_type }}.Complete, call);
+{{- end }}
             _task = (outcome, call);
             return outcome;
 {{- else }}
@@ -1823,8 +1873,13 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
         // written, then its with-change points run and its after-commit points are queued. The transition's rows 10 to 12 follow in Microstep.
         public void Completed(IReadOnlyList<TransitionDefinition> selected)
         {
+{{- if named }}
+            if (_task is not { } task)
+                return;
+{{- else }}
             if (Steps is not { } steps || _task is not { } task)
                 return;
+{{- end }}
             ListRan(task.Outcome, null);
             foreach (var t in selected)
             {
@@ -1837,7 +1892,7 @@ public sealed class Statechart<TContext>(ChartDefinition chart, IStatechartBehav
 
             Write(task.Outcome, null);
 {{- if verb_keys["complete"] }}
-            Change([steps], {{ verb_type }}.Complete, [task.Call]);
+            Change({{ named ? ("Own(" + verb_type + ".Complete)") : "[steps]" }}, {{ verb_type }}.Complete, [task.Call]);
 {{- end }}
         }
 

@@ -22,15 +22,21 @@ func runner_of(step)
   if step.verb.group == "move" || step.verb.group == "signature" || step.verb.group == "task"
     ret null
   end
-  ret s.subject.entity.trigger_lifecycles.size > 0 ? s.subject.entity : null
+  ret has_runner(s.subject.entity) ? s.subject.entity : null
 end
-# The trigger point a step's assume word names (decision 26): this lifecycle's by name, another's by "Lifecycle.Name" or "LifecycleId.Name".
+# The trigger point a step's assume word names (decision 26): this lifecycle's by name, another's by "Lifecycle.Name" or "LifecycleId.Name";
+# a named one by its qualified name ("Package.Name", or the name in the root package), or by its id where that would clash.
 func assumed_point(key)
   for $l in model.trigger_lifecycles
     for $tp in $l.trigger_points
       if ($l.id == p.id && $tp.name == key) || ($l.name + "." + $tp.name) == key || ($l.id + "." + $tp.name) == key
         ret $tp
       end
+    end
+  end
+  for $tp in model.trigger_points
+    if $tp.id == key || ($tp.package ? ($tp.package.qualified_name + "." + $tp.name) : $tp.name) == key
+      ret $tp
     end
   end
   ret null
@@ -45,7 +51,13 @@ if triggers
       end
     end
   end
+  for $tp in model.trigger_points
+    if $tp.outside && $tp.timing != "after-commit"
+      stands_in = true
+    end
+  end
 end
+
 # The words a step assumes for outside team-code checks, as a dictionary initializer, which ScenarioTriggers answers.
 func outside_words(step)
   $out = []

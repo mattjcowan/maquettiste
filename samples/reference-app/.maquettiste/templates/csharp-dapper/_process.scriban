@@ -20,7 +20,103 @@ end
 # methods, the per-type runners, Refusals.Check, CheckWarnings and the refusal members written. model.trigger_lifecycles keys only on
 # the trigger points naming key, so a unit that asks pays nothing in a project without trigger points.
 func uses_triggers()
-  ret model.trigger_lifecycles.size > 0
+  ret model.trigger_lifecycles.size > 0 || model.trigger_points.size > 0
+end
+
+# Whether the project uses part 2 of trigger points (trigger-points-design.md decisions 20, 33 and 35): a named trigger point exists, or a
+# lifecycle's point is marked noBypass. Only then are ITriggerBypass, the team's TriggerBypass, SkipOptional, DryRun and the skip tests
+# written, so a project that uses part 1 alone keeps its output.
+func uses_bypass()
+  if model.trigger_points.size > 0
+    ret true
+  end
+  for $l in model.trigger_lifecycles
+    for $tp in $l.trigger_points
+      if $tp.no_bypass
+        ret true
+      end
+    end
+  end
+  ret false
+end
+
+# Whether an entity gets a per-type runner (trigger-points-design.md decisions 30 and 33): a lifecycle that governs it has points on
+# object, link or own verbs, or a named trigger point that covers it names one.
+func has_runner(e)
+  if e.trigger_lifecycles.size > 0
+    ret true
+  end
+  for $tp in e.trigger_points
+    for $v in $tp.verbs
+      if $v.group == "object" || $v.group == "link" || $v.group == "project"
+        ret true
+      end
+    end
+  end
+  ret false
+end
+
+# Whether an entity derives from another, through its bases.
+func derives_from(e, base)
+  $x = e.base
+  while $x
+    if $x.id == base.id
+      ret true
+    end
+    $x = $x.base
+  end
+  ret false
+end
+
+# The named trigger points a process runs (trigger-points-design.md decisions 33 and 34), in run order: with one entity subject, those
+# that cover it; otherwise those that cover every subject's entity (a stereotype subject's carriers too), in the order of the first. A
+# point that covers only an entity derived from a subject isn't asked: generated code can't tell the object's own type yet.
+func named_points_of(p)
+  if model.trigger_points.size == 0
+    ret []
+  end
+  $entities = []
+  for $sub in p.subjects
+    $entities[$entities.size] = $sub.entity
+  end
+  for $sub in p.stereotype_subjects
+    for $x in $sub.entities
+      $entities[$entities.size] = $x
+    end
+  end
+  $out = []
+  if $entities.size == 0
+    ret $out
+  end
+  for $tp in $entities[0].trigger_points
+    $all = true
+    for $x in $entities
+      $found = false
+      for $y in $x.trigger_points
+        if $y.id == $tp.id
+          $found = true
+        end
+      end
+      if !$found
+        $all = false
+      end
+    end
+    if $all
+      $out[$out.size] = $tp
+    end
+  end
+  ret $out
+end
+
+# The namespace-qualified classes of a named trigger point's team methods: TriggerPoints (the body), TriggerConditions (the when) and
+# TriggerRecords (a before action's records), in its package's namespace.
+func named_class(tp, suffix)
+  ret "global::" + ns(tp) + ".Trigger" + suffix
+end
+
+# The folder of a named trigger point's package under a base folder: <base>/TriggerPoints/<package path>.
+func named_folder(base, tp)
+  ret join_path base "TriggerPoints" (tp.package ? (tp.package.qualified_name | string.replace "." "/") : "")
 end
 
 # The other lifecycles whose trigger points a process's moves run (trigger-points-design.md decision 11): those that govern an entity the

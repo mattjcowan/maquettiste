@@ -1,0 +1,57 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JNT000000000000000000Q01",
+  "name": "Document",
+  "package": "01JNT000000000000000000P02",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JNT000000000000000000B01",
+      "entity": "01JNT000000000000000000E02"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JNT000000000000000000V01",
+      "name": "release",
+      "verb": "promote",
+      "actors": [
+        "01JNT000000000000000000K01"
+      ]
+    }
+  ],
+  "triggerPoints": [
+    {
+      "id": "01JNT000000000000000000X01",
+      "name": "Stamp",
+      "type": "action",
+      "timing": "with-change",
+      "verbs": [
+        "promote"
+      ],
+      "description": "Stamps the released document, after the named Stamp."
+    }
+  ],
+  "states": [
+    {
+      "id": "01JNT000000000000000000S01",
+      "name": "Draft"
+    },
+    {
+      "id": "01JNT000000000000000000S02",
+      "name": "Released"
+    }
+  ],
+  "initial": "01JNT000000000000000000S01",
+  "transitions": [
+    {
+      "id": "01JNT000000000000000000T01",
+      "source": "01JNT000000000000000000S01",
+      "event": "01JNT000000000000000000V01",
+      "targets": [
+        "01JNT000000000000000000S02"
+      ]
+    }
+  ]
+}

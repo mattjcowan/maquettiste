@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JNT000000000000000000C01",
+  "name": "Release",
+  "process": "01JNT000000000000000000Q01",
+  "objects": [
+    {
+      "id": "01JNT000000000000000000J01",
+      "name": "spec",
+      "entity": "01JNT000000000000000000E02",
+      "values": {
+        "01JNT000000000000000000A12": "Pump spec"
+      }
+    }
+  ],
+  "subject": "01JNT000000000000000000J01",
+  "participants": [
+    {
+      "id": "01JNT000000000000000000W01",
+      "name": "bea",
+      "holds": [
+        {
+          "id": "01JNT000000000000000000H01",
+          "actor": "01JNT000000000000000000K01"
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "id": "01JNT000000000000000000010",
+      "input": "verb",
+      "verb": "modify",
+      "participant": "01JNT000000000000000000W01",
+      "values": {
+        "01JNT000000000000000000A12": "Pump spec, rev 2"
+      },
+      "expect": {
+        "values": {
+          "01JNT000000000000000000A12": "Pump spec, rev 2"
+        }
+      }
+    },
+    {
+      "id": "01JNT000000000000000000011",
+      "event": "01JNT000000000000000000V01",
+      "participant": "01JNT000000000000000000W01",
+      "expect": {
+        "states": [
+          "01JNT000000000000000000S02"
+        ]
+      }
+    }
+  ]
+}

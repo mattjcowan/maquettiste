@@ -1,7 +1,9 @@
 {{-
 # The team's half of trigger points (unit trigger-points-companion, written once per file, trigger-points-design.md decision 30): for each
 # lifecycle with points, a stub per body, when and records method that throws until written; for each per-type runner, a stub per
-# StatesIn<Lifecycle> hook. A point added later is declared in the generated half and fails the build until its method is added here.
+# StatesIn<Lifecycle> hook; for each package with named trigger points, the same stubs in its namespace (decision 33); and, with part 2,
+# Dispatch/TriggerBypass.cs, which refuses (decision 35). A point added later is declared in the generated half and fails the build until
+# its method is added here.
 include "_csharp.scriban"
 include "_process.scriban"
 if uses_triggers()
@@ -97,6 +99,113 @@ public sealed partial class {{ type_name(e) }}Verbs
       file (join_path pack.params.partialFolder (package_folder e) (type_name(e) + "Verbs.cs")) content
 
     end
+  end
+  done = {}
+  for first in model.trigger_points
+    key = first.package ? first.package.id : ""
+    if !done[key]
+      done[key] = true
+      points = []
+      for tp in model.trigger_points
+        if (tp.package ? tp.package.id : "") == key
+          points[points.size] = tp
+        end
+      end
+      where = first.package ? ("package " + first.package.qualified_name) : "the root package"
+      capture content
+-}}
+using System;
+using System.Threading.Tasks;
+using {{ actors_ns() }};
+
+namespace {{ ns(first) }};
+
+// The hand-written half of the named trigger points of {{ where }}. Maquettiste wrote this file once and never touches it again. Each
+// method is written once however many types its point covers. Generated code can't read the object yet: load it from call.Key, or read
+// call.Old and call.New when the caller gives them; call.Entity says which type it is. A before action fills call.Proposed and writes
+// nothing; its records method writes those values once every check passes.
+public static partial class TriggerPoints
+{
+{{- for tp in points }}
+{{- if !for.first }}
+{{ end }}
+    // {{ tp.name }} ({{ tp.type }}{{ if tp.timing }}, {{ tp.timing }}{{ end }}){{ if tp.condition }}: {{ cs_line tp.condition.text }}{{ else if tp.sets.size > 0 }}: {{ sets_text(tp) }}{{ end }}
+{{- if tp.type == "check" }}
+    public static partial bool {{ member_name(tp.name, "TriggerPoints") }}(TriggerPointCall call) =>
+{{- else if tp.type == "action" && tp.timing == "after-commit" }}
+    public static partial Task {{ member_name(tp.name, "TriggerPoints") }}(TriggerPointCall call) =>
+{{- else }}
+    public static partial void {{ member_name(tp.name, "TriggerPoints") }}(TriggerPointCall call) =>
+{{- end }}
+        throw new NotImplementedException("Trigger point {{ tp.name }} of {{ where }} is not implemented yet.");
+{{- end }}
+}
+{{- whens = [] }}
+{{- for tp in points }}{{ if tp.when }}{{ whens[whens.size] = tp }}{{ end }}{{ end }}
+{{- if whens.size > 0 }}
+
+public static partial class TriggerConditions
+{
+{{- for tp in whens }}
+{{- if !for.first }}
+{{ end }}
+    // {{ tp.name }} runs when: {{ cs_line tp.when.text }}
+    public static partial bool {{ member_name(tp.name, "TriggerConditions") }}(TriggerPointCall call) =>
+        throw new NotImplementedException("The when of trigger point {{ tp.name }} of {{ where }} is not implemented yet.");
+{{- end }}
+}
+{{- end }}
+{{- befores = [] }}
+{{- for tp in points }}{{ if tp.type == "action" && tp.timing == "before" }}{{ befores[befores.size] = tp }}{{ end }}{{ end }}
+{{- if befores.size > 0 }}
+
+public static partial class TriggerRecords
+{
+{{- for tp in befores }}
+{{- if !for.first }}
+{{ end }}
+    // Writes what {{ tp.name }} filled in call.Proposed.
+    public static partial void {{ member_name(tp.name, "TriggerRecords") }}(TriggerPointCall call) =>
+        throw new NotImplementedException("The records of trigger point {{ tp.name }} of {{ where }} are not written yet.");
+{{- end }}
+}
+{{- end }}
+{{ end -}}
+{{-
+      file (join_path (named_folder(pack.params.partialFolder, first)) "TriggerPoints.cs") content
+    end
+  end
+  if uses_bypass()
+    capture content
+-}}
+using System;
+using {{ actors_ns() }};
+
+namespace {{ dispatch_ns() }};
+
+// Whether a bulk load may skip the trigger points not marked noBypass, and where each skip is logged. Maquettiste wrote this file once
+// and never touches it again. Who may bypass is your system's permission, as who is signed in is: answer from your own data. Each
+// per-type runner asks it when a call sets SkipOptional, and logs each point it skipped here.
+//
+// As written it refuses: no trigger point is skipped, and nothing is logged, until you write it.
+public sealed class TriggerBypass : ITriggerBypass
+{
+    /// <inheritdoc/>
+    public bool Allows(TriggerPointCall call)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        return false;
+    }
+
+    /// <inheritdoc/>
+    public void Skipped(TriggerPointCall call, string triggerPoint)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+    }
+}
+{{ end -}}
+{{-
+    file (join_path pack.params.partialFolder "Dispatch" "TriggerBypass.cs") content
   end
 end
 -}}

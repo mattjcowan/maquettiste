@@ -3,8 +3,11 @@
 # (priority order), events, actions, invokes, gates and meanings.
 include "_csharp.scriban"
 include "_process.scriban"
+include "_named.scriban"
 p = process
 name = p_name(p)
+# The named trigger points the process runs (trigger-points-design.md decisions 33 and 34), which its NamedTriggerSteps holds.
+named_points = named_points_of(p)
 # State indexes: 0 is the root, then document order.
 index = {}
 for s in p.all_states
@@ -97,10 +100,16 @@ end
 {{- if trigger_steps.size > 0 }},
         triggerSteps: [{{ trigger_steps | array.join ", " }}]
 {{- end }}
+{{- if named_points.size > 0 }},
+        typeSteps: new NamedTriggerSteps()
+{{- end }}
 {{- end -}}
 {{ header() }}
 using System;
 using System.Collections.Generic;
+{{- if named_points.size > 0 }}
+using System.Linq;
+{{- end }}
 using {{ runtime_ns() }};
 using {{ actors_ns() }};
 
@@ -228,4 +237,10 @@ public static partial class {{ name }}Definition
 {{- end }}
 {{- end }}
     }
+{{- if named_points.size > 0 }}
+{{- $subjects = [] }}
+{{- for sub in p.subjects }}{{ $subjects[$subjects.size] = sub.entity }}{{ end }}
+{{- for sub in p.stereotype_subjects }}{{ for x in sub.entities }}{{ $subjects[$subjects.size] = x }}{{ end }}{{ end }}
+{{- named_steps(named_points, p.subjects.size == 1 && p.stereotype_subjects.size == 0 ? type_of_entity(p.subjects[0].entity) : "null", $subjects, "the subject of " + p.name) }}
+{{- end }}
 }

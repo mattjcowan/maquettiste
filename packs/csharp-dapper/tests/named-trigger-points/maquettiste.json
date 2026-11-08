@@ -1,0 +1,12 @@
+{
+  "formatVersion": 1,
+  "name": "named-trigger-points",
+  "packs": {
+    "csharp-dapper": {
+      "output": "out",
+      "parameters": {
+        "testsFolder": "Tests"
+      }
+    }
+  }
+}

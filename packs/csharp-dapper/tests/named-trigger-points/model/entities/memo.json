@@ -1,0 +1,16 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JNT000000000000000000E03",
+  "name": "Memo",
+  "package": "01JNT000000000000000000P02",
+  "base": "01JNT000000000000000000E02",
+  "attributes": [
+    {
+      "id": "01JNT000000000000000000A21",
+      "name": "audience",
+      "type": "string",
+      "length": 100
+    }
+  ]
+}
