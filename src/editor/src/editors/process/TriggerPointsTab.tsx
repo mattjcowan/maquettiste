@@ -37,6 +37,7 @@ import {
 import { describeVerb, verbGroups } from "@/model/verbList";
 import { useVerbs } from "@/verbs/useVerbs";
 import { useObjectFields } from "../actor/useObjectFields";
+import { fieldOptionLabel } from "@/model/objectFields";
 import { ValueBox } from "../ValueBox";
 import { Grid, type GridColumn } from "./Grid";
 import { SetsDialog, useSetContext, type SetContext } from "./SetsEditor";
@@ -452,7 +453,7 @@ function WhereDialog({
     transitions,
     entities,
     attributes: fields.fields.filter((f) => f.kind === "attribute").map((f) => ({ value: f.id, label: f.name })),
-    ends: fields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: f.name })),
+    ends: fields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: fieldOptionLabel(f) })),
   };
   const keys = whereKeysFor(point.verbs ?? []);
   return (

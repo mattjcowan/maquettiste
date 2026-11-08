@@ -13,7 +13,7 @@ import { bindingDiagnostics } from "./lifecycleRules";
 import { verbDiagnostics, verbGlobalsOf, type VerbGlobals } from "./verbs";
 import { relativeUseDiagnostics } from "./relativeRules";
 import { approvalDiagnostics } from "./approvalRules";
-import { rightDiagnostics } from "./rightRules";
+import { rightDiagnostics, severalLinkDiagnostics } from "./rightRules";
 import { assumeKindDiagnostics, namedTriggerDiagnostics, triggerDiagnostics } from "./triggerRules";
 import { appliesToEntities, Coverage } from "./coverage";
 import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
@@ -387,6 +387,8 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   if (kind === "trigger-point" && ctx.all)
     namedTriggerDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
   // MQ2002 on a scenario's assume keys: a guard's key given a word, a trigger point's key given a boolean
+  if (kind === "scenario" && ctx.all)
+    severalLinkDiagnostics(json, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)), ctx.all);
   if (kind === "scenario" && ctx.all)
     assumeKindDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
   // MQ9601, MQ9602, MQ9603 and MQ9605: an actor's memberOf and relative and the one system actor (actorRules.ts)

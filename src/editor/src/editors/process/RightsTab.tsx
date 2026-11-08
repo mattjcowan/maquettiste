@@ -39,6 +39,7 @@ import {
 import { describeVerb, verbGroups } from "@/model/verbList";
 import { useVerbs } from "@/verbs/useVerbs";
 import { useObjectFields } from "../actor/useObjectFields";
+import { fieldOptionLabel } from "@/model/objectFields";
 import { Grid, type GridColumn } from "./Grid";
 import { useSetContext } from "./SetsEditor";
 import { rowProblems, useGridTargets, type ProcessContext } from "./shared";
@@ -77,7 +78,7 @@ export function RightsTab({ pc }: { pc: ProcessContext }) {
   const current = rows.find((r) => r.id === picked) ?? rows[0] ?? null;
   const actorOptions = pc.actors.map((a) => ({ id: a.id, name: a.name }));
   const verbOptions = verbGroups("right", verbs.own, verbs.hidden).flatMap((g) => g.options.map((o) => ({ value: o.key, label: o.label, group: g.label })));
-  const endOptions = objectFields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: f.name }));
+  const endOptions = objectFields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: fieldOptionLabel(f) }));
   const attributeOptions = objectFields.fields.filter((f) => f.kind === "attribute").map((f) => ({ value: f.id, label: f.name }));
   const names = (ids: string[]) => ids.map((a) => actorNames.get(a) ?? "").join(", ");
   const columns: GridColumn<RightRow>[] = [

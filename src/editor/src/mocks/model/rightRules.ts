@@ -9,6 +9,7 @@ import { gateSignerIds } from "@/model/approvals";
 import { commonFields, objectFields } from "@/model/objectFields";
 import { subjectsOf } from "@/model/process";
 import { ATTRIBUTE_VERBS, LINK_VERBS } from "@/model/rights";
+import { severalEnds } from "./endCover";
 import { fieldSourcesOf } from "./relativeRules";
 import type { ModelEntry } from "./validate";
 
@@ -231,6 +232,33 @@ export function rightDiagnostics(json: Json, all: () => Iterable<ModelEntry>, em
       tasks(s.states, `${base}/${i}/states`);
     });
   tasks(json.states, "/states");
+}
+
+/**
+ * MQ9305 on a scenario object's link through an end with several types: it fits when the target's entity is covered (several-types-design.md
+ * decision 18, section 8). Links through one-type ends keep today's checks, which don't look at the target.
+ */
+export function severalLinkDiagnostics(json: Json, emit: Emit, all: () => Iterable<ModelEntry>): void {
+  const id = str(json.id) ?? undefined;
+  const ends = severalEnds(all());
+  if (ends.size) {
+    const objects = new Map(arr(json.objects).map((o) => [str(o.id), o] as const));
+    const entityName = new Map([...all()].filter((e) => e.json.kind === "entity").map((e) => [e.id, String(e.json.name)] as const));
+    arr(json.objects).forEach((o, i) =>
+      arr(o.links).forEach((l, j) => {
+        const end = ends.get(String(l.end));
+        const target = objects.get(str(l.object));
+        if (!end || !target || end.covers(String(target.entity))) return;
+        emit(
+          "MQ9305",
+          "error",
+          `Object '${String(o.name)}' links to '${String(target.name)}' through end '${end.name}', which leads to ${end.leadsTo}, not to entity '${entityName.get(String(target.entity)) ?? String(target.entity)}'; link to an object of one of those, or through another end.`,
+          `/objects/${i}/links/${j}`,
+          id,
+        );
+      }),
+    );
+  }
 }
 
 /** MQ9305, part 2: `attributes` beside a verb other than `read`, and `frozen` on a link of an object other than the subject. */

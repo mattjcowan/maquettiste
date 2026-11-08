@@ -49,6 +49,18 @@ import {
 import { useDraftDocument } from "@/inspector/useDraft";
 import { EntityNode, type DisplayMode, type EntityFlowNode } from "@/canvas/EntityNode";
 import { RelationEdge, type Notation, type RelationFlowEdge } from "@/canvas/RelationEdge";
+import { TypesEdge, type TypesFlowEdge } from "@/canvas/TypesEdge";
+import { TypesNode, type TypesFlowNode } from "@/canvas/TypesNodes";
+import {
+  buildGraph,
+  hasSeveralTypesEnd,
+  notShown,
+  planSeveralTypes,
+  relationOfFlowId,
+  stereotypeCounter,
+  toggleLabel,
+  toggleMemberCollapsed,
+} from "@/canvas/severalTypes";
 import { MarkerDefs } from "@/canvas/markers";
 import { defaultLayoutEngine } from "@/canvas/layout";
 import { placeNodes, roundViewport, sameViewport, savedViewport } from "@/canvas/placement";
@@ -78,8 +90,11 @@ import { addToDiagram, createWithMember } from "./actions";
 import { NewEntityDialog, NewRelationDialog, type NewRelationInput } from "./dialogs";
 import { allOf, DOMAIN_VIEWS_LABEL, KIND_LABELS } from "@/model/labels";
 
-const nodeTypes = { entity: EntityNode };
-const edgeTypes = { relation: RelationEdge };
+const nodeTypes = { entity: EntityNode, types: TypesNode };
+const edgeTypes = { relation: RelationEdge, types: TypesEdge };
+
+type FlowNode = EntityFlowNode | TypesFlowNode;
+type FlowEdge = RelationFlowEdge | TypesFlowEdge;
 
 /** The Display menu's options, kept per browser for each view (PD18): attribute detail, cardinality notation, and
  * whether relations show their attributes in a box off the label, and whether the minimap shows (it covers the
@@ -120,7 +135,7 @@ function EntitiesCanvas() {
   const canvasSelection = shownSelection.current;
   const draftsState = useEditor(store, (s) => s.drafts);
   const { openDiagram, select } = useEditorNavigation();
-  const flow = useReactFlow<EntityFlowNode, RelationFlowEdge>();
+  const flow = useReactFlow<FlowNode, FlowEdge>();
   const nodesInitialized = useNodesInitialized();
 
   // A process's diagram is its statechart, shown by the process editor: the picker and the default pick leave it out.
@@ -258,6 +273,13 @@ function EntitiesCanvas() {
     [drafts, view],
   );
 
+  // A relation with an end of several types collapses its lines (a drawing choice saved with the diagram). A domain's canvas
+  // before it has a diagram keeps the choice in memory, and the diagram created on the first arrangement takes it.
+  const [collapsedMemory, setCollapsedMemory] = useState<{ key: string; ids: string[] }>({ key: "", ids: [] });
+  const toggleRef = useRef<(id: string) => void>(() => undefined);
+  const toggleRelation = useCallback((id: string) => toggleRef.current(id), []);
+  const [typesMenu, setTypesMenu] = useState<{ id: string; collapsed: boolean; x: number; y: number } | null>(null);
+
   const memberOf = useMemo(() => new Map(members.map((m) => [m.element, m])), [members]);
   const relations = useMemo(() => relationLookup(lookup.rows), [lookup]);
   const unplaced = needsLayout(view, entityIds, memberOf, pkgPositions);
@@ -320,6 +342,103 @@ function EntitiesCanvas() {
     },
     [select, store],
   );
+  const isCollapsed = useCallback(
+    (rid: string) => (view?.type === "package" ? collapsedMemory.key === viewKey && collapsedMemory.ids.includes(rid) : memberOf.get(rid)?.collapsed === true),
+    [view?.type, collapsedMemory, viewKey, memberOf],
+  );
+  // Relations with an end of several types: the node, boxes and lines each look needs (canvas/severalTypes.ts).
+  const severalTypes = useMemo(() => {
+    const outNodes: TypesFlowNode[] = [];
+    const outEdges: TypesFlowEdge[] = [];
+    const forks = new Set<string>();
+    const slots = new Map<string, number>();
+    for (const rid of relationIds) {
+      const doc = docs.byId.get(rid);
+      if (!doc) continue;
+      const relation = (draftsState[rid]?.json ?? doc.json) as unknown as RelationDoc;
+      if (!hasSeveralTypesEnd(relation)) continue;
+      const plan = planSeveralTypes(relation, {
+        onCanvas: (id) => positionOf.has(id),
+        nameOf,
+        stereotypeCount: stereotypeCounter(relation, lookup.byId.get(rid), (id) => lookup.byId.get(id)?.stereotypes),
+        collapsed: isCollapsed(rid),
+      });
+      if (!plan) continue;
+      const slot = slots.get(plan.nearEntity) ?? 0;
+      slots.set(plan.nearEntity, slot + 1);
+      const graph = buildGraph(plan, { positionOf, slot, hub: dragging[rid] ?? storedPosition(view, memberOf.get(rid), pkgPositions, rid) });
+      const hidden = notShown(plan);
+      const selected = canvasSelection.includes(rid);
+      for (const n of graph.nodes) {
+        if (n.kind === "fork") forks.add(n.id);
+        outNodes.push({
+          id: n.id,
+          type: "types" as const,
+          position: n.position,
+          measured: measured[n.id],
+          draggable: n.draggable,
+          selectable: n.kind !== "fork",
+          focusable: n.kind !== "fork",
+          selected,
+          ariaLabel: `${KIND_LABELS.relation} ${relation.name}`,
+          data: {
+            kind: n.kind,
+            relationId: rid,
+            relationName: relation.name,
+            ...(n.entry ? { entry: n.entry } : {}),
+            ...(n.entries ? { entries: n.entries } : {}),
+            ...(n.count !== undefined ? { count: n.count } : {}),
+            notShown: n.id === rid ? hidden : null,
+            canToggle: plan.canToggle,
+            collapsed: plan.collapsed,
+            onToggle: toggleRelation,
+          },
+        });
+      }
+      for (const e of graph.edges)
+        outEdges.push({
+          id: e.id,
+          type: "types" as const,
+          source: e.source,
+          target: e.target,
+          sourceHandle: e.sourceHandle,
+          targetHandle: e.targetHandle,
+          selected,
+          ariaLabel: `${KIND_LABELS.relation} ${relation.name}`,
+          data: {
+            relation,
+            notation: display.notation,
+            part: e.part,
+            endIndex: e.endIndex,
+            labelled: e.labelled,
+            canToggle: plan.canToggle,
+            collapsed: plan.collapsed,
+            onToggle: toggleRelation,
+            onSelect: selectRelation,
+          },
+        });
+    }
+    return { nodes: outNodes, edges: outEdges, forks };
+  }, [
+    relationIds,
+    docs.byId,
+    draftsState,
+    positionOf,
+    nameOf,
+    lookup,
+    isCollapsed,
+    dragging,
+    view,
+    memberOf,
+    pkgPositions,
+    canvasSelection,
+    measured,
+    display.notation,
+    toggleRelation,
+    selectRelation,
+  ]);
+  const allNodes: FlowNode[] = useMemo(() => [...nodes, ...severalTypes.nodes], [nodes, severalTypes.nodes]);
+
   const edges: RelationFlowEdge[] = useMemo(
     () =>
       relationIds
@@ -342,6 +461,8 @@ function EntitiesCanvas() {
     [relationIds, docs.byId, draftsState, positionOf, canvasSelection, display.notation, attributeBox, selectRelation],
   );
 
+  const allEdges: FlowEdge[] = useMemo(() => [...edges, ...severalTypes.edges], [edges, severalTypes.edges]);
+
   // The first arrangement of a domain's canvas (a drag, Auto-layout, a pan or zoom) creates the domain's diagram, with
   // the entities where they are drawn, as one undoable step, and opens it; mere viewing creates nothing.
   const creatingDomain = useRef<string | null>(null);
@@ -349,7 +470,7 @@ function EntitiesCanvas() {
     creatingDomain.current = null;
   }, [viewKey]);
   const createDomainDiagram = useCallback(
-    async (packageId: string, positions: StoredPositions, viewport: Viewport | null) => {
+    async (packageId: string, positions: StoredPositions, viewport: Viewport | null, collapsed?: readonly string[]) => {
       if (creatingDomain.current === packageId) return;
       creatingDomain.current = packageId;
       const pkg = (await queryClient.fetchQuery(elementQuery(packageId))).json as unknown as PackageDoc;
@@ -359,6 +480,7 @@ function EntitiesCanvas() {
         rows: lookup.rows,
         positions,
         viewport: viewport ? roundViewport(viewport) : null,
+        ...(collapsed?.length ? { collapsed } : {}),
       }) as unknown as ModelJson;
       const result = await endpoints.createElement(json);
       if (result.outcome !== "saved") {
@@ -406,6 +528,21 @@ function EntitiesCanvas() {
     [drafts, view, flow, createDomainDiagram, setPkgPositions],
   );
 
+  // The toggle on a relation's label or node, and in its context menu: it saves the diagram member's `collapsed` through the
+  // diagram's draft, and never touches the relation.
+  toggleRef.current = (id: string) => {
+    if (!view) return;
+    if (view.type === "diagram") {
+      drafts.edit(view.id, (json) => void toggleMemberCollapsed(json as unknown as DiagramDoc, id));
+      return;
+    }
+    const ids = collapsedMemory.key === viewKey ? collapsedMemory.ids : [];
+    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+    setCollapsedMemory({ key: viewKey, ids: next });
+    // Arranging a domain's canvas creates its diagram; the choice goes into it.
+    void createDomainDiagram(view.id, Object.fromEntries(flow.getNodes().map((n) => [n.id, n.position])), flow.getViewport(), next);
+  };
+
   // ------------------------------------------------------------------ pan and zoom
   // The viewport is saved in the diagram (x, y, zoom to three decimals) on the end of a pan or zoom, 300 ms after the
   // last; opening a diagram restores it, and fits the view only when none is saved. The canvas's own moves (restoring,
@@ -448,15 +585,19 @@ function EntitiesCanvas() {
   // `select` changes on nodes and edges; they update the store's selection (and so the inspector).
   const applySelection = useCallback(
     (changes: readonly { type: string; id?: string; selected?: boolean }[]) => {
-      const next = applySelectChanges(store.getState().selection, changes);
+      // The lines and boxes of a relation with several types stand for the relation: selecting one selects it.
+      const next = applySelectChanges(
+        store.getState().selection,
+        changes.map((c) => (c.id ? { ...c, id: relationOfFlowId(c.id) } : c)),
+      );
       if (next) select(next);
     },
     [select, store],
   );
-  const onEdgesChange = useCallback((changes: EdgeChange<RelationFlowEdge>[]) => applySelection(changes), [applySelection]);
+  const onEdgesChange = useCallback((changes: EdgeChange<FlowEdge>[]) => applySelection(changes), [applySelection]);
 
   const onNodesChange = useCallback(
-    (changes: NodeChange<EntityFlowNode>[]) => {
+    (changes: NodeChange<FlowNode>[]) => {
       const sizes = measuredSizes(changes);
       if (sizes) setMeasured((prev) => ({ ...prev, ...sizes }));
       applySelection(changes);
@@ -493,6 +634,8 @@ function EntitiesCanvas() {
         const input = layoutInput(flow.getNodes(), flow.getEdges());
         const started = performance.now();
         const positions = Object.fromEntries(await defaultLayoutEngine().layout(input.nodes, input.edges));
+        // The fork of bundled lines is placed by the cards, never saved.
+        for (const id of severalTypes.forks) delete positions[id];
         setLayoutMs(Math.round(performance.now() - started));
         restoredFor.current = viewKey;
         if (view.type === "package" && explicit) {
@@ -509,7 +652,7 @@ function EntitiesCanvas() {
         setLayingOut(false);
       }
     },
-    [view, viewKey, flow, commitPositions, drafts, createDomainDiagram, setPkgPositions],
+    [view, viewKey, flow, commitPositions, drafts, createDomainDiagram, setPkgPositions, severalTypes.forks],
   );
 
   useEffect(() => {
@@ -910,13 +1053,26 @@ function EntitiesCanvas() {
       >
         <MarkerDefs />
         {docs.pending && !nodes.length ? <EmptyState title="Loading the diagram…" /> : null}
-        <ReactFlow<EntityFlowNode, RelationFlowEdge>
-          nodes={nodes}
-          edges={edges}
+        <ReactFlow<FlowNode, FlowEdge>
+          nodes={allNodes}
+          edges={allEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onEdgeContextMenu={(e, edge) => {
+            const data = edge.data as { canToggle?: boolean; collapsed?: boolean; relation?: RelationDoc } | undefined;
+            if (edge.type !== "types" || !data?.canToggle || !data.relation) return;
+            e.preventDefault();
+            setTypesMenu({ id: data.relation.id, collapsed: data.collapsed === true, x: e.clientX, y: e.clientY });
+          }}
+          onNodeContextMenu={(e, node) => {
+            if (node.type !== "types") return;
+            const data = node.data as { canToggle?: boolean; collapsed?: boolean; relationId?: string };
+            if (!data.canToggle || !data.relationId) return;
+            e.preventDefault();
+            setTypesMenu({ id: data.relationId, collapsed: data.collapsed === true, x: e.clientX, y: e.clientY });
+          }}
           onPaneClick={() => select([])}
           onConnect={(c: Connection) => c.source && c.target && setConnecting({ source: c.source, target: c.target })}
           onMoveEnd={onMoveEnd}
@@ -940,6 +1096,25 @@ function EntitiesCanvas() {
           ) : null}
         </ReactFlow>
       </div>
+      <DropdownMenu open={!!typesMenu} onOpenChange={(open) => !open && setTypesMenu(null)} modal={false}>
+        <DropdownMenuTrigger asChild>
+          <span aria-hidden className="pointer-events-none fixed size-0" style={{ left: typesMenu?.x ?? 0, top: typesMenu?.y ?? 0 }} />
+        </DropdownMenuTrigger>
+        {typesMenu ? (
+          <DropdownMenuContent align="start" aria-label="Relationship lines" data-testid="relation-lines-menu">
+            <DropdownMenuItem
+              title={toggleLabel(typesMenu.collapsed)}
+              onSelect={() => {
+                toggleRelation(typesMenu.id);
+                setTypesMenu(null);
+              }}
+              data-testid="relation-lines-menu-toggle"
+            >
+              {toggleLabel(typesMenu.collapsed)}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        ) : null}
+      </DropdownMenu>
       <NewEntityDialog
         key={newEntityOpen ? `open:${newEntityDomain ?? ""}` : "closed"}
         open={newEntityOpen}

@@ -63,10 +63,13 @@ export function newDomainDiagram(input: {
   rows: readonly Row[];
   positions: Readonly<Record<string, Point>>;
   viewport?: { x: number; y: number; zoom: number } | null;
+  /** The relations whose lines the person collapsed before the diagram existed (relations with an end of several types). */
+  collapsed?: readonly string[];
 }): DiagramDoc {
   const members = (syncDomainMembers([], input.rows, input.domain.id) ?? []).map((m) => {
     const p = input.positions[m.element];
-    return p ? { element: m.element, x: Math.round(p.x), y: Math.round(p.y) } : m;
+    const out: DiagramMember = p ? { element: m.element, x: Math.round(p.x), y: Math.round(p.y) } : m;
+    return input.collapsed?.includes(m.element) ? { ...out, collapsed: true } : out;
   });
   return {
     kind: "diagram",

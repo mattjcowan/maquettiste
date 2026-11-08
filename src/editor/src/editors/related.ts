@@ -22,6 +22,8 @@ interface RelatedState {
   byId: Map<string, Row>;
   links: Map<string, Set<string>>;
   results: Map<string, RelatedRows>;
+  /** The relations with an end written `anyEntity`: every entity is at that end, so each entity's list holds them (no direct target holds the link). */
+  any: Set<string>;
 }
 
 const states = new WeakMap<readonly ElementSummary[], RelatedState | null>();
@@ -36,7 +38,15 @@ function targetsOf(r: Row): string[] {
   return out;
 }
 
+const hasAnyEnd = (r: Row): boolean => r.kind === "relation" && !!r.ends?.some((e) => e.anyEntity === true);
+
 function link(state: RelatedState, r: Row, on: boolean, affected?: Set<string>) {
+  if (hasAnyEnd(r)) {
+    if (on) state.any.add(r.id);
+    else state.any.delete(r.id);
+    // Every entity's answer changes, not one target's.
+    state.results.clear();
+  }
   for (const t of targetsOf(r)) {
     affected?.add(t);
     let set = state.links.get(t);
@@ -75,7 +85,7 @@ function stateOf(rows: readonly ElementSummary[]): RelatedState {
     }
     for (const id of affected) state.results.delete(id);
   } else {
-    state = { byId: new Map(), links: new Map(), results: new Map() };
+    state = { byId: new Map(), links: new Map(), results: new Map(), any: new Set() };
     for (const r of rows as readonly Row[]) {
       state.byId.set(r.id, r);
       link(state, r, true);
@@ -101,6 +111,12 @@ export function relatedOf(rows: readonly ElementSummary[] | undefined, id: strin
     else if ((r.kind as string) === "seed" && r.target === id) out.seeds.push(r);
     if (r.base === id) out.derived.push(r);
   }
+  // An any-entity relation is in every entity's list (not in a stereotype's or a relation's), read as "any entity".
+  if (state.byId.get(id)?.kind === "entity")
+    for (const rowId of state.any) {
+      const r = state.byId.get(rowId);
+      if (r && !out.relations.includes(r)) out.relations.push(r);
+    }
   for (const list of Object.values(out)) (list as ElementSummary[]).sort(byName);
   state.results.set(id, out);
   return out;

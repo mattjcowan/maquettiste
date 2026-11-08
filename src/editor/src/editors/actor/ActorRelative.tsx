@@ -8,7 +8,16 @@ import { SectionTitle } from "@/components/ui/misc";
 import { memberOfChoices, type ActorRow } from "@/model/actors";
 import { indexLookup } from "@/model/index";
 import { ACTOR_RELATIVE_LABELS as L } from "@/model/labels";
-import { canNamePerson, objectFields, relativeForms, relativeMeaning, spaced, type RelativeDoc, type RelativeForm } from "@/model/objectFields";
+import {
+  canNamePerson,
+  fieldOptionLabel,
+  objectFields,
+  relativeForms,
+  relativeMeaning,
+  spaced,
+  type RelativeDoc,
+  type RelativeForm,
+} from "@/model/objectFields";
 import type { EditorContext } from "../EditorFrame";
 import { useObjectFields } from "./useObjectFields";
 
@@ -37,7 +46,17 @@ function PathPicker({
   useEffect(() => onNames(Object.fromEntries(fields.map((f) => [f.id, f.name]))), [fields, onNames]);
   const options = fields.filter((f) => (finish === "end" ? f.kind === "end" && !f.many : canNamePerson(f)));
   const chosen = fields.find((f) => f.id === value[0]);
-  const next = chosen?.kind === "end" && !chosen.many && chosen.target ? chosen.target : undefined;
+  // An end with several types goes on through what every type it covers has by id (nothing for any entity or a stereotype nothing carries).
+  const next =
+    chosen?.kind === "end" && !chosen.many
+      ? chosen.target
+        ? [chosen.target]
+        : chosen.anyEntity
+          ? undefined
+          : chosen.targets?.length
+            ? chosen.targets
+            : undefined
+      : undefined;
   return (
     <>
       <Select
@@ -51,13 +70,13 @@ function PathPicker({
         {value[0] && !options.some((f) => f.id === value[0]) ? <option value={value[0]}>{value[0]}</option> : null}
         {options.map((f) => (
           <option key={f.id} value={f.id}>
-            {f.kind === "end" ? `${f.name} →` : f.name}
+            {f.kind === "end" ? `${fieldOptionLabel(f)} →` : f.name}
           </option>
         ))}
       </Select>
       {next && value[0] ? (
         <PathPicker
-          entities={[next]}
+          entities={next}
           value={value.slice(1)}
           finish={finish}
           onChange={(rest) => onChange([value[0], ...rest])}
@@ -88,7 +107,8 @@ function PathNames({ entities, path, onNames }: { entities: string[]; path: stri
   const { fields } = useObjectFields(entities);
   useEffect(() => onNames(Object.fromEntries(fields.map((f) => [f.id, f.name]))), [fields, onNames]);
   const step = fields.find((f) => f.id === path[0]);
-  return step?.kind === "end" && step.target && path.length > 1 ? <PathNames entities={[step.target]} path={path.slice(1)} onNames={onNames} /> : null;
+  const next = step?.target ? [step.target] : step?.anyEntity ? undefined : step?.targets?.length ? step.targets : undefined;
+  return step?.kind === "end" && next && path.length > 1 ? <PathNames entities={next} path={path.slice(1)} onNames={onNames} /> : null;
 }
 
 /**
