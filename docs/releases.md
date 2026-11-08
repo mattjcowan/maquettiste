@@ -38,7 +38,7 @@ one.
   - pass `Reauthenticated` once you have checked the password.
 
   The pack's README has the steps.
-- **New names. Settled by the design (section 14 and decisions 32 to 36):** a stage's `round` and `when`; a signature's `delegateTo`,
+- **New names. Settled by the design (section 14 and decisions 32 to 36), and confirmed by the owner:** a stage's `round` and `when`; a signature's `delegateTo`,
   `remindAfter`, `escalateAfter`, `escalateTo` and `reauthenticate`; a step's `delegateTo` and `onBehalfOf`; the response `delegate`;
   `expect.notices` with the kinds `remind` and `escalate`; the audit outcome `delegated` and the audit record's `onBehalfOf`; the gate
   state's `round` and `skipped`; the trace's `notices`; the rules MQ8203 to MQ8205. In `csharp-dapper`: `SignatureResponse.Delegate`,
