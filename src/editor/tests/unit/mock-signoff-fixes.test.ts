@@ -56,6 +56,15 @@ describe("signing again on a complete signature", () => {
     const r = simulate(d, null, [submit, sign("Ann"), sign("Ann")], options);
     expect(last(r)).toMatchObject({ accepted: false, refusal: "gate-repeat" });
   });
+
+  it("refuses an ignore gate-signer when the only signature the person meets is complete", () => {
+    const d = doc([sig("fin", ["FinRole"]), sig("mgr", ["MgrRole"])]);
+    const r = simulate(d, null, [submit, sign("Ann"), sign("Ann", { response: "ignore" })], options);
+    expect(last(r)).toMatchObject({ accepted: false, refusal: "gate-signer" });
+    // Another finance person who hasn't answered is refused the same way, not recorded as an ignore on the complete signature.
+    const other = simulate(d, null, [submit, sign("Ann"), { event: "approve", actor: "FinRole", signer: "fay", response: "ignore" }], options);
+    expect(last(other)).toMatchObject({ accepted: false, refusal: "gate-signer" });
+  });
 });
 
 describe("an approval that needs nothing", () => {

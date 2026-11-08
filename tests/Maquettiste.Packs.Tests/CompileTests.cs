@@ -1156,6 +1156,15 @@ public sealed class CompileTests
                 Assert.Equal("01JAD0000000000000000000N2", again.Audit.Single().Signature);
                 var named = machine.Approve(again.Snapshot, new ReleaseApproveCommand(new ProcessEnvelope("r4", Actors.QualityLead, "quinn") { Signature = "Quality" }));
                 Assert.Equal(Refusals.GateRepeat, named.Refusal);
+
+                // An ignore has nothing left to answer on a complete signature: with no open one the person meets, it is refused as no signer.
+                var ignored = machine.Approve(named.Snapshot, new ReleaseApproveCommand(new ProcessEnvelope("r4", Actors.QualityLead, "quinn") { Response = SignatureResponse.Ignore }));
+                Assert.Equal(Refusals.GateSigner, ignored.Refusal);
+                Assert.DoesNotContain(ignored.Audit, a => a.Outcome == GateOutcome.Ignored);
+                Assert.Single(ignored.Snapshot.Approvals[Approve].Signed);
+                var other = machine.Approve(ignored.Snapshot, new ReleaseApproveCommand(new ProcessEnvelope("r4", Actors.QualityLead, "quentin") { Response = SignatureResponse.Ignore }));
+                Assert.Equal(Refusals.GateSigner, other.Refusal);
+                Assert.DoesNotContain(other.Audit, a => a.Outcome == GateOutcome.Ignored);
             }
 
             [Fact]

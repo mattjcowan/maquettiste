@@ -2043,8 +2043,10 @@ class Interpreter {
       ids(sg.requiredActors).some(
         (r) => !approval.counted.some((c) => c.signature === sg.id && this.membership.accepts(r, c.actor)) && this.membership.accepts(r, actor),
       );
-    // A signature already complete still counts as met, so the person is refused on it (gate-repeat), not as no signer (review S1).
-    const sg = fills.find((x) => unsigned(x, actorFor(x))) ?? fills[0] ?? needed.find((x) => actorFor(x) !== null);
+    // For sign, a signature already complete still counts as met, so the person is refused on it (gate-repeat), not as no signer (review S1).
+    // For ignore it doesn't: a complete signature leaves the person nothing to answer, so with no open one met the step is refused gate-signer.
+    const met = (response === "ignore" ? open : needed).find((x) => actorFor(x) !== null);
+    const sg = fills.find((x) => unsigned(x, actorFor(x))) ?? fills[0] ?? met;
     return sg ? { sg, actor: actorFor(sg) } : { refuse: "gate-signer" };
   }
 

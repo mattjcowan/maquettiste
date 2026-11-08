@@ -62,7 +62,9 @@ internal static class ApprovalPick
     /// Picks the signature: for <c>withdraw</c>, the person's latest signature in the round; for <c>reject</c>, the first needed signature whose
     /// signers the person meets, complete or not; for <c>sign</c> and <c>ignore</c>, among the needed signatures not complete, the first the person
     /// may fill (rows 7a, 7c and 7d) where they meet a required actor not yet signed, else the first they may fill, else the first needed signature
-    /// whose signers they meet, complete or not, so that row 7 refuses on it (a complete one with <c>gate-repeat</c>). The refusal is <c>gate-not-signed</c> or <c>gate-signer</c> when nothing can be picked.
+    /// whose signers they meet, so that row 7 refuses on it: for <c>sign</c> complete or not (a complete one with <c>gate-repeat</c>), for
+    /// <c>ignore</c> not complete only, as a complete signature leaves the person nothing to answer. The refusal is <c>gate-not-signed</c> or
+    /// <c>gate-signer</c> when nothing can be picked.
     /// </summary>
     /// <param name="response">The response.</param>
     /// <param name="needed">The round's needed signatures, in file order.</param>
@@ -94,7 +96,7 @@ internal static class ApprovalPick
         (NamedSignature Signature, string Actor)? fill = null, met = null;
         foreach (var s in needed)
         {
-            if (actorFor(s) is not { Actor: { } actor } found)
+            if ((s.Complete && response == SignatureResponse.Ignore) || actorFor(s) is not { Actor: { } actor } found)
                 continue;
             met ??= (s.Signature, actor);
             if (s.Complete || s.Blocked)

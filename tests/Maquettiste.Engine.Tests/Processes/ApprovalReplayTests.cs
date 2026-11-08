@@ -373,6 +373,30 @@ public sealed class ApprovalReplayTests
     }
 
     [Fact]
+    public async Task Ignoring_when_the_only_signature_met_is_complete_is_refused_gate_signer_with_or_without_a_participant()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        JsonElement[] people = [.. People, Json($$"""{"id":"quentin","name":"Quentin","holds":{{Holds(QualityLead, 6)}} }""")];
+        var result = await SimulateAsync(store, 100, people, null, Step(SubmitEvent, "ana"), Step(ApproveEvent, "quinn"),
+            Step(ApproveEvent, "quinn", ""","response":"ignore" """), Step(ApproveEvent, "quentin", ""","response":"ignore" """),
+            Json($$"""{"event":"{{ApproveEvent}}","actor":"{{QualityLead}}","signer":"quentin","response":"ignore"}"""));
+        var t = result.Trace;
+        Assert.Equal([(GateOutcome.Signed, Quality)], Audit(t[2]));
+        // Quality is complete, so a quality lead has nothing left to answer, whether they signed it or not: the ignore is refused as no
+        // signer, and nothing is recorded on Quality.
+        foreach (var step in t.Skip(3))
+        {
+            Assert.Equal(Refusals.GateSigner, step.Refusal);
+            Assert.DoesNotContain(step.Audit, a => a.Outcome == GateOutcome.Ignored);
+        }
+
+        Assert.Equal(6, t.Count);
+        Assert.Equal(1, Counts(result)[Quality]);
+    }
+
+    [Fact]
     public async Task A_withdraw_acts_as_the_actor_the_person_signed_as()
     {
         // Max holds Engineer and Controller; the signature needs a controller, so Max signs as Controller. After that no required actor is
