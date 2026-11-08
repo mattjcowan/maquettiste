@@ -7,8 +7,8 @@ import type { Diagnostic, ModelJson } from "@/api/types";
 import { atPointer, clone } from "@/lib/json";
 import { classifyAttribute } from "@/model/binding";
 import { newId } from "@/lib/ids";
-import { reorderStages } from "@/model/approvals";
-import { subjectsOf, uniqueName, type GateDoc, type SubjectDoc } from "@/model/process";
+import { fixEscalationPair, reorderStages } from "@/model/approvals";
+import { subjectsOf, uniqueName, type GateDoc, type NamedSignatureDoc, type SubjectDoc } from "@/model/process";
 import { builtInVerbs } from "@/model/verbs";
 import type { VerbFix } from "@/verbs/verbFixes";
 
@@ -66,6 +66,7 @@ const EDITOR_FIXES = new Set([
   "MQ8201",
   "MQ8202",
   "MQ8203",
+  "MQ8204",
   "MQ3116",
 ]);
 
@@ -215,7 +216,8 @@ function rightFix(rule: string, element: ModelJson, pointer: string): { json: Mo
 }
 
 /**
- * The quick fixes of MQ8201 to MQ8203 (signoff-design.md sections 6 and 11): MQ8201 and MQ8202 remove the key or the entry (a `notBy`
+ * The quick fixes of MQ8201 to MQ8204 (signoff-design.md sections 6 and 11): MQ8204 adds or removes the missing half of the escalation
+ * pair; MQ8201 and MQ8202 remove the key or the entry (a `notBy`
  * left empty goes with its key), MQ8203 puts the approval's stages in round order. Every one is a plain update of the process.
  */
 function approvalFix(rule: string, element: ModelJson, pointer: string): { json: ModelJson; label: string } | null {
@@ -225,6 +227,17 @@ function approvalFix(rule: string, element: ModelJson, pointer: string): { json:
     const next = clone(element);
     const gate = atPointer(next, gatePointer) as GateDoc | undefined;
     return gate && reorderStages(gate) ? { json: next, label: "Reorder the stages" } : null;
+  }
+  if (rule === "MQ8204") {
+    // The escalation pair: add the missing half (or take the lone key away); a delay that is no duration just goes.
+    const sigPointer = /^(.*\/signatures\/\d+)(\/|$)/.exec(pointer)?.[1];
+    if (sigPointer === undefined) return null;
+    const next = clone(element);
+    const sig = atPointer(next, sigPointer) as NamedSignatureDoc | undefined;
+    if (!sig) return null;
+    if (fixEscalationPair(sig)) return { json: next, label: sig.escalateAfter && sig.escalateTo?.length ? "Add the missing delay" : "Remove the key" };
+    const json = removeAt(element, pointer);
+    return json && pointer !== sigPointer ? { json, label: "Remove the key" } : null;
   }
   const entry = /^(.*\/notBy)\/\d+$/.exec(pointer);
   const json = removeAt(element, pointer);
@@ -542,7 +555,8 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
     }
     case "MQ8201":
     case "MQ8202":
-    case "MQ8203": {
+    case "MQ8203":
+    case "MQ8204": {
       if (element.kind !== "process") return null;
       const fix = approvalFix(d.rule, element, pointer);
       return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;

@@ -36,6 +36,17 @@ export function hasApproval(lifecycle: Json, byId: ReadonlyMap<string, Json>): b
   });
 }
 
+/** Whether an approval of the lifecycle has a signature that may be delegated: only then does `delegate` count as doable (part 2). */
+export function hasDelegation(lifecycle: Json, byId: ReadonlyMap<string, Json>): boolean {
+  return arr(lifecycle.transitions).some((t) => {
+    const policy = str(t.gatePolicy);
+    const gates: (Json | undefined)[] = [t.gate as Json | undefined];
+    if (policy)
+      for (const lib of byId.values()) if (lib.kind === "process" && lib.use === "library") gates.push(...arr(lib.gates).filter((g) => g.id === policy));
+    return gates.some((g) => arr(g?.stages).some((st) => arr(st.signatures).some((sg) => strings(sg.delegateTo).length > 0)));
+  });
+}
+
 /** The verbs no input can do yet (MQ8107), unless an event names one. */
 const NO_INPUT: ReadonlySet<string> = new Set(["override", "set-state", "claim", "reject", "ignore", "withdraw", "delegate", "route"]);
 
@@ -119,6 +130,9 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
   const held = (ids: string[], kind: "attribute" | "end"): Set<string> =>
     new Set(ids.length ? commonFields(ids.map((e) => objectFields(e, src).filter((f) => f.kind === kind))).map((f) => f.id) : []);
   const approves = hasApproval(json, byId);
+  const delegates = hasDelegation(json, byId);
+  // The responses an approval of this lifecycle answers: reject, ignore and withdraw; delegate where a signature has delegateTo.
+  const responds = (v: string) => approves && (RESPONSES.has(v) || (v === "delegate" && delegates));
   const eventVerbs = new Set(events.flatMap((e) => (str(e.verb) ? [e.verb as string] : [])));
   // The guards of the process as it runs: its own, and the library guards its transitions name (the engine's effective process).
   const usedGuards = new Set(arr(json.transitions).flatMap((t) => (str(t.guard) ? [t.guard as string] : [])));
@@ -221,7 +235,7 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
       if (!transitions.has(s))
         emit("MQ8102", "error", `${label} names a transition that is not a transition of '${name}'. Remove it.`, `${at}/transitions/${j}`, id);
     });
-    const moves = verbs.every((v) => isMoveVerb(v) || v === "sign" || (approves && RESPONSES.has(v)) || (!builtInVerb(v) && eventVerbs.has(v)));
+    const moves = verbs.every((v) => isMoveVerb(v) || v === "sign" || responds(v) || (!builtInVerb(v) && eventVerbs.has(v)));
     for (const k of ["targets", "transitions"] as const)
       if (strings(t[k]).length && !moves)
         emit(
@@ -310,7 +324,7 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
         id,
       );
     // MQ8107: a trigger point that can never run.
-    if (verbs.length && neverRuns(t, verbs, json, approves))
+    if (verbs.length && neverRuns(t, verbs, json, responds))
       emit(
         "MQ8107",
         "warning",
@@ -380,7 +394,7 @@ export function triggerDiagnostics(json: Json, all: () => Iterable<ModelEntry>, 
  * transition it names, if it names any); a move verb also when a transition does it; any other verb unless no input can do it yet.
  * This is the engine's CanRun, so `sign` on a point narrowed by transitions is the designed signature place and never dead.
  */
-function neverRuns(t: Json, verbs: string[], json: Json, approves: boolean): boolean {
+function neverRuns(t: Json, verbs: string[], json: Json, responds: (verb: string) => boolean): boolean {
   const named = strings(t.transitions);
   const transitions = arr(json.transitions);
   const canRun = (verb: string): boolean => {
@@ -389,7 +403,7 @@ function neverRuns(t: Json, verbs: string[], json: Json, approves: boolean): boo
     );
     if (byEvent) return true;
     if (isMoveVerb(verb)) return transitions.some((tr) => tr.verb === verb && (!named.length || named.includes(String(tr.id))));
-    if (approves && RESPONSES.has(verb)) return true;
+    if (responds(verb)) return true;
     return !NO_INPUT.has(verb);
   };
   return !verbs.some(canRun);
@@ -545,11 +559,11 @@ export function namedTriggerDiagnostics(json: Json, all: () => Iterable<ModelEnt
       id,
     );
   // MQ8107: every verb is one no input can do yet.
-  // reject, ignore and withdraw are doable when a lifecycle that governs an entity it covers has an approval.
-  const approving = entries.some(
-    (e) => e.json.kind === "process" && e.json.use === "lifecycle" && hasApproval(e.json, byId) && covers.some((en) => coverage.governs(e.json, en)),
-  );
-  if (verbs.length && verbs.every((v) => NO_INPUT.has(v) && !(approving && RESPONSES.has(v))))
+  // reject, ignore and withdraw (part 2: delegate, where a signature has delegateTo) are doable when a lifecycle that governs an entity it covers has an approval.
+  const governing = entries.filter((e) => e.json.kind === "process" && e.json.use === "lifecycle" && covers.some((en) => coverage.governs(e.json, en)));
+  const approving = governing.some((e) => hasApproval(e.json, byId));
+  const delegating = governing.some((e) => hasApproval(e.json, byId) && hasDelegation(e.json, byId));
+  if (verbs.length && verbs.every((v) => NO_INPUT.has(v) && !(approving && (RESPONSES.has(v) || (v === "delegate" && delegating)))))
     emit("MQ8107", "warning", `${label} can never run: no input can do its verbs yet. Remove it.`, "/verbs", id);
   // MQ8104: another named replace on a verb and an entity this one replaces; the later by path is refused.
   if (type === "replace") {

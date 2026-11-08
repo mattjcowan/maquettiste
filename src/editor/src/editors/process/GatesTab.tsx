@@ -4,7 +4,7 @@
 // turns a gate into an approval (signoff-design.md section 11): a stage and a grid of named signatures in place of the one
 // list of signers, with the gate keeping its meanings, reason and audit attributes.
 import { useState } from "react";
-import { ShieldOff } from "lucide-react";
+import { Plus, ShieldOff, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CheckboxField } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -15,16 +15,22 @@ import { treeText } from "@/model/effects";
 import { APPROVAL_LABELS as A } from "@/model/labels";
 import {
   addSignature,
+  addStage,
   canRevert,
   editSignature,
+  editStage,
+  moveSignature,
   notByVerbKeys,
   refusal,
   removeSignature,
+  removeStage,
   revertToSigners,
+  roundGroups,
+  roundOf,
   setNotBy,
   signatureRows,
   signaturesOf,
-  stageOf,
+  stageRefusal,
   toApproval,
   ALWAYS,
   type SignatureRow,
@@ -37,6 +43,7 @@ import {
   type GateForm,
   type Json,
   type MeaningDoc,
+  type NamedSignatureDoc,
   type NotByDoc,
   type ProcessDoc,
 } from "@/model/process";
@@ -315,9 +322,12 @@ function ConvertButton({ form, set }: { form: GateForm; set: SetGate }) {
   );
 }
 
-type Dialogs = { kind: "when" | "notBy"; id: string } | null;
+type Dialogs = { kind: "when" | "notBy" | "details"; id: string } | { kind: "stageWhen"; id: string } | null;
 
-/** An approval's stage name and its grid of named signatures (signoff-design.md section 11). */
+/**
+ * An approval's stages, by round, each with its grid of named signatures (signoff-design.md section 11). Stages of one round sit one
+ * under the other under the round's heading, so the grid never widens past a signature's columns.
+ */
 function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm; set: SetGate }) {
   const { process, actors, actorNames } = pc;
   const verbs = useVerbs();
@@ -343,8 +353,8 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
       label: A.columns.signers,
       tooltip: A.tips.signers,
       kind: "multi",
-      width: "w-24",
-      clip: "max-w-24",
+      width: "w-20",
+      clip: "max-w-20",
       value: (r) => r.signers,
       editValue: (r) => names(r.signerIds),
       options: () => actorOptions.map((a) => ({ value: a.id, label: a.name })),
@@ -376,8 +386,8 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
       label: A.columns.when,
       tooltip: A.tips.when,
       kind: "popover",
-      width: "w-24",
-      clip: "max-w-24",
+      width: "w-20",
+      clip: "max-w-20",
       mono: true,
       value: (r) => r.when || ALWAYS,
       onOpen: (r) => setDialog({ kind: "when", id: r.id }),
@@ -387,24 +397,37 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
       label: A.columns.notBy,
       tooltip: A.tips.notBy,
       kind: "popover",
-      width: "w-24",
-      clip: "max-w-24",
+      width: "w-20",
+      clip: "max-w-20",
       value: (r) => r.notBy,
       onOpen: (r) => setDialog({ kind: "notBy", id: r.id }),
     },
-    { key: "why", label: A.columns.why, tooltip: A.tips.why, kind: "text", width: "min-w-24", clip: "max-w-32", value: (r) => r.why },
+    {
+      key: "details",
+      label: A.details,
+      tooltip: A.detailsTip,
+      kind: "popover",
+      width: "w-16",
+      clip: "max-w-16",
+      value: (r) => r.detailsShort,
+      cellTitle: (r) => r.details,
+      onOpen: (r) => setDialog({ kind: "details", id: r.id }),
+    },
+    { key: "why", label: A.columns.why, tooltip: A.tips.why, kind: "text", width: "min-w-20", clip: "max-w-28", value: (r) => r.why },
   ];
-  const stage = stageOf(g);
+  const groups = roundGroups(g);
+  const stageIndex = (id: string) => (g.stages ?? []).findIndex((s) => s.id === id);
+  // A finding on the stage itself (its round, its Skip unless) shows at the stage; one on a signature shows on its row.
+  const stageProblems = (id: string) =>
+    pc.problems.filter((d) => {
+      const p = d.jsonPointer ?? "";
+      const at = `${form.pointer}/stages/${stageIndex(id)}`;
+      return p === at || (p.startsWith(`${at}/`) && !p.startsWith(`${at}/signatures/`));
+    });
   return (
     <div className="flex flex-col gap-1">
       <SectionTitle>
-        <span title={A.stageTip}>
-          {A.signaturesNeeded} <span className="font-normal text-secondary">({A.stage.toLowerCase()} </span>
-          <span className="font-normal text-secondary" data-testid="approval-stage">
-            {stage?.name}
-          </span>
-          <span className="font-normal text-secondary">)</span>
-        </span>
+        <span title={A.stageTip}>{A.signaturesNeeded}</span>
       </SectionTitle>
       <p className="text-11 text-secondary" data-testid="approval-stage-hint">
         {A.stageHint}
@@ -414,42 +437,163 @@ function ApprovalSection({ pc, form, set }: { pc: ProcessContext; form: GateForm
           {refused}
         </p>
       ) : null}
-      <Grid
-        label={`Signatures of ${g.name}`}
-        testid="signatures-grid"
-        noun="signature"
-        rows={rows}
-        columns={columns}
-        rowName={(r) => r.name}
-        problems={(r) => rowProblems(pc.problems, r.pointer)}
-        empty={A.empty}
-        addLabel={A.add}
-        onCommit={(r, key, value) => {
-          const sig = signaturesOf(g).find((s) => s.id === r.id);
-          const why = sig ? refusal(sig, key, value, { actors: actorOptions }) : null;
-          setRefused(why);
-          if (!why) set((x) => void editSignature(x, r.id, key, value, { actors: actorOptions }));
-        }}
-        // Always at the end: a new signature takes the signers of the last one and lands after it, wherever the cursor is.
-        onAdd={() => set((x) => void addSignature(x))}
-        onRemove={(r) => {
-          const last = signaturesOf(g).length <= 1;
-          setRefused(last ? A.lastSignature : null);
-          if (!last) set((x) => void removeSignature(x, r.id));
-        }}
-      />
-      {dialog ? <SignatureDialog dialog={dialog} pc={pc} form={form} moves={moves} set={set} onClose={() => setDialog(null)} /> : null}
+      {groups.map((group) => (
+        <div key={group.round} className="flex flex-col gap-1" data-testid="approval-round" data-round={group.round}>
+          <h4 className="text-12 font-semibold text-secondary" title={A.roundTip}>
+            {A.roundHeading(group.round)}
+          </h4>
+          {group.stages.map((stage) => {
+            const own = stageProblems(stage.id);
+            return (
+              <div key={stage.id} className="flex flex-col gap-1 rounded-control border border-default p-1.5" data-testid="approval-stage-block">
+                <div className="flex flex-wrap items-end gap-2">
+                  <StageText
+                    label={A.stageName}
+                    testid="approval-stage"
+                    width="w-32"
+                    value={stage.name}
+                    onCommit={(v) => {
+                      const why = stageRefusal(g, stage.id, "name", v);
+                      setRefused(why);
+                      if (!why) set((x) => void editStage(x, stage.id, "name", v));
+                    }}
+                  />
+                  <StageText
+                    label={A.stageRound}
+                    tip={A.stageRoundTip}
+                    testid="stage-round"
+                    width="w-14"
+                    value={String(roundOf(stage))}
+                    onCommit={(v) => {
+                      const why = stageRefusal(g, stage.id, "round", v);
+                      setRefused(why);
+                      if (!why) set((x) => void editStage(x, stage.id, "round", v));
+                    }}
+                  />
+                  <div className="flex flex-col gap-0.5" title={A.skipUnlessTip}>
+                    <span className="text-11 text-secondary">{A.skipUnless}</span>
+                    <Button
+                      size="sm"
+                      className="max-w-48 justify-start font-mono"
+                      data-testid="stage-when"
+                      aria-label={`${A.skipUnless}, ${stage.name}: ${stage.when ? treeText(stage.when, context.names) : A.never}`}
+                      onClick={() => setDialog({ kind: "stageWhen", id: stage.id })}
+                    >
+                      <span className="truncate">{stage.when ? treeText(stage.when, context.names) : A.never}</span>
+                    </Button>
+                  </div>
+                  <span className="flex-1" />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    label={A.removeStage(stage.name)}
+                    title={A.removeStageTip}
+                    disabled={(g.stages ?? []).length <= 1}
+                    data-testid="remove-stage"
+                    onClick={() => {
+                      setRefused(null);
+                      set((x) => void removeStage(x, stage.id));
+                    }}
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+                {own.length ? (
+                  <ul className="text-12 text-danger" data-testid="stage-problems">
+                    {own.map((d, i) => (
+                      <li key={i}>
+                        <span className="font-mono">{d.rule}</span> {d.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <Grid
+                  label={`Signatures of ${stage.name} in ${g.name}`}
+                  testid="signatures-grid"
+                  noun="signature"
+                  rows={rows.filter((r) => r.stage === stage.id)}
+                  columns={columns}
+                  rowName={(r) => r.name}
+                  problems={(r) => rowProblems(pc.problems, r.pointer)}
+                  empty={A.empty}
+                  addLabel={groups.length > 1 || (g.stages ?? []).length > 1 ? A.addSignatureTo(stage.name) : A.add}
+                  onCommit={(r, key, value) => {
+                    const sig = signaturesOf(g).find((s) => s.id === r.id);
+                    const why = sig ? refusal(sig, key, value, { actors: actorOptions }) : null;
+                    setRefused(why);
+                    if (!why) set((x) => void editSignature(x, r.id, key, value, { actors: actorOptions }));
+                  }}
+                  // A new signature takes the signers of the last one of its stage and lands after it, wherever the cursor is.
+                  onAdd={() => set((x) => void addSignature(x, undefined, stage.id))}
+                  onRemove={(r) => {
+                    const last = signaturesOf(g).length <= 1;
+                    setRefused(last ? A.lastSignature : null);
+                    if (!last) set((x) => void removeSignature(x, r.id));
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      <div className="flex">
+        <Button size="sm" title={A.addStageTip} onClick={() => set((x) => void addStage(x))} data-testid="add-stage">
+          <Plus /> {A.addStage}
+        </Button>
+      </div>
+      {dialog ? <SignatureDialog dialog={dialog} pc={pc} form={form} moves={moves} set={set} actors={actorOptions} onClose={() => setDialog(null)} /> : null}
     </div>
   );
 }
 
-/** The dialog behind Needed when and Not by of one signature. */
+/** A small text field that keeps what is typed and saves once, on blur or Enter. */
+function StageText({
+  label,
+  tip,
+  testid,
+  width,
+  value,
+  onCommit,
+}: {
+  label: string;
+  tip?: string;
+  testid: string;
+  width: string;
+  value: string;
+  onCommit: (value: string) => void;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  const done = () => {
+    const v = text;
+    setText(null);
+    if (v !== null && v !== value) onCommit(v);
+  };
+  return (
+    <label className="flex flex-col gap-0.5" title={tip}>
+      <span className="text-11 text-secondary">{label}</span>
+      <Input
+        className={`${width} h-6`}
+        value={text ?? value}
+        data-testid={testid}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={done}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") done();
+          if (e.key === "Escape") setText(null);
+        }}
+      />
+    </label>
+  );
+}
+
+/** The dialog behind Needed when, Not by, Details and a stage's Skip unless. */
 function SignatureDialog({
   dialog,
   pc,
   form,
   moves,
   set,
+  actors,
   onClose,
 }: {
   dialog: NonNullable<Dialogs>;
@@ -457,13 +601,45 @@ function SignatureDialog({
   form: GateForm;
   moves: { value: string; label: string }[];
   set: SetGate;
+  actors: { id: string; name: string }[];
   onClose: () => void;
 }) {
   const verbs = useVerbs();
   const context = useSetContext(pc.process);
+  if (dialog.kind === "stageWhen") {
+    const index = (form.gate.stages ?? []).findIndex((s) => s.id === dialog.id);
+    const stage = form.gate.stages?.[index];
+    if (!stage) return null;
+    const stored = (stage.when as Json | undefined) ?? undefined;
+    return (
+      <ExpressionDialog
+        testid="stage-when-dialog"
+        title={A.skipUnlessTitle(stage.name)}
+        hint={A.skipUnlessHint}
+        placeholder={A.whenPlaceholder}
+        initial={treeText(stored, context.names)}
+        request={(text) =>
+          text === undefined
+            ? stored
+              ? { element: pc.id, at: `${form.pointer}/stages/${index}/when` }
+              : null
+            : text.trim()
+              ? { element: pc.id, site: "approval", text }
+              : null
+        }
+        onApply={(text) => {
+          set((x) => void editStage(x, stage.id, "when", text));
+          onClose();
+        }}
+        onClose={onClose}
+      />
+    );
+  }
   const stage = (form.gate.stages ?? []).findIndex((s) => s.signatures.some((x) => x.id === dialog.id));
   const sig = form.gate.stages?.[stage]?.signatures.find((x) => x.id === dialog.id);
   if (!sig) return null;
+  if (dialog.kind === "details")
+    return <DetailsDialog sig={sig} stageId={form.gate.stages![stage].id} gate={form.gate} actors={actors} set={set} onClose={onClose} />;
   if (dialog.kind === "when") {
     const stored = (sig.when as Json | undefined) ?? undefined;
     const index = form.gate.stages![stage].signatures.findIndex((x) => x.id === sig.id);
@@ -505,6 +681,115 @@ function SignatureDialog({
       }}
       onClose={onClose}
     />
+  );
+}
+
+/**
+ * Details of one signature: May be delegated to, Remind after, Escalate after, Escalate to and Sign again with a password, and the
+ * stage that holds it. Apply writes them as one change; a duration that is not ISO 8601 is refused with a message.
+ */
+function DetailsDialog({
+  sig,
+  stageId,
+  gate,
+  actors,
+  set,
+  onClose,
+}: {
+  sig: NamedSignatureDoc;
+  stageId: string;
+  gate: GateDoc;
+  actors: { id: string; name: string }[];
+  set: SetGate;
+  onClose: () => void;
+}) {
+  const [delegateTo, setDelegateTo] = useState(sig.delegateTo ?? []);
+  const [escalateTo, setEscalateTo] = useState(sig.escalateTo ?? []);
+  const [remindAfter, setRemindAfter] = useState(sig.remindAfter ?? "");
+  const [escalateAfter, setEscalateAfter] = useState(sig.escalateAfter ?? "");
+  const [reauthenticate, setReauthenticate] = useState(sig.reauthenticate === true);
+  const [stage, setStage] = useState(stageId);
+  const [refused, setRefused] = useState<string | null>(null);
+  const options = actors.map((a) => ({ value: a.id, label: a.name }));
+  const nameList = (ids: string[]) => ids.map((id) => actors.find((a) => a.id === id)?.name ?? "").join(", ");
+  const apply = () => {
+    const why = refusal(sig, "remindAfter", remindAfter, { actors }) ?? refusal(sig, "escalateAfter", escalateAfter, { actors });
+    setRefused(why);
+    if (why) return;
+    set((x) => {
+      const o = { actors };
+      editSignature(x, sig.id, "delegateTo", nameList(delegateTo), o);
+      editSignature(x, sig.id, "remindAfter", remindAfter, o);
+      editSignature(x, sig.id, "escalateTo", nameList(escalateTo), o);
+      editSignature(x, sig.id, "escalateAfter", escalateAfter, o);
+      editSignature(x, sig.id, "reauthenticate", reauthenticate, o);
+      if (stage !== stageId) moveSignature(x, sig.id, stage);
+    });
+    onClose();
+  };
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent title={A.detailsTitle(sig.name)} description={A.detailsHint}>
+        <form
+          className="flex flex-col gap-2"
+          data-testid="signature-details-dialog"
+          onSubmit={(e) => {
+            e.preventDefault();
+            apply();
+          }}
+        >
+          <ChipsEditor label={A.delegateTo} values={delegateTo} options={options} allowFree={false} whenNone={A.none} onChange={setDelegateTo} />
+          <div className="grid grid-cols-2 gap-2">
+            <Field label={A.remindAfter} htmlFor="sig-remind" hint={A.remindAfterTip}>
+              <Input
+                id="sig-remind"
+                value={remindAfter}
+                placeholder={A.durationPlaceholder}
+                data-testid="sig-remind"
+                onChange={(e) => setRemindAfter(e.target.value)}
+              />
+            </Field>
+            <Field label={A.escalateAfter} htmlFor="sig-escalate" hint={A.escalateAfterTip}>
+              <Input id="sig-escalate" value={escalateAfter} placeholder="P2D" data-testid="sig-escalate" onChange={(e) => setEscalateAfter(e.target.value)} />
+            </Field>
+          </div>
+          <ChipsEditor label={A.escalateTo} values={escalateTo} options={options} allowFree={false} whenNone={A.none} onChange={setEscalateTo} />
+          <span title={A.reauthenticateTip}>
+            <CheckboxField id="sig-reauth" label={A.reauthenticate} checked={reauthenticate} onChange={setReauthenticate} />
+          </span>
+          {(gate.stages ?? []).length > 1 ? (
+            <Field label={A.moveTo} htmlFor="sig-stage" hint={A.moveToTip}>
+              <select
+                id="sig-stage"
+                className="h-6 w-full rounded-[4px] border border-input bg-surface px-1 text-12"
+                value={stage}
+                data-testid="sig-stage"
+                onChange={(e) => setStage(e.target.value)}
+              >
+                {(gate.stages ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {`${s.name} (${A.roundHeading(roundOf(s)).toLowerCase()})`}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
+          {refused ? (
+            <p role="alert" className="text-12 text-danger" data-testid="sig-details-refused">
+              {refused}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" data-testid="signature-details-apply">
+              Apply
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

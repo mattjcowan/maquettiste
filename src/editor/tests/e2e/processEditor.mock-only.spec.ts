@@ -65,10 +65,15 @@ test("a lifecycle opens on its chart and every tab shows its part of the process
   await expect(editor.getByTestId("event-payload")).toContainText("Payload of issue");
 
   await tab(editor, "Gates").click();
-  // The lifecycle's one gate is an approval: its stage and a grid of two named signatures, with no single list of signers.
+  // The lifecycle's one gate is an approval: a stage in round 1 with two named signatures and one in round 2, with no single list of signers.
   await expect(editor.getByTestId("gate-form")).toHaveCount(1);
-  await expect(editor.getByTestId("approval-stage")).toHaveText("Review");
-  await expect(rowsOf(editor, "signatures-grid")).toHaveCount(2);
+  await expect(editor.getByTestId("approval-round")).toHaveCount(2);
+  await expect(editor.getByTestId("approval-stage").first()).toHaveValue("Review");
+  await expect(editor.getByTestId("approval-stage").nth(1)).toHaveValue("Release");
+  await expect(editor.getByTestId("stage-round").nth(1)).toHaveValue("2");
+  await expect(editor.getByTestId("stage-when").nth(1)).toContainText("subject.total > 100000");
+  await expect(editor.getByTestId("signatures-grid")).toHaveCount(2);
+  await expect(rowsOf(editor, "signatures-grid")).toHaveCount(3);
   await expect(cell(rowsOf(editor, "signatures-grid").first(), "when")).toContainText("subject.total > 10000");
   await expect(cell(rowsOf(editor, "signatures-grid").nth(1), "notBy")).toHaveText("Promote");
   await expect(editor.getByTestId("gate-required")).toHaveCount(0);
@@ -203,8 +208,8 @@ test("at 1440 px the signatures grid shows Needed when and Why, and a scenario's
         return box.left >= frame.left - 1 && box.right <= frame.right + 1;
       });
   await tab(editor, "Gates").click();
-  const signatures = editor.getByTestId("signatures-grid");
-  for (const column of ["when", "notBy", "why"]) expect(await visible(signatures, column), column).toBe(true);
+  const signatures = editor.getByTestId("signatures-grid").first();
+  for (const column of ["when", "notBy", "details", "why"]) expect(await visible(signatures, column), column).toBe(true);
   await tab(editor, "Scenarios").click();
   await rowsOf(editor, "scenarios-grid").first().getByTestId("scenario-open").click();
   const scenario = page.getByTestId("element-editor").and(page.locator('[data-kind="scenario"]'));

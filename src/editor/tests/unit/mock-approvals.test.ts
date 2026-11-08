@@ -53,7 +53,7 @@ describe("approvals in the mock: seed and index rows", () => {
 
   it("gives a process row its approvals and signatures only when above zero", () => {
     const rows = new MockBackend().model.index() as Json[];
-    expect(rows.find((r) => r.id === INVOICE_LIFECYCLE)).toMatchObject({ approvals: 1, signatures: 2 });
+    expect(rows.find((r) => r.id === INVOICE_LIFECYCLE)).toMatchObject({ approvals: 1, signatures: 3 });
     const plain = rows.find((r) => r.id === PURCHASE_APPROVAL)!;
     expect(plain.approvals).toBeUndefined();
     expect(plain.signatures).toBeUndefined();

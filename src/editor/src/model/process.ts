@@ -67,14 +67,25 @@ export interface NamedSignatureDoc {
   allowRepeatSigner?: boolean;
   when?: Json;
   notBy?: NotByDoc[];
+  /** Part 2: the actors the signature may be delegated to. */
+  delegateTo?: string[];
+  /** Part 2: ISO 8601 durations from the round's start; the running system sends the notices. */
+  remindAfter?: string;
+  escalateAfter?: string;
+  escalateTo?: string[];
+  /** Part 2: the person's identity is checked again for every response. */
+  reauthenticate?: boolean;
   description?: unknown;
 }
 
-/** A stage of an approval: named signatures only. Part 1 holds exactly one. */
+/** A stage of an approval: named signatures, in a round (part 2), skipped unless its `when` holds. */
 export interface GateStageDoc {
   id: string;
   name: string;
   displayName?: string;
+  /** Stages of one round run side by side; the default is 1. */
+  round?: number;
+  when?: Json;
   signatures: NamedSignatureDoc[];
   description?: unknown;
 }
@@ -248,7 +259,8 @@ export type CheckWord = "pass" | "warning" | "error";
 
 /** The responses to an approval, in the order the editor offers them. */
 export const APPROVAL_RESPONSES = ["sign", "reject", "ignore", "withdraw"] as const;
-export type ApprovalResponse = (typeof APPROVAL_RESPONSES)[number];
+/** `delegate` is part 2; the scenario editor offers it in wave 2. */
+export type ApprovalResponse = (typeof APPROVAL_RESPONSES)[number] | "delegate";
 
 export interface StepDoc {
   id: string;
