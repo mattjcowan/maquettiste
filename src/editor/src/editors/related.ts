@@ -2,6 +2,7 @@
 // with the element at an end, the mappings and tables of an entity, its seed data and the entities derived from it.
 import type { ElementSummary } from "@/api/types";
 import { indexPatchOf } from "@/api/indexPatch";
+import { endCoveredEntities } from "@/model/endTypes";
 
 /** Index members designed but not yet in the contract (seeds' `target` and `rowCount`), read when present. */
 type Row = ElementSummary & { target?: string | null; rowCount?: number | null };
@@ -28,7 +29,7 @@ const states = new WeakMap<readonly ElementSummary[], RelatedState | null>();
 /** The ids a row points at (relation ends, the entity of a mapping or table, a seed's target, a base entity). */
 function targetsOf(r: Row): string[] {
   const out: string[] = [];
-  if (r.kind === "relation") for (const e of r.ends ?? []) out.push(e.entity);
+  if (r.kind === "relation") for (const e of r.ends ?? []) out.push(...endCoveredEntities(e));
   if ((r.kind === "mapping" || r.kind === "table") && r.entity) out.push(r.entity);
   if ((r.kind as string) === "seed" && r.target) out.push(r.target);
   if (r.base) out.push(r.base);
@@ -94,7 +95,7 @@ export function relatedOf(rows: readonly ElementSummary[] | undefined, id: strin
   for (const rowId of state.links.get(id) ?? []) {
     const r = state.byId.get(rowId);
     if (!r) continue;
-    if (r.kind === "relation" && r.ends?.some((e) => e.entity === id)) out.relations.push(r);
+    if (r.kind === "relation" && r.ends?.some((e) => endCoveredEntities(e).includes(id))) out.relations.push(r);
     else if (r.kind === "mapping" && r.entity === id) out.mappings.push(r);
     else if (r.kind === "table" && r.entity === id) out.tables.push(r);
     else if ((r.kind as string) === "seed" && r.target === id) out.seeds.push(r);

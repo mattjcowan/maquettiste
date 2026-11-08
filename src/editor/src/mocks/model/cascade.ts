@@ -290,58 +290,84 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
     queue.length = 0;
   }
 
-  while (queue.length) {
-    const target = queue.shift()!;
-    for (const { doc, ref } of refsTo.get(target) ?? []) {
-      if (deletedSet.has(doc.id) || skip.has(doc.id)) continue;
-      const mine = ops.get(doc.id) ?? [];
-      if (mine.some((o) => o.remove && (ref.pointer === o.pointer || ref.pointer.startsWith(`${o.pointer}/`)))) continue;
-      if (mine.some((o) => !o.remove && o.ref.pointer === ref.pointer)) continue;
-      if (ref.deletesHolder) {
-        markDeleted(
-          doc.id,
-          doc.json.kind === "trigger-point"
-            ? `covers no other type than ${describe(ref.toId)}, and a trigger point with none would run everywhere`
-            : `names no other actor or end than ${describe(ref.toId)}`,
-        );
-        continue;
+  const drain = () => {
+    while (queue.length) {
+      const target = queue.shift()!;
+      for (const { doc, ref } of refsTo.get(target) ?? []) {
+        if (deletedSet.has(doc.id) || skip.has(doc.id)) continue;
+        const mine = ops.get(doc.id) ?? [];
+        if (mine.some((o) => o.remove && (ref.pointer === o.pointer || ref.pointer.startsWith(`${o.pointer}/`)))) continue;
+        if (mine.some((o) => !o.remove && o.ref.pointer === ref.pointer)) continue;
+        if (ref.deletesHolder) {
+          markDeleted(
+            doc.id,
+            doc.json.kind === "trigger-point"
+              ? `covers no other type than ${describe(ref.toId)}, and a trigger point with none would run everywhere`
+              : `names no other actor or end than ${describe(ref.toId)}`,
+          );
+          continue;
+        }
+        if (!ref.required || ref.drops) {
+          mine.push({ pointer: ref.removeItem ?? ref.pointer, item: ref.removeItem !== undefined, remove: !!ref.drops, ref });
+          ops.set(doc.id, mine);
+          continue;
+        }
+        if (resolution !== "delete-dependents") {
+          plan.refused.push({
+            id: doc.id,
+            kind: String(doc.json.kind),
+            name: nameOf(doc),
+            pointer: ref.pointer,
+            why: `its reference to ${describe(ref.toId)} at ${ref.pointer}: the reference is required, so it cannot be cleared.`,
+            rule: "MQ2001",
+          });
+          continue;
+        }
+        let holder = ref.fromId !== doc.id ? pointerOf(doc.json, ref.fromId) : null;
+        // An approval's last signature takes the gate with it: a gate with stages needs one (signoff-design.md section 9).
+        const lastSignature = holder ? /^(.*)\/stages\/\d+\/signatures\/\d+$/.exec(holder) : null;
+        if (holder && lastSignature) {
+          const gate = at(doc.json, lastSignature[1]) as Json | undefined;
+          const left = arr(gate?.stages)
+            .flatMap((st) => arr(st.signatures))
+            .filter((sg) => !mine.some((o) => o.remove && o.pointer === pointerOf(doc.json, String(sg.id))));
+          if (left.length <= 1) holder = lastSignature[1];
+        }
+        if (holder && !(doc.json.kind === "relation" && holder.startsWith("/ends/"))) {
+          const kept = mine.filter((o) => o.pointer !== holder && !o.pointer.startsWith(`${holder}/`));
+          kept.push({ pointer: holder, item: true, remove: true, ref });
+          ops.set(doc.id, kept);
+          queue.push(...idsUnder(doc.json, holder));
+          continue;
+        }
+        markDeleted(doc.id, `needs ${describe(ref.toId)}`);
       }
-      if (!ref.required || ref.drops) {
-        mine.push({ pointer: ref.removeItem ?? ref.pointer, item: ref.removeItem !== undefined, remove: !!ref.drops, ref });
-        ops.set(doc.id, mine);
-        continue;
-      }
-      if (resolution !== "delete-dependents") {
-        plan.refused.push({
-          id: doc.id,
-          kind: String(doc.json.kind),
-          name: nameOf(doc),
-          pointer: ref.pointer,
-          why: `its reference to ${describe(ref.toId)} at ${ref.pointer}: the reference is required, so it cannot be cleared.`,
-          rule: "MQ2001",
-        });
-        continue;
-      }
-      let holder = ref.fromId !== doc.id ? pointerOf(doc.json, ref.fromId) : null;
-      // An approval's last signature takes the gate with it: a gate with stages needs one (signoff-design.md section 9).
-      const lastSignature = holder ? /^(.*)\/stages\/\d+\/signatures\/\d+$/.exec(holder) : null;
-      if (holder && lastSignature) {
-        const gate = at(doc.json, lastSignature[1]) as Json | undefined;
-        const left = arr(gate?.stages)
-          .flatMap((st) => arr(st.signatures))
-          .filter((sg) => !mine.some((o) => o.remove && o.pointer === pointerOf(doc.json, String(sg.id))));
-        if (left.length <= 1) holder = lastSignature[1];
-      }
-      if (holder && !(doc.json.kind === "relation" && holder.startsWith("/ends/"))) {
-        const kept = mine.filter((o) => o.pointer !== holder && !o.pointer.startsWith(`${holder}/`));
-        kept.push({ pointer: holder, item: true, remove: true, ref });
-        ops.set(doc.id, kept);
-        queue.push(...idsUnder(doc.json, holder));
-        continue;
-      }
-      markDeleted(doc.id, `needs ${describe(ref.toId)}`);
     }
+  };
+  drain();
+  // An end whose every `types` entry is removed has no type left: today's "a relation that loses an end" (decision 21). Delete-dependents deletes the
+  // relation; remove-references refuses.
+  for (const [id, list] of [...ops]) {
+    const doc = docs.get(id);
+    if (!doc || doc.json.kind !== "relation" || deletedSet.has(id)) continue;
+    const lost = arr(doc.json.ends).findIndex((e, i) => {
+      const n = arr(e.types).length;
+      return n > 0 && arr(e.types).every((_, j) => list.some((o) => o.item && o.pointer === `/ends/${i}/types/${j}`));
+    });
+    if (lost < 0) continue;
+    const last = list.find((o) => o.pointer.startsWith(`/ends/${lost}/types/`))!;
+    if (resolution === "delete-dependents") markDeleted(id, `needs ${describe(last.ref.toId)}`);
+    else
+      plan.refused.push({
+        id,
+        kind: String(doc.json.kind),
+        name: nameOf(doc),
+        pointer: last.ref.pointer,
+        why: `its reference to ${describe(last.ref.toId)} at ${last.ref.pointer}: the end would have no type left, so it cannot be cleared.`,
+        rule: "MQ2001",
+      });
   }
+  drain();
 
   dropObjects(docs, ops, plan);
   const edited = new Map<string, Json>();

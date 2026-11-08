@@ -8,6 +8,7 @@ import { applyBatchResult, invalidateResolved, keys, loadElement, tableDetailQue
 import type { BatchRequest, ElementSummary, MaterializeStatus, ModelJson, TableView } from "@/api/types";
 import type { AppServices } from "@/app/context";
 import { indexLookup } from "@/model/index";
+import { endSingleEntity } from "@/model/endTypes";
 import { clone } from "@/lib/json";
 import { baseChain } from "@/editors/related";
 import { sourcesOf, storageAttributes, tableSource, type BindingSource, type StorageAttribute } from "./fieldMap";
@@ -29,7 +30,7 @@ export function useStorageAttributes(entityIds: readonly string[], overrides?: R
       for (const b of baseChain(lookup.byId, lookup.byId.get(id)?.base)) ids.add(b);
     }
     const chain = new Set(ids);
-    for (const r of lookup.ofKind("relation")) if ((r.ends ?? []).some((e) => chain.has(e.entity))) ids.add(r.id);
+    for (const r of lookup.ofKind("relation")) if ((r.ends ?? []).some((e) => chain.has(endSingleEntity(e) ?? ""))) ids.add(r.id);
     for (const s of lookup.ofKind("stereotype")) ids.add(s.id);
     return [...ids];
   }, [entityIds, lookup]);

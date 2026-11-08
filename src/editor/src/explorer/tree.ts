@@ -13,6 +13,7 @@ import { soleSubject } from "@/model/process";
 import { memberOfText } from "@/model/actors";
 import { relativeRowText } from "@/model/objectFields";
 import { tableKeyOf } from "@/search/engine";
+import { endCoveredEntities, endLabel, endListedEntities } from "@/model/endTypes";
 import type { TablePart, TablePartKind } from "@/workspaces/database/tableParts";
 import { patchesBetween, type IndexPatch } from "@/api/indexPatch";
 import {
@@ -361,9 +362,9 @@ function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row, actsIn?: ReadonlyM
     return e ? e.displayName || e.name : undefined;
   };
   if (r.kind === "relation" && r.ends?.length) {
-    let text = "";
-    for (const e of r.ends) text = text ? `${text} → ${nameOf(e.entity) ?? "?"}` : (nameOf(e.entity) ?? "?");
-    return text;
+    // Several types: "Comment → Part, Assembly or approvable (stereotype)" (several-types-design.md section 11).
+    const stereotypeName = (id: string) => byId.get(id)?.name;
+    return r.ends.map((e) => endLabel(e, nameOf, stereotypeName) || "?").join(" → ");
   }
   if (r.kind === "trigger-point") return [r.type ? r.type[0].toUpperCase() + r.type.slice(1) : "Check", ...(r.verbs ?? []).slice(0, 3)].join(" ");
   if (r.kind === "right") return [r.access === "allow" ? "Allows" : "Denies", ...(r.verbs ?? []).slice(0, 3)].join(" ");
@@ -658,7 +659,8 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
   for (const row of added) {
     byId.set(row.id, row);
     if (row.kind === "relation" && row.ends) {
-      const ends = row.ends.map((e) => e.entity);
+      // An end with several types is reached from every entity it lists and every carrier of its stereotypes.
+      const ends = row.ends.flatMap((e) => endCoveredEntities(e));
       ends.forEach((e, i) => {
         if (ends.indexOf(e) === i) related.relationsOf.set(e, [...(related.relationsOf.get(e) ?? []), row.id]);
       });
@@ -831,13 +833,9 @@ export function buildForest(input: TreeInput): Forest {
         otherRows.push(r);
     }
     if (r.kind === "relation" && r.ends) {
-      const list = r.ends;
-      const ends: string[] = new Array(list.length);
-      for (let i = 0; i < list.length; i++) {
-        const e = list[i].entity;
-        ends[i] = e;
-        if (ends.indexOf(e) === i) push(related.relationsOf, e, r.id);
-      }
+      const ends: string[] = [];
+      for (const end of r.ends) for (const e of endCoveredEntities(end)) ends.push(e);
+      for (let i = 0; i < ends.length; i++) if (ends.indexOf(ends[i]) === i) push(related.relationsOf, ends[i], r.id);
       related.endsOf.set(r.id, ends);
     } else if (r.kind === "mapping") {
       if (r.entity) push(related.mappingsOf, r.entity, r.id);
@@ -1906,7 +1904,18 @@ function elementChildren(forest: Forest, node: TreeNode): TreeNode[] {
       const holderKey = `${node.key}/relations`;
       const members = relations.map((rel) => {
         const relation = forest.byId.get(rel);
-        const ends = (related.endsOf.get(rel) ?? []).map((e) => forest.byId.get(e)?.name ?? "?").join(" → ");
+        const ends = relation?.ends?.length
+          ? relation.ends
+              .map(
+                (e) =>
+                  endLabel(
+                    e,
+                    (id) => forest.byId.get(id)?.name,
+                    (id) => forest.byId.get(id)?.name,
+                  ) || "?",
+              )
+              .join(" → ")
+          : (related.endsOf.get(rel) ?? []).map((e) => forest.byId.get(e)?.name ?? "?").join(" → ");
         const away = relation && relation.package !== r.package ? domainPath(forest, relation.package) : "";
         return navigation(forest, holderKey, rel, away ? `${ends} · ${away}` : ends);
       });
@@ -1962,7 +1971,10 @@ function elementChildren(forest: Forest, node: TreeNode): TreeNode[] {
     const ends = r.ends ?? [];
     if (ends.length) {
       // Keyed by position: both ends of a self relation name one entity.
-      const members = ends.map((e, i) => navigation(forest, `${node.key}/ends`, e.entity, e.role || undefined, `${node.key}/ends/${i}`));
+      // An end with several types lists each entity it names, with its role; its stereotypes and "any entity" have no element to open.
+      const members = ends.flatMap((e, i) =>
+        endListedEntities(e).map((id, j) => navigation(forest, `${node.key}/ends`, id, e.role || undefined, `${node.key}/ends/${i}${j ? `/${j}` : ""}`)),
+      );
       out.push(navFolder(forest, node, "ends", GROUP_LABELS.ends, "relationship", members));
     }
   }

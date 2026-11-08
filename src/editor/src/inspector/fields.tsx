@@ -28,6 +28,21 @@ import { categoryOptions, markDomainOf, tagOptions, vocabulariesOnChain } from "
 import { AttributeGrid } from "./AttributeGrid";
 import { DatabaseSchemasSection } from "./DatabaseSchemas";
 import { schemasOf } from "@/model/databaseSchemas";
+import {
+  END_CHOICE_LABELS,
+  END_LIMIT_TEXTS,
+  addEntry,
+  endChoiceLimits,
+  endChoiceOf,
+  entryKey,
+  moveEnd,
+  pickOneEntity,
+  removeEntry,
+  type EndChoice,
+  type EndEntry,
+  type EndForm,
+  type RelationForm,
+} from "./relationEnds";
 import type { Diagnostic } from "@/api/types";
 import { GROUP_LABELS, KIND_LABELS, RIGHT_LABELS, TRIGGER_LABELS } from "@/model/labels";
 
@@ -499,38 +514,149 @@ export function AttributesOnlyFields({ json, edit, flush, diagnostics, withTexts
 function EndEditor({
   index,
   end,
+  relation,
   entities,
+  stereotypes,
   onChange,
   flush,
 }: {
   index: number;
   end: RelationEndDoc;
+  relation: RelationDoc;
   entities: ElementSummary[];
+  /** The stereotypes that apply to entities (MQ9211 refuses any other). */
+  stereotypes: { key: string; name?: string }[];
   onChange: (update: (end: RelationEndDoc) => void) => void;
   flush: () => void;
 }) {
   const base = `end-${index}`;
   const definition = useDefinition();
+  // A choice that needs a pick first (several entries back to One entity, Any entity to either) waits here; the file keeps its keys until the pick.
+  const [pending, setPending] = useState<EndChoice | null>(null);
+  const form = end as EndForm;
+  const shown = pending ?? endChoiceOf(form);
+  const limits = endChoiceLimits(relation as RelationForm, index);
+  const limitText = limits.several ?? limits.any;
+  const entries = form.types ?? [];
+  const nameOfEntity = (id: string | undefined) => entities.find((en) => en.id === id)?.name ?? id ?? "";
+  const entryLabel = (e: EndEntry) => (e.entity !== undefined ? nameOfEntity(e.entity) : `${e.stereotype ?? ""} (stereotype)`);
+  const listed = new Set(entries.map(entryKey));
+  const choose = (to: EndChoice) => {
+    if (to === endChoiceOf(form)) {
+      setPending(null);
+      return;
+    }
+    if (!moveEnd(structuredClone(form), to)) {
+      setPending(to);
+      return;
+    }
+    onChange((x) => void moveEnd(x as EndForm, to));
+    setPending(null);
+    flush();
+  };
   return (
     <fieldset className="flex flex-col gap-2 rounded-control border border-default p-2">
       <legend className="px-1 text-12 font-medium text-secondary">End {index + 1}</legend>
-      <Field label="Entity" htmlFor={`${base}-entity`}>
-        <Select
-          {...definition.props(end.entity)}
-          id={`${base}-entity`}
-          value={end.entity}
-          onChange={(e) => {
-            onChange((x) => void (x.entity = e.target.value));
-            flush();
-          }}
-        >
-          {entities.map((en) => (
-            <option key={en.id} value={en.id}>
-              {en.name}
+      <Field label="Type" htmlFor={`${base}-type`}>
+        <Select id={`${base}-type`} value={shown} title={limitText} onChange={(e) => choose(e.target.value as EndChoice)}>
+          {(Object.keys(END_CHOICE_LABELS) as EndChoice[]).map((c) => (
+            <option key={c} value={c} disabled={!!limits[c] && c !== shown} title={limits[c]}>
+              {END_CHOICE_LABELS[c]}
             </option>
           ))}
         </Select>
+        {limitText ? (
+          <span className="text-11 text-secondary" data-testid={`${base}-type-limit`}>
+            {limitText}
+          </span>
+        ) : null}
       </Field>
+      {shown === "one" ? (
+        <Field label="Entity" htmlFor={`${base}-entity`}>
+          <Select
+            {...definition.props(end.entity ?? "")}
+            id={`${base}-entity`}
+            value={end.entity ?? ""}
+            onChange={(e) => {
+              if (!e.target.value) return;
+              onChange((x) => pickOneEntity(x as EndForm, e.target.value));
+              setPending(null);
+              flush();
+            }}
+          >
+            {end.entity ? null : <option value="">Choose an entity…</option>}
+            {entities.map((en) => (
+              <option key={en.id} value={en.id}>
+                {en.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      ) : shown === "several" ? (
+        <Field label="Types" htmlFor={`${base}-add-type`}>
+          <div className="flex flex-wrap items-center gap-1" data-testid={`${base}-types`}>
+            {entries.map((e, i) => (
+              <span
+                key={entryKey(e)}
+                className="inline-flex h-6 items-center gap-1 rounded-control border border-default bg-app px-1.5 text-12"
+                data-testid={`${base}-chip`}
+              >
+                {entryLabel(e)}
+                <button
+                  type="button"
+                  {...iconLabel(entries.length > 1 ? `Remove ${entryLabel(e)} from the types` : END_LIMIT_TEXTS.lastType)}
+                  disabled={entries.length <= 1}
+                  onClick={() => {
+                    onChange((x) => void removeEntry(x as EndForm, i));
+                    flush();
+                  }}
+                  className="rounded-[3px] text-secondary hover:text-primary disabled:opacity-40"
+                >
+                  <X className="size-3" />
+                </button>
+              </span>
+            ))}
+            <Select
+              id={`${base}-add-type`}
+              aria-label={`Add a type to end ${index + 1}`}
+              className="h-6 w-auto text-12"
+              value=""
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return;
+                const entry: EndEntry = v.startsWith("stereotype:") ? { stereotype: v.slice("stereotype:".length) } : { entity: v.slice("entity:".length) };
+                onChange((x) => addEntry(x as EndForm, entry));
+                setPending(null);
+                flush();
+              }}
+            >
+              <option value="">add…</option>
+              {entities
+                .filter((en) => !listed.has(`entity:${en.id}`))
+                .map((en) => (
+                  <option key={en.id} value={`entity:${en.id}`}>
+                    {en.name}
+                  </option>
+                ))}
+              {stereotypes.some((s) => !listed.has(`stereotype:${s.key}`)) ? (
+                <optgroup label="Stereotypes">
+                  {stereotypes
+                    .filter((s) => !listed.has(`stereotype:${s.key}`))
+                    .map((s) => (
+                      <option key={s.key} value={`stereotype:${s.key}`}>
+                        {s.name || s.key}
+                      </option>
+                    ))}
+                </optgroup>
+              ) : null}
+            </Select>
+          </div>
+        </Field>
+      ) : (
+        <p className="text-12 text-secondary" data-testid={`${base}-any`}>
+          Any entity of the model.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <TextField id={`${base}-role`} label="Role" value={end.role} onChange={(v) => onChange((x) => void (x.role = v))} onBlur={flush} mono />
         <TextField
@@ -604,6 +730,7 @@ export function RelationFields(props: FormProps & { withAttributes?: boolean }) 
   const relation = json as RelationDoc;
   const vocab = useVocabularies("relation");
   const entities = vocab.lookup.ofKind("entity");
+  const stereotypes = vocab.allStereotypes.filter((s) => !s.appliesTo?.length || (s.appliesTo as string[]).includes("entity"));
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-2 gap-2">
@@ -636,7 +763,9 @@ export function RelationFields(props: FormProps & { withAttributes?: boolean }) 
           key={end.id}
           index={i}
           end={end}
+          relation={relation}
           entities={entities}
+          stereotypes={stereotypes}
           flush={flush}
           onChange={(update) =>
             edit((j) => {

@@ -68,6 +68,8 @@ const EDITOR_FIXES = new Set([
   "MQ8203",
   "MQ8204",
   "MQ3116",
+  "MQ3042",
+  "MQ3043",
 ]);
 
 /** True when the diagnostic's rule has a quick fix: a catalog `quickFix` or one the editor builds. */
@@ -139,6 +141,32 @@ export function initialCode(process: Json): string | number | undefined {
     node = children.find((s) => s.id === from.initial) ?? children[0];
   }
   return undefined;
+}
+
+/**
+ * The quick fixes of MQ3042 and MQ3043 (several-types-design.md section 6). MQ3042 (an end's `types` lists one entity) writes `entity`
+ * in its place; the finding's pointer names the end (`/ends/<i>/types`). MQ3043 (an entry another entry covers) removes the entry its
+ * pointer names (`/ends/<i>/types/<j>`); the list's last entry stays, since a list holds at least one.
+ */
+export function endTypesFix(rule: string, element: ModelJson, pointer: string): { json: ModelJson; label: string } | null {
+  const at = /^\/ends\/(\d+)(?:\/types(?:\/(\d+))?)?(?:\/(?:entity|stereotype))?$/.exec(pointer);
+  if (!at) return null;
+  const next = clone(element);
+  const end = (next.ends as Json[] | undefined)?.[Number(at[1])];
+  const types = end?.types;
+  if (!end || !Array.isArray(types)) return null;
+  if (rule === "MQ3042") {
+    const only = types.length === 1 ? str((types[0] as Json).entity) : undefined;
+    if (!only) return null;
+    delete end.types;
+    end.entity = only;
+    return { json: next, label: "Use entity" };
+  }
+  const entry = at[2] === undefined ? undefined : types[Number(at[2])];
+  if (!entry || types.length < 2) return null;
+  const named = str((entry as Json).entity) ?? str((entry as Json).stereotype);
+  types.splice(Number(at[2]), 1);
+  return { json: next, label: named ? `Remove ${named}` : "Remove the entry" };
 }
 
 /** Removes the array item (or the property) at `pointer`; null when nothing is there. */
@@ -528,6 +556,12 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
       if (!at || element.kind !== "process") return null;
       const json = removeSetAt(element, at);
       return json ? { kind: "update", id, json, label: "Remove the set" } : null;
+    }
+    case "MQ3042":
+    case "MQ3043": {
+      if (element.kind !== "relation") return null;
+      const fix = endTypesFix(d.rule, element, pointer);
+      return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;
     }
     case "MQ3116": {
       if (element.kind !== "process") return null;

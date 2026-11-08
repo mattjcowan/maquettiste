@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { EmptyState, SectionTitle } from "@/components/ui/misc";
 import { useVocabularies } from "@/inspector/fields";
 import { indexLookup } from "@/model/index";
+import { docEndSingleEntity, endSingleEntity } from "@/model/endTypes";
 import { BUILTIN_TYPES } from "@/model/model";
 import {
   defaultAlias,
@@ -127,7 +128,7 @@ function chainOf(entityId: string | null | undefined, lookup: ReturnType<typeof 
 
 /** The relations with an end at one of the entities. */
 const relationsOf = (rows: readonly ElementSummary[] | undefined, chain: readonly string[]) =>
-  (rows ?? []).filter((r) => r.kind === "relation" && (r.ends ?? []).some((e) => chain.includes(e.entity))).map((r) => r.id);
+  (rows ?? []).filter((r) => r.kind === "relation" && (r.ends ?? []).some((e) => chain.includes(endSingleEntity(e) ?? ""))).map((r) => r.id);
 
 const refOf = (type: unknown) => (typeof type === "object" && type ? (type as { ref?: string }).ref : undefined);
 
@@ -193,14 +194,17 @@ export function entityShapeOf(
     const ends = relation?.ends ?? [];
     ends.forEach((end, i) => {
       const other = ends[1 - i];
-      if (!other || !chain.includes(end.entity)) return;
+      // A navigation to an end with several types leads to more than one table, so a query can't offer it (MQ4116).
+      const selfEntity = docEndSingleEntity(end);
+      const otherEntity = other ? docEndSingleEntity(other) : null;
+      if (!other || !selfEntity || !otherEntity || !chain.includes(selfEntity)) return;
       const navigation = (other as { navigation?: string }).navigation;
       if (!navigation) return;
       const max = (other as { max?: number | "*" }).max;
-      const target = lookup.byId.get(other.entity)?.name ?? other.entity;
+      const target = lookup.byId.get(otherEntity)?.name ?? otherEntity;
       if (max !== undefined && max !== "*" && max <= 1)
         fills.push({ id: other.id, name: `${navigation} (foreign key to ${target})`, kind: "foreign-key", fieldName: `${navigation}Id` });
-      else collections.push({ value: other.id, label: `${navigation} (${target})`, name: navigation, entity: other.entity });
+      else collections.push({ value: other.id, label: `${navigation} (${target})`, name: navigation, entity: otherEntity });
     });
   }
   return { attributes, fills, collections, key };

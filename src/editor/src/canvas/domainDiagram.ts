@@ -5,6 +5,7 @@
 // membership decides it, never a name (renaming the domain or the diagram changes nothing). Kept free of React so it
 // can be unit tested.
 import type { DiagramDoc, DiagramMember } from "@/api/types";
+import type { EndLike } from "@/model/endTypes";
 import { viewElements, type Point } from "./model";
 
 interface Row {
@@ -12,7 +13,7 @@ interface Row {
   kind: string;
   name?: string;
   package?: string | null;
-  ends?: readonly { entity: string }[];
+  ends?: readonly EndLike[];
 }
 
 const ordinal = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);

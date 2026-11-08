@@ -3,6 +3,7 @@
 // are written back into a diagram, and what "Add related to depth N" adds.
 import type { AttributeDoc, DiagramDoc, DiagramMember, ElementSummary, RelationDoc } from "@/api/types";
 import { indexPatchOf } from "@/api/indexPatch";
+import { docEndSingleEntity, endSingleEntity, type EndLike } from "@/model/endTypes";
 import type { LayoutEdge, LayoutNode } from "./layout";
 
 export const NODE_WIDTH = 240;
@@ -27,7 +28,7 @@ interface IndexRow {
   id: string;
   kind: string;
   package?: string | null;
-  ends?: readonly { entity: string }[];
+  ends?: readonly EndLike[];
 }
 
 /**
@@ -52,7 +53,9 @@ export function viewElements(
     const shown = new Set(entityIds);
     // A relation shows when both its ends are cards (the index row's `ends`); a row without ends (an older server) is
     // kept and the canvas drops an edge whose ends are not cards.
-    const relationIds = rows.filter((r) => r.kind === "relation" && (!r.ends?.length || r.ends.every((e) => shown.has(e.entity)))).map((r) => r.id);
+    const relationIds = rows
+      .filter((r) => r.kind === "relation" && (!r.ends?.length || r.ends.every((e) => endSingleEntity(e) !== null && shown.has(endSingleEntity(e)!))))
+      .map((r) => r.id);
     return { entityIds, relationIds };
   }
   const kinds = new Map(rows.map((r) => [r.id, r.kind]));
@@ -115,11 +118,15 @@ export interface EdgeEnds {
 export function relationEnds(relation: Pick<RelationDoc, "ends">, positionOf: ReadonlyMap<string, Point>, width: number = NODE_WIDTH): EdgeEnds | null {
   const [a, b] = relation.ends ?? [];
   if (!a || !b) return null;
-  const pa = positionOf.get(a.entity);
-  const pb = positionOf.get(b.entity);
+  // several-types: editor 2 — an end with several types draws nothing for now; its lines and node come with the canvas looks.
+  const ea = docEndSingleEntity(a);
+  const eb = docEndSingleEntity(b);
+  if (!ea || !eb) return null;
+  const pa = positionOf.get(ea);
+  const pb = positionOf.get(eb);
   if (!pa || !pb) return null;
   const forward = pa.x + width / 2 <= pb.x + width / 2;
-  return { source: a.entity, target: b.entity, sourceHandle: forward ? "r" : "sl", targetHandle: forward ? "l" : "tr" };
+  return { source: ea, target: eb, sourceHandle: forward ? "r" : "sl", targetHandle: forward ? "l" : "tr" };
 }
 
 /** Writes rounded positions into the diagram's members (in place); members not listed are untouched. */
@@ -258,13 +265,14 @@ export async function expandRelated(input: ExpandInput): Promise<DiagramMember[]
           present.add(relation.id);
           added.push({ element: relation.id });
         }
-        for (const end of relation.ends ?? []) {
-          if (seen.has(end.entity)) continue;
-          seen.add(end.entity);
-          next.push(end.entity);
-          if (present.has(end.entity)) continue;
-          present.add(end.entity);
-          added.push({ element: end.entity, x: Math.round(input.origin.x + 320 * level), y: Math.round(input.origin.y + 180 * row++) });
+        // several-types: editor 2 — only an end's one entity is walked; the entries of an end with several types are not.
+        for (const entity of (relation.ends ?? []).flatMap((end) => docEndSingleEntity(end) ?? [])) {
+          if (seen.has(entity)) continue;
+          seen.add(entity);
+          next.push(entity);
+          if (present.has(entity)) continue;
+          present.add(entity);
+          added.push({ element: entity, x: Math.round(input.origin.x + 320 * level), y: Math.round(input.origin.y + 180 * row++) });
         }
       }
     }
@@ -336,7 +344,8 @@ function buildRelationLookup(rows: readonly Pick<IndexRow, "id" | "kind" | "ends
   const ends = new Map<string, string[]>();
   for (const r of rows) {
     if (r.kind !== "relation" || !r.ends) continue;
-    const list = r.ends.map((e) => e.entity);
+    // several-types: editor 2 — an end with several types holds no entity here, so its relation is not found from its types.
+    const list = r.ends.flatMap((e) => endSingleEntity(e) ?? []);
     ends.set(r.id, list);
     for (const e of new Set(list)) {
       const bucket = relations.get(e) ?? [];

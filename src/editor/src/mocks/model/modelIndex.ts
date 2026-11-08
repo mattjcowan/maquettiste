@@ -5,6 +5,7 @@
 // (tests/unit/mock-model-index.test.ts checks that after random edits).
 import type { Diagnostic } from "@/api/types";
 import { subjectsOf } from "@/model/process";
+import { relationHasSeveralTypes } from "./endRules";
 import { referencesOf, subElementIds, type RowResolver } from "./refs";
 import {
   entryDiagnostics,
@@ -44,6 +45,8 @@ export class ModelIndex {
   private readonly referrers = new Map<string, Set<string>>();
   /** The lifecycles that bind an attribute: their state codes may use a seed row, which only the model as a whole can tell. */
   private readonly binders = new Set<string>();
+  /** The relations with an end that has several types: what they read (entities, packages, stereotypes, mappings, databases) is not a reference they hold. */
+  private readonly severalTypes = new Set<string>();
   private readonly scopeOf = new Map<string, string>();
   /** MQ3001 scope → its entries in path order. */
   private readonly scopes = new Map<string, ModelEntry[]>();
@@ -117,6 +120,11 @@ export class ModelIndex {
     // MQ9201 on an entity reads its lifecycle process and the entity's bases, which the index holds no reference for.
     if (all.some((e) => e.json.kind === "process" || e.json.kind === "entity" || e.json.kind === "package"))
       for (const [id, entry] of this.snapshot) if (entry.json.kind === "entity" && typeof entry.json.lifecycle === "string") affected.add(id);
+    // Decision 12: a relation with an end of several types reads the carriers of its stereotypes, every entity for `anyEntity`, and where the
+    // types are placed (MQ4115), so a change to any of those checks it again. Without such a relation nothing extra runs.
+    if (this.severalTypes.size && all.some((e) => ["entity", "package", "stereotype", "mapping", "database"].includes(String(e.json.kind))))
+      for (const id of this.severalTypes) affected.add(id);
+    // A field that names an end (a binding's, a query's) reads that end's relation: its entity or query is checked again with it.
     const ctx = this.context();
     for (const id of affected) {
       const entry = this.snapshot.get(id);
@@ -169,6 +177,10 @@ export class ModelIndex {
       hasId: (id) => (this.idCount.get(id) ?? 0) > 0,
       lookup: (id) => this.snapshot.get(id),
       all: () => this.snapshot.values(),
+      ownerOf: (id) => {
+        const owner = this.ownerOf(id);
+        return owner ? this.snapshot.get(owner) : undefined;
+      },
       firstInScope: (scope, entry) => {
         const first = this.scopes.get(scope)?.[0];
         return first && first.id !== entry.id ? first : undefined;
@@ -184,6 +196,7 @@ export class ModelIndex {
     const targets = [...new Set(referencesOf(entry.json, this.keyResolver).map((r) => r.toId))];
     this.targetsOf.set(entry.id, targets);
     if (entry.json.kind === "process" && subjectsOf(entry.json).some((e) => e.boundAttribute !== undefined)) this.binders.add(entry.id);
+    if (relationHasSeveralTypes(entry.json)) this.severalTypes.add(entry.id);
     for (const t of targets) {
       let set = this.referrers.get(t);
       if (!set) this.referrers.set(t, (set = new Set()));
@@ -216,6 +229,7 @@ export class ModelIndex {
     }
     this.targetsOf.delete(id);
     this.binders.delete(id);
+    this.severalTypes.delete(id);
     const scope = this.scopeOf.get(id);
     if (scope !== undefined) {
       const list = (this.scopes.get(scope) ?? []).filter((e) => e.id !== id);

@@ -4,6 +4,7 @@
 // the tab-separated clipboard and the keyboard map. Pure and tested alone.
 import type { AttributeDoc, ReferenceTypeDoc, RelationDoc, RelationEndDoc, SeedDoc } from "@/api/types";
 import { isBuiltin } from "@/model/model";
+import { docEndHasSeveralTypes, docEndSingleEntity } from "@/model/endTypes";
 
 export interface GridColumn {
   /** The seed column key: `code`, `label`, `description` or a user field's id. */
@@ -505,12 +506,12 @@ export interface SeedEnd {
 
 const endColumn = (end: RelationEndDoc, nameOf: (id: string) => string | undefined): GridColumn => ({
   key: end.id,
-  label: end.role || nameOf(end.entity) || end.entity,
+  label: end.role || nameOf(docEndSingleEntity(end) ?? "") || docEndSingleEntity(end) || "",
   builtin: false,
   type: "end",
   collection: false,
   required: (end.min ?? 0) >= 1,
-  end: end.entity,
+  end: docEndSingleEntity(end) ?? "",
   ...texts(end as { displayName?: string | null; description?: unknown }),
 });
 
@@ -533,9 +534,10 @@ export function entitySeedEnds(lineage: ReadonlySet<string>, relations: readonly
   const out: SeedEnd[] = [];
   for (const relation of relations) {
     const ends = relation.ends ?? [];
-    if (ends.length !== 2 || hasSeeds(relation.id)) continue;
+    // An end with several types leaves its relation out: a seed column can't name such a link (MQ7105).
+    if (ends.length !== 2 || ends.some(docEndHasSeveralTypes) || hasSeeds(relation.id)) continue;
     ends.forEach((end, i) => {
-      if (lineage.has(ends[1 - i].entity) && end.max === 1) out.push({ relation: relation.id, end });
+      if (lineage.has(docEndSingleEntity(ends[1 - i]) ?? "") && end.max === 1) out.push({ relation: relation.id, end });
     });
   }
   return out;
@@ -578,7 +580,10 @@ export function tableGridColumns(columns: readonly TableColumnLike[]): GridColum
 
 /** A relation seed's columns: both ends (every link names both), then the relation's attributes. */
 export function relationGridColumns(relation: Pick<RelationDoc, "ends" | "attributes">, nameOf: (id: string) => string | undefined): GridColumn[] {
-  return [...(relation.ends ?? []).map((e) => endColumn(e, nameOf)), ...((relation.attributes ?? []) as AttributeDoc[]).map(attributeColumn)];
+  // A relation with an end of several types has no seed columns for its ends (MQ7105).
+  const ends = relation.ends ?? [];
+  if (ends.some(docEndHasSeveralTypes)) return [];
+  return [...ends.map((e) => endColumn(e, nameOf)), ...((relation.attributes ?? []) as AttributeDoc[]).map(attributeColumn)];
 }
 
 /** The columns with any column a seed lists that the target no longer offers, so no stored cell is hidden. */

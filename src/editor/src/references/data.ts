@@ -18,6 +18,8 @@ export function indexReferences(target: string, rows: readonly ElementSummary[])
     if (row.database === target) add(row, "/database", "database");
     row.ends?.forEach((end, i) => {
       if (end.entity === target) add(row, `/ends/${i}/entity`, "entity");
+      // An entry of an end's `types`: the row doesn't say where in the list it stands, so the pointer names the list.
+      else if (end.entities?.includes(target) || end.stereotypes?.includes(target)) add(row, `/ends/${i}/types`, "types");
     });
   }
   return out;

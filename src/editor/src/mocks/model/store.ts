@@ -7,6 +7,7 @@
 import { ACTOR_TYPES } from "@/model/labels";
 import { applySchemaOperation, SCHEMA_OPS, type SchemaOp } from "@/model/databaseSchemas";
 import { DATABASE_MEMBER_KINDS } from "@/model/model";
+import { endSummaryOf } from "@/model/endTypes";
 import { subjectsOf } from "@/model/process";
 import { relativeForms, type RelativeDoc } from "@/model/objectFields";
 import type {
@@ -211,6 +212,7 @@ export class MockModel {
       );
       return subjectStereotypes.length ? { ...row, subjectStereotypes } : row;
     }
+    if (row.kind === "relation") return this.withEndCoverage(row, e);
     if (row.kind !== "process") return row;
     const actors = [...new Set(referencesOf(e.json).map((r) => r.toId))].filter((id) => this.entries.get(id)?.json.kind === "actor").sort();
     const withActors = actors.length ? { ...row, actors } : row;
@@ -218,6 +220,28 @@ export class MockModel {
   }
 
   private coverageMemo: { version: number; coverage: Coverage } | null = null;
+
+  /**
+   * A relation row's ends with several types (several-types-design.md section 9): `stereotypes` (the ids of the stereotypes the entries name, an
+   * unknown key left out) and `covers` (the entities that carry them, by qualified name then id, in entry order, without repeats), each left out
+   * when empty. A relation with no `types` is left as it is.
+   */
+  private withEndCoverage(row: ElementSummary, e: Entry): ElementSummary {
+    const ends = Array.isArray(e.json.ends) ? (e.json.ends as Json[]) : [];
+    if (!row.ends || !ends.some((end) => Array.isArray(end.types) && (end.types as Json[]).some((t) => typeof t.stereotype === "string"))) return row;
+    if (this.coverageMemo?.version !== this.version) this.coverageMemo = { version: this.version, coverage: new Coverage(this.entries.values()) };
+    const { coverage } = this.coverageMemo;
+    const idOf = (key: string) => [...this.entries.values()].find((x) => x.json.kind === "stereotype" && x.json.key === key)?.id;
+    return {
+      ...row,
+      ends: row.ends.map((summary, i) => {
+        const keys = (Array.isArray(ends[i]?.types) ? (ends[i].types as Json[]) : []).flatMap((t) => (typeof t.stereotype === "string" ? [t.stereotype] : []));
+        const stereotypes = keys.flatMap((k) => idOf(k) ?? []);
+        const covers = [...new Set(keys.flatMap((k) => coverage.carriers(k)))];
+        return { ...summary, ...(stereotypes.length ? { stereotypes } : {}), ...(covers.length ? { covers } : {}) };
+      }),
+    };
+  }
 
   /** The stereotype entries of a process row (stereotype-sets-design.md section 8): `subjectStereotypes` and `covers`, left out when empty. */
   private withCoverage(row: ElementSummary, e: Entry): ElementSummary {
@@ -1627,8 +1651,7 @@ function e5(json: Json): Partial<ElementSummary> {
   }
   // Section 4.2 (maquettiste-index/e11): a custom element's type. The mock reads no custom kind files, so it counts no members.
   if (kind === "custom" && typeof json.type === "string") out.type = json.type;
-  if (kind === "relation" && Array.isArray(json.ends))
-    out.ends = (json.ends as Json[]).map((end) => ({ entity: String(end.entity ?? ""), role: String(end.role ?? "") }));
+  if (kind === "relation" && Array.isArray(json.ends)) out.ends = (json.ends as Json[]).map((end) => endSummaryOf(end));
   return out;
 }
 

@@ -13,6 +13,7 @@ import type {
 } from "@/api/types";
 import { ACTOR_TYPES, KIND_LABELS, type ActorType } from "./labels";
 import { subjectsOf } from "./process";
+import { endSummaryOf } from "./endTypes";
 import { relativeForms, type RelativeDoc } from "./objectFields";
 
 export const BUILTIN_TYPES: BuiltinType[] = [
@@ -236,8 +237,7 @@ function indexMembers(json: Record<string, unknown>, actorIds?: ReadonlySet<stri
   if (kind === "diagram") out.memberCount = Array.isArray(json.members) ? json.members.length : 0;
   // A process diagram names its process (phase-3-design.md 2.7), so the explorer and the canvas find it by its row.
   if (kind === "diagram" && typeof json.process === "string") out.process = json.process;
-  if (kind === "relation" && Array.isArray(json.ends))
-    out.ends = (json.ends as Record<string, unknown>[]).map((end) => ({ entity: String(end.entity ?? ""), role: String(end.role ?? "") }));
+  if (kind === "relation" && Array.isArray(json.ends)) out.ends = (json.ends as Record<string, unknown>[]).map((end) => endSummaryOf(end, stereotypeIds));
   return out;
 }
 

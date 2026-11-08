@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useElements, useIndex } from "@/api/queries";
 import { indexLookup } from "@/model/index";
+import { endSingleEntity } from "@/model/endTypes";
 import { commonFields, objectFields, type ObjectField } from "@/model/objectFields";
 
 type Rec = Record<string, unknown>;
@@ -18,7 +19,8 @@ export function useObjectFields(entities: readonly string[]): { fields: ObjectFi
   const chainSet = new Set(chain);
   const relationIds = lookup
     .ofKind("relation")
-    .filter((r) => (r.ends ?? []).some((e) => chainSet.has(e.entity)))
+    // several-types: editor 2 — the process pickers read an end's one entity only, so an end with several types is not offered here.
+    .filter((r) => (r.ends ?? []).some((e) => chainSet.has(endSingleEntity(e) ?? "")))
     .map((r) => r.id);
   const stereotypeIds = chain.some((id) => (lookup.byId.get(id)?.stereotypes ?? []).length > 0) ? lookup.ofKind("stereotype").map((s) => s.id) : [];
   const scalarIds = lookup.ofKind("scalar-type").map((s) => s.id);
