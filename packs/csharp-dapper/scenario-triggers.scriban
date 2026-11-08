@@ -1,0 +1,65 @@
+{{-
+# The trigger points of the scenario tests (trigger-points-design.md decisions 22, 26 and 31), written only when the project uses trigger
+# points and the testsFolder parameter names a folder: ScenarioTriggers answers each outside team-code check from the step's assume words
+# and records outside actions and replaces in place of calling them, so a test reaches no outside system. The generated test sets Assumed
+# before each step and clears it after; ScenarioHost (the team's file) registers it once as TriggerPointStandIn.Current.
+include "_csharp.scriban"
+include "_process.scriban"
+if uses_triggers() && pack.params.testsFolder != ""
+-}}
+{{- capture content -}}
+{{ header() }}
+using System.Collections.Generic;
+using System.Threading;
+using {{ actors_ns() }};
+
+namespace {{ base_ns }};
+
+/// <summary>
+/// The outside trigger points of a scenario step: each outside team-code check gives the word the step assumes ("pass" when it assumes
+/// none), and each outside action or replace is recorded in place of calling the team's method, as the replay never calls them. Register
+/// it once in ScenarioHost: <c>TriggerPointStandIn.Current = new ScenarioTriggers();</c>. Until then a test calls the team's methods,
+/// and a step whose outcome depends on an assumed outside check fails.
+/// </summary>
+public sealed class ScenarioTriggers : TriggerPointStandIn
+{
+    private static readonly AsyncLocal<Holder?> Step = new();
+
+    /// <summary>The current step's words for outside checks, by trigger point id; null between steps. Each test sets it before a step and clears it after.</summary>
+    public static IReadOnlyDictionary<string, string>? Assumed
+    {
+        get => Step.Value?.Words;
+        set => Step.Value = value is null ? null : new Holder(value);
+    }
+
+    /// <summary>The ids of the outside points the current step answered or recorded, in order.</summary>
+    public static IReadOnlyList<string> Recorded => Step.Value?.Recorded ?? [];
+
+    /// <inheritdoc/>
+    public override string? Check(string id, TriggerPointCall call)
+    {
+        if (Step.Value is not { } holder)
+            return null;
+        holder.Recorded.Add(id);
+        return holder.Words.TryGetValue(id, out var word) ? word : "pass";
+    }
+
+    /// <inheritdoc/>
+    public override bool Records(string id, TriggerPointCall call)
+    {
+        if (Step.Value is not { } holder)
+            return false;
+        holder.Recorded.Add(id);
+        return true;
+    }
+
+    private sealed class Holder(IReadOnlyDictionary<string, string> words)
+    {
+        public IReadOnlyDictionary<string, string> Words { get; } = words;
+
+        public List<string> Recorded { get; } = [];
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.testsFolder "ScenarioTriggers.cs") content -}}
+{{- end -}}

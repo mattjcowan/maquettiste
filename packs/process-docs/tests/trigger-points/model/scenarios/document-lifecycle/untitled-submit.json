@@ -1,0 +1,79 @@
+{
+  "kind": "scenario",
+  "id": "01JTP000000000000000000N01",
+  "name": "untitledSubmit",
+  "process": "01JTP000000000000000000C01",
+  "objects": [
+    {
+      "id": "01JTP000000000000000000D01",
+      "name": "doc",
+      "entity": "01JTP000000000000000000E01",
+      "values": {
+        "01JTP000000000000000000A02": "",
+        "01JTP000000000000000000A03": 100
+      },
+      "links": []
+    }
+  ],
+  "subject": "01JTP000000000000000000D01",
+  "start": {
+    "context": {},
+    "at": "2026-11-07T09:00:00Z"
+  },
+  "steps": [
+    {
+      "id": "01JTP000000000000000000N11",
+      "input": "event",
+      "event": "01JTP000000000000000000V01",
+      "expect": {
+        "accepted": false,
+        "states": [
+          "01JTP000000000000000000S01"
+        ],
+        "context": {},
+        "refusal": "check",
+        "refusedBy": "01JTP000000000000000000Q02"
+      }
+    },
+    {
+      "id": "01JTP000000000000000000N12",
+      "input": "verb",
+      "verb": "modify",
+      "values": {
+        "01JTP000000000000000000A03": 80
+      },
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JTP000000000000000000S01"
+        ],
+        "context": {},
+        "values": {
+          "01JTP000000000000000000A03": 80
+        },
+        "checkWarnings": [
+          "01JTP000000000000000000Q03"
+        ]
+      }
+    },
+    {
+      "id": "01JTP000000000000000000N13",
+      "input": "verb",
+      "verb": "delete",
+      "assume": {
+        "01JTP000000000000000000Q06": "pass"
+      },
+      "expect": {
+        "accepted": true,
+        "states": [
+          "01JTP000000000000000000S01"
+        ],
+        "context": {},
+        "triggerPoints": [
+          "01JTP000000000000000000Q06"
+        ]
+      }
+    }
+  ],
+  "outcome": "active"
+}

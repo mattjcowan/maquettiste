@@ -576,6 +576,17 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 yield return peer;
         }
 
+        // MQ8104 across lifecycles is reported on the lifecycle that sorts later, so a lifecycle is judged with every other one that holds a replace.
+        if (element is Process { Use: ProcessUse.Lifecycle } lifecycle)
+        {
+            foreach (var other in model.All<Process>())
+            {
+                if (!ReferenceEquals(other, lifecycle) && other.Use == ProcessUse.Lifecycle && other.TriggerPoints.Any(t => t.Type == TriggerPointType.Replace)
+                    && model.GetDocument(other.Id) is { } peer)
+                    yield return peer;
+            }
+        }
+
         // MQ4014 on a mapping depends on its database's schemas.
         if (element is Database schemaOwner)
         {

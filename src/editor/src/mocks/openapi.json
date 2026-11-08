@@ -1230,7 +1230,7 @@
         ],
         "operationId": "getResolvedModel",
         "summary": "The resolved model as flat records, in pages",
-        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards\n  (a guard written in the expression language with its `condition`), actions, gates and invokes, actors by id, and a\n  lifecycle's `rightsDefault` and `rights` when it has them. Named rights (`RightRecord`) come with `all`, as verbs do.\n- `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,\n  `completes`, `returns`), the errors (`code`, `input`), `fires` and `requires` by id, and the `guards` in the order\n  they are checked, each with its `condition` and the `error` it reports.\n- `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and\n  its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.\n- `constraints`: `ConstraintRecord`, one named constraint per record with its typed `parameters`, its `condition` and its\n  `message`. An entity's `checks`, a derived attribute's `value` and a process or operation guard's `condition` are\n  written in the same expression language: each `ExpressionRecord` has the `text` printed from current names, its `type`,\n  whether it is `nullable` and the `tree` of ids the file holds; a model without expressions has none of these keys.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n",
+        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards\n  (a guard written in the expression language with its `condition`), actions, gates and invokes, actors by id, and a\n  lifecycle's `rightsDefault`, `rights` and `triggerPoints` when it has them. Named rights (`RightRecord`) come with `all`, as\n  verbs do.\n- `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,\n  `completes`, `returns`), the errors (`code`, `input`), `fires` and `requires` by id, and the `guards` in the order\n  they are checked, each with its `condition` and the `error` it reports.\n- `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and\n  its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.\n- `constraints`: `ConstraintRecord`, one named constraint per record with its typed `parameters`, its `condition` and its\n  `message`. An entity's `checks`, a derived attribute's `value` and a process or operation guard's `condition` are\n  written in the same expression language: each `ExpressionRecord` has the `text` printed from current names, its `type`,\n  whether it is `nullable` and the `tree` of ids the file holds; a model without expressions has none of these keys.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetResolvedAsync(query)",
         "parameters": [
@@ -5278,7 +5278,7 @@
         ],
         "operationId": "recordScenario",
         "summary": "Record a scenario from a list of inputs",
-        "description": "phase-3-design.md section 4.4. The engine replays `start` and `steps` and fills each step's `expect` (refusals recorded as\n`accepted: false`, with `refusal` and `refusedBy` when the project uses rights, rights-design.md decision 26) and the `outcome` (unless the request gives one) from the replay, gives the scenario, its steps and its\nobjects new ids (`subject` and each link follow their objects), and saves it as one change under\n`model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing it. Inputs that cannot be\nreplayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.\n",
+        "description": "phase-3-design.md section 4.4. The engine replays `start` and `steps` and fills each step's `expect` (refusals recorded as\n`accepted: false`, with `refusal` and `refusedBy` when the project uses rights or trigger points, rights-design.md decision 26),\n`checkWarnings` when the project uses trigger points and a check warned, `triggerPoints` only when the request asks\n(trigger-points-design.md decision 28), and the `outcome` (unless the request gives one) from the replay, gives the scenario, its steps and its\nobjects new ids (`subject` and each link follow their objects), and saves it as one change under\n`model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing it. Inputs that cannot be\nreplayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.\n",
         "x-maquettiste-role": "editor",
         "parameters": [
           {
@@ -5558,6 +5558,131 @@
                     }
                   ],
                   "next": null
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/processes/{id}/trigger-sequence": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/ProcessId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "processes"
+        ],
+        "operationId": "getTriggerSequence",
+        "summary": "What runs, in order, when a verb happens in a lifecycle",
+        "description": "trigger-points-design.md decision 36 and section 9. The steps of the fixed order (decision 18) for one verb in one lifecycle:\nthe built-in steps that apply to the verb, and each trigger point that can run, with its lifecycle, moment and places, in run\norder (decision 19: at each moment the acting lifecycle first, then the others by name, each in its list's order). For an object,\nlink or own verb, the other lifecycles that govern the subject add their points. The optional parameters narrow the answer to one\nplace; a point narrowed by `attributes` or `ends` is listed when the request gives none of them only if it is a check, as a run\nfails closed. A project without trigger points gets the built-in steps alone. The answer reads the lifecycle and the lifecycles\nthat govern its subjects; the model is never resolved, and nothing is written. One page: a verb's sequence is short, so there is\nno cursor. The MCP tool `get_trigger_sequence` answers the same, and the editor's What happens when view shows this answer.\n",
+        "x-maquettiste-role": "viewer",
+        "parameters": [
+          {
+            "name": "verb",
+            "in": "query",
+            "required": true,
+            "description": "The verb, by key.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "A state id of the lifecycle the object is in (for a move, its source).",
+            "schema": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          {
+            "name": "entity",
+            "in": "query",
+            "description": "An entity id the lifecycle governs; only the points that run for it.",
+            "schema": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          {
+            "name": "attributes",
+            "in": "query",
+            "description": "Comma-separated attribute ids the step reads or changes, for `read` and `modify`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "A relation end id of the subject, for a verb on a link.",
+            "schema": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          {
+            "name": "transition",
+            "in": "query",
+            "description": "A transition id of the lifecycle, for a move verb or `sign`.",
+            "schema": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sequence.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerSequence"
+                },
+                "example": {
+                  "lifecycle": "01JQPRC0000000000000000002",
+                  "verb": "delete",
+                  "steps": [
+                    {
+                      "order": 1,
+                      "step": "frozen"
+                    },
+                    {
+                      "order": 3,
+                      "step": "denies"
+                    },
+                    {
+                      "order": 4,
+                      "step": "defaults"
+                    },
+                    {
+                      "order": 9,
+                      "step": "checks",
+                      "triggerPoint": "01JQTGP0000000000000000002",
+                      "lifecycle": "01JQPRC0000000000000000002",
+                      "type": "check",
+                      "severity": "error"
+                    },
+                    {
+                      "order": 10,
+                      "step": "effect",
+                      "triggerPoint": "01JQTGP0000000000000000001",
+                      "lifecycle": "01JQPRC0000000000000000002",
+                      "type": "replace"
+                    },
+                    {
+                      "order": 11,
+                      "step": "with-change"
+                    }
+                  ]
                 }
               }
             }
@@ -11891,7 +12016,7 @@
             "type": "string"
           },
           "verbs": {
-            "description": "The distinct verb keys a process's events and transitions name, and those its rights name (rights-design.md section 8),\nsorted ordinally (verbs-design.md section 7), on process rows that name at least one; a named right's verbs, on right rows.\nLeft out when the process names none. The editor's Verbs tab counts uses from these rows.\n",
+            "description": "The distinct verb keys a process's events and transitions name, and those its rights and trigger points name (rights-design.md\nsection 8, trigger-points-design.md section 9),\nsorted ordinally (verbs-design.md section 7), on process rows that name at least one; a named right's verbs, on right rows.\nLeft out when the process names none. The editor's Verbs tab counts uses from these rows.\n",
             "type": "array",
             "minItems": 1,
             "uniqueItems": true,
@@ -11915,6 +12040,29 @@
               "allow",
               "deny"
             ]
+          },
+          "triggerPoints": {
+            "description": "The number of a lifecycle's trigger points (trigger-points-design.md section 9), on process rows that have at least one. Left\nout otherwise, so rows of projects without trigger points do not change.\n",
+            "type": "integer",
+            "minimum": 1
+          },
+          "triggerVerbs": {
+            "description": "The distinct verb keys a process's trigger points name, sorted ordinally (trigger-points-design.md section 9), on process rows\nthat have a trigger point. They are in `verbs` too.\n",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
+          },
+          "replaces": {
+            "description": "The distinct verb keys a process's replaces name, sorted ordinally (trigger-points-design.md section 9), on process rows that have\na replace.\n",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            }
           },
           "actors": {
             "description": "The actors a process names anywhere in its document (event senders, gate signers, invokes and so on), as ids sorted\nordinally, on process rows (libraries too) that name at least one. Only ids of actors that exist count. Left out when the\nprocess names none. The explorer reads it to show where an actor acts.\n",
@@ -13202,6 +13350,13 @@
               "null"
             ]
           },
+          "triggerPoints": {
+            "description": "`refresh-scenario`: also write each step's `expect.triggerPoints`, the trigger points that ran in order (skipped ones left out); without it they are rewritten only where a step already expects them (trigger-points-design.md decision 28).",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
           "expectedHashes": {
             "description": "Materialize, `map-by-name`, `resync-binding`, `fold-into-stereotype`, `retag`, `tags-to-property`, `names-to-ids`, the reference-type refactors, `rename-verb` and `remove-verb`: the hash the caller read of each element it expects the operation to change or delete (the preview's\nupdates and deletes). Given, an element that changed since, or that the operation changes but the map does not name, is\na conflict and nothing is written. A key may be an id or a qualified name; a placeholder key is MQ1015, two keys for\none element are MQ1014.\n",
             "type": [
@@ -14471,7 +14626,7 @@
         "properties": {
           "element": {
             "type": "string",
-            "description": "The id of the element, or of the check, guard, derived attribute, action, set or right, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for an inline right not yet saved names its lifecycle, with `site` `right`."
+            "description": "The id of the element, or of the check, guard, derived attribute, action, set or right, that holds the expression or takes the text. Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for an inline right not yet saved names its lifecycle, with `site` `right`; text for a trigger point not yet saved names its lifecycle, with `site` `trigger`, or `trigger-set` and `attribute`."
           },
           "at": {
             "type": [
@@ -14492,7 +14647,7 @@
               "string",
               "null"
             ],
-            "description": "With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`) or `right` (a right's condition, which reads the object under `subject`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set and right sites, with no SQL form and no answer."
+            "description": "With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`) or `trigger-set` (a value a trigger point sets, with `attribute`), or the pointer of one of the element's sites. `current_actor()` and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger point sites, with no SQL form."
           },
           "attribute": {
             "type": [
@@ -14521,7 +14676,7 @@
               "null"
             ],
             "additionalProperties": true,
-            "description": "The row the expression reads, members by name (a process guard's payload under `event`, an operation's subject under `subject`)."
+            "description": "The row the expression reads, members by name (a process guard's payload under `event`, an operation's subject under `subject`, a trigger point's values before the verb under `old`)."
           }
         }
       },
@@ -15829,6 +15984,13 @@
                 "items": {
                   "$ref": "#/components/schemas/ProcessRightRecord"
                 }
+              },
+              "triggerPoints": {
+                "description": "The lifecycle's trigger points in file order, which is their run order at each moment (trigger-points-design.md decisions 1 and 19); left out when it has none.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TriggerPointRecord"
+                }
               }
             }
           }
@@ -15927,6 +16089,145 @@
             "type": "boolean",
             "const": true,
             "description": "Whether an inline right holds only while the object, or with `ends` the link, is frozen (rights-design.md decision 18); left out when false, and for a use."
+          }
+        }
+      },
+      "TriggerPointRecord": {
+        "x-engine-record": "Maquettiste.Engine.TriggerPointRecord",
+        "description": "One trigger point of a lifecycle (trigger-points-design.md decisions 1 to 12): what runs when one of its verbs happens, in the\nplaces its keys name. A check has a `condition`, an action or a replace has `sets`; with neither, `teamCode` is true.\n",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "message",
+          "type",
+          "verbs",
+          "covers"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "The display name; left out when it has none."
+          },
+          "description": {
+            "type": "string",
+            "description": "Why; left out when it has none."
+          },
+          "message": {
+            "type": "string",
+            "description": "What a refusal or a warning shows (decision 1) - the description, else the display name, else the name."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "check",
+              "action",
+              "replace"
+            ]
+          },
+          "timing": {
+            "type": "string",
+            "enum": [
+              "before",
+              "with-change",
+              "after-commit"
+            ],
+            "description": "An action's moment; left out for a check or a replace."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning"
+            ],
+            "description": "A check's severity, `error` when the file gives none; left out for an action or a replace."
+          },
+          "verbs": {
+            "type": "array",
+            "description": "The verb keys it runs on, in file order.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "states": {
+            "type": "array",
+            "description": "The ids of the states of the lifecycle the object must be in; left out when it names none.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "targets": {
+            "type": "array",
+            "description": "The ids of the states a move must enter; left out when it names none.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "transitions": {
+            "type": "array",
+            "description": "The ids of the transitions a move must be, or for `sign` whose gates are signed; left out when it names none.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "entities": {
+            "type": "array",
+            "description": "The ids of the entities it is narrowed to, as written; left out when it names none.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "attributes": {
+            "type": "array",
+            "description": "The ids of the attributes a `read` or `modify` step must read or change; left out when it names none.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ends": {
+            "type": "array",
+            "description": "The ids of the subject's relation ends whose links it speaks of; left out when it names none.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "when": {
+            "$ref": "#/components/schemas/ExpressionRecord",
+            "description": "It runs only when this is true; left out when it has none or it does not type."
+          },
+          "condition": {
+            "$ref": "#/components/schemas/ExpressionRecord",
+            "description": "A check's condition; left out when it has none or it does not type."
+          },
+          "sets": {
+            "type": "array",
+            "description": "What an action or a replace sets on the object, in file order; left out when it sets none.",
+            "items": {
+              "$ref": "#/components/schemas/SetRecord"
+            }
+          },
+          "outside": {
+            "type": "boolean",
+            "const": true,
+            "description": "Whether the team's code reaches outside systems (decision 22); left out when false."
+          },
+          "teamCode": {
+            "type": "boolean",
+            "const": true,
+            "description": "Whether the body is the team's code (a check with no condition, an action or a replace with no sets); left out when false."
+          },
+          "covers": {
+            "type": "array",
+            "description": "The ids of the entities it runs for, in name order (decision 12) - the entities its lifecycle governs, narrowed by `entities`, each with its derived entities.",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -17164,7 +17465,16 @@
           },
           "assume": {
             "type": "object",
-            "additionalProperties": true
+            "description": "The step's assumptions by name (trigger-points-design.md decision 26): `true` or `false` for a guard with no expression; `pass`,\n`warning` or `error` for a check the team writes, another lifecycle's check as `Lifecycle.Name` (the lifecycle's id in place\nof its name when two lifecycles the step reaches share a name).\n",
+            "additionalProperties": {
+              "enum": [
+                true,
+                false,
+                "pass",
+                "warning",
+                "error"
+              ]
+            }
           },
           "expect": {
             "oneOf": [
@@ -17192,7 +17502,7 @@
           },
           "values": {
             "type": "object",
-            "description": "The values a modify verb step sets, by attribute name (by id when no subject has such an attribute), as written; absent when the step gives none.",
+            "description": "The values a modify verb step sets, or a create verb step gives the new object (trigger-points-design.md decision 27), by attribute name (by id when no subject has such an attribute), as written; absent when the step gives none.",
             "additionalProperties": true
           },
           "attributes": {
@@ -17263,12 +17573,27 @@
               "gate-reason",
               "right",
               "default",
-              "frozen"
+              "frozen",
+              "check"
             ]
           },
           "refusedBy": {
             "type": "string",
             "description": "The id of the element the step expects to refuse it (rights-design.md decision 26); absent when the file gives none."
+          },
+          "checkWarnings": {
+            "type": "array",
+            "description": "The ids of the checks the step expects to warn, each once (trigger-points-design.md decision 28); absent when the file gives none.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "triggerPoints": {
+            "type": "array",
+            "description": "The ids of the trigger points the step expects to run, in run order (trigger-points-design.md decision 28); absent when the file gives none.",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -24545,7 +24870,7 @@
             "type": "string"
           },
           "values": {
-            "description": "For a `modify` verb step on the subject, the values it sets, by attribute id; later guards and sets read them. Left out of a trace's echo when absent.",
+            "description": "For a `modify` verb step on the subject, the values it sets, by attribute id; later guards and sets read them. For a `create`\nverb step, the new object's values (trigger-points-design.md decision 27), which before actions and checks read and an accepted\nstep writes. Left out of a trace's echo when absent.\n",
             "type": "object",
             "additionalProperties": true
           },
@@ -24600,9 +24925,16 @@
             "additionalProperties": true
           },
           "assume": {
+            "description": "By guard id, `true` or `false` for a guard with no expression; by trigger point id, `pass`, `warning` or `error` for a check\nthe team writes (trigger-points-design.md decision 26), which passes without an entry. A request may name a guard or a check\nof the process instead of its id.\n",
             "type": "object",
             "additionalProperties": {
-              "type": "boolean"
+              "enum": [
+                true,
+                false,
+                "pass",
+                "warning",
+                "error"
+              ]
             }
           },
           "expect": {
@@ -24902,6 +25234,7 @@
               "right",
               "default",
               "frozen",
+              "check",
               null
             ]
           },
@@ -24974,7 +25307,7 @@
             }
           },
           "refusedBy": {
-            "description": "The id of the element that refused the input (rights-design.md decision 12): the event or invoke whose actors leave the actor\nout, the right (an inline right, or the named right), the lifecycle whose default denies, the guard, or the gate or gate\npolicy. Written for a refused input in a project that uses rights, and for a step that expects it; left out otherwise, and\nfor `no-transition` and `frozen`, which no element refused.\n",
+            "description": "The id of the element that refused the input (rights-design.md decision 12): the event or invoke whose actors leave the actor\nout, the right (an inline right, or the named right), the lifecycle whose default denies, the guard, or the gate or gate\npolicy, or the trigger point whose check refused (`check`, trigger-points-design.md decision 28). Written for a refused input\nin a project that uses rights or trigger points, and for a step that expects it; left out otherwise, and for `no-transition`\nand `frozen`, which no element refused.\n",
             "$ref": "#/components/schemas/Ulid"
           },
           "rights": {
@@ -24984,10 +25317,95 @@
               "$ref": "#/components/schemas/RightEvaluation"
             }
           },
+          "triggerPoints": {
+            "description": "The trigger points whose places matched, in run order, each with what it did (trigger-points-design.md decision 28): per\nmicrostep, those of the transitions it took, in the order of decision 19; for a verb step, its points in run order; a check\nthat refused the step, once; `sign`'s and a task's `complete` points where they run; after-commit points last, as `queued`.\nChecks run on candidates that were not taken are left out, and so are their warnings. Left out when none matched.\n",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TriggerPointRun"
+            }
+          },
+          "checkWarnings": {
+            "description": "The ids of the checks that warned, each once, in the order it first warned (trigger-points-design.md decision 28); a step's `expect.checkWarnings` is compared with it (MQ9310). Left out when none did.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
           "frozen": {
             "description": "Whether the subject is frozen after the input (rights-design.md section 7): true from an accepted `freeze`, or a start with\nthe subject `frozen`, until an accepted `thaw`. Left out when false.\n",
             "type": "boolean",
             "const": true
+          }
+        }
+      },
+      "TriggerPointRun": {
+        "x-engine-record": "Maquettiste.Engine.Processes.TriggerPointRun",
+        "description": "A trigger point whose places matched in a step, and what it did (trigger-points-design.md decision 28).",
+        "type": "object",
+        "required": [
+          "triggerPoint",
+          "lifecycle",
+          "verb",
+          "type",
+          "outcome"
+        ],
+        "properties": {
+          "triggerPoint": {
+            "description": "The trigger point's id.",
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "lifecycle": {
+            "description": "The id of the lifecycle whose trigger points list it.",
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "verb": {
+            "description": "The verb it ran on, by key.",
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "check",
+              "action",
+              "replace"
+            ]
+          },
+          "timing": {
+            "description": "An action's moment; left out for a check or a replace.",
+            "type": "string",
+            "enum": [
+              "before",
+              "with-change",
+              "after-commit"
+            ]
+          },
+          "outcome": {
+            "description": "`passed`, `warned` or `refused` for a check; `ran` for a before or with-change action (a team-code one sets nothing in a run);\n`replaced` for a replace; `queued` for an after-commit action; `skipped` when its `when` was false or unknown.\n",
+            "type": "string",
+            "enum": [
+              "passed",
+              "warned",
+              "refused",
+              "ran",
+              "replaced",
+              "queued",
+              "skipped"
+            ]
+          },
+          "assumed": {
+            "description": "Whether a team-code check's outcome came from the step's `assume`, or from its default, pass. Left out when false.",
+            "type": "boolean",
+            "const": true
+          },
+          "outside": {
+            "description": "Whether the trigger point says the team's code reaches outside systems. Left out when false.",
+            "type": "boolean",
+            "const": true
+          },
+          "sets": {
+            "description": "The values its sets gave the object, by attribute id, every value worked out first and then all applied. Left out when it set nothing.",
+            "type": "object",
+            "additionalProperties": true
           }
         }
       },
@@ -25244,6 +25662,13 @@
             "description": "A candidate's guard has no expression; the input needs `assume`.",
             "type": "boolean"
           },
+          "checksUnknown": {
+            "description": "The ids of the checks the team writes (checks with no condition) that the trigger's candidates reach, whose outcome the input\ntakes from `assume`, passing without an entry (trigger-points-design.md section 9). Left out when there are none.\n",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
           "gate": {
             "oneOf": [
               {
@@ -25436,6 +25861,154 @@
           }
         }
       },
+      "TriggerSequence": {
+        "x-engine-record": "Maquettiste.Engine.Processes.TriggerSequence",
+        "description": "What runs, in order, when a verb happens in a lifecycle (trigger-points-design.md decision 36).",
+        "type": "object",
+        "required": [
+          "lifecycle",
+          "verb",
+          "steps"
+        ],
+        "properties": {
+          "lifecycle": {
+            "description": "The id of the lifecycle asked about, the acting one.",
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "verb": {
+            "description": "The verb, by key.",
+            "type": "string"
+          },
+          "steps": {
+            "description": "The steps in run order. A built-in step has no `triggerPoint`; a trigger point's step follows the built-in step of its moment, when that applies.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TriggerSequenceStep"
+            }
+          }
+        }
+      },
+      "TriggerSequenceStep": {
+        "x-engine-record": "Maquettiste.Engine.Processes.TriggerSequenceStep",
+        "description": "One step of the fixed order (trigger-points-design.md decision 18): a built-in step that applies to the verb, or a trigger point\nthat can run at that moment, with its lifecycle and places.\n",
+        "type": "object",
+        "required": [
+          "order",
+          "step"
+        ],
+        "properties": {
+          "order": {
+            "description": "The step's row in the fixed order, 1 to 12.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "step": {
+            "description": "`frozen`, `closed-lists`, `denies`, `defaults`, `no-move`, `guards` and `signatures` (rows 1 to 7, as rights check them),\n`before` (before actions), `checks`, `effect` (the built-in effect, or a replace), `with-change` and `after-commit`.\n",
+            "type": "string",
+            "enum": [
+              "frozen",
+              "closed-lists",
+              "denies",
+              "defaults",
+              "no-move",
+              "guards",
+              "signatures",
+              "before",
+              "checks",
+              "effect",
+              "with-change",
+              "after-commit"
+            ]
+          },
+          "triggerPoint": {
+            "description": "The trigger point's id; left out for a built-in step.",
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "lifecycle": {
+            "description": "The id of the lifecycle whose trigger points list it; left out for a built-in step.",
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "type": {
+            "description": "The trigger point's type; left out for a built-in step.",
+            "type": "string",
+            "enum": [
+              "check",
+              "action",
+              "replace"
+            ]
+          },
+          "timing": {
+            "description": "An action's moment; left out otherwise.",
+            "type": "string",
+            "enum": [
+              "before",
+              "with-change",
+              "after-commit"
+            ]
+          },
+          "severity": {
+            "description": "A check's severity; left out otherwise.",
+            "type": "string",
+            "enum": [
+              "error",
+              "warning"
+            ]
+          },
+          "states": {
+            "description": "The ids of the states it is narrowed to; left out when none.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "targets": {
+            "description": "The ids of the states a move must enter; left out when none.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "transitions": {
+            "description": "The ids of the transitions it is narrowed to; left out when none.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "entities": {
+            "description": "The ids of the entities it is narrowed to; left out when none.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "attributes": {
+            "description": "The ids of the attributes it is narrowed to; left out when none.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "ends": {
+            "description": "The ids of the relation ends it is narrowed to; left out when none.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
+          },
+          "when": {
+            "description": "Whether it runs only when its `when` holds; left out when false.",
+            "type": "boolean",
+            "const": true
+          },
+          "outside": {
+            "description": "Whether the team's code reaches outside systems; left out when false.",
+            "type": "boolean",
+            "const": true
+          }
+        }
+      },
       "RecordScenarioRequest": {
         "x-engine-record": "Maquettiste.Engine.Processes.RecordScenarioRequest",
         "type": "object",
@@ -25495,6 +26068,13 @@
               "final",
               "active",
               null
+            ]
+          },
+          "triggerPoints": {
+            "description": "true: also write each step's `expect.triggerPoints`, the trigger points that ran (trigger-points-design.md decision 28). Absent\nor false, it is not written, so a new trigger point does not break the scenario.\n",
+            "type": [
+              "boolean",
+              "null"
             ]
           }
         }
@@ -29341,13 +29921,14 @@
       },
       "expr": {
         "title": "Expression",
-        "description": "A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard, set and right sites only), currentActor (guard, set and right sites only), inState (with of; guard, set and right sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).",
+        "description": "A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids; with old, the values before the verb, at trigger point sites only), ref (an enum member or reference-type code id), member (rule conditions only), now (guard, set, right and trigger point sites only), currentActor (guard, set, right and trigger point sites only), inState (with of; guard, set, right and trigger point sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).",
         "type": "object",
         "x-order": [
           "value",
           "type",
           "null",
           "path",
+          "old",
           "ref",
           "member",
           "now",
@@ -29397,6 +29978,10 @@
             },
             "minItems": 1
           },
+          "old": {
+            "description": "With path: the path reads the object's values before the verb (old.price in text), null on create. Trigger point sites only (when, condition and set values); elsewhere it is MQ3104.",
+            "const": true
+          },
           "ref": {
             "description": "The id of an enum member or of a reference-type code.",
             "type": "string",
@@ -29408,15 +29993,15 @@
             "minLength": 1
           },
           "now": {
-            "description": "The clock, a datetimeoffset; guard, set and right sites only.",
+            "description": "The clock, a datetimeoffset; guard, set, right and trigger point sites only.",
             "const": true
           },
           "currentActor": {
-            "description": "The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard, set and right sites only.",
+            "description": "The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard, set, right and trigger point sites only.",
             "const": true
           },
           "inState": {
-            "description": "True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard, set and right sites only.",
+            "description": "True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard, set, right and trigger point sites only.",
             "type": "array",
             "items": {
               "type": "string",
@@ -29585,6 +30170,9 @@
           ],
           "of": [
             "inState"
+          ],
+          "old": [
+            "path"
           ]
         },
         "additionalProperties": false
@@ -37163,6 +37751,103 @@
         "description": "The right holds only when this is true; false or unknown means it says nothing. It reads the object under subject (to-one paths too), current_actor(), in_state and now(), not the context or a payload.",
         "$ref": "#/components/schemas/expr"
       },
+      "type": {
+        "description": "check: judges the change and passes, warns or refuses with its message. action: does something at its timing. replace: takes the place of the verb's built-in effect, only on delete, disconnect, copy and revise (MQ8103); everything around it still runs.",
+        "enum": [
+          "check",
+          "action",
+          "replace"
+        ]
+      },
+      "timing": {
+        "description": "An action's moment, required on an action and allowed nowhere else (MQ8101). before: fills the proposed values before the checks, and nothing is written until they pass. with-change: after the effect, in the same unit of work, so a failure undoes the verb. after-commit: once the change is saved; it cannot undo it, may run late and may run more than once, and sets nothing (MQ8105).",
+        "enum": [
+          "before",
+          "with-change",
+          "after-commit"
+        ]
+      },
+      "severity": {
+        "description": "A check's severity, allowed only on a check (MQ8101). error (also when absent) refuses the step with refusal check; warning lets it through and lists the check in the trace's checkWarnings.",
+        "enum": [
+          "error",
+          "warning"
+        ]
+      },
+      "verbs-2": {
+        "description": "The verbs it runs on, at least one: a built-in verb's key or one of the project's own (MQ9701). A move, signature or task verb runs in this lifecycle's moves, signatures and human tasks; an object, link or own verb runs on the object, whichever lifecycle acts.",
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/verbRef"
+        },
+        "minItems": 1,
+        "uniqueItems": true
+      },
+      "entities": {
+        "description": "Entities it runs for, each with its derived entities: some of those its lifecycle governs (MQ8102). Empty: every entity its subjects cover. It also widens what its paths and sets may name to what every entity it covers holds under one id.",
+        "$ref": "#/components/schemas/idList",
+        "uniqueItems": true
+      },
+      "attributes-2": {
+        "description": "Attributes of the subject: it runs only when a read or modify step itself reads or changes one of them, beside only read and modify and never beside ends (MQ8102). When a step does not say which, a check runs and an action or a replace does not, and a note says so.",
+        "$ref": "#/components/schemas/idList",
+        "uniqueItems": true
+      },
+      "ends-2": {
+        "description": "Relation ends of the subject: it runs only for the links through them, for connect, disconnect, read, modify, freeze and thaw (MQ8102). When a step does not say which, a check runs and an action or a replace does not, and a note says so.",
+        "$ref": "#/components/schemas/idList",
+        "uniqueItems": true
+      },
+      "when-2": {
+        "description": "It runs only when this is true; false or unknown skips it, and the trace says so. It reads the object under subject (the proposed values before the effect), its values before the verb under old, current_actor(), in_state and now(), not the context; a move's payload only as the payload rules allow (MQ3102).",
+        "$ref": "#/components/schemas/expr"
+      },
+      "condition-2": {
+        "description": "A check's condition: only true passes. It reads what when reads. Not on an action or a replace (MQ8101); without it, the check is the team's code, and a scenario step assumes its outcome.",
+        "$ref": "#/components/schemas/expr"
+      },
+      "set": {
+        "title": "Set",
+        "description": "One attribute of the object set to a value when the action runs.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "attribute",
+          "value"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "attribute": {
+            "description": "The attribute set: an attribute every subject of the process holds under one id (an id, or the keyed id of an inherited or contributed attribute). Not derived, and not one that holds a lifecycle's state (MQ9801, MQ9802); once per action (MQ9803).",
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "description": "The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), current_actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute.",
+            "$ref": "#/components/schemas/expr"
+          }
+        },
+        "required": [
+          "id",
+          "attribute",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "sets": {
+        "description": "What an action or a replace sets on the object, as an action's sets: every value is worked out first, then all are applied. A value reads what when reads. Not on a check (MQ8101) or an after-commit action (MQ8105); without it, an action or a replace is the team's code.",
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/set"
+        }
+      },
+      "outside": {
+        "description": "true: the team's code reaches outside systems. Simulation never runs the team's code; the trace marks the point, and generated tests record it instead of calling it. Only a point with team code may say so (MQ8101); a with-change one is warned (MQ8106).",
+        "type": "boolean",
+        "default": false
+      },
       "invoke": {
         "title": "Invoke",
         "description": "Work a state starts on entry: a sub-process, a service task or a human task.",
@@ -37452,36 +38137,6 @@
           "name",
           "signers",
           "meanings"
-        ],
-        "additionalProperties": false
-      },
-      "set": {
-        "title": "Set",
-        "description": "One attribute of the object set to a value when the action runs.",
-        "type": "object",
-        "x-order": [
-          "id",
-          "attribute",
-          "value"
-        ],
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/id"
-          },
-          "attribute": {
-            "description": "The attribute set: an attribute every subject of the process holds under one id (an id, or the keyed id of an inherited or contributed attribute). Not derived, and not one that holds a lifecycle's state (MQ9801, MQ9802); once per action (MQ9803).",
-            "type": "string",
-            "minLength": 1
-          },
-          "value": {
-            "description": "The value, which reads what a guard reads (the context, the object under subject, the payload of the events whose transitions list the action, now(), current_actor(), in_state) and fits the attribute's type (MQ3103). Null clears the attribute.",
-            "$ref": "#/components/schemas/expr"
-          }
-        },
-        "required": [
-          "id",
-          "attribute",
-          "value"
         ],
         "additionalProperties": false
       },
@@ -37788,6 +38443,110 @@
         ],
         "additionalProperties": false
       },
+      "triggerPoint": {
+        "title": "Trigger point",
+        "description": "An entry of a lifecycle's triggerPoints (part kind process-trigger-point): what runs when one of its verbs happens to the lifecycle's subjects, narrowed by its optional keys. With no narrowing key it runs wherever its verbs happen.",
+        "type": "object",
+        "x-order": [
+          "id",
+          "name",
+          "displayName",
+          "type",
+          "timing",
+          "severity",
+          "verbs",
+          "states",
+          "targets",
+          "transitions",
+          "entities",
+          "attributes",
+          "ends",
+          "when",
+          "condition",
+          "sets",
+          "outside",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/id"
+          },
+          "name": {
+            "description": "Unique among the lifecycle's trigger points, and apart from its process's guards (MQ3001); a refusal and a step's assume name it.",
+            "$ref": "#/components/schemas/identifier"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/type"
+          },
+          "timing": {
+            "$ref": "#/components/schemas/timing"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/severity"
+          },
+          "verbs": {
+            "$ref": "#/components/schemas/verbs-2"
+          },
+          "states": {
+            "description": "States of this lifecycle the object must be in (for a move, its source); a compound state counts while any state inside it is active, and create is checked in the initial state (MQ8102). Empty: every state.",
+            "$ref": "#/components/schemas/idList",
+            "uniqueItems": true,
+            "default": []
+          },
+          "targets": {
+            "description": "States of this lifecycle a move must enter; a compound state counts when the move enters it or any state inside it, default states included. Beside move verbs, sign, and own verbs an event of this lifecycle names only (MQ8102). Empty: any.",
+            "$ref": "#/components/schemas/idList",
+            "uniqueItems": true,
+            "default": []
+          },
+          "transitions": {
+            "description": "Transitions of this lifecycle a move must be; for sign, a signature on their gates. Beside move verbs, sign, and own verbs an event of this lifecycle names only (MQ8102). Empty: any.",
+            "$ref": "#/components/schemas/idList",
+            "uniqueItems": true,
+            "default": []
+          },
+          "entities": {
+            "$ref": "#/components/schemas/entities",
+            "default": []
+          },
+          "attributes": {
+            "$ref": "#/components/schemas/attributes-2",
+            "default": []
+          },
+          "ends": {
+            "$ref": "#/components/schemas/ends-2",
+            "default": []
+          },
+          "when": {
+            "$ref": "#/components/schemas/when-2"
+          },
+          "condition": {
+            "$ref": "#/components/schemas/condition-2"
+          },
+          "sets": {
+            "$ref": "#/components/schemas/sets",
+            "default": []
+          },
+          "outside": {
+            "$ref": "#/components/schemas/outside",
+            "default": false
+          },
+          "description": {
+            "description": "Why. For a check, the message shown when it refuses or warns; without one, the display name, else the name.",
+            "$ref": "#/components/schemas/description"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "verbs"
+        ],
+        "additionalProperties": false
+      },
       "transition": {
         "title": "Transition",
         "description": "A transition; among transitions with one source and one trigger, array order is priority.",
@@ -37926,6 +38685,7 @@
           "actions",
           "gates",
           "rights",
+          "triggerPoints",
           "states",
           "initial",
           "transitions",
@@ -38066,6 +38826,14 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/right"
+            },
+            "default": []
+          },
+          "triggerPoints": {
+            "description": "The lifecycle's trigger points, in file order, which is the order they run in at each moment: each says what runs when one of its verbs happens, in some places, under an optional when. A check refuses or warns, an action runs before the checks, with the change or after commit, and a replace takes the place of a built-in effect. Lifecycles only (MQ8101).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/triggerPoint"
             },
             "default": []
           },
@@ -38254,6 +39022,110 @@
             },
             "required": [
               "id"
+            ],
+            "additionalProperties": false
+          },
+          "triggerPoint": {
+            "title": "Trigger point",
+            "description": "An entry of a lifecycle's triggerPoints (part kind process-trigger-point): what runs when one of its verbs happens to the lifecycle's subjects, narrowed by its optional keys. With no narrowing key it runs wherever its verbs happen.",
+            "type": "object",
+            "x-order": [
+              "id",
+              "name",
+              "displayName",
+              "type",
+              "timing",
+              "severity",
+              "verbs",
+              "states",
+              "targets",
+              "transitions",
+              "entities",
+              "attributes",
+              "ends",
+              "when",
+              "condition",
+              "sets",
+              "outside",
+              "description"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/id"
+              },
+              "name": {
+                "description": "Unique among the lifecycle's trigger points, and apart from its process's guards (MQ3001); a refusal and a step's assume name it.",
+                "$ref": "#/components/schemas/identifier"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "type": {
+                "$ref": "#/components/schemas/type"
+              },
+              "timing": {
+                "$ref": "#/components/schemas/timing"
+              },
+              "severity": {
+                "$ref": "#/components/schemas/severity"
+              },
+              "verbs": {
+                "$ref": "#/components/schemas/verbs-2"
+              },
+              "states": {
+                "description": "States of this lifecycle the object must be in (for a move, its source); a compound state counts while any state inside it is active, and create is checked in the initial state (MQ8102). Empty: every state.",
+                "$ref": "#/components/schemas/idList",
+                "uniqueItems": true,
+                "default": []
+              },
+              "targets": {
+                "description": "States of this lifecycle a move must enter; a compound state counts when the move enters it or any state inside it, default states included. Beside move verbs, sign, and own verbs an event of this lifecycle names only (MQ8102). Empty: any.",
+                "$ref": "#/components/schemas/idList",
+                "uniqueItems": true,
+                "default": []
+              },
+              "transitions": {
+                "description": "Transitions of this lifecycle a move must be; for sign, a signature on their gates. Beside move verbs, sign, and own verbs an event of this lifecycle names only (MQ8102). Empty: any.",
+                "$ref": "#/components/schemas/idList",
+                "uniqueItems": true,
+                "default": []
+              },
+              "entities": {
+                "$ref": "#/components/schemas/entities",
+                "default": []
+              },
+              "attributes": {
+                "$ref": "#/components/schemas/attributes-2",
+                "default": []
+              },
+              "ends": {
+                "$ref": "#/components/schemas/ends-2",
+                "default": []
+              },
+              "when": {
+                "$ref": "#/components/schemas/when-2"
+              },
+              "condition": {
+                "$ref": "#/components/schemas/condition-2"
+              },
+              "sets": {
+                "$ref": "#/components/schemas/sets",
+                "default": []
+              },
+              "outside": {
+                "$ref": "#/components/schemas/outside",
+                "default": false
+              },
+              "description": {
+                "description": "Why. For a check, the message shown when it refuses or warns; without one, the display name, else the name.",
+                "$ref": "#/components/schemas/description"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "type",
+              "verbs"
             ],
             "additionalProperties": false
           },
@@ -39311,7 +40183,7 @@
             "default": {}
           },
           "values": {
-            "description": "For a modify verb step on the subject: the values it sets, by attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them.",
+            "description": "For a modify verb step on the subject: the values it sets; for a create verb step: the new object's values, which before actions and checks read and an accepted step writes. By attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them.",
             "type": "object",
             "propertyNames": {
               "$ref": "#/components/schemas/id"
@@ -39334,13 +40206,19 @@
             "$ref": "#/components/schemas/id"
           },
           "assume": {
-            "description": "Results for guards without an expression, by guard id.",
+            "description": "Results for guards without an expression, by guard id, as true or false; and outcomes for checks the team writes (checks with no condition), by trigger point id, as pass, warning or error (MQ9305 for a word on any other key). A check with no entry passes.",
             "type": "object",
             "propertyNames": {
               "$ref": "#/components/schemas/id"
             },
             "additionalProperties": {
-              "type": "boolean"
+              "enum": [
+                true,
+                false,
+                "pass",
+                "warning",
+                "error"
+              ]
             },
             "default": {}
           },
@@ -39353,7 +40231,9 @@
               "refusedBy",
               "states",
               "context",
-              "values"
+              "values",
+              "checkWarnings",
+              "triggerPoints"
             ],
             "properties": {
               "accepted": {
@@ -39372,11 +40252,12 @@
                   "gate-reason",
                   "right",
                   "default",
-                  "frozen"
+                  "frozen",
+                  "check"
                 ]
               },
               "refusedBy": {
-                "description": "With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy (MQ9308).",
+                "description": "With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, or the trigger point whose check refused (MQ9308).",
                 "$ref": "#/components/schemas/id"
               },
               "states": {
@@ -39405,6 +40286,15 @@
                   "description": "A value of the attribute's type."
                 },
                 "default": {}
+              },
+              "checkWarnings": {
+                "description": "The ids of exactly the checks that warned, each once, in the order it first warned (MQ9310). Absent checks nothing; empty expects none.",
+                "$ref": "#/components/schemas/idList",
+                "uniqueItems": true
+              },
+              "triggerPoints": {
+                "description": "The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked.",
+                "$ref": "#/components/schemas/idList"
               }
             },
             "required": [],
@@ -39866,7 +40756,7 @@
                 "default": {}
               },
               "values": {
-                "description": "For a modify verb step on the subject: the values it sets, by attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them.",
+                "description": "For a modify verb step on the subject: the values it sets; for a create verb step: the new object's values, which before actions and checks read and an accepted step writes. By attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them.",
                 "type": "object",
                 "propertyNames": {
                   "$ref": "#/components/schemas/id"
@@ -39889,13 +40779,19 @@
                 "$ref": "#/components/schemas/id"
               },
               "assume": {
-                "description": "Results for guards without an expression, by guard id.",
+                "description": "Results for guards without an expression, by guard id, as true or false; and outcomes for checks the team writes (checks with no condition), by trigger point id, as pass, warning or error (MQ9305 for a word on any other key). A check with no entry passes.",
                 "type": "object",
                 "propertyNames": {
                   "$ref": "#/components/schemas/id"
                 },
                 "additionalProperties": {
-                  "type": "boolean"
+                  "enum": [
+                    true,
+                    false,
+                    "pass",
+                    "warning",
+                    "error"
+                  ]
                 },
                 "default": {}
               },
@@ -39908,7 +40804,9 @@
                   "refusedBy",
                   "states",
                   "context",
-                  "values"
+                  "values",
+                  "checkWarnings",
+                  "triggerPoints"
                 ],
                 "properties": {
                   "accepted": {
@@ -39927,11 +40825,12 @@
                       "gate-reason",
                       "right",
                       "default",
-                      "frozen"
+                      "frozen",
+                      "check"
                     ]
                   },
                   "refusedBy": {
-                    "description": "With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy (MQ9308).",
+                    "description": "With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, or the trigger point whose check refused (MQ9308).",
                     "$ref": "#/components/schemas/id"
                   },
                   "states": {
@@ -39960,6 +40859,15 @@
                       "description": "A value of the attribute's type."
                     },
                     "default": {}
+                  },
+                  "checkWarnings": {
+                    "description": "The ids of exactly the checks that warned, each once, in the order it first warned (MQ9310). Absent checks nothing; empty expects none.",
+                    "$ref": "#/components/schemas/idList",
+                    "uniqueItems": true
+                  },
+                  "triggerPoints": {
+                    "description": "The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked.",
+                    "$ref": "#/components/schemas/idList"
                   }
                 },
                 "required": [],
@@ -42483,7 +43391,8 @@
                 "default",
                 "redefine",
                 "excludeMissing",
-                "keepNames"
+                "keepNames",
+                "triggerPoints"
               ],
               "properties": {
                 "op": {
@@ -42719,6 +43628,11 @@
                 },
                 "keepNames": {
                   "description": "resync-binding: keep every attribute's name, even one that followed its column's name; the provenance entry still takes the column's new name.",
+                  "type": "boolean",
+                  "default": false
+                },
+                "triggerPoints": {
+                  "description": "refresh-scenario: also write each step's expect.triggerPoints, the trigger points that ran in order (skipped ones left out); without it they are rewritten only where a step already expects them.",
                   "type": "boolean",
                   "default": false
                 }

@@ -22,9 +22,10 @@ import { Field, Input, Select } from "@/components/ui/input";
 import { Badge, Spinner } from "@/components/ui/misc";
 import { cn } from "@/lib/cn";
 import { indexLookup } from "@/model/index";
-import { RIGHT_LABELS as RL, SIMULATION_LABELS as L } from "@/model/labels";
+import { RIGHT_LABELS as RL, SIMULATION_LABELS as L, TRIGGER_LABELS as TL } from "@/model/labels";
+import { CHECK_WORD_LABELS, CHECK_WORDS, isTeamCheck, reachableChecks, triggerPointsOf } from "@/model/triggerPoints";
 import { summaryFromDocument } from "@/model/model";
-import type { ParticipantDoc, ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
+import type { CheckWord, ParticipantDoc, ScenarioDoc, ScenarioObjectDoc } from "@/model/process";
 import { verifyScenario } from "../api";
 import { attributeLabels, castValues, entityChain } from "./castNames";
 import { objectStatesText, type StateChoiceGroup } from "@/model/effects";
@@ -120,7 +121,29 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
     () => new Map([...namedRights].flatMap(([rid, d]) => (typeof d.json.description === "string" ? [[rid, d.json.description] as [string, string]] : []))),
     [namedRights],
   );
-  const names = useMemo(() => namesOf(process, actorNames, participants, elementNames, whys), [process, actorNames, participants, elementNames, whys]);
+  // The trigger points that ran: this lifecycle's own, and other lifecycles' that an object verb reached, named from their lifecycles' files.
+  const traceRuns = ((replay ? replay.simulation?.trace : session.result?.trace) ?? []).flatMap((t) => t.triggerPoints ?? []);
+  const otherLifecycles = [...new Set(traceRuns.map((r) => r.lifecycle).filter((l) => l !== id))];
+  const otherDocs = useElements(otherLifecycles).byId;
+  const pointInfo = useMemo(() => {
+    const named = new Map<string, string>();
+    const why = new Map<string, string>();
+    const owner = new Map<string, string>();
+    const take = (lifecycle: string, points: unknown) => {
+      for (const t of Array.isArray(points) ? (points as { id: string; name?: string; displayName?: string; description?: unknown }[]) : []) {
+        named.set(t.id, t.displayName || t.name || t.id);
+        owner.set(t.id, lifecycle);
+        if (typeof t.description === "string" && t.description) why.set(t.id, t.description);
+      }
+    };
+    take(id, process.triggerPoints);
+    for (const [lid, d] of otherDocs) take(lid, (d.json as { triggerPoints?: unknown }).triggerPoints);
+    return { named, why, owner };
+  }, [id, process.triggerPoints, otherDocs]);
+  const names = useMemo(
+    () => namesOf(process, actorNames, participants, new Map([...elementNames, ...pointInfo.named]), new Map([...whys, ...pointInfo.why])),
+    [process, actorNames, participants, elementNames, whys, pointInfo],
+  );
   const nav = useEditorNavigation();
   // A refusal names what refused it: that part of this lifecycle on its tab, or the element in its own editor tab.
   const openRefuser = (target: string) => {
@@ -128,13 +151,16 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
       ? "rights"
       : (process.events ?? []).some((e) => e.id === target)
         ? "events"
-        : (process.transitions ?? []).some((t) => t.gate?.id === target)
-          ? "gates"
-          : (process.guards ?? []).some((g) => g.id === target) || (process.actions ?? []).some((a) => a.id === target)
-            ? "transitions"
-            : null;
+        : (process.triggerPoints ?? []).some((t) => t.id === target)
+          ? "triggerPoints"
+          : (process.transitions ?? []).some((t) => t.gate?.id === target)
+            ? "gates"
+            : (process.guards ?? []).some((g) => g.id === target) || (process.actions ?? []).some((a) => a.id === target)
+              ? "transitions"
+              : null;
     if (tab) return void focusProcess(id, tab, tab === "events" ? target : null);
-    const summary = indexLookup(index.data).byId.get(target);
+    // Another lifecycle's trigger point opens that lifecycle.
+    const summary = indexLookup(index.data).byId.get(pointInfo.owner.get(target) ?? target);
     if (summary) nav.openEditor(summary, true);
   };
   const entityNames = useMemo(() => new Map((index.data ?? []).filter((r) => r.kind === "entity").map((r) => [r.id, r.name])), [index.data]);
@@ -171,11 +197,12 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
     return Array.isArray(doc?.attributes) ? doc.attributes.filter((a): a is string => typeof a === "string") : [];
   };
   // What Do... can name for read and modify: the subject's attributes (a modify sets the value the subject holds). With no subject
-  // object in the cast, the process's own subjects name them, as they do for sets.
+  // object in the cast, every attribute the process's own subjects hold: a calculated or bound one cannot be set by a Set, but it can be
+  // read, and a check may be scoped to it.
   const subjectObject = cast.objects.find((o) => o.id === cast.subject);
   const doAttributes = subjectObject
     ? [...(castLabels.get(subjectObject.entity) ?? new Map<string, string>())].map(([value, label]) => ({ value, label }))
-    : setContext.choices.map((a) => ({ value: a.id, label: a.name }));
+    : setContext.attributes.map((a) => ({ value: a.id, label: a.name }));
   useEffect(() => {
     let active = true;
     const wanted = castEntities ? castEntities.split(",") : [];
@@ -436,12 +463,18 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
                   actors={allActors}
                   disabled={!result || !live || !!result.final || !!replay}
                   attributes={doAttributes}
-                  onDo={(verb, who, attribute) =>
+                  hasChecks={triggerPointsOf(process).some(isTeamCheck)}
+                  onDo={(verb, who, attribute, checks) =>
                     update((s) =>
                       addInput(s, {
                         input: "verb",
                         verb,
                         ...who,
+                        // The team's checks that name this verb: what each does is the one choice made beside Do....
+                        ...(() => {
+                          const reached = reachableChecks(process, { id: "", input: "verb", verb });
+                          return reached.length ? { assume: Object.fromEntries(reached.map((t) => [t.id, checks])) } : {};
+                        })(),
                         // Read names the attribute; modify sets it to the value the subject holds.
                         ...(attribute && verb === "read" ? { attributes: [attribute] } : {}),
                         ...(attribute && verb === "modify" ? { values: { [attribute]: subjectObject?.values?.[attribute] ?? null } } : {}),
@@ -578,17 +611,21 @@ function DoMenu({
   actors,
   disabled,
   attributes,
+  hasChecks,
   onDo,
 }: {
   participants: readonly ParticipantDoc[];
   actors: readonly { id: string; name: string }[];
   disabled: boolean;
   attributes: readonly { value: string; label: string }[];
-  onDo: (verb: string, who: { participant?: string; actor?: string }, attribute: string) => void;
+  /** The lifecycle has checks the team writes: Do... offers what they do. */
+  hasChecks: boolean;
+  onDo: (verb: string, who: { participant?: string; actor?: string }, attribute: string, checks: CheckWord) => void;
 }) {
   const verbs = useVerbs();
   const [who, setWho] = useState("");
   const [attribute, setAttribute] = useState("");
+  const [checks, setChecks] = useState<CheckWord>("pass");
   const groups = verbGroups("right", verbs.own, verbs.hidden)
     .filter((g) => g.id !== "move" && g.id !== "signature" && g.id !== "task")
     .filter((g) => g.options.length);
@@ -626,6 +663,22 @@ function DoMenu({
           ))}
         </Select>
       ) : null}
+      {hasChecks ? (
+        <Select
+          aria-label={TL.panel.doChecks}
+          title={TL.panel.doChecksTip}
+          className={cn(FIELD, "w-20")}
+          value={checks}
+          onChange={(e) => setChecks(e.target.value as CheckWord)}
+          data-testid="do-checks"
+        >
+          {CHECK_WORDS.map((w) => (
+            <option key={w} value={w}>
+              {CHECK_WORD_LABELS[w]}
+            </option>
+          ))}
+        </Select>
+      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="secondary" size="sm" className={SMALL} disabled={disabled} title={RL.doMenuTip} data-testid="do-menu">
@@ -639,7 +692,7 @@ function DoMenu({
               {g.options.map((o) => (
                 <DropdownMenuItem
                   key={o.key}
-                  onSelect={() => onDo(o.key, pick(), o.key === "read" || o.key === "modify" ? attribute : "")}
+                  onSelect={() => onDo(o.key, pick(), o.key === "read" || o.key === "modify" ? attribute : "", checks)}
                   data-testid={`do-${o.key}`}
                 >
                   {o.label}
@@ -1064,6 +1117,26 @@ function EnabledRowView({
           </div>
         </>
       ) : null}
+      {row.checks.map((c) => (
+        <div key={c.id} className={cn(ROW, "pl-6")} data-testid="enabled-field-row" onKeyDown={onKey}>
+          <span className="w-24 shrink-0 truncate text-secondary" title={TL.panel.assumedTip}>
+            {c.name}
+          </span>
+          <Select
+            className="h-5 w-24"
+            aria-label={L.assume(c.name)}
+            value={typeof value.assume[c.id] === "string" ? String(value.assume[c.id]) : "pass"}
+            onChange={(e) => onEdit({ assume: { [c.id]: e.target.value as (typeof CHECK_WORDS)[number] } })}
+            data-testid="assume-check"
+          >
+            {CHECK_WORDS.map((w) => (
+              <option key={w} value={w}>
+                {CHECK_WORD_LABELS[w]}
+              </option>
+            ))}
+          </Select>
+        </div>
+      ))}
       {row.assume.map((g) => {
         const on = value.assume[g.id] !== false;
         return (
@@ -1229,6 +1302,7 @@ function LastStepSection({
           className={cn(
             ROW,
             (line.kind === "sets" || line.kind === "values" || line.kind === "refusal") && "h-auto min-h-[var(--mq-row-h)] items-start py-0.5",
+            line.kind === "trigger" && "gap-1",
             line.tone === "danger" && "text-danger",
             line.tone === "warning" && "text-warning",
             line.tone === "success" && "text-success",
@@ -1260,10 +1334,30 @@ function LastStepSection({
               ) : null}
               {line.why ? (
                 <span className="block text-secondary" data-testid="refusal-why">
-                  {RL.whyLine(line.why)}
+                  {line.message ? TL.panel.message(line.why) : RL.whyLine(line.why)}
                 </span>
               ) : null}
             </span>
+          ) : line.kind === "trigger" && line.badge ? (
+            <>
+              <button
+                type="button"
+                className="min-w-0 truncate text-accent underline hover:no-underline"
+                onClick={() => onOpen(line.element!.id)}
+                title={TL.happens.open(line.element!.name)}
+                data-testid="trigger-link"
+              >
+                {line.text}
+              </button>
+              <Badge tone={line.badge.tone} data-testid="trigger-outcome">
+                {line.badge.text}
+              </Badge>
+              {(line.flags ?? []).map((f) => (
+                <Badge key={f.text} tone="neutral" title={f.title} data-testid="trigger-flag">
+                  {f.text}
+                </Badge>
+              ))}
+            </>
           ) : (
             <span className="truncate">{line.text}</span>
           )}

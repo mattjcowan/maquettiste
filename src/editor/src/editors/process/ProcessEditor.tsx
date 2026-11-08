@@ -18,6 +18,7 @@ import { TransitionsTab } from "./TransitionsTab";
 import { EventsTab } from "./EventsTab";
 import { GatesTab } from "./GatesTab";
 import { RightsTab } from "./RightsTab";
+import { TriggerPointsTab } from "./TriggerPointsTab";
 import { ScenariosTab } from "./ScenariosTab";
 import { ProcessAttributeGrid } from "./AttributeLists";
 import { useProcessContext } from "./shared";
@@ -84,6 +85,8 @@ function ProcessBody({ ctx, draft }: { ctx: EditorContext; draft: Draft | undefi
           { value: "gates", label: PROCESS_TAB_LABELS.gates, content: <GatesTab pc={pc} /> },
           // Rights belong to lifecycles only (MQ9901).
           ...(process.use === "lifecycle" ? [{ value: "rights", label: PROCESS_TAB_LABELS.rights, content: <RightsTab pc={pc} /> }] : []),
+          // Trigger points belong to lifecycles only (MQ8101).
+          ...(process.use === "lifecycle" ? [{ value: "triggerPoints", label: PROCESS_TAB_LABELS.triggerPoints, content: <TriggerPointsTab pc={pc} /> }] : []),
           {
             value: "context",
             label: PROCESS_TAB_LABELS.context,

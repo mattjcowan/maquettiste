@@ -443,7 +443,7 @@
           "default": {}
         },
         "values": {
-          "description": "For a modify verb step on the subject: the values it sets, by attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them.",
+          "description": "For a modify verb step on the subject: the values it sets; for a create verb step: the new object's values, which before actions and checks read and an accepted step writes. By attribute id: attributes a set could set, with values of their types (MQ9305). Later guards and sets read them.",
           "type": "object",
           "propertyNames": {
             "$ref": "common.json#/$defs/id"
@@ -466,13 +466,19 @@
           "$ref": "common.json#/$defs/id"
         },
         "assume": {
-          "description": "Results for guards without an expression, by guard id.",
+          "description": "Results for guards without an expression, by guard id, as true or false; and outcomes for checks the team writes (checks with no condition), by trigger point id, as pass, warning or error (MQ9305 for a word on any other key). A check with no entry passes.",
           "type": "object",
           "propertyNames": {
             "$ref": "common.json#/$defs/id"
           },
           "additionalProperties": {
-            "type": "boolean"
+            "enum": [
+              true,
+              false,
+              "pass",
+              "warning",
+              "error"
+            ]
           },
           "default": {}
         },
@@ -485,7 +491,9 @@
             "refusedBy",
             "states",
             "context",
-            "values"
+            "values",
+            "checkWarnings",
+            "triggerPoints"
           ],
           "properties": {
             "accepted": {
@@ -504,11 +512,12 @@
                 "gate-reason",
                 "right",
                 "default",
-                "frozen"
+                "frozen",
+                "check"
               ]
             },
             "refusedBy": {
-              "description": "With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy (MQ9308).",
+              "description": "With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, or the trigger point whose check refused (MQ9308).",
               "$ref": "common.json#/$defs/id"
             },
             "states": {
@@ -537,6 +546,15 @@
                 "description": "A value of the attribute's type."
               },
               "default": {}
+            },
+            "checkWarnings": {
+              "description": "The ids of exactly the checks that warned, each once, in the order it first warned (MQ9310). Absent checks nothing; empty expects none.",
+              "$ref": "common.json#/$defs/idList",
+              "uniqueItems": true
+            },
+            "triggerPoints": {
+              "description": "The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked.",
+              "$ref": "common.json#/$defs/idList"
             }
           },
           "required": [],

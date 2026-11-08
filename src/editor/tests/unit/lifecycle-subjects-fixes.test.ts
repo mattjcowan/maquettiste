@@ -104,6 +104,9 @@ describe("the Subject control", () => {
     const before = subjectsOf(json(api.backend, INVOICE_LIFECYCLE))[0];
     expect(json(api.backend, before.entity!).lifecycle).toBe(INVOICE_LIFECYCLE);
     const other = create(api.backend, entity("01JQZZZ0000000000000000010", "Quote"));
+    // The seeded trigger points set Invoice attributes, which Quote does not hold (MQ8102): they go first.
+    const { triggerPoints: _t, ...plain } = json(api.backend, INVOICE_LIFECYCLE);
+    expect(update(api.backend, INVOICE_LIFECYCLE, plain).outcome).toBe("saved");
     const refused = await replaceSoleSubject(queryClient, store, drafts, { process: INVOICE_LIFECYCLE, entity: other, label: "Set the subject" });
     expect(refused).toBeNull();
     const after = subjectsOf(json(api.backend, INVOICE_LIFECYCLE));
@@ -137,9 +140,9 @@ describe("the Use control", () => {
     second.use = "lifecycle";
     second.subjects = [{ id: "01JQZZZ0000000000000000050", entity: before.subject }];
     expect(update(api.backend, PURCHASE_APPROVAL, second).outcome).toBe("saved");
-    // The lifecycle states rights; they stay when it is demoted (MQ9901 refuses the save until they are removed).
+    // The lifecycle states rights and trigger points; they stay when it is demoted (MQ9901 and MQ8101 refuse the save until they are removed).
     expect(await demoteLifecycle(queryClient, store, drafts, { process: one, label: "Make it an orchestration" })).toMatch(/not a lifecycle/);
-    const { rights: _r, rightsDefault: _d, ...plain } = json(api.backend, one);
+    const { rights: _r, rightsDefault: _d, triggerPoints: _t, ...plain } = json(api.backend, one);
     expect(update(api.backend, one, plain).outcome).toBe("saved");
     const refused = await demoteLifecycle(queryClient, store, drafts, { process: one, label: "Make it an orchestration" });
     expect(refused).toBeNull();

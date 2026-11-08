@@ -317,6 +317,13 @@ public sealed class ResolvedModel
     public RList<RProcess> RightsLifecycles { get; internal init; } = RList<RProcess>.Empty;
 
     /// <summary>
+    /// The lifecycles with trigger points (trigger-points-design.md decision 29), by name then id. Empty in a project that uses no trigger
+    /// points, so a template asks <c>model.trigger_lifecycles.size &gt; 0</c> to learn whether the project uses them. The list keys only on
+    /// the trigger points naming key (<c>tn:trigger-points</c>), whose hash never changes in a project without trigger points.
+    /// </summary>
+    public RList<RProcess> TriggerLifecycles { get; internal init; } = RList<RProcess>.Empty;
+
+    /// <summary>
     /// Whether the project uses freezing (rights-design.md decision 28): <c>model.freezing.used</c>. It keys only on the freezing naming key
     /// (<c>fn:freezing</c>), whose hash never changes in a project that doesn't freeze, so a template that asks pays for nothing else.
     /// </summary>

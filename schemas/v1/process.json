@@ -31,6 +31,7 @@
     "actions",
     "gates",
     "rights",
+    "triggerPoints",
     "states",
     "initial",
     "transitions",
@@ -171,6 +172,14 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/right"
+      },
+      "default": []
+    },
+    "triggerPoints": {
+      "description": "The lifecycle's trigger points, in file order, which is the order they run in at each moment: each says what runs when one of its verbs happens, in some places, under an optional when. A check refuses or warns, an action runs before the checks, with the change or after commit, and a replace takes the place of a built-in effect. Lifecycles only (MQ8101).",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/triggerPoint"
       },
       "default": []
     },
@@ -359,6 +368,110 @@
       },
       "required": [
         "id"
+      ],
+      "additionalProperties": false
+    },
+    "triggerPoint": {
+      "title": "Trigger point",
+      "description": "An entry of a lifecycle's triggerPoints (part kind process-trigger-point): what runs when one of its verbs happens to the lifecycle's subjects, narrowed by its optional keys. With no narrowing key it runs wherever its verbs happen.",
+      "type": "object",
+      "x-order": [
+        "id",
+        "name",
+        "displayName",
+        "type",
+        "timing",
+        "severity",
+        "verbs",
+        "states",
+        "targets",
+        "transitions",
+        "entities",
+        "attributes",
+        "ends",
+        "when",
+        "condition",
+        "sets",
+        "outside",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "common.json#/$defs/id"
+        },
+        "name": {
+          "description": "Unique among the lifecycle's trigger points, and apart from its process's guards (MQ3001); a refusal and a step's assume name it.",
+          "$ref": "common.json#/$defs/identifier"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "common.json#/$defs/triggerBody/properties/type"
+        },
+        "timing": {
+          "$ref": "common.json#/$defs/triggerBody/properties/timing"
+        },
+        "severity": {
+          "$ref": "common.json#/$defs/triggerBody/properties/severity"
+        },
+        "verbs": {
+          "$ref": "common.json#/$defs/triggerBody/properties/verbs"
+        },
+        "states": {
+          "description": "States of this lifecycle the object must be in (for a move, its source); a compound state counts while any state inside it is active, and create is checked in the initial state (MQ8102). Empty: every state.",
+          "$ref": "common.json#/$defs/idList",
+          "uniqueItems": true,
+          "default": []
+        },
+        "targets": {
+          "description": "States of this lifecycle a move must enter; a compound state counts when the move enters it or any state inside it, default states included. Beside move verbs, sign, and own verbs an event of this lifecycle names only (MQ8102). Empty: any.",
+          "$ref": "common.json#/$defs/idList",
+          "uniqueItems": true,
+          "default": []
+        },
+        "transitions": {
+          "description": "Transitions of this lifecycle a move must be; for sign, a signature on their gates. Beside move verbs, sign, and own verbs an event of this lifecycle names only (MQ8102). Empty: any.",
+          "$ref": "common.json#/$defs/idList",
+          "uniqueItems": true,
+          "default": []
+        },
+        "entities": {
+          "$ref": "common.json#/$defs/triggerBody/properties/entities",
+          "default": []
+        },
+        "attributes": {
+          "$ref": "common.json#/$defs/triggerBody/properties/attributes",
+          "default": []
+        },
+        "ends": {
+          "$ref": "common.json#/$defs/triggerBody/properties/ends",
+          "default": []
+        },
+        "when": {
+          "$ref": "common.json#/$defs/triggerBody/properties/when"
+        },
+        "condition": {
+          "$ref": "common.json#/$defs/triggerBody/properties/condition"
+        },
+        "sets": {
+          "$ref": "common.json#/$defs/triggerBody/properties/sets",
+          "default": []
+        },
+        "outside": {
+          "$ref": "common.json#/$defs/triggerBody/properties/outside",
+          "default": false
+        },
+        "description": {
+          "description": "Why. For a check, the message shown when it refuses or warns; without one, the display name, else the name.",
+          "$ref": "common.json#/$defs/description"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type",
+        "verbs"
       ],
       "additionalProperties": false
     },

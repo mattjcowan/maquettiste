@@ -117,28 +117,28 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 
 | Capability | Seen in | Today |
 | --- | --- | --- |
-| Named points before and after a move | A O F | Part: a guard before, an action after |
-| A check that can stop the move | E A F O | Yes: a guard |
-| An override that replaces the normal behaviour | E | **No** |
+| Named points before and after a move | A O F | Yes: trigger points: a before action, a check, an action with the change and an action after commit (0.17.0) |
+| A check that can stop the move | E A F O | Yes: a guard, or a trigger point's check, which works like a false guard for a move |
+| An override that replaces the normal behaviour | E | Part: a trigger point's replace, on `delete`, `disconnect`, `copy` and `revise` only (0.17.0) |
 | An action after the move | E A F O S V | Yes |
-| A point just before commit | E | **No** |
-| A failure that does or doesn't roll the move back | A | **No** |
-| Runs in line, or later (`execute immediate` or `deferred`, sync or async) | E O | **No** |
-| Triggers switched off for a session, as for a bulk load | E | No: the system's job |
-| Order when several run | O S | Part: an action list's order |
-| The same three kinds at every point: check, override, action | E | Part: check and action, no override |
-| Points on each sign-off event: approve, reject, ignore, withdraw | E Own | **No** |
-| Points on other state events: promote, demote, override, enable, disable, schedule | E | Part: promote only, as a guard or action |
-| **Points on every operation on an object, not a fixed few:** create, copy, delete, connect, disconnect, freeze, thaw, lock, unlock, revise, check in or out, remove a file, grant, revoke, and changing an attribute, description, name, owner, type, policy or vault | E O Own | **No** |
-| Points on a relationship's operations: create, delete, change an attribute, freeze, thaw | E Own | **No** |
-| Points on an attribute's change | E | **No** |
+| A point just before commit | E | Part: an action with the change, in the same unit of work |
+| A failure that does or doesn't roll the move back | A | Yes: a with-the-change action is undone on failure, an after-commit action can't undo the change |
+| Runs in line, or later (`execute immediate` or `deferred`, sync or async) | E O | Yes: with the change, or after commit (through the outbox) |
+| Triggers switched off for a session, as for a bulk load | E | No: the system's job. Part 2 adds `noBypass` and the host's bypass |
+| Order when several run | O S | Yes: one fixed order for every verb, then the list's order |
+| The same three kinds at every point: check, override, action | E | Yes: check, action and a narrow replace |
+| Points on each sign-off event: approve, reject, ignore, withdraw | E Own | Part: `sign` only; the rest come with richer sign-off |
+| Points on other state events: promote, demote, override, enable, disable, schedule | E | Part: promote and demote, and your own verbs an event names; `override` and `set-state` wait for scenario steps |
+| **Points on every operation on an object, not a fixed few:** create, copy, delete, connect, disconnect, freeze, thaw, lock, unlock, revise, check in or out, remove a file, grant, revoke, and changing an attribute, description, name, owner, type, policy or vault | E O Own | Yes: any verb, built-in or your own, with places by state, type, attribute and link end |
+| Points on a relationship's operations: create, delete, change an attribute, freeze, thaw | E Own | Yes: `connect`, `disconnect`, `freeze`, `thaw`, `read` and `modify` through an end |
+| Points on an attribute's change | E | Yes: `attributes` beside `read` and `modify`, with `old.` for the value before |
 | Points on a workflow and its activities: start, stop, finish, suspend, resume, reassign, activate, complete, override | E | Part: `invoke-done` and `invoke-error` |
 | A program attached to a type, run on an object (`method`) | E | Yes: operations |
 | Logic in any language or plugin | E A O F V | Yes: a stub carries no language |
 | A reusable handler, named by many | E O T | Yes: libraries (#33) |
 | Arguments passed to a handler (`input`) | E T | Part: custom properties (#32) |
 | An action on one object that moves another in its lifecycle (a change order releasing the items it affects) | E O N | **No** |
-| Messages back to the user when refused | F | Part: an operation guard's `error`, not a process guard's |
+| Messages back to the user when refused | F | Yes: a check's message, named in the refusal. A process guard still gives none |
 
 **How a pack can use this, with what the model holds today (Pack):**
 - Partial classes per lifecycle, with a do-nothing partial method per guard and action. `csharp-dapper` already does this.

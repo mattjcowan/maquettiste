@@ -1165,9 +1165,9 @@
     },
     "expr": {
       "title": "Expression",
-      "description": "A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids), ref (an enum member or reference-type code id), member (rule conditions only), now (guard, set and right sites only), currentActor (guard, set and right sites only), inState (with of; guard, set and right sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).",
+      "description": "A node of the one expression language. Exactly one of: value (with type for a literal written as text), null, path (ids; with old, the values before the verb, at trigger point sites only), ref (an enum member or reference-type code id), member (rule conditions only), now (guard, set, right and trigger point sites only), currentActor (guard, set, right and trigger point sites only), inState (with of; guard, set, right and trigger point sites only), op with args, call with args, case (with else), satisfies with with, text (accepted on writes and stored as a tree; in a file it is MQ3108).",
       "type": "object",
-      "x-order": ["value", "type", "null", "path", "ref", "member", "now", "currentActor", "inState", "of", "op", "call", "args", "case", "else", "satisfies", "with", "text"],
+      "x-order": ["value", "type", "null", "path", "old", "ref", "member", "now", "currentActor", "inState", "of", "op", "call", "args", "case", "else", "satisfies", "with", "text"],
       "properties": {
         "value": {
           "description": "A literal: a string, an integer or a boolean; with type, the value's text, so that digits are kept.",
@@ -1190,6 +1190,10 @@
           },
           "minItems": 1
         },
+        "old": {
+          "description": "With path: the path reads the object's values before the verb (old.price in text), null on create. Trigger point sites only (when, condition and set values); elsewhere it is MQ3104.",
+          "const": true
+        },
         "ref": {
           "description": "The id of an enum member or of a reference-type code.",
           "type": "string",
@@ -1201,15 +1205,15 @@
           "minLength": 1
         },
         "now": {
-          "description": "The clock, a datetimeoffset; guard, set and right sites only.",
+          "description": "The clock, a datetimeoffset; guard, set, right and trigger point sites only.",
           "const": true
         },
         "currentActor": {
-          "description": "The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard, set and right sites only.",
+          "description": "The identity of whoever acts: the step's signer, else its participant's identity or name, else the name of the actor it acts as, else null. It takes the type of what it meets (a comparison, in, coalesce, a case branch, a set's attribute), else it is a string; guard, set, right and trigger point sites only.",
           "const": true
         },
         "inState": {
-          "description": "True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard, set and right sites only.",
+          "description": "True when the object is in any of these states of one lifecycle (state ids); a compound state counts when any state inside it is active. Guard, set, right and trigger point sites only.",
           "type": "array",
           "items": {
             "type": "string",
@@ -1315,7 +1319,8 @@
         "call": ["args"],
         "else": ["case"],
         "satisfies": ["with"],
-        "of": ["inState"]
+        "of": ["inState"],
+        "old": ["path"]
       },
       "additionalProperties": false
     },
@@ -1591,6 +1596,98 @@
       },
       "required": [
         "access",
+        "verbs"
+      ],
+      "additionalProperties": false
+    },
+    "triggerBody": {
+      "title": "Trigger point body",
+      "description": "What a trigger point says (trigger-points-design.md decisions 3 to 12), shared by an entry of a lifecycle's triggerPoints and, later, a named trigger point: what runs when one of its verbs happens, and where. A check has a condition, an action or a replace has sets; with neither, the body is the team's code. Each form refers to these properties one by one.",
+      "type": "object",
+      "x-order": [
+        "type",
+        "timing",
+        "severity",
+        "verbs",
+        "entities",
+        "attributes",
+        "ends",
+        "when",
+        "condition",
+        "sets",
+        "outside"
+      ],
+      "properties": {
+        "type": {
+          "description": "check: judges the change and passes, warns or refuses with its message. action: does something at its timing. replace: takes the place of the verb's built-in effect, only on delete, disconnect, copy and revise (MQ8103); everything around it still runs.",
+          "enum": [
+            "check",
+            "action",
+            "replace"
+          ]
+        },
+        "timing": {
+          "description": "An action's moment, required on an action and allowed nowhere else (MQ8101). before: fills the proposed values before the checks, and nothing is written until they pass. with-change: after the effect, in the same unit of work, so a failure undoes the verb. after-commit: once the change is saved; it cannot undo it, may run late and may run more than once, and sets nothing (MQ8105).",
+          "enum": [
+            "before",
+            "with-change",
+            "after-commit"
+          ]
+        },
+        "severity": {
+          "description": "A check's severity, allowed only on a check (MQ8101). error (also when absent) refuses the step with refusal check; warning lets it through and lists the check in the trace's checkWarnings.",
+          "enum": [
+            "error",
+            "warning"
+          ]
+        },
+        "verbs": {
+          "description": "The verbs it runs on, at least one: a built-in verb's key or one of the project's own (MQ9701). A move, signature or task verb runs in this lifecycle's moves, signatures and human tasks; an object, link or own verb runs on the object, whichever lifecycle acts.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/verbRef"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "entities": {
+          "description": "Entities it runs for, each with its derived entities: some of those its lifecycle governs (MQ8102). Empty: every entity its subjects cover. It also widens what its paths and sets may name to what every entity it covers holds under one id.",
+          "$ref": "#/$defs/idList",
+          "uniqueItems": true
+        },
+        "attributes": {
+          "description": "Attributes of the subject: it runs only when a read or modify step itself reads or changes one of them, beside only read and modify and never beside ends (MQ8102). When a step does not say which, a check runs and an action or a replace does not, and a note says so.",
+          "$ref": "#/$defs/idList",
+          "uniqueItems": true
+        },
+        "ends": {
+          "description": "Relation ends of the subject: it runs only for the links through them, for connect, disconnect, read, modify, freeze and thaw (MQ8102). When a step does not say which, a check runs and an action or a replace does not, and a note says so.",
+          "$ref": "#/$defs/idList",
+          "uniqueItems": true
+        },
+        "when": {
+          "description": "It runs only when this is true; false or unknown skips it, and the trace says so. It reads the object under subject (the proposed values before the effect), its values before the verb under old, current_actor(), in_state and now(), not the context; a move's payload only as the payload rules allow (MQ3102).",
+          "$ref": "#/$defs/expr"
+        },
+        "condition": {
+          "description": "A check's condition: only true passes. It reads what when reads. Not on an action or a replace (MQ8101); without it, the check is the team's code, and a scenario step assumes its outcome.",
+          "$ref": "#/$defs/expr"
+        },
+        "sets": {
+          "description": "What an action or a replace sets on the object, as an action's sets: every value is worked out first, then all are applied. A value reads what when reads. Not on a check (MQ8101) or an after-commit action (MQ8105); without it, an action or a replace is the team's code.",
+          "type": "array",
+          "items": {
+            "$ref": "process.json#/$defs/set"
+          }
+        },
+        "outside": {
+          "description": "true: the team's code reaches outside systems. Simulation never runs the team's code; the trace marks the point, and generated tests record it instead of calling it. Only a point with team code may say so (MQ8101); a with-change one is warned (MQ8106).",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "type",
         "verbs"
       ],
       "additionalProperties": false

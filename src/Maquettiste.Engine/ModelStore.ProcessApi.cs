@@ -192,7 +192,7 @@ public sealed partial class ModelStore
             replay = ScenarioReplayer.Replay(scenario, runtime)!;
         if (!replay.Complete)
             return ProcessCall<RecordScenarioResult>.Fail(ProcessCallStatus.Invalid, "The inputs cannot be replayed to the last step.", replay.Diagnostics);
-        var (expects, outcome) = replay.Observed();
+        var (expects, outcome) = replay.Observed(request.TriggerPoints == true);
         for (var i = 0; i < steps.Count; i++)
             steps[i]!["expect"] = ProcessApi.ExpectNode(expects[i]);
         var outcomeText = request.Outcome ?? (outcome == ScenarioOutcome.Final ? "final" : "active");

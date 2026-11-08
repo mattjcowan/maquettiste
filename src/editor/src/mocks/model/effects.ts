@@ -10,7 +10,8 @@ export type Value = unknown | typeof UNKNOWN;
 
 export interface EvalEnv {
   /** A path of ids: a subject attribute, a context attribute, or ends then an attribute; UNKNOWN when it is none. */
-  path(ids: string[]): Value;
+  /** `old` asks for the value before the verb (a trigger point's `old.` path). */
+  path(ids: string[], old?: boolean): Value;
   now(): string;
   actor(): string | null;
   /** True, false, or null when there is no object at the end of the path. */
@@ -43,7 +44,7 @@ export function evalTree(tree: unknown, env: EvalEnv): Value {
   }
   if ("null" in t) return null;
   if ("value" in t) return t.value;
-  if (Array.isArray(t.path)) return env.path(t.path as string[]);
+  if (Array.isArray(t.path)) return env.path(t.path as string[], t.old === true);
   if (t.now === true) return env.now();
   if (t.currentActor === true) return env.actor();
   if (Array.isArray(t.inState)) return env.inState(t.inState as string[], Array.isArray(t.of) ? (t.of as string[]) : undefined);

@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "name": "trigger-points",
+  "packs": {
+    "process-docs": {
+      "output": "out"
+    }
+  }
+}

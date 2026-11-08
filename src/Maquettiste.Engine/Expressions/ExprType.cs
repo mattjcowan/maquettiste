@@ -32,6 +32,16 @@ public enum ExprSiteKind
     /// outside a run.
     /// </summary>
     Right,
+
+    /// <summary>
+    /// A trigger point's <c>when</c> or a check's condition (trigger-points-design.md decision 15): only true passes, as at a guard. It reads
+    /// the object under <c>subject</c>, its values before the verb under <c>old</c>, a move's payload under <c>event</c> when every verb
+    /// it names makes moves (MQ3102), <c>now()</c>, <c>current_actor()</c> and <c>in_state</c>; never the context.
+    /// </summary>
+    Trigger,
+
+    /// <summary>A value a trigger point sets: typed as a set's value is, against its attribute, and reads what a <see cref="Trigger"/> site reads.</summary>
+    TriggerSet,
 }
 
 /// <summary>

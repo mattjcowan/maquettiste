@@ -19,7 +19,7 @@ namespace Maquettiste.Cli.Commands;
 /// </remarks>
 internal static class ProcessCommand
 {
-    private const string Verbs = "simulate, record, verify, export, import, sync-enum, sync-codes or rights";
+    private const string Verbs = "simulate, record, verify, export, import, sync-enum, sync-codes, rights or trigger-sequence";
 
     // The API's bodies (every member written, nulls included), indented with \n line ends.
     private static readonly JsonSerializerOptions Output = new(JsonSerializerDefaults.Web)
@@ -63,6 +63,9 @@ internal static class ProcessCommand
             case "rights":
                 line.Expect("process rights", 3, "--state", "--actor", "--verb", "--entity", "--frozen", "--format");
                 break;
+            case "trigger-sequence":
+                line.Expect("process trigger-sequence", 3, "--verb", "--state", "--entity", "--attribute", "--end", "--transition", "--format");
+                break;
             default:
                 throw new UsageException($"Unknown process verb '{verb}': use {Verbs}.");
         }
@@ -88,6 +91,7 @@ internal static class ProcessCommand
                 "export" => await ExportAsync(context, store, Resolve(snapshot, line.Positionals[2]), ct).ConfigureAwait(false),
                 "import" => await ImportAsync(context, store, snapshot, line.Positionals[2], json, ct).ConfigureAwait(false),
                 "rights" => await RightsAsync(context, store, Resolve(snapshot, line.Positionals[2]), json, ct).ConfigureAwait(false),
+                "trigger-sequence" => await TriggerSequenceAsync(context, store, Resolve(snapshot, line.Positionals[2]), json, ct).ConfigureAwait(false),
                 "sync-codes" => await SyncCodesAsync(context, store, snapshot, Resolve(snapshot, line.Positionals[2]), json, ct).ConfigureAwait(false),
                 _ => await SyncEnumAsync(context, store, snapshot, Resolve(snapshot, line.Positionals[2]), json, ct).ConfigureAwait(false),
             };
@@ -516,6 +520,61 @@ internal static class ProcessCommand
                 text.Append(" by default");
             if (row.DependsOn.Count > 0)
                 text.Append(", depends on ").Append(string.Join(", ", row.DependsOn.Select(NameOf)));
+            text.Append('\n');
+        }
+
+        await context.Out.WriteAsync(text.ToString()).ConfigureAwait(false);
+        return Program.ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// <c>process trigger-sequence &lt;lifecycle&gt; --verb &lt;key&gt;</c>: what runs, in order, when the verb happens (trigger-points-design.md
+    /// decision 36); <c>--state</c>, <c>--entity</c>, <c>--attribute</c> (repeatable), <c>--end</c> and <c>--transition</c> narrow it as
+    /// <c>get_trigger_sequence</c> does.
+    /// </summary>
+    private static async Task<int> TriggerSequenceAsync(GlobalContext context, ModelStore store, Process process, bool json, CancellationToken ct)
+    {
+        var line = context.Line;
+        var verb = line.Value("--verb") ?? throw new UsageException("process trigger-sequence needs --verb <key>.");
+        var filter = new TriggerSequenceFilter
+        {
+            State = line.Value("--state"), Entity = line.Value("--entity"), Attributes = line.Values("--attribute"), End = line.Value("--end"),
+            Transition = line.Value("--transition"),
+        };
+        var call = await store.GetTriggerSequenceAsync(process.Id, verb, filter, ct).ConfigureAwait(false);
+        if (await FailedAsync(context, call).ConfigureAwait(false) is { } failed)
+            return failed;
+        var sequence = call.Value!;
+        if (json)
+        {
+            await context.Out.WriteLineAsync(JsonSerializer.Serialize(sequence, Output)).ConfigureAwait(false);
+            return Program.ExitCodes.Success;
+        }
+
+        var snapshot = await store.GetSnapshotAsync(ct).ConfigureAwait(false);
+        var text = new StringBuilder();
+        text.Append("When someone does ").Append(verb).Append(" in ").Append(process.Name).Append(":\n");
+        foreach (var step in sequence.Steps)
+        {
+            text.Append(step.Order).Append(". ").Append(step.Step);
+            if (step.TriggerPoint is { } id)
+            {
+                var point = snapshot.Get<Process>(step.Lifecycle ?? "")?.TriggerPoints.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal));
+                text.Append(": ").Append(point?.Name ?? id);
+                if (!string.Equals(step.Lifecycle, process.Id, StringComparison.Ordinal))
+                    text.Append(" (").Append(snapshot.Get<Process>(step.Lifecycle ?? "")?.Name ?? step.Lifecycle).Append(')');
+                text.Append(", ").Append(step.Severity is TriggerSeverity.Warning ? "warning check" : step.Type switch
+                {
+                    TriggerPointType.Check => "check",
+                    TriggerPointType.Replace => "replace",
+                    _ => "action",
+                });
+                if (step.When == true)
+                    text.Append(", only when its condition holds");
+                if (step.Outside == true)
+                    text.Append(", reaches outside systems");
+            }
+
             text.Append('\n');
         }
 

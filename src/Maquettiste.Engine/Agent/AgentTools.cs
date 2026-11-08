@@ -97,6 +97,7 @@ public sealed partial class AgentTools
             ["get_rights"] = GetRightsAsync,
             ["get_schema"] = GetSchemaAsync,
             ["get_settings"] = GetSettingsAsync,
+            ["get_trigger_sequence"] = GetTriggerSequenceAsync,
             ["list_migrations"] = ListMigrationsAsync,
             ["list_packs"] = ListPacksAsync,
             ["list_snapshots"] = ListSnapshotsAsync,

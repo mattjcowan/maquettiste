@@ -56,6 +56,12 @@ const EDITOR_FIXES = new Set([
   "MQ9904",
   "MQ9905",
   "MQ9906",
+  "MQ8101",
+  "MQ8102",
+  "MQ8103",
+  "MQ8105",
+  "MQ8106",
+  "MQ8107",
   "MQ3116",
 ]);
 
@@ -198,6 +204,57 @@ function rightFix(rule: string, element: ModelJson, pointer: string): { json: Mo
       rights.push({ id: newId(), name, access: "allow", verbs: [verb] });
       return { json: next, label: `Add an allow right for ${verb}` };
     }
+    default:
+      return null;
+  }
+}
+
+/**
+ * The quick fixes of MQ8101 to MQ8107 (trigger-points-design.md sections 6 and 11): MQ8101 and MQ8102 remove the key or the entry,
+ * MQ8103 makes the point an action, MQ8105 and MQ8106 change its timing, MQ8107 removes it. Every one is a plain update of the
+ * lifecycle. The last entry of a narrowing list takes the trigger point with it: an empty list would widen it to everywhere.
+ */
+function triggerPointFix(rule: string, element: ModelJson, pointer: string): { json: ModelJson; label: string } | null {
+  const entry = /^(\/triggerPoints\/\d+)(\/|$)/.exec(pointer)?.[1];
+  const done = (json: ModelJson | null, label: string) => (json ? { json, label } : null);
+  const point = entry ? (atPointer(element, entry) as Json | undefined) : undefined;
+  const timing = (value: "with-change" | "after-commit", label: string) => {
+    if (!entry || !point) return null;
+    const next = clone(element);
+    (atPointer(next, entry) as Json).timing = value;
+    return { json: next, label };
+  };
+  switch (rule) {
+    case "MQ8101":
+    case "MQ8102": {
+      // The whole list on an orchestration or a library.
+      if (pointer === "/triggerPoints") return done(removeAt(element, pointer), "Remove the key");
+      if (!entry) return null;
+      if (pointer === entry) return done(removeAndTidy(element, entry, "rights"), "Remove the entry");
+      const item = /^(\/triggerPoints\/\d+\/\w+)\/\d+$/.exec(pointer)?.[1];
+      if (item) {
+        const list = atPointer(element, item) as unknown[] | undefined;
+        if (list && list.length === 1) return done(removeAndTidy(element, entry, "rights"), "Remove the entry");
+        return done(removeAt(element, pointer), "Remove the entry");
+      }
+      // A key: its list would be written as [] when it is the last, so a list key is removed whole.
+      return done(removeAt(element, pointer), rule === "MQ8101" ? "Remove the key" : "Remove the entry");
+    }
+    case "MQ8103":
+      if (!entry || !point) return null;
+      {
+        const next = clone(element);
+        const holder = atPointer(next, entry) as Json;
+        holder.type = "action";
+        holder.timing = "with-change";
+        return { json: next, label: "Make it an action" };
+      }
+    case "MQ8105":
+      return timing("with-change", "Make it a with-change action");
+    case "MQ8106":
+      return timing("after-commit", "Make it an after-commit action");
+    case "MQ8107":
+      return entry ? done(removeAndTidy(element, entry, "rights"), "Remove it") : null;
     default:
       return null;
   }
@@ -404,6 +461,16 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
     case "MQ9905":
     case "MQ9906": {
       const fix = rightFix(d.rule, element, pointer);
+      return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;
+    }
+    case "MQ8101":
+    case "MQ8102":
+    case "MQ8103":
+    case "MQ8105":
+    case "MQ8106":
+    case "MQ8107": {
+      if (element.kind !== "process") return null;
+      const fix = triggerPointFix(d.rule, element, pointer);
       return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;
     }
     case "MQ9016": {

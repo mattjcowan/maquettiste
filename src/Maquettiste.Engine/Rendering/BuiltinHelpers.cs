@@ -718,8 +718,8 @@ internal static class BuiltinHelpers
         context.Recorder.RecordObject(binding);
         // A value an action sets, and a condition that reads current_actor() or in_state, run where the process runs: no database reads them
         // (object-effects-design.md decision 11).
-        if (root.Site == ExprSiteKind.Set || ExprLowering.IsEngineOnly(root.Typed))
-            throw new RenderHelperException("MQ6006", "`expression_sql` takes a check or a derived value; a value an action sets, current_actor() and in_state have no SQL form.");
+        if (root.Site is ExprSiteKind.Set or ExprSiteKind.Trigger or ExprSiteKind.TriggerSet || ExprLowering.IsEngineOnly(root.Typed))
+            throw new RenderHelperException("MQ6006", "`expression_sql` takes a check or a derived value; a value an action sets, a trigger point's expression, current_actor() and in_state have no SQL form.");
         var check = root.Site == ExprSiteKind.Check;
         var columns = new Dictionary<string, ExprColumn>(StringComparer.Ordinal);
         foreach (var id in ExprResolution.Paths(root.Typed))

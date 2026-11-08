@@ -1,0 +1,1068 @@
+{{-
+# Trigger points (trigger-points-design.md decisions 21, 29 to 31 and section 10), written only when the project uses trigger points
+# (model.trigger_lifecycles, which keys only on the trigger points naming key). TriggerPoints.cs holds what every lifecycle's step methods
+# share: the call a team's method is given, the outcome, the after-commit message, the steps' interface the interpreter calls, the depth
+# guard and the relay that delivers after-commit work. Each entity whose governing lifecycles have points on object, link or own verbs
+# (entity.trigger_lifecycles) gets a per-type runner, <Entity>Verbs, and its history record, <Entity>VerbDone. Each lifecycle with points
+# gets <Lifecycle>TriggerSteps and the declarations of the team's three static partial classes, whose methods the team writes in the
+# companion (unit trigger-points-companion, written once), so a new body or when fails the build until written.
+include "_csharp.scriban"
+include "_process.scriban"
+if uses_triggers()
+verb_type = "global::" + base_ns + ".Verb"
+rights = uses_rights()
+freezing = uses_freezing()
+attribute_rights = rights && uses_attribute_rights()
+# Whether a right's actor may be taken from the object, so the per-type runner's call carries the caller's resolver (rights.scriban).
+relatives = false
+if rights
+  for a in model.actors
+    if a.relative
+      relatives = true
+    end
+  end
+end
+# The verbs that go through a process's commands, which the per-type runner refuses (decision 4).
+process_verbs = []
+for v in model.verbs
+  if v.group == "move" || v.group == "signature" || v.group == "task"
+    process_verbs[process_verbs.size] = verb_type + "." + (pascal v.key)
+  end
+end
+runners = []
+for e in model.entities
+  if e.trigger_lifecycles.size > 0
+    runners[runners.size] = e
+  end
+end
+func entity_type(e)
+  ret "global::" + ns(e) + "." + type_name(e)
+end
+func steps_type(l)
+  ret "global::" + ns(l) + "." + p_name(l) + "TriggerSteps"
+end
+# The entities a lifecycle governs directly: its subjects' entities and its stereotype subjects' carriers, each once.
+func governed_entities(l)
+  $seen = {}
+  $out = []
+  for $sub in l.subjects
+    if !$seen[$sub.entity.id]
+      $seen[$sub.entity.id] = true
+      $out[$out.size] = $sub.entity
+    end
+  end
+  for $sub in l.stereotype_subjects
+    for $e in $sub.entities
+      if !$seen[$e.id]
+        $seen[$e.id] = true
+        $out[$out.size] = $e
+      end
+    end
+  end
+  ret $out
+end
+# The C# "x or y" pattern of a list of string literals.
+func or_pattern(values)
+  $out = []
+  for $v in values
+    $out[$out.size] = json $v
+  end
+  ret $out | array.join " or "
+end
+# A point's places and when as a C# condition followed by " && ", or "" when it has none (decisions 4, 10 and 12). A check narrowed by
+# attributes or ends runs when the step doesn't say which (checks fail closed); an action or a replace doesn't. Without ends, a point
+# speaks of the object, and on connect and disconnect of every link too.
+func place(l, tp, link, governed)
+  $c = []
+  if tp.targets.size > 0 || tp.transitions.size > 0
+    $c[$c.size] = "call.MovedBy(Lifecycle)"
+  end
+  if tp.transitions.size > 0
+    $ids = []
+    for $t in tp.transitions
+      $ids[$ids.size] = $t.id
+    end
+    $c[$c.size] = "call.Transition is " + or_pattern($ids)
+  end
+  if tp.targets.size > 0
+    $parts = []
+    for $s in tp.targets
+      $parts[$parts.size] = "call.Enters(" + (json $s.path) + ")"
+    end
+    $c[$c.size] = "(" + ($parts | array.join " || ") + ")"
+  end
+  if tp.states.size > 0
+    $parts = []
+    for $s in tp.states
+      $parts[$parts.size] = "call.InState(Lifecycle, " + (json $s.path) + ")"
+    end
+    $c[$c.size] = "(" + ($parts | array.join " || ") + ")"
+  end
+  if tp.entities.size > 0
+    $covered = {}
+    for $e in tp.covers
+      $covered[$e.id] = true
+    end
+    $all = governed.size > 0
+    for $e in governed
+      if !$covered[$e.id]
+        $all = false
+      end
+    end
+    $parts = []
+    for $e in tp.entities
+      $parts[$parts.size] = "call.Is(typeof(" + entity_type($e) + "), " + ($all ? "true" : "false") + ")"
+    end
+    $c[$c.size] = "(" + ($parts | array.join " || ") + ")"
+  end
+  if tp.attributes.size > 0
+    $names = []
+    for $a in tp.attributes
+      $names[$names.size] = $a.name
+    end
+    if tp.type == "check"
+      $c[$c.size] = "(call.Attributes is not { Count: > 0 } || call.Attributes.Any(a => a is " + or_pattern($names) + "))"
+    else
+      $c[$c.size] = "call.Attributes is { Count: > 0 } attributes && attributes.Any(a => a is " + or_pattern($names) + ")"
+    end
+  end
+  if tp.ends.size > 0
+    $names = []
+    for $x in tp.ends
+      $names[$names.size] = $x.name
+    end
+    if link && tp.type == "check"
+      $c[$c.size] = "(call.End is null || call.End is " + or_pattern($names) + ")"
+    else
+      $c[$c.size] = "call.End is " + or_pattern($names)
+    end
+  else if !link
+    $c[$c.size] = "call.End is null"
+  end
+  if tp.when
+    $c[$c.size] = p_name(l) + "TriggerConditions." + member_name(tp.name, p_name(l) + "TriggerConditions") + "(call)"
+  end
+  if $c.size == 0
+    ret ""
+  end
+  ret ($c | array.join " && ") + " && "
+end
+# What a point is and does, in one line for its method's summary.
+func point_text(tp)
+  $verbs = []
+  for $v in tp.verbs
+    $verbs[$verbs.size] = $v.key
+  end
+  if tp.type == "check"
+    $text = (tp.severity == "warning" ? "Warning check " : "Check ") + tp.name
+  else if tp.type == "replace"
+    $text = "Replace " + tp.name
+  else
+    $text = (tp.timing == "before" ? "Before action " : (tp.timing == "with-change" ? "With-the-change action " : "After-commit action ")) + tp.name
+  end
+  $text = $text + " on " + ($verbs | array.join ", ")
+  if tp.condition
+    $text = $text + ": passes when " + (cs_line tp.condition.text)
+  else if tp.sets.size > 0
+    $text = $text + ": sets " + sets_text(tp)
+  else
+    $text = $text + ": the team's code"
+  end
+  if tp.message != "" && tp.message != tp.name
+    $message = cs_line tp.message | string.strip
+    if $message | string.ends_with "."
+      $message = string.slice $message 0 ($message.size - 1)
+    end
+    $text = $text + ". " + $message
+  end
+  if tp.type == "action" && tp.timing == "before"
+    $text = $text + ". It fills call.Proposed and must write nothing; " + p_name(tp.process) + "TriggerRecords writes once every check passes"
+  else if tp.type == "action" && tp.timing == "after-commit"
+    $text = $text + ". It runs after the change is saved, may run late and may run more than once, so it must be safe to repeat"
+  end
+  if tp.outside
+    $text = $text + ". It reaches outside systems"
+  end
+  ret $text + "."
+end
+-}}
+{{- capture content -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using {{ dispatch_ns() }};
+using {{ runtime_ns() }};
+
+namespace {{ actors_ns() }};
+
+/// <summary>
+/// What a trigger point's method is given (trigger-points-design.md decision 13): the verb, where it happens and the values it proposes.
+/// Generated code can't read the object yet, so the team's methods load it themselves from <see cref="Key"/> or <see cref="Instance"/>,
+/// or read <see cref="Old"/> and <see cref="New"/> when the caller gives them.
+/// </summary>
+public sealed record TriggerPointCall
+{
+    /// <summary>The verb.</summary>
+    public {{ verb_type }} Verb { get; init; }
+
+    /// <summary>The lifecycle whose move, signature or task does the verb; null for a verb done outside a run.</summary>
+    public string? Lifecycle { get; init; }
+
+    /// <summary>The object's entity type.</summary>
+    public Type? Entity { get; init; }
+
+    /// <summary>The object's key, as text, when the caller gives it.</summary>
+    public string? Key { get; init; }
+
+    /// <summary>The process instance; null outside a run.</summary>
+    public string? Instance { get; init; }
+
+    /// <summary>The envelope: the actor and the signer.</summary>
+    public ProcessEnvelope? Envelope { get; init; }
+
+    /// <summary>The actors the caller holds with no context, besides the one it acts as.</summary>
+    public IReadOnlyList<string> Held { get; init; } = [];
+
+    /// <summary>The object's active state paths, by lifecycle name. Before the effect they are the states before the verb; after it, the states after.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> States { get; init; } = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+
+    /// <summary>The state paths a move enters, compound states included (moves).</summary>
+    public IReadOnlyList<string> Entered { get; init; } = [];
+
+    /// <summary>The transition's id (moves, and for <c>sign</c> the transition whose gate is signed).</summary>
+    public string? Transition { get; init; }
+
+    /// <summary>The event's name (moves).</summary>
+    public string? Event { get; init; }
+
+    /// <summary>The event's payload by attribute name (moves).</summary>
+    public IReadOnlyDictionary<string, object?> Payload { get; init; } = new Dictionary<string, object?>(StringComparer.Ordinal);
+
+    /// <summary>The relation end the link goes through (links).</summary>
+    public string? End { get; init; }
+
+    /// <summary>The other object's key, as text (links).</summary>
+    public string? Other { get; init; }
+
+    /// <summary>The names of the attributes the step itself reads or changes; null when it doesn't say.</summary>
+    public IReadOnlyList<string>? Attributes { get; init; }
+
+    /// <summary>The team's object before the verb, when the caller gives it; null inside the interpreter and the relay.</summary>
+    public object? Old { get; init; }
+
+    /// <summary>The team's object after the verb, when the caller gives it; null inside the interpreter and the relay.</summary>
+    public object? New { get; init; }
+
+    /// <summary>The proposed values by attribute name: the step's own values, then what before actions fill. Nothing is written until every check passes.</summary>
+    public IDictionary<string, object?> Proposed { get; init; } = new Dictionary<string, object?>(StringComparer.Ordinal);
+
+    /// <summary>The caller's id for the command, which makes the per-type runner's message ids stable; the runner needs it when after-commit work is queued.</summary>
+    public string? CommandId { get; init; }
+{{- if relatives }}
+
+    /// <summary>Whether the caller is an actor taken from the object, by name, which the per-type runner's rights check asks; null answers no.</summary>
+    public Func<string, bool>? Resolves { get; init; }
+{{- end }}
+
+    /// <summary>Whether the object is in a state of a lifecycle: the state itself, or a state inside it, is active.</summary>
+    /// <param name="lifecycle">The lifecycle's name.</param>
+    /// <param name="path">The state's path.</param>
+    /// <returns>Whether it is.</returns>
+    public bool InState(string lifecycle, string path) =>
+        States.TryGetValue(lifecycle, out var paths) && paths.Any(s => Within(s, path));
+
+    /// <summary>Whether the move enters a state, or a state inside it.</summary>
+    /// <param name="path">The state's path.</param>
+    /// <returns>Whether it does.</returns>
+    public bool Enters(string path) => Entered.Any(s => Within(s, path));
+
+    /// <summary>Whether a move of a lifecycle does the verb.</summary>
+    /// <param name="lifecycle">The lifecycle's name.</param>
+    /// <returns>Whether it does.</returns>
+    public bool MovedBy(string lifecycle) => Transition is not null && string.Equals(Lifecycle, lifecycle, StringComparison.Ordinal);
+
+    /// <summary>Whether the object's entity is a type or derives from it; with no entity, whether the point covers every subject.</summary>
+    /// <param name="type">The type.</param>
+    /// <param name="all">The answer with no entity.</param>
+    /// <returns>Whether it is.</returns>
+    public bool Is(Type type, bool all) => Entity is { } entity ? type.IsAssignableFrom(entity) : all;
+
+    private static bool Within(string state, string path) =>
+        string.Equals(state, path, StringComparison.Ordinal) || state.StartsWith(path + ".", StringComparison.Ordinal);
+}
+
+/// <summary>A check that warned: its id and its message.</summary>
+/// <param name="Id">The trigger point's id.</param>
+/// <param name="Message">Its message: the description, else the display name, else the name.</param>
+public sealed record TriggerPointWarning(string Id, string Message);
+
+/// <summary>What the trigger points of a verb did: whether it passed, the checks that warned, and the point that refused with its message.</summary>
+public sealed class TriggerPointOutcome
+{
+    private readonly List<string> _ran = [];
+    private readonly List<TriggerPointWarning> _warnings = [];
+    private readonly List<(string Id, Action Write)> _records = [];
+    private readonly List<TriggerPointMessage> _messages = [];
+
+    /// <summary>Whether nothing refused.</summary>
+    public bool Passed => Refusal is null;
+
+    /// <summary>Why it was refused (Refusals.Check, or for the per-type runner Frozen, Right, Default or NoTransition), or null.</summary>
+    public string? Refusal { get; private set; }
+
+    /// <summary>The id of what refused: the check, or the right or lifecycle; null when it passed.</summary>
+    public string? RefusedBy { get; private set; }
+
+    /// <summary>The refusing check's message, or null.</summary>
+    public string? Message { get; private set; }
+
+    /// <summary>The checks that warned, each once, in the order they first warned.</summary>
+    public IReadOnlyList<TriggerPointWarning> Warnings => _warnings;
+
+    /// <summary>The ids of the trigger points that ran, in run order; those whose place or when didn't match are left out.</summary>
+    public IReadOnlyList<string> Ran => _ran;
+
+    /// <summary>The replace that took the place of the verb's effect, or null.</summary>
+    public string? Replaced { get; private set; }
+
+    /// <summary>The after-commit work queued, in order.</summary>
+    public IReadOnlyList<TriggerPointMessage> Messages => _messages;
+
+    // Records that a point runs; false when it already ran for this outcome (a point runs at most once per microstep).
+    internal bool Once(string id)
+    {
+        if (_ran.Contains(id, StringComparer.Ordinal))
+            return false;
+        _ran.Add(id);
+        return true;
+    }
+
+    // A check's answer: a refusal for an error, a warning for a warning.
+    internal void Check(string id, string message, bool warning, bool holds)
+    {
+        if (holds)
+            return;
+        if (!warning)
+            Refuse(Refusals.Check, id, message);
+        else if (!_warnings.Any(w => string.Equals(w.Id, id, StringComparison.Ordinal)))
+            _warnings.Add(new TriggerPointWarning(id, message));
+    }
+
+    // An outside check (decision 22): the stand-in's word when one answers it, else the team's method. A word of warning warns whatever
+    // the check's severity, and an error on a warning check warns, as in the replay (decision 26).
+    internal void Check(string id, string message, bool warning, TriggerPointCall call, Func<bool> holds)
+    {
+        switch (TriggerPointStandIn.Current?.Check(id, call))
+        {
+            case null:
+                Check(id, message, warning, holds());
+                break;
+            case "warning":
+                Check(id, message, true, false);
+                break;
+            case "error":
+                Check(id, message, warning, false);
+                break;
+            default:
+                break;
+        }
+    }
+
+    // An outside action or replace (decision 22): recorded by the stand-in when it takes it, else the team's method.
+    internal static void Run(string id, TriggerPointCall call, Action body)
+    {
+        if (TriggerPointStandIn.Current?.Records(id, call) != true)
+            body();
+    }
+
+    internal void Refuse(string refusal, string? by, string? message)
+    {
+        if (Refusal is not null)
+            return;
+        Refusal = refusal;
+        RefusedBy = by;
+        Message = message;
+    }
+
+    internal void Warn(IEnumerable<TriggerPointWarning> warnings)
+    {
+        foreach (var w in warnings)
+        {
+            if (!_warnings.Any(x => string.Equals(x.Id, w.Id, StringComparison.Ordinal)))
+                _warnings.Add(w);
+        }
+    }
+
+    // A before action's records method, called only once every check passes.
+    internal void Record(string id, Action write) => _records.Add((id, write));
+
+    internal IReadOnlyList<(string Id, Action Write)> Records => _records;
+
+    internal void Replace(string id) => Replaced ??= id;
+
+    internal void Queue(TriggerPointMessage message) => _messages.Add(message);
+}
+
+/// <summary>
+/// Stands in for the team's code of outside trigger points (trigger-points-design.md decision 22), so a test reaches no outside system: a
+/// generated scenario test registers its ScenarioTriggers here once. With none registered, generated code calls the team's methods.
+/// </summary>
+public abstract class TriggerPointStandIn
+{
+    /// <summary>The stand-in in use, or null.</summary>
+    public static TriggerPointStandIn? Current { get; set; }
+
+    /// <summary>An outside check's outcome in place of its method: "pass", "warning" or "error"; null calls the method.</summary>
+    /// <param name="id">The trigger point's id.</param>
+    /// <param name="call">The call.</param>
+    /// <returns>The outcome, or null.</returns>
+    public abstract string? Check(string id, TriggerPointCall call);
+
+    /// <summary>Whether an outside action or replace is recorded in place of calling its method.</summary>
+    /// <param name="id">The trigger point's id.</param>
+    /// <param name="call">The call.</param>
+    /// <returns>Whether it is recorded.</returns>
+    public abstract bool Records(string id, TriggerPointCall call);
+}
+
+/// <summary>
+/// After-commit work (trigger-points-design.md decision 31): one message per due after-commit point, written to the outbox inside the
+/// command's transaction, so it is stored only if the change commits. It holds no team objects, only what the call needs.
+/// <see cref="TriggerPointRelay"/> delivers it. It may be delivered more than once: drop a repeat by <see cref="MessageId"/>.
+/// </summary>
+public sealed record TriggerPointMessage
+{
+    /// <summary>The stable id: in a process command the instance, the version it saves, the trigger point and its place in the command; in the per-type runner the command id, the object's key, the trigger point and its place.</summary>
+    public string MessageId { get; init; } = "";
+
+    /// <summary>The trigger point's id.</summary>
+    public string TriggerPoint { get; init; } = "";
+
+    /// <summary>The trigger point's name.</summary>
+    public string Name { get; init; } = "";
+
+    /// <summary>The verb's key.</summary>
+    public string Verb { get; init; } = "";
+
+    /// <summary>The name of the lifecycle whose point it is.</summary>
+    public string Lifecycle { get; init; } = "";
+
+    /// <summary>The full name of the object's entity type, or null.</summary>
+    public string? Entity { get; init; }
+
+    /// <summary>The object's key, as text, or null.</summary>
+    public string? Key { get; init; }
+
+    /// <summary>The process instance; null outside a run.</summary>
+    public string? Instance { get; init; }
+
+    /// <summary>The envelope: the actor and the signer.</summary>
+    public ProcessEnvelope? Envelope { get; init; }
+
+    /// <summary>The actors the caller held with no context.</summary>
+    public IReadOnlyList<string> Held { get; init; } = [];
+
+    /// <summary>The object's active state paths after the verb, by lifecycle name.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> States { get; init; } = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+
+    /// <summary>The transition's id (moves).</summary>
+    public string? Transition { get; init; }
+
+    /// <summary>The state paths the move entered (moves).</summary>
+    public IReadOnlyList<string> Entered { get; init; } = [];
+
+    /// <summary>The event's name (moves).</summary>
+    public string? Event { get; init; }
+
+    /// <summary>The event's payload (moves).</summary>
+    public IReadOnlyDictionary<string, object?> Payload { get; init; } = new Dictionary<string, object?>(StringComparer.Ordinal);
+
+    /// <summary>The relation end (links).</summary>
+    public string? End { get; init; }
+
+    /// <summary>The other object's key (links).</summary>
+    public string? Other { get; init; }
+
+    /// <summary>The attributes the step changed, or null.</summary>
+    public IReadOnlyList<string>? Attributes { get; init; }
+
+    /// <summary>The proposed values as written.</summary>
+    public IReadOnlyDictionary<string, object?> Proposed { get; init; } = new Dictionary<string, object?>(StringComparer.Ordinal);
+
+    /// <summary>How deep in nested runs it was queued; the relay starts the depth guard there.</summary>
+    public int Depth { get; init; }
+
+    /// <summary>The caller's command id (the per-type runner), or null.</summary>
+    public string? CommandId { get; init; }
+
+    /// <summary>Whether the team's code reaches outside systems.</summary>
+    public bool Outside { get; init; }
+}
+
+/// <summary>
+/// The step methods of a lifecycle's trigger points, which the interpreter and the per-type runners call without knowing the lifecycle:
+/// each runs the verb's points of one moment, in list order, testing their places and their when.
+/// </summary>
+public interface ITriggerPointSteps
+{
+    /// <summary>The lifecycle's name.</summary>
+    string Lifecycle { get; }
+
+    /// <summary>The lifecycle's subject type when it has one, else null.</summary>
+    Type? Subject { get; }
+
+    /// <summary>Whether the lifecycle has points on a verb.</summary>
+    /// <param name="verb">The verb.</param>
+    /// <returns>Whether it has.</returns>
+    bool Speaks({{ verb_type }} verb);
+
+    /// <summary>Runs the before actions: they fill the call's proposed values and write nothing.</summary>
+    /// <param name="verb">The verb.</param>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    void Before({{ verb_type }} verb, TriggerPointCall call, TriggerPointOutcome outcome);
+
+    /// <summary>Runs the checks: an error refuses, a warning is listed.</summary>
+    /// <param name="verb">The verb.</param>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    void Check({{ verb_type }} verb, TriggerPointCall call, TriggerPointOutcome outcome);
+
+    /// <summary>Runs the replace in place of the verb's effect, when one applies.</summary>
+    /// <param name="verb">The verb.</param>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    /// <returns>Whether a replace ran.</returns>
+    bool Perform({{ verb_type }} verb, TriggerPointCall call, TriggerPointOutcome outcome);
+
+    /// <summary>Runs the with-the-change actions, in the command's unit of work.</summary>
+    /// <param name="verb">The verb.</param>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    void With({{ verb_type }} verb, TriggerPointCall call, TriggerPointOutcome outcome);
+
+    /// <summary>Queues the after-commit actions as messages.</summary>
+    /// <param name="verb">The verb.</param>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    void After({{ verb_type }} verb, TriggerPointCall call, TriggerPointOutcome outcome);
+}
+
+/// <summary>
+/// Counts nested runs of trigger points (trigger-points-design.md decision 21). The model has no trigger recursion; when the team's code
+/// inside a trigger point runs verbs more than <see cref="Max"/> deep, the command fails, so its change is undone.
+/// </summary>
+public static class TriggerPointDepth
+{
+    /// <summary>The most nested runs.</summary>
+    public const int Max = 8;
+
+    private static readonly AsyncLocal<int> Count = new();
+
+    /// <summary>How deep the current run is.</summary>
+    public static int Current => Count.Value;
+
+    /// <summary>Enters one level; disposing leaves it.</summary>
+    /// <returns>The level.</returns>
+    public static IDisposable Enter()
+    {
+        var depth = Count.Value;
+        if (depth >= Max)
+            throw new InvalidOperationException($"Trigger points ran verbs more than {Max.ToString(CultureInfo.InvariantCulture)} deep; the team's code inside a trigger point runs verbs that run it again.");
+        Count.Value = depth + 1;
+        return new Level(depth);
+    }
+
+    /// <summary>Starts the count at a depth, as the relay does at an after-commit message's depth; disposing restores it.</summary>
+    /// <param name="depth">The depth.</param>
+    /// <returns>The level.</returns>
+    public static IDisposable StartAt(int depth)
+    {
+        var restore = Count.Value;
+        Count.Value = depth;
+        return new Level(restore);
+    }
+
+    private sealed class Level(int restore) : IDisposable
+    {
+        public void Dispose() => Count.Value = restore;
+    }
+}
+
+/// <summary>
+/// Delivers after-commit work (trigger-points-design.md decision 31): the team's relay reads <see cref="TriggerPointMessage"/>s from its
+/// outbox and hands each here, which rebuilds the call, with <c>Old</c> and <c>New</c> null, and awaits the team's method. A message may
+/// arrive more than once, so the team's methods must be safe to repeat.
+/// </summary>
+public static class TriggerPointRelay
+{
+    /// <summary>Delivers one message to its trigger point's method, one level deeper than the message was queued at (decision 21).</summary>
+    /// <param name="message">The message.</param>
+    /// <returns>The task.</returns>
+    public static async Task DeliverAsync(TriggerPointMessage message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        using var start = TriggerPointDepth.StartAt(message.Depth);
+        using var depth = TriggerPointDepth.Enter();
+        var call = new TriggerPointCall
+        {
+            Verb = global::{{ base_ns }}.Verbs.FromKey(message.Verb) ?? throw new ArgumentException($"'{message.Verb}' is not a verb of the model.", nameof(message)),
+            Lifecycle = message.Lifecycle,
+            Entity = message.Entity is null ? null : typeof(TriggerPointRelay).Assembly.GetType(message.Entity),
+            Key = message.Key,
+            Instance = message.Instance,
+            Envelope = message.Envelope,
+            Held = message.Held,
+            States = message.States,
+            Entered = message.Entered,
+            Transition = message.Transition,
+            Event = message.Event,
+            Payload = message.Payload,
+            End = message.End,
+            Other = message.Other,
+            Attributes = message.Attributes,
+            Proposed = new Dictionary<string, object?>(message.Proposed, StringComparer.Ordinal),
+            CommandId = message.CommandId,
+        };
+        switch (message.TriggerPoint)
+        {
+{{- for l in model.trigger_lifecycles }}
+{{- for tp in l.trigger_points }}
+{{- if tp.type == "action" && tp.timing == "after-commit" }}
+            case {{ json tp.id }}:
+                await global::{{ ns(l) }}.{{ p_name(l) }}TriggerPoints.{{ member_name(tp.name, p_name(l) + "TriggerPoints") }}(call).ConfigureAwait(false);
+                break;
+{{- end }}
+{{- end }}
+{{- end }}
+            default:
+                throw new ArgumentOutOfRangeException(nameof(message), message.TriggerPoint, "Not an after-commit trigger point of the model.");
+        }
+    }
+}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder "Processes" "TriggerPoints.cs") content -}}
+{{- for e in runners }}
+{{- name = type_name(e) + "Verbs" }}
+{{- capture runner -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using {{ actors_ns() }};
+using {{ dispatch_ns() }};
+using {{ runtime_ns() }};
+
+namespace {{ ns(e) }};
+
+/// <summary>A {{ e.name }} verb that the per-type runner did (trigger-points-design.md decision 16), for the team's history; written to the outbox on the built-in path and the replace path alike.</summary>
+/// <param name="Entity">The entity's name.</param>
+/// <param name="Key">The object's key, as text.</param>
+/// <param name="Verb">The verb's key.</param>
+/// <param name="Actor">The actor.</param>
+/// <param name="At">When.</param>
+/// <param name="Replaced">The id of the replace that ran, or null.</param>
+public sealed record {{ type_name(e) }}VerbDone(string Entity, string? Key, string Verb, string? Actor, DateTimeOffset At, string? Replaced);
+
+/// <summary>
+/// Runs the object, link and own verbs of a {{ e.name }} done outside an event, with the trigger points of the lifecycles that govern it
+/// ({{ for l in e.trigger_lifecycles }}{{ for.first ? "" : ", " }}{{ l.name }}{{ end }}): {{ if freezing }}freezing, {{ end }}{{ if rights }}rights, {{ end }}then before actions and checks across the lifecycles, the
+/// records, the verb's effect or its replace, the with-the-change actions, and the after-commit messages and the
+/// <see cref="{{ type_name(e) }}VerbDone"/> record written to the outbox. Call it inside your own transaction: nothing is written before every
+/// check passes, an exception from the team's code passes through to you so the transaction rolls back, and the outbox's messages are
+/// stored only if it commits.
+/// </summary>
+/// <param name="outbox">Where the after-commit messages and the history record go, inside the caller's transaction.</param>
+/// <param name="clock">The clock.</param>
+{{- if freezing }}
+/// <param name="frozen">Whether the object, or a link of it, is frozen; the team's FrozenState when null.</param>
+{{- end }}
+public sealed partial class {{ name }}(IProcessOutbox outbox, IProcessClock clock{{ if freezing }}, {{ frozen_state_type() }}? frozen = null{{ end }})
+{
+    /// <summary>The steps of the lifecycles that govern a {{ e.name }}, by name.</summary>
+    public static IReadOnlyList<ITriggerPointSteps> Lifecycles { get; } = [{{ for l in e.trigger_lifecycles }}{{ for.first ? "" : ", " }}new {{ steps_type(l) }}(){{ end }}];
+
+    /// <summary>Runs a verb. Move, signature and task verbs are refused: they go through the process's commands.</summary>
+    /// <param name="verb">The verb.</param>
+    /// <param name="call">The call: the object's key, the envelope, the step's attributes or end, and the values it proposes.</param>
+    /// <param name="perform">The verb's built-in effect, which the team writes; not called when a replace runs.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>Whether it was accepted, the check warnings, and what refused.</returns>
+    public async Task<TriggerPointOutcome> RunAsync({{ verb_type }} verb, TriggerPointCall call, Func<TriggerPointCall, CancellationToken, Task> perform, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(perform);
+        var outcome = new TriggerPointOutcome();
+{{- if process_verbs.size > 0 }}
+        if (verb is {{ process_verbs | array.join " or " }})
+        {
+            outcome.Refuse(Refusals.NoTransition, null, $"Verb {(global::{{ base_ns }}.Verbs.Key(verb))} goes through the process's commands, not the per-type runner.");
+            return outcome;
+        }
+
+{{- end }}
+        // Create reads each lifecycle's initial state (decision 13), whatever the call gives; other verbs ask the team for the object's states
+        // in a lifecycle the call doesn't give.
+        var states = new Dictionary<string, IReadOnlyList<string>>(call.States, StringComparer.Ordinal);
+{{- for l in e.trigger_lifecycles }}
+        if (verb == {{ verb_type }}.Create)
+            states[{{ json l.name }}] = [{{ json initial_path(l) }}];
+        else if (!states.ContainsKey({{ json l.name }}) && StatesIn{{ p_name(l) }}(call) is { } in{{ p_name(l) }})
+            states[{{ json l.name }}] = in{{ p_name(l) }};
+{{- end }}
+        call = call with { Verb = verb, Entity = call.Entity ?? typeof({{ entity_type(e) }}), States = states };
+{{- if freezing }}
+
+        // Freezing first (rights-design.md decision 17): a frozen object can't be modified, deleted, connected or disconnected.
+        if (new FrozenFlags(new FrozenQuery { Subject = typeof({{ entity_type(e) }}), Envelope = call.Envelope, End = call.End }, state: Frozen).Refuses(verb))
+        {
+            outcome.Refuse(Refusals.Frozen, null, null);
+            return outcome;
+        }
+{{- end }}
+{{- if rights }}
+
+        // Rights before any trigger point (rights-design.md decision 12): every lifecycle that governs the object answers.
+        var decision = Rights.Check(new RightRequest
+        {
+            Verb = verb,
+            Subject = typeof({{ entity_type(e) }}),
+            Actor = call.Envelope?.Actor,
+            Envelope = call.Envelope,
+            Held = call.Held,
+            States = states,
+            End = call.End,
+{{- if freezing }}
+            FrozenState = Frozen,
+{{- end }}
+{{- if attribute_rights }}
+            Attributes = call.Attributes,
+{{- end }}
+{{- if relatives }}
+            Resolves = call.Resolves,
+{{- end }}
+        });
+        if (!decision.Allowed)
+        {
+            outcome.Refuse(decision.Refusal!, decision.RefusedBy, null);
+            return outcome;
+        }
+{{- end }}
+
+        // Before actions, then checks, across the lifecycles (decision 19); nothing is written until every check passes.
+        var lifecycles = Lifecycles.Where(l => l.Speaks(verb)).ToList();
+        foreach (var l in lifecycles)
+            l.Before(verb, call, outcome);
+        foreach (var l in lifecycles)
+        {
+            if (outcome.Passed)
+                l.Check(verb, call, outcome);
+        }
+
+        if (!outcome.Passed)
+            return outcome;
+        foreach (var (_, write) in outcome.Records)
+            write();
+        var replaced = false;
+        foreach (var l in lifecycles)
+            replaced = l.Perform(verb, call, outcome) || replaced;
+        if (!replaced)
+            await perform(call, cancellationToken).ConfigureAwait(false);
+        foreach (var l in lifecycles)
+            l.With(verb, call, outcome);
+        foreach (var l in lifecycles)
+            l.After(verb, call, outcome);
+        if (outcome.Messages.Count > 0 && call.CommandId is null)
+            throw new InvalidOperationException("After-commit trigger points queued work, whose message ids need the call's CommandId: give one.");
+
+        var messages = new List<object>();
+        for (var i = 0; i < outcome.Messages.Count; i++)
+        {
+            var m = outcome.Messages[i];
+            messages.Add(m with { MessageId = string.Create(CultureInfo.InvariantCulture, $"{call.CommandId}/{call.Key}/{m.TriggerPoint}/{i}"), CommandId = call.CommandId });
+        }
+
+        messages.Add(new {{ type_name(e) }}VerbDone({{ json e.name }}, call.Key, global::{{ base_ns }}.Verbs.Key(verb), call.Envelope?.Actor, Clock.Now, outcome.Replaced));
+        await Outbox.WriteAsync(messages, cancellationToken).ConfigureAwait(false);
+        return outcome;
+    }
+
+    private IProcessOutbox Outbox { get; } = outbox ?? throw new ArgumentNullException(nameof(outbox));
+
+    private IProcessClock Clock { get; } = clock ?? throw new ArgumentNullException(nameof(clock));
+{{- if freezing }}
+
+    private {{ frozen_state_type() }} Frozen { get; } = frozen ?? new {{ frozen_state_stub() }}();
+{{- end }}
+{{- for l in e.trigger_lifecycles }}
+
+    /// <summary>The object's active state paths in lifecycle {{ l.name }}, when the call doesn't give them; null when {{ l.name }} doesn't govern the object (implemented in {{ name }}.cs).</summary>
+    private static partial IReadOnlyList<string>? StatesIn{{ p_name(l) }}(TriggerPointCall call);
+{{- end }}
+}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder (package_folder e) (name + ".g.cs")) runner -}}
+{{- end }}
+{{- for l in model.trigger_lifecycles }}
+{{- name = p_name(l) }}
+{{- points = name + "TriggerPoints" }}
+{{- conditions = name + "TriggerConditions" }}
+{{- records = name + "TriggerRecords" }}
+{{- governed = governed_entities(l) }}
+{{- capture steps -}}
+{{ header() }}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using {{ actors_ns() }};
+
+namespace {{ ns(l) }};
+
+/// <summary>
+/// The step methods of lifecycle {{ l.name }}'s trigger points (trigger-points-design.md decision 30): for each verb that has points,
+/// Before, Check, With and After, and Perform where a replace is. Each calls the verb's points of one moment in list order, testing their
+/// places and their when, and the team's methods in {{ points }}, {{ conditions }} and {{ records }}.
+/// </summary>
+public sealed class {{ name }}TriggerSteps : ITriggerPointSteps
+{
+    /// <inheritdoc/>
+    public string Lifecycle => {{ json l.name }};
+
+    /// <inheritdoc/>
+    public Type? Subject => {{ l.subjects.size == 1 && l.stereotype_subjects.size == 0 ? ("typeof(" + entity_type(l.subjects[0].entity) + ")") : "null" }};
+
+    /// <inheritdoc/>
+    public bool Speaks({{ verb_type }} verb) => {{ if l.trigger_verbs.size == 0 }}false{{ else }}verb is {{ for tv in l.trigger_verbs }}{{ for.first ? "" : " or " }}{{ verb_type }}.{{ pascal tv.verb.key }}{{ end }}{{ end }};
+{{- for m in ["Before", "Check", "With", "After"] }}
+
+    /// <inheritdoc/>
+    public void {{ m }}({{ verb_type }} verb, TriggerPointCall call, TriggerPointOutcome outcome)
+    {
+        switch (verb)
+        {
+{{- for tv in l.trigger_verbs }}
+            case {{ verb_type }}.{{ pascal tv.verb.key }}:
+                {{ m }}{{ pascal tv.verb.key }}(call, outcome);
+                break;
+{{- end }}
+            default:
+                break;
+        }
+    }
+{{- end }}
+
+    /// <inheritdoc/>
+    public bool Perform({{ verb_type }} verb, TriggerPointCall call, TriggerPointOutcome outcome) => verb switch
+    {
+{{- for tv in l.trigger_verbs }}
+{{- if tv.replace.size > 0 }}
+        {{ verb_type }}.{{ pascal tv.verb.key }} => Perform{{ pascal tv.verb.key }}(call, outcome),
+{{- end }}
+{{- end }}
+        _ => false,
+    };
+{{- for tv in l.trigger_verbs }}
+{{- vk = pascal tv.verb.key }}
+{{- link = tv.verb.group == "link" }}
+
+    /// <summary>The before actions of {{ tv.verb.key }}: they fill the call's proposed values and write nothing.</summary>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    public void Before{{ vk }}(TriggerPointCall call, TriggerPointOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(outcome);
+{{- if tv.before.size > 0 }}
+        using var depth = TriggerPointDepth.Enter();
+{{- end }}
+{{- for tp in tv.before }}
+        if ({{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+        {
+{{- if tp.outside }}
+            TriggerPointOutcome.Run({{ json tp.id }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
+{{- else }}
+            {{ points }}.{{ member_name(tp.name, points) }}(call);
+{{- end }}
+            outcome.Record({{ json tp.id }}, () => {{ records }}.{{ member_name(tp.name, records) }}(call));
+        }
+{{- end }}
+    }
+
+    /// <summary>The checks of {{ tv.verb.key }}: an error refuses, a warning is listed.</summary>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    public void Check{{ vk }}(TriggerPointCall call, TriggerPointOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(outcome);
+{{- if tv.checks.size > 0 }}
+        using var depth = TriggerPointDepth.Enter();
+{{- end }}
+{{- for tp in tv.checks }}
+        if (outcome.Passed && {{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+{{- if tp.outside }}
+            outcome.Check({{ json tp.id }}, {{ json tp.message }}, {{ tp.severity == "warning" ? "true" : "false" }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
+{{- else }}
+            outcome.Check({{ json tp.id }}, {{ json tp.message }}, {{ tp.severity == "warning" ? "true" : "false" }}, {{ points }}.{{ member_name(tp.name, points) }}(call));
+{{- end }}
+{{- end }}
+    }
+{{- if tv.replace.size > 0 }}
+
+    /// <summary>The replace of {{ tv.verb.key }}, in place of its built-in effect.</summary>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    /// <returns>Whether a replace ran.</returns>
+    public bool Perform{{ vk }}(TriggerPointCall call, TriggerPointOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(outcome);
+        using var depth = TriggerPointDepth.Enter();
+{{- for tp in tv.replace }}
+        if ({{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+        {
+{{- if tp.outside }}
+            TriggerPointOutcome.Run({{ json tp.id }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
+{{- else }}
+            {{ points }}.{{ member_name(tp.name, points) }}(call);
+{{- end }}
+            outcome.Replace({{ json tp.id }});
+            return true;
+        }
+{{- end }}
+
+        return false;
+    }
+{{- end }}
+
+    /// <summary>The with-the-change actions of {{ tv.verb.key }}, in the command's unit of work.</summary>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    public void With{{ vk }}(TriggerPointCall call, TriggerPointOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(outcome);
+{{- if tv.with_change.size > 0 }}
+        using var depth = TriggerPointDepth.Enter();
+{{- end }}
+{{- for tp in tv.with_change }}
+{{- if tv.verb.key == "delete" && tp.sets.size > 0 }}
+        // After a built-in delete there is no object to set (decision 16): {{ tp.name }} runs only after a replace, or on an event, whose object stays.
+        if ((call.Transition is not null || outcome.Replaced is not null) && {{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+{{- else }}
+        if ({{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+{{- end }}
+
+{{- if tp.outside }}
+            TriggerPointOutcome.Run({{ json tp.id }}, call, () => {{ points }}.{{ member_name(tp.name, points) }}(call));
+{{- else }}
+            {{ points }}.{{ member_name(tp.name, points) }}(call);
+{{- end }}
+{{- end }}
+    }
+
+    /// <summary>The after-commit actions of {{ tv.verb.key }}, queued as messages.</summary>
+    /// <param name="call">The call.</param>
+    /// <param name="outcome">The outcome.</param>
+    public void After{{ vk }}(TriggerPointCall call, TriggerPointOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(outcome);
+{{- for tp in tv.after_commit }}
+        if ({{ place(l, tp, link, governed) }}outcome.Once({{ json tp.id }}))
+            outcome.Queue(Message(call, {{ json tp.id }}, {{ json tp.name }}, {{ tp.outside ? "true" : "false" }}));
+{{- end }}
+    }
+{{- end }}
+
+    // An after-commit message: what the call says, with the depth it was queued at (decision 21).
+    private TriggerPointMessage Message(TriggerPointCall call, string id, string point, bool outside) => new()
+    {
+        TriggerPoint = id,
+        Name = point,
+        Verb = global::{{ base_ns }}.Verbs.Key(call.Verb),
+        Lifecycle = Lifecycle,
+        Entity = call.Entity?.FullName,
+        Key = call.Key,
+        Instance = call.Instance,
+        Envelope = call.Envelope,
+        Held = call.Held,
+        States = call.States,
+        Transition = call.Transition,
+        Entered = call.Entered,
+        Event = call.Event,
+        Payload = call.Payload,
+        End = call.End,
+        Other = call.Other,
+        Attributes = call.Attributes,
+        Proposed = new Dictionary<string, object?>(call.Proposed, StringComparer.Ordinal),
+        Depth = TriggerPointDepth.Current,
+        CommandId = call.CommandId,
+        Outside = outside,
+    };
+}
+
+/// <summary>The bodies of lifecycle {{ l.name }}'s trigger points (implemented in {{ points }}.cs). Generated code can't read the object yet, so each is the team's, documented with its text.</summary>
+public static partial class {{ points }}
+{
+{{- for tp in l.trigger_points }}
+{{- if !for.first }}
+{{ end }}
+    /// <summary>{{ point_text(tp) | escape_xml }}</summary>
+    /// <param name="call">The call.</param>
+{{- if tp.type == "check" }}
+    /// <returns>Whether the check passes.</returns>
+    public static partial bool {{ member_name(tp.name, points) }}(TriggerPointCall call);
+{{- else if tp.type == "action" && tp.timing == "after-commit" }}
+    /// <returns>The task.</returns>
+    public static partial Task {{ member_name(tp.name, points) }}(TriggerPointCall call);
+{{- else }}
+    public static partial void {{ member_name(tp.name, points) }}(TriggerPointCall call);
+{{- end }}
+{{- end }}
+}
+{{- whens = [] }}
+{{- for tp in l.trigger_points }}{{ if tp.when }}{{ whens[whens.size] = tp }}{{ end }}{{ end }}
+{{- if whens.size > 0 }}
+
+/// <summary>The when of lifecycle {{ l.name }}'s trigger points: a point runs only when its when is true (implemented in {{ points }}.cs).</summary>
+public static partial class {{ conditions }}
+{
+{{- for tp in whens }}
+{{- if !for.first }}
+{{ end }}
+    /// <summary>When trigger point {{ tp.name }} runs: <c>{{ cs_line tp.when.text | escape_xml }}</c>.</summary>
+    /// <param name="call">The call.</param>
+    /// <returns>Whether it runs.</returns>
+    public static partial bool {{ member_name(tp.name, conditions) }}(TriggerPointCall call);
+{{- end }}
+}
+{{- end }}
+{{- befores = [] }}
+{{- for tp in l.trigger_points }}{{ if tp.type == "action" && tp.timing == "before" }}{{ befores[befores.size] = tp }}{{ end }}{{ end }}
+{{- if befores.size > 0 }}
+
+/// <summary>Writes what lifecycle {{ l.name }}'s before actions filled in the call's proposed values, called only once every check passes (implemented in {{ points }}.cs).</summary>
+public static partial class {{ records }}
+{
+{{- for tp in befores }}
+{{- if !for.first }}
+{{ end }}
+    /// <summary>Writes the values before action {{ tp.name }} filled{{ if tp.sets.size > 0 }}: <c>{{ sets_text(tp) | escape_xml }}</c>{{ end }}.</summary>
+    /// <param name="call">The call.</param>
+    public static partial void {{ member_name(tp.name, records) }}(TriggerPointCall call);
+{{- end }}
+}
+{{- end }}
+{{ end -}}
+{{- file (join_path pack.params.generatedFolder "Processes" name (name + "TriggerPoints.g.cs")) steps -}}
+{{- end -}}
+{{- end -}}

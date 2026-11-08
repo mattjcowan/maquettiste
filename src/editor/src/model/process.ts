@@ -154,6 +154,35 @@ export interface RightDoc {
   description?: unknown;
 }
 
+/**
+ * One entry of a lifecycle's `triggerPoints` (trigger-points-design.md decisions 1 to 12): what runs when one of its verbs
+ * happens, in the places its optional keys name. A check has a `condition`, an action or a replace has `sets`; with neither, the
+ * body is the team's code.
+ */
+export interface TriggerPointDoc {
+  id: string;
+  name: string;
+  displayName?: string;
+  type: "check" | "action" | "replace";
+  /** An action's moment; allowed nowhere else (MQ8101). */
+  timing?: "before" | "with-change" | "after-commit";
+  /** A check's severity; absent is error. */
+  severity?: "error" | "warning";
+  verbs: string[];
+  states?: string[];
+  targets?: string[];
+  transitions?: string[];
+  entities?: string[];
+  attributes?: string[];
+  ends?: string[];
+  /** A tree as stored, or `{ text }` as written. */
+  when?: Json;
+  condition?: Json;
+  sets?: SetDoc[];
+  outside?: boolean;
+  description?: unknown;
+}
+
 export interface ProcessDoc {
   kind: "process";
   id: string;
@@ -174,9 +203,14 @@ export interface ProcessDoc {
   /** What the lifecycle answers where no right says (rights-design.md decision 9); absent allows. Lifecycles only. */
   rightsDefault?: "allow" | "deny";
   rights?: RightDoc[];
+  /** What runs when a verb happens, in run order (trigger-points-design.md decision 19). Lifecycles only. */
+  triggerPoints?: TriggerPointDoc[];
   source?: Json;
   generation?: Json;
 }
+
+/** What a step assumes a check the team writes does (trigger-points-design.md decision 26). */
+export type CheckWord = "pass" | "warning" | "error";
 
 export interface StepDoc {
   id: string;
@@ -191,7 +225,8 @@ export interface StepDoc {
   meaning?: string;
   reason?: string;
   payload?: Json;
-  assume?: Record<string, boolean>;
+  /** A guard with no expression by `true` or `false`; a check the team writes by `pass`, `warning` or `error` (trigger-points-design.md decision 26). */
+  assume?: Record<string, boolean | CheckWord>;
   /** A verb step (rights-design.md decision 25): the verb, for `modify` the values by attribute id, and the link it acts on. */
   verb?: string;
   values?: Json;
@@ -199,7 +234,17 @@ export interface StepDoc {
   attributes?: string[];
   end?: string;
   object?: string;
-  expect?: { accepted?: boolean; states?: string[]; context?: Json; values?: Json; refusal?: string; refusedBy?: string };
+  expect?: {
+    accepted?: boolean;
+    states?: string[];
+    context?: Json;
+    values?: Json;
+    refusal?: string;
+    refusedBy?: string;
+    /** The checks that warned, and the trigger points that ran in order (decision 28). */
+    checkWarnings?: string[];
+    triggerPoints?: string[];
+  };
   description?: unknown;
 }
 
@@ -420,6 +465,31 @@ function dropRightStates(process: ProcessDoc, gone: ReadonlySet<string>): void {
   if (!process.rights.length) delete process.rights;
 }
 
+/**
+ * Takes deleted states, or transitions, out of the trigger points that name them (`states` and `targets` for states,
+ * `transitions` for transitions). When the last one named goes, the trigger point goes too: an empty list would widen it to
+ * everywhere (trigger-points-design.md section 9).
+ */
+export function dropTriggerPointRefs(process: ProcessDoc, gone: { states?: ReadonlySet<string>; transitions?: ReadonlySet<string> }): void {
+  if (!process.triggerPoints) return;
+  const lists = [
+    ["states", gone.states],
+    ["targets", gone.states],
+    ["transitions", gone.transitions],
+  ] as const;
+  process.triggerPoints = process.triggerPoints.filter((t) => {
+    let keep = true;
+    for (const [key, ids] of lists) {
+      const list = t[key];
+      if (!ids || !list?.some((x) => ids.has(x))) continue;
+      t[key] = list.filter((x) => !ids.has(x));
+      if (!t[key]!.length) keep = false;
+    }
+    return keep;
+  });
+  if (!process.triggerPoints.length) delete process.triggerPoints;
+}
+
 export type DeleteStateResult = { ok: true } | { ok: false; reason: string };
 
 /** Deletes a state and its subtree with the transitions leaving them; refused while a transition enters it, or for
@@ -446,9 +516,11 @@ export function deleteState(process: ProcessDoc, id: string): DeleteStateResult 
     delete info.parent.states;
     if (info.parent.type === "compound") delete info.parent.type;
   }
+  const leaving = new Set((process.transitions ?? []).filter((t) => inside.has(t.source)).map((t) => t.id));
   if (process.transitions) process.transitions = process.transitions.filter((t) => !inside.has(t.source));
   for (const { state } of stateIndex(process).values()) if (state.defaultTarget && inside.has(state.defaultTarget)) delete state.defaultTarget;
   dropRightStates(process, inside);
+  dropTriggerPointRefs(process, { states: inside, transitions: leaving });
   return { ok: true };
 }
 
@@ -844,6 +916,9 @@ export interface StepRow {
   /** What the step expects of a refusal: the reason's key and the element's name. */
   refusal: string;
   refusedBy: string;
+  /** The checks the step expects to warn, and the trigger points it expects to run, in order (names). */
+  checkWarnings: string;
+  triggerPoints: string;
 }
 
 /** `name=value` pairs of a map keyed by attribute (or guard) id, names from `names`. */
@@ -878,7 +953,9 @@ export function stepNames(process: ProcessDoc | undefined, actorNames: Map<strin
   const ids = new Map<string, string>(actorNames);
   const attrs = new Map<string, string>();
   const guards = new Map<string, string>();
+  // Guards and the trigger points of the lifecycle: both are named in a step's assume (decision 26).
   if (process) {
+    for (const t of process.triggerPoints ?? []) ids.set(t.id, t.name);
     for (const [id, info] of stateIndex(process)) ids.set(id, info.path);
     for (const e of process.events ?? []) {
       ids.set(e.id, e.name);
@@ -886,6 +963,7 @@ export function stepNames(process: ProcessDoc | undefined, actorNames: Map<strin
     }
     for (const a of process.context ?? []) attrs.set(a.id, a.name);
     for (const g of process.guards ?? []) guards.set(g.id, g.name);
+    for (const t of process.triggerPoints ?? []) guards.set(t.id, t.name);
     for (const { state } of stateIndex(process).values()) for (const i of state.invoke ?? []) ids.set(i.id, i.name);
     for (const t of process.transitions ?? []) for (const m of t.gate?.meanings ?? []) ids.set(m.id, m.name);
   }
@@ -934,6 +1012,8 @@ export function stepRows(
       object: name(s.object),
       refusal: s.expect?.refusal ?? "",
       refusedBy: s.expect?.refusedBy ? name(s.expect.refusedBy) : "",
+      checkWarnings: (s.expect?.checkWarnings ?? []).map(name).join(", "),
+      triggerPoints: (s.expect?.triggerPoints ?? []).map(name).join(", "),
     };
   });
 }

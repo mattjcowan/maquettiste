@@ -30,6 +30,10 @@ describe("refresh-scenario", () => {
     });
     expect(created.outcome).toBe("saved");
     const id = (created as { id: string }).id;
+    // The seed's replace on delete archives the invoice, so a delete would not stop the run; this scenario is about the delete that does.
+    const lifecycle = structuredClone(model.get(INVOICE_LIFECYCLE)!.json) as Json;
+    lifecycle.triggerPoints = (lifecycle.triggerPoints as Json[]).filter((t) => t.type !== "replace");
+    expect(model.save(INVOICE_LIFECYCLE, lifecycle, model.get(INVOICE_LIFECYCLE)!.hash).outcome).toBe("saved");
     const verify = () =>
       fetch(api.url(`/api/processes/${INVOICE_LIFECYCLE}/verify`), { method: "POST", body: "{}", headers: { "Content-Type": "application/json" } }).then((r) =>
         r.json(),

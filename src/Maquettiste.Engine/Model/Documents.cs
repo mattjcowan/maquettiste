@@ -85,11 +85,18 @@ public sealed record ReferenceInfo(string FromElementId, string FromId, string J
 /// order, on process rows that have such an entry and a carrier. Worked out per snapshot, since package defaults, implied stereotypes and
 /// bases decide them.</param>
 /// <param name="Verb">The verb an operation names, as its key, on operation rows that name one (verbs-design.md section 7).</param>
-/// <param name="Verbs">The distinct verb keys a process's events, transitions and inline rights name, sorted ordinally, on process rows that
-/// name at least one (verbs-design.md section 7, rights-design.md section 8); a named right's verbs, on right rows.</param>
+/// <param name="Verbs">The distinct verb keys a process's events, transitions, inline rights and trigger points name, sorted ordinally, on
+/// process rows that name at least one (verbs-design.md section 7, rights-design.md section 8, trigger-points-design.md section 9); a named
+/// right's verbs, on right rows.</param>
 /// <param name="Rights">The number of entries in a lifecycle's rights, inline rights and uses, on process rows that have at least one
 /// (rights-design.md section 8).</param>
 /// <param name="Access">Whether a named right allows or denies, <c>allow</c> or <c>deny</c>, on right rows (rights-design.md section 8).</param>
+/// <param name="TriggerPoints">The number of a process's trigger points, on process rows that have at least one (trigger-points-design.md
+/// section 9).</param>
+/// <param name="TriggerVerbs">The distinct verb keys a process's trigger points name, sorted ordinally, on process rows that have a trigger
+/// point (trigger-points-design.md section 9).</param>
+/// <param name="Replaces">The distinct verb keys a process's replaces name, sorted ordinally, on process rows that have a replace
+/// (trigger-points-design.md section 9).</param>
 /// <remarks>
 /// The E5 members are left out of the JSON when they are <see langword="null"/>, so rows of other kinds cost nothing. Equality compares
 /// the lists by their items, so two indexes built from the same documents are equal whatever lists they hold.
@@ -123,7 +130,10 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Verb = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Verbs = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Rights = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Access = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Access = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? TriggerPoints = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? TriggerVerbs = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Replaces = null)
 {
     /// <summary>
     /// A process row's <c>rightsDefault</c> as its file writes it, <c>allow</c> or <c>deny</c> (rights-design.md section 6); <see langword="null"/>
@@ -158,6 +168,21 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
     /// 28). An orchestration that still writes them (MQ9901) uses none, so demoting a lifecycle changes the rights naming key.
     /// </summary>
     internal bool UsesRights => string.Equals(Use, "lifecycle", StringComparison.Ordinal) && (Rights is > 0 || RightsDefault is not null);
+
+    /// <summary>
+    /// A process row's replaces for the trigger points naming key (trigger-points-design.md section 7): one entry per replace, each its verbs
+    /// and the entities it narrows to, both sorted ordinally, as <c>verb,verb|entity,entity</c> (no entity: every entity it covers), the
+    /// entries sorted ordinally. <see langword="null"/> when none. For the trigger points naming key only: never serialized.
+    /// </summary>
+    [JsonIgnore]
+    internal IReadOnlyList<string>? ReplaceScopes { get; init; }
+
+    /// <summary>
+    /// Whether the row is a lifecycle that has <c>triggerPoints</c>, so the project uses trigger points (trigger-points-design.md decision 29).
+    /// An orchestration that still writes them (MQ8101) uses none. The trigger points naming key, <c>tn:trigger-points</c>, hashes each such
+    /// row by id: its <see cref="TriggerVerbs"/>, then its <see cref="ReplaceScopes"/>.
+    /// </summary>
+    internal bool UsesTriggerPoints => string.Equals(Use, "lifecycle", StringComparison.Ordinal) && TriggerPoints is > 0;
 
     /// <inheritdoc/>
     public bool Equals(ElementSummary? other) =>
@@ -203,7 +228,12 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
         && string.Equals(RightsDefault, other.RightsDefault, StringComparison.Ordinal)
         && (ReferenceEquals(DenyVerbs, other.DenyVerbs) || (DenyVerbs is not null && other.DenyVerbs is not null && DenyVerbs.SequenceEqual(other.DenyVerbs, StringComparer.Ordinal)))
         && (ReferenceEquals(RightUses, other.RightUses) || (RightUses is not null && other.RightUses is not null && RightUses.SequenceEqual(other.RightUses, StringComparer.Ordinal)))
-        && WhileFrozen == other.WhileFrozen;
+        && WhileFrozen == other.WhileFrozen
+        && TriggerPoints == other.TriggerPoints
+        && (ReferenceEquals(TriggerVerbs, other.TriggerVerbs) || (TriggerVerbs is not null && other.TriggerVerbs is not null && TriggerVerbs.SequenceEqual(other.TriggerVerbs, StringComparer.Ordinal)))
+        && (ReferenceEquals(Replaces, other.Replaces) || (Replaces is not null && other.Replaces is not null && Replaces.SequenceEqual(other.Replaces, StringComparer.Ordinal)))
+        && (ReferenceEquals(ReplaceScopes, other.ReplaceScopes)
+            || (ReplaceScopes is not null && other.ReplaceScopes is not null && ReplaceScopes.SequenceEqual(other.ReplaceScopes, StringComparer.Ordinal)));
 
     /// <inheritdoc/>
     public override int GetHashCode() => HashCode.Combine(

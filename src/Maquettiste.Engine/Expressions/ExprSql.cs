@@ -43,6 +43,11 @@ internal static class ExprSql
                 problems.Add(new Diagnostic("MQ3104", DiagnosticSeverity.Error, "A value an action sets has no SQL form; it runs where the action runs.",
                     columns.ElementId, columns.FilePath, e.Pointer, null, null));
                 return null;
+            case ExprSiteKind.Trigger or ExprSiteKind.TriggerSet:
+                // A trigger point runs where the verb runs (trigger-points-design.md decision 15); no database reads it.
+                problems.Add(new Diagnostic("MQ3104", DiagnosticSeverity.Error, "A trigger point's expression has no SQL form; it runs where the verb runs.",
+                    columns.ElementId, columns.FilePath, e.Pointer, null, null));
+                return null;
             default:
             {
                 var guard = Node("call", call: "coalesce", args: [PredValue(writer.Pred(e, null)), Literal(false, "bool")]);

@@ -872,7 +872,8 @@ paths:
           `scenarios`: the matching record.
         - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards
           (a guard written in the expression language with its `condition`), actions, gates and invokes, actors by id, and a
-          lifecycle's `rightsDefault` and `rights` when it has them. Named rights (`RightRecord`) come with `all`, as verbs do.
+          lifecycle's `rightsDefault`, `rights` and `triggerPoints` when it has them. Named rights (`RightRecord`) come with `all`, as
+          verbs do.
         - `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,
           `completes`, `returns`), the errors (`code`, `input`), `fires` and `requires` by id, and the `guards` in the order
           they are checked, each with its `condition` and the `error` it reports.
@@ -3761,7 +3762,9 @@ paths:
       summary: Record a scenario from a list of inputs
       description: |
         phase-3-design.md section 4.4. The engine replays `start` and `steps` and fills each step's `expect` (refusals recorded as
-        `accepted: false`, with `refusal` and `refusedBy` when the project uses rights, rights-design.md decision 26) and the `outcome` (unless the request gives one) from the replay, gives the scenario, its steps and its
+        `accepted: false`, with `refusal` and `refusedBy` when the project uses rights or trigger points, rights-design.md decision 26),
+        `checkWarnings` when the project uses trigger points and a check warned, `triggerPoints` only when the request asks
+        (trigger-points-design.md decision 28), and the `outcome` (unless the request gives one) from the replay, gives the scenario, its steps and its
         objects new ids (`subject` and each link follow their objects), and saves it as one change under
         `model/scenarios/<process file stem>/`. `?dryRun=true` returns the scenario without writing it. Inputs that cannot be
         replayed to the last step (MQ9305, MQ9306, MQ9507) are 422 with the diagnostics.
@@ -3959,6 +3962,92 @@ paths:
                     by: [01JQPRC0000000000000000002]
                     dependsOn: []
                 next: null
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/processes/{id}/trigger-sequence:
+    parameters:
+      - $ref: '#/components/parameters/ProcessId'
+    get:
+      tags: [processes]
+      operationId: getTriggerSequence
+      summary: What runs, in order, when a verb happens in a lifecycle
+      description: |
+        trigger-points-design.md decision 36 and section 9. The steps of the fixed order (decision 18) for one verb in one lifecycle:
+        the built-in steps that apply to the verb, and each trigger point that can run, with its lifecycle, moment and places, in run
+        order (decision 19: at each moment the acting lifecycle first, then the others by name, each in its list's order). For an object,
+        link or own verb, the other lifecycles that govern the subject add their points. The optional parameters narrow the answer to one
+        place; a point narrowed by `attributes` or `ends` is listed when the request gives none of them only if it is a check, as a run
+        fails closed. A project without trigger points gets the built-in steps alone. The answer reads the lifecycle and the lifecycles
+        that govern its subjects; the model is never resolved, and nothing is written. One page: a verb's sequence is short, so there is
+        no cursor. The MCP tool `get_trigger_sequence` answers the same, and the editor's What happens when view shows this answer.
+      x-maquettiste-role: viewer
+      parameters:
+        - name: verb
+          in: query
+          required: true
+          description: The verb, by key.
+          schema:
+            type: string
+        - name: state
+          in: query
+          description: A state id of the lifecycle the object is in (for a move, its source).
+          schema:
+            $ref: '#/components/schemas/Ulid'
+        - name: entity
+          in: query
+          description: An entity id the lifecycle governs; only the points that run for it.
+          schema:
+            $ref: '#/components/schemas/Ulid'
+        - name: attributes
+          in: query
+          description: Comma-separated attribute ids the step reads or changes, for `read` and `modify`.
+          schema:
+            type: string
+        - name: end
+          in: query
+          description: A relation end id of the subject, for a verb on a link.
+          schema:
+            $ref: '#/components/schemas/Ulid'
+        - name: transition
+          in: query
+          description: A transition id of the lifecycle, for a move verb or `sign`.
+          schema:
+            $ref: '#/components/schemas/Ulid'
+      responses:
+        '200':
+          description: The sequence.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriggerSequence'
+              example:
+                lifecycle: 01JQPRC0000000000000000002
+                verb: delete
+                steps:
+                  - order: 1
+                    step: frozen
+                  - order: 3
+                    step: denies
+                  - order: 4
+                    step: defaults
+                  - order: 9
+                    step: checks
+                    triggerPoint: 01JQTGP0000000000000000002
+                    lifecycle: 01JQPRC0000000000000000002
+                    type: check
+                    severity: error
+                  - order: 10
+                    step: effect
+                    triggerPoint: 01JQTGP0000000000000000001
+                    lifecycle: 01JQPRC0000000000000000002
+                    type: replace
+                  - order: 11
+                    step: with-change
         '404':
           $ref: '#/components/responses/NotFound'
         '400':
@@ -8007,7 +8096,8 @@ components:
           type: string
         verbs:
           description: |
-            The distinct verb keys a process's events and transitions name, and those its rights name (rights-design.md section 8),
+            The distinct verb keys a process's events and transitions name, and those its rights and trigger points name (rights-design.md
+            section 8, trigger-points-design.md section 9),
             sorted ordinally (verbs-design.md section 7), on process rows that name at least one; a named right's verbs, on right rows.
             Left out when the process names none. The editor's Verbs tab counts uses from these rows.
           type: array
@@ -8028,6 +8118,30 @@ components:
           description: Whether a named right allows or denies, on right rows (rights-design.md section 8).
           type: string
           enum: [allow, deny]
+        triggerPoints:
+          description: |
+            The number of a lifecycle's trigger points (trigger-points-design.md section 9), on process rows that have at least one. Left
+            out otherwise, so rows of projects without trigger points do not change.
+          type: integer
+          minimum: 1
+        triggerVerbs:
+          description: |
+            The distinct verb keys a process's trigger points name, sorted ordinally (trigger-points-design.md section 9), on process rows
+            that have a trigger point. They are in `verbs` too.
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+        replaces:
+          description: |
+            The distinct verb keys a process's replaces name, sorted ordinally (trigger-points-design.md section 9), on process rows that have
+            a replace.
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
         actors:
           description: |
             The actors a process names anywhere in its document (event senders, gate signers, invokes and so on), as ids sorted
@@ -8830,6 +8944,9 @@ components:
         keepNames:
           description: '`resync-binding`: keep every attribute''s name, even one that followed its column''s name; the provenance entry still takes the column''s new name.'
           type: [boolean, 'null']
+        triggerPoints:
+          description: '`refresh-scenario`: also write each step''s `expect.triggerPoints`, the trigger points that ran in order (skipped ones left out); without it they are rewritten only where a step already expects them (trigger-points-design.md decision 28).'
+          type: [boolean, 'null']
         expectedHashes:
           description: |
             Materialize, `map-by-name`, `resync-binding`, `fold-into-stereotype`, `retag`, `tags-to-property`, `names-to-ids`, the reference-type refactors, `rename-verb` and `remove-verb`: the hash the caller read of each element it expects the operation to change or delete (the preview's
@@ -9496,7 +9613,8 @@ components:
           description: >-
             The id of the element, or of the check, guard, derived attribute, action, set or right, that holds the expression or takes the text.
             Text for a set not yet saved names the action here, with `site` `set` and `attribute`; text for an inline right not yet saved
-            names its lifecycle, with `site` `right`.
+            names its lifecycle, with `site` `right`; text for a trigger point not yet saved names its lifecycle, with `site` `trigger`, or
+            `trigger-set` and `attribute`.
         at:
           type: [string, 'null']
           description: The pointer of a stored expression in the element's file, or of what holds it; omit when the element holds one, and with text.
@@ -9506,9 +9624,11 @@ components:
         site:
           type: [string, 'null']
           description: >-
-            With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`) or `right` (a right's
-            condition, which reads the object under `subject`), or the pointer of one of the element's sites. `current_actor()` and
-            `in_state` preview at guard, set and right sites, with no SQL form and no answer.
+            With `text`, `check`, `value`, `guard`, `set` (a value an action of a process sets, with `attribute`), `right` (a right's
+            condition, which reads the object under `subject`), `trigger` (a trigger point's `when` or a check's `condition`) or
+            `trigger-set` (a value a trigger point sets, with `attribute`), or the pointer of one of the element's sites. `current_actor()`
+            and `in_state` preview at guard, set, right and trigger point sites, with no SQL form and no answer; `old.` only at trigger
+            point sites, with no SQL form.
         attribute:
           type: [string, 'null']
           description: With `site` `set`, the id of the attribute the value is for, whose type the value must fit (MQ3103).
@@ -9523,7 +9643,7 @@ components:
         values:
           type: [object, 'null']
           additionalProperties: true
-          description: The row the expression reads, members by name (a process guard's payload under `event`, an operation's subject under `subject`).
+          description: The row the expression reads, members by name (a process guard's payload under `event`, an operation's subject under `subject`, a trigger point's values before the verb under `old`).
     ExpressionPreview:
       x-engine-record: Maquettiste.Engine.ExpressionPreview
       type: object
@@ -10188,6 +10308,11 @@ components:
             type: array
             items:
               $ref: '#/components/schemas/ProcessRightRecord'
+          triggerPoints:
+            description: The lifecycle's trigger points in file order, which is their run order at each moment (trigger-points-design.md decisions 1 and 19); left out when it has none.
+            type: array
+            items:
+              $ref: '#/components/schemas/TriggerPointRecord'
     ProcessRightRecord:
       x-engine-record: Maquettiste.Engine.ProcessRightRecord
       description: |
@@ -10255,6 +10380,97 @@ components:
           type: boolean
           const: true
           description: Whether an inline right holds only while the object, or with `ends` the link, is frozen (rights-design.md decision 18); left out when false, and for a use.
+    TriggerPointRecord:
+      x-engine-record: Maquettiste.Engine.TriggerPointRecord
+      description: |
+        One trigger point of a lifecycle (trigger-points-design.md decisions 1 to 12): what runs when one of its verbs happens, in the
+        places its keys name. A check has a `condition`, an action or a replace has `sets`; with neither, `teamCode` is true.
+      type: object
+      required: [id, name, message, type, verbs, covers]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        displayName:
+          type: string
+          description: The display name; left out when it has none.
+        description:
+          type: string
+          description: Why; left out when it has none.
+        message:
+          type: string
+          description: What a refusal or a warning shows (decision 1) - the description, else the display name, else the name.
+        type:
+          type: string
+          enum: [check, action, replace]
+        timing:
+          type: string
+          enum: [before, with-change, after-commit]
+          description: An action's moment; left out for a check or a replace.
+        severity:
+          type: string
+          enum: [error, warning]
+          description: A check's severity, `error` when the file gives none; left out for an action or a replace.
+        verbs:
+          type: array
+          description: The verb keys it runs on, in file order.
+          items:
+            type: string
+        states:
+          type: array
+          description: The ids of the states of the lifecycle the object must be in; left out when it names none.
+          items:
+            type: string
+        targets:
+          type: array
+          description: The ids of the states a move must enter; left out when it names none.
+          items:
+            type: string
+        transitions:
+          type: array
+          description: The ids of the transitions a move must be, or for `sign` whose gates are signed; left out when it names none.
+          items:
+            type: string
+        entities:
+          type: array
+          description: The ids of the entities it is narrowed to, as written; left out when it names none.
+          items:
+            type: string
+        attributes:
+          type: array
+          description: The ids of the attributes a `read` or `modify` step must read or change; left out when it names none.
+          items:
+            type: string
+        ends:
+          type: array
+          description: The ids of the subject's relation ends whose links it speaks of; left out when it names none.
+          items:
+            type: string
+        when:
+          $ref: '#/components/schemas/ExpressionRecord'
+          description: It runs only when this is true; left out when it has none or it does not type.
+        condition:
+          $ref: '#/components/schemas/ExpressionRecord'
+          description: A check's condition; left out when it has none or it does not type.
+        sets:
+          type: array
+          description: What an action or a replace sets on the object, in file order; left out when it sets none.
+          items:
+            $ref: '#/components/schemas/SetRecord'
+        outside:
+          type: boolean
+          const: true
+          description: Whether the team's code reaches outside systems (decision 22); left out when false.
+        teamCode:
+          type: boolean
+          const: true
+          description: Whether the body is the team's code (a check with no condition, an action or a replace with no sets); left out when false.
+        covers:
+          type: array
+          description: The ids of the entities it runs for, in name order (decision 12) - the entities its lifecycle governs, narrowed by `entities`, each with its derived entities.
+          items:
+            type: string
     RightRecord:
       x-engine-record: Maquettiste.Engine.RightRecord
       description: |
@@ -10908,7 +11124,12 @@ components:
           additionalProperties: true
         assume:
           type: object
-          additionalProperties: true
+          description: |
+            The step's assumptions by name (trigger-points-design.md decision 26): `true` or `false` for a guard with no expression; `pass`,
+            `warning` or `error` for a check the team writes, another lifecycle's check as `Lifecycle.Name` (the lifecycle's id in place
+            of its name when two lifecycles the step reaches share a name).
+          additionalProperties:
+            enum: [true, false, pass, warning, error]
         expect:
           oneOf:
           - $ref: '#/components/schemas/ExpectationRecord'
@@ -10923,7 +11144,7 @@ components:
           description: A verb step's verb key (rights-design.md decision 25); absent for other steps.
         values:
           type: object
-          description: The values a modify verb step sets, by attribute name (by id when no subject has such an attribute), as written; absent when the step gives none.
+          description: The values a modify verb step sets, or a create verb step gives the new object (trigger-points-design.md decision 27), by attribute name (by id when no subject has such an attribute), as written; absent when the step gives none.
           additionalProperties: true
         attributes:
           type: array
@@ -10971,10 +11192,20 @@ components:
         refusal:
           type: string
           description: The refusal the step expects (rights-design.md decision 26); absent when the file gives none.
-          enum: [no-transition, guard, actor, gate-signer, gate-repeat, gate-reason, right, default, frozen]
+          enum: [no-transition, guard, actor, gate-signer, gate-repeat, gate-reason, right, default, frozen, check]
         refusedBy:
           type: string
           description: The id of the element the step expects to refuse it (rights-design.md decision 26); absent when the file gives none.
+        checkWarnings:
+          type: array
+          description: The ids of the checks the step expects to warn, each once (trigger-points-design.md decision 28); absent when the file gives none.
+          items:
+            type: string
+        triggerPoints:
+          type: array
+          description: The ids of the trigger points the step expects to run, in run order (trigger-points-design.md decision 28); absent when the file gives none.
+          items:
+            type: string
     OperationRecord:
       x-engine-record: Maquettiste.Engine.OperationRecord
       description: 'A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors; the events it fires and what it requires by id.'
@@ -14623,7 +14854,10 @@ components:
             an object, link or own verb, by key. Left out of a trace's echo when absent.
           type: string
         values:
-          description: For a `modify` verb step on the subject, the values it sets, by attribute id; later guards and sets read them. Left out of a trace's echo when absent.
+          description: |
+            For a `modify` verb step on the subject, the values it sets, by attribute id; later guards and sets read them. For a `create`
+            verb step, the new object's values (trigger-points-design.md decision 27), which before actions and checks read and an accepted
+            step writes. Left out of a trace's echo when absent.
           type: object
           additionalProperties: true
         attributes:
@@ -14656,9 +14890,13 @@ components:
           type: object
           additionalProperties: true
         assume:
+          description: |
+            By guard id, `true` or `false` for a guard with no expression; by trigger point id, `pass`, `warning` or `error` for a check
+            the team writes (trigger-points-design.md decision 26), which passes without an entry. A request may name a guard or a check
+            of the process instead of its id.
           type: object
           additionalProperties:
-            type: boolean
+            enum: [true, false, pass, warning, error]
         expect:
           description: Ignored in a request; null in a trace.
           type: [object, 'null']
@@ -14828,7 +15066,7 @@ components:
         refusal:
           description: Why the input was refused, the first check that failed (rights-design.md decision 12); null when accepted.
           type: [string, 'null']
-          enum: [no-transition, guard, actor, gate-signer, gate-repeat, gate-reason, right, default, frozen, null]
+          enum: [no-transition, guard, actor, gate-signer, gate-repeat, gate-reason, right, default, frozen, check, null]
         microsteps:
           type: array
           items:
@@ -14898,8 +15136,9 @@ components:
           description: |
             The id of the element that refused the input (rights-design.md decision 12): the event or invoke whose actors leave the actor
             out, the right (an inline right, or the named right), the lifecycle whose default denies, the guard, or the gate or gate
-            policy. Written for a refused input in a project that uses rights, and for a step that expects it; left out otherwise, and
-            for `no-transition` and `frozen`, which no element refused.
+            policy, or the trigger point whose check refused (`check`, trigger-points-design.md decision 28). Written for a refused input
+            in a project that uses rights or trigger points, and for a step that expects it; left out otherwise, and for `no-transition`
+            and `frozen`, which no element refused.
           $ref: '#/components/schemas/Ulid'
         rights:
           description: |
@@ -14908,12 +15147,66 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RightEvaluation'
+        triggerPoints:
+          description: |
+            The trigger points whose places matched, in run order, each with what it did (trigger-points-design.md decision 28): per
+            microstep, those of the transitions it took, in the order of decision 19; for a verb step, its points in run order; a check
+            that refused the step, once; `sign`'s and a task's `complete` points where they run; after-commit points last, as `queued`.
+            Checks run on candidates that were not taken are left out, and so are their warnings. Left out when none matched.
+          type: array
+          items:
+            $ref: '#/components/schemas/TriggerPointRun'
+        checkWarnings:
+          description: The ids of the checks that warned, each once, in the order it first warned (trigger-points-design.md decision 28); a step's `expect.checkWarnings` is compared with it (MQ9310). Left out when none did.
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
         frozen:
           description: |
             Whether the subject is frozen after the input (rights-design.md section 7): true from an accepted `freeze`, or a start with
             the subject `frozen`, until an accepted `thaw`. Left out when false.
           type: boolean
           const: true
+    TriggerPointRun:
+      x-engine-record: Maquettiste.Engine.Processes.TriggerPointRun
+      description: A trigger point whose places matched in a step, and what it did (trigger-points-design.md decision 28).
+      type: object
+      required: [triggerPoint, lifecycle, verb, type, outcome]
+      properties:
+        triggerPoint:
+          description: The trigger point's id.
+          $ref: '#/components/schemas/Ulid'
+        lifecycle:
+          description: The id of the lifecycle whose trigger points list it.
+          $ref: '#/components/schemas/Ulid'
+        verb:
+          description: The verb it ran on, by key.
+          type: string
+        type:
+          type: string
+          enum: [check, action, replace]
+        timing:
+          description: An action's moment; left out for a check or a replace.
+          type: string
+          enum: [before, with-change, after-commit]
+        outcome:
+          description: |
+            `passed`, `warned` or `refused` for a check; `ran` for a before or with-change action (a team-code one sets nothing in a run);
+            `replaced` for a replace; `queued` for an after-commit action; `skipped` when its `when` was false or unknown.
+          type: string
+          enum: [passed, warned, refused, ran, replaced, queued, skipped]
+        assumed:
+          description: Whether a team-code check's outcome came from the step's `assume`, or from its default, pass. Left out when false.
+          type: boolean
+          const: true
+        outside:
+          description: Whether the trigger point says the team's code reaches outside systems. Left out when false.
+          type: boolean
+          const: true
+        sets:
+          description: The values its sets gave the object, by attribute id, every value worked out first and then all applied. Left out when it set nothing.
+          type: object
+          additionalProperties: true
     RightEvaluation:
       x-engine-record: Maquettiste.Engine.Processes.RightEvaluation
       description: A right that answered for an input; a named right used by several lifecycles answers once for each lifecycle that asked.
@@ -15044,6 +15337,13 @@ components:
         guardUnknown:
           description: A candidate's guard has no expression; the input needs `assume`.
           type: boolean
+        checksUnknown:
+          description: |
+            The ids of the checks the team writes (checks with no condition) that the trigger's candidates reach, whose outcome the input
+            takes from `assume`, passing without an entry (trigger-points-design.md section 9). Left out when there are none.
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
         gate:
           oneOf:
             - $ref: '#/components/schemas/GateProgress'
@@ -15146,6 +15446,98 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Diagnostic'
+    TriggerSequence:
+      x-engine-record: Maquettiste.Engine.Processes.TriggerSequence
+      description: What runs, in order, when a verb happens in a lifecycle (trigger-points-design.md decision 36).
+      type: object
+      required: [lifecycle, verb, steps]
+      properties:
+        lifecycle:
+          description: The id of the lifecycle asked about, the acting one.
+          $ref: '#/components/schemas/Ulid'
+        verb:
+          description: The verb, by key.
+          type: string
+        steps:
+          description: The steps in run order. A built-in step has no `triggerPoint`; a trigger point's step follows the built-in step of its moment, when that applies.
+          type: array
+          items:
+            $ref: '#/components/schemas/TriggerSequenceStep'
+    TriggerSequenceStep:
+      x-engine-record: Maquettiste.Engine.Processes.TriggerSequenceStep
+      description: |
+        One step of the fixed order (trigger-points-design.md decision 18): a built-in step that applies to the verb, or a trigger point
+        that can run at that moment, with its lifecycle and places.
+      type: object
+      required: [order, step]
+      properties:
+        order:
+          description: The step's row in the fixed order, 1 to 12.
+          type: integer
+          minimum: 1
+          maximum: 12
+        step:
+          description: |
+            `frozen`, `closed-lists`, `denies`, `defaults`, `no-move`, `guards` and `signatures` (rows 1 to 7, as rights check them),
+            `before` (before actions), `checks`, `effect` (the built-in effect, or a replace), `with-change` and `after-commit`.
+          type: string
+          enum: [frozen, closed-lists, denies, defaults, no-move, guards, signatures, before, checks, effect, with-change, after-commit]
+        triggerPoint:
+          description: The trigger point's id; left out for a built-in step.
+          $ref: '#/components/schemas/Ulid'
+        lifecycle:
+          description: The id of the lifecycle whose trigger points list it; left out for a built-in step.
+          $ref: '#/components/schemas/Ulid'
+        type:
+          description: The trigger point's type; left out for a built-in step.
+          type: string
+          enum: [check, action, replace]
+        timing:
+          description: An action's moment; left out otherwise.
+          type: string
+          enum: [before, with-change, after-commit]
+        severity:
+          description: A check's severity; left out otherwise.
+          type: string
+          enum: [error, warning]
+        states:
+          description: The ids of the states it is narrowed to; left out when none.
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
+        targets:
+          description: The ids of the states a move must enter; left out when none.
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
+        transitions:
+          description: The ids of the transitions it is narrowed to; left out when none.
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
+        entities:
+          description: The ids of the entities it is narrowed to; left out when none.
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
+        attributes:
+          description: The ids of the attributes it is narrowed to; left out when none.
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
+        ends:
+          description: The ids of the relation ends it is narrowed to; left out when none.
+          type: array
+          items:
+            $ref: '#/components/schemas/Ulid'
+        when:
+          description: Whether it runs only when its `when` holds; left out when false.
+          type: boolean
+          const: true
+        outside:
+          description: Whether the team's code reaches outside systems; left out when false.
+          type: boolean
+          const: true
     RecordScenarioRequest:
       x-engine-record: Maquettiste.Engine.Processes.RecordScenarioRequest
       type: object
@@ -15176,6 +15568,11 @@ components:
           description: The expected outcome; the replay's when absent.
           type: [string, 'null']
           enum: [final, active, null]
+        triggerPoints:
+          description: |
+            true: also write each step's `expect.triggerPoints`, the trigger points that ran (trigger-points-design.md decision 28). Absent
+            or false, it is not written, so a new trigger point does not break the scenario.
+          type: [boolean, 'null']
     RecordScenarioResult:
       x-engine-record: Maquettiste.Engine.Processes.RecordScenarioResult
       type: object

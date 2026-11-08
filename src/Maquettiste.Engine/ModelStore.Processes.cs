@@ -889,7 +889,7 @@ public sealed partial class ModelStore
                 return $"Scenario '{scenario.Name}' cannot be replayed to its last step ({why}); fix that step, then refresh again.";
             }
 
-            var (expects, outcome) = replay.Observed();
+            var (expects, outcome) = replay.Observed(o.TriggerPoints == true);
             var node = Node(scenario.Id, o.ExpectedHash, track: false);
             var steps = node["steps"] as JsonArray ?? [];
             var changed = false;

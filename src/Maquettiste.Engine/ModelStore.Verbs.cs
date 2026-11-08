@@ -10,7 +10,9 @@ namespace Maquettiste.Engine;
 /// merges it into another own verb or a built-in verb; <c>remove-verb</c> removes it and clears every use. Each expands into updates of the
 /// verb vocabulary and of the processes, operations and named rights that name the verb, all or nothing, as <c>retag</c> does. A verb that
 /// goes takes its translations with it, since the save removes its sub-element. A right whose last verb is removed goes (rights-design.md
-/// section 8): an inline right leaves its lifecycle's rights, and a named right is deleted with its uses.
+/// section 8): an inline right leaves its lifecycle's rights, and a named right is deleted with its uses. A trigger point whose last verb is
+/// removed leaves its lifecycle's trigger points (trigger-points-design.md section 9), and the scenario steps that assume its outcome or
+/// expect it lose those entries.
 /// </summary>
 public sealed partial class ModelStore
 {
@@ -20,7 +22,7 @@ public sealed partial class ModelStore
 
     /// <summary>
     /// Plans a verb operation: adds the updates to <paramref name="changes"/>; returns why it is refused, or <see langword="null"/>. Uses are
-    /// found by key in every event, transition, operation, right and scenario verb step. <c>rename-verb</c> and <c>remove-verb</c> of an own verb whose key a built-in
+    /// found by key in every event, transition, operation, right, trigger point and scenario verb step. <c>rename-verb</c> and <c>remove-verb</c> of an own verb whose key a built-in
     /// verb has (MQ9702) leave the uses, which name the built-in verb: they write only the vocabulary.
     /// </summary>
     private string? VerbOperation(ModelSnapshot snapshot, BatchOperation o, List<PlannedChange> changes)
@@ -108,6 +110,21 @@ public sealed partial class ModelStore
                     goneRights.Add(named.Id);
             }
         }
+        // The trigger points a remove leaves with no verb: each leaves its lifecycle, and its word entries in assume and its ids in the
+        // expected check warnings and trigger points go with it.
+        var gonePoints = new HashSet<string>(StringComparer.Ordinal);
+        if (rewriteUses && to is null)
+        {
+            foreach (var process in snapshot.All<Process>())
+            {
+                foreach (var point in process.TriggerPoints)
+                {
+                    if (point.Verbs.Count > 0 && point.Verbs.All(v => string.Equals(v, key, StringComparison.Ordinal)))
+                        gonePoints.Add(point.Id);
+                }
+            }
+        }
+
         foreach (var document in snapshot.Documents)
         {
             if (!rewriteUses || !ReferenceEquals(snapshot.GetDocument(document.Element.Id), document))
@@ -138,6 +155,15 @@ public sealed partial class ModelStore
                             rights.RemoveAt(i);
                     }
 
+                    // A trigger point's verbs, as a right's: one left with no verb goes.
+                    for (var i = process.TriggerPoints.Count - 1; i >= 0; i--)
+                    {
+                        if (!process.TriggerPoints[i].Verbs.Contains(key, StringComparer.Ordinal))
+                            continue;
+                        if (Working(document)["triggerPoints"] is JsonArray points && points[i] is JsonObject point && !RewriteList(point))
+                            points.RemoveAt(i);
+                    }
+
                     break;
                 case Operation operation when string.Equals(operation.Verb, key, StringComparison.Ordinal):
                     Rewrite(Working(document));
@@ -146,6 +172,9 @@ public sealed partial class ModelStore
                     RewriteList(Working(document));
                     break;
                 case Scenario scenario:
+                    // First, while the steps keep their places: a step's entries for a trigger point that goes.
+                    if (gonePoints.Count > 0)
+                        ForgetPoints(document, scenario);
                     // A verb step (rights-design.md section 8): renamed in place; on a remove the step goes, since a verb step names one verb.
                     for (var i = scenario.Steps.Count - 1; i >= 0; i--)
                     {
@@ -159,6 +188,38 @@ public sealed partial class ModelStore
                     }
 
                     break;
+            }
+        }
+
+        // A step's word entries for a trigger point that goes, and its id in the expected check warnings and trigger points.
+        void ForgetPoints(ElementDocument document, Scenario scenario)
+        {
+            for (var i = 0; i < scenario.Steps.Count; i++)
+            {
+                var step = scenario.Steps[i];
+                var named = step.Assume.Keys.Any(gonePoints.Contains)
+                    || (step.Expect?.CheckWarnings?.Any(gonePoints.Contains) ?? false) || (step.Expect?.TriggerPoints?.Any(gonePoints.Contains) ?? false);
+                if (!named || Working(document)["steps"] is not JsonArray steps || i >= steps.Count || steps[i] is not JsonObject node)
+                    continue;
+                if (node["assume"] is JsonObject assume)
+                {
+                    foreach (var id in assume.Select(p => p.Key).Where(gonePoints.Contains).ToList())
+                        assume.Remove(id);
+                }
+
+                if (node["expect"] is JsonObject expect)
+                {
+                    foreach (var list in new[] { "checkWarnings", "triggerPoints" })
+                    {
+                        if (expect[list] is not JsonArray ids)
+                            continue;
+                        for (var j = ids.Count - 1; j >= 0; j--)
+                        {
+                            if (ids[j] is JsonValue value && value.TryGetValue<string>(out var id) && gonePoints.Contains(id))
+                                ids.RemoveAt(j);
+                        }
+                    }
+                }
             }
         }
 

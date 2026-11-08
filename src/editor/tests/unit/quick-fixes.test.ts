@@ -199,9 +199,9 @@ describe("the mock's process quick-fix operations", () => {
     // In this scenario the invoice's lifecycle is in the one-subject form, and the entity does not name it.
     expect(run([{ op: "set-lifecycle", id: INVOICE, target: INVOICE_LIFECYCLE }])).toBe("saved");
     expect(model.get(INVOICE_LIFECYCLE)!.json).toMatchObject({ use: "lifecycle", subject: INVOICE });
-    // The seeded lifecycle states rights, and demoting keeps them as the engine does: MQ9901 refuses it until they are removed.
+    // The seeded lifecycle states rights and trigger points, and demoting keeps them as the engine does: MQ9901 and MQ8101 refuse it until they are removed.
     expect(run([{ op: "set-lifecycle", id: INVOICE, target: PURCHASE_APPROVAL }])).toBe("invalid");
-    const { rights: _r, rightsDefault: _d, ...plain } = model.get(INVOICE_LIFECYCLE)!.json as Record<string, unknown>;
+    const { rights: _r, rightsDefault: _d, triggerPoints: _t, ...plain } = model.get(INVOICE_LIFECYCLE)!.json as Record<string, unknown>;
     expect(model.save(INVOICE_LIFECYCLE, plain as never, model.get(INVOICE_LIFECYCLE)!.hash).outcome).toBe("saved");
     expect(run([{ op: "set-lifecycle", id: INVOICE, target: PURCHASE_APPROVAL }])).toBe("saved");
     expect(model.get(INVOICE_LIFECYCLE)!.json).toMatchObject({ use: "orchestration", subject: INVOICE });

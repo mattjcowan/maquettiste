@@ -49,6 +49,7 @@ const NOUNS: Record<string, string> = {
   sets: "set",
   states: "state",
   rights: "right",
+  triggerPoints: "trigger point",
 };
 
 const str = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
@@ -96,6 +97,8 @@ function removeAt(json: Json, pointer: string, item: boolean): void {
     if (parts.length === 1 && parts[0] === "memberOf" && parent.length === 0) delete json.memberOf;
     // A lifecycle left with no rights is written without the key, and an `except` left empty means no exception.
     if (parts.length === 1 && parts[0] === "rights" && parent.length === 0) delete json.rights;
+    // So is a lifecycle left with no trigger points.
+    if (parts.length === 1 && parts[0] === "triggerPoints" && parent.length === 0) delete json.triggerPoints;
     if (parent.length === 0 && parts.length >= 1 && parts[parts.length - 1] === "except") {
       let holder: unknown = json;
       for (const p of parts.slice(0, -1)) holder = (holder as Json)[p];
@@ -319,7 +322,7 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
           ...(subId ? { subId } : {}),
           subKind: noun,
           because:
-            noun === "right"
+            noun === "right" || noun === "trigger point"
               ? `${describe(op.ref.toId)} was the only ${op.ref.field.replace(/s$/, "")} it names; with none it would apply to everything, so it goes too`
               : `needs ${describe(op.ref.toId)}`,
         });
@@ -335,10 +338,12 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
         // A list of a right names the right, so the plan says which right changes.
         const inRight = /^\/rights\/(\d+)\/(actors|except|ends|states)\/\d+$/.exec(op.ref.pointer);
         const rightName = inRight ? str((arr(doc.json.rights)[Number(inRight[1])] as Json | undefined)?.name) : undefined;
+        const inPoint = /^\/triggerPoints\/(\d+)\/(entities|attributes|ends|states|targets|transitions)\/\d+$/.exec(op.ref.pointer);
+        const pointName = inPoint ? str((arr(doc.json.triggerPoints)[Number(inPoint[1])] as Json | undefined)?.name) : undefined;
         plan.clears.push({
           ...base,
           pointer: op.ref.pointer,
-          field: rightName ? `right ${rightName}, ${inRight![2]}` : op.ref.field,
+          field: rightName ? `right ${rightName}, ${inRight![2]}` : pointName ? `trigger point ${pointName}, ${inPoint![2]}` : op.ref.field,
           target: op.ref.toId,
           because: `pointed to ${describe(op.ref.toId)}`,
         });

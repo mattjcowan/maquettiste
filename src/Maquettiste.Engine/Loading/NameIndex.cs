@@ -226,7 +226,7 @@ internal sealed class NameIndex
         "schema" => [ElementKind.Database],
         "enum-member" => [ElementKind.Enum],
         "guard" => [ElementKind.Process, ElementKind.Operation],
-        "event" or "action" or "invoke" or "gate" or "meaning" or "state" or "process-right" => [ElementKind.Process],
+        "event" or "action" or "invoke" or "gate" or "meaning" or "state" or "process-right" or "process-trigger-point" => [ElementKind.Process],
         "end" => [ElementKind.Relation],
         "reference-field" => [ElementKind.ReferenceType],
         "row" => [ElementKind.Seed],
@@ -420,6 +420,13 @@ internal sealed class NameIndex
         {
             if (right.Right is null && right.Name is { Length: > 0 } name)
                 add("process-right", right.Id, forms.Then(name));
+        }
+
+        // A trigger point by its name (trigger-points-design.md decision 1): @process-trigger-point:Documents.TitleBeforeReview.
+        foreach (var point in process.TriggerPoints)
+        {
+            if (point.Name is { Length: > 0 } name)
+                add("process-trigger-point", point.Id, forms.Then(name));
         }
     }
 

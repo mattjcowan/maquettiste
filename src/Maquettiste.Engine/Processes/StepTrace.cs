@@ -41,8 +41,73 @@ public static class Refusals
     /// </summary>
     public const string Frozen = "frozen";
 
-    /// <summary>Every refusal value, in the order the checks run, then the gate's own: what <c>expect.refusal</c> may name.</summary>
-    public static IReadOnlyList<string> All { get; } = [Frozen, Actor, Right, Default, NoTransition, Guard, GateSigner, GateRepeat, GateReason];
+    /// <summary>
+    /// A check of a trigger point refused (trigger-points-design.md decisions 6 and 18): after the guards and the signatures, before the
+    /// effect. The trigger point is <c>refusedBy</c>. When no move is left, it outranks a gate, which outranks a guard.
+    /// </summary>
+    public const string Check = "check";
+
+    /// <summary>Every refusal value, in the order the checks run, then the gate's own, then a trigger point's check: what
+    /// <c>expect.refusal</c> may name.</summary>
+    public static IReadOnlyList<string> All { get; } = [Frozen, Actor, Right, Default, NoTransition, Guard, GateSigner, GateRepeat, GateReason, Check];
+}
+
+/// <summary>What a trigger point did in a step (trigger-points-design.md decision 28).</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<TriggerOutcome>))]
+public enum TriggerOutcome
+{
+    /// <summary>A check passed (<c>passed</c>).</summary>
+    [JsonStringEnumMemberName("passed")] Passed,
+
+    /// <summary>A check of severity warning failed and let the step through (<c>warned</c>).</summary>
+    [JsonStringEnumMemberName("warned")] Warned,
+
+    /// <summary>A check of severity error failed and refused the step (<c>refused</c>).</summary>
+    [JsonStringEnumMemberName("refused")] Refused,
+
+    /// <summary>A before or with-change action ran (<c>ran</c>); a team-code one sets nothing in a run.</summary>
+    [JsonStringEnumMemberName("ran")] Ran,
+
+    /// <summary>A replace took the place of the verb's built-in effect (<c>replaced</c>).</summary>
+    [JsonStringEnumMemberName("replaced")] Replaced,
+
+    /// <summary>An after-commit action was queued, to run once the step's change is saved (<c>queued</c>).</summary>
+    [JsonStringEnumMemberName("queued")] Queued,
+
+    /// <summary>Its places matched but its <c>when</c> was false or unknown, so it did not run (<c>skipped</c>).</summary>
+    [JsonStringEnumMemberName("skipped")] Skipped,
+}
+
+/// <summary>
+/// A trigger point whose places matched in a step (trigger-points-design.md decision 28), in run order: what it is, the verb it ran on and
+/// what it did.
+/// </summary>
+/// <param name="TriggerPoint">The trigger point's id.</param>
+/// <param name="Lifecycle">The id of the lifecycle whose trigger points list it.</param>
+/// <param name="Verb">The verb it ran on, by key.</param>
+/// <param name="Type">Whether it is a check, an action or a replace.</param>
+/// <param name="Timing">An action's moment; <see langword="null"/>, and left out of the JSON, for a check or a replace.</param>
+/// <param name="Outcome">What it did.</param>
+public sealed record TriggerPointRun(
+    string TriggerPoint, string Lifecycle, string Verb, TriggerPointType Type,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] TriggerTiming? Timing, TriggerOutcome Outcome)
+{
+    /// <summary>
+    /// Whether a team-code check's outcome came from the step's <c>assume</c>, or from its default, pass. Left out of the JSON when false.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Assumed { get; init; }
+
+    /// <summary>Whether the trigger point says the team's code reaches outside systems. Left out of the JSON when false.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Outside { get; init; }
+
+    /// <summary>
+    /// The values its sets gave, by attribute id: every value worked out first, then all applied. <see langword="null"/>, and left out of the
+    /// JSON, when it set nothing.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, JsonElement>? Sets { get; init; }
 }
 
 /// <summary>
@@ -198,9 +263,10 @@ public sealed record StepTrace(
 
     /// <summary>
     /// The id of the element that refused the input (rights-design.md decision 12): the event or invoke whose actors leave the actor out, the
-    /// right (an inline right, or the named right), the lifecycle whose default denies, the guard, or the gate or gate policy. Written for a
-    /// refused input in a project that uses rights, and for a step that expects it; <see langword="null"/>, and left out of the JSON,
-    /// otherwise, and when nothing refused it (<see cref="Refusals.NoTransition"/>).
+    /// right (an inline right, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, or the trigger
+    /// point whose check refused (trigger-points-design.md decision 28). Written for a refused input in a project that uses rights or trigger
+    /// points, and for a step that expects it; <see langword="null"/>, and left out of the JSON, otherwise, and when nothing refused it
+    /// (<see cref="Refusals.NoTransition"/>).
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? RefusedBy { get; init; }
@@ -211,6 +277,21 @@ public sealed record StepTrace(
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<RightEvaluation>? Rights { get; init; }
+
+    /// <summary>
+    /// The trigger points whose places matched, in run order, each with what it did (trigger-points-design.md decision 28): per microstep,
+    /// those of the transitions it took; a refusing check once; after-commit ones last, as queued. Checks on candidates not taken are left
+    /// out. <see langword="null"/>, and left out of the JSON, when none matched.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<TriggerPointRun>? TriggerPoints { get; init; }
+
+    /// <summary>
+    /// The ids of the checks that warned, each once, in the order it first warned (trigger-points-design.md decisions 6 and 28); a step's <c>expect.checkWarnings</c> is
+    /// compared with it (MQ9310). <see langword="null"/>, and left out of the JSON, when none did.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? CheckWarnings { get; init; }
 
     /// <summary>
     /// Whether the subject is frozen after the input (rights-design.md section 7): <see langword="true"/> from an accepted <c>freeze</c>, or a

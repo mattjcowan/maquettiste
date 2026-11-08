@@ -2482,8 +2482,7 @@ name a library's actions the same way, and `transition.gatePolicy` names a libra
 ### Verbs
 
 A verb says what is done: what an actor does by sending an event, what an automatic move does, or what an operation does. Name one in
-an event's, an eventless transition's or an operation's `verb`, by its key. Verbs carry no behaviour of their own; [rights](#rights) speak of them, and trigger
-points will share the list of names.
+an event's, an eventless transition's or an operation's `verb`, by its key. Verbs carry no behaviour of their own; [rights](#rights) and [trigger points](#trigger-points) speak of them.
 
 - An **event** names what the actor does by sending it: `Submit` promotes, `SendBack` demotes.
 - A **transition** names a verb only when it has no event (`after`, `always`, `done`, `invoke-done`, `invoke-error`). With an event,
@@ -2570,7 +2569,7 @@ are not listed. The simulation panel's event buttons name the verb in their tool
 
 **Output.** Templates read `model.verbs` (the built-in verbs that are not hidden, then your own) and the verb of each event,
 transition and operation. It is empty unless the project has a verb vocabulary or names a verb. `csharp-dapper` writes a `Verb`
-enum, and each event's and operation's verb. `process-docs` adds a Verb column and a page of verbs. Apart from [rights](#rights), generated code checks nothing
+enum, and each event's and operation's verb. `process-docs` adds a Verb column and a page of verbs. Apart from [rights](#rights) and [trigger points](#trigger-points), generated code checks nothing
 about verbs yet. A project that uses no verbs keeps its output. An older engine refuses `verbs.json` and any file with `verb`.
 
 ### Rights
@@ -2739,10 +2738,140 @@ what. Templates read `process.rights`, `process.rights_default` and `model.right
 
 **Upgrading.** An older engine refuses a `right` file and any file with the new keys. The file format version stays 1.
 
+### Trigger points
+
+A **trigger point** says what runs when a verb happens to an object. Until now only a move could carry logic. With trigger points,
+creating, changing, deleting, connecting or freezing an object can check the change, prepare values, warn, or run work once the change
+is saved. A lifecycle holds its trigger points in its **Trigger points** tab, after **Rights**. They are optional. A project that states
+none keeps its files, output, findings, replays and tool answers.
+
+Only lifecycles hold trigger points. An orchestration or a library with `triggerPoints` is MQ8101. Trigger points on types with no
+lifecycle are not available yet.
+
+**The three types.**
+
+- **Check.** It judges the change. With a **Condition**, only a true answer passes. A false answer refuses the step, and **Why** is the
+  message shown. With **Severity** set to Warning, a false answer lets the step through and lists the check as a warning. With no
+  condition, the team writes the check in code.
+- **Action.** It does something at one moment of the verb. **When it runs** is one of three.
+  **Before checks** prepares values (a number, a default). It cannot refuse, and nothing is written until the checks pass.
+  **With the change** runs in the same unit of work as the change, so a failure undoes the verb.
+  **After commit** runs once the change is saved. It cannot undo the change, may run late, and may run more than once, so the team's code
+  must be safe to repeat. An after-commit action sets nothing (MQ8105): setting the object after the save would be a new change.
+  An action either sets attributes (**What**) or is the team's code.
+- **Replace.** It takes the place of a verb's built-in effect, such as archiving instead of deleting. Only `delete`, `disconnect`, `copy`
+  and `revise` allow one (MQ8103). At most one replace can apply to one verb on one type (MQ8104). History is still recorded.
+
+**A trigger point's row.**
+
+| Column | File key | What it says |
+| --- | --- | --- |
+| **Name** | `name` | An identifier, unique among the lifecycle's trigger points and its guards (MQ3001). A refusal and a scenario's assumption name it |
+| **Does** | `verbs` | The verbs it runs on, at least one. Built-in or your own |
+| **Type** | `type` | Check, Action or Replace |
+| **When it runs** | `timing` | Actions only: `before`, `with-change` or `after-commit` |
+| **Severity** | `severity` | Checks only: Error (the usual choice) or Warning |
+| **Where** | see below | Narrows where it runs |
+| **Only if** | `when` | It runs only when this is true. False or unknown means it is skipped, and the trace says so |
+| **What** | `condition` or `sets` | A check's condition, or an action's or replace's sets. Empty means the team's code |
+| **Outside systems** | `outside` | The team's code reaches outside systems. A scenario never calls it. Only a point the team writes can say so (MQ8101) |
+| **Why** | `description` | For a check, the message shown when it refuses or warns. Without one, the name is the message |
+
+**Where a trigger point applies.** With no place, it runs wherever its verbs happen to the lifecycle's objects. Each key narrows it:
+
+| Place | File key | It runs when | Beside |
+| --- | --- | --- | --- |
+| States | `states` | The object is in one of these states. For a move, its source. A compound state counts when a state inside it is active | Any verb |
+| Into states | `targets` | The move enters one of these states | Moves, `sign`, and your own verbs that this lifecycle's events send |
+| Moves | `transitions` | The move is one of these transitions. For `sign`, a signature on their gates | Moves, `sign`, and your own verbs that this lifecycle's events send |
+| Types | `entities` | The object's type is one of these, or derived from one | Any verb |
+| Attributes | `attributes` | The step reads or changes one of these attributes | `read`, `modify` |
+| Links | `ends` | The link goes through one of these ends | `connect`, `disconnect`, `read`, `modify`, `freeze`, `thaw` |
+
+A key that does not fit its verbs is MQ8102. The **Where** column shows chips, and one popover edits all of them. Moves are `promote`
+and `demote`. A move with no verb runs no trigger points. Leaving a state is **States** on a move verb. Entering one is **Into states**.
+When a step does not say which attributes or which link it touches, a check narrowed by attributes or links still runs, since the safe
+answer is to check. An action or a replace narrowed that way does not run, and the trace notes it.
+
+**Which lifecycles run.** For a move, a signature or a task, only the lifecycle that holds it. For an object, a link or your own verb,
+every lifecycle that governs the object, each reading the object's state there. So a second lifecycle cannot get around the first one's checks.
+
+**`when` and `old.`** A `when`, a condition and a set's value read the object as it will be, under `subject.`, and its values before the
+verb under `old.`. For example, "the price may not drop by more than a tenth" is
+`coalesce(old.price, 0) = 0 or subject.price >= old.price * 0.9`. The first part keeps an empty old price from reading as unknown. On
+`create`, `old.` is empty. Everything reads `current_actor()`, `now()` and `in_state` as a guard does, and never the process's context. A
+move's payload may be read only by a point whose verbs are all moves (or your own verbs that an event names). `old.` means something
+only here. Anywhere else the same text keeps its old meaning, and the structured form is refused (MQ3104).
+
+**The fixed order.** Every verb runs in one order, and each step may refuse:
+
+1. Frozen, then rights.
+2. Guards.
+3. Signatures: who may sign.
+4. Before actions, which fill the proposed values.
+5. Checks. An error refuses. A warning is listed.
+6. The effect: the built-in one, or the replace. For a move, its exit, transition and entry actions, as before. The proposed values are written first.
+7. Actions with the change.
+8. Actions after commit, once the whole step is done.
+
+Within one step, every lifecycle's before actions run before any check, and so on for each moment. Within a moment, the lifecycle that is
+acting goes first, then the others by name, each in the order of its list. Drag a row to reorder.
+
+**A check on a move works like a guard.** The engine tries each possible move. A move whose check refuses is left out, exactly as if its
+guard were false, and the next move is tried. If none is left, the event is refused with the most telling reason: a check, then a gate,
+then a guard. A refusal by a check has the refusal `check` and names the trigger point. Four points are worth keeping in view:
+
+- **A check that refuses an automatic move leaves it untaken.** For a move that fires by itself (`always`, a timer, a finished task or
+  invoke), the step before it stays accepted. The trace names the check.
+- **What a trigger point sets is part of the verb.** Rights and freezing judge the actor's own change, not the values a trigger point sets,
+  and matching on attributes uses the actor's own change too. Freezing never stops a trigger point's sets.
+- **An event that names `delete` still does its move.** A replace stands in only for a verb step's effect, so it never runs for an event.
+  The event still runs `delete`'s checks and other actions.
+- **The editor and the documents show the engine's sequence.** They ask the question the engine answers, so they never disagree with it.
+
+**A gate's completing signature.** `sign` has its own trigger points, run around the count of every signature. On the signature that would
+complete the gate, `sign`'s before actions and checks run first, then the move's. Only if all pass is the signature counted and the move
+made. If a check refuses, the signature is not counted and is audited as `refused`. The signer signs again once the object is fixed.
+
+**Reading the object in generated code.** Until generated code can read the object (roadmap item 4.6), a trigger point's `when`, condition
+and sets go to the team as static methods that load the object themselves, as right conditions do. Each method's comment carries the text
+to write it from.
+
+**What happens when.** The Trigger points tab has two views, **Trigger points** and **What happens when**. The second takes a verb, and
+optionally a state and a type, and lists what runs, in order: the built-in steps that apply, then each trigger point as a link. Points of
+other lifecycles show their lifecycle's name. It shows the saved lifecycle. The MCP tool `get_trigger_sequence` and
+`maquettiste process trigger-sequence <lifecycle> --verb <key>` give the same steps (`--state`, `--entity`, `--attribute`, `--end` and
+`--transition` narrow them). The `process-docs` pack writes the same lists on the lifecycle's page.
+
+**In scenarios.**
+
+- **Assume.** A step's `assume` already maps a guard with no expression to `true` or `false`. It also maps a check with no condition to
+  **Pass**, **Warning** or **Error** (the file words are `pass`, `warning` and `error`). That lets a scenario prove the path where the
+  team's check refuses. A check with no entry passes, and the trace marks it assumed. An action written as the team's code fills nothing in
+  a replay, so a check that reads those values needs them given on the step (for a `create` step, its **Set values**). A word on a check
+  that has a condition is MQ9305.
+- **Check warnings.** A step may expect **Check warnings**, the checks that warned, exactly. A warning does not refuse the step.
+- **Trigger points.** A step may expect **Trigger points**, the ones that ran, in order, repeats included. A difference is MQ9310.
+  **Update expectations from replay** fills in Refusal, Refused by and Check warnings. It fills in Trigger points only when **Also record
+  trigger points** is ticked, since every new trigger point would otherwise break every recorded scenario. `record_scenario` takes
+  `triggerPoints: true` for the same.
+- **`create` steps.** A `create` step may give values. An accepted one writes them, with what before actions prepared, to the subject, so
+  later steps see them.
+- **The simulation panel** lists each step's trigger points with their outcome (passed, warned, refused, ran, replaced, queued or skipped),
+  check warnings in amber, and the message of a refusing check. An automatic move left out by a check says so.
+
+**Generated code and documents.** `csharp-dapper` writes trigger point code only when a lifecycle has trigger points. It writes a class of
+step methods per lifecycle and a static method per trigger point for the team. It writes nothing before the checks pass, runs the work in
+the command's transaction, and hands after-commit work to its outbox. Object, link and your own verbs done outside an event go through a
+per-type runner. The pack's README has the steps. `process-docs` adds a Trigger points table and "What happens when" lists. Templates read
+`process.trigger_points`, `model.trigger_lifecycles` and `verb.trigger_points`.
+
+**Upgrading.** An older engine refuses a `triggerPoints` list, `old.` and the new `assume` words. The file format version stays 1.
+
 ### The rules for processes (MQ9xxx)
 
 Every rule below has a row in **Settings › Validation**, where its severity can be changed. The structural rules (MQ9001
-to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9211, MQ9501, MQ9601 to MQ9606, MQ9701 to MQ9707, MQ9801 to MQ9803 and MQ9901 to MQ9906) run on every save and every `validate`; MQ9019 is the answer
+to MQ9018, MQ9020 to MQ9022, MQ9101 to MQ9106, MQ9201 to MQ9211, MQ9501, MQ9601 to MQ9606, MQ9701 to MQ9707, MQ9801 to MQ9803, MQ9901 to MQ9906 and MQ8101 to MQ8107) run on every save and every `validate`; MQ9019 is the answer
 to a refused batch operation. The scenario rules (MQ93xx, MQ9307 and MQ9308 among them) and MQ9502 to MQ9507 come from replaying
 scenarios: `validate` replays every scenario of the processes it checks, **Verify scenarios** and `maquettiste process
 verify` replay on request, and the simulation panel shows them for its own run. A replay finding is reported on a save but
@@ -2798,6 +2927,14 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ9305 | error | A step whose fields do not fit: an unknown event, a time step without a duration, an invoke that is not pending, a payload value of the wrong type. With participants: a holding that is not a role, group or organization; a `within` or `object` that is not one of the scenario's objects; a participant's actor that is a role, group, organization or actor from the object; a step's participant that is not the scenario's; a step's actor its participant does not satisfy; an object's owner beside an owner field. With object states: an object's `states` that name a state of a lifecycle that cannot govern it, two states of one lifecycle that cannot be active together, the state of the process the scenario runs on its subject, or a state that disagrees with the bound value the object gives. With freezing: `attributes` beside a verb other than `read`, or `frozen` on a link of an object other than the subject | |
 | MQ9306 | warning | A guard without an expression is evaluated and the step has no assumption for it, so the replay stops there | |
 | MQ9307 | error | The values a step changed on the object differ from its `expect.values`, keyed by attribute name | **Update expectations from replay** |
+| MQ8101 | error | A trigger point's shape is wrong: no timing on an action, or a timing beside another type; severity beside a type other than check; a condition on an action or a replace; sets on a check; outside on a point with no team code; a with-change action with sets on `delete` that no replace covers; or trigger points on an orchestration or a library | **Remove the key** |
+| MQ8102 | error | A trigger point's place does not fit: states or into-states that are not its lifecycle's, moves that are not its transitions, a place beside a verb it does not suit, or types, attributes, links or set attributes that not every type it covers holds | **Remove the entry** |
+| MQ8103 | error | A replace on a verb that does not allow one: only `delete`, `disconnect`, `copy` and `revise` do | **Make it an action** |
+| MQ8104 | error | Two replaces can apply to one verb on one type. States and conditions are not weighed | Narrow one with its types |
+| MQ8105 | error | An after-commit action with sets | **Make it a with-change action** |
+| MQ8106 | warning | A with-change action that reaches outside systems: a rollback cannot undo the call | **Make it after commit** |
+| MQ8107 | warning | A trigger point that can never run, such as a move verb that no event or transition names | **Remove it** |
+| MQ9310 | error | A step's check warnings or trigger points differ from what it expects | **Update expectations from replay** |
 | MQ9309 | warning | A step is refused as frozen because an earlier step froze the subject or the link (an event that names `freeze`, or a `freeze` step), and it does not expect that refusal. Names the freezing step | **Update expectations from replay** |
 | MQ9308 | error | A refused step's `refusal` or `refusedBy` differs from the replay's: the first check that fails names both | **Update expectations from replay** |
 | MQ9401 | warning | Imported configuration with no place in the model, kept as opaque data and written back on export | |

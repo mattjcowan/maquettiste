@@ -152,7 +152,7 @@ export class MockModel {
    * The expectations a replay of a scenario gives (the process handlers set this: the interpreter needs their actor and
    * object lookups). Null when the replay cannot run to the last step.
    */
-  scenarioReplay: ((process: Json, scenario: Json) => { expects: Json[]; outcome: "final" | "active" } | null) | null = null;
+  scenarioReplay: ((process: Json, scenario: Json, triggerPoints?: boolean) => { expects: Json[]; outcome: "final" | "active" } | null) | null = null;
 
   constructor(
     seed: Seed,
@@ -1084,7 +1084,8 @@ export class MockModel {
         }
         const scenario = existing.json as Json;
         const process = candidate.get(String(scenario.process ?? ""))?.json as Json | undefined;
-        const observed = process && this.scenarioReplay ? this.scenarioReplay(process, scenario) : null;
+        const observed =
+          process && this.scenarioReplay ? this.scenarioReplay(process, scenario, (op as { triggerPoints?: boolean | null }).triggerPoints === true) : null;
         if (!observed) {
           items.push({ outcome: "saved", id: existing.id, hash: existing.hash, current: null, diagnostics: [], referrers: [], changes: null });
           continue;
@@ -1568,6 +1569,8 @@ function e5(json: Json): Partial<ElementSummary> {
     if (verbs.length) out.verbs = verbs;
     // The entries of its rights, inline and uses, only when above zero (maquettiste-index/e13).
     if (Array.isArray(json.rights) && json.rights.length) out.rights = json.rights.length;
+    // The count of its trigger points, only when above zero (trigger-points-design.md section 9); its verbs list theirs too.
+    if (Array.isArray(json.triggerPoints) && json.triggerPoints.length) (out as Record<string, unknown>).triggerPoints = json.triggerPoints.length;
   }
   // A named right's access and the verbs it names (maquettiste-index/e13).
   if (kind === "right") {
@@ -1914,6 +1917,7 @@ function setLifecycleDocs(entries: Map<string, { json: unknown }>, id: string, t
           next.use = "orchestration";
           delete next.rights;
           delete next.rightsDefault;
+          delete next.triggerPoints;
         }
       }
     }

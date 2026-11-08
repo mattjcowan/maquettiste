@@ -1,0 +1,85 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01JTP000000000000000000Q02",
+  "name": "Legal",
+  "package": "01JTP000000000000000000P01",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01JTP000000000000000000B02",
+      "entity": "01JTP000000000000000000E01"
+    }
+  ],
+  "events": [
+    {
+      "id": "01JTP000000000000000000V11",
+      "name": "clear"
+    },
+    {
+      "id": "01JTP000000000000000000V12",
+      "name": "reopen"
+    }
+  ],
+  "triggerPoints": [
+    {
+      "id": "01JTP000000000000000000X11",
+      "name": "LockedOnceCleared",
+      "type": "check",
+      "verbs": [
+        "modify"
+      ],
+      "states": [
+        "01JTP000000000000000000S12"
+      ],
+      "description": "A cleared document is edited only with legal's word."
+    },
+    {
+      "id": "01JTP000000000000000000X12",
+      "name": "ClearPrice",
+      "type": "action",
+      "timing": "with-change",
+      "verbs": [
+        "delete"
+      ],
+      "sets": [
+        {
+          "id": "01JTP000000000000000000Y11",
+          "attribute": "01JTP000000000000000000A03",
+          "value": {
+            "text": "0"
+          }
+        }
+      ]
+    }
+  ],
+  "states": [
+    {
+      "id": "01JTP000000000000000000S11",
+      "name": "Pending"
+    },
+    {
+      "id": "01JTP000000000000000000S12",
+      "name": "Cleared"
+    }
+  ],
+  "initial": "01JTP000000000000000000S11",
+  "transitions": [
+    {
+      "id": "01JTP000000000000000000T11",
+      "source": "01JTP000000000000000000S11",
+      "event": "01JTP000000000000000000V11",
+      "targets": [
+        "01JTP000000000000000000S12"
+      ]
+    },
+    {
+      "id": "01JTP000000000000000000T12",
+      "source": "01JTP000000000000000000S12",
+      "event": "01JTP000000000000000000V12",
+      "targets": [
+        "01JTP000000000000000000S11"
+      ]
+    }
+  ]
+}

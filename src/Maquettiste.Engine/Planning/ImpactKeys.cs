@@ -113,6 +113,8 @@ internal sealed class ImpactKeys
                 && !string.Equals(_before.VerbNamingHash(), _candidate.VerbNamingHash(), StringComparison.Ordinal),
             "rn" => Changes(e => e is Process or Right)
                 && !string.Equals(RightsNaming.Hash(_before), RightsNaming.Hash(_candidate), StringComparison.Ordinal),
+            "tn" => Changes(e => e is Process)
+                && !string.Equals(TriggerNaming.Hash(_before), TriggerNaming.Hash(_candidate), StringComparison.Ordinal),
             "fn" => Changes(e => e is Process or Right)
                 && !string.Equals(FreezingNaming.Hash(_before), FreezingNaming.Hash(_candidate), StringComparison.Ordinal),
             _ => true,

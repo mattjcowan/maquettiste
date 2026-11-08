@@ -16,6 +16,11 @@ export const EFFECT_LABELS = {
   noAttributes: "No attribute is held by every subject, so there is nothing to set.",
   valueHint: "An expression: it may read the context, the object under subject, now(), current_actor() and in_state(...).",
   valuePlaceholder: "for example current_actor() or now()",
+  /** The type line of a condition (a check's, an Only if): it must be true or false, and no answer counts as no. */
+  conditionType: (type: string, nullable: boolean) =>
+    type === "boolean" || type === "unknown"
+      ? `A yes or no condition${nullable ? "; when a value it reads is missing, the answer is no" : ""}`
+      : `Type ${type}: a condition must come out true or false`,
   previewType: (type: string, nullable: boolean) => `Type ${type}${nullable ? ", may be null" : ""}`,
   statesColumn: "States",
   statesHint: "The states this object is in, in the lifecycles that can govern it. One configuration per lifecycle.",

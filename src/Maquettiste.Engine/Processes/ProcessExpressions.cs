@@ -150,7 +150,7 @@ public sealed class ProcessExpressions
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(process);
-        if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process))
+        if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process) && !ExprSites.TriggerData(process))
             return Get(process);
         return ByModel.GetOrCreateValue(model).GetValue(process, p =>
         {
@@ -229,6 +229,31 @@ public sealed class ProcessExpressions
                 var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Right, ExprResolution.ApiColumns(model, entry.Id, path));
                 lowered.Add(Of(entry.Id, js, typed.Typed, ExprSites.ReadsSubject(process, typed.Typed), null));
             }
+
+            // Its trigger points (trigger-points-design.md decision 15): a when under ExprSites.WhenKey, a check's condition under the
+            // point's id, each at a trigger site, and each value a point sets at a trigger set site under the set's id. They read the values
+            // before the verb under old, which EvaluateCondition and EvaluateSet take.
+            foreach (var point in process.TriggerPoints)
+            {
+                foreach (var (key, tree) in new[] { (ExprSites.WhenKey(point.Id), point.When), (point.Id, point.Condition) })
+                {
+                    if (tree is null || ExprResolution.Type(model, process, key) is not { } typed)
+                        continue;
+                    var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Trigger, ExprResolution.ApiColumns(model, point.Id, path));
+                    lowered.Add(Of(key, js, typed.Typed, ExprSites.ReadsSubject(process, typed.Typed), null));
+                }
+
+                IReadOnlyList<ModelAttribute>? members = null;
+                foreach (var set in point.Sets)
+                {
+                    members ??= ExprSites.TriggerMembers(model, process, point, withBound: true).Attributes;
+                    if (members.FirstOrDefault(a => string.Equals(a.Id, set.Attribute, StringComparison.Ordinal)) is not { } attribute
+                        || ExprResolution.Type(model, process, set.Id) is not { } typed)
+                        continue;
+                    var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.TriggerSet, ExprResolution.ApiColumns(model, set.Id, path));
+                    lowered.Add(Of(set.Id, js, typed.Typed, true, new LoweredSet(set.Attribute, attribute.Name, typed.Typed.Type.Kind)));
+                }
+            }
         }
 
         return lowered;
@@ -288,7 +313,7 @@ public sealed class ProcessExpressions
     /// <param name="process">The process.</param>
     /// <returns><see langword="true"/> when they are cached.</returns>
     internal static bool IsCached(ModelSnapshot model, Process process) =>
-        process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process)
+        process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !HasRightConditions(model, process) && !ExprSites.TriggerData(process)
             ? IsCached(process)
             : (ByModel.TryGetValue(model, out var processes) && processes.TryGetValue(process, out _)) || IsCachedByContent(model, process);
 
@@ -512,13 +537,17 @@ public sealed class ProcessExpressionSession : IDisposable
     /// <param name="actor">The acting identity, or <see langword="null"/>.</param>
     /// <param name="seed">The seed of <c>Math.random</c>.</param>
     /// <param name="ct">Cancellation.</param>
+    /// <param name="old">
+    /// At a trigger point's site, the object's values before the verb (trigger-points-design.md decision 14), which <c>old.</c> reads: a JSON
+    /// object by attribute name, or JSON null on <c>create</c>. <see langword="null"/> elsewhere, and the row then holds no <c>old</c>.
+    /// </param>
     /// <returns>The result: a <see cref="bool"/>, or MQ9502 or MQ9503.</returns>
     internal ExpressionResult EvaluateCondition(string id, string label, JsonElement context, JsonElement @event, JsonElement subject, JsonElement? running,
-        string now, string? actor, string seed, CancellationToken ct)
+        string now, string? actor, string seed, CancellationToken ct, JsonElement? old = null)
     {
         if (_pool is null)
             throw new InvalidOperationException($"{label} has no compiled condition.");
-        var row = Row(context, @event, subject, SubjectDefaults, running);
+        var row = Row(context, @event, subject, SubjectDefaults, running, old);
         try
         {
             using var lease = _pool.Rent();
@@ -549,13 +578,14 @@ public sealed class ProcessExpressionSession : IDisposable
     /// <param name="actor">The acting identity, or <see langword="null"/>.</param>
     /// <param name="seed">The seed of <c>Math.random</c>.</param>
     /// <param name="ct">Cancellation.</param>
+    /// <param name="old">At a trigger point's set, the object's values before the verb, as <see cref="EvaluateCondition(string, string, JsonElement, JsonElement, JsonElement, JsonElement?, string, string?, string, CancellationToken, JsonElement?)"/> takes them.</param>
     /// <returns>The result: a <see cref="JsonElement"/>, or MQ9502 or MQ9503.</returns>
     internal ExpressionResult EvaluateSet(string id, string label, JsonElement context, JsonElement @event, JsonElement subject, JsonElement? running,
-        string now, string? actor, string seed, CancellationToken ct)
+        string now, string? actor, string seed, CancellationToken ct, JsonElement? old = null)
     {
         if (_pool is null || !Lowered.TryGetValue(id, out var lowered) || lowered.Set is not { } set)
             throw new InvalidOperationException($"{label} has no compiled set '{id}'.");
-        var row = Row(context, @event, subject, SubjectDefaults, running);
+        var row = Row(context, @event, subject, SubjectDefaults, running, old);
         try
         {
             using var lease = _pool.Rent();
@@ -676,7 +706,10 @@ public sealed class ProcessExpressionSession : IDisposable
     // condition reads one (MQ3102 leaves such a guard unlowered). When a condition of the process reads the object (defaults given), the
     // object follows as subject, each attribute it lacks as its default; a context attribute named subject keeps its place instead.
     // With the running chart's states read by an in_state, they follow at the row's top under $states, a member no attribute can be named.
-    private static JsonElement Row(JsonElement context, JsonElement @event, JsonElement subject, JsonElement? defaults, JsonElement? running)
+    // At a trigger point's site the values before the verb follow under old (trigger-points-design.md decision 14); a trigger point reads no
+    // context, so a context attribute named old gives way to them.
+    private static JsonElement Row(JsonElement context, JsonElement @event, JsonElement subject, JsonElement? defaults, JsonElement? running,
+        JsonElement? old = null)
     {
         var buffer = new System.Buffers.ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer))
@@ -686,9 +719,19 @@ public sealed class ProcessExpressionSession : IDisposable
             {
                 foreach (var member in context.EnumerateObject())
                 {
-                    if (!string.Equals(member.Name, "event", StringComparison.Ordinal))
+                    if (!string.Equals(member.Name, "event", StringComparison.Ordinal)
+                        && !(old is not null && string.Equals(member.Name, ExprSites.OldPrefix, StringComparison.Ordinal)))
                         member.WriteTo(writer);
                 }
+            }
+
+            if (old is { } before)
+            {
+                writer.WritePropertyName(ExprSites.OldPrefix);
+                if (before.ValueKind == JsonValueKind.Object)
+                    before.WriteTo(writer);
+                else
+                    writer.WriteNullValue();
             }
 
             writer.WritePropertyName("event");

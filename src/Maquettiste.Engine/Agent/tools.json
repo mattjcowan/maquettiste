@@ -701,6 +701,75 @@
       }
     },
     {
+      "name": "get_trigger_sequence",
+      "title": "What happens when",
+      "description": "What runs, in order, when a verb happens in a lifecycle: the steps of the fixed order, read from the model without resolving it: {lifecycle, verb, steps: [{order, step, triggerPoint, lifecycle, type, timing, severity, states, targets, transitions, entities, attributes, ends, when, outside}]}. The built-in steps that apply come first (1 frozen, 2 closed-lists, 3 denies, 4 defaults, 5 no-move, 6 guards, 7 signatures), then the trigger points: 8 before (actions that prepare the proposed values before the checks), 9 checks (an error refuses with refusal check and the check as refusedBy, a warning lets the step through and is listed in checkWarnings), 10 effect (the verb's built-in effect, or the replace that takes its place: only delete, disconnect, copy and revise allow one), 11 with-change (actions in the same unit of work, after the effect), 12 after-commit (actions once the change is saved; they may run late or more than once). A trigger point's step carries its id, the lifecycle whose list holds it, its type (check, action or replace), an action's timing (before, with-change or after-commit), a check's severity (error or warning), the places it is narrowed to (states, targets: the states a move enters, transitions, entities, attributes, ends), when: true when it runs only when its when condition holds, and outside: true when the team's code reaches outside systems; members that don't apply are left out. At each moment the asked lifecycle's points come first, then, for an object, link or own verb, every other lifecycle that governs the object, by name, each in its list's order; move, signature and task verbs run only the asked lifecycle's. A condition, a when and a set read the object as it will be through subject. and its values before the verb through old. (null on create). A place not given is left open, but a point narrowed by attributes or ends is listed without them only if it is a check, as a run fails closed. A project without trigger points gets the built-in steps alone. One page, no cursor. A process that is no lifecycle, an unknown verb, or a state, entity or transition the lifecycle doesn't have is bad-request. Nothing is written.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "process": {
+            "description": "The lifecycle's id, name or model path; required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "verb": {
+            "description": "The verb, by key (promote, modify, delete, sign, an own verb ...); required.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "state": {
+            "description": "A state id of the lifecycle the object is in (for a move, its source); every state when absent.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "entity": {
+            "description": "An entity id the lifecycle governs: only the points that run for it.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "attributes": {
+            "description": "Attribute ids the step reads or changes, for read and modify.",
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "default": null
+          },
+          "end": {
+            "description": "A relation end id of the subject, for a verb on a link.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          },
+          "transition": {
+            "description": "A transition id of the lifecycle, for a move verb or sign.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        }
+      }
+    },
+    {
       "name": "list_migrations",
       "title": "Migration facts",
       "description": "The open migration facts (kind migration: one change stored rows must follow per file, recorded by writes), in applied order: by database name, then the order their after links give (ties by id). Each is {id, database, databaseName, order, fact (rename, rekey, change-type, drop, backfill, raw, adopt, baseline, value-map, state-map), state (pending, complete, held, released), stale, missing (the intent a pending fact lacks: conversion, dataCheck, acknowledge, value, skipWhen), summary, object (as recorded), after, path, hash}. stale marks a fact whose effect the model no longer shows (MQ4103): fold_migrations removes it. Complete a pending fact with save_element. The answer is one page, {facts, total, next}: pass next as cursor until it is null. An unknown database or cursor is bad-request.",

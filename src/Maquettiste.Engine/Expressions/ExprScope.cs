@@ -228,9 +228,10 @@ public sealed class ExprScope
     public ExprScope(ExprSiteKind site)
     {
         Site = site;
-        AllowsNow = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right;
-        AllowsNavigation = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right;
-        AllowsActor = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right;
+        AllowsNow = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right or ExprSiteKind.Trigger or ExprSiteKind.TriggerSet;
+        AllowsNavigation = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right or ExprSiteKind.Trigger or ExprSiteKind.TriggerSet;
+        AllowsActor = site is ExprSiteKind.Guard or ExprSiteKind.Set or ExprSiteKind.Right or ExprSiteKind.Trigger or ExprSiteKind.TriggerSet;
+        Old = site is ExprSiteKind.Trigger or ExprSiteKind.TriggerSet ? new ExprContainer() : null;
         _sets = new(StringComparer.Ordinal);
         _refs = new(StringComparer.Ordinal);
         _setsByName = new(StringComparer.Ordinal);
@@ -299,6 +300,13 @@ public sealed class ExprScope
 
     /// <summary>The members and navigations a bare name reaches.</summary>
     public ExprContainer Root { get; } = new();
+
+    /// <summary>
+    /// At a trigger point's site, what <c>old.</c> reads: the object's values before the verb, by the same ids as under <c>subject</c>
+    /// (trigger-points-design.md decision 14). <see langword="null"/> at every other site, where text keeps the meaning it has and the tree's
+    /// <c>old</c> flag is MQ3104.
+    /// </summary>
+    public ExprContainer? Old { get; }
 
     /// <summary>The constraint whose own condition this scope types, or <see langword="null"/>.</summary>
     public string? ConstraintId { get; }

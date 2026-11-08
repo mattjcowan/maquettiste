@@ -193,6 +193,26 @@ public sealed class StereotypeSubjectTests
     }
 
     [Fact]
+    public async Task A_trigger_point_that_reads_or_sets_a_stereotype_attribute_puts_it_in_the_object_row()
+    {
+        // trigger-points-design.md decision 15: a check's condition and when, and a before action's set, are read on the object like a
+        // guard's condition, so the stereotype attributes they read or write join the scenario's row, even with no guard and no action sets.
+        const string Points = $$$"""
+            "triggerPoints":[{"id":"01JPRC00000000000000000961","name":"HasRequester","type":"check","verbs":["promote"],
+               "condition":{"op":"ne","args":[{"path":["{{{RequestedBy}}}"]},{"value":"nobody"}]}},
+             {"id":"01JPRC00000000000000000962","name":"Restart","type":"action","timing":"before","verbs":["promote"],
+               "when":{"op":"ne","args":[{"path":["{{{RequestedBy}}}"]},{"value":""}]},
+               "sets":[{"id":"01JPRC00000000000000000963","attribute":"{{{Reviewers}}}","value":{"null":true}}]}],"events":
+            """;
+        var (h, store) = await OpenAsync(x => x.Write(ApprovalFile, ApprovalProcess(DefaultEntries).Replace("\"events\":", Points, StringComparison.Ordinal)));
+        using var _ = h;
+        await using var __ = store;
+        var model = store.Current!;
+
+        Assert.Equal([RequestedBy, Reviewers], ExprSites.StereotypeAttributesRead(model, model.Get<Process>(Approval)!).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task Unknown_keys_stereotypes_for_other_kinds_and_repeats_are_refused()
     {
         var entries = Entries($$"""{"id":"01JPRX00000000000000000311","stereotype":"nope"}""", $$"""{"id":"01JPRX00000000000000000312","stereotype":"tabled"}""",

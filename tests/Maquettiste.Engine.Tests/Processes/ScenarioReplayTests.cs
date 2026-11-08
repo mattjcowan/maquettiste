@@ -96,7 +96,7 @@ public sealed class ScenarioReplayTests
             "MQ9303" => WithStep(original, 3, s => s with { Expect = s.Expect! with { Context = ImmutableDictionary<string, JsonElement>.Empty.Add("01JQATT0000000000000000202", J(2)) } }),
             "MQ9304" => original with { Outcome = ScenarioOutcome.Active },
             "MQ9305" => WithStep(original, 1, s => s with { Event = "01JQPRX0000000000000000014" }), // an event of the other process
-            _ => WithStep(original, 3, s => s with { Assume = ImmutableDictionary<string, bool>.Empty }),
+            _ => WithStep(original, 3, s => s with { Assume = ImmutableDictionary<string, StepAssumption>.Empty }),
         };
         var replay = Replay(model, broken);
 

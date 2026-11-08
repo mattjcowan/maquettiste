@@ -66,6 +66,7 @@ public sealed class ResolvedNullContractTests
         // Rights (rights-design.md section 6): an inline right and a use share one schema object with a named right's use.
         ["RRight.Name"] = "the named right's name, else the inline entry's; an inline entry without one (MQ9901) resolves as empty",
         ["RRight.DisplayName"] = "the file's displayName, else the name",
+        ["RTriggerPoint.DisplayName"] = "the file's displayName, else the name",
         ["RRight.Access"] = "the named right's or the inline entry's access; an entry with neither is no right and is left out (MQ9901)",
         ["RProcess.RightsDefault"] = "a lifecycle's rightsDefault, else allow (rights-design.md decision 9); allow for a process that is no lifecycle",
         ["RRightUse.Right"] ="the named right a use names, else the inline right the entry states; an entry in neither form is left out (MQ9901)",
@@ -128,6 +129,12 @@ public sealed class ResolvedNullContractTests
         ["RRightUse"] = "rights: ResolvedRightsTests",
         ["RMayRefuse"] = "rights: ResolvedRightsTests",
         ["RAccessCell"] = "rights: ResolvedRightsTests",
+
+        // Trigger points (trigger-points-design.md section 7): no fixture model holds one, so that their golden output stays as it was;
+        // ResolvedTriggerTests resolves them.
+        ["RTriggerPoint"] = "trigger points: ResolvedTriggerTests",
+        ["RTriggerVerb"] = "trigger points: ResolvedTriggerTests",
+        ["RTriggerPointRun"] = "trigger points: the replay's trace, which the simulation fills",
     };
 
     [Fact]

@@ -12,7 +12,7 @@ export interface OwnVerb {
 }
 
 /** Where a verb is named, which decides the order of the picker's groups. */
-export type VerbPlace = "lifecycle-event" | "transition" | "orchestration-event" | "operation" | "right";
+export type VerbPlace = "lifecycle-event" | "transition" | "orchestration-event" | "operation" | "right" | "trigger-point";
 
 export interface VerbOption {
   key: string;
@@ -66,6 +66,8 @@ const GROUP_ORDER: Record<VerbPlace, (BuiltInVerbGroup | "own" | "rest")[]> = {
   operation: ["object", "link", "own", "rest"],
   // A right speaks of the object, its links and the project's own verbs first (rights-design.md section 10).
   right: ["object", "link", "own", "rest"],
+  // A trigger point speaks of the same verbs a right does.
+  "trigger-point": ["object", "link", "own", "rest"],
 };
 
 /**

@@ -99,6 +99,7 @@ internal static partial class BuiltinRules
 
         VerbRules.Check(context, element, report);
         RightRules.Check(context, element, report);
+        TriggerRules.Check(context, element, report);
     }
 
     // ---- MQ3022: a package diagram without a package ----
@@ -146,8 +147,9 @@ internal static partial class BuiltinRules
             if (!reference.IsAny && !reference.IndexKinds.Contains(entry.Kind, StringComparer.Ordinal)
                 && !reference.Targets.Any(k => KindInfo.Get(k).Name == entry.Kind))
             {
-                var expected = string.Join(" or ", reference.Targets.Select(k => KindInfo.Get(k).Name).Concat(reference.IndexKinds));
-                report.Add("MQ2002", $"'{JsonName(site)}' references '{site.Value}', {Article(entry.Kind)} {entry.Kind}; expected {Article(expected)} {expected}.", site.Pointer, site.FromId);
+                var expected = string.Join(" or ", reference.Targets.Select(k => KindInfo.Get(k).Name).Concat(reference.IndexKinds.Select(KindWord)));
+                var found = KindWord(entry.Kind);
+                report.Add("MQ2002", $"'{JsonName(site)}' references '{site.Value}', {Article(found)} {found}; expected {Article(expected)} {expected}.", site.Pointer, site.FromId);
             }
         }
     }
@@ -429,6 +431,9 @@ internal static partial class BuiltinRules
     /// <param name="noun">The noun.</param>
     /// <returns>The article.</returns>
     public static string Article(string noun) => noun.Length > 0 && "aeiou".Contains(noun[0], StringComparison.Ordinal) ? "an" : "a";
+
+    // An index kind as MQ2002 words it: an entry of a lifecycle's trigger points is a trigger point (trigger-points-design.md section 9).
+    private static string KindWord(string kind) => kind == "process-trigger-point" ? "trigger point" : kind;
 
     // ---- MQ2003, MQ2004, MQ2006: stereotypes and tags on any element or sub-element ----
 

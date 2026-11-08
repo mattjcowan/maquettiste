@@ -25,6 +25,7 @@ const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
 /** The built-in type keywords (schemas/v1/common.json builtinType): a type slot holding one names no element. */
 const BUILTIN: ReadonlySet<string> = new Set(BUILTIN_TYPES);
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 
 function attributeRefs(owner: string, base: string, attributes: unknown, out: Ref[]): void {
   arr(attributes).forEach((a, i) => {
@@ -117,7 +118,7 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
       if (!verb) continue;
       const base = { fromId: use.holder ?? id, pointer: use.pointer, field: "verb", toId: verb };
       // A right's verbs are a list: the entry leaves it, and the right goes with its last verb (rights-design.md section 8).
-      const at = use.owner === "right" ? rightVerbAt(doc, use.pointer) : null;
+      const at = use.owner === "right" || use.owner === "trigger-point" ? rightVerbAt(doc, use.pointer) : null;
       if (!at) out.push({ ...base, required: false });
       else if (!at.last) out.push({ ...base, required: false, removeItem: use.pointer });
       else if (at.whole) out.push({ ...base, required: false, removeItem: at.right, drops: true });
@@ -261,6 +262,8 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
         if (to) out.push({ fromId: str(r.id) ?? id, pointer: `${at}/right`, field: "right", toId: to, required: false, removeItem: at, drops: true });
         else rightRefs(out, r, at, str(r.id) ?? id, true, own);
       });
+      // The lifecycle's trigger points (trigger-points-design.md section 9): what they name, and the ids in their expressions and sets.
+      arr(doc.triggerPoints).forEach((t, i) => triggerRefs(out, t, `/triggerPoints/${i}`, str(t.id) ?? id, own));
       const bound = rows && doc.use === "lifecycle" ? subjectsOf(doc).filter((e) => e.boundAttribute) : [];
       const states = (list: unknown, base: string) =>
         arr(list).forEach((st, i) => {
@@ -311,6 +314,24 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
               removeItem: `/participants/${i}/holds/${j}`,
             });
         });
+      });
+      // A step's assume words are keyed by the id of a check (trigger-points-design.md decision 26): a delete clears the entry. Boolean
+      // entries are guards' and stay as they are.
+      arr(doc.steps).forEach((st, i) => {
+        const assume = st.assume;
+        if (assume && typeof assume === "object")
+          for (const [key, value] of Object.entries(assume as Json))
+            if (typeof value === "string")
+              out.push({ fromId: str(st.id) ?? id, pointer: `/steps/${i}/assume/${key}`, field: "assume", toId: key, required: false });
+      });
+      // The checks a step expects to have warned, and the trigger points it expects to have run, are listed by id: a delete clears the item.
+      arr(doc.steps).forEach((st, i) => {
+        const expect = st.expect as Json | undefined;
+        for (const list of ["checkWarnings", "triggerPoints"] as const)
+          strings(expect?.[list]).forEach((to, j) => {
+            const pointer = `/steps/${i}/expect/${list}/${j}`;
+            out.push({ fromId: str(st.id) ?? id, pointer, field: list, toId: to, required: false, removeItem: pointer });
+          });
       });
       // A step's expected values are keyed by attribute id: a delete clears the key.
       arr(doc.steps).forEach((st, i) => {
@@ -383,12 +404,47 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
   return out;
 }
 
-/** Where a right's verb sits: whether it is the last of its list, the right's pointer and whether the right is an entry of a lifecycle. */
+/**
+ * Where a right's or a trigger point's verb sits: whether it is the last of its list, the entry's pointer and whether the entry
+ * is an entry of a lifecycle (a named right is a document of its own).
+ */
 function rightVerbAt(doc: Json, pointer: string): { last: boolean; right: string; whole: boolean } | null {
-  const m = /^(\/rights\/\d+|)\/verbs\/\d+$/.exec(pointer);
+  const m = /^((?:\/rights|\/triggerPoints)\/\d+|)\/verbs\/\d+$/.exec(pointer);
   if (!m) return null;
-  const holder = m[1] === "" ? doc : arr(doc.rights)[Number(m[1].slice(8))];
+  const list = m[1].startsWith("/triggerPoints") ? doc.triggerPoints : doc.rights;
+  const holder = m[1] === "" ? doc : arr(list)[Number(m[1].split("/")[2])];
   return { last: arr(holder?.verbs).length === 1, right: m[1], whole: m[1] !== "" };
+}
+
+/**
+ * What a trigger point names besides verbs and states: its entities, attributes and ends, the ids in its `when` and condition, and
+ * its sets. An item leaves its list; the last one takes the trigger point with it, since an empty list would widen it to
+ * everywhere. A deleted id in an expression takes the point too (remove-references refuses; the cascade takes it by `required`).
+ * A set's attribute, or an id in its value, takes the set, and the point keeps its other sets.
+ */
+function triggerRefs(out: Ref[], point: Json, base: string, holder: string, own: ReadonlySet<string>): void {
+  const add = (pointer: string, field: string, to: unknown, item: string | null, alone: boolean, required = false) => {
+    const toId = str(to);
+    if (!toId || own.has(toId) || toId === holder) return;
+    if (required) out.push({ fromId: holder, pointer, field, toId, required: true });
+    else if (alone) out.push({ fromId: holder, pointer, field, toId, required: false, removeItem: base, drops: true });
+    else out.push({ fromId: holder, pointer, field, toId, required: false, ...(item ? { removeItem: item } : {}) });
+  };
+  for (const field of ["entities", "attributes", "ends"] as const) {
+    const list = arr(point[field]) as unknown as string[];
+    list.forEach((to, j) => add(`${base}/${field}/${j}`, field, to, `${base}/${field}/${j}`, list.length === 1));
+  }
+  for (const field of ["when", "condition"] as const) treeIds(point[field], `${base}/${field}`, (pointer, f, to) => add(pointer, f, to, null, true, true));
+  arr(point.sets).forEach((set, j) => {
+    const at = `${base}/sets/${j}`;
+    const setHolder = str(set.id) ?? holder;
+    const drop = (pointer: string, field: string, to: unknown) => {
+      const t = str(to);
+      if (t && !own.has(t)) out.push({ fromId: setHolder, pointer, field, toId: t, required: false, removeItem: at, drops: true });
+    };
+    drop(`${at}/attribute`, "attribute", set.attribute);
+    treeIds(set.value, `${at}/value`, drop);
+  });
 }
 
 /**
@@ -449,6 +505,8 @@ export function subElementIds(doc: Json): string[] {
     collect(doc.guards);
     collect(doc.actions);
     collect(doc.rights);
+    collect(doc.triggerPoints);
+    arr(doc.triggerPoints).forEach((t) => collect(t.sets));
     arr(doc.actions).forEach((a) => collect(a.sets));
     const states = (list: unknown) =>
       arr(list).forEach((st) => {

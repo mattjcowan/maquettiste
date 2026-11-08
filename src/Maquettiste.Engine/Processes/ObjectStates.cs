@@ -44,7 +44,7 @@ internal static class ObjectStates
     /// <returns>The reads.</returns>
     internal static IReadOnlyList<StateRead> Reads(ModelSnapshot model, Process process)
     {
-        if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process))
+        if (process.Guards.All(g => g.Condition is null) && !ExprSites.SetsData(process) && !ExprSites.TriggerData(process))
             return [];
         return ReadsByModel.GetValue(model, static _ => new()).GetValue(process, p =>
         {

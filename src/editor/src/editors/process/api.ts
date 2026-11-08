@@ -134,10 +134,16 @@ export async function applySyncEnum(qc: QueryClient, store: EditorStore, process
   return result;
 }
 
-/** Rewrites a scenario's expectations from a replay (refresh-scenario); null when saved, else the refusal. */
-export async function refreshScenario(qc: QueryClient, store: EditorStore, scenario: string): Promise<string | null> {
+/**
+ * Rewrites a scenario's expectations from a replay (refresh-scenario); null when saved, else the refusal. `triggerPoints` also writes each
+ * step's `expect.triggerPoints` in the same update (trigger-points-design.md decision 28); without it they are rewritten only where a step
+ * already expects them.
+ */
+export async function refreshScenario(qc: QueryClient, store: EditorStore, scenario: string, triggerPoints = false): Promise<string | null> {
   const before = await endpoints.getElement(scenario);
-  const result = await endpoints.applyBatch({ operations: [{ op: "refresh-scenario", id: scenario }] } as never);
+  const result = await endpoints.applyBatch({
+    operations: [{ op: "refresh-scenario", id: scenario, ...(triggerPoints ? { triggerPoints: true } : {}) }],
+  } as never);
   if (!endpoints.isBatchResult(result)) return result.diagnostics[0]?.message ?? "The batch did not parse.";
   if (result.outcome !== "saved") return result.items.find((i) => i.outcome !== "saved")?.diagnostics[0]?.message ?? result.outcome;
   applyBatchResult(qc, result);
@@ -349,6 +355,25 @@ export async function stereotypeEnumPlan(process: string, enumId: string): Promi
 }
 
 export type RightsAnswer = { rightsDefault: "allow" | "deny"; rows: components["schemas"]["RightsRow"][] };
+
+export type TriggerSequenceAnswer = components["schemas"]["TriggerSequence"];
+
+/** What runs, in order, when a verb happens in a lifecycle (`get_trigger_sequence`): the answer is shown as given, never worked out here. */
+export async function getTriggerSequence(
+  process: string,
+  query: { verb: string; state?: string; entity?: string },
+  signal?: AbortSignal,
+): Promise<TriggerSequenceAnswer> {
+  const { data, response } = await api().GET("/api/processes/{id}/trigger-sequence", {
+    params: {
+      path: { id: process },
+      query: { verb: query.verb, ...(query.state ? { state: query.state } : {}), ...(query.entity ? { entity: query.entity } : {}) },
+    },
+    signal,
+  });
+  if (!data) throw new ApiProblem(response.status, null, `HTTP ${response.status}`);
+  return data;
+}
 
 /** Who can do what in a lifecycle (`get_rights`): every page of rows, read from the saved lifecycle. */
 export async function getRights(process: string, signal?: AbortSignal, frozen = false): Promise<RightsAnswer> {

@@ -217,6 +217,17 @@ must equal its bound enum's members, in order (MQ9203).
   While frozen, `modify`, `connect`, `disconnect`, `delete` are refused before any right (`refusal: "frozen"`, no `refusedBy`); moves, `revise` and the rest are not. A right's `whileFrozen: true` holds only while frozen.
   MQ9309 warns when a step is refused as frozen after an earlier freeze; `verify_scenarios` gives it in `warnings`. Naming `freeze` is the opt-in; never add it unasked.
   Attributes: a right's `attributes` (ids every subject holds, only with `read` and `modify`, never with `ends`, MQ9903) speak of those attributes, each checked on its own; unknown attributes fail closed. A `read` step may name `attributes` (MQ9305 beside other verbs).
+- Trigger points (lifecycles only, MQ8101): `triggerPoints`, each `{ id, name, type: check|action|replace, verbs (at least one), timing?, severity?, states?, targets?, transitions?, entities?, attributes?, ends?, when?, condition?, sets?, outside?, description? }`.
+  Names are unique among the lifecycle's trigger points and its process's guards (MQ3001). A check has a `condition` (only true passes) or none (the team's code), `severity` `error` (default) or `warning`, and
+  `description` is its message. An action needs `timing` (`before`, `with-change`, `after-commit`) and has `sets` or none; `before` fills values and cannot refuse; an after-commit action sets nothing (MQ8105);
+  `outside: true` only on team code, warned on a with-change action (MQ8106). A replace (`delete`, `disconnect`, `copy`, `revise` only, MQ8103; one per verb and entity, MQ8104) takes the place of the built-in effect.
+  Places narrow it: `states` (a move's source), `targets` (states a move enters), `transitions` (for `sign`, their gates), `entities`, `attributes` (only `read`, `modify`), `ends` (link verbs); a key that does not fit its verbs
+  is MQ8102; a move verb no event names is MQ8107. `when`, `condition` and set values read `subject.x`, `old.x` (values before the verb; only here, MQ3104), `current_actor()`, `now()`, `in_state`; never the context.
+  Order: frozen, rights, guards, signatures, then before actions, checks, the effect or replace, with-change actions, after-commit actions. A check that refuses a move leaves it out like a false guard (refusal `check`, `refusedBy`
+  the trigger point); an automatic move it refuses is untaken and the step before stays accepted; a refused completing signature is uncounted and audited `refused`. An event that names `delete` still does its move; a replace never runs for it.
+  What a trigger point sets is part of the verb: rights and freezing judge the actor's own step. In a scenario, `assume` maps a team-code check (no `condition`) to `pass`, `warning` or `error` (MQ9305 otherwise); a step may
+  expect `checkWarnings` and `triggerPoints` (MQ9310); a `create` step may give `values`. An action written as team code fills nothing in a replay, so give a check the values it reads on the step. `get_trigger_sequence`
+  (`process`, `verb`, `state`, `entity`, `attributes`, `end`, `transition`) lists what runs, in order. `record_scenario` writes `triggerPoints` only with `triggerPoints: true`. Never add trigger points unasked.
 
 - Tools: `simulate_process` runs inputs through the engine's interpreter and keeps no state (send the whole input list each
   time; `enabled` says what can happen next); `record_scenario` saves a run as a scenario with every step's expectations

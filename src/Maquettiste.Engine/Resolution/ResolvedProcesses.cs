@@ -133,6 +133,19 @@ public sealed class RProcess : RElement
 
     /// <summary>The grid's rows, worked out on first read (<see cref="AccessGrid"/>); <see langword="null"/> when there are none to work out.</summary>
     internal Lazy<RList<RAccessCell>>? AccessGridSource { get; set; }
+
+    /// <summary>
+    /// A lifecycle's trigger points in file order, which is the order they run in at each moment (trigger-points-design.md section 7). Empty
+    /// for a process that is no lifecycle. The list keys on the process's file.
+    /// </summary>
+    public RList<RTriggerPoint> TriggerPoints { get; internal set; } = RList<RTriggerPoint>.Empty;
+
+    /// <summary>
+    /// A lifecycle's trigger points per verb (trigger-points-design.md section 7): one entry for each verb its points name, built-in verbs in
+    /// their table's order, then the project's own verbs in the vocabulary's order, each with its points by moment in run order. Only this
+    /// lifecycle's points: others join at run time. Empty without trigger points. The list keys on the process's file.
+    /// </summary>
+    public RList<RTriggerVerb> TriggerVerbs { get; internal set; } = RList<RTriggerVerb>.Empty;
 }
 
 /// <summary>The members common to the nodes of a process: states, transitions, events, guards, actions, invokes, gates, meanings.</summary>
@@ -799,7 +812,12 @@ public sealed class RStep : RObject
     /// <summary>Payload values by attribute name (by id when the attribute does not resolve), as plain values.</summary>
     public IReadOnlyDictionary<string, object?> Payload { get; internal set; } = FrozenDictionary<string, object?>.Empty;
 
-    /// <summary>Results for guards without an expression, by guard name (by id when the guard does not resolve).</summary>
+    /// <summary>
+    /// Results for guards without an expression, as booleans, by guard name (by id when the guard does not resolve); and outcomes for checks
+    /// the team writes, as the words <c>pass</c>, <c>warning</c> and <c>error</c> (trigger-points-design.md decision 26), by trigger point name:
+    /// another lifecycle's check as <c>Lifecycle.Name</c>, or by the lifecycle's id in place of its name when two lifecycles the scenario
+    /// reaches share a name.
+    /// </summary>
     public IReadOnlyDictionary<string, object?> Assume { get; internal set; } = FrozenDictionary<string, object?>.Empty;
 
     /// <summary>
@@ -809,8 +827,9 @@ public sealed class RStep : RObject
     public RVerb? Verb { get; internal set; }
 
     /// <summary>
-    /// For a <c>modify</c> verb step on the subject: the values it sets, by attribute name (by id when the attribute does not resolve), as
-    /// plain values; empty when the file gives none.
+    /// For a <c>modify</c> verb step on the subject: the values it sets; for a <c>create</c> verb step, the new object's values
+    /// (trigger-points-design.md decision 27); by attribute name (by id when the attribute does not resolve), as plain values; empty when the
+    /// file gives none.
     /// </summary>
     public IReadOnlyDictionary<string, object?> Values { get; internal set; } = FrozenDictionary<string, object?>.Empty;
 
@@ -871,6 +890,15 @@ public sealed class RStepTrace
     /// asks the rights check for a verb step answers its resolver from these.
     /// </summary>
     public IReadOnlyList<RActor> ObjectActors { get; internal set; } = [];
+
+    /// <summary>
+    /// The trigger points whose places matched, in run order, each with what it did (trigger-points-design.md decision 28); empty when none
+    /// matched.
+    /// </summary>
+    public IReadOnlyList<RTriggerPointRun> TriggerPoints { get; internal set; } = [];
+
+    /// <summary>The checks that warned, each once, in the order it first warned (trigger-points-design.md decision 28); empty when none did.</summary>
+    public IReadOnlyList<RTriggerPoint> CheckWarnings { get; internal set; } = [];
 }
 
 /// <summary>What a scenario step expects.</summary>
@@ -905,4 +933,16 @@ public sealed class RExpectation
     /// resolve), as plain values; empty when the file gives none.
     /// </summary>
     public IReadOnlyDictionary<string, object?> Values { get; internal set; } = FrozenDictionary<string, object?>.Empty;
+
+    /// <summary>
+    /// Exactly the checks expected to warn, each once (trigger-points-design.md decision 28); empty when the file expects none or checks
+    /// nothing. An id that does not resolve is left out.
+    /// </summary>
+    public RList<RTriggerPoint> CheckWarnings { get; internal set; } = RList<RTriggerPoint>.Empty;
+
+    /// <summary>
+    /// Exactly the trigger points expected to run, in run order, repeats included (trigger-points-design.md decision 28); empty when the file
+    /// expects none or checks nothing. An id that does not resolve is left out.
+    /// </summary>
+    public RList<RTriggerPoint> TriggerPoints { get; internal set; } = RList<RTriggerPoint>.Empty;
 }

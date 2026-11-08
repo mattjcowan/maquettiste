@@ -5,13 +5,14 @@
 // Rows are ROW_H high (--mq-row-h); a row's problems show as a badge on its first cell, a cell's marker on the cell.
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Plus, Trash2 } from "lucide-react";
+import { GripVertical, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { DEFINITION_HINT } from "@/inspector/definition";
 import { SEVERITY_ICON, SEVERITY_TONE } from "@/problems/findings";
 
-export type CellKind = "text" | "select" | "toggle" | "multi" | "pick" | "readonly";
+/** A `popover` cell opens a dialog of its own (`onOpen`) in place of an inline editor: Enter, F2, Space or a double click. */
+export type CellKind = "text" | "select" | "toggle" | "multi" | "pick" | "readonly" | "popover";
 
 export interface GridOption {
   value: string;
@@ -70,8 +71,12 @@ export interface GridColumn<R> {
   marker?: (row: R) => { rule: string; message: string } | null;
   /** The element or process node the cell references: F12 goes to it, Shift+F12 lists where it is used. */
   definition?: (row: R) => GridTarget | null;
+  /** What an empty text cell says while it is edited (the format it takes). */
+  placeholder?: string;
   /** A tooltip on the cell (a marker's message wins). */
   cellTitle?: (row: R) => string | undefined;
+  /** A popover cell's dialog: opened by the keys and the double click that start an edit. */
+  onOpen?: (row: R) => void;
   /** What a click on the cell also does (a locked cell that stands for something else, such as a transition's verb that is its event's). */
   onCellClick?: (row: R) => void;
   /** Custom content in place of the text (badges). */
@@ -104,6 +109,8 @@ export interface GridProps<R extends { id: string }> {
   empty?: string;
   /** Extra buttons beside Add. */
   toolbar?: ReactNode;
+  /** Rows can be dragged (by the handle) or moved with Alt+Up and Alt+Down: the row and the index it moves to. */
+  onReorder?: (row: R, to: number) => void;
   /** The Add button's text when it asks something first ("Add right…"); defaults to "Add <noun>". */
   addLabel?: string;
 }
@@ -130,7 +137,9 @@ export function Grid<R extends { id: string }>({
   empty,
   toolbar,
   addLabel,
+  onReorder,
 }: GridProps<R>) {
+  const [dragging, setDragging] = useState<string | null>(null);
   const [active, setActive] = useState({ row: 0, col: 0 });
   const [editing, setEditing] = useState<{ value: string; select?: boolean } | null>(null);
   const gridRef = useRef<HTMLTableElement>(null);
@@ -190,6 +199,10 @@ export function Grid<R extends { id: string }>({
       onCommit!(row, column.key, !column.on?.(row));
       return;
     }
+    if (kind === "popover") {
+      column.onOpen?.(row);
+      return;
+    }
     keyedSelect.current = false;
     setEditing({ value: initial ?? (column.editValue ?? column.value)(row), select: initial === undefined && kind !== "select" });
     pendingFocus.current = true;
@@ -232,6 +245,18 @@ export function Grid<R extends { id: string }>({
       e.preventDefault();
       onRemove(row);
       focusCell(r - 1, c);
+      return;
+    }
+    if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown") && onReorder && row) {
+      e.preventDefault();
+      const to = r + (e.key === "ArrowUp" ? -1 : 1);
+      if (to >= 0 && to < rows.length) {
+        onReorder(row, to);
+        // The moved row stays the active, selected one (focusCell would select the row now at `to`, which is the other one).
+        setActive({ row: to, col: c });
+        pendingFocus.current = true;
+        onSelect?.(row);
+      }
       return;
     }
     const moves: Record<string, [number, number]> = { ArrowDown: [1, 0], ArrowUp: [-1, 0], ArrowRight: [0, 1], ArrowLeft: [0, -1] };
@@ -294,8 +319,8 @@ export function Grid<R extends { id: string }>({
                   {c.label}
                 </th>
               ))}
-              {onRemove || actions ? (
-                <th className="w-8">
+              {onRemove || actions || onReorder ? (
+                <th className="sticky right-0 z-10 w-8 bg-app">
                   <span className="sr-only">Actions</span>
                 </th>
               ) : null}
@@ -305,7 +330,24 @@ export function Grid<R extends { id: string }>({
             {rows.map((row, r) => {
               const rowProblems = problems?.(row) ?? [];
               return (
-                <tr key={row.id} className="h-[var(--mq-row-h)] border-t border-default" data-testid={`${testid}-row`} data-id={row.id} aria-rowindex={r + 2}>
+                <tr
+                  key={row.id}
+                  className={cn("h-[var(--mq-row-h)] border-t border-default", dragging === row.id && "opacity-50")}
+                  data-testid={`${testid}-row`}
+                  data-id={row.id}
+                  aria-rowindex={r + 2}
+                  onDragOver={onReorder && dragging ? (e) => e.preventDefault() : undefined}
+                  onDrop={
+                    onReorder && dragging
+                      ? (e) => {
+                          e.preventDefault();
+                          const moved = rows.find((x) => x.id === dragging);
+                          setDragging(null);
+                          if (moved && moved.id !== row.id) onReorder(moved, r);
+                        }
+                      : undefined
+                  }
+                >
                   {columns.map((column, c) => {
                     const isActive = active.row === r && active.col === c;
                     const isEditing = isActive && editing !== null;
@@ -355,10 +397,6 @@ export function Grid<R extends { id: string }>({
                               value={editing.value}
                               onChange={(value) => setEditing({ value })}
                               onDone={(move) => commit(move)}
-                              onCancel={() => {
-                                setEditing(null);
-                                focusCell(active.row, active.col);
-                              }}
                             />
                           ) : kind === "select" ? (
                             <select
@@ -395,6 +433,7 @@ export function Grid<R extends { id: string }>({
                               aria-label={`${column.label} of ${rowName(row)}`}
                               className={cn("h-6 w-full rounded-[4px] border border-input bg-surface px-1 text-12", column.mono && "font-mono")}
                               value={editing.value}
+                              placeholder={column.placeholder}
                               title={kind === "multi" ? `Comma-separated: ${(column.options?.(row) ?? []).map((o) => o.label).join(", ")}` : undefined}
                               onChange={(e) => setEditing({ value: e.target.value })}
                               onKeyDown={onEditorKeyDown}
@@ -431,9 +470,27 @@ export function Grid<R extends { id: string }>({
                       </td>
                     );
                   })}
-                  {onRemove || actions ? (
-                    <td className="whitespace-nowrap px-1">
+                  {onRemove || actions || onReorder ? (
+                    <td className="sticky right-0 z-10 whitespace-nowrap bg-surface px-1 shadow-[-1px_0_0_var(--mq-border-default)]">
                       <span className="flex items-center justify-end gap-0.5">
+                        {onReorder ? (
+                          <span
+                            draggable
+                            role="img"
+                            title={`Drag to move ${noun} ${rowName(row)}, or press Alt+Up or Alt+Down on a cell`}
+                            aria-label={`Move ${noun} ${rowName(row)}`}
+                            data-testid={`${testid}-drag`}
+                            className="inline-flex size-5 cursor-grab items-center justify-center text-secondary"
+                            onDragStart={(e) => {
+                              e.dataTransfer.effectAllowed = "move";
+                              e.dataTransfer.setData("text/plain", row.id);
+                              setDragging(row.id);
+                            }}
+                            onDragEnd={() => setDragging(null)}
+                          >
+                            <GripVertical className="size-3.5" />
+                          </span>
+                        ) : null}
                         {actions?.(row)}
                         {onRemove ? (
                           <Button variant="ghost" size="icon-row" label={`Remove ${noun} ${rowName(row)}`} onClick={() => onRemove(row)} tabIndex={-1}>
@@ -471,7 +528,7 @@ export function Grid<R extends { id: string }>({
   );
 }
 
-/** A pick cell's editor: a checklist, grouped, under the cell. Enter or leaving it commits; Escape cancels. */
+/** A pick cell's editor: a checklist, grouped, under the cell. Enter, Escape or leaving it keeps what is ticked. */
 function PickEditor({
   label,
   anchor,
@@ -479,7 +536,6 @@ function PickEditor({
   value,
   onChange,
   onDone,
-  onCancel,
 }: {
   label: string;
   /** The cell the checklist opens under. */
@@ -488,7 +544,6 @@ function PickEditor({
   value: string;
   onChange: (value: string) => void;
   onDone: (move: "none" | "blur") => void;
-  onCancel: () => void;
 }) {
   const chosen = new Set(value.split(",").filter(Boolean));
   const toggle = (id: string) => {
@@ -538,11 +593,8 @@ function PickEditor({
       onDoubleClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.key === "Escape") {
-          e.preventDefault();
-          settled.current = true;
-          onCancel();
-        } else if (e.key === "Enter") {
+        // The boxes change the choice as they are ticked, so Escape closes the list and keeps it, as a click outside does.
+        if (e.key === "Escape" || e.key === "Enter") {
           e.preventDefault();
           settled.current = true;
           onDone("none");

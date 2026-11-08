@@ -102,6 +102,9 @@ public sealed class ResolvedCoverageTests
         new("process right", "process.json", "$defs/right", typeof(RRightUse)),
         new("inline right", "process.json", "$defs/right", typeof(RRight)),
 
+        // Trigger points (trigger-points-design.md section 7): an entry of a lifecycle's triggerPoints.
+        new("trigger point", "process.json", "$defs/triggerPoint", typeof(RTriggerPoint)),
+
         // Vocabularies, mappings and diagrams.
         new("stereotype", "stereotype.json", "", typeof(RStereotypeDefinition)),
         new("category", "category-tree.json", "categories/[]", typeof(RCategory)),

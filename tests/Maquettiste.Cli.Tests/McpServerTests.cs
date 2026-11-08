@@ -13,7 +13,7 @@ public sealed class McpSurfaceTests
         "apply_batch", "apply_plan", "compare_snapshots", "create_element", "create_seed", "create_snapshot", "delete_element", "delete_extension_file", "delete_pack", "delete_pack_file", "explain_unit",
         "export_process", "export_seed_csv", "fold_migrations", "format_model", "generate", "get_binding_drift", "get_calculated", "get_database_view", "get_element", "get_elements", "get_ledger_ddl", "get_materialize_status", "get_model_index", "get_model_kinds", "get_pack",
         "get_pack_exports", "get_pack_outputs", "get_plan", "get_plan_diff", "get_project", "get_references", "get_resolved_model", "get_rights", "get_schema", "get_settings", "get_template_context",
-        "get_translations", "import_process", "import_seed_csv", "list_extension_files", "list_migrations", "list_pack_files", "list_packs", "list_snapshots", "list_validation_rules",
+        "get_translations", "get_trigger_sequence", "import_process", "import_seed_csv", "list_extension_files", "list_migrations", "list_pack_files", "list_packs", "list_snapshots", "list_validation_rules",
         "localization_status", "move_extension_file", "move_pack_file", "new_pack", "patch_element", "plan", "preview_binding_sql", "preview_expression", "preview_materialize", "preview_query_sql", "preview_seed_rows", "preview_unit", "read_extension_file", "read_pack_file", "record_scenario",
         "reference_type_usage", "rename_pack", "restore_snapshot", "save_element", "save_pack", "save_pack_settings", "save_settings", "set_translations", "simulate_process",
         "sync_enum_from_process", "tag_usage", "test_pack", "unit_paths", "validate", "verify_scenarios", "write_extension_file", "write_pack_file",
@@ -55,7 +55,7 @@ public sealed class McpSurfaceTests
         var ct = TestContext.Current.CancellationToken;
         await using var session = await McpSession.StartAsync(ct: ct);
         var tools = await session.Client.ListToolsAsync(cancellationToken: ct);
-        Assert.Equal(32, Engine.AgentTools.All.Count);
+        Assert.Equal(33, Engine.AgentTools.All.Count);
         foreach (var tool in Engine.AgentTools.All)
         {
             var listed = tools.Single(t => t.Name == tool.Name).ProtocolTool;

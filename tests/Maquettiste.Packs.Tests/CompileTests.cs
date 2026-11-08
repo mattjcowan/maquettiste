@@ -373,6 +373,267 @@ public sealed class CompileTests
     }
 
     [Fact]
+    public async Task Trigger_points_compile_and_run_in_the_order_the_design_gives()
+    {
+        // trigger-points-design.md section 15: TriggerPoints.cs, the step methods, the three static classes (points named CheckModify, X
+        // beside XWhen, and DocumentTriggerPoints in lifecycle Document), the interpreter's rows, DocumentVerbs and DocumentVerbDone, the
+        // outbox messages with stable ids, the depth guard and the scenario test build with warnings as errors and run. The project has no
+        // rights, so RefusedBy is written for trigger points alone. A second lifecycle, Legal, governs the document with a check on modify
+        // narrowed to a state and a with-change action with sets on delete, so the runner and Document's event that names delete run its
+        // points too (decision 11). The team's half here stands in for the object with static values.
+        using var repo = PackRepo.TriggerPoints();
+        await repo.GenerateCleanlyAsync();
+        Golden.AssertMatches(Path.Combine(Fixtures.RepoRoot, "packs", "csharp-dapper", "tests", "trigger-points", "expected"), repo.PathOf("out"));
+        Assert.False(File.Exists(repo.PathOf("out/Processes/Rights.cs")));
+        var steps = repo.Read("out/Processes/Document/DocumentTriggerPoints.g.cs");
+        Assert.Contains("public void CheckModify(TriggerPointCall call, TriggerPointOutcome outcome)", steps, StringComparison.Ordinal);
+        Assert.Contains("public static partial bool DocumentTriggerPointsValue(TriggerPointCall call);", steps, StringComparison.Ordinal);
+        Assert.Contains("public static partial bool X(TriggerPointCall call);", steps, StringComparison.Ordinal);
+        Assert.Contains("public static partial void XWhen(TriggerPointCall call);", steps, StringComparison.Ordinal);
+        Assert.Contains("triggerSteps: [new DocumentTriggerSteps(), new global::App.Model.Docs.LegalTriggerSteps()]", repo.Read("out/Processes/Document/DocumentDefinition.cs"), StringComparison.Ordinal);
+        Assert.Contains("triggerSteps: [new LegalTriggerSteps()]", repo.Read("out/Processes/Legal/LegalDefinition.cs"), StringComparison.Ordinal);
+        Assert.Contains("ILifecycleStates<DocumentContext>", repo.Read("out/Processes/Document/DocumentHandlers.g.cs"), StringComparison.Ordinal);
+        Assert.DoesNotContain("ILifecycleStates", repo.Read("out/Processes/Legal/LegalHandlers.g.cs"), StringComparison.Ordinal);
+        var release = repo.Read("out/Tests/Document/ReleaseTests.cs");
+        Assert.Contains("var outcome2 = await new global::App.Model.Docs.DocumentVerbs(", release, StringComparison.Ordinal);
+        Assert.Contains("Proposed = new Dictionary<string, object?>(StringComparer.Ordinal) { [\"price\"] = 80m, [\"title\"] = \"Pump spec\" },", release, StringComparison.Ordinal);
+        Assert.Contains("ScenarioTriggers.Assumed = new Dictionary<string, string>(StringComparer.Ordinal) { [\"01JTP000000000000000000X10\"] = \"error\" };", release, StringComparison.Ordinal);
+        Assert.Contains("public sealed class ScenarioTriggers : TriggerPointStandIn", repo.Read("out/Tests/ScenarioTriggers.cs"), StringComparison.Ordinal);
+
+        repo.Write("out/Processes/Document/DocumentTriggerPoints.cs", TriggerPointsTeamCode);
+        repo.Write("out/Processes/Legal/LegalTriggerPoints.cs", """
+            using System.Collections.Generic;
+            using App.Model.Processes;
+
+            namespace App.Model.Docs;
+
+            public static partial class LegalTriggerPoints
+            {
+                public static bool Refuse { get; set; }
+                public static List<string> Cleared { get; } = [];
+
+                public static partial bool LockedOnceCleared(TriggerPointCall call) => !Refuse;
+                public static partial void ClearPrice(TriggerPointCall call) => Cleared.Add(call.Transition ?? "runner");
+            }
+
+            """);
+        repo.Write("out/Docs/DocumentVerbs.cs", """
+            using System.Collections.Generic;
+            using App.Model.Processes;
+
+            namespace App.Model.Docs;
+
+            public sealed partial class DocumentVerbs
+            {
+                private static partial IReadOnlyList<string>? StatesInDocument(TriggerPointCall call) => ["Draft"];
+                private static partial IReadOnlyList<string>? StatesInLegal(TriggerPointCall call) => ["Pending"];
+            }
+
+            """);
+        repo.Write("out/Processes/Document/DocumentHandlers.cs", """
+            using System.Collections.Generic;
+            using App.Model.Runtime;
+
+            namespace App.Model.Docs;
+
+            public sealed partial class DocumentHandlers
+            {
+                private partial IReadOnlyList<string>? StatesInLegal(StatechartCall<DocumentContext> call) => [];
+            }
+
+            """);
+        await BuildAndRunScenarioTestsAsync(repo, "trigger-points", TriggerPointsScenarioHost, 2);
+    }
+
+    // The team's half of the trigger-points case: static values stand in for the document, and switches let the host's tests refuse,
+    // throw and count.
+    private const string TriggerPointsTeamCode = """
+        using System;
+        using System.Collections.Generic;
+        using System.Threading.Tasks;
+        using App.Model.Processes;
+
+        namespace App.Model.Docs;
+
+        public static partial class DocumentTriggerPoints
+        {
+            public static string Title { get; set; } = "";
+            public static List<string> Written { get; } = [];
+            public static List<int> Published { get; } = [];
+            public static bool Refuse { get; set; }
+            public static bool Throw { get; set; }
+            public static bool RefuseSign { get; set; }
+
+            public static partial void AssignNumber(TriggerPointCall call) => call.Proposed["title"] = "Pump spec";
+            public static partial bool TitleBeforeReview(TriggerPointCall call) => Title.Length > 0;
+            public static partial bool X(TriggerPointCall call) => false;
+            public static partial void XWhen(TriggerPointCall call) => Written.Add("price list");
+            public static partial bool CheckModify(TriggerPointCall call) => !Refuse;
+            public static partial void StampRelease(TriggerPointCall call)
+            {
+                if (Throw)
+                    throw new InvalidOperationException("The stamp failed.");
+                Written.Add("stamped");
+            }
+            public static partial Task PublishToPortal(TriggerPointCall call)
+            {
+                Published.Add(TriggerPointDepth.Current);
+                return Task.CompletedTask;
+            }
+            public static bool ArchiveWhen { get; set; } = true;
+            public static partial void Archive(TriggerPointCall call) => Written.Add("archived");
+            public static partial bool DocumentTriggerPointsValue(TriggerPointCall call) => !RefuseSign;
+            public static partial bool AskRegistry(TriggerPointCall call) => throw new InvalidOperationException("The registry was reached.");
+        }
+
+        public static partial class DocumentTriggerConditions
+        {
+            public static partial bool X(TriggerPointCall call) => true;
+            public static partial bool Archive(TriggerPointCall call) => DocumentTriggerPoints.ArchiveWhen;
+        }
+
+        public static partial class DocumentTriggerRecords
+        {
+            public static partial void AssignNumber(TriggerPointCall call)
+            {
+                DocumentTriggerPoints.Title = (string)call.Proposed["title"]!;
+                DocumentTriggerPoints.Written.Add("number");
+            }
+        }
+
+        """;
+
+    // The test host of the trigger-points case: the dispatcher over the lifecycle with an in-memory outbox, and the checks the scenario
+    // can't make: a refused check writes nothing from a before action, a with-change body that throws fails the command, after-commit
+    // messages reach the outbox only from a command that completes, the runner refuses promote, and the relay starts the depth guard.
+    private const string TriggerPointsScenarioHost = """
+        using System;
+        using System.Linq;
+        using System.Threading;
+        using System.Threading.Tasks;
+        using App.Model.Dispatch;
+        using App.Model.Docs;
+        using App.Model.Processes;
+        using App.Model.Runtime;
+        using Xunit;
+
+        [assembly: CollectionBehavior(DisableTestParallelization = true)]
+
+        namespace App.Model;
+
+        internal sealed class ScenarioHost : IAsyncDisposable
+        {
+            private ScenarioHost(Dispatcher dispatcher, InMemoryProcessOutbox outbox) => (Dispatcher, Outbox) = (dispatcher, outbox);
+
+            public Dispatcher Dispatcher { get; }
+
+            public InMemoryProcessOutbox Outbox { get; }
+
+            public static Task<ScenarioHost> StartAsync(ManualClock clock, CancellationToken cancellationToken)
+            {
+                var host = new ProcessHost(clock);
+                var outbox = new InMemoryProcessOutbox();
+                var documents = new DocumentCommandHandler(new DocumentMachine(new DocumentHandlers(), host, host, host), new DocumentStore());
+                var legal = new LegalCommandHandler(new LegalMachine(new LegalHandlers(), host, host, host), new LegalStore());
+                TriggerPointStandIn.Current = new ScenarioTriggers();
+                return Task.FromResult(new ScenarioHost(new Dispatcher(new HandlerRegistry(documents, legal), new Pipeline(outbox)), outbox));
+            }
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+
+        public sealed class TriggerPointTests
+        {
+            [Fact]
+            public async Task Checks_writes_messages_and_the_depth_guard_behave_as_the_design_says()
+            {
+                var ct = TestContext.Current.CancellationToken;
+                var clock = new ManualClock(DateTimeOffset.UnixEpoch);
+
+                // The runner: a refusing check leaves the before action's records unwritten and nothing in the outbox; promote is refused.
+                var outbox = new InMemoryProcessOutbox();
+                var verbs = new DocumentVerbs(outbox, clock);
+                DocumentTriggerPoints.Written.Clear();
+                DocumentTriggerPoints.Refuse = true;
+                var refused = await verbs.RunAsync(Verb.Modify, new TriggerPointCall { Key = "d-1", States = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.IReadOnlyList<string>> { ["Document"] = ["Draft"] } }, (_, _) => Task.CompletedTask, ct);
+                DocumentTriggerPoints.Refuse = false;
+                Assert.Equal((Refusals.Check, "01JTP000000000000000000X05"), (refused.Refusal, refused.RefusedBy));
+                Assert.DoesNotContain("number", DocumentTriggerPoints.Written);
+                Assert.Empty(outbox.Messages);
+                var promote = await verbs.RunAsync(Verb.Promote, new TriggerPointCall(), (_, _) => Task.CompletedTask, ct);
+                Assert.Equal(Refusals.NoTransition, promote.Refusal);
+                LegalTriggerPoints.Cleared.Clear();
+                var deleted = await verbs.RunAsync(Verb.Delete, new TriggerPointCall { Key = "d-1", CommandId = "c-1" }, (_, _) => throw new InvalidOperationException("replaced"), ct);
+                Assert.Equal("01JTP000000000000000000X08", deleted.Replaced);
+                Assert.Equal("01JTP000000000000000000X08", Assert.IsType<DocumentVerbDone>(Assert.Single(outbox.Messages)).Replaced);
+                Assert.Equal<string>(["runner"], LegalTriggerPoints.Cleared);
+
+                // Every governing lifecycle's points run on an object verb, each reading the object's state there; a delete with no replace
+                // skips Legal's with-change sets, since the object is gone.
+                TriggerPointStandIn.Current = new ScenarioTriggers();
+                ScenarioTriggers.Assumed = new System.Collections.Generic.Dictionary<string, string> { ["01JTP000000000000000000X10"] = "pass" };
+                LegalTriggerPoints.Refuse = true;
+                var locked = await verbs.RunAsync(Verb.Modify, new TriggerPointCall { Key = "d-1", States = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.IReadOnlyList<string>> { ["Legal"] = ["Cleared"] } }, (_, _) => Task.CompletedTask, ct);
+                var pending = await verbs.RunAsync(Verb.Modify, new TriggerPointCall { Key = "d-1" }, (_, _) => Task.CompletedTask, ct);
+                LegalTriggerPoints.Refuse = false;
+                ScenarioTriggers.Assumed = null;
+                Assert.Equal((Refusals.Check, "01JTP000000000000000000X11"), (locked.Refusal, locked.RefusedBy));
+                Assert.True(pending.Passed, pending.Message);
+                DocumentTriggerPoints.ArchiveWhen = false;
+                var removed = 0;
+                var gone = await verbs.RunAsync(Verb.Delete, new TriggerPointCall { Key = "d-1" }, (_, _) => { removed++; return Task.CompletedTask; }, ct);
+                DocumentTriggerPoints.ArchiveWhen = true;
+                Assert.Equal((true, null, 1), (gone.Passed, gone.Replaced, removed));
+                Assert.Equal<string>(["runner"], LegalTriggerPoints.Cleared);
+
+                // A process command: the first approval is refused by the sign check, uncounted and audited as refused, and the refused
+                // result still commits its audit; the throwing with-change body fails the next command, and no message reaches the outbox.
+                await using var host = await ScenarioHost.StartAsync(clock, ct);
+                DocumentTriggerPoints.Title = "Pump spec";
+                var envelope = new ProcessEnvelope("d-2", Actors.Author, Signer: "bea");
+                Assert.True((await host.Dispatcher.SendAsync(new DocumentStartControl(new ProcessEnvelope("d-2")) { Context = new DocumentContext() }, ct)).Accepted);
+                Assert.True((await host.Dispatcher.SendAsync(new DocumentSubmitCommand(envelope), ct)).Accepted);
+                DocumentTriggerPoints.RefuseSign = true;
+                var first = await host.Dispatcher.SendAsync(new DocumentApproveCommand(envelope), ct);
+                DocumentTriggerPoints.RefuseSign = false;
+                Assert.Equal((Refusals.Check, "01JTP000000000000000000X09"), (first.Refusal, first.RefusedBy));
+                Assert.Equal<string>(["refused"], [.. first.Audit.Select(a => a.OutcomeText)]);
+                DocumentTriggerPoints.Throw = true;
+                await Assert.ThrowsAsync<InvalidOperationException>(() => host.Dispatcher.SendAsync(new DocumentApproveCommand(envelope), ct));
+                DocumentTriggerPoints.Throw = false;
+                Assert.DoesNotContain(host.Outbox.Messages, m => m is TriggerPointMessage);
+
+                // Accepted: the after-commit message joins the command's events with a stable id, and the relay starts the depth guard at
+                // the message's depth.
+                await using var again = await ScenarioHost.StartAsync(clock, ct);
+                Assert.True((await again.Dispatcher.SendAsync(new DocumentStartControl(new ProcessEnvelope("d-3")) { Context = new DocumentContext() }, ct)).Accepted);
+                Assert.True((await again.Dispatcher.SendAsync(new DocumentSubmitCommand(envelope with { Instance = "d-3" }), ct)).Accepted);
+                var released = await again.Dispatcher.SendAsync(new DocumentApproveCommand(envelope with { Instance = "d-3" }), ct);
+                Assert.True(released.Accepted, released.Refusal);
+                var message = Assert.Single(again.Outbox.Messages.OfType<TriggerPointMessage>());
+                Assert.Equal("d-3/3/01JTP000000000000000000X07/0", message.MessageId);
+                Assert.True(message.Outside);
+                DocumentTriggerPoints.Published.Clear();
+                await TriggerPointRelay.DeliverAsync(message with { Depth = 3 });
+                Assert.Equal<int>([4], DocumentTriggerPoints.Published);
+                await Assert.ThrowsAsync<InvalidOperationException>(() => TriggerPointRelay.DeliverAsync(message with { Depth = TriggerPointDepth.Max }));
+                using (TriggerPointDepth.StartAt(TriggerPointDepth.Max))
+                    Assert.Throws<InvalidOperationException>(() => TriggerPointDepth.Enter());
+
+                // An event that names delete still does its move, so no replace runs, and Legal's with-change sets run: the object stays.
+                DocumentTriggerPoints.Written.Clear();
+                LegalTriggerPoints.Cleared.Clear();
+                Assert.True((await again.Dispatcher.SendAsync(new DocumentRetireCommand(envelope with { Instance = "d-3" }), ct)).Accepted);
+                Assert.DoesNotContain("archived", DocumentTriggerPoints.Written);
+                Assert.Equal<string>(["01JTP000000000000000000T03"], LegalTriggerPoints.Cleared);
+
+                DocumentTriggerPoints.Title = "";
+            }
+        }
+
+        """;
+
+    [Fact]
     public async Task Freezing_and_attribute_rights_compile_and_refuse_as_the_engine_does()
     {
         // rights-design.md section 9, part 2: the project names freeze, so Freezing.cs, Refusals.Frozen, the interpreter's frozen check and

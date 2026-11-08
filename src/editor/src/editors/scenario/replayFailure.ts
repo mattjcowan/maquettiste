@@ -12,6 +12,8 @@ export interface ReplayFailure {
 
 export interface FailedStep {
   expect?: { accepted?: boolean; refusal?: string; refusedBy?: string };
+  /** What the step says the team's checks do (a check id to pass, warning or error). */
+  assume?: Record<string, unknown>;
 }
 
 type Refusal = { refusal?: string | null; refusedBy?: string | null } | null | undefined;
@@ -22,6 +24,19 @@ function refusalText(value: Refusal, name: (id: string) => string | null): strin
   const by = value?.refusedBy ? (name(value.refusedBy) ?? RL.deleted) : null;
   if (!word && !by) return RL.refusedPlain;
   return by ? `${RL.refusedByWord} ${by}${word ? ` (${word})` : ""}` : `refused (${word})`;
+}
+
+/** "A, B" for ids, or "no check" and the like for none; an id that is gone reads "(deleted)". */
+function listText(ids: unknown, none: string, name: (id: string) => string | null): string {
+  const list = Array.isArray(ids) ? ids.filter((i): i is string => typeof i === "string") : [];
+  return list.length ? list.map((i) => name(i) ?? RL.deleted).join(", ") : none;
+}
+
+/** The checks a step says refuse (assumed Error), named; none when it says nothing of the kind. */
+function assumedRefusers(step: FailedStep | undefined, name: (id: string) => string | null): string[] {
+  return Object.entries(step?.assume ?? {})
+    .filter(([, word]) => word === "error")
+    .map(([id]) => name(id) ?? RL.deleted);
 }
 
 /** The failure as one sentence, with the step named once. */
@@ -38,7 +53,25 @@ export function failureSentence(failure: ReplayFailure, step: FailedStep | undef
   }
   if (failure.rule === "MQ9301" && typeof failure.actual === "boolean" && /accepted while|refused while/.test(failure.message)) {
     if (expectsRefusal && failure.actual) return RL.failedRefusal(where, refusalText(expect, name), "it is accepted");
-    if (!expectsRefusal && !failure.actual) return RL.failedAccept(where);
+    if (!expectsRefusal && !failure.actual) {
+      // The replay refused: when the step says a check of the team's refuses, that check is the one.
+      const checks = assumedRefusers(step, name);
+      return checks.length ? RL.failedAcceptByCheck(where, checks.join(" or ")) : RL.failedAccept(where);
+    }
+  }
+  if (failure.rule === "MQ9310") {
+    const expected = (failure.expected ?? {}) as { checkWarnings?: unknown; triggerPoints?: unknown };
+    const actual = (failure.actual ?? {}) as { checkWarnings?: unknown; triggerPoints?: unknown };
+    const differ = (a: unknown, b: unknown) => a !== undefined && a !== null && JSON.stringify(a) !== JSON.stringify(b);
+    const parts = [
+      differ(expected.checkWarnings, actual.checkWarnings)
+        ? RL.failedWarnings(listText(expected.checkWarnings, "no check", name), listText(actual.checkWarnings, "no check", name))
+        : null,
+      differ(expected.triggerPoints, actual.triggerPoints)
+        ? RL.failedPoints(listText(expected.triggerPoints, "no trigger point", name), listText(actual.triggerPoints, "no trigger point", name))
+        : null,
+    ].filter((p): p is string => !!p);
+    if (parts.length) return `${where}: ${parts.join(" ")}`;
   }
   return `${where} (${failure.rule}): ${rest}`;
 }

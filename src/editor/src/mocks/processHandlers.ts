@@ -19,6 +19,8 @@ import { syncCodesOf } from "./model/syncCodes";
 import { report } from "./model/store";
 import { Membership } from "./model/membership";
 import { rightsGrid } from "./model/rightsCheck";
+import { resolveCheckNames, sequenceOf } from "./model/triggerRun";
+import { entityChain } from "@/model/objectFields";
 
 type Json = Record<string, unknown>;
 type StateDoc = { id: string; name: string; type?: string; initial?: string; states?: StateDoc[] };
@@ -275,14 +277,23 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       })),
     namedRights: new Map([...model.entries.values()].filter((e) => e.json.kind === "right").map((e) => [e.id, e.json] as [string, Json])),
     subjectEntity: subjectsOf(doc).find((e) => e.entity)?.entity,
+    entityChain: (entity: string) => entityChain(entity, (id) => model.entries.get(id)?.json).map((d) => String(d.id)),
     lifecycles: [...[...model.entries.values()].map((e) => e.json).filter((j) => j.kind === "process" && j.use === "lifecycle" && j.id !== doc.id), doc],
   });
   const hasExpectedValues = (scenario: Json) => arr(scenario.steps).some((st) => (st.expect as Json | undefined)?.values !== undefined);
   // Verb steps and expected refusals are replayed for real too (rights-design.md decisions 25 and 26).
   const hasRightsSteps = (scenario: Json) =>
-    arr(scenario.steps).some(
-      (st) => st.verb !== undefined || (st.expect as Json | undefined)?.refusal !== undefined || (st.expect as Json | undefined)?.refusedBy !== undefined,
-    );
+    arr(scenario.steps).some((st) => {
+      const expect = st.expect as Json | undefined;
+      return (
+        st.verb !== undefined ||
+        expect?.refusal !== undefined ||
+        expect?.refusedBy !== undefined ||
+        expect?.checkWarnings !== undefined ||
+        expect?.triggerPoints !== undefined ||
+        Object.values((st.assume as Json | undefined) ?? {}).some((v) => typeof v === "string")
+      );
+    });
   // An event that names freeze or thaw takes effect in a run (the opt-in, decision 16), so such a scenario is replayed for real.
   const namesFreeze = (doc: Json) => arr(doc.events).some((e) => e.verb === "freeze" || e.verb === "thaw");
   const sameValues = (a: Json, b: Json) => {
@@ -361,6 +372,24 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         actual: { refusal: t.refusal, refusedBy: t.refusedBy ?? null },
       };
     }
+    // MQ9310: the checks that warned and the trigger points that ran, in order, against what a step expects (skipped ones are left out).
+    for (const t of result.trace) {
+      if (t.index < 0) continue;
+      const expect = (steps[t.index].expect as Json | undefined) ?? {};
+      const ran = (t.triggerPoints ?? []).filter((r) => r.outcome !== "skipped").map((r) => r.triggerPoint);
+      const warned = t.checkWarnings ?? [];
+      const wrong =
+        (expect.checkWarnings !== undefined && JSON.stringify(expect.checkWarnings) !== JSON.stringify(warned)) ||
+        (expect.triggerPoints !== undefined && JSON.stringify(expect.triggerPoints) !== JSON.stringify(ran));
+      if (!wrong) continue;
+      return {
+        step: t.index,
+        rule: "MQ9310",
+        message: `Step ${t.index + 1}: the checks that warned or the trigger points that ran differ from expect.checkWarnings or expect.triggerPoints; fix the trigger points or update the expectations from a replay.`,
+        expected: { checkWarnings: expect.checkWarnings ?? null, triggerPoints: expect.triggerPoints ?? null },
+        actual: { checkWarnings: warned, triggerPoints: ran },
+      };
+    }
     // MQ9307: the values a step set against its expect.values (exactly the attributes the step changed).
     for (const t of result.trace) {
       if (t.index < 0) continue;
@@ -377,13 +406,14 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
     return null;
   };
   // Refresh expectations (the batch operation of the store) replays the scenario with the same lookups as a verify.
-  model.scenarioReplay = (doc, scenario) => {
+  model.scenarioReplay = (doc, scenario, triggerPoints) => {
     const cast = castOf({}, scenario);
     const replayed = replay(doc, scenario.start as never, arr(scenario.steps), {
       ...actorLookup(),
       ...effectOptions(doc),
       ...(cast && !("error" in cast) ? { objects: cast.objects, subject: cast.subject } : {}),
       participants: arr(scenario.participants),
+      recordTriggerPoints: triggerPoints === true,
     });
     return replayed.complete ? { expects: replayed.expects, outcome: replayed.outcome } : null;
   };
@@ -422,6 +452,34 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         rows: page,
         next: start + limit < rows.length ? String(start + limit) : null,
       });
+    }),
+    // What runs, in order, when a verb happens (trigger-points-design.md decision 36). Simpler in one way: this lifecycle's points only.
+    rawHttp.get(url("/api/processes/:id/trigger-sequence"), ({ params, request }) => {
+      const entry = find(String(params.id));
+      if (!entry) return missing(String(params.id));
+      const q = new URL(request.url).searchParams;
+      const verb = q.get("verb");
+      if (!verb) return bad("verb is required.");
+      if (entry.json.use !== "lifecycle") return bad("Only a lifecycle has trigger points; this process is not one.");
+      // An attribute or an end the model does not have is a bad request, as the engine answers (ModelStore.TriggerSequence.cs).
+      const held = (list: "attributes" | "ends", id: string) =>
+        [...model.entries.values()].some((e) => Array.isArray(e.json[list]) && (e.json[list] as Json[]).some((x) => x.id === id));
+      const attribute = (idList(q.get("attributes")) ?? []).find((a) => !held("attributes", a));
+      if (attribute) return bad(`attribute ${attribute} is not an attribute of the model.`);
+      if (q.get("end") && !held("ends", q.get("end")!)) return bad(`end ${q.get("end")} is not a relation end of the model.`);
+      const steps = sequenceOf(
+        entry.json,
+        {
+          verb,
+          ...(q.get("state") ? { state: q.get("state")! } : {}),
+          ...(q.get("entity") ? { entity: q.get("entity")! } : {}),
+          ...(q.get("attributes") ? { attributes: idList(q.get("attributes")) } : {}),
+          ...(q.get("end") ? { end: q.get("end")! } : {}),
+          ...(q.get("transition") ? { transition: q.get("transition")! } : {}),
+        },
+        (id) => entityChain(id, (x) => model.entries.get(x)?.json).map((d) => String(d.id)),
+      );
+      return HttpResponse.json({ lifecycle: entry.id, verb, steps });
     }),
     rawHttp.post(url("/api/processes/:id/simulate"), async ({ params, request }) => {
       const entry = find(String(params.id));
@@ -464,7 +522,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       // request's `start` is ignored), as the engine does.
       const scenarioSteps = scenarioEntry ? arr(scenarioEntry.json.steps) : [];
       const scenarioStart = scenarioEntry?.json.start && typeof scenarioEntry.json.start === "object" ? (scenarioEntry.json.start as Json) : null;
-      const steps = [...scenarioSteps, ...arr(value.steps)];
+      const steps = [...scenarioSteps, ...arr(value.steps).map((st) => resolveCheckNames(st, doc, effectOptions(doc).lifecycles ?? []))];
       const from = typeof value.from === "number" ? value.from : -1;
       const result = simulate(doc, (scenarioEntry ? scenarioStart : start) as never, steps, {
         from,
@@ -495,7 +553,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const requestPeople = arr(value.participants);
       const rawSteps = (value.steps as Json[]).map((st) => {
         const hit = typeof st.participant === "string" ? requestPeople.find((x) => x.id === st.participant || x.name === st.participant) : undefined;
-        return hit ? { ...st, participant: hit.id } : st;
+        return resolveCheckNames(hit ? { ...st, participant: hit.id } : st, entry.json, effectOptions(entry.json).lifecycles ?? []);
       });
       // The expectations come from a replay of the inputs, as the engine's record fills them (refusals as accepted: false).
       const replayed = replay(entry.json, start as never, rawSteps, {
@@ -504,6 +562,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         ...(cast ? { objects: cast.objects, subject: cast.subject } : {}),
         // The steps name the request's participants: the replay runs before the fresh ids are given.
         ...(value.participants ? { participants: arr(value.participants) } : {}),
+        recordTriggerPoints: value.triggerPoints === true,
       });
       // The engine refuses inputs that cannot be replayed to the last step (422 with the replay's findings).
       if (!replayed.complete && value.steps.length) return HttpResponse.json(report(replayed.diagnostics.length ? replayed.diagnostics : []), { status: 422 });

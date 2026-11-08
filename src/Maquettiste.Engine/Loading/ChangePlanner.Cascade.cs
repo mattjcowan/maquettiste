@@ -138,7 +138,9 @@ internal sealed partial class ChangePlanner
             if (mode != DeleteResolution.DeleteDependents)
             {
                 var what = referrer.Element is Right || holder.StartsWith("/rights/", StringComparison.Ordinal) ? "the right"
-                    : referrer.Element is Process && holder.StartsWith("/actions/", StringComparison.Ordinal) ? "the set" : "the check or guard";
+                    : referrer.Element is Process && SetHolder(holder) ? "the set"
+                    : referrer.Element is Process && holder.StartsWith("/triggerPoints/", StringComparison.Ordinal) ? "the trigger point"
+                    : "the check or guard";
                 _cascadeRefused.Add((index, referrerId, reference,
                     $"an expression names {Label(target)}, and remove-references does not rewrite an expression; delete with delete-dependents to remove {what} that holds it."));
                 return;
@@ -179,6 +181,26 @@ internal sealed partial class ChangePlanner
             }
 
             var part = whole ? rightPart.Entry : reference.JsonPointer;
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                foreach (var (subId, pointer) in DocumentReader.Scan(referrer.Json).Ids)
+                {
+                    if (pointer.Length > 0 && (pointer == part || IsUnder(pointer, part)))
+                        _cascadeQueue.Enqueue((index, subId, mode));
+                }
+
+                return;
+            }
+        }
+
+        // A trigger point's states, targets, transitions, entities, attributes and ends (trigger-points-design.md section 9), in either
+        // resolution: the entry is dropped from its list, but the last one left takes the trigger point with it, since an empty list would
+        // widen it to every state, every move, every type or the whole object.
+        if (referrer.Element is Process && TriggerPointPart(reference.JsonPointer) is { } pointPart)
+        {
+            var part = Remaining(referrer.Json, pointPart.List, ops) <= 1 ? pointPart.Entry : reference.JsonPointer;
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
             if (TryOps(referrer, dropped, narrow, out _) is null)
             {
@@ -878,6 +900,18 @@ internal sealed partial class ChangePlanner
         return null;
     }
 
+    /// <summary>
+    /// Where a reference sits in a lifecycle's trigger point (trigger-points-design.md section 9): <c>List</c> is the states, targets,
+    /// transitions, entities, attributes or ends list it is an item of (<c>/triggerPoints/0/targets</c>), and <c>Entry</c> the trigger point
+    /// (<c>/triggerPoints/0</c>). <see langword="null"/> for any other pointer: its verbs, its sets and its expressions go their own ways.
+    /// </summary>
+    private static (string List, string Entry)? TriggerPointPart(string pointer) =>
+        pointer.StartsWith("/triggerPoints/", StringComparison.Ordinal) && JsonPointer.TryParse(pointer, out var segments) && segments.Length == 4
+            && JsonPointer.TryIndex(segments[1], out _) && JsonPointer.TryIndex(segments[3], out _)
+            && segments[2] is "states" or "targets" or "transitions" or "entities" or "attributes" or "ends"
+            ? (JsonPointer.Build(segments[..3]), JsonPointer.Build(segments[..2]))
+            : null;
+
     /// <summary>The items a list holds once the planned edits that drop one of its items are applied.</summary>
     private static int Remaining(JsonElement json, string list, IReadOnlyList<CascadeOp> ops)
     {
@@ -948,9 +982,10 @@ internal sealed partial class ChangePlanner
 
     /// <summary>
     /// The part that holds the expression tree a pointer is inside: a check, guard or inline right (<c>/checks/0</c>, <c>/guards/2</c>,
-    /// <c>/rights/1</c>, rights-design.md section 8), a derived value
-    /// (<c>/attributes/1/derived</c>), an action's set (<c>/actions/0/sets/1</c>, its value, object-effects-design.md section 8), or
-    /// <c>""</c> for a constraint's condition, which needs the whole element; <see langword="null"/> when the pointer is in no tree.
+    /// <c>/rights/1</c>, rights-design.md section 8), a trigger point for its <c>when</c> or condition (<c>/triggerPoints/0</c>,
+    /// trigger-points-design.md section 9), a derived value (<c>/attributes/1/derived</c>), an action's or a trigger point's set
+    /// (<c>/actions/0/sets/1</c>, its value, object-effects-design.md section 8), or <c>""</c> for a constraint's condition, which needs the
+    /// whole element; <see langword="null"/> when the pointer is in no tree.
     /// </summary>
     private static string? ExpressionHolder(string pointer)
     {
@@ -960,7 +995,9 @@ internal sealed partial class ChangePlanner
         {
             if (segments[k] == "condition" && k == 0)
                 return "";
-            if (segments[k] == "condition" && k >= 2 && segments[k - 2] is "checks" or "guards" or "rights")
+            if (segments[k] == "condition" && k >= 2 && segments[k - 2] is "checks" or "guards" or "rights" or "triggerPoints")
+                return JsonPointer.Build(segments[..k]);
+            if (segments[k] == "when" && k == 2 && segments[0] == "triggerPoints")
                 return JsonPointer.Build(segments[..k]);
             if (segments[k] == "value" && k >= 1 && segments[k - 1] == "derived")
                 return JsonPointer.Build(segments[..k]);
@@ -972,17 +1009,25 @@ internal sealed partial class ChangePlanner
     }
 
     /// <summary>
-    /// The set (<c>/actions/0/sets/1</c>) when the segment at <paramref name="k"/> is its <c>attribute</c> or <c>value</c>
-    /// (object-effects-design.md decision 1); <see langword="null"/> otherwise.
+    /// The set (<c>/actions/0/sets/1</c>, or a trigger point's <c>/triggerPoints/0/sets/1</c>) when the segment at <paramref name="k"/> is its
+    /// <c>attribute</c> or <c>value</c> (object-effects-design.md decision 1, trigger-points-design.md decision 3); <see langword="null"/>
+    /// otherwise.
     /// </summary>
     private static string? SetEntry(string[] segments, int k) =>
-        k == 4 && segments[0] == "actions" && JsonPointer.TryIndex(segments[1], out _) && segments[2] == "sets" && JsonPointer.TryIndex(segments[3], out _)
+        k == 4 && segments[0] is "actions" or "triggerPoints" && JsonPointer.TryIndex(segments[1], out _) && segments[2] == "sets"
+            && JsonPointer.TryIndex(segments[3], out _)
             ? JsonPointer.Build(segments[..4])
             : null;
 
-    /// <summary>The set whose <c>attribute</c> a pointer is (<c>/actions/0/sets/1/attribute</c>); <see langword="null"/> for any other pointer.</summary>
+    /// <summary>Whether a part is an action's or a trigger point's set (<c>/actions/0/sets/1</c>, <c>/triggerPoints/0/sets/1</c>).</summary>
+    private static bool SetHolder(string part) =>
+        JsonPointer.TryParse(part, out var segments) && segments.Length == 4 && SetEntry([.. segments, "value"], 4) is not null;
+
+    /// <summary>The set whose <c>attribute</c> a pointer is (<c>/actions/0/sets/1/attribute</c>, <c>/triggerPoints/0/sets/1/attribute</c>);
+    /// <see langword="null"/> for any other pointer.</summary>
     private static string? SetOfAttribute(string pointer) =>
-        pointer.StartsWith("/actions/", StringComparison.Ordinal) && JsonPointer.TryParse(pointer, out var segments) && segments.Length == 5
+        (pointer.StartsWith("/actions/", StringComparison.Ordinal) || pointer.StartsWith("/triggerPoints/", StringComparison.Ordinal))
+            && JsonPointer.TryParse(pointer, out var segments) && segments.Length == 5
             && segments[4] == "attribute"
             ? SetEntry(segments, 4)
             : null;
@@ -1141,7 +1186,10 @@ internal sealed partial class ChangePlanner
                     var because = document.Element.Kind is ElementKind.Entity or ElementKind.ReferenceType && op.Pointer.StartsWith("/bindings/", StringComparison.Ordinal)
                         ? (subKind == "binding" ? "the binding" : "this entry of its binding") + " needs " + Label(op.Reference.ToId)
                             + (document.Element.Kind == ElementKind.Entity ? "; the entity stays" : "; the reference type stays")
-                        : "needs " + Label(op.Reference.ToId);
+                        : TriggerPointPart(op.Reference.JsonPointer) is { } point && point.Entry == op.Pointer
+                            // The last entry of a narrowing list takes its trigger point with it (trigger-points-design.md section 9).
+                            ? "names no other " + Noun(point.List[(point.List.LastIndexOf('/') + 1)..]) + " than " + Label(op.Reference.ToId)
+                            : "needs " + Label(op.Reference.ToId);
                     removes.Add(new DeletePlanRemove(referrerId, document.Element.KindName, NameOf(document.Element), op.Pointer,
                         Part(document.Json, op.Pointer, subKind, ShortName(op.Reference.ToId)), sub, subKind, because));
                 }
@@ -1277,12 +1325,21 @@ internal sealed partial class ChangePlanner
         return name is null ? noun : noun + " " + name;
     }
 
-    /// <summary>A part kind as a delete plan words it: an entry of a lifecycle's rights is a right (rights-design.md section 8).</summary>
-    private static string PartNoun(string kind) => kind == "process-right" ? "right" : kind;
+    /// <summary>A part kind as a delete plan words it: an entry of a lifecycle's rights is a right (rights-design.md section 8), and an entry
+    /// of its trigger points a trigger point (trigger-points-design.md section 9).</summary>
+    private static string PartNoun(string kind) => kind switch
+    {
+        "process-right" => "right",
+        "process-trigger-point" => "trigger point",
+        _ => kind,
+    };
 
     private static string Noun(string property) => property switch
     {
         "rights" => "right",
+        "triggerPoints" => "trigger point",
+        "targets" => "target",
+        "entities" => "entity",
         "actors" => "actor",
         "verbs" => "verb",
         "attributes" => "attribute",

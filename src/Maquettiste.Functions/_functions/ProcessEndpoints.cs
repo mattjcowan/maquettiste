@@ -111,6 +111,35 @@ public static class ProcessEndpoints
         return Answer(await store.GetRightsAsync(id, filter, cursor, size, ct).ConfigureAwait(false), "process", id);
     });
 
+    /// <summary>
+    /// What runs, in order, when a verb happens in a lifecycle (trigger-points-design.md decision 36 and section 9): the steps of the fixed order,
+    /// in one page. It reads the snapshot and never resolves the model.
+    /// </summary>
+    /// <param name="id">The lifecycle id.</param>
+    /// <param name="verb">The verb, by key.</param>
+    /// <param name="state">A state id of the lifecycle the object is in.</param>
+    /// <param name="entity">An entity id the lifecycle governs.</param>
+    /// <param name="attributes">Comma-separated attribute ids the step reads or changes.</param>
+    /// <param name="end">A relation end id of the subject.</param>
+    /// <param name="transition">A transition id of the lifecycle.</param>
+    /// <param name="context">The request.</param>
+    /// <param name="store">The model store.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>200 with the sequence, 404 or 400.</returns>
+    [HttpGet("/api/processes/{id}/trigger-sequence")]
+    public static Task<IResult> TriggerSequence(string id, string? verb, string? state, string? entity, string? attributes, string? end, string? transition,
+        HttpContext context, ModelStore store, CancellationToken ct) => Api.GuardAsync(context, async () =>
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        static string? One(string? text) => string.IsNullOrEmpty(text) ? null : text;
+        var filter = new TriggerSequenceFilter
+        {
+            State = One(state), Entity = One(entity), End = One(end), Transition = One(transition),
+            Attributes = string.IsNullOrEmpty(attributes) ? [] : attributes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+        };
+        return Answer(await store.GetTriggerSequenceAsync(id, verb, filter, ct).ConfigureAwait(false), "process", id);
+    });
+
     /// <summary>A process as an XState machine config, in canonical key order; the header counts the MQ9406 notes.</summary>
     /// <param name="id">The process id.</param>
     /// <param name="format">The format: <c>xstate</c> (the default and only one).</param>

@@ -978,10 +978,11 @@ public sealed class LocalizationIndex
         return texts.ToImmutable();
     }
 
-    /// <summary>The sub-elements of processes and scenarios (phase-3-design.md section 2.6), and a lifecycle's inline rights (rights-design.md
-    /// section 8).</summary>
+    /// <summary>The sub-elements of processes and scenarios (phase-3-design.md section 2.6), a lifecycle's inline rights (rights-design.md
+    /// section 8) and its trigger points (trigger-points-design.md section 9).</summary>
     private static readonly FrozenSet<string> ProcessNodeKinds =
-        FrozenSet.Create(StringComparer.Ordinal, "state", "transition", "event", "guard", "action", "invoke", "gate", "meaning", "step", "process-right");
+        FrozenSet.Create(StringComparer.Ordinal, "state", "transition", "event", "guard", "action", "invoke", "gate", "meaning", "step", "process-right",
+            "process-trigger-point");
 
     /// <summary>The sub-elements of operations (next-phase-2-design.md section 4.1): input and returns members, outcomes and own
     /// errors, and a stereotype's errors, in the stereotype's shard. Each localizes its display name and description, as a process

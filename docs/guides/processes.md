@@ -337,6 +337,7 @@ An event that names `modify` cannot say which attributes it changes. A deny that
 - [Lifecycle subjects and state codes](../user-guide.md#lifecycle-subjects-and-state-codes), including a stereotype as a subject.
 - [Verbs](../user-guide.md#verbs).
 - [Rights](../user-guide.md#rights): who may do which verbs in which states, named rights, and refusals in scenarios.
+- [Trigger points](../user-guide.md#trigger-points): checks, actions and replaces on any verb, in a fixed order, and what happens when.
 - [Actions that set the object's data](../user-guide.md#actions-that-set-the-objects-data).
 - [Actors: types, membership and the object](../user-guide.md#actors-types-membership-and-the-object).
 - [Sync enum and the quick fixes](../user-guide.md#sync-enum-and-the-quick-fixes) and

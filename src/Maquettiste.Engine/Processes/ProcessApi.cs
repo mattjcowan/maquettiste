@@ -101,6 +101,12 @@ public sealed record RecordScenarioRequest
 
     /// <summary><c>final</c> or <c>active</c>; the replay's outcome when absent.</summary>
     public string? Outcome { get; init; }
+
+    /// <summary>
+    /// Whether to also write each step's <c>expect.triggerPoints</c> (trigger-points-design.md decision 28); <see langword="null"/> or
+    /// <see langword="false"/> leaves it out, so a new trigger point does not break the scenario.
+    /// </summary>
+    public bool? TriggerPoints { get; init; }
 }
 
 /// <summary>The body of <c>POST /api/processes/import</c>.</summary>
@@ -137,7 +143,15 @@ public sealed record ProcessImportRequest
 /// <param name="GuardUnknown">Whether a candidate's guard has no expression (the input needs <c>assume</c>).</param>
 /// <param name="Gate">The gate's signatures so far and the count it needs, for a gated event.</param>
 public sealed record EnabledTrigger(string Trigger, string? Event, string? Invoke, IReadOnlyList<string> Transitions, IReadOnlyList<string> Actors, bool GuardUnknown,
-    GateProgress? Gate);
+    GateProgress? Gate)
+{
+    /// <summary>
+    /// The ids of the checks the team writes that the candidates reach (trigger-points-design.md section 9), whose outcome the input takes
+    /// from <c>assume</c>; <see langword="null"/>, and left out of the JSON, when there are none.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? ChecksUnknown { get; init; }
+}
 
 /// <summary>A gate's progress.</summary>
 /// <param name="Have">The signatures collected.</param>
@@ -358,9 +372,15 @@ public static class ProcessApi
         if (step["assume"] is JsonObject assume)
         {
             var guards = (snapshot is null ? process : ProcessLibraries.Effective(snapshot, process)).Guards.Select(g => (g.Id, g.Name)).ToList();
+            List<(string Id, string Name)>? checks = null;
             foreach (var key in assume.Select(p => p.Key).ToList())
             {
-                if (Find(guards, key) is { } id && !assume.ContainsKey(id))
+                // A word names a check (trigger-points-design.md decision 26): this lifecycle's by its name, another's as Lifecycle.Name or
+                // LifecycleId.Name; a boolean names a guard, as before.
+                var word = assume[key] is JsonValue v && v.TryGetValue<string>(out _);
+                if (word)
+                    checks ??= CheckNames(process, snapshot);
+                if (Find(word ? checks! : guards, key) is { } id && !assume.ContainsKey(id))
                 {
                     var value = assume[key];
                     assume.Remove(key);
@@ -373,6 +393,25 @@ public static class ProcessApi
         {
             if (step[field] is JsonValue value && value.TryGetValue<string>(out var text) && Find(elements.ToList(), text) is { } id)
                 step[field] = id;
+        }
+
+        static List<(string Id, string Name)> CheckNames(Process process, ModelSnapshot? snapshot)
+        {
+            var names = new List<(string Id, string Name)>();
+            IReadOnlyList<Process> lifecycles = snapshot is null ? [process] : TriggerSequences.Of(snapshot).Lifecycles;
+            foreach (var lifecycle in lifecycles)
+            {
+                var own = string.Equals(lifecycle.Id, process.Id, StringComparison.Ordinal);
+                foreach (var point in lifecycle.TriggerPoints.Where(p => p.Type == TriggerPointType.Check))
+                {
+                    if (own)
+                        names.Add((point.Id, point.Name));
+                    names.Add((point.Id, lifecycle.Name + "." + point.Name));
+                    names.Add((point.Id, lifecycle.Id + "." + point.Name));
+                }
+            }
+
+            return names;
         }
 
         static string? Find(List<(string Id, string Name)> elements, string text)
@@ -591,6 +630,7 @@ public static class ProcessApi
             Subject = row,
             StateNotes = notes.Count > 0 ? notes : null,
             Rights = new RunRights(runtime, chart.Process, cast),
+            Triggers = RunTriggers.For(runtime, chart.Process, cast),
         });
         DateTimeOffset? at = null;
         if (start?.At is { } text && TryParseAt(text, out var parsed))
@@ -740,6 +780,11 @@ public static class ProcessApi
             node["values"] = values;
         }
 
+        // The checks that warned, and on request the trigger points that ran (trigger-points-design.md decision 28), each only when not empty.
+        if (expect.CheckWarnings is { Count: > 0 } warned)
+            node["checkWarnings"] = new JsonArray([.. warned.Select(id => (JsonNode?)JsonValue.Create(id))]);
+        if (expect.TriggerPoints is { Count: > 0 } ran)
+            node["triggerPoints"] = new JsonArray([.. ran.Select(id => (JsonNode?)JsonValue.Create(id))]);
         return node;
     }
 
@@ -812,7 +857,10 @@ public static class ProcessApi
                     actors = gated.Gate.Signers;
             }
 
-            result.Add(new EnabledTrigger("event", ev.Id, null, [.. candidates.Select(t => t.Id)], WithMembers(actors), candidates.Any(Unknown), gate));
+            result.Add(new EnabledTrigger("event", ev.Id, null, [.. candidates.Select(t => t.Id)], WithMembers(actors), candidates.Any(Unknown), gate)
+            {
+                ChecksUnknown = ChecksUnknown(candidates),
+            });
         }
 
         foreach (var (invokeId, stateId) in interpreter.Pending)
@@ -823,7 +871,7 @@ public static class ProcessApi
             {
                 var candidates = active.Where(t => t.Trigger == trigger && string.Equals(t.Transition.Invoke, invokeId, StringComparison.Ordinal)).ToList();
                 result.Add(new EnabledTrigger(name, null, invokeId, [.. candidates.Select(t => t.Id)], found.Invoke.Type == InvokeType.HumanTask ? WithMembers(found.Invoke.Actors) : [],
-                    candidates.Any(Unknown), null));
+                    candidates.Any(Unknown), null) { ChecksUnknown = ChecksUnknown(candidates) });
             }
 
             _ = stateId;
@@ -831,7 +879,15 @@ public static class ProcessApi
 
         var timers = interpreter.Timers;
         if (timers.Count > 0)
-            result.Add(new EnabledTrigger("time", null, null, [.. timers.Select(t => t.Transition)], [], active.Where(t => timers.Any(x => x.Transition == t.Id)).Any(Unknown), null));
+        {
+            var timed = active.Where(t => timers.Any(x => x.Transition == t.Id)).ToList();
+            result.Add(new EnabledTrigger("time", null, null, [.. timers.Select(t => t.Transition)], [], timed.Any(Unknown), null) { ChecksUnknown = ChecksUnknown(timed) });
+        }
+
         return result;
+
+        // The team-code checks the candidates reach, left out when none (trigger-points-design.md section 9).
+        IReadOnlyList<string>? ChecksUnknown(List<ChartTransition> candidates) =>
+            interpreter.ChecksUnknown(candidates.Select(t => t.Id)) is { Count: > 0 } checks ? checks : null;
     }
 }

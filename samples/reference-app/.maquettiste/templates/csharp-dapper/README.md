@@ -367,11 +367,14 @@ For `PurchaseApproval` in package `Purchasing`:
 | `rights` | `overwrite`, file block | `model` | `Processes/Rights.cs`, only when a lifecycle states rights or a default: the rights check (see Rights) |
 | `right-conditions` | `overwrite`, file block | `model` | `<Package>/RightConditions.g.cs`: one static partial method per named right with a condition and a use, however many lifecycles use it |
 | `right-conditions-companion` | `once`, file block | `model` | `<Package>/RightConditions.cs` (in the `partialFolder`): a stub per condition, which throws until written |
+| `trigger-points` | `overwrite`, file block | `model` | Only when a lifecycle has trigger points: `Processes/TriggerPoints.cs` (`TriggerPointCall`, `TriggerPointOutcome`, `TriggerPointMessage`, `ITriggerPointSteps`, the depth guard `TriggerPointDepth`, `TriggerPointRelay`, and per entity whose governing lifecycles have points on object, link or own verbs the runner `<Entity>Verbs` and its `<Entity>VerbDone` record), and per such lifecycle `Processes/<Process>/<Process>TriggerPoints.g.cs`: `<Process>TriggerSteps` and the declarations of `<Process>TriggerPoints`, `<Process>TriggerConditions` and `<Process>TriggerRecords` |
+| `trigger-points-companion` | `once`, file block | `model` | `Processes/<Process>/<Process>TriggerPoints.cs` and `Processes/<Entity>Verbs.cs` (in the `partialFolder`): a stub per body, when, records method and `StatesIn<Lifecycle>` hook, which throws until written |
 | `freezing` | `overwrite`, file block | `model` | `Processes/Freezing.cs`, only when the project uses freezing: the frozen check and its host interface, `IFrozenState` (see Freezing and attribute rights) |
 | `frozen-state` | `once`, file block | `model` | `Dispatch/FrozenState.cs` (in the `partialFolder`), only when the project uses freezing: the team's `IFrozenState`, which answers "not frozen" until written (see Freezing and attribute rights) |
 | `caller-holdings` | `once`, file block | `model` | `Dispatch/CallerHoldings.cs` (in the `partialFolder`), only when the project uses rights: the team's `ICallerHoldings`, which returns no held actors until written (see Rights) |
 | `scenario-holdings` | `overwrite`, file block | `model` | `<testsFolder>/ScenarioHoldings.cs`, only when the project uses rights and `testsFolder` is set: the held actors of each step's participant |
 | `scenario-frozen` | `overwrite`, file block | `model` | `<testsFolder>/ScenarioFrozen.cs`, only when the project uses freezing and `testsFolder` is set: whether each step's subject, and a link of it, are frozen before the step |
+| `scenario-triggers` | `overwrite`, file block | `model` | `<testsFolder>/ScenarioTriggers.cs`, only when the project uses trigger points and `testsFolder` is set: each outside check's word from the step's `assume`, and the outside actions and replaces recorded in place of calling them |
 | `scenario-tests` | file blocks | `each scenario` | `<testsFolder>/PurchaseApproval/HappyPathTests.cs`: one xunit test per scenario; only when `testsFolder` is set. Each step acts as the actor the engine worked out (`step.acts_as`), and an event step by a participant signs with the participant's identity unless it names a signer |
 
 ### Lifecycle state codes
@@ -574,6 +577,34 @@ rights without them gets the same bytes as before.
   project uses freezing and `testsFolder` names a folder) is the tests' `IFrozenState`: register it once in your `ScenarioHost`, in place of
   the `FrozenState` stub, as you do `ScenarioHoldings`. A step refused as frozen fails until then, and its message says so.
 
+### Trigger points
+
+A project uses trigger points when a lifecycle has `triggerPoints` (trigger-points-design.md, part 1). Only then does the pack write
+anything below; a project without them gets the same bytes as before.
+
+- **What is written.** `Processes/TriggerPoints.cs` holds `TriggerPointCall`, `TriggerPointOutcome`, `TriggerPointMessage`,
+  `ITriggerPointSteps`, the depth guard and `TriggerPointRelay`. Each lifecycle with trigger points gets `<Process>TriggerSteps`, the
+  step methods (`Before<Verb>`, `Check<Verb>`, `With<Verb>`, `After<Verb>`, and `Perform<Verb>` where there is a replace), and its
+  definition passes them to the interpreter. Each entity that such a lifecycle governs gets a runner, `<Entity>Verbs`, and a history
+  record, `<Entity>VerbDone`.
+- **Upgrading, step by step.**
+  1. **Write the stubs** in the `partialFolder`: `<Process>TriggerPoints.cs` (one method per trigger point, in the classes
+     `<Process>TriggerPoints`, `<Process>TriggerConditions` and `<Process>TriggerRecords`) and `<Entity>Verbs.cs` (the `StatesIn<Lifecycle>`
+     methods). Each throws until written, so the build lists what is missing. Until generated code can read the object (roadmap 4.6), every
+     body, `when` and condition is yours to write; each method's comment carries the model's text. A before action's body only fills
+     `call.Proposed` and writes nothing. Its records method writes the values once every check has passed.
+  2. **Register `ScenarioTriggers`** once in your `ScenarioHost`, when you use the generated scenario tests (see Scenario tests).
+  3. **Call `<Entity>Verbs.RunAsync`** from your own handlers for object, link and own verbs done outside an event, inside your own
+     transaction. It refuses move, signature and task verbs: those go through the process's commands. An exception from your code passes
+     through, so your transaction rolls back.
+  4. **Run a relay** that reads each `TriggerPointMessage` the outbox stored and calls `TriggerPointRelay.DeliverAsync(message)`. After-commit
+     work runs there. It may run late and more than once, so drop a repeat by the message's `MessageId`.
+- **The order and the promises.** Every verb runs in the engine's order. Nothing is written before every check passes. Work with the change is
+  inside the command's transaction, and a failure undoes the verb. After-commit messages are stored in the same transaction, so they exist
+  only if the change committed. More than 8 nested runs fail the command.
+- **Results.** `Refusals.Check` is the new refusal, and results gain `CheckWarnings`. A project that uses rights or trigger points
+  writes `RefusedBy`.
+
 ### Scenario tests
 
 With `testsFolder` set, each scenario becomes one xunit test: it starts the instance with the scenario's start context on a
@@ -586,6 +617,14 @@ a handler that disagrees with the model's scenario fails its test. The test proj
 namespace: `static Task<ScenarioHost> StartAsync(ManualClock clock, CancellationToken cancellationToken)`, a `Dispatcher`
 property and `DisposeAsync`, wiring the stores the project chose (the gate 3 fixture's opens an in-memory SQLite database from
 the sql-ddl schema). A failing test is fixed in the model or in a handler, never in the test.
+
+With trigger points, a verb step goes through the per-type runner `<Entity>Verbs` and asserts its refusal, `refusedBy`,
+`checkWarnings` and `triggerPoints` as the scenario expects them. A check written as the team's code runs the team's method, and the
+step's `assume` word is what that method must give. A point marked `outside` never reaches an outside system in a test:
+`Tests/ScenarioTriggers.cs` (unit `scenario-triggers`) answers each outside check with the step's word (`pass` without one) and records
+each outside action or replace in place of calling it. After-commit messages are never delivered in a test. **Upgrading:** register
+it once in your `ScenarioHost`, as you do `ScenarioHoldings` and `ScenarioFrozen`: `TriggerPointStandIn.Current = new ScenarioTriggers();`.
+Until then a test calls the team's outside methods, and a step whose outcome depends on an assumed outside check fails.
 
 ## Type map
 

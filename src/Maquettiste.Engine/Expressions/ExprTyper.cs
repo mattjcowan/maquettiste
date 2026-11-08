@@ -75,7 +75,7 @@ public static class ExprTyper
         if (typed is null)
             return null;
 
-        if (scope.ConstraintId is not null || scope.Site is not (ExprSiteKind.Value or ExprSiteKind.Set))
+        if (scope.ConstraintId is not null || scope.Site is not (ExprSiteKind.Value or ExprSiteKind.Set or ExprSiteKind.TriggerSet))
         {
             if (!Fits(ExprType.Bool, typed.Type))
             {
@@ -87,7 +87,7 @@ public static class ExprTyper
         {
             // current_actor() takes the type of the attribute it is set to (object-effects-design.md decision 5): an identity is a string, an integer
             // or a uuid, so any other type is MQ3103.
-            if (scope.Site == ExprSiteKind.Set && typed.Node.CurrentActor == true && wanted.IsAvailable)
+            if (scope.Site is ExprSiteKind.Set or ExprSiteKind.TriggerSet && typed.Node.CurrentActor == true && wanted.IsAvailable)
             {
                 if (!Run.ActorFits(wanted))
                 {
@@ -101,7 +101,7 @@ public static class ExprTyper
 
             if (!Fits(wanted, typed.Type))
             {
-                run.Report("MQ3103", typed.Pointer, "The expression is " + typed.Type + "; the " + (scope.Site == ExprSiteKind.Set ? "set's value" : "derived value")
+                run.Report("MQ3103", typed.Pointer, "The expression is " + typed.Type + "; the " + (scope.Site is ExprSiteKind.Set or ExprSiteKind.TriggerSet ? "set's value" : "derived value")
                     + " must be " + wanted + ".");
                 return null;
             }
@@ -153,6 +153,7 @@ public static class ExprTyper
         ExprSiteKind.Check => "check",
         ExprSiteKind.Guard => "guard",
         ExprSiteKind.Right => "right's condition",
+        ExprSiteKind.Trigger => "trigger point's condition",
         _ => "rule condition",
     };
 
@@ -322,6 +323,17 @@ public static class ExprTyper
             if (path.Count == 0)
                 return Malformed(pointer, "A path holds at least one id.");
             var container = scope.Root;
+            if (e.Old == true)
+            {
+                // old. reads the values before the verb (trigger-points-design.md decision 14), only at a trigger point's site.
+                if (scope.Old is not { } before)
+                {
+                    Report("MQ3104", pointer, "old. reads the object's values before the verb; only a trigger point's when, condition and sets read them.");
+                    return null;
+                }
+
+                container = before;
+            }
             var through = new List<ExprNavigation>();
             for (var i = 0; i < path.Count - 1; i++)
             {
@@ -355,7 +367,10 @@ public static class ExprTyper
                     ? "The path ends at the navigation '" + last.Name + "'; it must go on to an attribute."
                     : scope.Site == ExprSiteKind.Right
                         ? "The site has no member with the id '" + path[^1] + "'; a right's condition reads the object under subject, never the context or a payload."
-                        : "The site has no member with the id '" + path[^1] + "'.");
+                        : scope.Site is ExprSiteKind.Trigger or ExprSiteKind.TriggerSet
+                            ? "The site has no member with the id '" + path[^1] + "'; a trigger point reads the object under subject and old, and a move's payload, "
+                                + "never the context."
+                            : "The site has no member with the id '" + path[^1] + "'.");
                 return null;
             }
 

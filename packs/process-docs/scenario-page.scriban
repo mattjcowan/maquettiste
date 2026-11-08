@@ -74,7 +74,10 @@ One row per step: who acts{{ if cast }} and the actor they act as{{ end }}, the 
 {{- if !st.signer && st.meaning }}{{ notes[notes.size] = "meaning " + (md_code st.meaning.name) }}{{ end }}
 {{- if st.reason }}{{ notes[notes.size] = "reason \"" + (md_cell st.reason) + "\"" }}{{ end }}
 {{- for kv in st.payload }}{{ notes[notes.size] = "payload " + (md_code kv.key) + " = " + (md_code (json kv.value)) }}{{ end }}
-{{- for kv in st.assume }}{{ notes[notes.size] = "guard " + (md_code kv.key) + " assumed " + (kv.value ? "true" : "false") }}{{ end }}
+{{- for kv in st.assume }}{{ if kv.value == "pass" || kv.value == "warning" || kv.value == "error" }}{{ notes[notes.size] = "check " + (md_code kv.key) + " assumed to " + (kv.value == "pass" ? "pass" : (kv.value == "warning" ? "warn" : "refuse")) }}{{ else }}{{ notes[notes.size] = "guard " + (md_code kv.key) + " assumed " + (kv.value ? "true" : "false") }}{{ end }}{{ end }}
+{{- if st.expect }}{{ for tp in st.expect.check_warnings }}{{ warns = md_inline tp.message }}{{ if warns | string.ends_with "." }}{{ warns = string.slice warns 0 (warns.size - 1) }}{{ end }}{{ notes[notes.size] = "check " + (md_code tp.name) + " warns: " + warns }}{{ end }}{{ end }}
+
+{{- if st.expect && st.expect.trigger_points.size > 0 }}{{ ran = [] }}{{ for tp in st.expect.trigger_points }}{{ ran[ran.size] = md_code tp.name }}{{ end }}{{ notes[notes.size] = "trigger points that ran: " + (ran | array.join ", ") }}{{ end }}
 {{- if st.expect }}{{ for kv in st.expect.context }}{{ notes[notes.size] = (md_code kv.key) + " becomes " + (md_code (json kv.value)) }}{{ end }}{{ end }}
 {{- if st.expect }}{{ for kv in st.expect.values }}{{ notes[notes.size] = "sets " + (md_code kv.key) + " to " + (md_code (json kv.value)) }}{{ end }}{{ end }}
 {{- for kv in st.values }}{{ notes[notes.size] = "value " + (md_code kv.key) + " = " + (md_code (json kv.value)) }}{{ end }}

@@ -25,7 +25,7 @@ import { useSimulationView } from "@/editors/process/simulation/view";
 import { useDraftDocument } from "@/inspector/useDraft";
 import { indexLookup } from "@/model/index";
 import { CHART_LABELS } from "@/model/labels";
-import { addSiblingState, addState, soleSubject, stateIndex, transitionLabel, type ProcessDoc } from "@/model/process";
+import { addSiblingState, addState, dropTriggerPointRefs, soleSubject, stateIndex, transitionLabel, type ProcessDoc } from "@/model/process";
 import { perfRecord } from "@/lib/perf";
 import { applySelectChanges } from "../model";
 import { defaultHierarchyEngine, warmHierarchyEngine, type Boxes } from "../layout";
@@ -738,6 +738,7 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
       pc.change((p) => {
         p.transitions = (p.transitions ?? []).filter((t) => t.id !== transition);
         if (!p.transitions.length) delete p.transitions;
+        dropTriggerPointRefs(p, { transitions: new Set([transition]) });
       });
       setSelection([], null);
     },

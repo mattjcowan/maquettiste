@@ -76,6 +76,28 @@ end
 {{- end }}
             })
 {{- end -}}
+{{- capture trigger_args }}
+{{- if uses_triggers() && !rights }},
+        ids: new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+{{- for e in p.events }}
+            [{{ json ("event:" + e.name) }}] = {{ json e.id }},
+{{- end }}
+{{- for i in p.invokes }}
+            [{{ json ("invoke:" + i.name) }}] = {{ json i.id }},
+{{- end }}
+{{- for g in p.guards }}
+            [{{ json ("guard:" + g.name) }}] = {{ json g.id }},
+{{- end }}
+        }
+{{- end }}
+{{- trigger_steps = [] }}
+{{- if p.trigger_points.size > 0 }}{{ trigger_steps[0] = "new " + name + "TriggerSteps()" }}{{ end }}
+{{- for l in trigger_others(p) }}{{ trigger_steps[trigger_steps.size] = "new global::" + ns(l) + "." + p_name(l) + "TriggerSteps()" }}{{ end }}
+{{- if trigger_steps.size > 0 }},
+        triggerSteps: [{{ trigger_steps | array.join ", " }}]
+{{- end }}
+{{- end -}}
 {{ header() }}
 using System;
 using System.Collections.Generic;
@@ -159,14 +181,14 @@ public static partial class {{ name }}Definition
         ]
 {{- end }},
 {{- if p.actors.size == 0 }}
-        null{{ if rights }},{{ rights_arg }}{{ end }});
+        null{{ if rights }},{{ rights_arg }}{{ end }}{{ trigger_args }});
 {{- else }}
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
 {{- for a in p.actors }}
             [Actors.{{ actor_member a }}] = {{ json a.id }},
 {{- end }}
-        }{{ if rights }},{{ rights_arg }}{{ end }});
+        }{{ if rights }},{{ rights_arg }}{{ end }}{{ trigger_args }});
 {{- end }}
 
     /// <summary>The event names.</summary>

@@ -534,7 +534,7 @@ public sealed class InterpreterConformanceTests : IDisposable
         run.Start();
 
         var missing = run.Step(Send("e"));
-        var assumed = run.Step(Send("e") with { Assume = ImmutableDictionary<string, bool>.Empty.Add("stub", true) });
+        var assumed = run.Step(Send("e") with { Assume = ImmutableDictionary<string, StepAssumption>.Empty.Add("stub", true) });
 
         Assert.Equal((GuardSource.Missing, "MQ9306", true), (Assert.Single(missing.Guards).Source, Assert.Single(missing.Diagnostics).Rule, missing.Incomplete));
         Assert.Equal((GuardSource.Assumed, true, "B"), (Assert.Single(assumed.Guards).Source, assumed.Accepted, string.Join(",", assumed.Configuration)));

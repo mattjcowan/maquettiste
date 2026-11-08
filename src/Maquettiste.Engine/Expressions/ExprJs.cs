@@ -19,7 +19,7 @@ internal static class ExprJs
         return site switch
         {
             ExprSiteKind.Check => "(row) => mq.passes(" + body + ")",
-            ExprSiteKind.Value or ExprSiteKind.Set => "(row) => mq.out(" + body + ", " + Str(e.Type.Kind) + ")",
+            ExprSiteKind.Value or ExprSiteKind.Set or ExprSiteKind.TriggerSet => "(row) => mq.out(" + body + ", " + Str(e.Type.Kind) + ")",
             _ => "(row) => mq.holds(" + body + ")",
         };
     }

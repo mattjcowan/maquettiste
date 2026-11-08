@@ -228,6 +228,8 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             "vn" => string.Equals(key, ModelSnapshot.VerbNamingKey, StringComparison.Ordinal) ? model.VerbNamingHash() : Absent,
             // Which rights the lifecycles state (rights-design.md section 6): a lifecycle's first right, its default, the verbs it can deny.
             "rn" => string.Equals(key, RightsNaming.Key, StringComparison.Ordinal) ? RightsNaming.Hash(model) : Absent,
+            // Which lifecycles have trigger points, the verbs they name and their replaces (trigger-points-design.md section 7).
+            "tn" => string.Equals(key, TriggerNaming.Key, StringComparison.Ordinal) ? TriggerNaming.Hash(model) : Absent,
             // Whether the project uses freezing (rights-design.md decision 28): one flag, so its hash never changes in a project that doesn't.
             "fn" => string.Equals(key, FreezingNaming.Key, StringComparison.Ordinal) ? FreezingNaming.Hash(model) : Absent,
             _ => Absent,
