@@ -146,6 +146,7 @@ internal sealed partial class ChangePlanner
                     : referrer.Element is Process && SetHolder(holder) ? "the set"
                     : referrer.Element is Process && holder.StartsWith("/triggerPoints/", StringComparison.Ordinal) ? "the trigger point"
                     : referrer.Element is Process && SignatureCondition(holder) ? "the signature's condition (when)"
+                    : referrer.Element is Process && StageCondition(holder) ? "the stage's condition (when)"
                     : "the check or guard";
                 _cascadeRefused.Add((index, referrerId, reference,
                     $"an expression names {Label(target)}, and remove-references does not rewrite an expression; delete with delete-dependents to remove {what} that holds it."));
@@ -247,6 +248,41 @@ internal sealed partial class ChangePlanner
         if (referrer.Element is Process && NotByPart(reference.JsonPointer) is { } notBy)
         {
             var part = Remaining(referrer.Json, notBy.List, ops) <= 1 ? notBy.List : notBy.Entry;
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                return;
+            }
+        }
+
+        // An actor a named signature's delegateTo or escalateTo names (signoff-design.md section 9, part 2), in either resolution: the entry goes,
+        // and the key with its last entry, so the signature may no longer be delegated, or escalates to nobody; escalateAfter goes with the last
+        // escalateTo, since one without the other is MQ8204.
+        if (referrer.Element is Process && NoticeActorPart(reference.JsonPointer) is { } actorPart)
+        {
+            var last = Remaining(referrer.Json, actorPart.List, ops) <= 1;
+            List<string> parts = last ? [actorPart.List] : [reference.JsonPointer];
+            if (last && actorPart.List.EndsWith("/escalateTo", StringComparison.Ordinal))
+            {
+                var after = actorPart.List[..^"escalateTo".Length] + "escalateAfter";
+                if (JsonPointer.TryGet(referrer.Json, after, out _))
+                    parts.Add(after);
+            }
+
+            List<CascadeOp> dropped = [.. ops.Where(o => !parts.Any(part => o.Pointer == part || IsUnder(o.Pointer, part))), .. parts.Select(part => new CascadeOp(part, true, reference, index))];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                return;
+            }
+        }
+
+        // A named signature a step's expect.notices names (signoff-design.md section 9, part 2), in either resolution: only the listed notices
+        // are compared, so the entry goes, and the list with its last entry.
+        if (referrer.Element is Scenario && ExpectedNotice(reference.JsonPointer) is { } notice)
+        {
+            var part = Remaining(referrer.Json, notice.List, ops) <= 1 ? notice.List : notice.Entry;
             List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, true, reference, index)];
             if (TryOps(referrer, dropped, narrow, out _) is null)
             {
@@ -1099,6 +1135,30 @@ internal sealed partial class ChangePlanner
     private static bool SignatureCondition(string part) =>
         JsonPointer.TryParse(part, out var segments) && segments.Length >= 3 && segments[^1] == "when" && segments[^3] == "signatures";
 
+    /// <summary>Whether a part is a stage's <c>when</c> (<c>…/stages/1/when</c>, signoff-design.md section 9, part 2).</summary>
+    private static bool StageCondition(string part) =>
+        JsonPointer.TryParse(part, out var segments) && segments.Length >= 3 && segments[^1] == "when" && segments[^3] == "stages";
+
+    /// <summary>
+    /// The list of a named signature's <c>delegateTo</c> or <c>escalateTo</c> an actor entry is in (<c>…/signatures/1/delegateTo/0</c>, with its
+    /// list <c>…/signatures/1/delegateTo</c>; signoff-design.md section 9, part 2); <see langword="null"/> for any other pointer.
+    /// </summary>
+    private static (string List, string Entry)? NoticeActorPart(string pointer) =>
+        JsonPointer.TryParse(pointer, out var segments) && segments.Length >= 5 && JsonPointer.TryIndex(segments[^1], out _)
+        && segments[^2] is "delegateTo" or "escalateTo" && segments[^4] == "signatures"
+            ? (JsonPointer.Build(segments[..^1]), pointer)
+            : null;
+
+    /// <summary>
+    /// The entry of a step's <c>expect.notices</c> a pointer names a signature in (<c>/steps/0/expect/notices/1/signature</c>, with its list
+    /// <c>/steps/0/expect/notices</c>; signoff-design.md section 9, part 2); <see langword="null"/> for any other pointer.
+    /// </summary>
+    private static (string List, string Entry)? ExpectedNotice(string pointer) =>
+        JsonPointer.TryParse(pointer, out var segments) && segments.Length == 6 && segments[0] == "steps" && JsonPointer.TryIndex(segments[1], out _)
+        && segments[2] == "expect" && segments[3] == "notices" && JsonPointer.TryIndex(segments[4], out _) && segments[5] == "signature"
+            ? (JsonPointer.Build(segments[..4]), JsonPointer.Build(segments[..5]))
+            : null;
+
     /// <summary>Applies the edits to a copy of the referrer; null when it is valid after them, else why not.</summary>
     private string? TryOps(Working referrer, IReadOnlyList<CascadeOp> ops, bool narrow, out bool widening)
     {
@@ -1179,8 +1239,8 @@ internal sealed partial class ChangePlanner
             if (segments[k] == "when" && k == 2 && segments[0] == "triggerPoints")
                 return JsonPointer.Build(segments[..k]);
             // A named signature's when goes alone (signoff-design.md section 9): the signature is then always needed, the safe choice decision
-            // 7 makes when a condition cannot be judged.
-            if (segments[k] == "when" && k >= 2 && segments[k - 2] == "signatures")
+            // 7 makes when a condition cannot be judged. A stage's when goes alone too, and the stage then always runs (decision 6).
+            if (segments[k] == "when" && k >= 2 && segments[k - 2] is "signatures" or "stages")
                 return JsonPointer.Build(segments[..(k + 1)]);
             if (segments[k] == "value" && k >= 1 && segments[k - 1] == "derived")
                 return JsonPointer.Build(segments[..k]);
@@ -1527,6 +1587,10 @@ internal sealed partial class ChangePlanner
         "stages" => "stage",
         "signatures" => "signature",
         "notBy" => "not by entry",
+        "delegateTo" => "delegate to entry",
+        "escalateTo" => "escalate to entry",
+        "escalateAfter" => "escalation delay (escalateAfter)",
+        "notices" => "expected notice",
         "targets" => "target",
         "entities" => "entity",
         "subjects" => "subject",

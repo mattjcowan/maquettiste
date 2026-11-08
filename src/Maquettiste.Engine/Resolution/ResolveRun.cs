@@ -210,6 +210,10 @@ internal sealed partial class ResolveRun
             RightsLifecycles = new RList<RProcess>(_rightsLifecycles, [RightsNaming.Key]),
             TriggerLifecycles = new RList<RProcess>(_triggerLifecycles, [TriggerNaming.Key]),
             ApprovalLifecycles = new RList<RProcess>(_approvalLifecycles, [ApprovalNaming.Key]),
+            ApprovalsUseRounds = _approvalGroups.HasFlag(ApprovalGroups.Rounds),
+            ApprovalsUseDelegation = _approvalGroups.HasFlag(ApprovalGroups.Delegation),
+            ApprovalsUseNotices = _approvalGroups.HasFlag(ApprovalGroups.Notices),
+            ApprovalsUseReauthenticate = _approvalGroups.HasFlag(ApprovalGroups.Password),
             // Keyed on the named trigger points' files alone. Their kind set's hash never changes in a project without one, so what reads this
             // list in a part 1 project never renders again when a lifecycle's trigger points change; the first named point changes it.
             TriggerPoints = new RList<RTriggerPoint>(_namedTriggerPoints, [TriggerPointKind]),

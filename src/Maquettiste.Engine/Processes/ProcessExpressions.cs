@@ -331,18 +331,19 @@ public sealed class ProcessExpressions
             }
         }
 
-        // Each named signature's when of an approval on a transition (signoff-design.md decision 7), lowered at an approval site under the
-        // signature's id: true or unknown means needed, so only false answers false (EvaluateApproval).
+        // Each named signature's when of an approval on a transition (signoff-design.md decision 7), and each stage's (decision 6), lowered at
+        // an approval site under the signature's or the stage's id: true or unknown means needed, or run, so only false answers false
+        // (EvaluateApproval).
         foreach (var transition in process.Use == ProcessUse.Library ? [] : process.Transitions)
         {
             if (transition.Gate is not { UsesStages: true } gate)
                 continue;
-            foreach (var signature in gate.AllSignatures)
+            foreach (var id in ExprSites.ApprovalConditionIds(gate))
             {
-                if (signature.When is null || ExprResolution.Type(model, process, signature.Id) is not { } typed)
+                if (ExprResolution.Type(model, process, id) is not { } typed)
                     continue;
-                var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Approval, ExprResolution.ApiColumns(model, signature.Id, path));
-                lowered.Add(Of(signature.Id, js, typed.Typed, ExprSites.ReadsSubject(process, typed.Typed), null));
+                var js = ExprLowering.ToJavaScript(typed.Typed, ExprSiteKind.Approval, ExprResolution.ApiColumns(model, id, path));
+                lowered.Add(Of(id, js, typed.Typed, ExprSites.ReadsSubject(process, typed.Typed), null));
             }
         }
 
@@ -697,10 +698,11 @@ public sealed class ProcessExpressionSession : IDisposable
     /// Judges whether a named signature is needed when its round starts (signoff-design.md decision 7): its <c>when</c>, compiled under the
     /// signature's id when it types (<see cref="Conditions"/> holds the id), over a row of the context and the object, with no payload and
     /// nobody acting. Only false means not needed: the answer is <see langword="true"/> when the condition holds or is unknown. A signature
-    /// whose <c>when</c> did not compile is needed, the safe choice; the caller checks <see cref="Conditions"/> first.
+    /// whose <c>when</c> did not compile is needed, the safe choice; the caller checks <see cref="Conditions"/> first. A stage's <c>when</c> is
+    /// judged the same way under the stage's id (decision 6): only false skips the stage.
     /// </summary>
-    /// <param name="signatureId">The named signature's id.</param>
-    /// <param name="label">"Signature 'name'", for messages.</param>
+    /// <param name="signatureId">The named signature's id, or a stage's.</param>
+    /// <param name="label">"Signature 'name'" or "Stage 'name'", for messages.</param>
     /// <param name="context">The context object.</param>
     /// <param name="subject">The object, after the entering move's actions and sets; an empty object when there is none.</param>
     /// <param name="running">The running chart's states (a JSON object of process id to state ids), or <see langword="null"/> when not read.</param>

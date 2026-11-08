@@ -376,6 +376,8 @@
         "signer",
         "response",
         "signature",
+        "delegateTo",
+        "onBehalfOf",
         "meaning",
         "reason",
         "payload",
@@ -428,17 +430,26 @@
           "type": "string"
         },
         "response": {
-          "description": "How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count) or withdraw (takes back the person's latest signature). Only on an event step whose event is gated by an approval (MQ9305).",
+          "description": "How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count), withdraw (takes back the person's latest signature) or delegate (hands the person's part to delegateTo, on a signature that has delegateTo). Only on an event step whose event is gated by an approval (MQ9305).",
           "enum": [
             "sign",
             "reject",
             "ignore",
-            "withdraw"
+            "withdraw",
+            "delegate"
           ],
           "default": "sign"
         },
         "signature": {
           "description": "The id of the approval's named signature the step answers; the engine picks one when absent. Only on an event step whose event is gated by an approval, and a signature of that gate (MQ9305).",
+          "$ref": "common.json#/$defs/id"
+        },
+        "delegateTo": {
+          "description": "With response delegate: the id of the scenario's participant the signature is delegated to, who must be a member of one of the signature's delegateTo actors (MQ9305).",
+          "$ref": "common.json#/$defs/id"
+        },
+        "onBehalfOf": {
+          "description": "The id of the scenario's participant who delegated the signature to the person answering; the answer counts as theirs. Not with response delegate, since a delegation can't be passed on (MQ9305).",
           "$ref": "common.json#/$defs/id"
         },
         "meaning": {
@@ -510,7 +521,8 @@
             "values",
             "checkWarnings",
             "triggerPoints",
-            "signatures"
+            "signatures",
+            "notices"
           ],
           "properties": {
             "accepted": {
@@ -585,6 +597,13 @@
                 "type": "integer",
                 "minimum": 0
               }
+            },
+            "notices": {
+              "description": "The reminders and escalations due at the step, each a named signature and a kind, compared as a set (MQ9311). Absent checks nothing; empty expects none. Notices fall due only on a time step.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/notice"
+              }
             }
           },
           "required": [],
@@ -596,6 +615,33 @@
       },
       "required": [
         "id"
+      ],
+      "additionalProperties": false
+    },
+    "notice": {
+      "title": "Notice",
+      "description": "A reminder or an escalation a step expects due: a named signature and a kind (MQ9311).",
+      "type": "object",
+      "x-order": [
+        "signature",
+        "kind"
+      ],
+      "properties": {
+        "signature": {
+          "description": "The id of the named signature the notice is about.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "kind": {
+          "description": "remind, to the people who may still answer, or escalate, to the signature's escalateTo.",
+          "enum": [
+            "remind",
+            "escalate"
+          ]
+        }
+      },
+      "required": [
+        "signature",
+        "kind"
       ],
       "additionalProperties": false
     }

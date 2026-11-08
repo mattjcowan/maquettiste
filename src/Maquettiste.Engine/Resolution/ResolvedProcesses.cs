@@ -574,6 +574,17 @@ public sealed class RGateStage : RProcessNode
 
     /// <summary>The stage's signatures, in file order: the order the engine picks one in when a step names none.</summary>
     public RList<RNamedSignature> Signatures { get; internal set; } = RList<RNamedSignature>.Empty;
+
+    /// <summary>
+    /// The round the stage runs in, from 1 (signoff-design.md decision 5): stages of one round run side by side, rounds one after another.
+    /// </summary>
+    public int Round { get; internal set; } = 1;
+
+    /// <summary>
+    /// Whether the stage runs, typed at the approval site and judged when its round starts (signoff-design.md decision 6): only false skips
+    /// it. <see langword="null"/> when it has none, when it does not type, and on a gate policy's stage.
+    /// </summary>
+    public RExpression? When { get; internal set; }
 }
 
 /// <summary>
@@ -617,6 +628,42 @@ public sealed class RNamedSignature : RProcessNode
     /// object entered the gated move's source state.
     /// </summary>
     public RList<RNotBy> NotBy { get; internal set; } = RList<RNotBy>.Empty;
+
+    /// <summary>
+    /// The actors the signature may be delegated to (signoff-design.md decision 20), in file order; empty when it may not be. The person it
+    /// goes to must be a member of one of them.
+    /// </summary>
+    public RList<RActor> DelegateTo { get; internal set; } = RList<RActor>.Empty;
+
+    /// <summary>
+    /// The ISO 8601 duration, as written, from when the signature's round started to when a reminder falls due (signoff-design.md decision
+    /// 21); <see langword="null"/> for none.
+    /// </summary>
+    public string? RemindAfter { get; internal set; }
+
+    /// <summary><see cref="RemindAfter"/> in milliseconds (fixed spans: a month is 30 days, a year 365), or <see langword="null"/>.</summary>
+    public long? RemindAfterMs { get; internal set; }
+
+    /// <summary><see cref="RemindAfter"/> exactly, in ticks of 100 ns (fixed spans), or <see langword="null"/>.</summary>
+    public long? RemindAfterTicks { get; internal set; }
+
+    /// <summary>
+    /// The ISO 8601 duration, as written, from when the signature's round started to when an escalation to <see cref="EscalateTo"/> falls
+    /// due (signoff-design.md decision 21); <see langword="null"/> for none.
+    /// </summary>
+    public string? EscalateAfter { get; internal set; }
+
+    /// <summary><see cref="EscalateAfter"/> in milliseconds (fixed spans), or <see langword="null"/>.</summary>
+    public long? EscalateAfterMs { get; internal set; }
+
+    /// <summary><see cref="EscalateAfter"/> exactly, in ticks of 100 ns (fixed spans), or <see langword="null"/>.</summary>
+    public long? EscalateAfterTicks { get; internal set; }
+
+    /// <summary>The actors an escalation goes to (signoff-design.md decision 21), in file order; empty for none.</summary>
+    public RList<RActor> EscalateTo { get; internal set; } = RList<RActor>.Empty;
+
+    /// <summary>Whether the person's identity is checked again for every response on the signature (signoff-design.md decision 22).</summary>
+    public bool Reauthenticate { get; internal set; }
 }
 
 /// <summary>An entry of a named signature's <c>not_by</c> (signoff-design.md decision 15): a verb, or a transition of the lifecycle.</summary>
@@ -652,6 +699,16 @@ public sealed class RSignatureCount
 
     /// <summary>The number of signatures expected counted for it after the step.</summary>
     public int Count { get; internal set; }
+}
+
+/// <summary>A reminder or an escalation a scenario step expects due (signoff-design.md decision 35).</summary>
+public sealed class RExpectedNotice
+{
+    /// <summary>The named signature the notice is about.</summary>
+    public RNamedSignature Signature { get; internal set; } = null!;
+
+    /// <summary><c>remind</c> or <c>escalate</c>.</summary>
+    public string Kind { get; internal set; } = "remind";
 }
 
 /// <summary>What a signature on a gate means.</summary>
@@ -923,9 +980,21 @@ public sealed class RStep : RObject
 
     /// <summary>
     /// How the step answers an approval on its event (signoff-design.md decision 25): <c>sign</c> (also for a step that gives none, and for
-    /// a step that is no event), <c>reject</c>, <c>ignore</c> or <c>withdraw</c>.
+    /// a step that is no event), <c>reject</c>, <c>ignore</c>, <c>withdraw</c> or <c>delegate</c>.
     /// </summary>
     public string Response { get; internal set; } = "sign";
+
+    /// <summary>
+    /// With the response <c>delegate</c>: the participant the signature is delegated to (signoff-design.md decision 34);
+    /// <see langword="null"/> when the step names none of the scenario's.
+    /// </summary>
+    public RParticipant? DelegateTo { get; internal set; }
+
+    /// <summary>
+    /// The participant who delegated the signature to the person answering (signoff-design.md decision 34): the answer counts as theirs.
+    /// <see langword="null"/> when the step names none of the scenario's.
+    /// </summary>
+    public RParticipant? OnBehalfOf { get; internal set; }
 
     /// <summary>
     /// The approval's named signature the step answers (signoff-design.md decision 8); <see langword="null"/> when the engine picks it, or
@@ -1081,4 +1150,11 @@ public sealed class RExpectation
     /// order (stage, then signature); empty when the file expects none. An id that names no signature of the process's gates is left out.
     /// </summary>
     public IReadOnlyList<RSignatureCount> Signatures { get; internal set; } = [];
+
+    /// <summary>
+    /// The reminders and escalations expected due at the step (signoff-design.md decision 35), compared as a set, in file order;
+    /// <see langword="null"/> when the file checks none, and empty when it expects none. An entry whose id names no signature of the
+    /// process's gates is left out.
+    /// </summary>
+    public IReadOnlyList<RExpectedNotice>? Notices { get; internal set; }
 }

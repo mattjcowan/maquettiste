@@ -50,7 +50,11 @@ internal sealed record ActingMove(ProcessGate? Gate, IReadOnlyList<string> Unsig
 /// <param name="Complete">Whether it has its count and each of its required actors signed.</param>
 /// <param name="Unsigned">Its required actors that no signature counted on it yet satisfies, in file order.</param>
 /// <param name="Blocked">Whether rows 7c or 7d keep the person from giving the response on it.</param>
-internal sealed record ActingSignature(NamedSignature Signature, bool Complete, IReadOnlyList<string> Unsigned, bool Blocked);
+internal sealed record ActingSignature(NamedSignature Signature, bool Complete, IReadOnlyList<string> Unsigned, bool Blocked)
+{
+    /// <summary>For an answer on behalf of a delegator, the actor it counts as: the delegator's (signoff-design.md decision 34); else null.</summary>
+    public string? CountsAs { get; init; }
+}
 
 /// <summary>
 /// The rule that picks the named signature a response answers when the step names none (signoff-design.md decision 8), the same way every time.
@@ -63,8 +67,9 @@ internal static class ApprovalPick
     /// signers the person meets, complete or not; for <c>sign</c> and <c>ignore</c>, among the needed signatures not complete, the first the person
     /// may fill (rows 7a, 7c and 7d) where they meet a required actor not yet signed, else the first they may fill, else the first needed signature
     /// whose signers they meet, so that row 7 refuses on it: for <c>sign</c> complete or not (a complete one with <c>gate-repeat</c>), for
-    /// <c>ignore</c> not complete only, as a complete signature leaves the person nothing to answer. The refusal is <c>gate-not-signed</c> or
-    /// <c>gate-signer</c> when nothing can be picked.
+    /// <c>ignore</c> not complete only, as a complete signature leaves the person nothing to answer. <c>delegate</c> picks as <c>sign</c> does,
+    /// among the signatures not complete that have <c>delegateTo</c> (decision 34). The refusal is <c>gate-not-signed</c> or <c>gate-signer</c>
+    /// when nothing can be picked.
     /// </summary>
     /// <param name="response">The response.</param>
     /// <param name="needed">The round's needed signatures, in file order.</param>
@@ -96,7 +101,9 @@ internal static class ApprovalPick
         (NamedSignature Signature, string Actor)? fill = null, met = null;
         foreach (var s in needed)
         {
-            if ((s.Complete && response == SignatureResponse.Ignore) || actorFor(s) is not { Actor: { } actor } found)
+            if (response == SignatureResponse.Delegate && s.Signature.DelegateTo.Count == 0)
+                continue;
+            if ((s.Complete && response is SignatureResponse.Ignore or SignatureResponse.Delegate) || actorFor(s) is not { Actor: { } actor } found)
                 continue;
             met ??= (s.Signature, actor);
             if (s.Complete || s.Blocked)
@@ -223,6 +230,19 @@ internal static class Participants
         {
             if (move.Gate is not { } gate)
                 break;
+            if (move.Signatures is { } delegated && step.OnBehalfOf is not null)
+            {
+                // An answer on behalf (signoff-design.md decision 34): the signature by the response's rule among those handed to the
+                // participant, counting as the delegator's actor; the participant acts as an actor of its delegateTo it satisfies.
+                (string? Actor, bool Required) Behalf(ActingSignature s) => s.CountsAs is { } countsAs
+                    ? (countsAs, s.Unsigned.Any(u => membership.Accepts(u, countsAs))) : (null, false);
+                var answered = step.Signature is { } own ? delegated.FirstOrDefault(s => string.Equals(s.Signature.Id, own, StringComparison.Ordinal))?.Signature
+                    : ApprovalPick.Choose(step.Response, delegated, move.Latest, Behalf).Signature;
+                if (answered is not null)
+                    return (answered.DelegateTo.FirstOrDefault(Satisfied) ?? participant.Actor, answered.Id);
+                continue;
+            }
+
             if (move.Signatures is { } needed)
             {
                 (string? Actor, bool Required) For(ActingSignature s) => ActorFor(s.Signature.Signers, s.Unsigned);
@@ -274,17 +294,38 @@ internal static class Participants
         ArgumentNullException.ThrowIfNull(cast);
         ArgumentNullException.ThrowIfNull(step);
         choice = null;
+        var parties = Parties(model, process, cast, step);
         if (step.Participant is null || cast.Participant(step.Participant) is not { } participant)
-            return interpreter.Step(step);
+            return parties is null ? interpreter.Step(step) : interpreter.Step(step, null, null, parties);
         // current_actor() reads the signer, else the participant's identity (object-effects-design.md decision 5).
-        choice = interpreter.Acting(step, step.Signer ?? participant.IdentityText);
+        choice = interpreter.Acting(step, step.Signer ?? participant.IdentityText, parties);
         var (actsAs, signature) = Pick(model, process, cast, step, choice);
         var effective = step with
         {
             Actor = actsAs,
             Signer = step.Signer ?? (step.Input == StepInput.Event ? participant.IdentityText : null),
         };
-        return interpreter.Step(effective, participant.IdentityText, signature) with { ActsAs = actsAs };
+        return interpreter.Step(effective, participant.IdentityText, signature, parties) with { ActsAs = actsAs };
+    }
+
+    /// <summary>
+    /// The participants a step names for a delegation (signoff-design.md decision 34), as the run reads them: the identity of its
+    /// <c>delegateTo</c> and which actors that participant satisfies, and the identity of its <c>onBehalfOf</c>. <see langword="null"/> for a
+    /// step that names neither, so other steps run as before.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="process">The process that runs.</param>
+    /// <param name="cast">The run's cast.</param>
+    /// <param name="step">The step.</param>
+    /// <returns>The parties, or null.</returns>
+    public static StepParties? Parties(ModelSnapshot model, Process process, ScenarioCast cast, ScenarioStep step)
+    {
+        ArgumentNullException.ThrowIfNull(cast);
+        ArgumentNullException.ThrowIfNull(step);
+        if (step.DelegateTo is null && step.OnBehalfOf is null)
+            return null;
+        var target = cast.Participant(step.DelegateTo);
+        return new StepParties(target?.IdentityText, target is null ? null : id => Satisfies(model, process, cast, target, id), cast.Participant(step.OnBehalfOf)?.IdentityText);
     }
 
     /// <summary>
@@ -414,6 +455,13 @@ internal static class Participants
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(step);
+        // The participants a delegation names (signoff-design.md decision 34) are the cast's too.
+        foreach (var (named, field) in new[] { (step.DelegateTo, "/delegateTo"), (step.OnBehalfOf, "/onBehalfOf") })
+        {
+            if (named is not null && cast.Participant(named) is null)
+                return ($"the participant '{named}' is not one of the scenario's participants; name one of them.", field);
+        }
+
         if (step.Participant is not { } id)
             return null;
         if (cast.Participant(id) is not { } participant)

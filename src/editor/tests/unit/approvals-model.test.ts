@@ -186,3 +186,9 @@ describe("helpers", () => {
     expect(reorderStages(g)).toBe(false);
   });
 });
+
+describe("canRevert on an empty stage (review M2)", () => {
+  it("answers false for a stage with no signatures", () => {
+    expect(canRevert({ id: "g", name: "g", stages: [{ id: "s", name: "s", signatures: [] }] } as unknown as GateDoc)).toBe(false);
+  });
+});

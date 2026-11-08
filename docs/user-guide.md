@@ -2446,7 +2446,7 @@ A gate with today's fields works exactly as before. Nothing changes until you tu
 stage, named after the gate, holding one signature that takes the gate's signers, count, required actors and repeat setting. Add
 more signatures with **Add signature**. **Back to one list of signers** reverses it while the approval has one signature with no
 **Needed when** and no **Not by**. The gate keeps its meanings, its reason setting and its audit attributes, which apply to every
-signature. Part 1 holds one stage. A later release will add several stages that run in rounds.
+signature. An approval may hold several stages (see "Stages and rounds").
 
 **What a signature says.** Each row of the grid has:
 
@@ -2457,6 +2457,7 @@ signature. Part 1 holds one stage. A later release will add several stages that 
 - **Repeat signer**: whether one person may count twice on this signature.
 - **Needed when**: a condition on the object. The signature is needed unless the condition is false.
 - **Not by**: people who may not give it (see below).
+- **Details**: the delegation, reminder, escalation and password settings (see below).
 
 A signature is **complete** when it has its count and each required actor has signed. The approval is complete when every needed
 signature is complete. The signature that completes it makes the move, as with a plain gate.
@@ -2474,6 +2475,40 @@ nobody. Only verbs and moves the lifecycle itself sees can be named: moves, sign
 name. A gate policy may name verbs only, since its moves belong to no one lifecycle. A person who signed the approval that made a
 move counts as having done that move, so "the release approvers are not the review approvers" is a **Not by** naming the reviewed
 move.
+
+**Stages and rounds.** An approval may hold several **stages**, each with its own signatures. Press **Add stage** to add one. Each stage
+has a **Round** number. Stages in the same round run side by side: people may sign them in any order. Rounds run one after another:
+round 2 starts when every stage of round 1 is done. Keep the stages in round order, top to bottom. Completing a round never moves the
+object. When a signature completes a round that is not the last, the next round starts and the object stays where it is. Only the
+last round's completion makes the move. There is one exception. If every later round is skipped or needs nobody, the signature that
+finished the current round has finished the approval, so it makes the move. A rejection clears every round, and round 1 starts again.
+Withdraw works in the current round only.
+
+**Skip unless.** A stage may carry a condition, **Skip unless**. It is judged when the stage's round starts. If it is false, the stage
+is skipped and nobody signs it. If it is true, or can't be worked out, the stage runs. Empty means the stage is never skipped. The
+signatures of a stage that runs still use their own **Needed when**. A round with every stage skipped, or with nothing needed, is done
+at once, and the next round starts in the same step. A gate policy's stages take no **Skip unless**.
+
+**Delegation.** In a signature's **Details**, **May be delegated to** lists the actors a signature may be handed to. Then a signer who
+may give the signature can answer **Delegate**, naming the person it goes to. That person must be one of the listed actors. The
+delegator is finished on that signature and counts as having given their one response. Delegating never moves the object. The person
+it went to may then answer on that signature **on behalf of** the delegator. Their answer counts as the delegator's actor, so a
+required actor is still met. The record keeps both names. **Not by** and the rights are checked on the person who answers. A
+delegation can't be passed on again. A rejection, or the object leaving the state, ends every delegation. A withdraw reopens one.
+The model says who may be delegated to. Who is away, and from when to when, is for the running system.
+
+**Reminders and escalation.** In **Details**, **Remind after** and **Escalate after** are durations (for example `PT24H`), counted from
+when the signature's round started. **Escalate to** lists the actors an escalation goes to. A reminder goes to the people who may still
+answer. Each is due once per round start, and not at all once the signature is complete. Give **Escalate after** and **Escalate to**
+together, and make the escalation later than the reminder. The model only says when and to whom. The running system sends them. An
+escalation is a notice only: the people it reaches gain no right to sign, unless they are among the signers or the delegation actors.
+A move on a timer is still an ordinary `after` move.
+
+**Sign again with a password.** Turn this on in **Details** for a signature that wants the person's identity checked again for every
+response on it. The model never sees a password. The running system does the check. In the simulation, and in scenarios, the check
+counts as done.
+
+**`route` still does nothing.** Sending the object to people at run time is the running system's job.
 
 **One person, one signature.** One person gives one response that counts on an approval, across all its signatures. Turn on **One
 person may give several signatures** on the gate to allow more. **Repeat signer** is separate: it lets one person count twice on
@@ -2503,24 +2538,34 @@ whose signers the person meets.
 **Refusals.** An approval adds two refusals to the ones a gate has: a person kept off by **Not by** is refused as excluded, and a
 withdraw with nothing to take back is refused as not signed. A person who has already answered is refused as a repeat.
 
-**In a scenario.** On a step for a gated event, the **Response** cell offers Sign, Reject, Ignore (abstain) and Withdraw (the
-project's hidden verbs are left out), and the **Signature** cell names the signature, or shows "Picked by the engine". A step's
+**In a scenario.** On a step for a gated event, the **Response** cell offers Sign, Reject, Ignore (abstain), Withdraw and, when a
+signature may be delegated, Delegate (the project's hidden verbs are left out). **Delegate to** names the person a delegation goes to,
+and **On behalf of** the person whose delegation the step answers. A step's expectations gain **Notices**: the reminders and escalations
+that fell due at a time step, by signature and kind, compared as a set. Update expectations from replay fills it in. The **Signature**
+cell names the signature, or shows "Picked by the engine". A step's
 expectations gain **Signatures**: the count after the step, for each signature you list. A difference is MQ9311, and **Update
 expectations from replay** fills it in. Recording writes it for each step that answers an approval. The **Refusal** cell offers
 the two new refusals. Both cells are offered only on a step whose event is gated by an approval; anywhere else a response or
 signature is MQ9305. The audit records each response with its signature and stage (`signed`, `rejected`, `ignored`, `withdrawn`).
 
 **In the simulation panel.** For each approval, the panel lists its signatures: whether each is needed, how many are counted, how
-many are required and who has answered. The enabled input offers Reject, Ignore and Withdraw beside Sign, with a signature
-picker. After a rejection, the panel shows that the approval was cleared.
+many are required and who has answered. Each stage shows its round, and "skipped" when its condition skipped it. A signature that was
+delegated shows to whom. When a time step passes a reminder or an escalation, the panel lists the notice that fell due. The enabled
+input offers Reject, Ignore, Withdraw and Delegate beside Sign, with a signature picker. After a rejection, the panel shows that the
+approval was cleared.
 
 **Generated code and documents.** `csharp-dapper` writes approvals only for a process that has one. Each **Needed when** becomes a
 method you write, in `<Process>ApprovalConditions`; answer true when you can't tell. The command's envelope takes the response
-(`Response`) and the signature (`Signature`). The pack's README has the steps. `process-docs` shows a table of signatures for each
+(`Response`) and the signature (`Signature`). With rounds, a stage's condition becomes a method you write too, named
+`<Gate><Stage>Stage`. With delegation, you answer for each delegation actor whether a person is that actor. With reminders, your
+scheduler calls `ApprovalNotices.Due` and sends the notices, dropping repeats by their id. With a password, you pass `Reauthenticated`
+once you have checked it. The pack's README has the steps. `process-docs` shows a table of signatures for each
 approval, and what each response does.
 
 **Limits.** Generated code can't tell when an instance that was already waiting entered its state, so **Not by** misses what was done
-before the gate got stages. Part 1 has one stage, with no rounds, delegation, reminders or password check.
+before the gate got stages. The model keeps no list of absent people, and no standing substitutes. Generated code does not send
+notices, does not check passwords, and does not remember which notices it handed out. The simulation lists due notices only when a
+time step passes them. Observers, weighted votes and counts such as "all" or "a share" are not offered.
 
 ### Libraries: shared guards, actions and gate policies
 
@@ -2805,7 +2850,7 @@ decided it, the ids that decide it (`by`) and the other lifecycles involved (`de
 **Verb**. Its keys: `verb`, `values` (for `modify` on the subject, **Set values**, attribute id to value, such as `amount=5`), and
 `end` and `object` for a link (**Link end** and **Linked object**). The step acts as its actor, or as its participant. Object verbs,
 link verbs and your own verbs may be steps. Moves, signatures and task completion keep their own steps. `override`,
-`set-state`, `delegate`, `route` and `claim` are not steps yet (MQ9305). To reject, ignore or withdraw at an approval, give an event step a `response` (see "Approvals"). `freeze` and `thaw` are steps.
+`set-state`, `route` and `claim` are not steps yet (MQ9305). To delegate a signature, give an event step the response `delegate` (see "Approvals"). To reject, ignore or withdraw at an approval, give an event step a `response` (see "Approvals"). `freeze` and `thaw` are steps.
 A step that does not fit is MQ9305. A `read` step may also name **Attributes**, the attributes it reads.
 
 - An accepted `modify` applies its values to the object, and later guards and sets read them. They show in `valuesChanged` and in
@@ -3061,7 +3106,10 @@ command's export prints MQ9404 but not the MQ9406 note).
 | MQ8107 | warning | A trigger point that can never run, such as a move verb that no event or transition names | **Remove it** |
 | MQ8201 | error | An approval's shape is wrong: a gate with named signatures that also has its own signers, count, required actors or repeat setting, or **One person may give several signatures** on a gate without them | Remove the key |
 | MQ8202 | error | A named signature's **Not by** or **Needed when** does not fit: a move that is not its lifecycle's, a move in a gate policy, a verb its lifecycle's runs cannot see, or a condition on a gate policy's signature | Remove the entry or key |
-| MQ9311 | error | The signatures counted after a step differ from the step's expected **Signatures** | **Update expectations from replay** |
+| MQ8203 | error | An approval's stages are not in round order: a stage's **Round** is lower than the one before it | Reorder the stages |
+| MQ8204 | error | A signature's reminder or escalation is malformed: **Escalate to** without **Escalate after**, or the reverse, or a duration that is not a positive ISO 8601 duration | Add or remove the key, or fix the duration |
+| MQ8205 | warning | A signature's **Escalate after** is not longer than its **Remind after**, so the reminder never comes first | Lengthen the escalation |
+| MQ9311 | error | The signatures counted after a step differ from the step's expected **Signatures**, or the notices due at a step differ from its expected **Notices** | **Update expectations from replay** |
 | MQ9310 | error | A step's check warnings or trigger points differ from what it expects | **Update expectations from replay** |
 | MQ9309 | warning | A step is refused as frozen because an earlier step froze the subject or the link (an event that names `freeze`, or a `freeze` step), and it does not expect that refusal. Names the freezing step | **Update expectations from replay** |
 | MQ9308 | error | A refused step's `refusal` or `refusedBy` differs from the replay's: the first check that fails names both | **Update expectations from replay** |

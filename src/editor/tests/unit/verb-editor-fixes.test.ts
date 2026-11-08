@@ -67,7 +67,7 @@ describe("findings of a part belong to the owning element", () => {
 
 describe("the MQ9701 fix on an unsaved draft", () => {
   it("is the one fix offered while the draft is unsaved, because it edits the project's verbs", () => {
-    expect(hasDraftQuickFix("MQ9701")).toBe(true);
+    for (const rule of ["MQ9701", "MQ8201", "MQ8203", "MQ8204"]) expect(hasDraftQuickFix(rule)).toBe(true);
     for (const rule of ["MQ9702", "MQ9704", "MQ9705", "MQ9201"]) expect(hasDraftQuickFix(rule)).toBe(false);
     expect(hasQuickFix("MQ9701", null)).toBe(true);
   });

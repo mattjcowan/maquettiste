@@ -1,0 +1,159 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JAE0000000000000000000Y1",
+  "name": "rounds",
+  "process": "01JAE0000000000000000000C1",
+  "outcome": "final",
+  "description": "Engineering's signature completes round 1 and moves nothing; legal is skipped; the controller is reminded, then escalated; the controller delegates to a deputy, a delegation outside delegateTo is refused, and the deputy's signature on the controller's behalf completes the approval, as the board's round is skipped.",
+  "participants": [
+    {
+      "id": "01JAE0000000000000000000W1",
+      "name": "carl",
+      "holds": [
+        {
+          "id": "01JAE0000000000000000000J1",
+          "actor": "01JAE0000000000000000000R2"
+        }
+      ]
+    },
+    {
+      "id": "01JAE0000000000000000000W2",
+      "name": "dora",
+      "holds": [
+        {
+          "id": "01JAE0000000000000000000J2",
+          "actor": "01JAE0000000000000000000R3"
+        }
+      ]
+    },
+    {
+      "id": "01JAE0000000000000000000W3",
+      "name": "finn",
+      "holds": [
+        {
+          "id": "01JAE0000000000000000000J3",
+          "actor": "01JAE0000000000000000000R1"
+        }
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "id": "01JAE0000000000000000000K1",
+      "name": "deal",
+      "entity": "01JAE0000000000000000000E1",
+      "values": {
+        "01JAE0000000000000000000A2": 20000
+      }
+    }
+  ],
+  "subject": "01JAE0000000000000000000K1",
+  "start": {
+    "context": {
+      "01JAE0000000000000000000X1": 20000
+    },
+    "at": "2026-11-09T09:00:00Z"
+  },
+  "steps": [
+    {
+      "id": "01JAE0000000000000000000Z1",
+      "event": "01JAE0000000000000000000V1",
+      "actor": "01JAE0000000000000000000R1",
+      "signer": "ana",
+      "expect": {
+        "states": [
+          "01JAE0000000000000000000S2"
+        ]
+      }
+    },
+    {
+      "id": "01JAE0000000000000000000Z2",
+      "event": "01JAE0000000000000000000V2",
+      "actor": "01JAE0000000000000000000R1",
+      "signer": "ben",
+      "expect": {
+        "states": [
+          "01JAE0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAE0000000000000000000N1": 1,
+          "01JAE0000000000000000000N2": 0
+        }
+      }
+    },
+    {
+      "id": "01JAE0000000000000000000Z3",
+      "input": "time",
+      "after": "P2D",
+      "expect": {
+        "states": [
+          "01JAE0000000000000000000S2"
+        ],
+        "notices": [
+          {
+            "signature": "01JAE0000000000000000000N2",
+            "kind": "remind"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JAE0000000000000000000Z4",
+      "input": "time",
+      "after": "P2D",
+      "expect": {
+        "states": [
+          "01JAE0000000000000000000S2"
+        ],
+        "notices": [
+          {
+            "signature": "01JAE0000000000000000000N2",
+            "kind": "escalate"
+          }
+        ]
+      }
+    },
+    {
+      "id": "01JAE0000000000000000000Z5",
+      "event": "01JAE0000000000000000000V2",
+      "participant": "01JAE0000000000000000000W1",
+      "response": "delegate",
+      "delegateTo": "01JAE0000000000000000000W2",
+      "expect": {
+        "states": [
+          "01JAE0000000000000000000S2"
+        ],
+        "signatures": {
+          "01JAE0000000000000000000N2": 0
+        }
+      }
+    },
+    {
+      "id": "01JAE0000000000000000000Z6",
+      "event": "01JAE0000000000000000000V2",
+      "actor": "01JAE0000000000000000000R2",
+      "signer": "erin",
+      "response": "delegate",
+      "delegateTo": "01JAE0000000000000000000W3",
+      "expect": {
+        "accepted": false,
+        "refusal": "gate-signer",
+        "states": [
+          "01JAE0000000000000000000S2"
+        ]
+      }
+    },
+    {
+      "id": "01JAE0000000000000000000Z7",
+      "event": "01JAE0000000000000000000V2",
+      "participant": "01JAE0000000000000000000W2",
+      "onBehalfOf": "01JAE0000000000000000000W1",
+      "expect": {
+        "states": [
+          "01JAE0000000000000000000S3"
+        ]
+      }
+    }
+  ]
+}

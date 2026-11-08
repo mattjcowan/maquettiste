@@ -706,25 +706,39 @@ internal static class ModelIndexer
 
     /// <summary>
     /// A process row's members for the approvals naming key (signoff-design.md section 7), each left at its default unless they apply:
-    /// whether a gate on its transitions has stages, the gate policies its transitions use, and for a library the gates with stages it holds.
+    /// whether a gate on its transitions has stages, the gate policies its transitions use, and for a library the gates with stages it holds;
+    /// and the part 2 groups its inline gates use and, for a library, each gate policy uses (decision 32).
     /// </summary>
     private static ElementSummary WithApprovals(ElementSummary row, Element element)
     {
         if (element is not Process process)
             return row;
         var inline = false;
+        var groups = ApprovalGroups.None;
         SortedSet<string>? policies = null;
         foreach (var transition in process.Transitions)
         {
-            inline |= transition.Gate is { UsesStages: true };
+            if (transition.Gate is { UsesStages: true } gate)
+            {
+                inline = true;
+                groups |= ApprovalGroupMarks.Of(gate);
+            }
+
             if (transition.GatePolicy is { } policy)
                 (policies ??= new(StringComparer.Ordinal)).Add(policy);
         }
 
         var approvals = SortedKeys(process.Gates.Where(static g => g.UsesStages).Select(static g => g.Id));
+        // The part 2 groups each gate policy with stages uses (signoff-design.md decision 32), only for those that use one.
+        var policyGroups = process.Gates.Select(static g => (Policy: g.Id, Groups: ApprovalGroupMarks.Of(g))).Where(static p => p.Groups != ApprovalGroups.None)
+            .OrderBy(static p => p.Policy, StringComparer.Ordinal).ToList();
         if (!inline && policies is null && approvals is null)
             return row;
-        return row with { InlineApproval = inline, GatePolicyUses = policies is null ? null : [.. policies], ApprovalGatePolicies = approvals };
+        return row with
+        {
+            InlineApproval = inline, GatePolicyUses = policies is null ? null : [.. policies], ApprovalGatePolicies = approvals,
+            InlineApprovalGroups = groups, ApprovalPolicyGroups = policyGroups.Count == 0 ? null : policyGroups,
+        };
     }
 
     /// <summary>

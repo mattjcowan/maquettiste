@@ -183,14 +183,15 @@ public sealed partial class StatechartInterpreter
     /// The named signature picked with the actor the participant acts as (signoff-design.md decision 8), or <see langword="null"/> for the step's
     /// own or one picked in the step; the trace still echoes the input as given.
     /// </param>
+    /// <param name="parties">The participants the step names for a delegation (signoff-design.md decision 34), or <see langword="null"/>.</param>
     /// <returns>The trace.</returns>
-    internal StepTrace Step(ScenarioStep input, string? identity, string? pick = null)
+    internal StepTrace Step(ScenarioStep input, string? identity, string? pick = null, StepParties? parties = null)
     {
         ArgumentNullException.ThrowIfNull(input);
         if (!_started)
             Start();
         _index++;
-        _scope = new Scope(input) { Identity = identity, Pick = pick };
+        _scope = new Scope(input) { Identity = identity, Pick = pick, Parties = parties };
         var before = Snapshot();
         // A word in assume names a check the team writes of a lifecycle the step reaches (MQ9305, trigger-points-design.md decision 26).
         if (_options.Triggers is { } triggers && input.Assume.Count > 0 && triggers.AssumeProblem(input) is { } problem)
@@ -319,6 +320,8 @@ public sealed partial class StatechartInterpreter
             var next = AllInstances().SelectMany(i => i.Timers).Where(t => t.Due <= end).OrderBy(t => t, TimerOrder.Instance).FirstOrDefault();
             if (next is null)
                 break;
+            // Reminders and escalations due by the timer's instant fall due before it fires (signoff-design.md decision 35).
+            DueNotices(next.Due);
             Clock = next.Due;
             next.Owner.Timers.Remove(next);
             if (next.Owner.Done)
@@ -337,6 +340,8 @@ public sealed partial class StatechartInterpreter
             });
         }
 
+        if (!_root.Done)
+            DueNotices(end);
         Clock = end;
     }
 
@@ -630,8 +635,9 @@ public sealed partial class StatechartInterpreter
     /// </summary>
     /// <param name="input">The step about to run.</param>
     /// <param name="identity">The identity <c>current_actor()</c> reads in the guards it evaluates, or <see langword="null"/>.</param>
+    /// <param name="parties">The participants the step names for a delegation (signoff-design.md decision 34), or <see langword="null"/>.</param>
     /// <returns>The choice.</returns>
-    internal ActingChoice Acting(ScenarioStep input, string? identity = null)
+    internal ActingChoice Acting(ScenarioStep input, string? identity = null, StepParties? parties = null)
     {
         ArgumentNullException.ThrowIfNull(input);
         if (input.Input is StepInput.InvokeDone or StepInput.InvokeError)
@@ -648,7 +654,7 @@ public sealed partial class StatechartInterpreter
         var ev = target.Chart.Events[input.Event];
         var saved = _scope;
         _index++; // a guard's seed is the step's
-        _scope = new Scope(input) { Event = EventObject(ev.Name, input.Actor, ev.Payload, input.Payload), Identity = identity };
+        _scope = new Scope(input) { Event = EventObject(ev.Name, input.Actor, ev.Payload, input.Payload), Identity = identity, Parties = parties };
         try
         {
             var moves = new List<ActingMove>();
@@ -668,13 +674,16 @@ public sealed partial class StatechartInterpreter
                             continue;
                         if (t.Gate is { UsesStages: true } approvalGate)
                         {
-                            // The round's needed signatures, for the pick with the actor (decision 8); nothing needed moves as without a gate.
+                            // The round's needed signatures, for the pick with the actor (decision 8); nothing needed moves as without a gate. An
+                            // answer on behalf picks among the signatures the delegator handed to the person (decision 34).
                             var approval = ApprovalOf(target, t, approvalGate);
+                            var behalf = input.OnBehalfOf is null ? null : parties?.OnBehalfOf ?? "";
                             moves.Add(approval.Waiting ? new ActingMove(null, []) : new ActingMove(approvalGate, [])
                             {
-                                Signatures = NeededSignatures(target, t, approvalGate, approval, identity, input.Response),
-                                Latest = Latest(approval, identity),
-                                LatestActor = approval.Counted.LastOrDefault(c => string.Equals(c.Signer, identity, StringComparison.Ordinal))?.Actor,
+                                Signatures = behalf is null ? NeededSignatures(target, t, approvalGate, approval, identity, input.Response)
+                                    : BehalfSignatures(target, t, approvalGate, approval, identity, behalf, input.Response),
+                                Latest = Latest(approval, identity, behalf),
+                                LatestActor = LatestSigned(approval, identity)?.Actor,
                             });
                             continue;
                         }
@@ -1658,6 +1667,8 @@ public sealed partial class StatechartInterpreter
             FrozenBy = _scope.Refusal == Refusals.Frozen ? FrozeBy(_scope.Input) : null,
             SignatureCounts = counts,
             AnsweredSignatures = answered,
+            // The reminders and escalations that fell due, in file order, a reminder before an escalation (signoff-design.md decision 35).
+            Notices = _scope.Notices.Count > 0 ? [.. _scope.Notices.OrderBy(n => n.Order).Select(n => n.Notice)] : null,
         };
     }
 
@@ -1819,6 +1830,9 @@ public sealed partial class StatechartInterpreter
         // The named signature picked with the participant's actor, and the approvals the step answered (signoff-design.md decisions 8 and 27).
         public string? Pick { get; init; }
         public List<ProcessGate> Answered { get; } = [];
+        // The participants named for a delegation, and the reminders and escalations that fell due with their file order (decisions 34 and 35).
+        public StepParties? Parties { get; init; }
+        public List<((int Instance, int Transition, int Signature, NoticeKind Kind) Order, ApprovalNotice Notice)> Notices { get; } = [];
         public Dictionary<string, JsonElement> ValuesBefore { get; } = new(StringComparer.Ordinal);
         public List<string> Notes { get; } = [];
         public List<MicrostepTrace> Microsteps { get; } = [];

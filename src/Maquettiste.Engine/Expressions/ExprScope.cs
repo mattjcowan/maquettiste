@@ -288,6 +288,9 @@ public sealed class ExprScope
     /// <summary>What <c>in_state</c> reads at the site; <see langword="null"/> where no lifecycle can be read.</summary>
     internal IExprLifecycles? Lifecycles { get; init; }
 
+    /// <summary>Whether an approval site is a stage's <c>when</c> rather than a named signature's (signoff-design.md decision 6), for messages.</summary>
+    internal bool StageCondition { get; init; }
+
     /// <summary>The type a value or set site's result must have (a derived or set attribute's type), or <see langword="null"/> at other sites.</summary>
     public ExprType? ValueType { get; init; }
 

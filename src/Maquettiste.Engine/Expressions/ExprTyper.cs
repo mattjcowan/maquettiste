@@ -154,7 +154,7 @@ public static class ExprTyper
         ExprSiteKind.Guard => "guard",
         ExprSiteKind.Right => "right's condition",
         ExprSiteKind.Trigger => "trigger point's condition",
-        ExprSiteKind.Approval => "named signature's when",
+        ExprSiteKind.Approval => scope.StageCondition ? "stage's when" : "named signature's when",
         _ => "rule condition",
     };
 
@@ -266,7 +266,9 @@ public static class ExprTyper
                 if (scope.Site == ExprSiteKind.Approval && scope.ConstraintId is null)
                 {
                     // Nobody acts when a signature's round starts (signoff-design.md decision 7).
-                    Report("MQ3102", pointer, "current_actor() is whoever acts, and nobody acts when a named signature's round starts; read the object or the context instead.");
+                    Report("MQ3102", pointer, scope.StageCondition
+                        ? "current_actor() is whoever acts, and nobody acts when an approval stage's round starts; read the object or the context instead."
+                        : "current_actor() is whoever acts, and nobody acts when a named signature's round starts; read the object or the context instead.");
                     return null;
                 }
 
@@ -379,7 +381,8 @@ public static class ExprTyper
                             ? "The site has no member with the id '" + path[^1] + "'; a trigger point reads the object under subject and old, and a move's payload, "
                                 + "never the context."
                             : scope.Site == ExprSiteKind.Approval
-                                ? "The site has no member with the id '" + path[^1] + "'; a named signature's when reads the object under subject and the context, never a payload."
+                                ? "The site has no member with the id '" + path[^1] + "'; " + (scope.StageCondition ? "an approval stage's" : "a named signature's")
+                                    + " when reads the object under subject and the context, never a payload."
                             : "The site has no member with the id '" + path[^1] + "'.");
                 return null;
             }

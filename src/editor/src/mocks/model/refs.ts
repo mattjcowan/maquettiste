@@ -322,6 +322,10 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
             arr(sig.signers).forEach((a, k) => from(`${at}/signers/${k}`, "signers", a, true));
             arr(sig.requiredActors).forEach((a, k) => from(`${at}/requiredActors/${k}`, "requiredActors", a, false, `${at}/requiredActors/${k}`));
             treeIds(sig.when, `${at}/when`, (pointer, field, to) => from(pointer, field, to, true));
+            // Part 2: the actors a signature may be delegated to, and those an escalation tells. Both leave their list as an actor goes;
+            // a list left empty drops its key (and an escalateTo takes escalateAfter with it).
+            arr(sig.delegateTo).forEach((a, k) => from(`${at}/delegateTo/${k}`, "delegateTo", a, false, `${at}/delegateTo/${k}`));
+            arr(sig.escalateTo).forEach((a, k) => from(`${at}/escalateTo/${k}`, "escalateTo", a, false, `${at}/escalateTo/${k}`));
           }),
         );
       });
@@ -358,6 +362,19 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
         if (signatures && typeof signatures === "object")
           for (const key of Object.keys(signatures as Json))
             out.push({ fromId: str(st.id) ?? id, pointer: `/steps/${i}/expect/signatures/${key}`, field: "signatures", toId: key, required: false });
+      });
+      // A step's delegateTo and onBehalfOf name participants of the same file (part 2): a delete of the participant clears the key. The
+      // reminders and escalations a step expects are listed by signature id: a delete drops the item.
+      arr(doc.steps).forEach((st, i) => {
+        for (const key of ["delegateTo", "onBehalfOf"] as const) {
+          const to = str(st[key]);
+          if (to) out.push({ fromId: str(st.id) ?? id, pointer: `/steps/${i}/${key}`, field: key, toId: to, required: false });
+        }
+        arr((st.expect as Json | undefined)?.notices).forEach((n, j) => {
+          const to = str(n.signature);
+          const pointer = `/steps/${i}/expect/notices/${j}`;
+          if (to) out.push({ fromId: str(st.id) ?? id, pointer: `${pointer}/signature`, field: "notices", toId: to, required: false, removeItem: pointer });
+        });
       });
       // A step's assume words are keyed by the id of a check (trigger-points-design.md decision 26): a delete clears the entry. Boolean
       // entries are guards' and stay as they are.

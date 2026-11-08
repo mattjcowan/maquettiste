@@ -4,6 +4,7 @@
 // run (configuration, guard results, refusals, gate progress, verdicts) is read from the answer; the document only
 // supplies names and the forms' fields. Pure: no React, no I/O.
 import type { AttributeDoc } from "@/api/types";
+import { durationMs } from "@/model/approvals";
 import { RIGHT_LABELS as RL, SIMULATION_LABELS as L, TRIGGER_LABELS as TL } from "@/model/labels";
 import { builtInVerb, labelOfKey } from "@/model/verbList";
 import { stateIndex, transitionLabel, type ApprovalResponse, type EventDoc, type NotByDoc, type ProcessDoc, type ScenarioDoc } from "@/model/process";
@@ -157,6 +158,9 @@ export interface RowValue {
   /** On an approval: the response (`sign`, `reject`, `ignore`, `withdraw`) and the named signature; empty means the engine picks it. */
   response: string;
   signature: string;
+  /** With the response delegate, the participant the signature goes to; otherwise the participant who delegated it to the person answering. */
+  delegateTo: string;
+  onBehalfOf: string;
   assume: Record<string, boolean | CheckWord>;
   after: string;
 }
@@ -259,6 +263,8 @@ export function defaultRowValue(row: EnabledRow, result: SimulationResult): RowV
     reason: "",
     response: "sign",
     signature: "",
+    delegateTo: "",
+    onBehalfOf: "",
     assume: { ...Object.fromEntries(row.assume.map((g) => [g.id, true])), ...Object.fromEntries(row.checks.map((c) => [c.id, "pass" as const])) },
     after: row.trigger === "time" ? (nextDue(result)?.after ?? "PT1H") : "",
   };
@@ -292,6 +298,12 @@ export function inputOf(row: EnabledRow, value: RowValue): SimInput {
     // An approval's response and signature; a signature with the engine's pick is left out.
     if (row.responses.length && value.response && value.response !== "sign") input.response = value.response as ApprovalResponse;
     if (row.signatures.length && value.signature) input.signature = value.signature;
+    // Delegate names who it goes to; every other response may answer on behalf of the person who delegated (a delegation can't be passed on).
+    if (row.responses.includes("delegate")) {
+      if (value.response === "delegate") {
+        if (value.delegateTo) input.delegateTo = value.delegateTo;
+      } else if (value.onBehalfOf) input.onBehalfOf = value.onBehalfOf;
+    }
   }
   const payload = Object.fromEntries(
     row.payload
@@ -317,41 +329,89 @@ export interface ApprovalRow {
   name: string;
   /** Nothing is needed: the approval waits for the event's next occurrence. */
   satisfied: boolean;
+  /** The current round: the lowest round with a stage neither complete nor skipped; absent when the approval has one round. */
+  round?: number;
   stages: {
     name: string;
     complete: boolean;
-    signatures: { id: string; name: string; needed: boolean; counted: number; required: number; finished: string[]; complete: boolean }[];
+    /** The stage's round, when the approval has more than one, and whether its condition skipped it. */
+    round?: number;
+    skipped?: boolean;
+    signatures: {
+      id: string;
+      name: string;
+      needed: boolean;
+      counted: number;
+      required: number;
+      finished: string[];
+      complete: boolean;
+      /** Not needed yet: its stage's round has not started, so its conditions are not judged. The round it waits for. */
+      waitsForRound?: number;
+    }[];
   }[];
+}
+
+/** How each person who finished a signature did it, from the audit of the run: a delegation says to whom, an answer on behalf says for whom. */
+function finishedNotes(result: SimulationResult): Map<string, string> {
+  const notes = new Map<string, string>();
+  for (const entry of result.trace ?? [])
+    for (const a of entry.audit ?? []) {
+      // A rejection clears the approval, and its delegations with it.
+      if (a.outcome === "rejected") for (const key of [...notes.keys()]) if (key.startsWith(`${a.gate}|`)) notes.delete(key);
+      if (!a.signature || !a.signer) continue;
+      const key = `${a.gate}|${a.signature}|${a.signer}`;
+      if (a.outcome === "delegated" && a.delegateTo) notes.set(key, L.finishedDelegated(a.delegateTo));
+      else if (a.outcome === "signed" || a.outcome === "ignored") {
+        if (a.onBehalfOf) notes.set(key, L.finishedBehalf(a.onBehalfOf));
+        else notes.delete(key);
+      }
+    }
+  return notes;
 }
 
 /** The approvals of the answer's gate state (a gate without stages has none), by name. */
 export function approvalRows(result: SimulationResult, process: ProcessDoc, names: Names): ApprovalRow[] {
   const stages = new Map<string, string>();
   for (const t of process.transitions ?? []) for (const st of t.gate?.stages ?? []) stages.set(st.id, st.displayName || st.name);
-  return (result.gates ?? []).flatMap((g) =>
-    g.stages?.length
+  const notes = finishedNotes(result);
+  return (result.gates ?? []).flatMap((g) => {
+    const current = g.stages?.some((st) => st.round !== undefined)
+      ? g.stages.filter((st) => !st.complete && !st.skipped).reduce((m, st) => Math.min(m, st.round ?? 1), Infinity)
+      : undefined;
+    return g.stages?.length
       ? [
           {
             gate: g.gate,
             name: names.gate(g.gate),
             satisfied: g.satisfied,
+            ...(g.stages.some((st) => st.round !== undefined)
+              ? { round: g.stages.filter((st) => !st.complete && !st.skipped).reduce((m, st) => Math.min(m, st.round ?? 1), Infinity) }
+              : {}),
             stages: g.stages.map((st) => ({
               name: stages.get(st.stage) ?? st.stage,
               complete: st.complete,
+              ...(st.round !== undefined ? { round: st.round } : {}),
+              ...(st.skipped ? { skipped: true } : {}),
               signatures: st.signatures.map((s) => ({
                 id: s.signature,
                 name: names.signature?.(s.signature) ?? s.signature,
                 needed: s.needed,
                 counted: s.counted,
                 required: s.required,
-                finished: s.finished,
+                finished: s.finished.map((who) => {
+                  const note = notes.get(`${g.gate}|${s.signature}|${who}`);
+                  return note ? `${who} (${note})` : who;
+                }),
                 complete: s.complete,
+                ...(!s.needed && !s.complete && !st.skipped && !st.complete && current !== undefined && Number.isFinite(current) && (st.round ?? 1) > current
+                  ? { waitsForRound: st.round }
+                  : {}),
               })),
             })),
           },
         ]
-      : [],
-  );
+      : [];
+  });
 }
 
 /** An ISO 8601 duration for a span in milliseconds (days, hours, minutes, seconds). */
@@ -373,6 +433,52 @@ export function nextDue(result: SimulationResult): { transition: string; dueAt: 
   const first = [...result.timers].sort((a, b) => Date.parse(a.dueAt) - Date.parse(b.dueAt))[0];
   if (!first) return null;
   return { transition: first.transition, dueAt: first.dueAt, after: durationText(Date.parse(first.dueAt) - Date.parse(result.clock)) };
+}
+
+/**
+ * The next reminder or escalation of an open approval, when no timer is scheduled: the answer does not list notices, so it is worked out
+ * from the trace and the signatures' delays. A round starts at the step that cleared the approval (a reject), finished the round before
+ * it, or else moved the chart last; a notice already listed since then is not pending.
+ */
+export function nextNoticeDue(
+  result: SimulationResult,
+  process: ProcessDoc,
+  names: Names,
+): { signature: string; kind: "remind" | "escalate"; dueAt: string } | null {
+  const trace = result.trace ?? [];
+  const rows = approvalRows(result, process, names);
+  const docs = new Map<string, { remindAfter?: string; escalateAfter?: string }>();
+  for (const t of process.transitions ?? []) for (const st of t.gate?.stages ?? []) for (const sg of st.signatures ?? []) docs.set(sg.id, sg);
+  let best: { signature: string; kind: "remind" | "escalate"; dueAt: string; at: number } | null = null;
+  for (const a of rows) {
+    if (a.satisfied) continue;
+    const current = a.round ?? 1;
+    let startIndex = 0;
+    trace.forEach((entry, i) => {
+      const audits = (entry.audit ?? []).filter((x) => x.gate === a.gate);
+      const earlier = new Set(a.stages.filter((st) => (st.round ?? 1) < current).flatMap((st) => st.signatures.map((s) => s.id)));
+      if (audits.some((x) => x.outcome === "rejected" || (earlier.has(x.signature ?? "") && ["signed", "ignored", "delegated"].includes(x.outcome))))
+        startIndex = i;
+      else if (current === 1 && entry.microsteps.some((m) => m.transitions.length) && !audits.length) startIndex = i;
+    });
+    const start = Date.parse(trace[startIndex]?.clock ?? result.clock);
+    const fired = new Set(trace.slice(startIndex).flatMap((entry) => (entry.notices ?? []).map((n) => `${n.signature}|${n.kind}`)));
+    for (const st of a.stages)
+      if ((st.round ?? 1) === current && !st.skipped)
+        for (const s of st.signatures) {
+          if (!s.needed || s.complete) continue;
+          for (const [kind, raw] of [
+            ["remind", docs.get(s.id)?.remindAfter],
+            ["escalate", docs.get(s.id)?.escalateAfter],
+          ] as const) {
+            const after = durationMs(raw);
+            if (after === null || after <= 0 || fired.has(`${s.id}|${kind}`)) continue;
+            const at = start + after;
+            if (!best || at < best.at) best = { signature: s.name, kind, dueAt: new Date(at).toISOString().replace(/\.0+Z$/, "Z"), at };
+          }
+        }
+  }
+  return best ? { signature: best.signature, kind: best.kind, dueAt: best.dueAt } : null;
 }
 
 const DURATION = /^P(?=\d|T\d)(?:\d+Y)?(?:\d+M)?(?:\d+W)?(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+(?:[.,]\d+)?S)?)?$/;
@@ -422,6 +528,7 @@ export interface LastStepLine {
     | "note"
     | "context"
     | "audit"
+    | "notice"
     | "diagnostic"
     | "incomplete";
   text: string;
@@ -471,7 +578,11 @@ export function lastStepLines(
             names.signature?.(refusedAudit.signature) ?? "",
             names.notBy?.(refusedAudit.signature) ?? "",
           )
-        : (L.refusals[entry.refusal] ?? entry.refusal);
+        : entry.refusal === "gate-signer" && entry.input?.response === "delegate" && entry.input.delegateTo
+          ? entry.input.delegateTo === entry.input.participant
+            ? L.delegateToSelfReason
+            : L.delegateTargetReason
+          : (L.refusals[entry.refusal] ?? entry.refusal);
     // The refusing element is named once: in the refusal line, as a link the panel adds (`element`), with the right's Why.
     const by = entry.refusedBy ? { id: entry.refusedBy, name: names.element(entry.refusedBy) } : undefined;
     lines.push({
@@ -558,8 +669,20 @@ export function lastStepLines(
         names.actor(r.actor),
         names.meaning(r.meaning),
         r.signature ? (names.signature?.(r.signature) ?? "") : "",
+        { onBehalfOf: r.onBehalfOf, delegateTo: r.delegateTo },
       ),
       tone: r.outcome === "refused" ? "danger" : r.outcome === "completed" ? "success" : "neutral",
+    });
+  // The reminders and escalations a time step made due: the running system sends them, nothing moves (decision 35).
+  for (const n of entry.notices ?? [])
+    lines.push({
+      kind: "notice",
+      text: L.noticeLine(
+        names.signature?.(n.signature) ?? n.signature,
+        n.kind,
+        n.recipients.map((r) => names.actor(r)),
+      ),
+      tone: "neutral",
     });
   for (const d of entry.diagnostics) lines.push({ kind: "diagnostic", text: `${d.rule} ${d.message}`, tone: d.severity === "error" ? "danger" : "warning" });
   if (entry.incomplete) lines.push({ kind: "incomplete", text: L.incomplete, tone: "warning" });
@@ -593,6 +716,9 @@ export function inputLabel(input: SimInput, names: Names, filled?: { actor?: str
     const parts = [`${answered} ${L.asParticipant(names.participant(input.participant))}`];
     if (actor) parts.push(L.actingAs(names.actor(actor)));
     if (signer) parts.push(bySigner(signer));
+    // A delegation says who it went to; an answer for a delegator says for whom.
+    if (input.response === "delegate" && input.delegateTo) parts.push(L.delegatedTo(names.participant(input.delegateTo)));
+    else if (input.onBehalfOf) parts.push(L.onBehalfOfWord(names.participant(input.onBehalfOf)));
     return parts.join(", ");
   }
   const parts = [answered];

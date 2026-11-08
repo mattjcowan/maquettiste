@@ -868,7 +868,12 @@ public sealed record GateRecord(string Id, string Name, string? Transition, IRea
 /// <param name="DisplayName">The display name.</param>
 /// <param name="Description">The description.</param>
 /// <param name="Signatures">The named signatures, in file order.</param>
-public sealed record GateStageRecord(string Id, string Name, string DisplayName, string? Description, IReadOnlyList<NamedSignatureRecord> Signatures);
+/// <param name="Round">The round the stage runs in (signoff-design.md decision 5); left out when it is 1.</param>
+/// <param name="When">The condition that skips the stage when false (decision 6), typed at the approval site; left out when it has none or it
+/// does not type, and on a gate policy's stage.</param>
+public sealed record GateStageRecord(string Id, string Name, string DisplayName, string? Description, IReadOnlyList<NamedSignatureRecord> Signatures,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Round = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? When = null);
 
 /// <summary>A named signature of an approval (signoff-design.md decision 3).</summary>
 /// <param name="Id">The signature id.</param>
@@ -882,9 +887,22 @@ public sealed record GateStageRecord(string Id, string Name, string DisplayName,
 /// <param name="AllowRepeatSigner">Whether one person may count twice on it.</param>
 /// <param name="When">The condition, typed at the approval site; left out when it has none or it does not type, and on a gate policy's signature.</param>
 /// <param name="NotBy">The entries of who may not give it, in file order.</param>
+/// <param name="DelegateTo">The ids of the actors it may be delegated to (signoff-design.md decision 20); left out when it may not be.</param>
+/// <param name="RemindAfter">The ISO 8601 duration after the round's start at which a reminder falls due (decision 21), as written; left out
+/// when none.</param>
+/// <param name="EscalateAfter">The ISO 8601 duration after the round's start at which an escalation falls due (decision 21), as written; left
+/// out when none.</param>
+/// <param name="EscalateTo">The ids of the actors an escalation goes to (decision 21); left out when none.</param>
+/// <param name="Reauthenticate">Whether the person's identity is checked again for every response on it (decision 22); left out unless
+/// true.</param>
 public sealed record NamedSignatureRecord(string Id, string Name, string DisplayName, string? Description, string Stage, IReadOnlyList<string> Signers, int Required,
     IReadOnlyList<string> RequiredActors, bool AllowRepeatSigner,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? When, IReadOnlyList<NotByRecord> NotBy);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpressionRecord? When, IReadOnlyList<NotByRecord> NotBy,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? DelegateTo = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RemindAfter = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EscalateAfter = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? EscalateTo = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? Reauthenticate = null);
 
 /// <summary>An entry of a named signature's <c>notBy</c> (signoff-design.md decision 15), as written: a verb key or a transition id.</summary>
 /// <param name="Verb">The verb key; left out for a transition entry.</param>
@@ -1049,6 +1067,10 @@ public sealed record ScenarioStartRecord(IReadOnlyDictionary<string, object?> Co
 /// none.</param>
 /// <param name="Response">How the step answers an approval (signoff-design.md decision 25); left out for a signature, the default.</param>
 /// <param name="Signature">The id of the named signature the step answers, as written; left out when the engine picks it.</param>
+/// <param name="DelegateTo">With the response <c>delegate</c>, the id of the participant the signature is delegated to (signoff-design.md
+/// decision 34); left out when the step names none.</param>
+/// <param name="OnBehalfOf">The id of the participant on whose behalf the step answers, who delegated the signature (decision 34); left out
+/// when the step names none.</param>
 public sealed record StepRecord(string Id, int Index, string Input, string? Event, string? Invoke, string? After, long? AfterMs, long? AfterTicks, string? Actor,
     string? Signer, string? Meaning, string? Reason, IReadOnlyDictionary<string, object?> Payload, IReadOnlyDictionary<string, object?> Assume,
     ExpectationRecord? Expect, string? Description,
@@ -1060,7 +1082,9 @@ public sealed record StepRecord(string Id, int Index, string Input, string? Even
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Object = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? Attributes = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Response = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Signature = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Signature = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? DelegateTo = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? OnBehalfOf = null);
 
 /// <summary>What a step expects.</summary>
 /// <param name="Accepted">Whether the input is accepted.</param>
@@ -1077,13 +1101,21 @@ public sealed record StepRecord(string Id, int Index, string Input, string? Even
 /// none.</param>
 /// <param name="Signatures">The signatures the step expects counted after it, by named signature id (signoff-design.md decision 27), in the
 /// gate's file order, each id naming a signature of the process; left out when the file gives none.</param>
+/// <param name="Notices">The reminders and escalations the step expects due (signoff-design.md decision 35), compared as a set, as written,
+/// each naming a signature of the process; left out when the file gives none.</param>
 public sealed record ExpectationRecord(bool Accepted, IReadOnlyList<string> States, IReadOnlyList<string> StatePaths, IReadOnlyDictionary<string, object?> Context,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, object?>? Values = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Refusal = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? RefusedBy = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? CheckWarnings = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<string>? TriggerPoints = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, int>? Signatures = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyDictionary<string, int>? Signatures = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ExpectedNoticeRecord>? Notices = null);
+
+/// <summary>A reminder or an escalation a step expects due (signoff-design.md decision 35).</summary>
+/// <param name="Signature">The id of the named signature.</param>
+/// <param name="Kind"><c>remind</c> or <c>escalate</c>.</param>
+public sealed record ExpectedNoticeRecord(string Signature, string Kind);
 
 /// <summary>A resolved operation (next-phase-2-design.md section 4.1): its input, outcomes and own errors, with the events it fires and
 /// what it requires by id.</summary>
@@ -1745,9 +1777,13 @@ public static class ResolvedRecords
             p.TriggerPoints.Count == 0 ? null : [.. p.TriggerPoints.Select(TriggerPoint)]);
 
         // An approval's stage and its named signatures (signoff-design.md section 7).
+        // Part 2's keys (decisions 5, 6 and 20 to 22) are left out when unused, so part 1's records don't change.
         private static GateStageRecord Stage(RGateStage s) => new(s.Id, s.Name, s.DisplayName, s.Description,
             [.. s.Signatures.Select(n => new NamedSignatureRecord(n.Id, n.Name, n.DisplayName, n.Description, s.Id, Ids(n.Signers), n.Required, Ids(n.RequiredActors),
-                n.AllowRepeatSigner, Expression(n.When), [.. n.NotBy.Select(e => new NotByRecord(e.VerbKey, e.TransitionId))]))]);
+                n.AllowRepeatSigner, Expression(n.When), [.. n.NotBy.Select(e => new NotByRecord(e.VerbKey, e.TransitionId))],
+                n.DelegateTo.Count == 0 ? null : Ids(n.DelegateTo), n.RemindAfter, n.EscalateAfter, n.EscalateTo.Count == 0 ? null : Ids(n.EscalateTo),
+                n.Reauthenticate ? true : null))],
+            s.Round == 1 ? null : s.Round, Expression(s.When));
 
         private static TriggerPointRecord TriggerPoint(RTriggerPoint t)
         {
@@ -1802,9 +1838,10 @@ public static class ResolvedRecords
                 t.Expect is { } x ? new ExpectationRecord(x.Accepted, Ids(x.States), x.StatePaths, Plain(x.Context), x.Values.Count == 0 ? null : Plain(x.Values),
                     x.Refusal, x.RefusedBy, x.CheckWarnings.Count == 0 ? null : Ids(x.CheckWarnings),
                     x.TriggerPoints.Count == 0 ? null : Ids(x.TriggerPoints),
-                    x.Signatures.Count == 0 ? null : x.Signatures.ToDictionary(c => c.Signature.Id, c => c.Count, StringComparer.Ordinal)) : null, t.Description,
+                    x.Signatures.Count == 0 ? null : x.Signatures.ToDictionary(c => c.Signature.Id, c => c.Count, StringComparer.Ordinal),
+                    x.Notices is { } notices ? [.. notices.Select(n => new ExpectedNoticeRecord(n.Signature.Id, n.Kind))] : null) : null, t.Description,
                 t.Participant?.Id, t.Participant is null ? null : t.ActsAs?.Id, t.Verb?.Key, t.Values.Count == 0 ? null : Plain(t.Values), t.End?.Id, t.Object?.Id,
-                t.Attributes.Count == 0 ? null : Ids(t.Attributes), t.Response == "sign" ? null : t.Response, t.Signature?.Id))],
+                t.Attributes.Count == 0 ? null : Ids(t.Attributes), t.Response == "sign" ? null : t.Response, t.Signature?.Id, t.DelegateTo?.Id, t.OnBehalfOf?.Id))],
             s.Outcome, s.DisplayName!, s.PluralName!, s.Description, s.Tags, s.Category?.Id, Keys(s.Stereotypes), Plain(s.Properties), s.Generation,
             s.Objects.Count == 0 ? null : [.. s.Objects.Select(o => new ScenarioObjectRecord(o.Id, o.Name, o.Entity.Id, Plain(o.Values),
                 [.. o.Links.Select(l => new ScenarioLinkRecord(l.End.Id, l.Object.Id, l.Frozen ? true : null))], o.Owner?.Id, o.States.Count == 0 ? null : Ids(o.States),

@@ -17335,6 +17335,15 @@
               "null"
             ]
           },
+          "round": {
+            "description": "The round the stage runs in (signoff-design.md decision 5); absent when it is 1.",
+            "type": "integer",
+            "minimum": 2
+          },
+          "when": {
+            "description": "The condition that skips the stage when false, judged when its round starts (signoff-design.md decision 6), typed at the\n`Approval` site; left out when it has none or it does not type, and on a gate policy's stage.\n",
+            "$ref": "#/components/schemas/ExpressionRecord"
+          },
           "signatures": {
             "type": "array",
             "items": {
@@ -17416,6 +17425,33 @@
                 }
               }
             }
+          },
+          "delegateTo": {
+            "description": "The ids of the actors the signature may be delegated to (signoff-design.md decision 20); absent when it may not be.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "remindAfter": {
+            "description": "The ISO 8601 duration after the round's start at which a reminder falls due (signoff-design.md decision 21), as written; absent when none.",
+            "type": "string"
+          },
+          "escalateAfter": {
+            "description": "The ISO 8601 duration after the round's start at which an escalation falls due (signoff-design.md decision 21), as written; absent when none.",
+            "type": "string"
+          },
+          "escalateTo": {
+            "description": "The ids of the actors an escalation goes to (signoff-design.md decision 21); absent when none.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reauthenticate": {
+            "description": "Whether the person's identity is checked again for every response on it (signoff-design.md decision 22); absent unless true.",
+            "type": "boolean",
+            "const": true
           }
         }
       },
@@ -17925,12 +17961,21 @@
               "sign",
               "reject",
               "ignore",
-              "withdraw"
+              "withdraw",
+              "delegate"
             ]
           },
           "signature": {
             "type": "string",
             "description": "The id of the named signature the step answers (signoff-design.md decision 25); absent when the engine picks it."
+          },
+          "delegateTo": {
+            "type": "string",
+            "description": "With response `delegate`, the id of the participant the signature is delegated to (signoff-design.md decision 34); absent when the step names none."
+          },
+          "onBehalfOf": {
+            "type": "string",
+            "description": "The id of the participant on whose behalf the step answers, who delegated the signature (signoff-design.md decision 34); absent when the step names none."
           },
           "payload": {
             "type": "object",
@@ -18076,6 +18121,29 @@
             "additionalProperties": {
               "type": "integer",
               "minimum": 0
+            }
+          },
+          "notices": {
+            "type": "array",
+            "description": "The reminders and escalations the step expects due, compared as a set (signoff-design.md decision 35); absent when the file gives none.",
+            "items": {
+              "type": "object",
+              "required": [
+                "signature",
+                "kind"
+              ],
+              "properties": {
+                "signature": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "remind",
+                    "escalate"
+                  ]
+                }
+              }
             }
           }
         }
@@ -25392,17 +25460,26 @@
             ]
           },
           "response": {
-            "description": "How the step answers an approval on its event (signoff-design.md decision 25): `sign` (the default), `reject` (a veto: it\nclears the approval's signatures and moves nothing), `ignore` (abstain: it finishes the person on the signature and leaves the\ncount) or `withdraw` (it takes back the person's latest signature). Only on an event step whose event is gated by an approval\n(MQ9305). Left out of a trace's echo when it is `sign`.\n",
+            "description": "How the step answers an approval on its event (signoff-design.md decision 25): `sign` (the default), `reject` (a veto: it\nclears the approval's signatures and moves nothing), `ignore` (abstain: it finishes the person on the signature and leaves the\ncount), `withdraw` (it takes back the person's latest signature) or `delegate` (it hands the person's part to `delegateTo`, on a\nsignature that has `delegateTo`, decision 34). Only on an event step whose event is gated by an approval (MQ9305). Left out of\na trace's echo when it is `sign`.\n",
             "type": "string",
             "enum": [
               "sign",
               "reject",
               "ignore",
-              "withdraw"
+              "withdraw",
+              "delegate"
             ]
           },
           "signature": {
             "description": "The id of the approval's named signature the step answers (signoff-design.md decision 8); the engine picks one when absent, by\nthe same rule every time. Left out of a trace's echo when absent; the audit names the signature picked.\n",
+            "type": "string"
+          },
+          "delegateTo": {
+            "description": "With `delegate`, the id of the participant the signature is delegated to (signoff-design.md decision 34), who must be a member\nof one of the signature's `delegateTo` actors. Left out of a trace's echo when absent.\n",
+            "type": "string"
+          },
+          "onBehalfOf": {
+            "description": "The id of the participant who delegated the signature to the person answering (signoff-design.md decision 34); the answer\ncounts as theirs, as their actor. Not with `delegate` (MQ9305). Left out of a trace's echo when absent.\n",
             "type": "string"
           },
           "meaning": {
@@ -25834,6 +25911,43 @@
             "description": "Whether the subject is frozen after the input (rights-design.md section 7): true from an accepted `freeze`, or a start with\nthe subject `frozen`, until an accepted `thaw`. Left out when false.\n",
             "type": "boolean",
             "const": true
+          },
+          "notices": {
+            "description": "The reminders and escalations that fell due during the step (signoff-design.md decision 35), in file order (stage, then\nsignature), a reminder before an escalation; a step's `expect.notices` is compared with them as a set (MQ9311). Only a time\nstep makes them fall due. Left out when none did.\n",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalNotice"
+            }
+          }
+        }
+      },
+      "ApprovalNotice": {
+        "x-engine-record": "Maquettiste.Engine.Processes.ApprovalNotice",
+        "description": "A reminder or an escalation that fell due on an approval (signoff-design.md decisions 21 and 35). The running system sends it; it\nnever moves the object.\n",
+        "type": "object",
+        "required": [
+          "signature",
+          "kind",
+          "recipients"
+        ],
+        "properties": {
+          "signature": {
+            "description": "The named signature's id.",
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "remind",
+              "escalate"
+            ]
+          },
+          "recipients": {
+            "description": "The ids of the actors it goes to, in file order; the signature's `signers` for `remind`, its `escalateTo` for `escalate`.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Ulid"
+            }
           }
         }
       },
@@ -26095,7 +26209,7 @@
             "type": "string"
           },
           "outcome": {
-            "description": "`signed`, `completed`, `refused` or `discarded`; on an approval also `rejected` (a veto cleared it), `ignored` (a person\nabstained on a signature) and `withdrawn` (a person took back a signature) (signoff-design.md decision 19).\n",
+            "description": "`signed`, `completed`, `refused` or `discarded`; on an approval also `rejected` (a veto cleared it), `ignored` (a person\nabstained on a signature) and `withdrawn` (a person took back a signature) (signoff-design.md decision 19), and `delegated`\n(a person handed their part of a signature to `delegateTo`, decision 34).\n",
             "type": "string",
             "enum": [
               "signed",
@@ -26104,7 +26218,8 @@
               "discarded",
               "rejected",
               "ignored",
-              "withdrawn"
+              "withdrawn",
+              "delegated"
             ]
           },
           "attributes": {
@@ -26118,6 +26233,14 @@
           "stage": {
             "description": "On an approval, the id of the stage of `signature`. Left out when `signature` is.",
             "$ref": "#/components/schemas/Ulid"
+          },
+          "onBehalfOf": {
+            "description": "For an answer given on behalf of someone who delegated the signature, the delegator's identity (signoff-design.md decision 34);\n`signer` is the person who answered. Left out otherwise.\n",
+            "type": "string"
+          },
+          "delegateTo": {
+            "description": "For a `delegated` record, the identity the signature went to (signoff-design.md decision 34); `signer` is the delegator. Left out otherwise.",
+            "type": "string"
           }
         }
       },
@@ -26191,7 +26314,7 @@
             ]
           },
           "responses": {
-            "description": "The responses the trigger's event takes at an approval, in the order `sign`, `reject`, `ignore`, `withdraw`\n(signoff-design.md decision 26). Left out when the event's gate has no stages.\n",
+            "description": "The responses the trigger's event takes at an approval, in the order `sign`, `reject`, `ignore`, `withdraw`\n(signoff-design.md decision 26), then `delegate` when one of the approval's signatures has `delegateTo` (decision 34). Left out\nwhen the event's gate has no stages.\n",
             "type": "array",
             "items": {
               "type": "string",
@@ -26199,7 +26322,8 @@
                 "sign",
                 "reject",
                 "ignore",
-                "withdraw"
+                "withdraw",
+                "delegate"
               ]
             }
           }
@@ -26344,6 +26468,16 @@
             "items": {
               "$ref": "#/components/schemas/ApprovalSignatureState"
             }
+          },
+          "round": {
+            "description": "The stage's round (signoff-design.md decision 33). Left out when the approval has one round. The current round is the lowest\nround with a stage that is neither complete nor skipped.\n",
+            "type": "integer",
+            "minimum": 1
+          },
+          "skipped": {
+            "description": "Whether the stage's `when` was false when its round started, so it is skipped and counts as complete (signoff-design.md decision 6). Left out when false.",
+            "type": "boolean",
+            "const": true
           }
         }
       },
@@ -38688,6 +38822,11 @@
           "allowRepeatSigner",
           "when",
           "notBy",
+          "delegateTo",
+          "remindAfter",
+          "escalateAfter",
+          "escalateTo",
+          "reauthenticate",
           "description"
         ],
         "properties": {
@@ -38734,6 +38873,31 @@
             },
             "default": []
           },
+          "delegateTo": {
+            "description": "The actors the signature may be delegated to. A person who may give it answers delegate, naming someone who is a member of one of these actors; that person then answers on the delegator's behalf, and their signature counts as the delegator's actor.",
+            "$ref": "#/components/schemas/idList",
+            "minItems": 1,
+            "default": []
+          },
+          "remindAfter": {
+            "description": "An ISO 8601 duration from when the signature's round started: a reminder then falls due to the people who may still answer, once per round start, unless the signature is complete. The running system sends it (MQ8204).",
+            "type": "string"
+          },
+          "escalateAfter": {
+            "description": "An ISO 8601 duration from when the signature's round started: an escalation then falls due to escalateTo, once per round start, unless the signature is complete. Only with escalateTo (MQ8204), and later than remindAfter (MQ8205).",
+            "type": "string"
+          },
+          "escalateTo": {
+            "description": "The actors an escalation goes to. A notice only: they may not sign unless named among the signers or in delegateTo. Only with escalateAfter (MQ8204).",
+            "$ref": "#/components/schemas/idList",
+            "minItems": 1,
+            "default": []
+          },
+          "reauthenticate": {
+            "description": "Whether the person's identity is checked again for every response on the signature. The running system checks it; a simulation takes it as done.",
+            "type": "boolean",
+            "default": false
+          },
           "description": {
             "description": "Why the signature is needed.",
             "$ref": "#/components/schemas/description"
@@ -38748,12 +38912,14 @@
       },
       "gateStage": {
         "title": "Gate stage",
-        "description": "A stage of an approval (part kind gate-stage): named signatures only. A stage is complete when each of its signatures is complete or not needed.",
+        "description": "A stage of an approval (part kind gate-stage): named signatures only. A stage is complete when each of its signatures is complete or not needed, and a skipped stage counts as complete for its round.",
         "type": "object",
         "x-order": [
           "id",
           "name",
           "displayName",
+          "round",
+          "when",
           "signatures",
           "description"
         ],
@@ -38767,6 +38933,16 @@
           },
           "displayName": {
             "type": "string"
+          },
+          "round": {
+            "description": "The round the stage runs in. Stages of one round run side by side; the next round starts when every stage of the current round is complete or skipped. Completing a round never moves the object. Stages are listed in round order (MQ8203).",
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "when": {
+            "description": "The stage is skipped unless this is true or unknown. Judged when its round starts, before its signatures' when. It reads what a named signature's when reads (MQ3102). Not on a gate policy's stage (MQ8202).",
+            "$ref": "#/components/schemas/expr"
           },
           "signatures": {
             "description": "The stage's named signatures, in the order the engine picks them when a step names none.",
@@ -38849,13 +39025,12 @@
             "type": "string"
           },
           "stages": {
-            "description": "Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). One stage for now.",
+            "description": "Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). Stages run in rounds: those of one round side by side, rounds one after another, listed in round order (MQ8203).",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/gateStage"
             },
-            "minItems": 1,
-            "maxItems": 1
+            "minItems": 1
           },
           "required": {
             "description": "The number of signatures needed. A gate without stages only (MQ8201).",
@@ -40449,13 +40624,12 @@
                 "type": "string"
               },
               "stages": {
-                "description": "Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). One stage for now.",
+                "description": "Makes the gate an approval: its stages, each holding named signatures with their own signers and counts. With stages, required, signers, requiredActors and allowRepeatSigner are written on each signature, never on the gate (MQ8201). Stages run in rounds: those of one round side by side, rounds one after another, listed in round order (MQ8203).",
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/gateStage"
                 },
-                "minItems": 1,
-                "maxItems": 1
+                "minItems": 1
               },
               "required": {
                 "description": "The number of signatures needed. A gate without stages only (MQ8201).",
@@ -40544,12 +40718,14 @@
           },
           "gateStage": {
             "title": "Gate stage",
-            "description": "A stage of an approval (part kind gate-stage): named signatures only. A stage is complete when each of its signatures is complete or not needed.",
+            "description": "A stage of an approval (part kind gate-stage): named signatures only. A stage is complete when each of its signatures is complete or not needed, and a skipped stage counts as complete for its round.",
             "type": "object",
             "x-order": [
               "id",
               "name",
               "displayName",
+              "round",
+              "when",
               "signatures",
               "description"
             ],
@@ -40563,6 +40739,16 @@
               },
               "displayName": {
                 "type": "string"
+              },
+              "round": {
+                "description": "The round the stage runs in. Stages of one round run side by side; the next round starts when every stage of the current round is complete or skipped. Completing a round never moves the object. Stages are listed in round order (MQ8203).",
+                "type": "integer",
+                "minimum": 1,
+                "default": 1
+              },
+              "when": {
+                "description": "The stage is skipped unless this is true or unknown. Judged when its round starts, before its signatures' when. It reads what a named signature's when reads (MQ3102). Not on a gate policy's stage (MQ8202).",
+                "$ref": "#/components/schemas/expr"
               },
               "signatures": {
                 "description": "The stage's named signatures, in the order the engine picks them when a step names none.",
@@ -40597,6 +40783,11 @@
               "allowRepeatSigner",
               "when",
               "notBy",
+              "delegateTo",
+              "remindAfter",
+              "escalateAfter",
+              "escalateTo",
+              "reauthenticate",
               "description"
             ],
             "properties": {
@@ -40642,6 +40833,31 @@
                   "$ref": "#/components/schemas/notBy"
                 },
                 "default": []
+              },
+              "delegateTo": {
+                "description": "The actors the signature may be delegated to. A person who may give it answers delegate, naming someone who is a member of one of these actors; that person then answers on the delegator's behalf, and their signature counts as the delegator's actor.",
+                "$ref": "#/components/schemas/idList",
+                "minItems": 1,
+                "default": []
+              },
+              "remindAfter": {
+                "description": "An ISO 8601 duration from when the signature's round started: a reminder then falls due to the people who may still answer, once per round start, unless the signature is complete. The running system sends it (MQ8204).",
+                "type": "string"
+              },
+              "escalateAfter": {
+                "description": "An ISO 8601 duration from when the signature's round started: an escalation then falls due to escalateTo, once per round start, unless the signature is complete. Only with escalateTo (MQ8204), and later than remindAfter (MQ8205).",
+                "type": "string"
+              },
+              "escalateTo": {
+                "description": "The actors an escalation goes to. A notice only: they may not sign unless named among the signers or in delegateTo. Only with escalateAfter (MQ8204).",
+                "$ref": "#/components/schemas/idList",
+                "minItems": 1,
+                "default": []
+              },
+              "reauthenticate": {
+                "description": "Whether the person's identity is checked again for every response on the signature. The running system checks it; a simulation takes it as done.",
+                "type": "boolean",
+                "default": false
               },
               "description": {
                 "description": "Why the signature is needed.",
@@ -40969,6 +41185,33 @@
         ],
         "additionalProperties": false
       },
+      "notice": {
+        "title": "Notice",
+        "description": "A reminder or an escalation a step expects due: a named signature and a kind (MQ9311).",
+        "type": "object",
+        "x-order": [
+          "signature",
+          "kind"
+        ],
+        "properties": {
+          "signature": {
+            "description": "The id of the named signature the notice is about.",
+            "$ref": "#/components/schemas/id"
+          },
+          "kind": {
+            "description": "remind, to the people who may still answer, or escalate, to the signature's escalateTo.",
+            "enum": [
+              "remind",
+              "escalate"
+            ]
+          }
+        },
+        "required": [
+          "signature",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
       "object": {
         "title": "Object",
         "description": "An object of the scenario: an instance of an entity with its values and its links to other objects.",
@@ -41104,6 +41347,8 @@
           "signer",
           "response",
           "signature",
+          "delegateTo",
+          "onBehalfOf",
           "meaning",
           "reason",
           "payload",
@@ -41156,17 +41401,26 @@
             "type": "string"
           },
           "response": {
-            "description": "How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count) or withdraw (takes back the person's latest signature). Only on an event step whose event is gated by an approval (MQ9305).",
+            "description": "How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count), withdraw (takes back the person's latest signature) or delegate (hands the person's part to delegateTo, on a signature that has delegateTo). Only on an event step whose event is gated by an approval (MQ9305).",
             "enum": [
               "sign",
               "reject",
               "ignore",
-              "withdraw"
+              "withdraw",
+              "delegate"
             ],
             "default": "sign"
           },
           "signature": {
             "description": "The id of the approval's named signature the step answers; the engine picks one when absent. Only on an event step whose event is gated by an approval, and a signature of that gate (MQ9305).",
+            "$ref": "#/components/schemas/id"
+          },
+          "delegateTo": {
+            "description": "With response delegate: the id of the scenario's participant the signature is delegated to, who must be a member of one of the signature's delegateTo actors (MQ9305).",
+            "$ref": "#/components/schemas/id"
+          },
+          "onBehalfOf": {
+            "description": "The id of the scenario's participant who delegated the signature to the person answering; the answer counts as theirs. Not with response delegate, since a delegation can't be passed on (MQ9305).",
             "$ref": "#/components/schemas/id"
           },
           "meaning": {
@@ -41238,7 +41492,8 @@
               "values",
               "checkWarnings",
               "triggerPoints",
-              "signatures"
+              "signatures",
+              "notices"
             ],
             "properties": {
               "accepted": {
@@ -41312,6 +41567,13 @@
                 "additionalProperties": {
                   "type": "integer",
                   "minimum": 0
+                }
+              },
+              "notices": {
+                "description": "The reminders and escalations due at the step, each a named signature and a kind, compared as a set (MQ9311). Absent checks nothing; empty expects none. Notices fall due only on a time step.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/notice"
                 }
               }
             },
@@ -41707,6 +41969,8 @@
               "signer",
               "response",
               "signature",
+              "delegateTo",
+              "onBehalfOf",
               "meaning",
               "reason",
               "payload",
@@ -41759,17 +42023,26 @@
                 "type": "string"
               },
               "response": {
-                "description": "How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count) or withdraw (takes back the person's latest signature). Only on an event step whose event is gated by an approval (MQ9305).",
+                "description": "How the step answers an approval on its event: sign, reject (a veto that clears the approval and moves nothing), ignore (abstain: finishes the person on the signature and leaves the count), withdraw (takes back the person's latest signature) or delegate (hands the person's part to delegateTo, on a signature that has delegateTo). Only on an event step whose event is gated by an approval (MQ9305).",
                 "enum": [
                   "sign",
                   "reject",
                   "ignore",
-                  "withdraw"
+                  "withdraw",
+                  "delegate"
                 ],
                 "default": "sign"
               },
               "signature": {
                 "description": "The id of the approval's named signature the step answers; the engine picks one when absent. Only on an event step whose event is gated by an approval, and a signature of that gate (MQ9305).",
+                "$ref": "#/components/schemas/id"
+              },
+              "delegateTo": {
+                "description": "With response delegate: the id of the scenario's participant the signature is delegated to, who must be a member of one of the signature's delegateTo actors (MQ9305).",
+                "$ref": "#/components/schemas/id"
+              },
+              "onBehalfOf": {
+                "description": "The id of the scenario's participant who delegated the signature to the person answering; the answer counts as theirs. Not with response delegate, since a delegation can't be passed on (MQ9305).",
                 "$ref": "#/components/schemas/id"
               },
               "meaning": {
@@ -41841,7 +42114,8 @@
                   "values",
                   "checkWarnings",
                   "triggerPoints",
-                  "signatures"
+                  "signatures",
+                  "notices"
                 ],
                 "properties": {
                   "accepted": {
@@ -41916,6 +42190,13 @@
                       "type": "integer",
                       "minimum": 0
                     }
+                  },
+                  "notices": {
+                    "description": "The reminders and escalations due at the step, each a named signature and a kind, compared as a set (MQ9311). Absent checks nothing; empty expects none. Notices fall due only on a time step.",
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/notice"
+                    }
                   }
                 },
                 "required": [],
@@ -41927,6 +42208,33 @@
             },
             "required": [
               "id"
+            ],
+            "additionalProperties": false
+          },
+          "notice": {
+            "title": "Notice",
+            "description": "A reminder or an escalation a step expects due: a named signature and a kind (MQ9311).",
+            "type": "object",
+            "x-order": [
+              "signature",
+              "kind"
+            ],
+            "properties": {
+              "signature": {
+                "description": "The id of the named signature the notice is about.",
+                "$ref": "#/components/schemas/id"
+              },
+              "kind": {
+                "description": "remind, to the people who may still answer, or escalate, to the signature's escalateTo.",
+                "enum": [
+                  "remind",
+                  "escalate"
+                ]
+              }
+            },
+            "required": [
+              "signature",
+              "kind"
             ],
             "additionalProperties": false
           }

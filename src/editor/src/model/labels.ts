@@ -557,6 +557,9 @@ export const SIMULATION_LABELS = {
   enabledHint: "Enter raises the focused row · 1 to 9 raise the first nine rows",
   // Time
   nextTimer: (transition: string, due: string) => `Next: ${transition} at ${due}`,
+  /** No timer, but a reminder or escalation is pending. */
+  nextNotice: (signature: string, kind: string, due: string) =>
+    `No timer is scheduled. Next notice: ${signature} ${kind === "escalate" ? "escalation" : "reminder"} at ${due}`,
   noTimers: "No timer is scheduled.",
   clock: (clock: string) => `Clock ${clock}`,
   advanceBy: "Advance by",
@@ -575,6 +578,9 @@ export const SIMULATION_LABELS = {
   noLastStep: "Raise an input to see what it did.",
   initialEntry: "Initial entry",
   refused: (reason: string) => `Refused: ${reason}`,
+  /** A delegation refused gate-signer: to the delegator themselves, or to someone outside May be delegated to. */
+  delegateToSelfReason: "A signer can't delegate a signature to themselves; delegate it to someone else.",
+  delegateTargetReason: "The person it goes to isn't one of the actors this signature may be delegated to.",
   refusals: {
     "no-transition": "no transition of the active states takes it",
     guard: "the guards of its transitions are false",
@@ -604,11 +610,22 @@ export const SIMULATION_LABELS = {
     `No attribute was picked, and unknown attributes are refused because the right names attribute ${attributes}. Pick an attribute under Do.`,
   transitionLine: (transitions: string) => `Took ${transitions}`,
   /** One audit record of a gate, in plain words by outcome; the meaning belongs to a signature only. */
-  auditLine: (gate: string, outcome: string, signer: string, actor: string, meaning: string, signature = "") => {
+  auditLine: (
+    gate: string,
+    outcome: string,
+    signer: string,
+    actor: string,
+    meaning: string,
+    signature = "",
+    part2: { onBehalfOf?: string; delegateTo?: string } = {},
+  ) => {
     const head = `${gate}${signature ? `, ${signature}` : ""}`;
-    const as = actor ? ` as ${actor}` : "";
+    // An answer for a delegator keeps both people: "erin on behalf of fiona".
+    const as = `${part2.onBehalfOf ? ` on behalf of ${part2.onBehalfOf}` : ""}${actor ? ` as ${actor}` : ""}`;
     const who = signer || "someone";
     switch (outcome) {
+      case "delegated":
+        return `${head}: ${who} delegated to ${part2.delegateTo || "someone"}${as}`;
       case "rejected":
         return `${head}: ${who} rejected${as}; the approval is cleared and starts again`;
       case "ignored":
@@ -627,19 +644,35 @@ export const SIMULATION_LABELS = {
   excludedReason: (signer: string, signature: string, did: string) =>
     `${signer || "the person"} did ${did || "a verb or move"} earlier, so cannot give the ${signature || "named"} signature`,
   /** A response other than sign, short, after the event: "issue (ignore)". */
-  responseShort: { reject: "reject", ignore: "ignore", withdraw: "withdraw" } as Record<string, string>,
+  responseShort: { reject: "reject", ignore: "ignore", withdraw: "withdraw", delegate: "delegate" } as Record<string, string>,
   byPerson: (signer: string) => `by ${signer}`,
+  /** A reminder or an escalation that fell due on a time step, with who it goes to. */
+  noticeLine: (signature: string, kind: string, recipients: string[]) =>
+    `${signature}: ${kind === "escalate" ? "escalation" : "reminder"} due${recipients.length ? `, to ${recipients.join(", ")}` : ""}`,
+  roundLine: (round: number) => `Round ${round}`,
+  stageRound: (round: number) => `round ${round}`,
+  stageSkipped: "skipped",
+  delegateTo: "Delegate to",
+  onBehalfOf: "On behalf of",
+  noOne: "(no one)",
+  /** Why Delegate and On behalf of are off when the scenario has no participants. */
+  noDelegate: "A delegation needs a participant to go to. Add participants on the scenario's Participants tab.",
   /** The Approvals section and the response and signature fields of an enabled approval. */
   approvals: "Approvals",
   noApprovals: "No approval is open.",
   approvalWaiting: "Nothing is needed; the next occurrence moves.",
-  signatureState: (name: string, needed: boolean, counted: number, required: number) => (needed ? `${name}: ${counted} of ${required}` : `${name}: not needed`),
+  signatureState: (name: string, needed: boolean, counted: number, required: number, waitsForRound?: number) =>
+    needed ? `${name}: ${counted} of ${required}` : waitsForRound !== undefined ? `${name}: waits for round ${waitsForRound}` : `${name}: not needed`,
+  finishedDelegated: (to: string) => `delegated to ${to}`,
+  finishedBehalf: (from: string) => `on behalf of ${from}`,
+  delegatedTo: (to: string) => `delegated to ${to}`,
+  onBehalfOfWord: (from: string) => `on behalf of ${from}`,
   finishedBy: (people: string) => `finished: ${people}`,
   signatureComplete: "complete",
   response: "Response",
   signature: "Signature",
   enginePicks: "Picked by the engine",
-  responseWords: { sign: "Sign", reject: "Reject", ignore: "Ignore (abstain)", withdraw: "Withdraw" } as Record<string, string>,
+  responseWords: { sign: "Sign", reject: "Reject", ignore: "Ignore (abstain)", withdraw: "Withdraw", delegate: "Delegate" } as Record<string, string>,
   changedLine: (changes: string) => `Context: ${changes}`,
   incomplete: "The replay stopped here; the inputs after it did not run.",
   // Trace
@@ -1050,6 +1083,7 @@ export const RIGHT_LABELS = {
   failedPoints: (expected: string, actual: string) => `It was expected to run ${expected}, but in the replay it runs ${actual}.`,
   failedSignatures: (step: string, expected: string, actual: string) =>
     `${step} was expected to leave ${expected} signed, but in the replay it leaves ${actual}.`,
+  failedNotices: (step: string, expected: string, actual: string) => `${step} was expected to have ${expected} due, but in the replay ${actual} is due.`,
   failedAccept: (step: string) => `${step} was expected to be accepted, but in the replay it is refused.`,
   updateExpectations: "Update expectations",
   updateExpectationsTip: "Rewrite the expectations of every step from what the replay does (Shift+R in the Scenarios tab)",
@@ -1103,7 +1137,14 @@ export const PARTICIPANT_LABELS = {
 export const SCENARIO_APPROVAL_LABELS = {
   response: "Response",
   responseTip: "How the step answers the approval on its event. Only on a step whose event is gated by an approval. Empty: Sign.",
-  responseWords: { sign: "Sign", reject: "Reject", ignore: "Ignore (abstain)", withdraw: "Withdraw" } as Record<string, string>,
+  responseWords: { sign: "Sign", reject: "Reject", ignore: "Ignore (abstain)", withdraw: "Withdraw", delegate: "Delegate" } as Record<string, string>,
+  delegateTo: "Delegate to",
+  delegateToTip: "The participant the signature goes to. Only with the response Delegate; they must be a member of one of the signature's delegate-to actors.",
+  onBehalfOf: "On behalf of",
+  onBehalfOfTip:
+    "The participant who delegated the signature to the person answering; the answer counts as theirs. Only on a step whose approval has a signature that may be delegated; a delegation can't be passed on.",
+  noticesTip: "The reminders and escalations due at a time step, by signature; filled in by Update from replay",
+  notices: "Notices",
   signature: "Signature",
   signatureTip: "The named signature the step answers. Empty: the engine picks it, the same way every time.",
   picked: "Picked by the engine",
@@ -1158,4 +1199,39 @@ export const APPROVAL_LABELS = {
   whenPlaceholder: "subject.cost > 10000",
   lastSignature: "An approval needs at least one signature. Use Back to one list of signers instead.",
   empty: "No signatures yet.",
+  // Part 2: stages in rounds, Skip unless, and the signature's delegation, reminders and password.
+  addStage: "Add stage",
+  addStageTip: "Adds a stage in the next round, with one signature. Stages of one round run side by side; the next round starts when they are all done.",
+  roundHeading: (n: number) => `Round ${n}`,
+  roundTip: "Stages of one round run side by side. A round starts when the one before it is complete, and completing a round does not make the move.",
+  stageName: "Stage name",
+  stageRound: "Round",
+  stageRoundTip: "The round the stage runs in. Stages of one round run side by side. Stages are kept in round order.",
+  skipUnless: "Skip unless",
+  skipUnlessTip: "The stage is skipped unless this is true when its round starts. Empty: never skipped.",
+  skipUnlessTitle: (name: string) => `Skip unless, ${name}`,
+  skipUnlessHint: "Judged when the stage's round starts. Only false skips the stage: true or unknown means it runs. Empty means never skipped.",
+  never: "Never",
+  removeStage: (name: string, signatures: number) => `Remove stage ${name} and its ${signatures} ${signatures === 1 ? "signature" : "signatures"}`,
+  removeStageTip: (name: string, signatures: number) => `Remove stage ${name} and its ${signatures} ${signatures === 1 ? "signature" : "signatures"}`,
+  removeLastStageTip: "An approval needs at least one stage, so the last one can't be removed. Use Back to one list of signers instead.",
+  lastStage: "An approval needs at least one stage. Use Back to one list of signers instead.",
+  addSignatureTo: (stage: string) => `Add signature to ${stage}`,
+  details: "Details",
+  detailsTip: "Delegation, reminder, escalation and password settings. Open to change them, and to move the signature to another stage.",
+  detailsTitle: (name: string) => `Details, ${name}`,
+  detailsHint: "These settings are kept with the signature. The running system sends reminders and escalations and checks the password.",
+  delegateTo: "May be delegated to",
+  delegateToTip: "Actors a signer may hand this signature to. Empty: it cannot be delegated.",
+  remindAfter: "Remind after",
+  remindAfterTip: "ISO 8601 duration from when the round starts, such as PT4H or P2D. A reminder then goes to those who may still answer.",
+  escalateAfter: "Escalate after",
+  escalateAfterTip: "ISO 8601 duration from when the round starts. Needs Escalate to, and should be later than Remind after.",
+  escalateTo: "Escalate to",
+  escalateToTip: "Actors an escalation goes to. They are told; they may not sign unless they are signers or in May be delegated to.",
+  reauthenticate: "Sign again with a password",
+  reauthenticateTip: "The person's identity is checked again for every response on this signature.",
+  moveTo: "Stage",
+  moveToTip: "The stage that holds this signature. Choosing another moves it there.",
+  durationPlaceholder: "PT4H",
 } as const;

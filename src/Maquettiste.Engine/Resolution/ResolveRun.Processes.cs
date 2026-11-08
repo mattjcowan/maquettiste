@@ -39,6 +39,52 @@ internal sealed partial class ResolveRun
     // The processes that use an approval, by name then id (model.approval_lifecycles); empty in a project without approvals.
     private List<RProcess> _approvalLifecycles = [];
 
+    /// <summary>The part 2 groups some lifecycle uses (signoff-design.md decision 32), for the model's <c>approvals_use_*</c> flags.</summary>
+    private ApprovalGroups _approvalGroups;
+
+    /// <summary>The part 2 groups of approvals (signoff-design.md decision 32).</summary>
+    [Flags]
+    private enum ApprovalGroups
+    {
+        None = 0,
+
+        /// <summary>A gate with more than one stage, or a stage with a when.</summary>
+        Rounds = 1,
+
+        /// <summary>A named signature with delegateTo.</summary>
+        Delegation = 2,
+
+        /// <summary>A named signature with remindAfter or escalateAfter.</summary>
+        Notices = 4,
+
+        /// <summary>A named signature with reauthenticate.</summary>
+        Password = 8,
+    }
+
+    /// <summary>The part 2 groups a lifecycle's approvals use, inline or through a gate policy (signoff-design.md decision 32).</summary>
+    private ApprovalGroups ApprovalGroupsOf(Process process)
+    {
+        var groups = ApprovalGroups.None;
+        foreach (var transition in process.Transitions)
+        {
+            if (ApprovalRules.GateOf(Model, transition) is not { Stages: { Count: > 0 } stages })
+                continue;
+            if (stages.Count > 1 || stages.Any(st => st.When is not null))
+                groups |= ApprovalGroups.Rounds;
+            foreach (var signature in stages.SelectMany(st => st.Signatures))
+            {
+                if (signature.DelegateTo.Count > 0)
+                    groups |= ApprovalGroups.Delegation;
+                if (signature.RemindAfter is not null || signature.EscalateAfter is not null)
+                    groups |= ApprovalGroups.Notices;
+                if (signature.Reauthenticate)
+                    groups |= ApprovalGroups.Password;
+            }
+        }
+
+        return groups;
+    }
+
     /// <summary>A process's nodes by id, for its scenarios' references.</summary>
     private sealed class ProcessLookup
     {
@@ -193,6 +239,8 @@ internal sealed partial class ResolveRun
         // The processes that use an approval, inline or through a gate policy, by name then id (model.approval_lifecycles).
         _approvalLifecycles = [.. _processOrder.Where(p => ApprovalRules.UsesApproval(Model, sources[p.Id]))
             .OrderBy(p => p.Name, StringComparer.Ordinal).ThenBy(p => p.Id, StringComparer.Ordinal)];
+        foreach (var lifecycle in _approvalLifecycles)
+            _approvalGroups |= ApprovalGroupsOf(sources[lifecycle.Id]);
 
         // Named trigger points (part 2) resolve once every process is built and before the scenarios, whose expectations and traces name them.
         if (NamedTriggerPoints.Of(Model).Any)
@@ -920,8 +968,11 @@ internal sealed partial class ResolveRun
             var all = new List<RNamedSignature>();
             foreach (var st in stages)
             {
-                var stage = Node(new RGateStage { Name = st.Name, Gate = gate }, st.Id);
+                var stage = Node(new RGateStage { Name = st.Name, Gate = gate, Round = st.Round }, st.Id);
                 FillNode(stage, st.DisplayName ?? st.Name, st.Description, [], ImmutableDictionary<string, JsonElement>.Empty);
+                // A stage's when is typed at the approval site, as a signature's is (part 2, decision 6); a gate policy's stage has none (MQ8202).
+                if (st.When is not null && process.Use != ProcessUse.Library)
+                    stage.When = BuildCondition(st.Id, ExprSiteKind.Approval, DepsOf(stage));
                 var own = new List<RNamedSignature>();
                 foreach (var ns in st.Signatures)
                 {
@@ -933,6 +984,16 @@ internal sealed partial class ResolveRun
                     var signatureDeps = DepsOf(signature);
                     signature.Signers = ActorsOf(ns.Signers, signatureDeps);
                     signature.RequiredActors = ActorsOf(ns.RequiredActors, signatureDeps);
+                    // Part 2 (decisions 20 to 22): delegation, reminders, escalation and signing again with a password.
+                    signature.DelegateTo = ActorsOf(ns.DelegateTo, signatureDeps);
+                    signature.EscalateTo = ActorsOf(ns.EscalateTo, signatureDeps);
+                    signature.RemindAfter = ns.RemindAfter;
+                    signature.RemindAfterMs = ProcessText.Milliseconds(ns.RemindAfter);
+                    signature.RemindAfterTicks = ProcessText.Ticks(ns.RemindAfter);
+                    signature.EscalateAfter = ns.EscalateAfter;
+                    signature.EscalateAfterMs = ProcessText.Milliseconds(ns.EscalateAfter);
+                    signature.EscalateAfterTicks = ProcessText.Ticks(ns.EscalateAfter);
+                    signature.Reauthenticate = ns.Reauthenticate;
                     if (ns.When is not null && process.Use != ProcessUse.Library)
                         signature.When = BuildCondition(ns.Id, ExprSiteKind.Approval, signatureDeps);
                     var entries = new List<RNotBy>(ns.NotBy.Count);
@@ -1197,11 +1258,28 @@ internal sealed partial class ResolveRun
         if (gate.UsesStages)
         {
             // An approval's records name the signature and stage, and gain the responses' outcomes (signoff-design.md decision 19).
-            Add("outcome", "string", true, "signed, completed, refused (an attempt the approval did not count), discarded (the source state was exited), "
-                + "rejected (a veto cleared the approval), ignored (a person abstained on a signature) or withdrawn (a person took back a signature).",
-                ["signed", "completed", "refused", "discarded", "rejected", "ignored", "withdrawn"]);
+            if (gate.AllSignatures.Any(s => s.DelegateTo.Count > 0))
+            {
+                // A signature that may be delegated adds the delegated outcome (part 2, decision 34); other approvals read as in part 1.
+                Add("outcome", "string", true, "signed, completed, refused (an attempt the approval did not count), discarded (the source state was exited), "
+                    + "rejected (a veto cleared the approval), ignored (a person abstained on a signature), withdrawn (a person took back a signature) "
+                    + "or delegated (a person handed their part of a signature to someone else).",
+                    ["signed", "completed", "refused", "discarded", "rejected", "ignored", "withdrawn", "delegated"]);
+            }
+            else
+            {
+                Add("outcome", "string", true, "signed, completed, refused (an attempt the approval did not count), discarded (the source state was exited), "
+                    + "rejected (a veto cleared the approval), ignored (a person abstained on a signature) or withdrawn (a person took back a signature).",
+                    ["signed", "completed", "refused", "discarded", "rejected", "ignored", "withdrawn"]);
+            }
             Add("signature", "id", false, "The named signature the record is about; none on a record about the whole approval.");
             Add("stage", "id", false, "The stage of the signature; none when the record names no signature.");
+            if (gate.AllSignatures.Any(s => s.DelegateTo.Count > 0))
+            {
+                // Where a signature may be delegated, the records name who answered on whose behalf and who a delegation went to (decision 34).
+                Add("onBehalfOf", "string", false, "For an answer on behalf of someone who delegated the signature, the delegator's identity; none otherwise.");
+                Add("delegateTo", "string", false, "For a delegation, the identity it went to; none otherwise.");
+            }
         }
         else
         {
@@ -1296,6 +1374,8 @@ internal sealed partial class ResolveRun
                     Signer = step.Signer,
                     Response = ResolutionValues.Kebab(step.Response),
                     Signature = step.Signature is null ? null : lookup.Signatures.GetValueOrDefault(step.Signature),
+                    DelegateTo = step.DelegateTo is null ? null : participants.GetValueOrDefault(step.DelegateTo),
+                    OnBehalfOf = step.OnBehalfOf is null ? null : participants.GetValueOrDefault(step.OnBehalfOf),
                     Meaning = step.Meaning is null ? null : lookup.Meanings.GetValueOrDefault(step.Meaning),
                     Reason = step.Reason,
                     Payload = ByName(step.Payload, lookup.Payload, lookup.Audit, lookup.Context),
@@ -1420,6 +1500,14 @@ internal sealed partial class ResolveRun
                             .Where(x => x.Signature is not null)
                             .OrderBy(x => signatureOrder.IndexOf(x.Signature!))
                             .Select(x => new RSignatureCount { Signature = x.Signature!, Count = x.Value })];
+                    }
+                    if (expect.Notices is { } notices)
+                    {
+                        // As written (decision 35): compared as a set; an id of no signature of the process is left out.
+                        r.Expect.Notices = [.. notices
+                            .Select(n => (Signature: lookup.Signatures.GetValueOrDefault(n.Signature), n.Kind))
+                            .Where(x => x.Signature is not null)
+                            .Select(x => new RExpectedNotice { Signature = x.Signature!, Kind = x.Kind == NoticeKind.Escalate ? "escalate" : "remind" })];
                     }
                     if (expect.Values.Count > 0)
                     {

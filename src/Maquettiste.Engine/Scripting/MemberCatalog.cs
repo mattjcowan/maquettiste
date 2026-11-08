@@ -29,7 +29,8 @@ internal enum ProxyFunction
 /// <param name="Name">The camelCase name.</param>
 /// <param name="Property">The property, when the member is one.</param>
 /// <param name="Function">The function kind, when the member is a function.</param>
-internal sealed record ProxyMember(string Name, PropertyInfo? Property, ProxyFunction Function);
+/// <param name="ReadKey">The dependency key a read records, for a plain value of the model (<see cref="ReadKeyAttribute"/>).</param>
+internal sealed record ProxyMember(string Name, PropertyInfo? Property, ProxyFunction Function, string? ReadKey = null);
 
 /// <summary>The script-visible members of one CLR type, ordinal by name.</summary>
 internal sealed class MemberTable
@@ -171,7 +172,7 @@ internal sealed class MemberCatalog
                 continue;
             if (IsHidden(type, property.Name))
                 continue;
-            members.Add(new ProxyMember(Camel(property.Name), property, ProxyFunction.None));
+            members.Add(new ProxyMember(Camel(property.Name), property, ProxyFunction.None, property.GetCustomAttribute<ReadKeyAttribute>()?.Key));
         }
 
         if (typeof(RAnnotated).IsAssignableFrom(type))

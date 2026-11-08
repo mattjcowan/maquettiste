@@ -162,6 +162,8 @@ public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOn
                     TriggerPoints = (triggerPoints || expected?.TriggerPoints is not null) && ran is { Count: > 0 } ? ran : null,
                     // The signatures counted after an accepted step that answered an approval (signoff-design.md decision 27).
                     Signatures = t.AnsweredSignatures,
+                    // The reminders and escalations due at the step, only where some fell due (decision 35).
+                    Notices = t.Notices is { Count: > 0 } notices ? [.. notices.Select(n => new ExpectedNotice { Signature = n.Signature, Kind = n.Kind })] : null,
                 };
             })],
             Final ? ScenarioOutcome.Final : ScenarioOutcome.Active);
@@ -367,6 +369,19 @@ public static class ScenarioReplayer
                 }
             }
 
+            // The reminders and escalations due at the step (signoff-design.md decision 35), compared as a set of signature and kind.
+            if (expect.Notices is { } wantedNotices)
+            {
+                var due = (trace.Notices ?? []).Select(n => (n.Signature, n.Kind)).Distinct().ToList();
+                var listed = wantedNotices.Select(n => (n.Signature, n.Kind)).Distinct().ToList();
+                if (due.Count != listed.Count || due.Except(listed).Any())
+                {
+                    var message = $"{At(i)}{Describe(c, step)} brings {Due(c, due)} due, but expect.notices lists {Due(c, listed)}; fix the approval or the steps, or update the expectations from a replay.";
+                    first ??= Fail("MQ9311", message, listed.Select(n => new { signature = n.Signature, kind = Kind(n.Kind) }).ToList(),
+                        due.Select(n => new { signature = n.Signature, kind = Kind(n.Kind) }).ToList(), pointer + "/expect/notices");
+                }
+            }
+
             return first;
 
             // A refusal by actor of a step with a participant names the participant and what it failed (MQ9301).
@@ -390,6 +405,18 @@ public static class ScenarioReplayer
             .GroupBy(s => s.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Name, StringComparer.Ordinal);
         return string.Join(", ", counts.Select(p => $"signature '{(names.TryGetValue(p.Key, out var name) ? name : p.Key)}' {p.Value.ToString(CultureInfo.InvariantCulture)}"));
     }
+
+    // Reminders and escalations for MQ9311: "a reminder on signature 'Controller', an escalation on signature 'Controller'", or "nothing".
+    private static string Due(StatechartModel chart, IReadOnlyList<(string Signature, NoticeKind Kind)> notices)
+    {
+        if (notices.Count == 0)
+            return "nothing";
+        var names = chart.Transitions.Select(t => t.Gate).OfType<ProcessGate>().SelectMany(g => g.AllSignatures)
+            .GroupBy(s => s.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Name, StringComparer.Ordinal);
+        return string.Join(", ", notices.Select(n => $"{(n.Kind == NoticeKind.Remind ? "a reminder" : "an escalation")} on signature '{(names.TryGetValue(n.Signature, out var name) ? name : n.Signature)}'"));
+    }
+
+    private static string Kind(NoticeKind kind) => kind == NoticeKind.Remind ? "remind" : "escalate";
 
     /// <summary>The interpreter a replay runs: the scenario's subject is the object it sees (lifecycle-design.md decision 22).</summary>
     internal static StatechartInterpreter Interpreter(Scenario scenario, StatechartModel chart, ProcessRuntime runtime)

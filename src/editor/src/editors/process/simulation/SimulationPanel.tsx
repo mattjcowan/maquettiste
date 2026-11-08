@@ -48,6 +48,7 @@ import {
   namesOf,
   nextDue,
   approvalRows,
+  nextNoticeDue,
   pendingRows,
   replayRows,
   replaySummary,
@@ -492,7 +493,13 @@ export function SimulationPanel({ pc }: { pc: ProcessContext }) {
             {section(
               "time",
               L.time,
-              <TimeSection result={result} live={live} names={names} onAdvance={(after) => update((s) => addInput(s, { input: "time", after }))} />,
+              <TimeSection
+                result={result}
+                process={process}
+                live={live}
+                names={names}
+                onAdvance={(after) => update((s) => addInput(s, { input: "time", after }))}
+              />,
             )}
             {section(
               "pending",
@@ -980,7 +987,7 @@ function EnabledRowView({
   return (
     <li data-trigger={row.trigger} data-label={row.label}>
       <div
-        className={cn(ROW, "focus-visible:bg-accent-subtle focus-visible:outline-none")}
+        className={cn(ROW, "h-auto min-h-[var(--mq-row-h)] flex-wrap py-0.5 focus-visible:bg-accent-subtle focus-visible:outline-none")}
         tabIndex={0}
         role="group"
         aria-label={L.raiseRow(row.label, n)}
@@ -1112,11 +1119,17 @@ function EnabledRowView({
                   id={`sim-${row.key}-response`}
                   className={cn(FIELD, "flex-1")}
                   value={value.response || "sign"}
+                  title={responses.includes("delegate") && !participants.length ? L.noDelegate : undefined}
                   onChange={(e) => onEdit({ response: e.target.value })}
                   data-testid="enabled-response"
                 >
                   {responses.map((r) => (
-                    <option key={r} value={r}>
+                    <option
+                      key={r}
+                      value={r}
+                      disabled={r === "delegate" && !participants.length}
+                      title={r === "delegate" && !participants.length ? L.noDelegate : undefined}
+                    >
                       {L.responseWords[r] ?? r}
                     </option>
                   ))}
@@ -1142,6 +1155,27 @@ function EnabledRowView({
                 </select>
               </div>
             </>
+          ) : null}
+          {responses.includes("delegate") && participants.length ? (
+            <div className={cn(ROW, "pl-6")} data-testid="enabled-field-row" onKeyDown={onKey}>
+              <label className="w-24 shrink-0 truncate text-secondary" htmlFor={`sim-${row.key}-delegation`}>
+                {value.response === "delegate" ? L.delegateTo : L.onBehalfOf}
+              </label>
+              <select
+                id={`sim-${row.key}-delegation`}
+                className={cn(FIELD, "flex-1")}
+                value={value.response === "delegate" ? value.delegateTo : value.onBehalfOf}
+                onChange={(e) => onEdit(value.response === "delegate" ? { delegateTo: e.target.value } : { onBehalfOf: e.target.value })}
+                data-testid={value.response === "delegate" ? "enabled-delegate-to" : "enabled-on-behalf-of"}
+              >
+                <option value="">{L.noOne}</option>
+                {participants.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           ) : null}
           <div className={cn(ROW, "pl-6")} data-testid="enabled-field-row" onKeyDown={onKey}>
             <label className="w-24 shrink-0 truncate text-secondary" htmlFor={`sim-${row.key}-meaning`}>
@@ -1212,8 +1246,21 @@ function EnabledRowView({
   );
 }
 
-function TimeSection({ result, live, names, onAdvance }: { result: SimulationResult | null; live: boolean; names: Names; onAdvance: (after: string) => void }) {
+function TimeSection({
+  result,
+  process,
+  live,
+  names,
+  onAdvance,
+}: {
+  result: SimulationResult | null;
+  process: ProcessDoc;
+  live: boolean;
+  names: Names;
+  onAdvance: (after: string) => void;
+}) {
   const next = result ? nextDue(result) : null;
+  const notice = result && !next ? nextNoticeDue(result, process, names) : null;
   const [after, setAfter] = useState<string | null>(null);
   const shown = after ?? next?.after ?? "PT1H";
   const valid = isDuration(shown);
@@ -1225,7 +1272,9 @@ function TimeSection({ result, live, names, onAdvance }: { result: SimulationRes
   };
   return (
     <div>
-      <Note testid="time-row">{next ? L.nextTimer(names.transition(next.transition), next.dueAt) : L.noTimers}</Note>
+      <Note testid="time-row">
+        {next ? L.nextTimer(names.transition(next.transition), next.dueAt) : notice ? L.nextNotice(notice.signature, notice.kind, notice.dueAt) : L.noTimers}
+      </Note>
       <div className={ROW} data-testid="time-row">
         <span className="min-w-0 flex-1 truncate text-secondary" title={L.clock(result.clock)} data-testid="simulation-clock">
           {L.clock(result.clock)}
@@ -1267,10 +1316,16 @@ function ApprovalsSection({ result, process, names }: { result: SimulationResult
             <span className="min-w-0 flex-1 truncate font-medium" title={a.name}>
               {a.name}
             </span>
+            {a.round !== undefined && Number.isFinite(a.round) ? (
+              <Badge tone="accent" data-testid="approval-round">
+                {L.roundLine(a.round)}
+              </Badge>
+            ) : null}
             {a.satisfied ? <span className="truncate text-secondary">{L.approvalWaiting}</span> : null}
           </div>
           {a.stages.flatMap((st) =>
             st.signatures.map((s) => (
+              // A skipped stage shows its signatures as not needed, with the stage's name and why.
               <div
                 key={s.id}
                 className={cn(ROW, "h-auto min-h-[var(--mq-row-h)] flex-wrap py-0.5 pl-6")}
@@ -1278,11 +1333,16 @@ function ApprovalsSection({ result, process, names }: { result: SimulationResult
                 data-signature={s.name}
               >
                 <span
-                  className={cn("min-w-0 flex-1 break-words", !s.needed && "text-secondary")}
-                  title={L.signatureState(s.name, s.needed, s.counted, s.required)}
+                  className={cn("min-w-[8rem] flex-1 break-words", !s.needed && "text-secondary")}
+                  title={L.signatureState(s.name, s.needed, s.counted, s.required, s.waitsForRound)}
                 >
-                  {L.signatureState(s.name, s.needed, s.counted, s.required)}
+                  {L.signatureState(s.name, s.needed, s.counted, s.required, s.waitsForRound)}
                 </span>
+                {st.round !== undefined || st.skipped ? (
+                  <span className="min-w-0 break-words text-secondary" data-testid="approval-stage">
+                    {[st.name, st.round !== undefined ? L.stageRound(st.round) : "", st.skipped ? L.stageSkipped : ""].filter(Boolean).join(", ")}
+                  </span>
+                ) : null}
                 {s.finished.length ? (
                   <span className="min-w-0 break-words text-secondary" title={L.finishedBy(s.finished.join(", "))}>
                     {L.finishedBy(s.finished.join(", "))}
@@ -1543,7 +1603,7 @@ function TraceSection({
                 {RL.refusalWords[r.refusal ?? ""] ?? r.refusal}
               </Badge>
             ) : (
-              <span className="flex min-w-0 max-w-[40%] items-center gap-1">
+              <span className="flex min-w-0 max-w-[40%] shrink items-center gap-1 overflow-hidden">
                 {r.froze ? (
                   <Badge tone="accent" data-testid="trace-froze">
                     {r.froze}
@@ -1559,6 +1619,7 @@ function TraceSection({
                 variant="ghost"
                 size="icon-row"
                 tabIndex={-1}
+                className="shrink-0"
                 label={L.deleteInput(r.label)}
                 shortcut="Delete"
                 onClick={(e) => {

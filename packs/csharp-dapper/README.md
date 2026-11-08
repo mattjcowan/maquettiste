@@ -352,7 +352,7 @@ For `PurchaseApproval` in package `Purchasing`:
 | `process-states` | `overwrite` | `each process` | `Processes/PurchaseApproval/PurchaseApprovalStates.cs`: a constant per state path; an enum with one member per path for an orchestration, `ToStatus` (active states to the bound enum) for a lifecycle with one enum binding, and `To<Entity>Status` per enum binding for a lifecycle with several subjects (qualified by package where two subjects share a name); with state codes, also the `<Process>StateCodes` class (see Lifecycle state codes) |
 | `process-definition` | `overwrite` | `each process` | `PurchaseApprovalDefinition.cs`: the chart as static data (states with parents, initial children and history; transitions in priority order with triggers, guards, actions, delays and gates; events with their actors; invokes; gates and meanings) |
 | `process-contracts` | `overwrite` | `each process` | `PurchaseApprovalContracts.cs`: the context record, one command per event (`PurchaseApproval<Event>Command`: the envelope plus the typed payload, and the gate's audit attributes for a gated event), the built-in `PurchaseApprovalStartControl`, `PurchaseApprovalInvokeResultControl` and `PurchaseApprovalTimersDueControl` (their names end in `Control`, every event command's in `Command`, so no event name collides with them; all implement `IProcessCommand`), `PurchaseApprovalTransitioned` and one audit record per gate (the fields of `gate.audit`) |
-| `process-handlers` | `pair` | `each process` | `PurchaseApprovalHandlers.g.cs` (guards and actions as `Guard<Name>` and `Action<Name>`, so a guard and an action may share a name: translated ones implemented, the others declared as partial methods; the command handler that loads, runs the machine, saves over the version it loaded and returns the outbox events) and `PurchaseApprovalHandlers.cs` once, with a stub per untranslated guard or action. A process that names actors taken from the object also implements `IActorResolver`: `Is<Actor>` per such actor, declared as a partial method whose stub refuses until the team writes it |
+| `process-handlers` | `pair` | `each process` | `PurchaseApprovalHandlers.g.cs` (guards and actions as `Guard<Name>` and `Action<Name>`, so a guard and an action may share a name: translated ones implemented, the others declared as partial methods; the command handler that loads, runs the machine, saves over the version it loaded and returns the outbox events) and `PurchaseApprovalHandlers.cs` once, with a stub per untranslated guard or action. A process that names actors taken from the object also implements `IActorResolver`: `Is<Actor>` per such actor, declared as a partial method whose stub refuses until the team writes it. A process whose approvals may be delegated answers the same way for each `delegateTo` actor: whether the person a signature goes to is that actor. A stage with a condition gets a `<Gate><Stage>Stage` method in `<Process>ApprovalConditions`, reached as `IApprovalConditions.StageNeeded` |
 | `process-services` | `pair` | `each process` | `PurchaseApprovalServices.g.cs` (an interface per service task, an optional hook per human task and sub-process, `RunAsync` routing a started invoke) and `PurchaseApprovalServices.cs` once |
 | `process-machine` | `pair` | `each process` | `PurchaseApprovalMachine.g.cs` (`Start`, `Restore`, one method per event, `Complete`, `Tick`, `Publish`) and `PurchaseApprovalMachine.cs` once |
 | `process-store` | `pair` | `each process` | `PurchaseApprovalStore.g.cs` (`IPurchaseApprovalStore`: load the snapshot, save it over the version the command loaded, append history and audit records) and `PurchaseApprovalStore.cs` once, an in-memory store to adapt |
@@ -660,6 +660,36 @@ does the pack write anything below; a project without approvals gets the same by
   stages, or saved before the project used approvals, starts its round at the next input, so **Not by** can't see what was done before
   then: the submitter is not excluded, where the engine, which replays from the start, excludes them. Generated scenario tests check a
   verb step's rights but don't record it in the snapshot, so a **Not by** that names that verb doesn't see it there.
+
+**Approvals, part 2: rounds, delegation, reminders and a password** (signoff-design.md, decisions 32 to 36). A lifecycle uses part 2 when
+an approval has more than one stage or a stage with `when` (rounds), a signature with `delegateTo` (delegation), a signature with
+`remindAfter` or `escalateAfter` (notices), or a signature with `reauthenticate` (password), inline or through a gate policy. The pack
+writes the code of a group only when some lifecycle uses it. A lifecycle that uses part 1 only gets the same bytes as before.
+
+- **What is written.** `SignatureResponse.Delegate`, the envelope's `DelegateTo`, `OnBehalfOf` and `Reauthenticated`, the outcome
+  `Delegated`, the refusal `GateReauthenticate` (`gate-reauthenticate`), `ApprovalNotice`, `NoticeKind` and `ApprovalNotices.Due`. A stage's
+  definition gains `Round` and `When`, and a signature's gains `RemindAfter`, `EscalateAfter`, `EscalateTo`, `DelegateTo` and
+  `Reauthenticate`. The snapshot's `Approvals` gain each stage's round, the stages skipped, the delegations (`Delegated`) and the
+  notices (`Notices`).
+- **Upgrading, step by step.**
+  1. **Write the stage conditions.** For each stage with a `when`, `<Process>ApprovalConditions` gets a method `<Gate><Stage>Stage`,
+     reached through `IApprovalConditions.StageNeeded`. Each throws until written, so the build lists what is missing. Answer `true`
+     when you can't tell: an unknown answer means the stage runs. The condition is asked when the stage's round starts.
+  2. **Answer who a delegation goes to.** For each `delegateTo` actor taken from the object, `<Process>Handlers.cs` declares
+     `Is<Actor>`: whether the person named in the envelope's `DelegateTo` is that actor. Its stub refuses until you write it.
+  3. **Delegate and answer on behalf.** To delegate, set `Response` to `Delegate` and `DelegateTo` to the person's identity. That person
+     then sends their answer with `OnBehalfOf` set to the delegator. A delegation can't be passed on, and a rejection ends it.
+  4. **Send the notices.** Call `ApprovalNotices.Due(snapshot, now)` from your scheduler. Each notice carries a stable `Id`, the
+     recipient actors and the people already finished on the signature. Send it, and drop a repeat by its `Id`: the snapshot doesn't
+     record what was sent. A notice never moves the object. An escalation gives its recipients no right to sign.
+  5. **Pass the password check.** For a signature with `reauthenticate`, check the person's identity yourself and set `Reauthenticated`
+     on the envelope. Without it, the response is refused `gate-reauthenticate` and audited as refused. This applies to every
+     response on that signature, including a delegation and an answer on behalf.
+- **The promises.** Completing a round that is not the last starts the next round and moves nothing. Only the last round's completion
+  makes the move, as in the engine. A rejection clears every round and every delegation, and round 1 starts again.
+- **Limits.** The pack does not send notices, check passwords or know who is absent. A round's start is kept in the snapshot, so an
+  instance saved before the lifecycle used rounds starts its round at its next input. The scenario tests send delegations and answers on behalf,
+  and set `Reauthenticated` for a signature that asks for it, as the simulation takes the check as done.
 
 ### Scenario tests
 

@@ -105,12 +105,13 @@ internal static class VerbRules
 
     /// <summary>The built-in verb's key of a response (signoff-design.md decision 9).</summary>
     /// <param name="response">The response.</param>
-    /// <returns>The key: <c>sign</c>, <c>reject</c>, <c>ignore</c> or <c>withdraw</c>.</returns>
+    /// <returns>The key: <c>sign</c>, <c>reject</c>, <c>ignore</c>, <c>withdraw</c> or <c>delegate</c>.</returns>
     internal static string ResponseKey(SignatureResponse response) => response switch
     {
         SignatureResponse.Reject => "reject",
         SignatureResponse.Ignore => "ignore",
         SignatureResponse.Withdraw => "withdraw",
+        SignatureResponse.Delegate => "delegate",
         _ => "sign",
     };
 

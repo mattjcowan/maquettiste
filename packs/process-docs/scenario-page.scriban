@@ -74,12 +74,15 @@ One row per step: who acts{{ if cast }} and the actor they act as{{ end }}, the 
 {{- if !st.signer && st.meaning }}{{ notes[notes.size] = "meaning " + (md_code st.meaning.name) }}{{ end }}
 {{- if st.response != "sign" }}{{ notes[notes.size] = "response " + (md_code st.response) }}{{ end }}
 {{- if st.signature }}{{ notes[notes.size] = "on signature " + (md_code st.signature.name) }}{{ end }}
+{{- if st.delegate_to }}{{ notes[notes.size] = "delegate to " + (md_code st.delegate_to.name) }}{{ end }}
+{{- if st.on_behalf_of }}{{ notes[notes.size] = "on behalf of " + (md_code st.on_behalf_of.name) }}{{ end }}
 {{- if st.reason }}{{ notes[notes.size] = "reason \"" + (md_cell st.reason) + "\"" }}{{ end }}
 {{- for kv in st.payload }}{{ notes[notes.size] = "payload " + (md_code kv.key) + " = " + (md_code (json kv.value)) }}{{ end }}
 {{- for kv in st.assume }}{{ if kv.value == "pass" || kv.value == "warning" || kv.value == "error" }}{{ notes[notes.size] = "check " + (md_code kv.key) + " assumed to " + (kv.value == "pass" ? "pass" : (kv.value == "warning" ? "warn" : "refuse")) }}{{ else }}{{ notes[notes.size] = "guard " + (md_code kv.key) + " assumed " + (kv.value ? "true" : "false") }}{{ end }}{{ end }}
 {{- if st.expect }}{{ for tp in st.expect.check_warnings }}{{ warns = md_inline tp.message }}{{ if warns | string.ends_with "." }}{{ warns = string.slice warns 0 (warns.size - 1) }}{{ end }}{{ notes[notes.size] = "check " + (md_code tp.name) + " warns: " + warns }}{{ end }}{{ end }}
 
 {{- if st.expect && st.expect.signatures.size > 0 }}{{ counted = [] }}{{ for c in st.expect.signatures }}{{ counted[counted.size] = (md_code c.signature.name) + " " + c.count }}{{ end }}{{ notes[notes.size] = "signatures counted after it: " + (counted | array.join ", ") }}{{ end }}
+{{- if st.expect && st.expect.notices && st.expect.notices.size > 0 }}{{ due = [] }}{{ for n in st.expect.notices }}{{ due[due.size] = (n.kind == "remind" ? "reminder on " : "escalation on ") + (md_code n.signature.name) }}{{ end }}{{ notes[notes.size] = "notices due: " + (due | array.join ", ") }}{{ end }}
 {{- if st.expect && st.expect.trigger_points.size > 0 }}{{ ran = [] }}{{ for tp in st.expect.trigger_points }}{{ ran[ran.size] = md_code tp.name }}{{ end }}{{ notes[notes.size] = "trigger points that ran: " + (ran | array.join ", ") }}{{ end }}
 {{- if st.expect }}{{ for kv in st.expect.context }}{{ notes[notes.size] = (md_code kv.key) + " becomes " + (md_code (json kv.value)) }}{{ end }}{{ end }}
 {{- if st.expect }}{{ for kv in st.expect.values }}{{ notes[notes.size] = "sets " + (md_code kv.key) + " to " + (md_code (json kv.value)) }}{{ end }}{{ end }}

@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JAE0000000000000000000E1",
+  "name": "Agreement",
+  "package": "01JAE0000000000000000000P1",
+  "key": {
+    "attributes": [
+      "01JAE0000000000000000000A1"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JAE0000000000000000000A1",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    },
+    {
+      "id": "01JAE0000000000000000000A2",
+      "name": "cost",
+      "type": "decimal"
+    }
+  ]
+}

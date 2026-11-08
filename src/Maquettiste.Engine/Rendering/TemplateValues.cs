@@ -54,7 +54,8 @@ internal sealed record ReferrerView(string Id, string Kind, string Field, string
 /// <summary>A template-visible CLR property: snake_case name and a compiled getter.</summary>
 /// <param name="Name">The snake_case name.</param>
 /// <param name="Getter">The getter.</param>
-internal sealed record TemplateMember(string Name, Func<object, object?> Getter);
+/// <param name="ReadKey">The dependency key a read records, for a plain value of the model (<see cref="ReadKeyAttribute"/>).</param>
+internal sealed record TemplateMember(string Name, Func<object, object?> Getter, string? ReadKey = null);
 
 /// <summary>
 /// Reflection data for the renderer (one per <see cref="Renderer"/>, so per run; thread-safe): which CLR types templates may read,
@@ -198,7 +199,7 @@ internal sealed class TemplateMemberCatalog
             var body = Expression.Convert(Expression.Property(Expression.Convert(parameter, type), property), typeof(object));
             var getter = Expression.Lambda<Func<object, object?>>(body, parameter).Compile();
             var name = Casing.Snake(property.Name);
-            members.TryAdd(name, new TemplateMember(name, getter));
+            members.TryAdd(name, new TemplateMember(name, getter, property.GetCustomAttribute<ReadKeyAttribute>()?.Key));
         }
 
         return members.ToFrozenDictionary(StringComparer.Ordinal);
@@ -275,6 +276,8 @@ internal sealed class ViewAccessor(FrozenDictionary<string, TemplateMember> memb
         tracking.RecordRead(target);
         if (members.TryGetValue(member, out var m))
         {
+            if (m.ReadKey is { } key)
+                tracking.Recorder.Record(key);
             value = tracking.Wrap(m.Getter(target));
             return true;
         }

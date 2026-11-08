@@ -138,6 +138,8 @@ internal sealed class JsModelProxy : ObjectInstance
     private JsValue Read(int index)
     {
         RecordSelf();
+        if (_table.Members[index].ReadKey is { } key)
+            _values.State.Record(key);
         var cached = _cache[index];
         if (cached is not null)
             return cached;
