@@ -221,3 +221,55 @@ describe("the mock stepper: notices", () => {
     expect(none.expects[1]).not.toHaveProperty("notices");
   });
 });
+
+describe("the mock stepper: review fixes for part 2", () => {
+  const delegating = doc(gate([stage("s1", [sig("fin", ["FinRole"], { delegateTo: ["Deputy"], requiredActors: ["FinRole"] })])]));
+  const two = doc(gate([stage("s1", [sig("fin", ["FinRole"], { delegateTo: ["Deputy"] }), sig("mgr", ["MgrRole"])])]));
+  const delegate = { ...answer("Ann", "delegate"), delegateTo: "pdan" };
+  const onBehalf = (response?: string) => ({ event: "approve", participant: "pdan", ...(response ? { response } : {}), onBehalfOf: "pann" });
+
+  it("B1: an answer on behalf that completes the approval counts as the delegator's actor, so the move's check runs", () => {
+    const checked = {
+      ...delegating,
+      subjects: [{ id: "s", entity: "E" }],
+      triggerPoints: [{ id: "stop", name: "stop", type: "check", verbs: ["approve"], condition: { value: false } }],
+    };
+    const options = { membership: members, refusedBy: true, participants, attributesOf: () => [], subjectEntity: "E" };
+    const r = simulate(checked, null, [submit, delegate, onBehalf()], options);
+    expect(last(r)).toMatchObject({ accepted: false, refusal: "check", refusedBy: "stop" });
+  });
+
+  it("S1: a second answer on one delegation is refused gate-repeat, and a rejection on behalf after a signature on behalf is accepted", () => {
+    expect(last(run(two, [submit, delegate, onBehalf(), onBehalf()]))).toMatchObject({ accepted: false, refusal: "gate-repeat" });
+    expect(last(run(two, [submit, delegate, onBehalf("ignore"), onBehalf()]))).toMatchObject({ accepted: false, refusal: "gate-repeat" });
+    const rejected = run(two, [submit, delegate, onBehalf(), onBehalf("reject")]);
+    expect(last(rejected)).toMatchObject({ accepted: true });
+    expect(last(rejected).audit[0]).toMatchObject({ outcome: "rejected", onBehalfOf: "ann" });
+  });
+
+  it("S2: a notice that would fall due after a timer moved the object out is not listed, and notices are sorted by signature then kind", () => {
+    const notice = { remindAfter: "PT1H", escalateAfter: "PT4H", escalateTo: ["Deputy"] };
+    const d = doc(gate([stage("s1", [sig("fin", ["FinRole"], notice)])]));
+    (d.transitions as Json[]).push({ id: "t3", source: "Review", trigger: "after", targets: ["Draft"], after: "PT3H" });
+    const r = run(d, [submit, { input: "time", after: "PT5H" }]);
+    expect(last(r).configuration).toContain("Draft");
+    expect(last(r).notices).toEqual([{ signature: "fin", kind: "remind", recipients: ["FinRole"] }]);
+    const both = doc(gate([stage("s1", [sig("fin", ["FinRole"], notice), sig("mgr", ["MgrRole"], { remindAfter: "PT1H" })])]));
+    expect(last(run(both, [submit, { input: "time", after: "PT5H" }])).notices!.map((n) => `${n.signature}:${n.kind}`)).toEqual([
+      "fin:remind",
+      "fin:escalate",
+      "mgr:remind",
+    ]);
+  });
+
+  it("M3: delegating to the delegator themselves is refused gate-signer with a reason, and a step naming its own participant is MQ9305", () => {
+    const same = [...participants, { id: "pann2", name: "pann2", identity: "ann", actor: "Deputy" }];
+    const self = simulate(delegating, null, [submit, { ...answer("Ann", "delegate"), delegateTo: "pann2" }], { membership: members, participants: same });
+    expect(last(self)).toMatchObject({ accepted: false, refusal: "gate-signer" });
+    expect(last(self).notes!.join(" ")).toContain("themselves");
+    const own = run(delegating, [submit, { event: "approve", participant: "pdan", response: "delegate", delegateTo: "pdan" }]);
+    expect(last(own).diagnostics.find((x) => x.rule === "MQ9305")?.message).toBe(
+      "the step delegates to its own participant; a delegation goes to someone else.",
+    );
+  });
+});

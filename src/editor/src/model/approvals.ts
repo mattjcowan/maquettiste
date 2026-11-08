@@ -197,9 +197,10 @@ export function canRevert(gate: GateDoc): boolean {
   const sigs = stages[0].signatures ?? [];
   const stage = stages[0];
   if (stage.when || roundOf(stage) !== 1) return false;
+  if (sigs.length !== 1) return false;
   const sig = sigs[0];
   const part2 = !!(sig.delegateTo?.length || sig.remindAfter || sig.escalateAfter || sig.escalateTo?.length || sig.reauthenticate);
-  return sigs.length === 1 && !sig.when && !(sig.notBy ?? []).length && !part2;
+  return !sig.when && !(sig.notBy ?? []).length && !part2;
 }
 
 /** Back to one list of signers: the signature's keys move back onto the gate. Returns false when the approval holds more than that. */

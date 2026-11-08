@@ -560,6 +560,14 @@ interface Act {
   transition: string | null;
 }
 
+/** Where a notice sorts in the trace: transition, signature position, then a reminder before an escalation (decision 35). */
+const noticeOrder = new WeakMap<object, [number, number, number]>();
+function byNoticeOrder(a: object, b: object): number {
+  const x = noticeOrder.get(a) ?? [0, 0, 0];
+  const y = noticeOrder.get(b) ?? [0, 0, 0];
+  return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+}
+
 /** The refusal of a response, with the element that refused it. */
 type Refusal = [string, string];
 
@@ -987,6 +995,8 @@ class Interpreter {
       return fail("The step names who it delegates to, but its response is not delegate; give the response delegate, or remove it.");
     if (response === "delegate" && !input.delegateTo)
       return fail("The step delegates, but names no one to delegate to; pick a participant, or change the response.");
+    if (response === "delegate" && input.delegateTo && input.delegateTo === input.participant)
+      return fail("the step delegates to its own participant; a delegation goes to someone else.");
     if (response === "delegate" && input.onBehalfOf)
       return fail("A delegation can't be passed on: a step that delegates can't also answer on behalf of someone; remove one.");
     if (response === "delegate" || input.onBehalfOf) {
@@ -1013,11 +1023,11 @@ class Interpreter {
     }
     if (!input.actor) this.scope.actor = this.membership.systemActor;
     this.scope.event = this.eventObject(null, input.actor, [], {});
-    // Notices fall due only on a time step (decision 35): those of the rounds running now, then those of rounds the step's own moves started.
-    this.dueNotices(end);
+    // Notices fall due only on a time step (decision 35): before each timer, those due by its instant; then, if the object is still here, by the end.
     while (!this.done) {
       const next = this.timers.filter((t) => t.due <= end).sort(timerOrder)[0];
       if (!next) break;
+      this.dueNotices(next.due);
       this.clock = next.due;
       this.timers = this.timers.filter((t) => t !== next);
       this.macrostep(() => {
@@ -1028,15 +1038,17 @@ class Interpreter {
         this.runToCompletion();
       });
     }
+    if (!this.done) this.dueNotices(end);
     this.clock = end;
-    this.dueNotices(end);
   }
 
   /** Lists each reminder and escalation that fell due by `end`, once per round start, in file order (decision 35). */
   private dueNotices(end: number) {
     for (const approval of this.approvals.values()) {
       if (approval.waiting) continue;
+      let position = 0;
       for (const sg of gateSignatures(approval.edge.gate)) {
+        position++;
         if (!approval.needed.has(String(sg.id)) || this.sigComplete(sg, approval.counted)) continue;
         for (const [kind, after, to] of [
           ["remind", durationMs(str(sg.remindAfter)), ids(sg.signers)],
@@ -1045,7 +1057,9 @@ class Interpreter {
           const key = `${String(sg.id)}|${kind}`;
           if (after === null || after <= 0 || approval.noticed.has(key) || approval.startedAt + after > end) continue;
           approval.noticed.add(key);
-          this.scope.notices.push({ signature: String(sg.id), kind, recipients: [...to] });
+          const notice = { signature: String(sg.id), kind, recipients: [...to] };
+          noticeOrder.set(notice, [this.chart.transitions.indexOf(approval.edge), position, kind === "remind" ? 0 : 1]);
+          this.scope.notices.push(notice);
         }
       }
     }
@@ -1532,7 +1546,8 @@ class Interpreter {
       return (
         this.roundDone(t, approval, [
           ...approval.counted,
-          { signer: input.signer!, actor: input.actor!, meaning: null, reason: null, signature: String(pick.sg.id) },
+          // An answer on behalf counts as the delegator's actor, as the engine's WouldComplete does.
+          { signer: input.signer!, actor: (input.onBehalfOf ? pick.actor : null) ?? input.actor!, meaning: null, reason: null, signature: String(pick.sg.id) },
         ]) && this.laterRoundsEmpty(t, approval)
       );
     }
@@ -2223,11 +2238,19 @@ class Interpreter {
           this.scope.rights.push(...denied.holding);
           refusal = ["right", denied.by[0]];
         } else if (this.excluded(t, sg, signer)) refusal = ["gate-excluded", gateId];
-        else if (this.repeated(t, approval, sg, response, signer)) refusal = ["gate-repeat", gateId];
+        else if (
+          this.repeated(t, approval, sg, response, signer) ||
+          (behalf !== null && (response === "sign" || response === "ignore") && this.delegationOf(approval, sg, behalf, signer ?? null)?.used)
+        )
+          refusal = ["gate-repeat", gateId];
         else if (response === "sign" && this.sigComplete(sg, approval.counted)) refusal = ["gate-repeat", gateId];
         else if (response === "withdraw" && !approval.counted.some((c) => c.signer === signer && c.signature === sg.id)) refusal = ["gate-not-signed", gateId];
         else if (gate.reasonRequired === true && !(input.reason ?? "").trim()) refusal = ["gate-reason", gateId];
         else if (response === "delegate" && !this.mayReceive(sg, input.delegateTo)) refusal = ["gate-signer", gateId];
+        else if (response === "delegate" && this.participantIdentity(input.delegateTo) === signer) {
+          this.scope.notes.push("A signer can't delegate a signature to themselves; delegate it to someone else.");
+          refusal = ["gate-signer", gateId];
+        }
       }
     }
     if (refusal) this.audit(gate, t, signer, actor, meaningOf(input, gate), input.reason, "refused", auditAttributes(input, gate), this.namedOf(t));
@@ -2242,8 +2265,13 @@ class Interpreter {
 
   /** The actor an answer on behalf of the delegator counts as, from the delegation on the signature given to this person; null when none is open (decision 34). */
   private behalfActor(approval: Approval, sg: Json, from: string, to: string | null, response: Response): string | null {
-    const d = approval.delegations.find((x) => x.signature === sg.id && x.from === from && x.to === to && (response === "withdraw" || !x.used));
-    return d?.actor ?? null;
+    // A used delegation still exists: a repeat is refused gate-repeat, and a rejection on behalf is allowed.
+    void response;
+    return this.delegationOf(approval, sg, from, to)?.actor ?? null;
+  }
+
+  private delegationOf(approval: Approval, sg: Json, from: string, to: string | null) {
+    return approval.delegations.find((x) => x.signature === sg.id && x.from === from && x.to === to);
   }
 
   /** Whether the participant is a member of one of the actors the signature may be delegated to. */
@@ -2656,7 +2684,7 @@ class Interpreter {
       ...(this.frozenObject ? { frozen: true as const } : {}),
       ...(this.scope.triggerRuns.length || this.scope.queued.length ? { triggerPoints: [...this.scope.triggerRuns, ...this.scope.queued] } : {}),
       ...(this.scope.checkWarnings.length ? { checkWarnings: [...this.scope.checkWarnings] } : {}),
-      ...(this.scope.notices.length ? { notices: [...this.scope.notices] } : {}),
+      ...(this.scope.notices.length ? { notices: [...this.scope.notices].sort(byNoticeOrder) } : {}),
     };
     if (this.scope.list) unsatisfiedLists.set(trace, this.scope.list);
     const answered = this.scope.answered;
