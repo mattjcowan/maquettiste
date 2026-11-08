@@ -80,7 +80,7 @@ one.
   `response` and `signature`, `expect.signatures`). The schema copies and the `maquettiste-modeling` skill change, so update the copies your
   repository holds. A `csharp-dapper` team with approvals: implement the `when` methods in `<Lifecycle>ApprovalConditions` where the build
   asks (answer true when you can't tell), and pass the envelope's `Response` and `Signature`. The pack's README has the steps.
-- **New names, waiting for the owner's confirmation before release.** From the design (section 14): the gate keys `stages` and
+- **New names.** Settled by the design (section 14): the gate keys `stages` and
   `allowSignerAcrossSignatures`; a stage's `signatures`; a signature's `when` and `notBy`; the part kinds `gate-stage` and
   `named-signature` and the schemas `gateStage` and `namedSignature`; a step's `response` and `signature`; `expect.signatures`; the
   audit outcomes and refusals above, and the audit record's `signature` and `stage`; the gate state's `stages`, the records `GateStage`,
