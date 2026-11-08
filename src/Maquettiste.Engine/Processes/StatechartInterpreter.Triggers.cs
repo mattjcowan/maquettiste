@@ -51,11 +51,15 @@ public sealed partial class StatechartInterpreter
 
         // Whether a replace took the place of the verb's effect (a verb step's only, decision 16).
         public bool Replaced { get; set; }
+
+        // Whether a verb step or a task's end prepared it, rather than a move or a signature.
+        public bool VerbStep { get; set; }
     }
 
     /// <summary>
     /// The team-code checks the moves of some transitions reach (<c>checksUnknown</c>, trigger-points-design.md section 9), whose outcome a step
-    /// takes from its <c>assume</c>: the checks of each move's verb and, on a gated move, of <c>sign</c>, in the order found, each once.
+    /// takes from its <c>assume</c>: the checks of each move's verb and, on a gated move, of <c>sign</c>, in the order found, each once. On a
+    /// gated move the move's own checks are listed only when the next signature can complete the gate, as only that one runs them (decision 18).
     /// </summary>
     /// <param name="transitions">The candidate transitions' ids.</param>
     /// <returns>The trigger point ids; empty in a project without trigger points.</returns>
@@ -70,7 +74,7 @@ public sealed partial class StatechartInterpreter
         {
             if (_root.Chart.Transitions.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.Ordinal)) is not { } t)
                 continue;
-            foreach (var verb in new[] { t.Gate is not null ? "sign" : null, MoveVerb(t) })
+            foreach (var verb in new[] { t.Gate is not null ? "sign" : null, t.Gate is null || CouldComplete(_root, t, t.Gate) ? MoveVerb(t) : null })
             {
                 if (verb is null)
                     continue;
@@ -112,7 +116,9 @@ public sealed partial class StatechartInterpreter
             Note(note);
         if (run.IsEmpty)
             return null;
-        return Prepare(run, own, create ? Null : _current, create ? NoValues : new Dictionary<string, JsonElement>(_values, StringComparer.Ordinal));
+        var prepared = Prepare(run, own, create ? Null : _current, create ? NoValues : new Dictionary<string, JsonElement>(_values, StringComparer.Ordinal));
+        prepared.VerbStep = true;
+        return prepared;
     }
 
     /// <summary>
@@ -151,7 +157,8 @@ public sealed partial class StatechartInterpreter
                 Audit(inst, gate, t, input.Signer, input.Actor, meaning, input.Reason, GateOutcome.Refused, attributes);
             }
 
-            if (!external)
+            // Each refused automatic move is noted once per step, though RunToCompletion tries it again after every microstep.
+            if (!external && _scope.RefusedMoves.Add(t.Id))
                 Note($"Check '{refused.RefusedName}' refused the automatic move {Label(t)}, so it was not taken; the step that led to it is still accepted.");
             return refused.Refused;
         }
@@ -159,6 +166,10 @@ public sealed partial class StatechartInterpreter
         _candidates[t] = new Candidate(sign, move);
         return null;
     }
+
+    // Whether the next signature, by whoever signs, brings the gate to its count; who signs it may still leave a required actor missing.
+    private static bool CouldComplete(Instance inst, ChartTransition t, ProcessGate gate) =>
+        (inst.Signatures.TryGetValue(t.Id, out var existing) ? existing.Count : 0) + 1 >= Math.Max(1, gate.Required);
 
     // Whether this occurrence would complete the gate, worked out without counting it, as Sign counts.
     private bool WouldComplete(Instance inst, ChartTransition t, ProcessGate gate)
@@ -365,11 +376,12 @@ public sealed partial class StatechartInterpreter
     }
 
     // Rows 11 and 12: with-the-change actions now, on the object after the verb; after-commit ones queued for the end of the step. Each point
-    // once per microstep. On delete with no replace there is no object to set (decision 16), so with-change sets are skipped, as the
-    // evaluator's note says; an event that names delete still does its move, and its sets are skipped too.
+    // once per microstep. After a verb step's built-in delete there is no object to set (decision 16), so a with-change action with sets is
+    // skipped with one note: the evaluator's when no replace matched, this one when a replace matched but its when didn't hold. An event that
+    // names delete still does its move and the object stays, so its with-change actions run with their sets.
     private void RunLater(Prepared prepared, HashSet<string> seen)
     {
-        var gone = string.Equals(prepared.Run.Verb, "delete", StringComparison.Ordinal) && !prepared.Replaced;
+        var gone = prepared.VerbStep && string.Equals(prepared.Run.Verb, "delete", StringComparison.Ordinal) && !prepared.Replaced;
         foreach (var later in prepared.Run.WithChange)
         {
             if (!seen.Add("with-change:" + later.Point.Id))

@@ -66,7 +66,7 @@ public sealed class TriggerPointReferenceTests
             "expect":{"triggerPoints":["{{OnlyEscalate}}"]} }]}
         """;
 
-    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(string? points = null)
+    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(string? points = null, string? steps = null)
     {
         var h = new LoaderHarness();
         h.CopyFixture("models", "process-basics");
@@ -84,7 +84,7 @@ public sealed class TriggerPointReferenceTests
         process["triggerPoints"] = JsonNode.Parse(points ?? Points);
         h.Write(ProcessFile, Canonical(process.ToJsonString(), "process.json", ProcessFile));
         h.Write("model/scenarios/order-lifecycle/trigger-bookkeeping.json",
-            Canonical(Steps, "scenario.json", "model/scenarios/order-lifecycle/trigger-bookkeeping.json"));
+            Canonical(steps ?? Steps, "scenario.json", "model/scenarios/order-lifecycle/trigger-bookkeeping.json"));
         var store = new ModelStore(h.Options, h.Services() with { Validator = EngineServices.Create(h.Options).Validator });
         await store.LoadAsync(Ct);
         return (h, store);
@@ -255,6 +255,49 @@ public sealed class TriggerPointReferenceTests
         await using var ___ = fresh;
         await fresh.LoadAsync(Ct);
         Assert.Equal(patched, fresh.Current!.Index.Summaries.Single(s => s.Id == P));
+    }
+
+    // A scenario whose one verb step assumes the given entries.
+    private static string AssumeScenario(string assume) => $$"""
+        {"kind":"scenario","id":"{{Scenario}}","name":"TriggerBookkeeping","process":"{{P}}",
+         "steps":[{"id":"01JSTP00000000000000000081","input":"verb","verb":"modify","actor":"{{Clerk}}","assume":{{{assume}}} }]}
+        """;
+
+    private static List<string> References(IEnumerable<Diagnostic> diagnostics) =>
+        [.. diagnostics.Where(d => d.Rule is "MQ2001" or "MQ2002" && (d.FilePath ?? "").EndsWith("trigger-bookkeeping.json", StringComparison.Ordinal))
+            .Select(d => d.Rule + " " + d.JsonPointer + " " + d.Message).Order(StringComparer.Ordinal)];
+
+    [Fact]
+    public async Task Assume_keys_are_typed_by_their_value_and_a_project_without_trigger_points_keeps_its_findings_and_texts()
+    {
+        const string Draft = "01JSTA00000000000000000001"; // a state of OrderLifecycle
+        const string Missing = "01JZZZ00000000000000000001";
+
+        // A project as 0.16.0 wrote it: no trigger points, and booleans naming a guard, a state and nothing.
+        using (var h = new LoaderHarness())
+        {
+            h.CopyFixture("models", "process-basics");
+            h.Write("model/scenarios/order-lifecycle/trigger-bookkeeping.json", Canonical(AssumeScenario($"\"{IsLarge}\":true,\"{Draft}\":false,\"{Missing}\":true"),
+                "scenario.json", "model/scenarios/order-lifecycle/trigger-bookkeeping.json"));
+            await using var plain = new ModelStore(h.Options, h.Services() with { Validator = EngineServices.Create(h.Options).Validator });
+            await plain.LoadAsync(Ct);
+            Assert.Equal(
+            [
+                $"MQ2001 /steps/0/assume/{Missing} '{Missing}' references '{Missing}', which does not exist.",
+                $"MQ2002 /steps/0/assume/{Draft} '{Draft}' references '{Draft}', a state; expected a guard.",
+            ], References((await plain.ValidateAsync(ValidationScope.All, Ct)).Diagnostics));
+        }
+
+        // With trigger points: a boolean still names a guard only, and a word names a trigger point only.
+        var (h2, store) = await OpenAsync(steps: AssumeScenario($"\"{IsLarge}\":\"pass\",\"{RushOnly}\":true,\"{OnlyEscalate}\":\"warning\",\"{Draft}\":\"error\""));
+        using var _ = h2;
+        await using var __ = store;
+        Assert.Equal(
+        [
+            $"MQ2002 /steps/0/assume/{IsLarge} '{IsLarge}' references '{IsLarge}', a guard; expected a trigger point.",
+            $"MQ2002 /steps/0/assume/{Draft} '{Draft}' references '{Draft}', a state; expected a trigger point.",
+            $"MQ2002 /steps/0/assume/{RushOnly} '{RushOnly}' references '{RushOnly}', a trigger point; expected a guard.",
+        ], References((await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics));
     }
 
     [Fact]

@@ -33,6 +33,12 @@ internal sealed class ReferenceWalker
 
     private static readonly ElementRefAttribute StorageTarget = new(ElementKind.Database);
 
+    // A scenario step's assume keys, typed by their value (trigger-points-design.md decision 26): a boolean names a guard, as before trigger
+    // points; a word names a trigger point.
+    private static readonly ElementRefAttribute GuardAssumption = new() { IndexKinds = ["guard"] };
+
+    private static readonly ElementRefAttribute CheckAssumption = new() { IndexKinds = ["process-trigger-point"] };
+
     private readonly ConcurrentDictionary<Type, PropertyMeta[]> _meta = new();
 
     // Keyed by keyword identity and held weakly: the walker lives as long as its validator, and a replaced schema set's
@@ -93,6 +99,11 @@ internal sealed class ReferenceWalker
             {
                 case Role.Reference when child is string id:
                     sites.Add(new ReferenceSite(childPointer, fromId, property.Reference!, property.DeclaringType, property.ClrName, id));
+                    break;
+                case Role.Reference when child is IReadOnlyDictionary<string, StepAssumption> assume:
+                    foreach (var (key, entry) in assume.OrderBy(p => p.Key, StringComparer.Ordinal))
+                        sites.Add(new ReferenceSite(Ptr.Prop(childPointer, key), fromId, entry.Check is null ? GuardAssumption : CheckAssumption,
+                            property.DeclaringType, property.ClrName, key));
                     break;
                 case Role.Reference when child is IDictionary map:
                     // A map keyed by ids (a scenario's context and payload values, guard assumptions): each key is a reference.

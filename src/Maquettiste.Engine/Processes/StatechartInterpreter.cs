@@ -1748,6 +1748,8 @@ public sealed partial class StatechartInterpreter
         public List<TriggerPointRun> TriggerRuns { get; } = [];
         public List<TriggerPointRun> Queued { get; } = [];
         public List<string> CheckWarnings { get; } = [];
+        // The automatic moves a check refused in this step, each noted once.
+        public HashSet<string> RefusedMoves { get; } = new(StringComparer.Ordinal);
     }
 
     private sealed class TimerOrder : IComparer<Timer>

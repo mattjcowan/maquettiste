@@ -569,11 +569,12 @@ internal sealed class TriggerSequences
         foreach (var extra in replaces.Skip(1))
             notes.Add($"Replace '{replaces[0].Point.Name}' already takes the place of '{verb}', so replace '{extra.Point.Name}' does not run.");
         var replace = replaces.Count > 0 ? replaces[0] : null;
-        // After a built-in delete there is no object to set (decision 16).
-        if (replace is null && string.Equals(verb, "delete", StringComparison.Ordinal))
+        // After a verb step's built-in delete there is no object to set (decision 16). An event that names delete still does its move and the
+        // object stays, so its with-change sets run.
+        if (replace is null && query.Transition is null && string.Equals(verb, "delete", StringComparison.Ordinal))
         {
             foreach (var run in withChange.Where(r => r.Point.Sets.Count > 0))
-                notes.Add($"No replace on 'delete' runs, so the sets of '{run.Point.Name}' are skipped.");
+                notes.Add($"No replace on 'delete' runs, so the sets of '{run.Point.Name}' are skipped: after a built-in delete there is no object to set.");
         }
 
         return new TriggerVerbRun
@@ -847,9 +848,11 @@ internal sealed class TriggerSequences
         _governing.GetOrAdd(entity.Id, _ => [.. _lifecycles.Where(l => SubjectCoverage.Governs(_model, l, entity))]);
 
     /// <summary>
-    /// A lifecycle's active states with their ancestors, so a compound state counts when a state inside it is active (decision 10): the states
-    /// the query gives, else the initial configuration, which <c>create</c> always reads (decision 13). <see langword="null"/> when the query
-    /// leaves the lifecycle's states open.
+    /// The states a lifecycle's <c>states</c> place matches (decision 10): the states the query gives with the compound states that hold them,
+    /// so a compound state counts when a state inside it is active, and nothing else. For a move the states given are its source and the active
+    /// states inside it, so another region of a parallel state never counts and is never filled with its default state. The initial
+    /// configuration only when the lifecycle's states aren't given, and always on <c>create</c> (decision 13). <see langword="null"/> when the
+    /// query leaves the lifecycle's states open.
     /// </summary>
     private HashSet<string>? Configuration(TriggerQuery query, Process lifecycle, string verb)
     {
@@ -858,8 +861,22 @@ internal sealed class TriggerSequences
         if (!create && !given && (query.Open & TriggerOpenPlaces.States) != 0)
             return null;
         var chart = ProcessLibraries.Chart(_model, lifecycle);
-        var ids = !create && given ? states!.Where(chart.ById.ContainsKey) : [];
-        return ObjectStates.Configuration(chart, ids).ToHashSet(StringComparer.Ordinal);
+        if (!create && given)
+        {
+            var held = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var id in states!)
+            {
+                if (!chart.ById.TryGetValue(id, out var state) || state.Type is StateType.History or StateType.Choice)
+                    continue;
+                for (var s = state; s is { IsRoot: false }; s = s.Parent)
+                    held.Add(s.Id);
+            }
+
+            if (held.Count > 0)
+                return held;
+        }
+
+        return ObjectStates.Configuration(chart, []).ToHashSet(StringComparer.Ordinal);
     }
 
     /// <summary>Whether a move enters one of some states: a compound state counts when the move enters it or any state inside it.</summary>

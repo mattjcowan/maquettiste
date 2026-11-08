@@ -291,8 +291,9 @@ internal sealed partial class ResolveRun
     }
     /// <summary>
     /// The keys a scenario's replay adds for trigger points (section 8, "Replay keys"), as <see cref="RightsReplayKeys"/> does for rights: what the
-    /// running lifecycle's points read (<see cref="TriggerConditionKeys"/>); and when a step does an object, link or own verb (a verb step, or an
-    /// event that names one), the trigger points naming key, and in a project that uses trigger points the governing keys of the subject's entity
+    /// running lifecycle's points read (<see cref="TriggerConditionKeys"/>); and when a step does an object, link or own verb (a verb step, an
+    /// event that names one, or in a project that uses trigger points an automatic move of the running chart that names one), the trigger
+    /// points naming key, and in a project that uses trigger points the governing keys of the subject's entity
     /// (of every subject entity of the process when the scenario has no subject) and each other lifecycle that governs it with points on a verb a
     /// step does, with that lifecycle's file and what its points read. So it replays when another lifecycle starts governing the subject or gains
     /// a check on <c>modify</c>. A project without trigger points adds only the naming key, whose hash never changes there, and only to such
@@ -316,10 +317,21 @@ internal sealed partial class ResolveRun
                 done.Add(verb!);
         }
 
+        // An automatic move (always, after, done) may name an object, link or own verb, and any step can lead to one, so in a project that
+        // uses trigger points every such verb of the running chart's transitions counts as done.
+        var sequences = TriggerSequences.Of(Model);
+        if (sequences.Uses && scenario.Steps.Count > 0)
+        {
+            foreach (var t in ProcessLibraries.Chart(Model, running).Transitions)
+            {
+                if (TriggerSequences.SpeaksOfObject(t.Transition.Verb))
+                    done.Add(t.Transition.Verb!);
+            }
+        }
+
         if (done.Count == 0)
             return keys.ToList();
         keys.Add(TriggerNaming.Key);
-        var sequences = TriggerSequences.Of(Model);
         if (!sequences.Uses)
             return keys.ToList();
 

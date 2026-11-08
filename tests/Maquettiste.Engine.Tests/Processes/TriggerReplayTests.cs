@@ -79,6 +79,21 @@ public sealed class TriggerReplayTests
     private const string SalaryWarning = "01JTRQ00000000000000000021";
     private const string NeedsLabel = "01JTRQ00000000000000000031";
 
+    // A part lifecycle with a parallel state and a compound one, for the states place of a move (decision 10).
+    private const string Part = "01JTRE00000000000000000004";
+    private const string Parts = "01JTRP00000000000000000005";
+    private const string Welding = "01JTRS00000000000000000044";
+    private const string Pending = "01JTRS00000000000000000046";
+    private const string Cleared = "01JTRS00000000000000000047";
+    private const string ClearEvent = "01JTRX00000000000000000021"; // Pending -> Cleared, no verb
+    private const string WeldEvent = "01JTRX00000000000000000022"; // Cutting -> Welding, promote
+    private const string ParkEvent = "01JTRX00000000000000000023"; // Working -> Hold, no verb
+    private const string ReadyEvent = "01JTRX00000000000000000024"; // Waiting -> Ready, no verb
+    private const string ResumeEvent = "01JTRX00000000000000000025"; // Hold -> Working, demote
+    private const string OnlyPending = "01JTRQ00000000000000000041"; // refuses promote in Pending, another region than the move's
+    private const string InBuild = "01JTRQ00000000000000000042"; // warns on promote in Build, the compound parent of Cutting
+    private const string InReady = "01JTRQ00000000000000000043"; // warns on demote in Ready, a state inside the compound Hold
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static string T(string text) => JsonSerializer.Serialize(new { text });
@@ -93,8 +108,13 @@ public sealed class TriggerReplayTests
     private static string Set(string id, string attribute, string value) => $$"""{"id":"{{id}}","attribute":"{{attribute}}","value":{{T(value)}} }""";
 
     // The invented model; rights adds a deny on modifying the price, which only the actor's own change answers to.
-    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(bool rights = false)
+    private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(bool rights = false, string? archiveWhen = null, bool releaseAudit = false)
     {
+        var archiveWhenJson = archiveWhen is null ? "" : $$""","when":{{T(archiveWhen)}}""";
+        // A team-code check on the gated move Approve, which only the signature that completes the gate runs.
+        var releaseAuditJson = releaseAudit
+            ? $$""",{"id":"01JTRQ00000000000000000015","name":"ReleaseAudit","type":"check","verbs":["promote"],"transitions":["{{Approve}}"]}"""
+            : "";
         var harness = new LoaderHarness();
         harness.CopyFixture("models", "process-basics");
         harness.Write("model/entities/document.json", Entity(Document, "Document", "01JTRA00000000000000000001",
@@ -135,7 +155,7 @@ public sealed class TriggerReplayTests
                {"id":"{{StampRelease}}","name":"StampRelease","type":"action","timing":"with-change","verbs":["promote"],"targets":["{{Released}}"],
                 "sets":[{{Set("01JTRV00000000000000000002", Stamp, "'released'")}}]},
                {"id":"{{PublishToPortal}}","name":"PublishToPortal","type":"action","timing":"after-commit","verbs":["promote"],"targets":["{{Released}}"],"outside":true},
-               {"id":"{{Archive}}","name":"Archive","type":"replace","verbs":["delete"],"sets":[{{Set("01JTRV00000000000000000003", ArchivedOn, "'yes'")}}]},
+               {"id":"{{Archive}}","name":"Archive","type":"replace","verbs":["delete"]{{archiveWhenJson}},"sets":[{{Set("01JTRV00000000000000000003", ArchivedOn, "'yes'")}}]},
                {"id":"{{FreezeApproval}}","name":"FreezeApproval","type":"check","verbs":["freeze"]},
                {"id":"{{ReleasePrice}}","name":"ReleasePrice","type":"check","verbs":["promote"],"targets":["{{Released}}"],"condition":{{T("subject.price <= 1000")}} },
                {"id":"{{SignNote}}","name":"SignNote","type":"action","timing":"with-change","verbs":["sign"],"sets":[{{Set("01JTRV00000000000000000004", LastSigner, "'signed'")}}]},
@@ -145,7 +165,7 @@ public sealed class TriggerReplayTests
                {"id":"{{SubmittedStamp}}","name":"SubmittedStamp","type":"action","timing":"with-change","verbs":["promote"],"targets":["{{Review}}"],
                 "sets":[{{Set("01JTRV00000000000000000007", Submitted, "'yes'")}}]},
                {"id":"{{DeleteAudit}}","name":"DeleteAudit","type":"check","verbs":["delete"]},
-               {"id":"{{KeepParked}}","name":"KeepParked","type":"check","verbs":["demote"],"transitions":["{{Expire}}"],"condition":{{T("subject.price < 0")}} }]}
+               {"id":"{{KeepParked}}","name":"KeepParked","type":"check","verbs":["demote"],"transitions":["{{Expire}}"],"condition":{{T("subject.price < 0")}} }{{releaseAuditJson}}]}
             """);
         harness.Write("model/processes/hr.json", $$"""
             {"kind":"process","id":"{{Hr}}","name":"HR","package":"{{Package}}","use":"lifecycle",
@@ -168,6 +188,33 @@ public sealed class TriggerReplayTests
              "transitions":[{"id":"01JTRK00000000000000000011","source":"{{Drafting}}","trigger":"invoke-done","invoke":"{{Prepare}}","targets":["{{Done}}"]},
                {"id":"01JTRK00000000000000000012","source":"{{Drafting}}","trigger":"invoke-error","invoke":"{{Prepare}}","targets":["{{Failed}}"]}],
              "triggerPoints":[{"id":"{{NeedsLabel}}","name":"NeedsLabel","type":"check","verbs":["complete"],"condition":{{T("coalesce(subject.label, '') <> ''")}} }]}
+            """);
+        harness.Write("model/entities/part.json", Entity(Part, "Part", "01JTRA00000000000000000031"));
+        harness.Write("model/processes/parts.json", $$"""
+            {"kind":"process","id":"{{Parts}}","name":"Parts","package":"{{Package}}","use":"lifecycle",
+             "subjects":[{"id":"01JTRB00000000000000000005","entity":"{{Part}}"}],
+             "events":[{"id":"{{ClearEvent}}","name":"clear"},{"id":"{{WeldEvent}}","name":"weld","verb":"promote"},{"id":"{{ParkEvent}}","name":"park"},
+               {"id":"{{ReadyEvent}}","name":"ready"},{"id":"{{ResumeEvent}}","name":"resume","verb":"demote"}],
+             "states":[{"id":"01JTRS00000000000000000041","name":"Working","type":"parallel","states":[
+                 {"id":"01JTRS00000000000000000042","name":"Build","type":"compound","initial":"01JTRS00000000000000000043","states":[
+                   {"id":"01JTRS00000000000000000043","name":"Cutting"},{"id":"{{Welding}}","name":"Welding"}]},
+                 {"id":"01JTRS00000000000000000045","name":"Paper","type":"compound","initial":"{{Pending}}","states":[
+                   {"id":"{{Pending}}","name":"Pending"},{"id":"{{Cleared}}","name":"Cleared"}]}]},
+               {"id":"01JTRS00000000000000000048","name":"Hold","type":"compound","initial":"01JTRS00000000000000000049","states":[
+                 {"id":"01JTRS00000000000000000049","name":"Waiting"},{"id":"01JTRS00000000000000000050","name":"Ready"}]}],
+             "initial":"01JTRS00000000000000000041",
+             "transitions":[
+               {"id":"01JTRK00000000000000000021","source":"{{Pending}}","event":"{{ClearEvent}}","targets":["{{Cleared}}"]},
+               {"id":"01JTRK00000000000000000022","source":"01JTRS00000000000000000043","event":"{{WeldEvent}}","targets":["{{Welding}}"]},
+               {"id":"01JTRK00000000000000000023","source":"01JTRS00000000000000000041","event":"{{ParkEvent}}","targets":["01JTRS00000000000000000048"]},
+               {"id":"01JTRK00000000000000000024","source":"01JTRS00000000000000000049","event":"{{ReadyEvent}}","targets":["01JTRS00000000000000000050"]},
+               {"id":"01JTRK00000000000000000025","source":"01JTRS00000000000000000048","event":"{{ResumeEvent}}","targets":["01JTRS00000000000000000041"]}],
+             "triggerPoints":[
+               {"id":"{{OnlyPending}}","name":"OnlyPending","type":"check","verbs":["promote"],"states":["{{Pending}}"],"condition":{{T("false")}} },
+               {"id":"{{InBuild}}","name":"InBuild","type":"check","severity":"warning","verbs":["promote"],"states":["01JTRS00000000000000000042"],
+                "condition":{{T("false")}} },
+               {"id":"{{InReady}}","name":"InReady","type":"check","severity":"warning","verbs":["demote"],"states":["01JTRS00000000000000000050"],
+                "condition":{{T("false")}} }]}
             """);
         var store = new ModelStore(harness.Options, harness.Services() with { Validator = EngineServices.Create(harness.Options).Validator });
         await store.LoadAsync(Ct);
@@ -320,14 +367,58 @@ public sealed class TriggerReplayTests
         Assert.Equal(("yes", "gone"), (Value(delete, ArchivedOn), Value(delete, Stamp)));
         Assert.True(result.Trace[2].Accepted); // the archived document stays in the run
 
-        // The event withdraw names delete: it still does its move, runs delete's other points, and no replace; with no replace, the
-        // with-change sets on delete are skipped.
+        // The event withdraw names delete: it still does its move, and the object stays. The replace stands in only for a verb step's effect,
+        // so it doesn't run; delete's checks and other actions do, its with-change sets included (the owner's answer to decision 16).
         var withdraw = (await SimulateAsync(store, Documents,
             [Event(SubmitEvent), Sign("ann"), Sign("bob"), Event(WithdrawEvent)], Doc(title: "Pump", price: 500))).Trace[4];
         Assert.True(withdraw.Accepted);
         Assert.Equal([Draft], withdraw.Configuration);
-        Assert.Equal([(DeleteAudit, TriggerOutcome.Passed), (DeleteStamp, TriggerOutcome.Skipped)], Ran(withdraw));
+        Assert.Equal([(DeleteAudit, TriggerOutcome.Passed), (DeleteStamp, TriggerOutcome.Ran)], Ran(withdraw));
+        Assert.Equal("gone", Value(withdraw, Stamp));
         Assert.Contains(withdraw.Notes!, n => n.Contains("still does its move", StringComparison.Ordinal));
+        Assert.DoesNotContain(withdraw.Notes!, n => n.Contains("are skipped", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_verb_steps_delete_whose_replace_does_not_hold_skips_the_with_change_sets_with_one_note()
+    {
+        // The replace's when doesn't hold, so the built-in delete runs and DeleteStamp has no object to set.
+        var (h, store) = await OpenAsync(archiveWhen: "false");
+        using var _ = h;
+        await using var __ = store;
+        var delete = (await SimulateAsync(store, Documents, [Verb("delete")], Doc(title: "Pump"))).Trace[1];
+        Assert.True(delete.Accepted);
+        Assert.Equal([(DeleteAudit, TriggerOutcome.Passed), (Archive, TriggerOutcome.Skipped), (DeleteStamp, TriggerOutcome.Skipped)], Ran(delete));
+        Assert.Single(delete.Notes!, n => n.Contains("are skipped", StringComparison.Ordinal));
+        Assert.Contains(delete.Notes!, n => n.Contains("Replace 'Archive' did not run, so the sets of 'DeleteStamp' are skipped: after a built-in delete", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_moves_states_place_reads_its_source_the_states_inside_it_and_those_holding_it_but_never_another_region()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        JsonElement[] part = [Json($$"""{"id":"o1","name":"part","entity":"{{Part}}","values":{} }""")];
+
+        // weld moves Cutting to Welding in Build. OnlyPending is narrowed to Pending, a state of the other region Paper: it never runs on the
+        // move, whether Paper is in Pending or in Cleared. InBuild is narrowed to Build, which holds the source, so it runs.
+        foreach (var (steps, at) in new[] { (new[] { Event(WeldEvent) }, 1), (new[] { Event(ClearEvent), Event(WeldEvent) }, 2) })
+        {
+            var weld = (await SimulateAsync(store, Parts, steps, part)).Trace[at];
+            Assert.True(weld.Accepted, weld.Refusal + " " + weld.RefusedBy);
+            Assert.Contains(Welding, weld.Configuration);
+            Assert.Contains(at == 1 ? Pending : Cleared, weld.Configuration);
+            Assert.Equal([(InBuild, TriggerOutcome.Warned)], Ran(weld));
+        }
+
+        // resume leaves the compound Hold: InReady, narrowed to Ready, runs when Ready is the active state inside it, and not from Waiting.
+        var fromReady = (await SimulateAsync(store, Parts, [Event(ParkEvent), Event(ReadyEvent), Event(ResumeEvent)], part)).Trace[3];
+        Assert.True(fromReady.Accepted);
+        Assert.Equal([(InReady, TriggerOutcome.Warned)], Ran(fromReady));
+        var fromWaiting = (await SimulateAsync(store, Parts, [Event(ParkEvent), Event(ResumeEvent)], part)).Trace[2];
+        Assert.True(fromWaiting.Accepted);
+        Assert.Null(fromWaiting.TriggerPoints);
     }
 
     [Fact]
@@ -462,5 +553,32 @@ public sealed class TriggerReplayTests
         Assert.Equal([Released], released.Configuration);
         Assert.Equal([DeleteAudit], released.Enabled.Single(e => e.Event == WithdrawEvent).ChecksUnknown);
         Assert.Contains("\"checksUnknown\"", Encoding.UTF8.GetString(JsonSerializer.SerializeToUtf8Bytes(released.Enabled, EngineJson.Options)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_trigger_sequence_refuses_an_attribute_or_end_the_model_does_not_have()
+    {
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        Assert.Equal(ProcessCallStatus.Ok, (await store.GetTriggerSequenceAsync(Documents, "modify", new TriggerSequenceFilter { Attributes = [Price] }, Ct)).Status);
+        var unknown = await store.GetTriggerSequenceAsync(Documents, "modify", new TriggerSequenceFilter { Attributes = [Price, "01JTRA00000000000000000099"] }, Ct);
+        Assert.Equal(ProcessCallStatus.BadRequest, unknown.Status);
+        Assert.Contains("01JTRA00000000000000000099", unknown.Detail, StringComparison.Ordinal);
+        // An attribute id given as the end is no relation end.
+        Assert.Equal(ProcessCallStatus.BadRequest, (await store.GetTriggerSequenceAsync(Documents, "connect", new TriggerSequenceFilter { End = Price }, Ct)).Status);
+    }
+
+    [Fact]
+    public async Task A_gated_moves_own_checks_are_listed_only_for_a_signature_that_can_complete_the_gate()
+    {
+        var (h, store) = await OpenAsync(releaseAudit: true);
+        using var _ = h;
+        await using var __ = store;
+        // The gate takes two signatures: the first can't complete it, so the move's check ReleaseAudit won't run on it.
+        var first = await SimulateAsync(store, Documents, [Event(SubmitEvent)], Doc(title: "Pump", price: 500));
+        Assert.Null(first.Enabled.Single(e => e.Event == ApproveEvent).ChecksUnknown);
+        var second = await SimulateAsync(store, Documents, [Event(SubmitEvent), Sign("ann")], Doc(title: "Pump", price: 500));
+        Assert.Equal(["01JTRQ00000000000000000015"], second.Enabled.Single(e => e.Event == ApproveEvent).ChecksUnknown);
     }
 }

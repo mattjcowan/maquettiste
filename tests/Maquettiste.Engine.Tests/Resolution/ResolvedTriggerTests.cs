@@ -258,6 +258,36 @@ public sealed class ResolvedTriggerTests
     }
 
     [Fact]
+    public void A_scenario_replays_when_an_automatic_move_names_an_object_verb_another_lifecycle_checks()
+    {
+        // A drawing goes to Review by the event submit (promote, a move verb), then an always move back to Draft names modify, which runs
+        // Drawings' check on modify. The step does no object verb itself, yet its replay keys on Drawings.
+        static Element Edit(Element e, bool automatic) => e switch
+        {
+            Process { Id: Documents } p when automatic => p with
+            {
+                Transitions =
+                [
+                    .. p.Transitions,
+                    new ProcessTransition { Id = "01JRTT00000000000000000002", Source = Review, Trigger = TransitionTrigger.Always, Verb = "modify", Targets = [Draft] },
+                ],
+            },
+            Maquettiste.Engine.Model.Scenario { Id: Scenario } s => s with
+            {
+                Objects = [new ScenarioObject { Id = Spec, Name = "spec", Entity = Drawing }],
+                Steps = [new ScenarioStep { Id = Step, Event = "01JRTX00000000000000000001" }],
+            },
+            _ => e,
+        };
+
+        var withoutMove = ResolutionKit.Resolve(Model(edit: e => Edit(e, automatic: false))).Find(Step)!.Dependencies;
+        Assert.DoesNotContain("e:" + Drawings, withoutMove);
+        var keys = ResolutionKit.Resolve(Model(edit: e => Edit(e, automatic: true))).Find(Step)!.Dependencies;
+        Assert.Contains(TriggerNaming.Key, keys);
+        Assert.Contains("e:" + Drawings, keys);
+    }
+
+    [Fact]
     public void Records_carry_trigger_points_and_expectations_only_where_present()
     {
         var model = ResolutionKit.Resolve(Model());

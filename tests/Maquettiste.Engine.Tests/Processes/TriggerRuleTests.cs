@@ -144,6 +144,44 @@ public sealed class TriggerRuleTests
         Assert.Equal(["order-lifecycle.json:/triggerPoints/0/condition"], Hits(found, "MQ3102"));
     }
 
+    [Fact]
+    public async Task A_payload_some_runs_do_not_carry_is_worded_for_the_trigger_point()
+    {
+        // submit and approve both name promote; only submit carries the payload attribute.
+        var (h, store) = await OpenAsync($$"""
+            [{"id":"{{Tp(1)}}","name":"ReadsPayload","type":"check","verbs":["promote"],
+              "condition":{"op":"isNotNull","args":[{"path":["01JATT00000000000000000021"]}]} },
+             {"id":"{{Tp(2)}}","name":"SetsFromPayload","type":"action","timing":"before","verbs":["promote"],
+              "sets":[{"id":"01JTGS00000000000000000021","attribute":"{{Amount}}","value":{"case":[{"when":{"op":"isNotNull","args":[{"path":["01JATT00000000000000000021"]} ]},"then":{"value":1} } ],"else":{"value":0} } }]}]
+            """, more: process =>
+        {
+            process["events"]![0]!["verb"] = "promote";
+            process["events"]![1]!["verb"] = "promote";
+        });
+        using var _ = h;
+        await using var __ = store;
+        var found = (await store.ValidateAsync(ValidationScope.All, Ct)).Diagnostics;
+        var texts = found.Where(d => d.Rule == "MQ3102").Select(d => d.JsonPointer + " " + d.Message).ToList();
+        var all = Describe(found.Where(d => (d.FilePath ?? "").EndsWith("order-lifecycle.json", StringComparison.Ordinal)));
+        Assert.False(texts.Count == 0 || texts.Any(t => t.Contains("guard", StringComparison.Ordinal)), all);
+        Assert.True(texts.Any(t => t.Contains(" The trigger point reads the payload attribute", StringComparison.Ordinal)), all);
+        Assert.True(texts.Any(t => t.Contains(" The set's value reads the payload attribute", StringComparison.Ordinal) && t.Contains("its trigger point", StringComparison.Ordinal)), all);
+    }
+
+    [Fact]
+    public async Task A_replace_clash_across_lifecycles_shows_when_either_lifecycle_alone_is_validated()
+    {
+        var (h, store) = await OpenAsync($$"""[{"id":"{{Tp(1)}}","name":"ArchiveOne","type":"replace","verbs":["delete"]}]""",
+            otherPoints: $$"""[{"id":"{{Tp(21)}}","name":"Elsewhere","type":"replace","verbs":["delete"]}]""");
+        using var _ = h;
+        await using var __ = store;
+        foreach (var id in new[] { P, Other })
+        {
+            var found = (await store.ValidateAsync(new ValidationScope([id], IncludeReferrers: false), Ct)).Diagnostics;
+            Assert.Equal(["order-lifecycle.json:/triggerPoints/0"], Hits(found, "MQ8104"));
+        }
+    }
+
     // ---- rules ----
 
     [Fact]
@@ -182,8 +220,9 @@ public sealed class TriggerRuleTests
              "order-lifecycle.json:/triggerPoints/5/targets", "order-lifecycle.json:/triggerPoints/5/transitions", "order-lifecycle.json:/triggerPoints/5/transitions/0"],
             Hits(found, "MQ8102"));
         Assert.Equal(["order-lifecycle.json:/triggerPoints/6/verbs/0"], Hits(found, "MQ8103"));
-        Assert.Equal(["order-archiving.json:/triggerPoints/0", "order-lifecycle.json:/triggerPoints/1", "order-lifecycle.json:/triggerPoints/10",
-            "order-lifecycle.json:/triggerPoints/11"], Hits(found, "MQ8104"));
+        // A clash across lifecycles is reported once, on the lifecycle that sorts later (OrderLifecycle after OrderArchiving).
+        Assert.Equal(["order-lifecycle.json:/triggerPoints/1", "order-lifecycle.json:/triggerPoints/10", "order-lifecycle.json:/triggerPoints/11"],
+            Hits(found, "MQ8104"));
         Assert.Equal(["order-lifecycle.json:/triggerPoints/7/sets"], Hits(found, "MQ8105"));
         Assert.Equal(["order-lifecycle.json:/triggerPoints/8/timing"], Hits(found, "MQ8106"));
         Assert.Equal(["order-lifecycle.json:/triggerPoints/9/verbs"], Hits(found, "MQ8107"));

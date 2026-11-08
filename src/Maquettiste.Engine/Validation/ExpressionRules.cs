@@ -1512,11 +1512,17 @@ internal static class ExpressionRules
                 {
                     if (payloads.Any(p => !p.Contains(id)))
                     {
-                        report.Add("MQ3102", site.Kind == ExprSiteKind.Set
-                            ? $"The set's value reads the payload attribute '{id}', which some event whose transitions run the action does not carry, or the action also "
-                                + "runs on entering or leaving a state, where no one event is fixed; read a context attribute, or run the action only on transitions of events that carry it."
-                            : $"The guard reads the payload attribute '{id}', which some event that uses the guard does not carry; read a context attribute, "
-                                + "or use the guard only on transitions of events that carry it.", site.Pointer, site.SubId);
+                        report.Add("MQ3102", site.Kind switch
+                        {
+                            ExprSiteKind.Set => $"The set's value reads the payload attribute '{id}', which some event whose transitions run the action does not carry, or the action also "
+                                + "runs on entering or leaving a state, where no one event is fixed; read a context attribute, or run the action only on transitions of events that carry it.",
+                            ExprSiteKind.Trigger => $"The trigger point reads the payload attribute '{id}', which some event or verb step it runs on does not carry; read a value of "
+                                + "the object, or narrow the trigger point with transitions to moves whose events carry it.",
+                            ExprSiteKind.TriggerSet => $"The set's value reads the payload attribute '{id}', which some event or verb step its trigger point runs on does not carry; "
+                                + "read a value of the object, or narrow the trigger point with transitions to moves whose events carry it.",
+                            _ => $"The guard reads the payload attribute '{id}', which some event that uses the guard does not carry; read a context attribute, "
+                                + "or use the guard only on transitions of events that carry it.",
+                        }, site.Pointer, site.SubId);
                     }
                 }
             }

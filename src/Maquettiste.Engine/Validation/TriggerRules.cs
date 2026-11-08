@@ -193,7 +193,10 @@ internal static class TriggerRules
     {
         if (!process.TriggerPoints.Any(t => t.Type == TriggerPointType.Replace))
             return;
-        var others = model.All<Process>().Where(p => p.Use == ProcessUse.Lifecycle && !ReferenceEquals(p, process) && p.TriggerPoints.Any(t => t.Type == TriggerPointType.Replace))
+        // A clash across lifecycles is reported once, by the lifecycle that sorts later by name then id, as one within a lifecycle is
+        // reported by its later point.
+        var others = model.All<Process>().Where(p => p.Use == ProcessUse.Lifecycle && !ReferenceEquals(p, process) && SortsBefore(p, process)
+                && p.TriggerPoints.Any(t => t.Type == TriggerPointType.Replace))
             .OrderBy(p => p.Name, StringComparer.Ordinal).ThenBy(p => p.Id, StringComparer.Ordinal)
             .SelectMany(p => p.TriggerPoints.Where(t => t.Type == TriggerPointType.Replace).Select(t => (Lifecycle: p, Point: t, Covers: Covers(model, t, Governed(model, p)))))
             .ToList();
@@ -213,6 +216,12 @@ internal static class TriggerRules
                 report.Add("MQ8104", $"Replace '{point.Name}' and {clash.Where} can both apply to {clash.Verb} on '{clash.Entity!.Name}'; at most one replace applies to a verb on "
                     + "an entity, whatever their states and when. Narrow one with entities.", Ptr.At("/triggerPoints", i), point.Id);
             mine.Add((point, covers));
+        }
+
+        static bool SortsBefore(Process a, Process b)
+        {
+            var byName = string.CompareOrdinal(a.Name, b.Name);
+            return byName != 0 ? byName < 0 : string.CompareOrdinal(a.Id, b.Id) < 0;
         }
     }
 

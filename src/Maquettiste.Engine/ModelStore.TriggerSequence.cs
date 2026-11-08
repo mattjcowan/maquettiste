@@ -20,7 +20,8 @@ public sealed partial class ModelStore
     /// <param name="filter">The place to narrow the answer to.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>The sequence; <see cref="ProcessCallStatus.NotFound"/> for no such process, <see cref="ProcessCallStatus.BadRequest"/> for a
-    /// process that is no lifecycle, a verb missing or unknown, or a state, entity or transition the lifecycle doesn't have.</returns>
+    /// process that is no lifecycle, a verb missing or unknown, a state, entity or transition the lifecycle doesn't have, or an attribute or end
+    /// the model doesn't have.</returns>
     public async Task<ProcessCall<TriggerSequence>> GetTriggerSequenceAsync(string processId, string? verb, TriggerSequenceFilter filter, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(processId);
@@ -41,6 +42,10 @@ public sealed partial class ModelStore
             return Bad($"transition {transition} is not a transition of lifecycle '{process.Name}'.");
         if (filter.Entity is { } entityId && (snapshot.Get<Entity>(entityId) is not { } entity || !SubjectCoverage.Governs(snapshot, process, entity)))
             return Bad($"entity {entityId} is not an entity lifecycle '{process.Name}' governs.");
+        if (filter.Attributes.FirstOrDefault(a => !snapshot.TryGetEntry(a, out var found) || found.Kind != "attribute") is { } attribute)
+            return Bad($"attribute {attribute} is not an attribute of the model.");
+        if (filter.End is { } end && (!snapshot.TryGetEntry(end, out var endEntry) || endEntry.Kind != "end"))
+            return Bad($"end {end} is not a relation end of the model.");
         return ProcessCall<TriggerSequence>.Ok(TriggerSequences.Of(snapshot).Describe(process, verb, filter));
 
         static ProcessCall<TriggerSequence> Bad(string detail) => ProcessCall<TriggerSequence>.Fail(ProcessCallStatus.BadRequest, detail);
