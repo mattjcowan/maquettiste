@@ -231,7 +231,7 @@ public sealed class RelationTypesRuleTests
     // ---- MQ4009, MQ4115, MQ4116, MQ7105 ----
 
     [Fact]
-    public async Task MQ4009_lets_a_mapping_of_such_a_relation_set_only_ignore()
+    public async Task MQ4009_refuses_the_keys_that_shape_engine_made_storage_on_a_mapping_of_such_a_relation()
     {
         var found = await ValidateAsync(h =>
         {
@@ -241,8 +241,8 @@ public sealed class RelationTypesRuleTests
         });
         Assert.Equal(
         [
-            ("/shape", "Relation 'AttachedTo' has an end with several types, so a mapping of it sets only ignore; remove 'shape'."),
-            ("/foreignKeyEnd", "Relation 'AttachedTo' has an end with several types, so a mapping of it sets only ignore; remove 'foreignKeyEnd'."),
+            ("/shape", "Relation 'AttachedTo' has an end with several types, so a mapping of it doesn't take 'shape'; its 'ends' entries say how it is stored. Remove it."),
+            ("/foreignKeyEnd", "Relation 'AttachedTo' has an end with several types, so a mapping of it doesn't take 'foreignKeyEnd'; its 'ends' entries say how it is stored. Remove it."),
         ], Of(found, "MQ4009", "/mappings/attached"));
         Assert.Empty(Of(found, "MQ4009", "/mappings/concerns"));
     }
@@ -274,7 +274,7 @@ public sealed class RelationTypesRuleTests
     }
 
     [Fact]
-    public async Task MQ4116_refuses_a_binding_field_a_query_field_and_a_query_collection_naming_such_an_end()
+    public async Task MQ4116_refuses_a_query_field_and_a_query_collection_naming_such_an_end_and_a_binding_field_resolves()
     {
         const string Table = "01JTAB00000000000000000901";
         var found = await ValidateAsync(h =>
@@ -295,8 +295,8 @@ public sealed class RelationTypesRuleTests
                  "collections":[{"attribute":"{{TaggedEnd}}","query":{"from":{"source":"{{Table}}","alias":"t"},"select":[{"attribute":"{{AttachedEnd}}","expression":{"column":"t.id"} }]} }]}
                 """);
         });
-        Assert.Equal([("/bindings/0/fields/1/attribute", "Field 1 of the binding of 'Comment' names end 'attachedTo', which leads to several types; a field can't map it.")],
-            Of(found, "MQ4116", "/entities/comment"));
+        // Part 2: the binding field resolves (several-types-design.md decision 46): Comment holds the to-one end, which has several types.
+        Assert.Empty(Of(found, "MQ4116", "/entities/comment"));
         Assert.Equal(
         [
             ("/select/1/attribute", "Field 1 of query 'Comments' names end 'attachedTo', which leads to several types; a field can't map it."),
@@ -344,8 +344,8 @@ public sealed class RelationTypesRuleTests
                  "select":[{"attribute":"01JATT00000000000000000971","expression":{"column":"t.id"} },{"attribute":"{{FiledComment}}","expression":{"column":"t.comment_id"} }]}
                 """);
         });
-        Assert.Equal([("/bindings/0/fields/1/attribute", "Field 1 of the binding of 'Tool' names end 'comment' of relation 'Filed', which has an end with several types; a field can't map it.")],
-            Of(found, "MQ4116", "/entities/tool"));
+        // Part 2: Tool's binding field resolves, as a key Tool holds through its type (way 1, decision 46).
+        Assert.Empty(Of(found, "MQ4116", "/entities/tool"));
         Assert.Equal([("/collections/0/attribute", "Collection 0 of query 'PartNotes' names end 'comment' of relation 'AttachedTo', which has an end with several types; a collection can't fill it.")],
             Of(found, "MQ4116", "/queries/part-notes"));
         Assert.Equal([("/select/1/attribute", "Field 1 of query 'ToolFiling' names end 'comment' of relation 'Filed', which has an end with several types; a field can't map it.")],

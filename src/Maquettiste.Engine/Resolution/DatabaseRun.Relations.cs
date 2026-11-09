@@ -141,9 +141,8 @@ internal sealed partial class DatabaseRun
     private readonly List<(REntity Entity, TableBuild Table)> _promotedTables = [];
 
     /// <summary>
-    /// Whether a binding field, a query field or a query collection names any end of a relation with an end of several types, or a path
-    /// under one: MQ4116 refuses it (several-types-design.md decision 22), since part 1 stores nothing for such a
-    /// relation, so resolution reports nothing more about it.
+    /// Whether a query field or a query collection names any end of a relation with an end of several types, or a path under one: MQ4116
+    /// refuses it (several-types-design.md decisions 22 and 46), so resolution reports nothing more about it.
     /// </summary>
     /// <param name="model">The model.</param>
     /// <param name="reference">The field's or collection's <c>attribute</c>.</param>
@@ -154,11 +153,17 @@ internal sealed partial class DatabaseRun
     private void ResolveRelation(RRelation rel)
     {
         var src = _run.RelationSource(rel.Id);
-        // Part 1 stores nothing for a relation with an end of several types (several-types-design.md decision 22), as for a relation whose
-        // end entity isn't placed; every reader below sees one-type ends only.
-        // several-types-2: storage — CollectTypeStorage for a mapping that states storage (section 19.8, step 1); FinishTypeStorage after
-        // FinishTables (step 2), which FinishRelationMappings must skip.
-        if (src is null || EndCoverage.HasSeveralTypes(src) || rel.Ends.Any(e => !_placements.ContainsKey(e.OneEntity.Id)))
+        if (src is null)
+            return;
+        // A relation with an end of several types is stored only as its mapping describes (several-types-design.md section 19.8, step 1);
+        // every reader below sees one-type ends only.
+        if (EndCoverage.HasSeveralTypes(src))
+        {
+            CollectTypeStorage(rel, src);
+            return;
+        }
+
+        if (rel.Ends.Any(e => !_placements.ContainsKey(e.OneEntity.Id)))
             return;
         var m = _run.MappingOf(_db.Id, rel.Id);
         if (m is { Ignore: true })
@@ -321,8 +326,7 @@ internal sealed partial class DatabaseRun
         if (!promote && m?.JunctionTable is { } junctionId && _tables.TryGetValue(junctionId, out var designed) && designed.IsDesigned)
         {
             // A designed junction binds each end through Mapping.Ends (section 7.4). An entry with no foreignKey is skipped: MQ4009 reports it
-            // (several-types-design.md decision 38).
-            // several-types-2: storage — the mapping's constants and attribute columns on a designed junction (decisions 44 and 45, answer 9).
+            // (several-types-design.md decision 38). Its constants and attribute columns are finished with the storage run (answer 9).
             foreach (var endMapping in m.Ends)
             {
                 var end = rel.Ends.FirstOrDefault(e => string.Equals(e.Id, endMapping.End, StringComparison.Ordinal));
@@ -337,7 +341,9 @@ internal sealed partial class DatabaseRun
             designed.Table.IsJunction = true;
             designed.Deps.AddRange(relationDeps);
             phys.Junction = designed;
-            _run.SetRelationMapping(rel, _db.Name, new RRelationMapping { Shape = "junction", JunctionTable = designed.Table });
+            phys.Mapping = new RRelationMapping { Shape = "junction", JunctionTable = designed.Table };
+            _run.SetRelationMapping(rel, _db.Name, phys.Mapping);
+            CollectLinkTableExtras(rel, m, designed, phys.Mapping);
             return;
         }
 

@@ -14,7 +14,7 @@ namespace Maquettiste.Engine.Tests.Validation;
 /// The engine's answer for relations with several types at an end, part 1, written where the editor's tests read it, so the editor's mock is
 /// checked against the engine and not only against itself (several-types-design.md section 6). A small invented project
 /// (<c>src/editor/tests/fixtures/several-types/.maquettiste</c>) hits every new rule and new case: MQ3041 (two cases; part 2 dropped its both-ends case, so relation 'Both' is valid), MQ3042, MQ3043 (three
-/// texts), MQ2003 and MQ9211 on a stereotype entry, MQ4009, MQ4115, MQ4116 (each case), MQ7105 (each case), MQ3116 and MQ9305 (a link and a
+/// texts), MQ2003 and MQ9211 on a stereotype entry, MQ4009, MQ4115, MQ4116 (each query case; part 2 took its binding cases), MQ7105 (each case), MQ3116 and MQ9305 (a link and a
 /// connect step). The findings of those rules, sorted, are in <c>diagnostics.json</c> beside it. With <c>MAQUETTISTE_RECORD=1</c> the test
 /// writes the file; otherwise it fails when the engine's answer differs from it.
 /// </summary>
@@ -58,10 +58,10 @@ public sealed class SeveralTypesParityTests
         Hit("MQ3043", "which stereotype 'approvable' already covers, since it derives from entity 'Document'");
         Hit("MQ2003", "Stereotype 'nope'");
         Hit("MQ9211", "names stereotype 'table-only'");
-        Hit("MQ4009", "sets only ignore");
+        Hit("MQ4009", "so a mapping of it doesn't take");
         Hit("MQ4115", "stores nothing for it");
-        Hit("MQ4116", "of the binding of 'Comment' names end 'attachedTo', which leads to several types");
-        Hit("MQ4116", "of the binding of 'Tool' names end 'comment' of relation 'Filed'");
+        // Part 2: binding fields that name such an end resolve or get MQ4045 (several-types-design.md decision 46), so MQ4116 leaves them.
+        Assert.DoesNotContain(rows, r => r.Rule == "MQ4116" && r.Message.Contains("of the binding of", StringComparison.Ordinal));
         Hit("MQ4116", "Field 1 of query 'Comments'");
         Hit("MQ4116", "Collection 0 of query 'Comments'");
         Hit("MQ4116", "Field 0 of collection 0 of query 'Comments'");

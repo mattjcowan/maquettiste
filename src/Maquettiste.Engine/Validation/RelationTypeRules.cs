@@ -170,8 +170,8 @@ internal static class RelationTypeRules
             return;
         foreach (var database in model.All<Database>())
         {
-            // several-types-2: storage — also skip a database whose mapping stores the relation: a junctionTable or an ends entry (decision 49).
-            if (context.MappingsOf(database.Id, relation.Id).Any(d => d.Element is Mapping { Ignore: true }))
+            // A mapping that sets ignore, or that stores the relation (a junctionTable or an ends entry), silences it (decision 49).
+            if (context.MappingsOf(database.Id, relation.Id).Any(d => d.Element is Mapping m && (m.Ignore || m.JunctionTable is not null || m.Ends.Count > 0)))
                 continue;
             var placed = relation.Ends.All(end => end.HasSeveralTypes
                 ? EndCoverage.CoveredBy(model, end).Any(id => model.Get<Entity>(id) is { } entity && Placed(context, database, entity))
@@ -195,27 +195,23 @@ internal static class RelationTypeRules
     }
 
     /// <summary>
-    /// MQ4116 on an entity's bindings: a field that names a relation end with several types, which leads to more than one table, or another
-    /// end of a relation with such an end, which no database stores yet.
+    /// MQ4009 on an entity's bindings: a <c>discriminatorValue</c> on an entity outside an inheritance hierarchy that no relation end with
+    /// several types covers (several-types-design.md decision 42). Binding fields that name such an end resolve or get MQ4045 in the database
+    /// run (decision 46), so MQ4116 no longer reads them.
     /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="entity">The entity.</param>
     /// <param name="report">The report.</param>
     public static void CheckBindingFields(ValidationContext context, Entity entity, Report report)
     {
-        // several-types-2: storage — MQ4116 leaves binding fields, so this check goes (decision 46); the catalog text already names queries only.
-        if (!EndCoverage.Of(context.Model).Any)
+        if (entity.Base is not null || context.HasDerived(entity.Id))
             return;
         for (var b = 0; b < entity.Bindings.Count; b++)
         {
-            var fields = entity.Bindings[b].Fields;
-            for (var i = 0; i < fields.Count; i++)
+            if (entity.Bindings[b].DiscriminatorValue is not null && !MappingRules.CoveredBySeveralTypes(context.Model, entity.Id))
             {
-                if (ThroughSeveralTypes(context.Model, fields[i].Attribute) is { } through)
-                {
-                    report.Add("MQ4116", $"Field {i.ToString(CultureInfo.InvariantCulture)} of the binding of '{entity.Name}' names {Named(through)}; a field can't map it.",
-                        Ptr.At(Ptr.At("/bindings", b) + "/fields", i) + "/attribute");
-                }
+                report.Add("MQ4009", $"Entity '{entity.Name}' is not part of an inheritance hierarchy and no relation end with several types covers it, so its binding has no type code to set; remove 'discriminatorValue'.",
+                    Ptr.At("/bindings", b) + "/discriminatorValue");
             }
         }
     }

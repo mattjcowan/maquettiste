@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST3MAP00000000000000007",
+  "name": "EngineKeys in main",
+  "database": "01KST3DBS00000000000000001",
+  "relation": "01KST3RXN00000000000000004",
+  "shape": "promoted",
+  "foreignKeyEnd": "01KST3END00000000000000008",
+  "foreignKey": "01KST3FKY00000000000000001",
+  "promotedName": "Pinned",
+  "ends": [
+    {
+      "end": "01KST3END00000000000000008",
+      "idColumn": "01KST3CMN00000000000000006"
+    }
+  ],
+  "attributes": [
+    {
+      "attribute": "01KST3ATT00000000000000005",
+      "storage": "json",
+      "prefix": "p"
+    }
+  ]
+}

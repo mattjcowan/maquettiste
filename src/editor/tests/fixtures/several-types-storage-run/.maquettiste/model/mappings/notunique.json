@@ -1,0 +1,24 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST2MAP00000000000000027",
+  "name": "NotUnique in main",
+  "database": "01KST2DBS00000000000000001",
+  "relation": "01KST2RXN00000000000000020",
+  "ends": [
+    {
+      "end": "01KST2END00000000000000040",
+      "idColumn": "01KST2CMN00000000000000017",
+      "types": [
+        {
+          "entity": "01KST2ENT00000000000000001",
+          "referencesColumn": "01KST2CMN00000000000000005"
+        },
+        {
+          "entity": "01KST2ENT00000000000000002",
+          "referencesColumn": "01KST2CMN00000000000000010"
+        }
+      ]
+    }
+  ]
+}

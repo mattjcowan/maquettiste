@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST2MAP00000000000000010",
+  "name": "PinnedTo in main",
+  "database": "01KST2DBS00000000000000001",
+  "relation": "01KST2RXN00000000000000003",
+  "ends": [
+    {
+      "end": "01KST2END00000000000000006",
+      "types": [
+        {
+          "entity": "01KST2ENT00000000000000001",
+          "foreignKey": "01KST2FKY00000000000000004"
+        },
+        {
+          "entity": "01KST2ENT00000000000000002",
+          "foreignKey": "01KST2FKY00000000000000005"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01KST3TAB00000000000000004",
+  "name": "comments",
+  "database": "01KST3DBS00000000000000001",
+  "columns": [
+    {
+      "id": "01KST3CMN00000000000000004",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01KST3CMN00000000000000005",
+      "name": "attached_type",
+      "type": "string",
+      "length": 20
+    },
+    {
+      "id": "01KST3CMN00000000000000006",
+      "name": "attached_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST3CMN00000000000000007",
+      "name": "part_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01KST3CMN00000000000000004"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01KST3FKY00000000000000001",
+      "name": "fk_part",
+      "columns": [
+        "01KST3CMN00000000000000007"
+      ],
+      "referencesTable": "01KST3TAB00000000000000001",
+      "referencesColumns": [
+        "01KST3CMN00000000000000001"
+      ]
+    }
+  ]
+}

@@ -744,6 +744,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 // A child end with several types reaches the compositions of every entity it covers (several-types-design.md decision 9).
                 foreach (var peer in CompositionPeers(context, relation))
                     yield return peer;
+                // An end with several types allows discriminatorValue on the mappings and bindings of the entities it covers (decision 42).
+                foreach (var peer in TypeCodePeers(context, relation))
+                    yield return peer;
 
                 for (var i = 0; i < relation.Ends.Count; i++)
                 {
@@ -770,6 +773,36 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 }
 
                 break;
+        }
+    }
+
+    /// <summary>
+    /// The files whose MQ4009 on <c>discriminatorValue</c> an end with several types decides (several-types-design.md section 19.7): for each
+    /// entity such an end of the relation covers, its file when a binding sets one, and its mappings that set one. Nothing for a relation
+    /// whose ends each have one type.
+    /// </summary>
+    private static IEnumerable<ElementDocument> TypeCodePeers(ValidationContext context, Relation relation)
+    {
+        var model = context.Model;
+        foreach (var end in relation.Ends)
+        {
+            if (!end.HasSeveralTypes)
+                continue;
+            foreach (var entityId in EndCoverage.CoveredBy(model, end))
+            {
+                if (model.Get<Entity>(entityId) is not { } entity)
+                    continue;
+                if (entity.Bindings.Any(b => b.DiscriminatorValue is not null) && model.GetDocument(entityId) is { } entityDocument)
+                    yield return entityDocument;
+                foreach (var database in model.All<Database>())
+                {
+                    foreach (var peer in context.MappingsOf(database.Id, entityId))
+                    {
+                        if (peer.Element is Mapping { DiscriminatorValue: not null })
+                            yield return peer;
+                    }
+                }
+            }
         }
     }
 

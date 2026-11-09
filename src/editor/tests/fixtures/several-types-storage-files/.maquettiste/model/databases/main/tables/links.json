@@ -1,0 +1,71 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01KST3TAB00000000000000005",
+  "name": "links",
+  "database": "01KST3DBS00000000000000001",
+  "columns": [
+    {
+      "id": "01KST3CMN00000000000000008",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01KST3CMN00000000000000009",
+      "name": "comment_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST3CMN00000000000000010",
+      "name": "target_type",
+      "type": "string",
+      "length": 20
+    },
+    {
+      "id": "01KST3CMN00000000000000011",
+      "name": "target_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST3CMN00000000000000012",
+      "name": "note_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST3CMN00000000000000013",
+      "name": "code",
+      "type": "string",
+      "length": 10
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01KST3CMN00000000000000008"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01KST3FKY00000000000000002",
+      "name": "fk_links_comment",
+      "columns": [
+        "01KST3CMN00000000000000009"
+      ],
+      "referencesTable": "01KST3TAB00000000000000004",
+      "referencesColumns": [
+        "01KST3CMN00000000000000004"
+      ]
+    },
+    {
+      "id": "01KST3FKY00000000000000003",
+      "name": "fk_links_note",
+      "columns": [
+        "01KST3CMN00000000000000012"
+      ],
+      "referencesTable": "01KST3TAB00000000000000003",
+      "referencesColumns": [
+        "01KST3CMN00000000000000003"
+      ]
+    }
+  ]
+}

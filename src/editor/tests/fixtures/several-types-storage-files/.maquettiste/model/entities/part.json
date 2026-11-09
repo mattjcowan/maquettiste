@@ -1,0 +1,19 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01KST3ENT00000000000000001",
+  "name": "Part",
+  "package": "01KST3PKG00000000000000001",
+  "key": {
+    "attributes": [
+      "01KST3ATT00000000000000001"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01KST3ATT00000000000000001",
+      "name": "id",
+      "type": "uuid"
+    }
+  ]
+}

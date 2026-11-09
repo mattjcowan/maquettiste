@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST3MAP00000000000000005",
+  "name": "Ignored in main",
+  "database": "01KST3DBS00000000000000001",
+  "relation": "01KST3RXN00000000000000002",
+  "ignore": true
+}

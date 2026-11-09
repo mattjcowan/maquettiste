@@ -1,0 +1,16 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST3MAP00000000000000014",
+  "name": "NoEntry in main",
+  "database": "01KST3DBS00000000000000001",
+  "relation": "01KST3RXN00000000000000011",
+  "junctionTable": "01KST3TAB00000000000000005",
+  "ends": [
+    {
+      "end": "01KST3END00000000000000022",
+      "typeColumn": "01KST3CMN00000000000000010",
+      "idColumn": "01KST3CMN00000000000000011"
+    }
+  ]
+}

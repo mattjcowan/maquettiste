@@ -220,7 +220,7 @@ public sealed class BindingSyncTests
             Fields(r, LedgerEntry));
     }
 
-    [Fact(Skip = "several-types-2: needs the storage run (MQ4116 leaves binding fields)")]
+    [Fact]
     public async Task Map_by_name_maps_the_field_forms_of_an_end_with_several_types_that_the_entity_holds()
     {
         // Several-types-design.md decisions 46 and section 19.11 (part 2 lifts part 1's decision 21): the field candidates of a holding entity

@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01KST3TAB00000000000000002",
+  "name": "assemblies",
+  "database": "01KST3DBS00000000000000001",
+  "columns": [
+    {
+      "id": "01KST3CMN00000000000000002",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01KST3CMN00000000000000002"
+    ]
+  }
+}

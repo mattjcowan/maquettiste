@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST2MAP00000000000000005",
+  "name": "Note in main",
+  "database": "01KST2DBS00000000000000001",
+  "entity": "01KST2ENT00000000000000005",
+  "table": "01KST2TAB00000000000000002"
+}

@@ -256,7 +256,7 @@ internal static class TypeStorageModel
                 ["$schema"] = "../../.schema/v1/relation.json", ["kind"] = "relation", ["id"] = Id(n), ["name"] = name, ["package"] = Id(Package),
                 ["ends"] = new JsonArray(first, second),
             };
-            var mapping = Element("mapping", n + 1, name + " in db1", "../../");
+            var mapping = Element("mapping", n + 8, name + " in db1", "../../"); // n + 1 and n + 2 are the ends
             mapping["relation"] = Id(n);
             more?.Invoke(mapping);
             mapping["ends"] = ends;

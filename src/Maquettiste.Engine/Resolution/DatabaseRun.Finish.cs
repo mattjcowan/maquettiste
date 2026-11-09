@@ -359,11 +359,11 @@ internal sealed partial class DatabaseRun
     /// </summary>
     private void FinishRelationMappings()
     {
-        // several-types-2: storage — FinishTypeStorage runs beside this for a relation with an end of several types, which this skips: its
-        // OneEntity reads throw on such an end (section 19.8, step 2). Today ResolveRelation records no physical shape for one.
+        // A relation with an end of several types is finished by FinishTypeStorage, below (several-types-design.md section 19.8, step 2): its
+        // physical shape is never foreign-key, and the OneEntity reads here would throw on such an end.
         foreach (var phys in _relationPhysical.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => p.Value))
         {
-            if (phys.Shape != RelationShape.ForeignKey || phys.Mapping is not { } mapping)
+            if (phys.Shape != RelationShape.ForeignKey || phys.Mapping is not { } mapping || phys.TypeLinks is not null)
                 continue;
             var dependentTable = phys.Dependent is { } dependent ? TableOf(dependent.OneEntity.Id) : null;
             var primary = phys.Foreign.FirstOrDefault(s => s.Resolved && ReferenceEquals(s.Host, dependentTable)) ?? phys.Foreign.FirstOrDefault(s => s.Resolved);
@@ -385,6 +385,8 @@ internal sealed partial class DatabaseRun
                     deps.AddRange(KeyDeps(pp));
             }
         }
+
+        FinishTypeStorage();
     }
 
     /// <summary>MQ4009: a table overlay that targets nothing this database synthesizes (for example a TPH-derived entity) is unused.</summary>

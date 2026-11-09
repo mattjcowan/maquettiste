@@ -1,0 +1,70 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01KST2TAB00000000000000012",
+  "name": "bundles",
+  "database": "01KST2DBS00000000000000001",
+  "columns": [
+    {
+      "id": "01KST2CMN00000000000000045",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01KST2CMN00000000000000046",
+      "name": "comment_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000047",
+      "name": "part_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000048",
+      "name": "assembly_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01KST2CMN00000000000000045"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01KST2FKY00000000000000013",
+      "name": "fk_b_comment",
+      "columns": [
+        "01KST2CMN00000000000000046"
+      ],
+      "referencesTable": "01KST2TAB00000000000000006",
+      "referencesColumns": [
+        "01KST2CMN00000000000000011"
+      ]
+    },
+    {
+      "id": "01KST2FKY00000000000000014",
+      "name": "fk_b_part",
+      "columns": [
+        "01KST2CMN00000000000000047"
+      ],
+      "referencesTable": "01KST2TAB00000000000000004",
+      "referencesColumns": [
+        "01KST2CMN00000000000000004"
+      ]
+    },
+    {
+      "id": "01KST2FKY00000000000000015",
+      "name": "fk_b_assembly",
+      "columns": [
+        "01KST2CMN00000000000000048"
+      ],
+      "referencesTable": "01KST2TAB00000000000000005",
+      "referencesColumns": [
+        "01KST2CMN00000000000000008"
+      ]
+    }
+  ]
+}

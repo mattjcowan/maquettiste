@@ -1,0 +1,31 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST3MAP00000000000000016",
+  "name": "OneType in main",
+  "database": "01KST3DBS00000000000000001",
+  "relation": "01KST3RXN00000000000000013",
+  "junctionTable": "01KST3TAB00000000000000005",
+  "ends": [
+    {
+      "end": "01KST3END00000000000000025",
+      "foreignKey": "01KST3FKY00000000000000002",
+      "idColumn": "01KST3CMN00000000000000011"
+    },
+    {
+      "end": "01KST3END00000000000000026"
+    }
+  ],
+  "attributes": [
+    {
+      "attribute": "01KST3ATT00000000000000007",
+      "column": "01KST3CMN00000000000000005"
+    }
+  ],
+  "constants": [
+    {
+      "column": "01KST3CMN00000000000000012",
+      "value": "n"
+    }
+  ]
+}

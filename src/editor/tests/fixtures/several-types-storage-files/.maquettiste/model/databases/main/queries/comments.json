@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01KST3QRY00000000000000001",
+  "name": "Comments",
+  "database": "01KST3DBS00000000000000001",
+  "entity": "01KST3ENT00000000000000003",
+  "from": {
+    "source": "01KST3TAB00000000000000004",
+    "alias": "c"
+  },
+  "select": [
+    {
+      "attribute": "01KST3ATT00000000000000003",
+      "expression": {
+        "column": "c.id"
+      }
+    },
+    {
+      "attribute": "01KST3END00000000000000006",
+      "expression": {
+        "column": "c.attached_id"
+      }
+    }
+  ]
+}

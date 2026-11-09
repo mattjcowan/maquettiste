@@ -9,17 +9,15 @@ namespace Maquettiste.Packs.Tests;
 /// question 10): byte-exact goldens under <c>tests/fixtures/golden/sql-ddl/type-storage</c> of every way of section 19.4 in the
 /// <c>postgresql</c> dialect, the create script and the migration that adds a type's column and drops another's; and in the other four dialects
 /// only the tables whose output differs (the team's checks, uniques and the filtered unique index). No template changes: the DDL is the
-/// designed tables' own. Each golden runs with the relation mappings and without them; the run with them waits for the storage run, after
-/// which a link table a mapping names also gets the "Junction table." comment (section 19.8): those goldens, under <c>&lt;dialect&gt;-mapped</c>,
-/// are recorded then and should differ from the unmapped ones by those comments only.
+/// designed tables' own. Each golden runs with the relation mappings and without them; with them, a link table a mapping names also gets the
+/// "Junction table." comment (section 19.8): those goldens, under <c>&lt;dialect&gt;-mapped</c>, differ from the unmapped ones by those
+/// comments only.
 /// </summary>
 public sealed class TypeStorageDdlTests
 {
-    private const string Waits = "several-types-2: needs the storage run";
-
     [Theory]
     [InlineData(false)]
-    [InlineData(true, Skip = Waits)]
+    [InlineData(true)]
     public async Task Every_way_in_postgresql_creates_and_migrates_as_its_tables_say(bool relationMappings)
     {
         using var repo = TypeStorageModel.Create("postgresql", relationMappings);
@@ -45,10 +43,10 @@ public sealed class TypeStorageDdlTests
     [InlineData("mysql", false)]
     [InlineData("oracle", false)]
     [InlineData("sqlite", false)]
-    [InlineData("sqlserver", true, Skip = Waits)]
-    [InlineData("mysql", true, Skip = Waits)]
-    [InlineData("oracle", true, Skip = Waits)]
-    [InlineData("sqlite", true, Skip = Waits)]
+    [InlineData("sqlserver", true)]
+    [InlineData("mysql", true)]
+    [InlineData("oracle", true)]
+    [InlineData("sqlite", true)]
     public async Task The_ways_whose_output_differs_create_in_each_other_dialect(string dialect, bool relationMappings)
     {
         using var repo = TypeStorageModel.Create(dialect, relationMappings);
