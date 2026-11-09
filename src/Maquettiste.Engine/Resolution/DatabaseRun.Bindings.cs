@@ -441,6 +441,7 @@ internal sealed partial class DatabaseRun
                 if (!Target(field, f.Attribute))
                 {
                     // An end with several types is MQ4116's alone; its column stays accounted for.
+                    // several-types-2: storage — MQ4116 leaves binding fields: every form resolves or gets MQ4045 (decision 46).
                     if (NamesSeveralTypesEnd(run._run.Model, f.Attribute))
                         field.Name = f.Attribute;
                     else
@@ -503,6 +504,7 @@ internal sealed partial class DatabaseRun
             foreach (var (relation, end) in run._run.RelationsWithEnd(reference))
             {
                 // A relation with an end of several types has no one table for the end (MQ4116): no binding field names it in part 1.
+                // several-types-2: storage — the field forms endId, endId.type and endId.entityId on an end the entity holds (decision 46).
                 if (relation.Ends.Count != 2 || end.IsMany || end.HasSeveralTypes || end.Opposite is not { Entity: { } from } || !IsSelfOrBase(from))
                     continue;
                 _deps.Element(relation.Id);

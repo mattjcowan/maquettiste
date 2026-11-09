@@ -101,7 +101,7 @@
       "items": {
         "title": "Relation end",
         "type": "object",
-        "description": "One end (role) of a relation. It names its type in exactly one way: entity (one entity, with the entities derived from it), types (several entities and stereotypes) or anyEntity. Only one end of a two-ended relation may have several types (MQ3041).",
+        "description": "One end (role) of a relation. It names its type in exactly one way: entity (one entity, with the entities derived from it), types (several entities and stereotypes) or anyEntity. Either end of a two-ended relation, or both, may have several types; each end of an n-ary relation names one entity (MQ3041).",
         "x-order": ["id", "entity", "types", "anyEntity", "role", "navigation", "displayName", "pluralName", "min", "max", "onDelete", "ordered", "description"],
         "properties": {
           "id": {
@@ -112,7 +112,7 @@
             "$ref": "common.json#/$defs/id"
           },
           "types": {
-            "description": "The types this end may be, at least one: an entity, with the entities derived from it, or a stereotype, standing for every entity that carries it and the entities derived from them. The end's types are the covered entities with no covered base, in the order the entries first reach them. A list that holds one entity means the same as entity (MQ3042); an entry another entry covers is MQ3043. Not written together with entity or anyEntity.",
+            "description": "The types this end may be, at least one: an entity, with the entities derived from it, or a stereotype, standing for every entity that carries it and the entities derived from them. The end's types are the covered entities with no covered base, in the order the entries first reach them. A list that holds one entity means the same as entity (MQ3042); an entry another entry covers is MQ3043. Several types fit either end of a two-ended relation, or both, and no end of an n-ary relation (MQ3041). Not written together with entity or anyEntity.",
             "type": "array",
             "items": {
               "title": "End type",
@@ -144,7 +144,7 @@
             "uniqueItems": true
           },
           "anyEntity": {
-            "description": "The end may be any entity of the model. Not written together with entity or types; never on a composition's child end (MQ3041).",
+            "description": "The end may be any entity of the model, at either end of a two-ended relation or both. Not written together with entity or types; never on a composition's child end or an end of an n-ary relation (MQ3041).",
             "const": true
           },
           "role": {

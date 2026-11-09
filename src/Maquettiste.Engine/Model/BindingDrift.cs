@@ -261,6 +261,7 @@ internal static class BindingDrift
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(entity);
         ArgumentNullException.ThrowIfNull(reference);
+        // several-types-2: joins — names the field forms endId.type and endId.entityId (attachedToType, attachedToPartId; section 19.11).
         if (AttributeOf(model, entity, reference) is { } attribute)
             return attribute.Name;
         var dot = reference.IndexOf('.', StringComparison.Ordinal);

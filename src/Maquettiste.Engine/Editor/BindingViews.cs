@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Resolution;
 
@@ -31,9 +32,12 @@ public sealed record BindingConstantView(string Column, object? Value);
 /// <param name="Fields">The field map.</param>
 /// <param name="Columns">Every source column with what accounts for it.</param>
 /// <param name="WriteColumns">Every write table column with what accounts for it, when the write table is not the source.</param>
+/// <param name="DiscriminatorValue">The entity's type code the binding sets, a string or an integer (several-types-design.md decision 42);
+/// left out when unset.</param>
 public sealed record EntityBindingRecord(string Id, string Database, string? SourceKind, string Source, string SourceName, string? WriteTable, string Delete,
     string? SoftDeleteColumn, object? SoftDeleteValue, IReadOnlyList<BindingConstantView> Constants, IReadOnlyList<BindingFieldRecord> Fields,
-    IReadOnlyList<BindingColumnRecord> Columns, IReadOnlyList<BindingColumnRecord> WriteColumns);
+    IReadOnlyList<BindingColumnRecord> Columns, IReadOnlyList<BindingColumnRecord> WriteColumns,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] object? DiscriminatorValue = null);
 
 /// <summary>One field of a resolved binding.</summary>
 /// <param name="Name">The field's name (the select's alias and the statements' parameter).</param>
@@ -50,8 +54,13 @@ public sealed record EntityBindingRecord(string Id, string Database, string? Sou
 /// <param name="IsGenerated">Whether the database fills the column.</param>
 /// <param name="InInsert">Whether the insert writes the field.</param>
 /// <param name="InUpdate">Whether the update sets the field.</param>
+/// <param name="Holds">On a relation end with several types (several-types-design.md decision 46): <c>id</c>, <c>type</c> or <c>key</c>, what
+/// the field's column holds; left out on today's fields.</param>
+/// <param name="KeyOf">The entity of an <c>endId.entityId</c> field (<paramref name="Holds"/> is <c>key</c>); left out otherwise.</param>
 public sealed record BindingFieldRecord(string Name, string Attribute, string? AttributeId, string? MemberId, string? EndId, string Column, string? ColumnKey,
-    string? WriteColumn, string? Type, bool Nullable, bool IsKey, bool IsGenerated, bool InInsert, bool InUpdate);
+    string? WriteColumn, string? Type, bool Nullable, bool IsKey, bool IsGenerated, bool InInsert, bool InUpdate,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Holds = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? KeyOf = null);
 
 /// <summary>A column of a binding's source or write table and what accounts for it.</summary>
 /// <param name="Name">The column's physical name.</param>
@@ -108,6 +117,7 @@ internal static class BindingViews
         b.SoftDeleteColumn?.Name,
         b.SoftDeleteValue,
         Constants(b),
+        // several-types-2: joins — holds and keyOf on the field forms of decision 46, and the binding's discriminatorValue (section 19.8).
         [.. b.Fields.Select(f => new BindingFieldRecord(f.Name, f.AttributeRef, f.Attribute?.Id, f.Member?.Id, f.End?.Id, f.ColumnName, f.SourceColumn?.Key,
             f.WriteColumn?.Key, f.Type, f.Nullable, f.IsKey, f.IsGenerated, f.InInsert, f.InUpdate))],
         Columns(b.Columns),

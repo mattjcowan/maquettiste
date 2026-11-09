@@ -56,18 +56,15 @@ internal static class RelationTypeRules
             return;
         var model = context.Model;
         var nAry = relation.RelationKind == RelationKind.NAry || ends.Count > 2;
-        var several = 0;
         for (var i = 0; i < ends.Count; i++)
         {
             var end = ends[i];
             var pointer = Ptr.At("/ends", i);
-            if (end.HasSeveralTypes)
-            {
-                several++;
-                // MQ3041: an n-ary relation's end can't have several types (decision 8).
-                if (nAry)
-                    report.Add("MQ3041", $"Relation '{relation.Name}' is n-ary, so its end '{end.Role}' can't have several types; give it one entity.", pointer, end.Id);
-            }
+
+            // MQ3041: an n-ary relation's end can't have several types (decision 8, the owner's answer 3a). Either end of a two-ended relation,
+            // or both, may (several-types-design.md decision 53, section 19.12).
+            if (end.HasSeveralTypes && nAry)
+                report.Add("MQ3041", $"Relation '{relation.Name}' is n-ary, so its end '{end.Role}' can't have several types; give it one entity.", pointer, end.Id);
 
             if (end.Types is not { } types)
                 continue;
@@ -92,10 +89,6 @@ internal static class RelationTypeRules
             if (end.HasSeveralTypes)
                 CheckCoveredEntries(model, end, pointer, report);
         }
-
-        // MQ3041: several types on both ends (decision 8); an n-ary relation is reported per end above.
-        if (!nAry && several > 1)
-            report.Add("MQ3041", $"Relation '{relation.Name}' has several types on both ends; keep them on one end.", "/ends");
 
         // MQ3041: a composition's child end can't be any entity (decision 9).
         if (ValidationContext.CompositionEnds(relation) is { } composition && ends[composition.Child] is { AnyEntity: true } child)
@@ -177,6 +170,7 @@ internal static class RelationTypeRules
             return;
         foreach (var database in model.All<Database>())
         {
+            // several-types-2: storage — also skip a database whose mapping stores the relation: a junctionTable or an ends entry (decision 49).
             if (context.MappingsOf(database.Id, relation.Id).Any(d => d.Element is Mapping { Ignore: true }))
                 continue;
             var placed = relation.Ends.All(end => end.HasSeveralTypes
@@ -209,6 +203,7 @@ internal static class RelationTypeRules
     /// <param name="report">The report.</param>
     public static void CheckBindingFields(ValidationContext context, Entity entity, Report report)
     {
+        // several-types-2: storage — MQ4116 leaves binding fields, so this check goes (decision 46); the catalog text already names queries only.
         if (!EndCoverage.Of(context.Model).Any)
             return;
         for (var b = 0; b < entity.Bindings.Count; b++)

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
@@ -37,12 +38,40 @@ public sealed record DatabaseViewResult(DatabaseView? View, IReadOnlyList<Diagno
 /// <param name="Category">As <see cref="TableView.Category"/>.</param>
 /// <param name="Properties">As <see cref="TableView.Properties"/>.</param>
 /// <param name="Generation">As <see cref="TableView.Generation"/>.</param>
+/// <param name="RelationStorage">One item per relation with an end of several types placed in the database (several-types-design.md
+/// section 19.8); left out when empty.</param>
 public sealed record DatabaseView(string Id, string Name, string Dialect, string? Version, string? DefaultSchema, IReadOnlyList<TableView> Tables,
     IReadOnlyList<ViewView> Views, IReadOnlyList<SequenceView> Sequences, IReadOnlyList<RoutineView> Routines, IReadOnlyList<DatabaseTypeView> Types,
     IReadOnlyList<SqlObjectView> Objects, IReadOnlyList<QueryView> Queries, IReadOnlyList<SchemaView> Schemas, string Quoting, int? MaxIdentifierLength,
     string ByConvention, IReadOnlyList<ConventionPackageView> Packages, string? DisplayName, string? PluralName, string? Description,
     IReadOnlyList<string> Stereotypes, IReadOnlyList<string> Tags, string? Category, IReadOnlyDictionary<string, object?> Properties,
-    IReadOnlyDictionary<string, GenerationHints> Generation);
+    IReadOnlyDictionary<string, GenerationHints> Generation,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<RelationStorageView>? RelationStorage = null);
+
+/// <summary>How a database stores a relation with an end of several types, and what it can't enforce (several-types-design.md section 19.8).</summary>
+/// <param name="RelationId">The relation's id.</param>
+/// <param name="RelationName">The relation's name.</param>
+/// <param name="MappingId">The id of the relation's mapping in the database, or <see langword="null"/> when there is none.</param>
+/// <param name="Tables">The keys of the tables that hold the links.</param>
+/// <param name="LeftOut">Covered entities not placed in the database.</param>
+/// <param name="NotStored">Placed targets no pointer reaches (MQ4120).</param>
+/// <param name="Gaps">What the database can't enforce, per end (MQ4118, decision 47).</param>
+public sealed record RelationStorageView(string RelationId, string RelationName, string? MappingId, IReadOnlyList<string> Tables,
+    IReadOnlyList<RelationStorageEntityView> LeftOut, IReadOnlyList<RelationStorageEntityView> NotStored, IReadOnlyList<RelationStorageGapView> Gaps);
+
+/// <summary>A covered entity at one end of a relation stored in a database.</summary>
+/// <param name="EndId">The end's id.</param>
+/// <param name="EntityId">The entity's id.</param>
+public sealed record RelationStorageEntityView(string EndId, string EntityId);
+
+/// <summary>One thing a database can't enforce for a relation end with several types (MQ4118, several-types-design.md decision 47).</summary>
+/// <param name="EndId">The end's id.</param>
+/// <param name="Kind"><c>no-foreign-key</c>, <c>shared-table</c>, <c>id-only</c>, <c>type-check</c>, <c>count-check</c>, <c>one-to-one-unique</c>,
+/// <c>link-unique</c>, <c>per-type-duplicates</c> or <c>rows-not-told-apart</c>.</param>
+/// <param name="Text">The check or unique to copy, in the database's dialect and quoting; left out when there is none.</param>
+public sealed record RelationStorageGapView(string EndId, string Kind,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Text = null);
 
 /// <summary>One schema of a resolved database, projected from <see cref="RSchema"/>.</summary>
 /// <param name="Id">The schema's id in the database file, or <c>&lt;databaseId&gt;/&lt;name&gt;</c> for a schema the file does not declare.</param>
@@ -552,6 +581,7 @@ internal static class DatabaseViews
     public static DatabaseView From(RDatabase database)
     {
         ArgumentNullException.ThrowIfNull(database);
+        // several-types-2: joins — relationStorage, one item per relation with an end of several types placed here (section 19.8).
         return new DatabaseView(database.Id, database.Name, database.Dialect, database.Version, database.DefaultSchema,
             [.. database.Tables.Select(Table)], [.. database.Views.Select(View)], [.. database.Sequences.Select(Sequence)],
             [.. database.Routines.Select(ProjectRoutine)], [.. database.Types.Select(ProjectType)], [.. database.Objects.Select(ProjectObject)],

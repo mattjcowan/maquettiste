@@ -34,6 +34,7 @@
     "foreignKey",
     "junctionTable",
     "ends",
+    "constants",
     "promotedName",
     "properties",
     "generation",
@@ -136,6 +137,7 @@
             "$ref": "common.json#/$defs/id"
           },
           "column": {
+            "description": "The id of the attribute's column. On an entity mapping: a column of the bound designed or imported table. On a relation mapping with a designed junctionTable: a column of the table that holds every link, the link table or the other end's table, for a relation attribute of one plain value (MQ4009, MQ4117).",
             "$ref": "common.json#/$defs/id"
           },
           "storage": {
@@ -168,21 +170,104 @@
       "$ref": "common.json#/$defs/id"
     },
     "ends": {
-      "description": "For a designed junction table: the foreign key that realizes each relation end.",
+      "description": "How the database's tables point at each relation end, one entry per end. For a designed junctionTable of a relation whose ends each have one type: the foreign key that realizes each end. For a relation with an end of several types: how the pointer points at the end, in exactly one way, foreignKey, foreignKeys, types with foreignKey items or idColumn (MQ4009). Without junctionTable, an end with no entry holds the link in its own rows.",
       "type": "array",
       "items": {
         "title": "Relation end mapping",
         "type": "object",
-        "x-order": ["end", "foreignKey"],
+        "x-order": ["end", "foreignKey", "foreignKeys", "types", "idColumn", "typeColumn", "referencesColumn"],
         "properties": {
           "end": {
             "$ref": "common.json#/$defs/id"
           },
           "foreignKey": {
+            "description": "The id of one existing foreign key that points at the end: in a designed junction table, the key that references the end's table; on an end with several types, a key to a table that holds the rows of every placed type.",
             "$ref": "common.json#/$defs/id"
+          },
+          "foreignKeys": {
+            "description": "The ids of several existing foreign keys that point at the end, one per table that holds links: each type's table of the other end, or a link table per type. Only on a relation with an end of several types.",
+            "type": "array",
+            "items": {
+              "$ref": "common.json#/$defs/id"
+            },
+            "minItems": 1,
+            "uniqueItems": true,
+            "default": []
+          },
+          "types": {
+            "description": "Per type of an end with several types: the foreign key that points at objects of that type (a key per type), or, beside idColumn, the unique column of the type's table the id refers to. Each entity is one the end covers, listed once, and every item is of one kind (MQ4009).",
+            "type": "array",
+            "items": {
+              "title": "End type storage",
+              "description": "One type of the end and how its objects are pointed at: entity, and exactly one of foreignKey and referencesColumn.",
+              "type": "object",
+              "x-order": ["entity", "foreignKey", "referencesColumn"],
+              "properties": {
+                "entity": {
+                  "description": "The id of an entity the end covers.",
+                  "$ref": "common.json#/$defs/id"
+                },
+                "foreignKey": {
+                  "description": "The id of the existing foreign key that points at objects of this type. Not written together with referencesColumn.",
+                  "$ref": "common.json#/$defs/id"
+                },
+                "referencesColumn": {
+                  "description": "Beside the entry's idColumn: the column of this type's table the id refers to, unique in that table; a column id, or the key of a column of a table the engine makes. Not written together with foreignKey.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": ["entity"],
+              "oneOf": [
+                {
+                  "required": ["foreignKey"]
+                },
+                {
+                  "required": ["referencesColumn"]
+                }
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "default": []
+          },
+          "idColumn": {
+            "description": "The id of the column that holds the linked object's id, in the table that holds the link. It refers to referencesColumn, else to the primary key of each type's table when that key has one column. Only on a relation with an end of several types.",
+            "$ref": "common.json#/$defs/id"
+          },
+          "typeColumn": {
+            "description": "Beside idColumn: the id of the column that holds the linked object's type code, the discriminatorValue of the type's binding or mapping in the database, else the entity's name. Needs idColumn (MQ4009).",
+            "$ref": "common.json#/$defs/id"
+          },
+          "referencesColumn": {
+            "description": "Beside idColumn, when one table holds the rows of every placed type: the column of that table the id refers to, unique in it, instead of its primary key; a column id, or the key of a column of a table the engine makes. Needs idColumn (MQ4009).",
+            "type": "string",
+            "minLength": 1
           }
         },
-        "required": ["end", "foreignKey"],
+        "required": ["end"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "constants": {
+      "description": "For a relation mapping with a designed junctionTable: columns of that table with a fixed value, a filter on the links it reads and a value on every link it inserts, such as a relation code in a table that holds several relations (MQ4009).",
+      "type": "array",
+      "items": {
+        "title": "Mapping constant",
+        "type": "object",
+        "x-order": ["column", "value"],
+        "properties": {
+          "column": {
+            "description": "The id of a column of the junction table.",
+            "$ref": "common.json#/$defs/id"
+          },
+          "value": {
+            "description": "The value; absent or null is SQL NULL.",
+            "type": ["string", "number", "boolean", "null"]
+          }
+        },
+        "required": ["column"],
         "additionalProperties": false
       },
       "default": []

@@ -50,6 +50,14 @@ public sealed record EntityBinding
     public BindingDelete? Delete { get; init; }
 
     /// <summary>
+    /// The entity's type code in this database, a JSON string or integer (several-types-design.md decision 42): what a type column of a
+    /// relation end with several types holds for it, and its discriminator in a hierarchy. <see langword="null"/> (absent): the
+    /// <c>discriminatorValue</c> of the entity's mapping there, else the entity's name. The binding is the entity's mapping in its database
+    /// (erratum E43), which a mapping element there can't set.
+    /// </summary>
+    public JsonElement? DiscriminatorValue { get; init; }
+
+    /// <summary>
     /// The ids of the entity's checks the write table enforces, lowered through the field map (next-phase-3-design.md section 3.1).
     /// A check no binding lists reaches no table.
     /// </summary>
@@ -135,7 +143,9 @@ public sealed record BindingField
 {
     /// <summary>
     /// An attribute id of the entity (own or inherited), <c>attributeId.memberId</c> for a member of an embedded value object
-    /// attribute, or the id of the relation end a to-one navigation leads to, for its key.
+    /// attribute, or the id of the relation end a to-one navigation leads to, for its key. On an end with several types the entity holds
+    /// (several-types-design.md decision 46): <c>endId</c> maps its id column, <c>endId.type</c> the column that holds the linked object's
+    /// type code, and <c>endId.entityId</c> the column that points at a linked object of that entity (a column per type).
     /// </summary>
     [ElementRef(Keyed = true)]
     public required string Attribute { get; init; }

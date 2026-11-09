@@ -50,6 +50,8 @@ internal sealed partial class DatabaseRun
         var src = _run.RelationSource(rel.Id);
         // Part 1 stores nothing for a relation with an end of several types (several-types-design.md decision 22), as for a relation whose
         // end entity isn't placed; every reader below sees one-type ends only.
+        // several-types-2: storage — CollectTypeStorage for a mapping that states storage (section 19.8, step 1); FinishTypeStorage after
+        // FinishTables (step 2), which FinishRelationMappings must skip.
         if (src is null || EndCoverage.HasSeveralTypes(src) || rel.Ends.Any(e => !_placements.ContainsKey(e.OneEntity.Id)))
             return;
         var m = _run.MappingOf(_db.Id, rel.Id);
@@ -212,11 +214,13 @@ internal sealed partial class DatabaseRun
 
         if (!promote && m?.JunctionTable is { } junctionId && _tables.TryGetValue(junctionId, out var designed) && designed.IsDesigned)
         {
-            // A designed junction binds each end through Mapping.Ends (section 7.4).
+            // A designed junction binds each end through Mapping.Ends (section 7.4). An entry with no foreignKey is skipped: MQ4009 reports it
+            // (several-types-design.md decision 38).
+            // several-types-2: storage — the mapping's constants and attribute columns on a designed junction (decisions 44 and 45, answer 9).
             foreach (var endMapping in m.Ends)
             {
                 var end = rel.Ends.FirstOrDefault(e => string.Equals(e.Id, endMapping.End, StringComparison.Ordinal));
-                if (end is null || !_foreignKeysById.TryGetValue(endMapping.ForeignKey, out var spec))
+                if (end is null || endMapping.ForeignKey is not { } foreignKeyId || !_foreignKeysById.TryGetValue(foreignKeyId, out var spec))
                     continue;
                 spec.Result.Relation = rel;
                 spec.Result.End = end;

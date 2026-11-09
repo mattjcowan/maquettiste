@@ -270,6 +270,7 @@ internal sealed class StereotypeFold
             Match("unique", u.Id, Join(u.Columns.Select(K)), uniques, $"unique on {Names(u.Columns)}");
 
         // A foreign key a relation mapping names stays own: a relation mapping cannot name an inherited foreign key (decision 30).
+        // several-types-2: storage — a key named in an entry's foreignKeys (field "foreignKeys") is mapped too; a types item's is "foreignKey".
         var mapped = rtable.ForeignKeys.Where(f => f.Id is { } id && _snapshot.ReferencesTo(id).Any(r => r.Field == "foreignKey"
             && _snapshot.Get<Element>(r.FromElementId) is Mapping or Relation)).Select(f => f.Id!).ToHashSet(StringComparer.Ordinal);
         var foreignKeys = rtable.ForeignKeys.Where(f => f.Id is not null && f.MemberOrigin.MemberId is null && !mapped.Contains(f.Id))

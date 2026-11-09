@@ -125,6 +125,8 @@ internal static class MappingRules
             Invalid(report, "/junctionTable", "'junctionTable' " + relationOnly + ".");
         if (mapping.Ends.Count > 0)
             Invalid(report, "/ends", "'ends' " + relationOnly + ".");
+        if (mapping.Constants.Count > 0)
+            Invalid(report, "/constants", "'constants' " + relationOnly + ".");
         if (mapping.PromotedName is not null)
             Invalid(report, "/promotedName", "'promotedName' " + relationOnly + ".");
 
@@ -208,13 +210,15 @@ internal static class MappingRules
 
         // Part 1 stores nothing for a relation with an end of several types (several-types-design.md decision 22): its mapping sets only
         // ignore, so every other relation key is MQ4009, and the foreign key and junction checks below don't apply.
+        // several-types-2: storage — part 2's file cases of MQ4009 (section 19.7) replace this branch: the per-end entries, junctionTable,
+        // constants and attribute columns, the relaxed discriminatorValue and shape (decision 51).
         if (EndCoverage.HasSeveralTypes(relation))
         {
             foreach (var (pointer, set) in new (string, bool)[]
             {
                 ("/attributes", mapping.Attributes.Count > 0), ("/shape", mapping.Shape is not null), ("/foreignKeyEnd", mapping.ForeignKeyEnd is not null),
                 ("/foreignKey", mapping.ForeignKey is not null), ("/junctionTable", mapping.JunctionTable is not null), ("/ends", mapping.Ends.Count > 0),
-                ("/promotedName", mapping.PromotedName is not null),
+                ("/constants", mapping.Constants.Count > 0), ("/promotedName", mapping.PromotedName is not null),
             })
             {
                 if (set)
@@ -235,6 +239,7 @@ internal static class MappingRules
                 continue;
             }
 
+            // several-types-2: storage — attributes[].column against a designed junctionTable (decision 45, answer 9); today it needs a bound table.
             CheckAttributeMapping(context, item, attribute, null, Ptr.At("/attributes", i), report);
         }
 
@@ -284,8 +289,14 @@ internal static class MappingRules
             var pointer = Ptr.At("/ends", i);
             if (!relation.Ends.Any(e => e.Id == end.End) && model.TryGetEntry(end.End, out _))
                 Invalid(report, pointer + "/end", $"'{end.End}' is not an end of relation '{relation.Name}'.");
-            if (junction is not null && !junction.ForeignKeys.Any(f => f.Id == end.ForeignKey) && model.TryGetEntry(end.ForeignKey, out _))
-                Invalid(report, pointer + "/foreignKey", $"'{end.ForeignKey}' is not a foreign key of junction table '{junction.Name}'.");
+            // The schema requires only an entry's end (several-types-design.md decision 38): on a one-type relation an entry with no way keeps
+            // the words of a missing key, which the schema reported before (MQ1002).
+            // several-types-2: storage — the per-end ways of a one-type relation's entry (foreignKeys, types, idColumn, typeColumn,
+            // referencesColumn) are MQ4009 "…needs a relation with an end of several types"; constants and attribute columns (answer 9).
+            if (junction is not null && !end.HasWay)
+                Invalid(report, pointer, $"End entry {i} names no 'foreignKey'; junction table '{junction.Name}' is designed, so the entry needs the foreign key that references its end's table.");
+            if (junction is not null && end.ForeignKey is { } endForeignKey && !junction.ForeignKeys.Any(f => f.Id == endForeignKey) && model.TryGetEntry(endForeignKey, out _))
+                Invalid(report, pointer + "/foreignKey", $"'{endForeignKey}' is not a foreign key of junction table '{junction.Name}'.");
         }
 
         // MQ4011: a designed junction binds every end.

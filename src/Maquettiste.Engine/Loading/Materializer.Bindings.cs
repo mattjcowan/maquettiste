@@ -431,6 +431,7 @@ internal sealed partial class Materializer
             {
                 var (self, other) = (relation.Ends[i], relation.Ends[1 - i]);
                 // Field candidates skip a relation with an end of several types (several-types-design.md decision 21): MQ4116 refuses such a field.
+                // several-types-2: joins — map by name offers the new field forms for a holding entity (section 19.11).
                 if (self.SingleEntity is not { } selfEntity || other.HasSeveralTypes || !mine.Contains(selfEntity) || other.Max != MaxCardinality.One
                     || !seen.Add(other.Id))
                     continue;

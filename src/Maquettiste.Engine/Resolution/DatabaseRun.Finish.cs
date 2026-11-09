@@ -359,6 +359,8 @@ internal sealed partial class DatabaseRun
     /// </summary>
     private void FinishRelationMappings()
     {
+        // several-types-2: storage — FinishTypeStorage runs beside this for a relation with an end of several types, which this skips: its
+        // OneEntity reads throw on such an end (section 19.8, step 2). Today ResolveRelation records no physical shape for one.
         foreach (var phys in _relationPhysical.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => p.Value))
         {
             if (phys.Shape != RelationShape.ForeignKey || phys.Mapping is not { } mapping)
@@ -505,6 +507,7 @@ internal sealed partial class DatabaseRun
     private void BuildJoins()
     {
         // Join paths read finished tables and foreign keys only: computed per entity in parallel, recorded in entity order.
+        // several-types-2: joins — the pairs come from RelationPhysical.TypeLinks, with conditions and type_joins (decision 48).
         var owners = _placementOrder.Select(p => p.Entity).Concat(_promotedTables.Select(x => x.Entity)).ToList();
         var paths = new List<(RNavigation Navigation, RJoinPath Path)>[owners.Count];
         _run.ForEach(owners.Count, i =>

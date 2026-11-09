@@ -52,7 +52,7 @@ public sealed class RelationTypesRuleTests
     // ---- MQ3041 ----
 
     [Fact]
-    public async Task MQ3041_refuses_an_n_ary_end_both_ends_and_an_any_entity_child()
+    public async Task MQ3041_refuses_an_n_ary_end_and_an_any_entity_child_but_no_longer_both_ends()
     {
         var nAry = await ValidateAsync(h => h.Write("model/relations/link.json", $$"""
             {"kind":"relation","id":"01JRXN00000000000000000990","name":"Link","package":"{{Sales}}","relationKind":"n-ary","ends":[
@@ -66,7 +66,28 @@ public sealed class RelationTypesRuleTests
               {"id":"01JEND00000000000000000991","types":[{"entity":"{{Comment}}"},{"entity":"{{Tool}}"}],"role":"source","max":"*"},
               {"id":"01JEND00000000000000000992","anyEntity":true,"role":"target","max":1}]}
             """));
-        Assert.Equal([("/ends", "Relation 'Link' has several types on both ends; keep them on one end.")], Of(both, "MQ3041"));
+        // Part 2 lifts the one-end limit (several-types-design.md decision 53, section 19.12): several types or any entity at both ends.
+        Assert.Empty(Of(both, "MQ3041"));
+        var anyToAny = await ValidateAsync(h => h.Write("model/relations/link.json", $$"""
+            {"kind":"relation","id":"01JRXN00000000000000000990","name":"Link","package":"{{Sales}}","ends":[
+              {"id":"01JEND00000000000000000991","anyEntity":true,"role":"source","max":"*"},
+              {"id":"01JEND00000000000000000992","anyEntity":true,"role":"target","max":"*"}]}
+            """));
+        Assert.Empty(Of(anyToAny, "MQ3041"));
+        var composedBoth = await ValidateAsync(h => h.Write("model/relations/link.json", $$"""
+            {"kind":"relation","id":"01JRXN00000000000000000990","name":"Link","package":"{{Sales}}","relationKind":"composition","ends":[
+              {"id":"01JEND00000000000000000991","types":[{"entity":"{{Comment}}"},{"entity":"{{Tool}}"}],"role":"owner","max":1},
+              {"id":"01JEND00000000000000000992","types":[{"entity":"{{Part}}"},{"entity":"{{Assembly}}"}],"role":"part","max":"*"}]}
+            """));
+        Assert.Empty(Of(composedBoth, "MQ3041"));
+
+        // An n-ary relation still refuses several types at each such end, two of them included.
+        var nAryTwo = await ValidateAsync(h => h.Write("model/relations/link.json", $$"""
+            {"kind":"relation","id":"01JRXN00000000000000000990","name":"Link","package":"{{Sales}}","relationKind":"n-ary","ends":[
+              {"id":"01JEND00000000000000000991","anyEntity":true,"role":"comment"},{"id":"01JEND00000000000000000992","entity":"{{Tool}}","role":"tool"},
+              {"id":"01JEND00000000000000000993","types":[{"entity":"{{Part}}"},{"entity":"{{Assembly}}"}],"role":"target"}]}
+            """));
+        Assert.Equal(["/ends/0", "/ends/2"], Of(nAryTwo, "MQ3041").Select(f => f.Item1));
 
         var child = await ValidateAsync(h => h.Write("model/relations/link.json", RelationWith(""" "anyEntity":true """, kind: "composition", farMax: "\"*\"", nearMax: "1")));
         Assert.Equal([("/ends/1/anyEntity", "End 'target' is the part in composition 'Link', so it can't be any entity; list the types it may be.")], Of(child, "MQ3041"));
