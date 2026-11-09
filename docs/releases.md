@@ -40,7 +40,7 @@ one.
   the template members `end.types`, `end.has_several_types`, `end.stereotypes`, `end.any_entity`, `end.common_base` and
   `navigation.targets`; the API members `EndRecord.types`, `.hasSeveralTypes`, `.stereotypes`, `.anyEntity` and `.commonBase`,
   `NavigationRecord.targets` and `RelationEndSummary.entities`, `.stereotypes`, `.anyEntity` and `.covers`; the index format `e14`;
-  the naming key `et:ends`; in the editor, Type, One entity, Several types, Any entity, Stereotypes, Collapse lines, Expand lines,
+  the naming key `et:ends`, and `ec:<end id>` for the types of one end (added in the fixes); in the editor, Type, One entity, Several types, Any entity, Stereotypes, Collapse lines, Expand lines,
   "+N not shown", "through stereotype ...", "any entity". Added while building:
   - Engine: `RelationEndType`, `EndCoverage`, `RelationEnd.Types`, `.AnyEntity` and `.SingleEntity`, `REnd.OneEntity`.
   - Diagram: `collapsed`, `x` and `y` on a relation's member also hold the lines' toggle and the node's position.
