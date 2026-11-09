@@ -1927,7 +1927,8 @@ mapping, a binding field's attribute may be:
 - `<endId>.type`: the type column;
 - `<endId>.<entityId>`: the key column for one type, with a column per type.
 
-Map by name finds them. They show in the entity's field map as "attachedTo type", "attachedTo id" and "attachedTo Part key".
+Map by name finds them. The entity's field map and the drift report name them after the navigation, else the role: `attachedToType`,
+`attachedToId` and `attachedToPartId`.
 
 **What the database can't enforce.** A foreign key only works when each link has one target table. A type and an id, an id alone
 and a key to a shared table can't stop a link to a missing object. Several keys in a link table can't refuse a duplicate link. The

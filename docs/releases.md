@@ -46,11 +46,13 @@ one.
   keys, so teams upgrade together.
 - **Still waiting.** A link table for each pair of types, one column that points into tables spread over several types, a binding for
   links with its own statements, an engine-made check or column and the "Add to table" button. Seeds and query fields through such an end stay refused (MQ7105, MQ4116).
-- **New names, from the design (section 16, part 2) and added while building. These wait for the owner's confirmation.**
+- **New names, from the design (section 16, part 2) and added while building, confirmed by the owner on 2026-11-09.**
   - Format: in a relation mapping's `ends` entry, `foreignKeys`, `types` (items `{ entity, foreignKey }` or `{ entity, referencesColumn }`,
     schema title "End type storage"), `idColumn`, `typeColumn` and `referencesColumn`; the mapping key `constants` (items
     `{ column, value }`); `attributes[].column` on a relation mapping; the entity binding key `discriminatorValue`; the binding field forms
     `<endId>.type` and `<endId>.<entityId>`. `typeStorage` is not in the format.
+  - Field names: the field map, Map by name and the drift report name the new fields `<navigation>Type`, `<navigation>Id` and
+    `<navigation><Entity>Id` (the role when the end has no navigation), such as `attachedToType`, `attachedToId` and `attachedToPartId`.
   - Rules: MQ4117, MQ4118, MQ4119 and MQ4120.
   - Template members: on a relation mapping, `links` (each with `table` and `ends`, each end with `end`, `type`, `is_holder`, `columns`,
     `referenced_table`, `referenced_columns`, `foreign_key`, `type_column`, `codes`), `constants` (`column`, `values`), `attributes`
@@ -64,9 +66,9 @@ one.
   - Editor: Held in, The other end's table, Each type's table, A link table, A table per type, Not in this database,
     Linked by, A key, A column per type, A type and an id, An id unique across types, A key to the shared base table, As written, Refers
     to, Rows of this relation, Left out, Not stored, "Nothing is stored in this database.", What the database can't enforce, Copy, "These lists
-    show when the model has no errors.", "Not saved yet: …", "Attribute columns, in the other end's table", "(missing column)", the quick
-    fixes "Remove the key", "Move it to the end's entry", "Open the Storage tab", "Copy the check" and "Keep the stored code", and
-    "*role*: +N not shown" on a both-ends node.
+    show when the model has no errors.", "Not saved yet: …", "Attribute columns, in the other end's table", "*name* (missing)" for a
+    column the table no longer has and "(missing column)" when the name is gone too, the quick fixes "Remove the key", "Move it to the
+    end's entry", "Open the Storage tab", "Copy the check" and "Keep the stored code", and "*role*: +N not shown" on a both-ends node.
   - `process-docs`: the helper `end_name`.
 
 ## 0.21.0 (2026-11-08)
