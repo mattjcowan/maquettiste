@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.21.0 (date to come)
+## 0.21.0 (2026-11-08)
 
 - **Relations with several types at an end, part 1.** One end of a two-ended relation may now list several entities and stereotypes
   (`types`, each entry `{ entity }` or `{ stereotype }`), or say `anyEntity: true`. An end writes exactly one of `entity`, `types` or
@@ -35,19 +35,19 @@ one.
 - **Limits.** Only one end of a two-ended relation may have several types. An n-ary relation can't have one, and a composition's part end
   can't be any entity. A stereotype's own attributes are not read through a navigation. There is no per-type cardinality, role or
   navigation, and a right or trigger point can't be narrowed to one type.
-- **New names, waiting for the owner's confirmation before release.** From the design (section 16): the end keys `types` and `anyEntity`
+- **New names, from the design (section 16) and added while building, confirmed by the owner on 2026-11-08.** From the design: the end keys `types` and `anyEntity`
   and the end type entry `{ entity }` or `{ stereotype }` (schema title "End type"); the rules MQ3041, MQ3042, MQ3043, MQ4115 and MQ4116;
   the template members `end.types`, `end.has_several_types`, `end.stereotypes`, `end.any_entity`, `end.common_base` and
   `navigation.targets`; the API members `EndRecord.types`, `.hasSeveralTypes`, `.stereotypes`, `.anyEntity` and `.commonBase`,
   `NavigationRecord.targets` and `RelationEndSummary.entities`, `.stereotypes`, `.anyEntity` and `.covers`; the index format `e14`;
   the naming key `et:ends`, and `ec:<end id>` for the types of one end (added in the fixes); in the editor, Type, One entity, Several types, Any entity, Stereotypes, Collapse lines, Expand lines,
-  "+N not shown", "through stereotype ...", "any entity". Added while building:
+  "+N not shown", "through *key* (stereotype)" in an entity's related list, such as "through approvable (stereotype)", and "any entity" in a sentence. Added while building:
   - Engine: `RelationEndType`, `EndCoverage`, `RelationEnd.Types`, `.AnyEntity` and `.SingleEntity`, `REnd.OneEntity`.
   - Diagram: `collapsed`, `x` and `y` on a relation's member also hold the lines' toggle and the node's position.
-  - Editor: "N entities" and "1 entity" on a stereotype's box, "Any entity" on a box, "(stereotype)" after a stereotype's key, the
+  - Editor: "N entities" and "1 entity" on a stereotype's box, as the explorer counts them, "Any entity" as a box's title, "(stereotype)" after a stereotype's key, the
     tooltips "Only one end may have several types.", "An n-ary relation's ends name one entity each." and "The part end of a composition
     can't be any entity; list the types it may be.", "An end needs at least one type. Choose One entity or Any entity instead.",
-    "Add a type to end N", "Remove X from the types", and the quick fixes "Use entity", "Remove X" and "Remove the entry".
+    "Add a type to end N", "Remove X from the types", and the quick fixes "Use entity", "Remove the entry" and "Remove *key* (stereotype)". That last button names the stereotype's key, such as "Remove approvable (stereotype)".
   - The `typescript` sample's `nav_type` function.
 
 ## 0.20.0 (2026-11-08)

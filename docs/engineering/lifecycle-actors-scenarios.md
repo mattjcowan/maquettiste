@@ -146,7 +146,7 @@ Rights come before trigger points. They serve three of the four uses directly, t
 
   **The owner agreed on 2026-11-08.** The editor picks the starting look: bundled lines for two types, a junction node for three or more. Each relation has one toggle that collapses its lines into one line to a box listing the types, and back. The toggle changes only the drawing, never the model, and is saved with the diagram like positions and zoom. An end that names a stereotype or a shared base entity draws one line to it. The types an end covers are chosen in the relation's form, not on the canvas.
 
-- **The design** is in [Relations with several types at an end](several-types-design.md). **Part 1 is built** (0.21.0): the model, the rules, processes and scenarios, the resolved model and the editor, with no storage. Storage is part 2 (0.22.0).
+- **The design** is in [Relations with several types at an end](several-types-design.md). **Part 1 is released** in 0.21.0 (#70): the model, the rules, processes and scenarios, the resolved model and the editor, with no storage. Storage is part 2 (0.22.0).
 
 ## 12. What stays out of the model
 
