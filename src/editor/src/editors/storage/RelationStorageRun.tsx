@@ -53,8 +53,15 @@ export function DatabaseRunLists({
   nameOf: (id: string) => string;
   roleOf: (endId: string) => string;
 }) {
-  const view = useDatabaseView(databaseId).data?.view;
-  const item = view?.relationStorage?.find((x) => x.relationId === relationId);
+  const answer = useDatabaseView(databaseId).data;
+  const item = answer?.view?.relationStorage?.find((x) => x.relationId === relationId);
+  // The database view is empty while the model has an error: say why the lists are missing instead of showing nothing.
+  if (answer && (!answer.view || answer.stale))
+    return (
+      <p className="text-12 text-secondary" data-testid="relation-storage-lists-out">
+        These lists show when the model has no errors.
+      </p>
+    );
   return <StorageRunLists item={item} nameOf={nameOf} roleOf={roleOf} />;
 }
 

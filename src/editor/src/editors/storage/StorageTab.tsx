@@ -776,6 +776,7 @@ export function ConstantsGrid({
   onEdit,
   title = "Constants",
   emptyText = "None: every row of the source is this entity's.",
+  skipPrimaryKey = false,
 }: {
   dom: string;
   binding: Binding;
@@ -783,6 +784,8 @@ export function ConstantsGrid({
   onEdit: (change: (b: Binding) => void) => void;
   title?: string;
   emptyText?: string;
+  /** A new constant starts on the first free column that is not a primary key (a relation's link table does; an entity's source doesn't). */
+  skipPrimaryKey?: boolean;
 }) {
   const constants = binding.constants ?? [];
   const set = (next: typeof constants) => onEdit((b) => setConstants(b, next));
@@ -798,7 +801,7 @@ export function ConstantsGrid({
             variant="ghost"
             disabled={!free.length}
             data-testid="binding-add-constant"
-            onClick={() => set([...constants, { column: free[0].key, value: "" }])}
+            onClick={() => set([...constants, { column: ((skipPrimaryKey ? free.find((c) => !c.isPrimaryKey) : undefined) ?? free[0]).key, value: "" }])}
           >
             <Plus /> Add constant
           </Button>

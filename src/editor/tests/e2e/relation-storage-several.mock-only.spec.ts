@@ -123,3 +123,179 @@ test("the finding about a gap offers Copy the check in the Problems panel", asyn
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe("CONSTRAINT ck_comments_attached_to CHECK (attached_type IN ('Assembly', 'Part'))");
 });
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// Picking on a mapping that already exists, setting up A type and an id, and choosing a link table before the entries exist.
+
+const M = {
+  memo: ulid(100),
+  tMemos: ulid(101),
+  tLinks: ulid(102),
+  relMemo: ulid(103),
+  relPinned: ulid(104),
+  relTagged: ulid(105),
+  mapMemo: ulid(106),
+  mapEntity: ulid(107),
+  fkPart: ulid(120),
+  fkAssembly: ulid(121),
+  fkLink: ulid(122),
+  col: (n: number) => ulid(110 + n),
+};
+
+async function seedPicking(page: Page) {
+  await seed(page);
+  const memos = table(M.tMemos, "memos", [
+    [M.col(1), "id"],
+    [M.col(2), "part_id"],
+    [M.col(3), "assembly_id"],
+    [M.col(4), "pin_type", "string"],
+    [M.col(5), "pin_id"],
+  ]);
+  const links = table(M.tLinks, "memo_links", [
+    [M.col(6), "id"],
+    [M.col(7), "memo_id"],
+    [M.col(8), "subject_type", "string"],
+    [M.col(9), "subject_id"],
+  ]);
+  const attachedTypes = [{ entity: ID.part }, { entity: ID.assembly }];
+  const operations = [
+    entity(M.memo, "Memo", 9),
+    {
+      ...memos,
+      foreignKeys: [
+        { id: M.fkPart, name: "fk_part", columns: [M.col(2)], referencesTable: ID.tParts },
+        { id: M.fkAssembly, name: "fk_assembly", columns: [M.col(3)], referencesTable: ID.tAssemblies },
+      ],
+    },
+    { ...links, foreignKeys: [{ id: M.fkLink, name: "fk_memo", columns: [M.col(7)], referencesTable: M.tMemos }] },
+    { kind: "mapping", id: M.mapEntity, name: "Memo in Store", database: ID.db, entity: M.memo, table: M.tMemos },
+    {
+      kind: "relation",
+      id: M.relMemo,
+      name: "Subject",
+      package: BILLING,
+      ends: [
+        { id: ID.end(10), entity: M.memo, role: "memo", navigation: "subjects" },
+        { id: ID.end(11), role: "subject", navigation: "target", max: 1, types: attachedTypes },
+      ],
+    },
+    {
+      kind: "mapping",
+      id: M.mapMemo,
+      name: "Subject in Store",
+      database: ID.db,
+      relation: M.relMemo,
+      ends: [{ end: ID.end(11), types: [{ entity: ID.part, foreignKey: M.fkPart }] }],
+    },
+    {
+      kind: "relation",
+      id: M.relPinned,
+      name: "Pinned",
+      package: BILLING,
+      ends: [
+        { id: ID.end(12), entity: M.memo, role: "memo", navigation: "pins" },
+        { id: ID.end(13), role: "pinnedTo", navigation: "pinned", max: 1, types: attachedTypes },
+      ],
+    },
+    {
+      kind: "relation",
+      id: M.relTagged,
+      name: "Tagged",
+      package: BILLING,
+      ends: [
+        { id: ID.end(14), entity: M.memo, role: "memo", navigation: "tags", max: "*" },
+        { id: ID.end(15), role: "tagged", navigation: "tagged", max: "*", types: attachedTypes },
+      ],
+    },
+  ].map((element) => ({ op: "create", element }));
+  const outcome = await page.evaluate(
+    async (body) => {
+      const res = await fetch("/api/model/batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      return (await res.json()) as { outcome: string; diagnostics?: { rule: string; message: string }[] };
+    },
+    { operations },
+  );
+  expect(outcome.outcome, JSON.stringify(outcome.diagnostics)).toBe("saved");
+}
+
+async function openStorage(page: Page, name: string) {
+  await page.getByLabel("Search the model").fill(name);
+  await page.getByTestId(`explorer-row-${name}`).dblclick();
+  const editor = page.getByRole("region", { name: `Editor: ${name}` });
+  await editor.getByRole("tab", { name: "Storage" }).click();
+  return editor.locator(`[data-testid="relation-storage-database"][data-database="Store"]`);
+}
+
+type Row = { id: string; kind: string; entity?: string };
+
+/** The relation mapping documents of one relation (a relation mapping names no entity). */
+async function relationMappings(page: Page, relation: string) {
+  return page.evaluate(async (rel) => {
+    const index = (await (await fetch("/api/model/index")).json()) as Row[] | { elements: Row[] };
+    const rows = (Array.isArray(index) ? index : index.elements).filter((r) => r.kind === "mapping" && !r.entity);
+    const out: Record<string, unknown>[] = [];
+    for (const row of rows) {
+      const json = ((await (await fetch(`/api/model/elements/${row.id}`)).json()) as { json: Record<string, unknown> }).json;
+      if (json.relation === rel) out.push(json);
+    }
+    return out;
+  }, relation);
+}
+
+test("a key can be picked on a mapping that already exists", async ({ page }) => {
+  await openEditor(page);
+  await seedPicking(page);
+  const store = await openStorage(page, "Subject");
+  await expect(store.getByTestId("relation-held-in")).toHaveValue("other-table");
+  const assembly = store.getByTestId("relation-type-key").nth(1);
+  await assembly.selectOption(M.fkAssembly);
+  await expect(assembly).toHaveValue(M.fkAssembly);
+  await expect.poll(async () => ((await relationMappings(page, M.relMemo))[0]?.ends as { types: unknown[] }[])[0].types.length).toBe(2);
+  const [mapping] = await relationMappings(page, M.relMemo);
+  expect(mapping.ends).toEqual([
+    {
+      end: ID.end(11),
+      types: [
+        { entity: ID.part, foreignKey: M.fkPart },
+        { entity: ID.assembly, foreignKey: M.fkAssembly },
+      ],
+    },
+  ]);
+});
+
+test("A type and an id can be set up: the id column first, then the type column", async ({ page }) => {
+  await openEditor(page);
+  await seedPicking(page);
+  const store = await openStorage(page, "Pinned");
+  await store.getByTestId("relation-held-in").selectOption("other-table");
+  await store.getByTestId("relation-linked-by").selectOption("type-and-id");
+  await store.getByTestId("relation-id-column").selectOption(M.col(5));
+  // The choice stays A type and an id, and the Type column picker is there to use.
+  await expect(store.getByTestId("relation-linked-by")).toHaveValue("type-and-id");
+  const typeColumn = store.getByTestId("relation-type-column");
+  await expect(typeColumn).toBeEnabled();
+  await typeColumn.selectOption(M.col(4));
+  await expect(typeColumn).toHaveValue(M.col(4));
+  await expect.poll(async () => (await relationMappings(page, M.relPinned))[0]?.ends).toEqual([{ end: ID.end(13), idColumn: M.col(5), typeColumn: M.col(4) }]);
+});
+
+test("A link table can be chosen first on a relation with no mapping; it is saved with its entries", async ({ page }) => {
+  await openEditor(page);
+  await seedPicking(page);
+  const store = await openStorage(page, "Tagged");
+  await store.getByTestId("relation-held-in").selectOption("link-table");
+  await store.getByTestId("relation-link-table").selectOption(M.tLinks);
+  // Held on the card, nothing saved: the link table needs a way for each end.
+  await expect(store.getByTestId("relation-storage-held")).toBeVisible();
+  await expect(store.getByTestId("relation-link-table")).toHaveValue(M.tLinks);
+  expect(await relationMappings(page, M.relTagged)).toEqual([]);
+  await store.getByTestId("relation-linked-by").nth(1).selectOption("type-and-id");
+  await store.getByTestId("relation-id-column").selectOption(M.col(9));
+  await store.getByTestId("relation-type-column").selectOption(M.col(8));
+  await store.getByTestId("relation-entry-key").selectOption(M.fkLink);
+  await expect(store.getByTestId("relation-storage-held")).toHaveCount(0);
+  await expect.poll(async () => (await relationMappings(page, M.relTagged)).length).toBe(1);
+  const [mapping] = await relationMappings(page, M.relTagged);
+  expect(mapping).toMatchObject({ junctionTable: M.tLinks });
+  expect((mapping.ends as { end: string }[]).map((e) => e.end).sort()).toEqual([ID.end(14), ID.end(15)].sort());
+});

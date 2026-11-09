@@ -310,8 +310,74 @@ export interface StorageChoice {
 /** Keys of a mapping that the choices never write: their presence means the mapping is shown as written. */
 const FOREIGN_KEYS_OF_OTHER_SHAPES = ["foreignKey", "foreignKeyEnd", "promotedName"] as const;
 
-/** Reads a mapping back into a pair of choices, the table of 19.10 read the other way. A mapping that matches no pair is "As written". */
-export function readChoice(mapping: StorageMapping | null | undefined, ends: readonly StorageEnd[]): StorageChoice {
+/** Whether a half-written entry fits a Linked by draft: every way it states belongs to that choice (nothing written fits any). */
+export function entryAgrees(kind: LinkedBy, entry: EndEntry | undefined): boolean {
+  if (!entry) return true;
+  const hasKey = !!entry.foreignKey;
+  const keysList = !!entry.foreignKeys?.length;
+  const typeKeys = !!entry.types?.some((t) => t.foreignKey);
+  const refers = !!entry.types?.some((t) => t.referencesColumn) || !!entry.referencesColumn;
+  const pointer = !!entry.idColumn || !!entry.typeColumn;
+  if (keysList) return false;
+  switch (kind) {
+    case "key":
+    case "shared-key":
+      return !typeKeys && !refers && !pointer;
+    case "column-per-type":
+      return !hasKey && !refers && !pointer;
+    case "type-and-id":
+      return !hasKey && !typeKeys;
+    case "id":
+      return !hasKey && !typeKeys && !entry.typeColumn;
+  }
+}
+
+/** Whether the mapping, as far as it is written, fits a Held in draft: what is there belongs to that choice, so the draft is not a guess. */
+export function draftAgrees(draft: HeldIn, mapping: StorageMapping | null | undefined, ends: readonly StorageEnd[]): boolean {
+  if (!mapping) return true;
+  if (draft === "none") return mapping.ignore === true;
+  if (mapping.ignore === true) return false;
+  if (FOREIGN_KEYS_OF_OTHER_SHAPES.some((k) => mapping[k]) || mapping.shape === "promoted") return false;
+  const entries = mapping.ends ?? [];
+  if (!entries.every((e) => ends.some((x) => x.id === e.end))) return false;
+  if (draft === "link-table") return true;
+  if (mapping.junctionTable) return false;
+  const pair = pairOfEnds(ends);
+  if (!pair?.a || !pair.b) return false;
+  const [a, b] = [pair.a.id, pair.b.id];
+  const onlyKeys = (e: EndEntry) => !e.foreignKey && !e.types && !e.idColumn && !e.typeColumn && !e.referencesColumn;
+  const onlyTypeKeys = (e: EndEntry) =>
+    !e.foreignKey && !e.foreignKeys && !e.idColumn && !e.typeColumn && !e.referencesColumn && !e.types?.some((t) => !t.foreignKey);
+  if (draft === "other-table") return entries.every((e) => e.end === b);
+  if (draft === "type-tables") return entries.every((e) => e.end === a && onlyKeys(e));
+  return entries.every((e) => (e.end === a && onlyKeys(e)) || (e.end === b && onlyTypeKeys(e)));
+}
+
+/**
+ * Reads a mapping back into a pair of choices, the table of 19.10 read the other way. A mapping that matches no pair is "As written".
+ * `draft` is the choice the person made on the card and may not have written yet: while the mapping is only half-written, a draft that
+ * agrees with it wins. The choice is never one that Held in doesn't offer.
+ */
+export function readChoice(mapping: StorageMapping | null | undefined, ends: readonly StorageEnd[], draft?: HeldIn | null): StorageChoice {
+  const offered = offeredHeldIn(ends);
+  if (draft && draft !== "none" && offered.includes(draft) && draftAgrees(draft, mapping, ends)) {
+    const out: Record<string, LinkedBy | ""> = {};
+    const byEnd = new Map((mapping?.ends ?? []).map((e) => [e.end, e]));
+    for (const end of linkedByEnds(draft, ends)) {
+      const entry = byEnd.get(end.id);
+      const kind = entry ? entryKind(entry, end) : "";
+      out[end.id] = kind !== "" && kind !== "mixed" && kind !== "keys" && offeredLinkedBy(draft, end).includes(kind) ? kind : "";
+    }
+    return { heldIn: draft, linkedBy: out };
+  }
+  const read = readFileChoice(mapping, ends);
+  if (read.heldIn === null || read.heldIn === "as-written" || read.heldIn === "none" || offered.includes(read.heldIn)) return read;
+  // A half-written table per type on a many-to-many reads as the one thing that fits; never a choice that isn't offered.
+  if (offered.includes("table-per-type") && draftAgrees("table-per-type", mapping, ends)) return { heldIn: "table-per-type", linkedBy: {} };
+  return { heldIn: "as-written", linkedBy: {} };
+}
+
+function readFileChoice(mapping: StorageMapping | null | undefined, ends: readonly StorageEnd[]): StorageChoice {
   const none: StorageChoice = { heldIn: null, linkedBy: {} };
   if (!mapping) return none;
   if (mapping.ignore === true) return { heldIn: "none", linkedBy: {} };
@@ -398,10 +464,13 @@ export function setHeldIn(json: StorageMapping, heldIn: HeldIn, ends: readonly S
   delete json.ignore;
   delete json.foreignKey;
   delete json.foreignKeyEnd;
+  // Without a link table yet, the entries of the old choice would only read back as that choice.
+  if (!keepLink || !json.junctionTable) delete json.ends;
   if (!keepLink) {
-    delete json.ends;
     delete json.junctionTable;
     delete json.shape;
+  }
+  if (!keepLink || !json.junctionTable) {
     delete json.constants;
     clearAttributeColumns(json);
   }
@@ -445,7 +514,7 @@ export function setEntryKey(json: StorageMapping, end: string, key: string | nul
 /** Names the foreign keys of an entry, one per table (Each type's table, A table per type). An empty list leaves the entry bare. */
 export function setEntryKeys(json: StorageMapping, end: string, keys: readonly string[]): void {
   const entry = entryOf(json, end);
-  if (keys.length) entry.foreignKeys = [...keys];
+  if (keys.length) entry.foreignKeys = [...new Set(keys)];
   else delete entry.foreignKeys;
   dropBareEntries(json);
 }
@@ -507,6 +576,30 @@ export function setAttributeColumn(json: StorageMapping, attribute: string, colu
     delete at.column;
     json.attributes = list.filter((a) => Object.keys(a).some((k) => k !== "attribute"));
     if (json.attributes.length === 0) delete json.attributes;
+  }
+}
+
+/**
+ * Whether a link-table mapping is complete enough for the engine to take: it names the link table, and every end has an entry that names a
+ * way (a link table with no entry for an end is MQ4011, an entry with no way MQ4009). Until then the card holds the edit and writes nothing.
+ */
+export function linkTableComplete(mapping: StorageMapping, ends: readonly StorageEnd[]): boolean {
+  if (!mapping.junctionTable) return false;
+  return ends.every((end) => {
+    const entry = mapping.ends?.find((e) => e.end === end.id);
+    return !!entry && !isBare(entry);
+  });
+}
+
+/** The keys of a mapping the choices write; a held edit replaces exactly these. */
+const STORAGE_KEYS = ["ignore", "shape", "foreignKey", "foreignKeyEnd", "promotedName", "junctionTable", "ends", "constants", "attributes"] as const;
+
+/** Copies what the choices write from one mapping to another (a key the source lacks is removed), so a held edit lands as one change. */
+export function copyStorageKeys(target: Record<string, unknown>, source: StorageMapping): void {
+  for (const k of STORAGE_KEYS) {
+    const v = (source as Record<string, unknown>)[k];
+    if (v === undefined) delete target[k];
+    else target[k] = structuredClone(v);
   }
 }
 
@@ -582,4 +675,33 @@ export function sharedTables(boundByEntity: readonly ReadonlySet<string>[]): Set
   if (boundByEntity.length === 0) return new Set();
   const [first, ...rest] = boundByEntity;
   return new Set([...first].filter((t) => rest.every((s) => s.has(t))));
+}
+
+/**
+ * The columns of a link table that point: the id and type columns of the entries and the columns of the foreign keys they name. A constant or an
+ * attribute column on one of these is refused (MQ4009).
+ */
+export function pointerColumnIds(junction: TableDocWithKeys | undefined, mapping: StorageMapping): Set<string> {
+  const keys = new Set<string>();
+  for (const e of mapping.ends ?? []) {
+    if (e.foreignKey) keys.add(e.foreignKey);
+    for (const k of e.foreignKeys ?? []) keys.add(k);
+    for (const t of e.types ?? []) if (t.foreignKey) keys.add(t.foreignKey);
+  }
+  const out = new Set<string>();
+  for (const e of mapping.ends ?? []) for (const c of [e.idColumn, e.typeColumn]) if (c) out.add(c);
+  const idOf = (ref: string) => junction?.columns?.find((c) => c.id === ref || c.name === ref)?.id ?? ref;
+  for (const k of junction?.foreignKeys ?? []) if (keys.has(k.id)) for (const c of k.columns) out.add(idOf(c));
+  return out;
+}
+
+/**
+ * Whether a relation attribute can take one column of a link table: not a collection and not typed by a value object (as the engine's
+ * `IsCompound`). A reference to anything else (an enum, a reference type) is one column. `kindOf` answers an element's kind.
+ */
+export function attributeTakesColumn(a: { type?: unknown; collection?: boolean | undefined }, kindOf: (id: string) => string | undefined): boolean {
+  if (a.collection === true) return false;
+  if (typeof a.type !== "object" || a.type === null) return true;
+  const ref = (a.type as { ref?: unknown }).ref;
+  return typeof ref === "string" && kindOf(ref) !== "value-object";
 }

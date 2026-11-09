@@ -8,6 +8,7 @@ import { newId } from "@/lib/ids";
 import { openTab, setView } from "@/editors/tabs";
 import type { useElementEdits } from "@/editors/mappingEdit";
 import type { EditorStore } from "@/state/store";
+import { boundTableOf } from "@/editors/storage/relationStorage";
 import type { StorageFix } from "./storageFix";
 
 type Json = Record<string, unknown>;
@@ -40,6 +41,7 @@ export async function applyStorageFix(
     }
     return null;
   }
+  if (fix.action === "move-key") return moveKey(fix, await qc.ensureQueryData(indexQuery), edits);
   const rows = await qc.ensureQueryData(indexQuery);
   const database = rows.find((r) => r.kind === "database" && r.name === fix.database);
   if (!database) return `No database is named '${fix.database}'.`;
@@ -61,11 +63,12 @@ export async function applyStorageFix(
     return null;
   }
   // keep-code: the entity's binding to the database, else its mapping element there (created when there is none).
-  const entity = rows.find((r) => r.kind === "entity" && r.name === fix.entity);
-  if (!entity) return `No entity is named '${fix.entity}'.`;
+  const entity = rows.find((r) => r.kind === "entity" && r.id === fix.entity);
+  if (!entity) return "The entity is not in the model any more.";
   const doc = (await endpoints.getElement(entity.id)).json as unknown as Json;
   const bindings = Array.isArray(doc.bindings) ? (doc.bindings as Json[]) : [];
-  const value = /^-?\d+$/.test(fix.code) ? Number(fix.code) : fix.code;
+  // An integer code stays a number and a text code ('007') stays text: the finding prints each as the model holds it.
+  const value = fix.code;
   if (bindings.some((b) => b.database === database.id)) {
     await edits.update(entity.id, (j) => {
       const binding = (j.bindings as Json[]).find((b) => b.database === database.id);
@@ -90,3 +93,56 @@ export async function applyStorageFix(
 }
 
 export type { ModelJson };
+
+/** The entities an end lists (a one-type end names one; an end with several types lists them). Any entity and stereotype entries name none. */
+const endEntities = (end: Json): string[] =>
+  typeof end.entity === "string" ? [end.entity] : ((end.types as Json[] | undefined) ?? []).flatMap((t) => (typeof t.entity === "string" ? [t.entity] : []));
+
+/**
+ * Moves a mapping's top-level `foreignKey` to the entry of the end whose table the key refers to (the key points at that end). Null when done,
+ * else the reason: when no end's table is the one the key refers to, nothing moves.
+ */
+async function moveKey(
+  fix: Extract<StorageFix, { action: "move-key" }>,
+  rows: ElementSummary[],
+  edits: ReturnType<typeof useElementEdits>,
+): Promise<string | null> {
+  const mapping = (await endpoints.getElement(fix.mapping)).json as unknown as Json;
+  const relation = (await endpoints.getElement(fix.relation)).json as unknown as Json;
+  const database = String(mapping.database ?? "");
+  // The table the key refers to: found among the database's tables by the key's id.
+  let referenced: string | null = null;
+  for (const row of rows.filter((r) => r.kind === "table" && r.database === database)) {
+    const table = (await endpoints.getElement(row.id)).json as unknown as { foreignKeys?: { id: string; referencesTable: string }[] };
+    const key = table.foreignKeys?.find((k) => k.id === fix.key);
+    if (key) {
+      referenced = key.referencesTable;
+      break;
+    }
+  }
+  if (!referenced) return "The key was not found in a table of this database; remove it instead.";
+  const entries = (mapping.ends as Json[] | undefined) ?? [];
+  const ends = (relation.ends as Json[] | undefined) ?? [];
+  let target: string | null = null;
+  for (const end of ends) {
+    for (const entity of endEntities(end)) {
+      const doc = (await endpoints.getElement(entity)).json as unknown as Json;
+      let table = boundTableOf(doc, database);
+      if (!table)
+        for (const row of rows.filter((r) => r.kind === "mapping" && r.entity === entity && r.database === database)) {
+          const file = (await endpoints.getElement(row.id)).json as unknown as Json;
+          if (file.ignore !== true && typeof file.table === "string") table = file.table;
+        }
+      if (table === referenced) target = String(end.id);
+    }
+    if (target) break;
+  }
+  if (!target) return "The key does not refer to the table of either end; remove it instead.";
+  if (entries.some((e) => e.end === target)) return "That end already has an entry; remove the key instead.";
+  await edits.update(fix.mapping, (j) => {
+    j.ends = [...((j.ends as Json[] | undefined) ?? []), { end: target, foreignKey: fix.key }];
+    delete j.foreignKey;
+    delete j.foreignKeyEnd;
+  });
+  return null;
+}

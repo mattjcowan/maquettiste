@@ -2,7 +2,12 @@
 // offered, the entries each pair writes, the pair read back from a mapping, and the pickers' filters.
 import { describe, expect, it } from "vitest";
 import {
+  attributeTakesColumn,
   clearEntryWays,
+  copyStorageKeys,
+  entryAgrees,
+  linkTableComplete,
+  pointerColumnIds,
   idColumnChoices,
   keysReferring,
   linkedByEnds,
@@ -315,5 +320,116 @@ describe("the pickers' filters", () => {
   it("finds the tables every covered entity has, to offer a key to the shared base table", () => {
     expect(sharedTables([new Set(["parts", "items"]), new Set(["assemblies", "items"])])).toEqual(new Set(["items"]));
     expect(sharedTables([])).toEqual(new Set());
+  });
+});
+
+describe("a half-written choice keeps its choice", () => {
+  // A to-one other end, so every Held in choice is offered.
+  const ends = [commentOne, attachedOne];
+  const half: Record<string, StorageMapping[]> = {
+    "other-table": [{}, { ends: [{ end: "e2", idColumn: "c" }] }, { ends: [{ end: "e2", types: [{ entity: "Part", foreignKey: "k" }] }] }],
+    "type-tables": [{}, { ends: [{ end: "e1", foreignKeys: ["k1"] }] }],
+    "link-table": [{}, { junctionTable: "J", shape: "junction" }, { junctionTable: "J", shape: "junction", ends: [{ end: "e1", foreignKey: "k" }] }],
+    "table-per-type": [{}, { ends: [{ end: "e1", foreignKeys: ["k1"] }] }, { ends: [{ end: "e2", types: [{ entity: "Part", foreignKey: "k" }] }] }],
+    none: [{ ignore: true }],
+  };
+  for (const [choice, mappings] of Object.entries(half))
+    it(`reads each half-written state of ${choice} as ${choice} while the card holds that choice`, () => {
+      for (const mapping of mappings) expect(readChoice(mapping, ends, choice as never).heldIn, JSON.stringify(mapping)).toBe(choice);
+    });
+
+  it("never returns a choice Held in does not offer", () => {
+    const many = [comment, attachedMany];
+    const offered = offeredHeldIn(many);
+    const states: StorageMapping[] = [
+      {},
+      { ends: [{ end: "e1", foreignKeys: ["k1"] }] },
+      { ends: [{ end: "e2", types: [{ entity: "Part", foreignKey: "k" }] }] },
+      { ends: [{ end: "e2", idColumn: "c" }] },
+      { ends: [{ end: "e2", foreignKey: "k" }] },
+      { junctionTable: "J" },
+    ];
+    for (const mapping of states)
+      for (const draft of [null, "other-table", "type-tables", "link-table", "table-per-type", "none"] as const) {
+        const held = readChoice(mapping, many, draft).heldIn;
+        expect(held === null || held === "as-written" || held === "none" || offered.includes(held), `${JSON.stringify(mapping)} / ${draft} -> ${held}`).toBe(
+          true,
+        );
+      }
+    // The half-written table per type of a many-to-many reads as itself, with no draft.
+    expect(readChoice({ ends: [{ end: "e1", foreignKeys: ["k1"] }] }, many).heldIn).toBe("table-per-type");
+    expect(readChoice({ ends: [{ end: "e2", types: [{ entity: "Part", foreignKey: "k" }] }] }, many).heldIn).toBe("table-per-type");
+  });
+
+  it("lets the file win over a draft it disagrees with", () => {
+    expect(readChoice({ ends: [{ end: "e1", foreignKeys: ["k1"] }] }, ends, "other-table").heldIn).toBe("type-tables");
+    expect(readChoice({ junctionTable: "J", ends: [{ end: "e1", foreignKey: "k" }] }, ends, "other-table").heldIn).toBe("link-table");
+    expect(readChoice({ ignore: true }, ends, "other-table").heldIn).toBe("none");
+  });
+
+  it("keeps A type and an id while only the id column is written", () => {
+    expect(entryAgrees("type-and-id", { end: "e2", idColumn: "c" })).toBe(true);
+    expect(entryAgrees("type-and-id", { end: "e2", idColumn: "c", typeColumn: "t" })).toBe(true);
+    expect(entryAgrees("id", { end: "e2", idColumn: "c", typeColumn: "t" })).toBe(false);
+    expect(entryAgrees("column-per-type", { end: "e2", idColumn: "c" })).toBe(false);
+    expect(entryAgrees("key", { end: "e1" })).toBe(true);
+  });
+
+  it("clears the entries when A link table is chosen and no link table is named", () => {
+    const json: StorageMapping = { ends: [{ end: "e2", types: [{ entity: "Part", foreignKey: "k" }] }] };
+    setHeldIn(json, "link-table", ends);
+    expect(json.ends).toBeUndefined();
+    expect(readChoice(json, ends, "link-table").heldIn).toBe("link-table");
+  });
+
+  it("is whole only with a link table and a way for each end", () => {
+    expect(linkTableComplete({ junctionTable: "J" }, ends)).toBe(false);
+    expect(linkTableComplete({ junctionTable: "J", ends: [{ end: "e1", foreignKey: "k" }] }, ends)).toBe(false);
+    expect(
+      linkTableComplete(
+        {
+          junctionTable: "J",
+          ends: [
+            { end: "e1", foreignKey: "k" },
+            { end: "e2", idColumn: "c" },
+          ],
+        },
+        ends,
+      ),
+    ).toBe(true);
+    const target: Record<string, unknown> = { name: "x", ignore: true };
+    copyStorageKeys(target, { junctionTable: "J", shape: "junction" });
+    expect(target).toEqual({ name: "x", junctionTable: "J", shape: "junction" });
+  });
+
+  it("writes one key once when two types share a table", () => {
+    const json: StorageMapping = {};
+    setEntryKeys(json, "e1", ["k", "k", "j"]);
+    expect(json.ends).toEqual([{ end: "e1", foreignKeys: ["k", "j"] }]);
+  });
+});
+
+describe("what a link table's constants and attribute columns may use", () => {
+  const junction: TableDocWithKeys = {
+    id: "J",
+    columns: [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }],
+    foreignKeys: [{ id: "fk1", columns: ["a"], referencesTable: "T" }],
+  };
+  it("leaves out the columns of the keys the entries name, and the id and type columns", () => {
+    const mapping: StorageMapping = {
+      ends: [
+        { end: "e1", foreignKey: "fk1" },
+        { end: "e2", idColumn: "b", typeColumn: "c" },
+      ],
+    };
+    expect([...pointerColumnIds(junction, mapping)].sort()).toEqual(["a", "b", "c"]);
+  });
+  it("takes a reference to an enum as one column, and refuses collections and value objects", () => {
+    const kinds: Record<string, string> = { E: "enum", V: "value-object" };
+    const kindOf = (id: string) => kinds[id];
+    expect(attributeTakesColumn({ type: "string" }, kindOf)).toBe(true);
+    expect(attributeTakesColumn({ type: { ref: "E" } }, kindOf)).toBe(true);
+    expect(attributeTakesColumn({ type: { ref: "V" } }, kindOf)).toBe(false);
+    expect(attributeTakesColumn({ type: "string", collection: true }, kindOf)).toBe(false);
   });
 });

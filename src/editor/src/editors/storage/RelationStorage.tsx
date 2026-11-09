@@ -6,7 +6,7 @@
 // second mapping for a database that has one; the foreign key picker offers only the keys the engine accepts (held by the
 // dependent end's table).
 import { useRef } from "react";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, TriangleAlert } from "lucide-react";
 import { useElements, useIndex, useValidation } from "@/api/queries";
 import type { RelationDoc } from "@/api/types";
 import { Field, Select } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { ElementLink } from "@/editors/EntityEditor";
 import type { RelationMappingLike, RelationShape } from "@/editors/inheritance";
 import { useElementEdits } from "@/editors/mappingEdit";
 import {
+  attributeTakesColumn,
   boundTableOf,
   dependentEnd,
   foreignKeyChoices,
@@ -74,13 +75,30 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
     for (const entity of listed)
       for (let at = lookup.byId.get(entity)?.base, guard = 0; at && !withBases.has(at) && guard < 64; at = lookup.byId.get(at)?.base, guard++)
         withBases.add(at);
-  const entityDocs = useElements(severalMode ? [...withBases] : [...new Set(ends.map(endEntity).filter(Boolean))]);
-  const boundIn = (entity: string, database: string) => boundTableOf(entityDocs.byId.get(entity)?.json as Json | undefined, database);
-  const bound = databases.map((d) => ends.map((e) => boundTableOf(entityDocs.byId.get(endEntity(e))?.json as Json | undefined, d.id)));
+  const wantedEntities = severalMode ? [...withBases] : [...new Set(ends.map(endEntity).filter(Boolean))];
+  const entityDocs = useElements(wantedEntities);
+  // An entity is bound to a table by a binding on its document, or by an entity mapping file with a `table` (the engine reads both; a binding wins).
+  const entityMapRows = lookup.ofKind("mapping").filter((m) => !!m.entity && wantedEntities.includes(m.entity));
+  const entityMapDocs = useElements(entityMapRows.map((m) => m.id));
+  const mappedTable = (entity: string, database: string): string | null => {
+    for (const row of entityMapRows) {
+      if (row.entity !== entity || row.database !== database) continue;
+      const doc = entityMapDocs.byId.get(row.id)?.json as Json | undefined;
+      if (doc && doc.ignore !== true && typeof doc.table === "string") return doc.table;
+    }
+    return null;
+  };
+  const boundIn = (entity: string, database: string) =>
+    boundTableOf(entityDocs.byId.get(entity)?.json as Json | undefined, database) ?? mappedTable(entity, database);
+  const bound = databases.map((d) => ends.map((e) => boundIn(endEntity(e), d.id)));
   const severalTables = severalMode ? databases.flatMap((d) => [...withBases].map((en) => boundIn(en, d.id))) : [];
   const junctions = mappings.map((m) => m.junctionTable).filter((t): t is string => !!t);
   const tableDocs = useElements([...new Set([...bound.flat(), ...severalTables].filter((t): t is string => !!t && !t.includes("@")).concat(junctions))]);
   const tableOf = (tid: string | null | undefined) => (tid ? (tableDocs.byId.get(tid)?.json as TableDocWithKeys | undefined) : undefined);
+  // A relation attribute takes one column unless it is a collection or typed by a value object (an enum or a reference type is one column).
+  const columnAttributes = (json.attributes ?? [])
+    .filter((a) => attributeTakesColumn(a as { type?: unknown; collection?: boolean }, (ref) => lookup.byId.get(ref)?.kind))
+    .map((a) => ({ id: a.id, name: a.name }));
   const validation = useValidation();
   const edits = useElementEdits();
   const relationName = json.name;
@@ -112,9 +130,10 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
         const problems = diagnostics.filter(
           (x) =>
             x.severity !== "info" &&
+            x.rule !== "MQ4120" &&
             ((!!mapping && x.elementId === mapping.id) ||
               (x.elementId === id && x.rule === "MQ4011" && x.message.includes(d.name)) ||
-              (["MQ4117", "MQ4120"].includes(x.rule) && (x.elementId === id || endIds.has(x.elementId ?? "")) && x.message.includes(`'${d.name}'`))),
+              (x.rule === "MQ4117" && (x.elementId === id || endIds.has(x.elementId ?? "")) && x.message.includes(`'${d.name}'`))),
         );
         // MQ4115 (info): nothing is stored in this database for a relation with an end of several types.
         const nothingStored = diagnostics.some((x) => x.rule === "MQ4115" && endIds.has(x.elementId ?? "") && x.message.includes(`database '${d.name}'`));
@@ -134,7 +153,7 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
                 roleOf={(endId) => ends.find((e) => e.id === endId)?.role ?? endId}
                 mapping={mapping}
                 change={(mutate) => change((j) => mutate(j as unknown as StorageMapping))}
-                loading={mappingsLoading || tableDocs.pending || entityDocs.pending}
+                loading={mappingsLoading || tableDocs.pending || entityDocs.pending || entityMapDocs.pending}
                 tableOf={tableOf}
                 boundTable={(entity) => boundIn(entity, d.id)}
                 sharedBound={(entity) => {
@@ -150,9 +169,7 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
                   .ofKind("table")
                   .filter((t) => t.database === d.id && !t.entity)
                   .map((t) => ({ id: t.id, name: t.name }))}
-                attributes={(json.attributes ?? [])
-                  .filter((a) => (a as { collection?: boolean }).collection !== true && typeof a.type !== "object")
-                  .map((a) => ({ id: a.id, name: a.name }))}
+                attributes={columnAttributes}
               />
             ) : bothBound && !manyToMany ? (
               <ForeignKeyPicker
@@ -186,14 +203,12 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
             ) : (
               <OlderShape mapping={mapping} />
             )}
-            {!severalMode && bothBound && manyToMany && tableOf(mapping?.junctionTable) && mapping ? (
+            {!severalMode && tableOf(mapping?.junctionTable) && mapping ? (
               <LinkTableExtras
                 dom={`${id}-${d.id}`}
                 junction={tableOf(mapping.junctionTable)!}
                 mapping={mapping}
-                attributes={(json.attributes ?? [])
-                  .filter((a) => (a as { collection?: boolean }).collection !== true && typeof a.type !== "object")
-                  .map((a) => ({ id: a.id, name: a.name }))}
+                attributes={columnAttributes}
                 change={(mutate) => change((j) => mutate(j as unknown as StorageMapping))}
                 loading={mappingsLoading}
               />
@@ -212,15 +227,19 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
               </p>
             ) : null}
             {problems.length ? (
-              <ul className="flex flex-col gap-0.5 text-12 text-danger" data-testid="relation-storage-problems">
-                {problems.map((p, i) => (
-                  <li key={i} className="flex gap-1">
-                    <CircleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                    <span>
-                      <span className="font-mono">{p.rule}</span> {p.message}
-                    </span>
-                  </li>
-                ))}
+              <ul className="flex flex-col gap-0.5 text-12" data-testid="relation-storage-problems">
+                {problems.map((p, i) => {
+                  const warning = p.severity === "warning";
+                  const Icon = warning ? TriangleAlert : CircleAlert;
+                  return (
+                    <li key={i} className={`flex gap-1 ${warning ? "text-warning" : "text-danger"}`} data-severity={p.severity}>
+                      <Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                      <span>
+                        <span className="font-mono">{p.rule}</span> {p.message}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
             {summary ? <ElementLink summary={summary} secondary="relation mapping" pin={false} /> : null}

@@ -4,6 +4,7 @@
 // carried out by `applyStorageFix`.
 import type { Diagnostic, ModelJson } from "@/api/types";
 import { clone } from "@/lib/json";
+import { docEndHasSeveralTypes } from "@/model/endTypes";
 
 type Json = Record<string, unknown>;
 
@@ -14,8 +15,10 @@ export type StorageFix =
   | { kind: "storage"; action: "ignore"; relation: string; database: string; label: string }
   /** MQ4118: puts the text to copy on the clipboard. */
   | { kind: "storage"; action: "copy"; text: string; label: string }
-  /** MQ4119: the old code becomes the `discriminatorValue` of the entity's binding or mapping in the database (decision 52). */
-  | { kind: "storage"; action: "keep-code"; entity: string; database: string; code: string; label: string };
+  /** MQ4119: the old code becomes the `discriminatorValue` of the entity's binding or mapping in the database (decision 52). `entity` is its id. */
+  | { kind: "storage"; action: "keep-code"; entity: string; database: string; code: string | number; label: string }
+  /** MQ4009 on a top-level `foreignKey` of a relation with an end of several types: the key goes to the entry of the end whose table it refers to. */
+  | { kind: "storage"; action: "move-key"; mapping: string; relation: string; key: string; label: string };
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v ? v : undefined);
 
@@ -28,39 +31,37 @@ export function copyTextOf(message: string): string | null {
   return parts.length ? parts.map((p) => p.trim()).join("\n") : null;
 }
 
-/** The entity, database and old code an MQ4119 message names. */
-export function keptCodeOf(message: string): { entity: string; database: string; code: string } | null {
-  const at = /type code of '([^']+)' in database '([^']+)' changed from '([^']*)' to/.exec(message);
-  return at ? { entity: at[1], database: at[2], code: at[3] } : null;
+/**
+ * The entity name, database and old code an MQ4119 message names. A text code is printed in quotes ('007' stays text), an integer code
+ * without (7 stays a number).
+ */
+export function keptCodeOf(message: string): { entity: string; database: string; code: string | number } | null {
+  const at = /type code of '([^']+)' in database '([^']+)' changed from (?:'(.*?)'|(-?[0-9]+)) to (?:'|-?[0-9])/.exec(message);
+  if (!at) return null;
+  return { entity: at[1], database: at[2], code: at[4] !== undefined ? Number(at[4]) : (at[3] ?? "") };
 }
 
 const KEYS_REFUSED = new Set(["foreignKeyEnd", "foreignKey", "promotedName", "shape", "attributes", "constants"]);
 
-/**
- * MQ4009 on a relation mapping with an end of several types: the key goes (its pointer is `/<key>`), or a top-level `foreignKey` moves to the
- * entry of an end that has none (the end the dependent end `foreignKeyEnd` doesn't name, else the first end with no entry), as the way that
- * end is pointed at. `relation` is the mapping's relation document.
- */
-export function mappingKeyFix(mapping: ModelJson, relation: ModelJson | undefined, pointer: string): { json: ModelJson; label: string } | null {
+/** The relation's ends as documents write them. */
+const endsOf = (relation: ModelJson | undefined): Json[] => ((relation as Json | undefined)?.ends as Json[] | undefined) ?? [];
+
+/** Whether a relation has an end of several types, where a top-level `foreignKey` can move to an end's entry. */
+export const hasSeveralTypes = (relation: ModelJson | undefined): boolean => endsOf(relation).some((e) => docEndHasSeveralTypes(e));
+
+/** MQ4009 on a relation mapping: the refused key goes (its pointer is `/<key>`). */
+export function mappingKeyFix(mapping: ModelJson, _relation: ModelJson | undefined, pointer: string): { json: ModelJson; label: string } | null {
   const key = /^\/([A-Za-z]+)$/.exec(pointer)?.[1];
   if (!key || !KEYS_REFUSED.has(key) || mapping.kind !== "mapping" || (mapping as Json)[key] === undefined) return null;
   const next = clone(mapping) as Json;
-  if (key === "foreignKey" && relation) {
-    const ends = ((relation as Json).ends as Json[] | undefined) ?? [];
-    const entries = (next.ends as Json[] | undefined) ?? [];
-    const lacking = ends.filter((e) => !entries.some((x) => x.end === e.id));
-    const dependent = str(next.foreignKeyEnd);
-    const target = lacking.find((e) => e.id !== dependent) ?? lacking[0];
-    if (target && typeof next.foreignKey === "string") {
-      entries.push({ end: target.id, foreignKey: next.foreignKey });
-      next.ends = entries;
-      delete next.foreignKey;
-      delete next.foreignKeyEnd;
-      return { json: next as ModelJson, label: "Move it to the end's entry" };
-    }
-  }
   delete next[key];
   return { json: next as ModelJson, label: "Remove the key" };
+}
+
+/** The key of a top-level `foreignKey` that can move to an end's entry: only on a relation with an end of several types. */
+export function movableKey(mapping: ModelJson, relation: ModelJson | undefined, pointer: string): string | null {
+  const key = (mapping as Json).foreignKey;
+  return pointer === "/foreignKey" && mapping.kind === "mapping" && typeof key === "string" && hasSeveralTypes(relation) ? key : null;
 }
 
 /**
@@ -87,18 +88,32 @@ export function storageFix(
   }
   if (d.rule === "MQ4119") {
     const kept = keptCodeOf(d.message);
-    return kept ? { kind: "storage", action: "keep-code", ...kept, label: "Keep the stored code" } : null;
+    // The entity is found by id: the finding sits on the entity itself, or on the mapping that carries its code.
+    const entity = element.kind === "entity" ? id : element.kind === "mapping" ? str((element as Json).entity) : undefined;
+    return kept && entity ? { kind: "storage", action: "keep-code", entity, database: kept.database, code: kept.code, label: "Keep the stored code" } : null;
   }
   if (d.rule === "MQ4009") {
+    const key = movableKey(element, relation, d.jsonPointer ?? "");
+    const mappingRelation = str((element as Json).relation);
+    if (key && mappingRelation)
+      return { kind: "storage", action: "move-key", mapping: id, relation: mappingRelation, key, label: "Move it to the end's entry" };
     const fix = mappingKeyFix(element, relation, d.jsonPointer ?? "");
     return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;
   }
   return null;
 }
 
-/** The second fix of MQ4115: open the Storage tab. */
-export function storageExtras(d: Diagnostic, element: ModelJson): StorageFix[] {
+/** The second fix of MQ4115 (open the Storage tab), and of MQ4009 on a key that can move (remove it instead). */
+export function storageExtras(
+  d: Diagnostic,
+  element: ModelJson,
+  relation?: ModelJson,
+): (StorageFix | { kind: "update"; id: string; json: ModelJson; label: string })[] {
   const id = str(element.id);
+  if (d.rule === "MQ4009" && id && movableKey(element, relation, d.jsonPointer ?? "")) {
+    const fix = mappingKeyFix(element, relation, d.jsonPointer ?? "");
+    return fix ? [{ kind: "update", id, json: fix.json, label: fix.label }] : [];
+  }
   return d.rule === "MQ4115" && element.kind === "relation" && id ? [{ kind: "storage", action: "open", relation: id, label: "Open the Storage tab" }] : [];
 }
 

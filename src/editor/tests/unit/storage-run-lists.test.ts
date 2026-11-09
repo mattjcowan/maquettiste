@@ -99,27 +99,57 @@ describe("the quick fixes", () => {
     expect(copyTextOf("so it can't check the type an id points at.")).toBeNull();
     expect(deriveQuickFix(diag("MQ4118", message, "MAP", "/ends/1"), null, () => mapping({}))).toMatchObject({ action: "copy", label: "Copy the check" });
   });
-  it("MQ4119: Keep the stored code names the entity, database and old code", () => {
+  it("MQ4119: Keep the stored code names the entity by id, the database and the old code", () => {
     const message =
       "Since the baseline, the type code of 'Part' in database 'main' changed from 'Part' to 'P', and column 'attached_type' of table 'comments' holds codes.";
     expect(keptCodeOf(message)).toEqual({ entity: "Part", database: "main", code: "Part" });
-    expect(deriveQuickFix(diag("MQ4119", message, "MAP", ""), null, () => mapping({}))).toMatchObject({
+    const entity = { kind: "entity", id: "ENT", name: "Part" } as unknown as ModelJson;
+    expect(deriveQuickFix(diag("MQ4119", message, "ENT", ""), null, () => entity)).toMatchObject({
       action: "keep-code",
+      entity: "ENT",
       code: "Part",
       label: "Keep the stored code",
     });
+    // On a mapping that carries the code, the entity is the mapping's own.
+    expect(deriveQuickFix(diag("MQ4119", message, "MAP", ""), null, () => mapping({ entity: "ENT2" }))).toMatchObject({ entity: "ENT2" });
+    // Nothing names an entity: no fix (never a guess by name).
+    expect(deriveQuickFix(diag("MQ4119", message, "MAP", ""), null, () => mapping({}))).toBeNull();
   });
-  it("MQ4009: removes a refused key, or moves a top-level foreignKey to the entry of an end with none", () => {
+  it("MQ4119: an old integer code stays a number and '007' stays text", () => {
+    const text = (from: string, to: string) =>
+      `Since the baseline, the type code of 'Part' in database 'main' changed from ${from} to ${to}, and column 'c' of table 't' holds codes.`;
+    expect(keptCodeOf(text("7", "'P'"))?.code).toBe(7);
+    expect(keptCodeOf(text("-3", "12"))?.code).toBe(-3);
+    expect(keptCodeOf(text("'007'", "'P'"))?.code).toBe("007");
+    expect(keptCodeOf(text("''", "'P'"))?.code).toBe("");
+  });
+  it("MQ4009: a top-level foreignKey moves only on a relation with an end of several types; otherwise the key is removed", () => {
     expect(mappingKeyFix(mapping({ promotedName: "x" }), relation, "/promotedName")).toMatchObject({ label: "Remove the key" });
-    const moved = mappingKeyFix(mapping({ foreignKey: "FK", ends: [{ end: "E1", idColumn: "C" }] }), relation, "/foreignKey");
-    expect(moved?.label).toBe("Move it to the end's entry");
-    expect(moved?.json).toMatchObject({
+    const d = diag("MQ4009", "Remove it.", "MAP", "/foreignKey");
+    // One-type relation: Remove the key, no move.
+    const one = (id: string) => (id === "REL" ? relation : mapping({ foreignKey: "FK" }));
+    expect(deriveQuickFix(d, null, one)).toMatchObject({ kind: "update", label: "Remove the key" });
+    expect(extraQuickFixes(d, one)).toEqual([]);
+    // An end of several types: the main fix moves it (the end is found when applied, from the table the key refers to), Remove stays beside it.
+    const several = {
+      kind: "relation",
+      id: "REL",
+      name: "Notes",
       ends: [
-        { end: "E1", idColumn: "C" },
-        { end: "E2", foreignKey: "FK" },
+        { id: "E1", entity: "A" },
+        { id: "E2", types: [{ entity: "B" }, { entity: "C" }] },
       ],
+    } as unknown as ModelJson;
+    const have = (id: string) => (id === "REL" ? several : mapping({ foreignKey: "FK" }));
+    expect(deriveQuickFix(d, null, have)).toEqual({
+      kind: "storage",
+      action: "move-key",
+      mapping: "MAP",
+      relation: "REL",
+      key: "FK",
+      label: "Move it to the end's entry",
     });
-    expect((moved?.json as Json).foreignKey).toBeUndefined();
+    expect(extraQuickFixes(d, have)).toMatchObject([{ kind: "update", id: "MAP", label: "Remove the key" }]);
     expect(mappingKeyFix(mapping({}), relation, "/shape")).toBeNull();
   });
 });

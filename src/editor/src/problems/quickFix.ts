@@ -475,6 +475,10 @@ function verbFix(rule: string, element: ModelJson, pointer: string, id: string):
 export function extraQuickFixes(d: Diagnostic, doc: (id: string) => ModelJson | undefined): QuickFix[] {
   const element = d.elementId ? doc(d.elementId) : undefined;
   if (element && d.rule === "MQ4115") return storageExtras(d, element);
+  if (element && d.rule === "MQ4009" && element.kind === "mapping") {
+    const relation = relationOfMapping(d, element);
+    return storageExtras(d, element, relation ? doc(relation) : undefined);
+  }
   if (!element || !d.elementId || element.kind !== "process") return [];
   const id = typeof element.id === "string" ? element.id : d.elementId;
   if (d.rule === "MQ9904") {

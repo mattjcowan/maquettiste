@@ -12,13 +12,17 @@ import {
   HELD_IN_LABELS,
   LINKED_BY_LABELS,
   clearEntryWays,
+  copyStorageKeys,
+  entryAgrees,
   entryKind,
   idColumnChoices,
   keysReferring,
+  linkTableComplete,
   linkedByEnds,
   offeredHeldIn,
   offeredLinkedBy,
   pairOfEnds,
+  pointerColumnIds,
   primaryKeyColumn,
   readChoice,
   setAttributeColumn,
@@ -70,31 +74,61 @@ const none = "";
 export function SeveralTypesCard(props: SeveralCardProps) {
   const { dom, databaseName, ends, roleOf, mapping, change, loading, tableOf, boundTable, sharedBound, entityName, linkTables, attributes } = props;
   const models = ends.map(storageEndOf);
-  const choice = readChoice(mapping, models);
   const [heldDraft, setHeldDraft] = useState<HeldIn | null>(null);
   const [linkedDraft, setLinkedDraft] = useState<Record<string, LinkedBy>>({});
+  // A link table is accepted only with an entry for each end, so an edit that leaves it short is held here and written when it is whole.
+  const [staged, setStaged] = useState<StorageMapping | null>(null);
+  const shown: (StorageMapping & { id: string }) | null = staged ? { ...staged, id: mapping?.id ?? "" } : mapping;
+  // A draft that agrees with what is written wins over how the file alone reads, so a half-written choice keeps its pickers.
+  const choice = readChoice(shown, models, heldDraft);
   const asWritten = choice.heldIn === "as-written";
-  const heldIn: HeldIn | null = choice.heldIn && choice.heldIn !== "as-written" ? choice.heldIn : asWritten ? null : heldDraft;
+  const heldIn: HeldIn | null = choice.heldIn && choice.heldIn !== "as-written" ? choice.heldIn : null;
   const pair = pairOfEnds(models);
   const offered = offeredHeldIn(models);
-  const entryOf = (end: StorageEnd): EndEntry | undefined => mapping?.ends?.find((e) => e.end === end.id);
-  const linkedOf = (end: StorageEnd): LinkedBy | "" => choice.linkedBy[end.id] || linkedDraft[end.id] || "";
-  const junction = tableOf(mapping?.junctionTable);
+  const entryOf = (end: StorageEnd): EndEntry | undefined => shown?.ends?.find((e) => e.end === end.id);
+  const linkedOf = (end: StorageEnd): LinkedBy | "" => {
+    const draft = linkedDraft[end.id];
+    if (draft && entryAgrees(draft, entryOf(end))) return draft;
+    return choice.linkedBy[end.id] || "";
+  };
+  const junctionDocs = useElements(shown?.junctionTable && !tableOf(shown.junctionTable) ? [shown.junctionTable] : []);
+  const junction = tableOf(shown?.junctionTable) ?? (junctionDocs.byId.get(shown?.junctionTable ?? "")?.json as TableDocWithKeys | undefined);
   const needsLinkTables = heldIn === "table-per-type";
   const linkDocs = useElements(needsLinkTables ? linkTables.map((t) => t.id) : []);
   const heldSelect = asWritten ? "as-written" : (heldIn ?? none);
+
+  /** The edit the pickers make: written at once, or held while a link table lacks an entry for an end. */
+  const edit: ChangeMapping = (mutate) => {
+    if (heldIn === "link-table" || staged) {
+      const next = structuredClone((shown ?? {}) as StorageMapping & { id?: string });
+      delete next.id;
+      mutate(next);
+      const bare = !next.junctionTable && !next.ends?.length;
+      if (!linkTableComplete(next, models) && !bare) {
+        setStaged(next);
+        return;
+      }
+      if (staged) {
+        setStaged(null);
+        change((j) => copyStorageKeys(j as unknown as Record<string, unknown>, next));
+        return;
+      }
+    }
+    change(mutate);
+  };
 
   const pickHeld = (value: string) => {
     const next = (value || null) as HeldIn | null;
     setHeldDraft(next);
     setLinkedDraft({});
+    setStaged(null);
     // A choice that names nothing yet writes nothing, except Not in this database and a change on a mapping that exists.
     if (next && (next === "none" || mapping)) change((j) => setHeldIn(j, next, models));
   };
   const pickLinked = (end: StorageEnd, value: string) => {
     const next = value as LinkedBy;
     setLinkedDraft((d) => ({ ...d, [end.id]: next }));
-    if (entryOf(end)) change((j) => clearEntryWays(j, end.id));
+    if (entryOf(end)) edit((j) => clearEntryWays(j, end.id));
   };
 
   return (
@@ -130,9 +164,12 @@ export function SeveralTypesCard(props: SeveralCardProps) {
               aria-label={`Link table in ${databaseName}`}
               className="w-56"
               data-testid="relation-link-table"
-              value={mapping?.junctionTable ?? none}
+              value={shown?.junctionTable ?? none}
               disabled={loading}
-              onChange={(e) => change((j) => setLinkTable(j, e.target.value || null))}
+              onChange={(e) => {
+                const table = e.target.value || null;
+                edit((j) => setLinkTable(j, table));
+              }}
             >
               <option value={none}>(none named)</option>
               {linkTables.map((t) => (
@@ -144,6 +181,11 @@ export function SeveralTypesCard(props: SeveralCardProps) {
           </Field>
         ) : null}
       </div>
+      {staged ? (
+        <p className="text-12 text-secondary" data-testid="relation-storage-held">
+          Not saved yet: a link table is saved once each end says how it is pointed at.
+        </p>
+      ) : null}
       {asWritten && mapping ? (
         <p className="text-12 text-secondary" data-testid="relation-storage-as-written">
           This mapping matches none of the choices; each end's entry is shown as written. Choose a Held in to start again.
@@ -188,7 +230,7 @@ export function SeveralTypesCard(props: SeveralCardProps) {
                 end={end}
                 entry={entryOf(end)}
                 holder={holder}
-                change={change}
+                change={edit}
                 tableOf={tableOf}
                 boundTable={boundTable}
                 sharedBound={sharedBound}
@@ -206,7 +248,7 @@ export function SeveralTypesCard(props: SeveralCardProps) {
           a={pair.a}
           b={pair.b}
           entry={entryOf(pair.a)}
-          change={change}
+          change={edit}
           tableOf={tableOf}
           boundTable={boundTable}
           entityName={entityName}
@@ -218,8 +260,8 @@ export function SeveralTypesCard(props: SeveralCardProps) {
           dom={dom}
           a={pair.a}
           b={pair.b}
-          mapping={mapping}
-          change={change}
+          mapping={shown}
+          change={edit}
           linkTables={linkTables.map((t) => ({ ...t, doc: linkDocs.byId.get(t.id)?.json as TableDocWithKeys | undefined }))}
           tableOf={tableOf}
           boundTable={boundTable}
@@ -227,15 +269,33 @@ export function SeveralTypesCard(props: SeveralCardProps) {
           loading={loading}
         />
       ) : null}
-      {junction && heldIn !== "other-table" && mapping ? (
-        <LinkTableExtras dom={dom} junction={junction} mapping={mapping} attributes={attributes} change={change} loading={loading} />
+      {junction && heldIn !== "other-table" && shown ? (
+        <LinkTableExtras dom={dom} junction={junction} mapping={shown} attributes={attributes} change={edit} loading={loading} />
+      ) : null}
+      {heldIn === "other-table" && shown && attributes.length && pair?.a ? (
+        <AttributeColumns
+          dom={dom}
+          columns={endTableColumns()}
+          mapping={shown}
+          attributes={attributes}
+          change={edit}
+          loading={loading}
+          title="Attribute columns, in the other end's table"
+        />
       ) : null}
     </div>
   );
 
+  /** The columns of the one-type end's table that an attribute may use: not the ones that point, nor the primary key. */
+  function endTableColumns() {
+    const table = pair?.a ? tableOf(boundTable(pair.a.entities[0] ?? "")) : undefined;
+    const pointers = pointerColumnIds(table, shown ?? {});
+    return (table?.columns ?? []).filter((c) => !pointers.has(c.id) && !table?.primaryKey?.columns.includes(c.id));
+  }
+
   /** The table whose rows hold the link of this end's entry: the link table, or the one-type end's table under The other end's table. */
   function holderOf(): TableDocWithKeys | undefined {
-    if (heldIn === "link-table" || (asWritten && mapping?.junctionTable)) return junction;
+    if (heldIn === "link-table" || (asWritten && shown?.junctionTable)) return junction;
     const a = pair?.a;
     return a ? tableOf(boundTable(a.entities[0] ?? "")) : undefined;
   }
@@ -262,6 +322,9 @@ interface PickerProps {
   loading: boolean;
   otherTable: string | null;
 }
+
+/** A column a mapping names that the table doesn't have: said as missing, by name when the name is known. */
+export const missingColumnLabel = (name: string | undefined) => (name ? `${name} (missing)` : "(missing column)");
 
 const keyLabel = (
   holder: TableDocWithKeys,
@@ -300,7 +363,10 @@ function EntryPickers(p: PickerProps) {
           data-testid="relation-entry-key"
           value={entry?.foreignKey ?? none}
           disabled={loading}
-          onChange={(e) => change((j) => setEntryKey(j, end.id, e.target.value || null))}
+          onChange={(e) => {
+            const key = e.target.value || null;
+            change((j) => setEntryKey(j, end.id, key));
+          }}
         >
           <option value={none}>(none named)</option>
           {keyOptions(keys)}
@@ -324,7 +390,10 @@ function EntryPickers(p: PickerProps) {
           data-testid="relation-entry-key"
           value={entry?.foreignKey ?? none}
           disabled={loading}
-          onChange={(e) => change((j) => setEntryKey(j, end.id, e.target.value || null))}
+          onChange={(e) => {
+            const key = e.target.value || null;
+            change((j) => setEntryKey(j, end.id, key));
+          }}
         >
           <option value={none}>(none named)</option>
           {keyOptions(keys)}
@@ -346,7 +415,10 @@ function EntryPickers(p: PickerProps) {
                 data-testid="relation-type-key"
                 value={value}
                 disabled={loading}
-                onChange={(e) => change((j) => setTypeKey(j, end.id, orderOf, entity, e.target.value || null))}
+                onChange={(e) => {
+                  const key = e.target.value || null;
+                  change((j) => setTypeKey(j, end.id, orderOf, entity, key));
+                }}
               >
                 <option value={none}>(none named)</option>
                 {keyOptions(keys)}
@@ -372,11 +444,14 @@ function EntryPickers(p: PickerProps) {
             data-testid="relation-id-column"
             value={entry?.idColumn ?? none}
             disabled={loading}
-            onChange={(e) => change((j) => (e.target.value ? setEntryColumns(j, end.id, { idColumn: e.target.value }) : clearEntryWays(j, end.id)))}
+            onChange={(e) => {
+              const column = e.target.value;
+              change((j) => (column ? setEntryColumns(j, end.id, { idColumn: column }) : clearEntryWays(j, end.id)));
+            }}
           >
             <option value={none}>(none named)</option>
             {entry?.idColumn && !idColumns.some((c) => c.id === entry.idColumn) ? (
-              <option value={entry.idColumn}>{columnName(entry.idColumn) ?? entry.idColumn}</option>
+              <option value={entry.idColumn}>{missingColumnLabel(columnName(entry.idColumn))}</option>
             ) : null}
             {idColumns.map((c) => (
               <option key={c.id} value={c.id}>
@@ -394,7 +469,10 @@ function EntryPickers(p: PickerProps) {
               data-testid="relation-type-column"
               value={entry?.typeColumn ?? none}
               disabled={loading || !idChosen}
-              onChange={(e) => change((j) => setEntryColumns(j, end.id, { typeColumn: e.target.value || null }))}
+              onChange={(e) => {
+                const column = e.target.value || null;
+                change((j) => setEntryColumns(j, end.id, { typeColumn: column }));
+              }}
             >
               <option value={none}>(none named)</option>
               {typeColumnChoices(holder, entry?.idColumn).map((c) => (
@@ -408,6 +486,7 @@ function EntryPickers(p: PickerProps) {
       </div>
       {idChosen
         ? end.entities.map((entity) => {
+            if (!boundTable(entity)) return null;
             const table = tableOf(boundTable(entity));
             const unique = uniqueColumns(table);
             const primary = primaryKeyColumn(table);
@@ -424,7 +503,10 @@ function EntryPickers(p: PickerProps) {
                   data-testid="relation-refers-to"
                   value={refersTo(entity)}
                   disabled={loading || !table}
-                  onChange={(e) => change((j) => setRefersTo(j, end.id, orderOf, entity, e.target.value || null))}
+                  onChange={(e) => {
+                    const column = e.target.value || null;
+                    change((j) => setRefersTo(j, end.id, orderOf, entity, column));
+                  }}
                 >
                   <option value={none}>{primary ? `(primary key: ${primary.name ?? primary.id})` : "(none named)"}</option>
                   {unique
@@ -578,7 +660,10 @@ function TablePerType(props: {
                 className="w-56"
                 value={typeKey(entity)}
                 disabled={loading || !table}
-                onChange={(e) => change((j) => setTypeKey(j, b.id, b.entities, entity, e.target.value || null))}
+                onChange={(e) => {
+                  const key = e.target.value || null;
+                  change((j) => setTypeKey(j, b.id, b.entities, entity, key));
+                }}
               >
                 <option value={none}>(none named)</option>
                 {toType.map((k) => (
@@ -616,7 +701,8 @@ export function LinkTableExtras({
   change: ChangeMapping;
   loading: boolean;
 }) {
-  const pointers = new Set((mapping.ends ?? []).flatMap((e) => [e.idColumn, e.typeColumn].filter((c): c is string => !!c)));
+  const pointers = pointerColumnIds(junction, mapping);
+  const primary = new Set(junction.primaryKey?.columns ?? []);
   const columns = (junction.columns ?? []).filter((c) => !pointers.has(c.id));
   const sourceColumns = columns.map((c) => ({
     key: c.id,
@@ -626,7 +712,7 @@ export function LinkTableExtras({
     identity: false,
     computed: false,
     hasDefault: false,
-    isPrimaryKey: false,
+    isPrimaryKey: primary.has(c.id) || primary.has(c.name ?? ""),
   }));
   const pseudo: Binding = {
     id: "",
@@ -635,7 +721,6 @@ export function LinkTableExtras({
     constants: (mapping.constants ?? []).map((c) => ({ column: c.column, value: c.value ?? null })),
     fields: [],
   };
-  const used = new Set([...(mapping.constants ?? []).map((c) => c.column), ...(mapping.attributes ?? []).map((a) => a.column ?? "")]);
   return (
     <div className="flex flex-col gap-1.5" data-testid="relation-storage-link-extras">
       <ConstantsGrid
@@ -644,41 +729,70 @@ export function LinkTableExtras({
         columns={sourceColumns}
         title="Rows of this relation"
         emptyText="None: every row of the link table is a link of this relation."
+        skipPrimaryKey
         onEdit={(mutate) => {
           const next: Binding = { ...pseudo, constants: [...(pseudo.constants ?? [])] };
           mutate(next);
           change((j) => setMappingConstants(j, next.constants ?? []));
         }}
       />
-      {attributes.length ? (
-        <section className="flex flex-col gap-1">
-          <SectionTitle>Attribute columns</SectionTitle>
-          {attributes.map((a) => {
-            const value = mapping.attributes?.find((x) => x.attribute === a.id)?.column ?? none;
-            return (
-              <Field key={a.id} label={`Column for ${a.name}`} htmlFor={`${dom}-attr-${a.id}`}>
-                <Select
-                  id={`${dom}-attr-${a.id}`}
-                  className="w-56"
-                  data-testid="relation-attribute-column"
-                  value={value}
-                  disabled={loading}
-                  onChange={(e) => change((j) => setAttributeColumn(j, a.id, e.target.value || null))}
-                >
-                  <option value={none}>(none named)</option>
-                  {columns
-                    .filter((c) => !used.has(c.id) || c.id === value)
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name ?? c.id}
-                      </option>
-                    ))}
-                </Select>
-              </Field>
-            );
-          })}
-        </section>
-      ) : null}
+      <AttributeColumns dom={dom} columns={columns} mapping={mapping} attributes={attributes} change={change} loading={loading} title="Attribute columns" />
     </div>
+  );
+}
+
+/** A column for each relation attribute, among the columns given (those not used as a pointer or a constant). */
+export function AttributeColumns({
+  dom,
+  columns,
+  mapping,
+  attributes,
+  change,
+  loading,
+  title,
+}: {
+  dom: string;
+  columns: { id: string; name?: string | undefined }[];
+  mapping: StorageMapping;
+  attributes: { id: string; name: string }[];
+  change: ChangeMapping;
+  loading: boolean;
+  title: string;
+}) {
+  const used = new Set([...(mapping.constants ?? []).map((c) => c.column), ...(mapping.attributes ?? []).map((a) => a.column ?? "")]);
+  if (!attributes.length) return null;
+  return (
+    <section className="flex flex-col gap-1" data-testid="relation-storage-attribute-columns">
+      <SectionTitle>{title}</SectionTitle>
+      {attributes.map((a) => {
+        const value = mapping.attributes?.find((x) => x.attribute === a.id)?.column ?? none;
+        const known = columns.some((c) => c.id === value);
+        return (
+          <Field key={a.id} label={`Column for ${a.name}`} htmlFor={`${dom}-attr-${a.id}`}>
+            <Select
+              id={`${dom}-attr-${a.id}`}
+              className="w-56"
+              data-testid="relation-attribute-column"
+              value={value}
+              disabled={loading}
+              onChange={(e) => {
+                const column = e.target.value || null;
+                change((j) => setAttributeColumn(j, a.id, column));
+              }}
+            >
+              <option value={none}>(none named)</option>
+              {value && !known ? <option value={value}>{missingColumnLabel(undefined)}</option> : null}
+              {columns
+                .filter((c) => !used.has(c.id) || c.id === value)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name ?? c.id}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+        );
+      })}
+    </section>
   );
 }
