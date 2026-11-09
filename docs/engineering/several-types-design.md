@@ -1,6 +1,6 @@
 # Relations with several types at an end: design
 
-**Status (2026-11-08): part 1 released in 0.21.0 (#70); part 2 not built. One independent check is applied (section 14). The owner answered all six questions as recommended on 2026-11-08 (section 15): part 1 is built as designed, and part 2 serves the team's designed and imported tables (path B) first.** It designs the item that [Who, what and when](lifecycle-actors-scenarios.md) section 11 describes: "an end lists several entities, all of them, or every entity carrying a stereotype". The owner's drawing of 2026-11-08 in that section is decided and is not reopened here. [Stereotype sets](stereotype-sets-design.md) (0.14.0) gives the meaning of a stereotype as a set of types, and named trigger points ([trigger points](trigger-points-design.md), part 2) give the list form it reuses. [Actors](actors-design.md), [rights](rights-design.md), [object effects](object-effects-design.md) and [lifecycles](lifecycle-design.md) give the readers that change. Every code fact here was checked against the code at 0.19.0; line numbers will move once sign-off part 2 is merged. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
+**Status (2026-11-08): part 1 released in 0.21.0 (#70). Part 2 designed, not built (section 19): storage in the team's designed and imported tables (path B), and several types or any entity at both ends, in one release (0.22.0). Two owner questions are open (section 19.14). One independent check is applied to part 1 (section 14). The owner answered part 1's six questions as recommended on 2026-11-08, and gave part 2's principles the same day (section 15).** It designs the item that [Who, what and when](lifecycle-actors-scenarios.md) section 11 describes: "an end lists several entities, all of them, or every entity carrying a stereotype". The owner's drawing of 2026-11-08 in that section is decided and is not reopened here. [Stereotype sets](stereotype-sets-design.md) (0.14.0) gives the meaning of a stereotype as a set of types, and named trigger points ([trigger points](trigger-points-design.md), part 2) give the list form it reuses. [Actors](actors-design.md), [rights](rights-design.md), [object effects](object-effects-design.md) and [lifecycles](lifecycle-design.md) give the readers that change. Every code fact here was checked against the code at 0.19.0; line numbers will move once sign-off part 2 is merged. A file path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented. Each new name and format is held to the roadmap's test: it stays for good, it must help any team whether they use it or not, and it stays optional.
 
 ## 1. In short
 
@@ -10,21 +10,21 @@ Today each end of a relation names one entity. A team that attaches comments to 
 | --- | --- |
 | The model | One end of a two-ended relation may name its **types**: a list of entities and stereotypes, or **any entity**. The end then covers each listed entity, every entity that carries a listed stereotype, and every entity derived from them. Role, cardinality, navigation and delete rule stay one per end. Today's `entity` keeps its meaning and its bytes |
 | Rules, processes and scenarios | The other end's navigation is generated on each type. Guard paths through such an end read what every type holds under one id. Rights, trigger points, freezing and scenario links work through it, since they already name ends by id. `in_state` through it is unknown for an object of a type the lifecycle doesn't govern, as it is today through a one-type end |
-| Code generation | Part 1: templates see the types of each end, and no database stores such a relation. Part 2: a relation mapping states how a database stores it: a type and an id, a column per type, a table per type, or a key to the types' shared base table. Whether part 2 first serves the team's designed tables with explicit bindings, or tables the engine makes, is the owner's question 2 |
+| Code generation | Part 1: templates see the types of each end, and no database stores such a relation. Part 2 (section 19): an optional relation mapping describes, per end, how the team's own tables hold each link: a key on each type's table, a column per type, a type and an id, an id unique across types, a key to a shared base table, a link table, or a table per type. The engine adds no column. Both ends may have several types |
 | The editor | The relation's form picks one entity, several types or any entity. The canvas draws the agreed looks: bundled lines for two types, a junction node for three or more, one line to a box for a stereotype or any entity, and one toggle per relation that collapses its lines to one line and a list. The toggle and the node's position are saved in the diagram file |
 | The team's system, or a lifecycle system | Nothing changes until the team uses the new output or builds from the model |
 
 **A project that uses none of this** keeps its files, output bytes, findings and messages word for word, keys, replays and speed. Section 12 says how, and which tests pin it.
 
-**Two parts, each its own release:** part 1 is the model, the rules, processes, scenarios, the editor and the resolved model, with no storage (0.21.0). Part 2 is storage (0.22.0).
+**Two parts, each its own release:** part 1 is the model, the rules, processes, scenarios, the editor and the resolved model, with no storage (0.21.0). Part 2 is storage in the team's tables, and several types or any entity at both ends (0.22.0, section 19).
 
 ## 2. Scope
 
 | | What | Section |
 | --- | --- | --- |
 | **Part 1 (0.21.0)** | `types` and `anyEntity` on a relation end; what an end covers; the rules; navigations on each type; guard paths, `in_state`, owner and actor paths, rights, trigger points, freezing and scenario links through such an end; the resolved model and records; the index; deletes and references; the relation form, the canvas looks and the collapse toggle; tool texts, the API contract and the editor's mock server; refusals where one table is needed (binding fields, query fields and collections, seeds) | 4 to 11 |
-| **Part 2 (0.22.0)** | `typeStorage` on a relation mapping with four ways to store; type codes; what the database can't enforce; navigation joins per type; one-to-one uniques that work in every dialect; on the path the owner picks (question 2): the team's designed and imported tables with explicit bindings, or tables the engine makes; the Storage tab and database views; `sql-ddl` and `csharp-dapper` tests | Decisions 24 to 32 |
-| **Later, if teams ask** | The part 2 path not picked first; materialize of such storage; seeds of such links; a query through such an end; several types on both ends; several types on an n-ary relation; `exceptEntities` on an end; a stereotype's attributes through a navigation; narrowing a right or trigger point to one type; a database-wide storage default; value-map facts for a renamed type code | 13 |
+| **Part 2 (0.22.0)** | An optional relation mapping that describes, per end, how the team's designed and imported tables hold each link (path B); type codes; what the database can't enforce, with the text to copy; joins per pair of types; entity binding fields for the link's columns; several types or any entity at both ends of a two-ended relation; the Storage tab, the canvas for both ends and the database views; `sql-ddl` and `csharp-dapper` tests | Section 19 |
+| **Later, if teams ask** | Tables the engine makes for such relations (path A); materialize of such storage; seeds of such links; a query through such an end; several types on an n-ary relation; `exceptEntities` on an end; a stereotype's attributes through a navigation; narrowing a right or trigger point to one type; a database-wide storage default; value-map facts for a renamed type code; the storage forms of section 19.13 | 13 |
 | **Not in either part** | Per-type cardinality, role or navigation on one end; a new element kind for a named set of types | Decisions 3 and 10 |
 
 **The readers of `RelationEnd.Entity`**, each handled below. `RelationEnd.Entity` turns optional, which makes the compiler flag most typed readers, as `ProcessSubject.Entity` did for stereotype sets. It does not flag string comparisons, interpolation, Scriban templates or the editor's untyped reads, so the build also greps for them (section 18). There are 145 reads of `.Ends` in 33 engine files, many of them rights' and trigger points' own `Ends` lists of end ids, which don't change. The ones that read an end's entity: the schema `schemas/v1/relation.json` (ends at lines 103 to 156) and `Model/Relation.cs`; the index's `EndsOf` (`Model/ModelIndexer.cs:1077`), `RelationEndSummary` (`Model/Documents.cs:280`, compared in `IndexRow` equality at line 242) and `WithSubjectCoverage` (`ModelIndexer.cs:991-1037`); `Loading/SeedInput.cs:185-199`; `Loading/Materializer.cs` and the field candidates of `Materializer.Bindings.cs:428-436`; the cascade (`Loading/ChangePlanner.Cascade.cs`); validation: `CheckRelation` (`Validation/BuiltinRules.cs:1018`), `NavigationHolders` and the composition index (`Validation/ValidationContext.cs:530-600`), `MappingRules.cs` (`CheckRelationBindings` 323, `EffectiveShape` 353, `DependentEnd` 371), the mapping dependents (`ModelValidator.cs:722-731`), `PhysicalRules.cs`, `ReferenceDataRules.cs`; expressions: `NavigationsOf` and `AddNavigations` (`Validation/ExpressionRules.cs:1281-1313`), `CannotGovern` (847), `ExprNavigation` (`Expressions/ExprScope.cs:33-46`), the path dependencies (`Resolution/ResolvedExpressions.cs:270-283`); processes: `Processes/ScenarioObjects.cs:183-196`, `Processes/VerbStepFields.cs:84-87`, `Processes/RelativeActors.cs`; the resolver: `BuildRelation`, `CommitRelation` and `BuildNavigations` (`Resolution/ResolveRun.Conceptual.cs:669-790`, the navigation dependencies at 781), the promoted-name join at line 1226, the relative actor path keys (`ResolveRun.Processes.cs:129`), `ResolveRun.TableSeeds.cs`, `ResolveRun.ReferenceData.cs`; the database run: `Resolution/DatabaseRun.Relations.cs` (the skip at line 40, `ShapeOf` 59, `PrincipalAndDependent` 72, the two shapes, `JunctionName` 333), `DatabaseRun.Bindings.cs`, `DatabaseRun.Finish.cs` (`BuildJoins`, 504-544), `DatabaseRun.Queries.cs` (`FieldTarget`, 511); `Model/BindingDrift.cs`; `Migrations/DatabaseReach.cs` and `CodeHolders.cs`; `Editor/ResolvedRecords.cs` (`EndRecord` 305, `NavigationRecord` 251), `Editor/BindingViews.cs`, `DatabaseTables.cs`, `DatabaseViews.cs`; the assistant's prompt (`Agent/AssistantPrompt.cs`).
@@ -38,8 +38,13 @@ Today each end of a relation names one entity. A team that attaches comments to 
 | Databases that want integrity use an exclusive arc, a shared supertype table, or one link table per type | A check that exactly one column is set, with `num_nonnulls` in PostgreSQL [13] [14]; separate intersection tables [15]; table-per-type and shared base tables in EF Core and Prisma [10] [11] [12] | The other three ways to store, each with real foreign keys |
 | Lifecycle systems name one type per side of a relation rule, and a rule on a parent type covers its subtypes | Teamcenter's relation rules apply to subtypes [16] [17]; Windchill names one type per role [18]; Aras relationships name a source type and an optional related type [19] | A listed entity covers its derived entities, as everywhere in Maquettiste. A stereotype covers its carriers, as in stereotype sets |
 | A type value has to survive renames | Rails and Laravel warn that stored class names break on rename; Laravel's morph map stores short aliases [6] [7] | A type code is the entity's name, overridable per database with the `discriminatorValue` the entity's mapping already has (question 5) |
+| One link table holds the instances of many relations, told apart by a relation code, with a from side and a to side, each an id or a type and an id, and attribute columns | Common in lifecycle and document systems (general knowledge, no single source) | A link table with `constants` (fixed values such as the relation code), per-end entries and attribute columns (section 19.4, ways 8 and 9) |
+| Ids are unique across every table (GUIDs, or one shared sequence), so a link holds the id alone and the type comes from the row it points at | Common (general knowledge) | An id unique across types (way 4), allowed on an any-entity end (the owner, 2026-11-08) |
+| A type column holds a number that points at a type-definition table, not a name | Common in lifecycle systems (general knowledge) | An integer `discriminatorValue` as the type code (decision 42) |
+| A table carries its own surrogate id, and the business key is a separate unique key | Inheritance and key mapping in object-relational frameworks [10] | Links refer to a unique column of each type's table, never to the entity's key attributes (principle 3 of section 19.1) |
+| Attribute values stored as rows (entity-attribute-value), value tables split by data type, table sets repeated per partition | Large lifecycle systems (general knowledge) | Not modeled: a table can't describe them on its own, so packs implement them (section 13) |
 
-No source reviewed draws a junction node with a collapse toggle; that look is the owner's.
+No source reviewed draws a junction node with a collapse toggle; that look is the owner's. The rows after the type-value row were added for part 2 (section 19) and describe patterns, not one product's schema.
 
 ## 4. Decisions
 
@@ -76,7 +81,7 @@ Each decision gives its confidence: **high**, **medium-high** or **medium**. A d
 
 ### Which relations may have several types
 
-8. **One end of a two-ended relation may have several types: an association, an aggregation or a composition, with any `min` and `max`.** Several types on both ends, or on an n-ary relation, are refused (MQ3041). Confidence: medium-high; question 3.
+8. **One end of a two-ended relation may have several types: an association, an aggregation or a composition, with any `min` and `max`.** Several types on both ends, or on an n-ary relation, are refused (MQ3041). Confidence: medium-high; question 3. **Part 2 lifts the both-ends limit** (the owner, 2026-11-08; decision 53, section 19.12); the n-ary limit stays.
    - **The reason is cost, not meaning.** Each end of an n-ary relation could be "one of these types" as well, and both ends of a relation could too. Part 1 stores nothing, so storage is not the reason.
    - **What it saves in part 1:** the canvas would need two junction nodes on one line, and an n-ary relation is drawn as its first two ends only (`canvas/model.ts:116-122`), so a third end with several types would not show. The rules, holders and pickers would each need the both-ends case.
    - **Lifting it later** takes the model and rules (holders from both ends), the canvas showing "+N not shown" until n-ary relations are drawn in full, and storage refused by MQ4117 until it is designed. Nothing in this design blocks it.
@@ -144,12 +149,12 @@ Each decision gives its confidence: **high**, **medium-high** or **medium**. A d
 23. **No storage default for such a relation.** Confidence: high; question 4.
     - Today a one-type relation is stored by default once both its entities are placed in a database: a foreign key, or a junction table for many-to-many, with `relationsWithAttributes` deciding for a relation with attributes (`DatabaseRun.Relations.cs:37-69`). One shape is the natural one, so a default works.
     - For several types there are four valid ways to store, each with different integrity (decision 25). Picking one would be a model decision made through storage. So the mapping says which, and nothing is stored without it.
-24. **(part 2) Which path part 2 serves first is the owner's question 2. Part 2's final design follows the answer.** Confidence: high that it is the owner's call.
+24. **(part 2) Which path part 2 serves first is the owner's question 2. Part 2's final design follows the answer.** Confidence: high that it is the owner's call. **Settled:** path B first (section 15, answer 2); section 19 is its design.
     - **Path B, designed tables with explicit bindings (recommended):** the team's table files hold the columns, keys and checks, and the mapping only names them (decision 26). It invents nothing, and it fits the owner's standing rule: tables first, bindings explicit, no derived tables.
     - **Path A, tables the engine makes:** the engine adds the columns, keys and checks to the tables it makes from entity mappings (decision 27). One mapping line per relation, but the engine makes up columns and checks from conventions.
     - **Both paths share** decisions 25 and 28 to 32: the four ways to store, type codes, what the database can't enforce, joins, one-to-one uniques, migrations and the other packs.
     - The other path comes later (section 13). Part 1 doesn't depend on the answer.
-25. **(part 2) The four ways to store.** A relation with an end of several types is stored in a database only through a mapping of it there. Without one, nothing is stored, and MQ4115 becomes a warning. The mapping gains **`typeStorage`**. `shape` keeps its meaning and may be left out, as today. Confidence: high.
+25. **(part 2) The four ways to store.** **Replaced by section 19:** the mapping describes the storage per end and composes (decisions 37 to 39); the four ways below are four combinations of its entries (section 19.4); `typeStorage` is question 8; MQ4115's severity is question 7; the rules are worded on table columns (decision 41), so "key" below reads "a unique column of the type's table". Kept for the record: A relation with an end of several types is stored in a database only through a mapping of it there. Without one, nothing is stored, and MQ4115 becomes a warning. The mapping gains **`typeStorage`**. `shape` keeps its meaning and may be left out, as today. Confidence: high.
 
     | The end with several types | `shape` | `typeStorage` | Where the link is held | What the database enforces |
     | --- | --- | --- | --- | --- |
@@ -163,37 +168,37 @@ Each decision gives its confidence: **high**, **medium-high** or **medium**. A d
 
     - **`column-per-type` in a junction is not offered.** A unique key over nullable columns doesn't stop duplicate links in most databases.
     - **`promoted` is not offered** for such a relation (MQ4009).
-    - **An `anyEntity` end is stored only as `type-and-id`** (the owner, 2026-11-08). `column-per-type` and `table-per-type` are refused there (MQ4117), since a new entity would add a column or a table. An end that names a stereotype may use any of the ways, since the team named the set.
+    - **An `anyEntity` end is stored only as `type-and-id`** (the owner, 2026-11-08). `column-per-type` and `table-per-type` are refused there (MQ4117), since a new entity would add a column or a table. An end that names a stereotype may use any of the ways, since the team named the set. **Widened the same day:** an id alone, when ids are unique across tables, is allowed too (section 15; decision 43).
     - **In each database, the end's types are the ones placed there.** A covered type with no placement is left out of that database's storage, with no finding; the Storage tab lists it, and says when a column comes from a carrier that gained the stereotype through a package default. When no type is placed, the relation isn't stored there, as today.
-    - **`type-and-id`** needs every placed type's key to be one attribute of one built-in type and length (MQ4117 otherwise). **`base-table`** needs one entity that every placed type is or derives from, placed with TPH or TPT so its table holds every type's rows (MQ4117 otherwise); the nearest such entity is used.
-26. **(part 2, path B) Designed and imported tables with explicit bindings: a sketch.** Confidence: medium-high; settled in part 2's design.
+    - **`type-and-id`** needs the id column to refer to one unique column of each placed type's table (its primary key or a unique key, of a compatible type), never to the entity's key attributes (MQ4117 otherwise; decision 41). **`base-table`** needs a foreign key to one table that holds the rows of every placed type (MQ4117 otherwise); no base entity is needed.
+26. **(part 2, path B) Designed and imported tables with explicit bindings: a sketch.** Confidence: medium-high; settled in part 2's design. **Settled in section 19:** decisions 37 to 47. The mapping extends `ends` with `foreignKeys`, `types`, `idColumn`, `typeColumn` and `referencesColumn`; bindings gain two field forms; the check is suggested as info (MQ4118).
     - The team's table files hold the columns, foreign keys and checks, written by hand or imported from a database.
     - The relation's mapping states `typeStorage` and names what implements it: one existing foreign key per type for `column-per-type` and for a key on each type's table; one junction per type, with its end foreign keys, for `table-per-type`; a type column and an id column for `type-and-id`; today's `foreignKey` for `base-table`. This extends today's `foreignKey`, `junctionTable` and `ends`, which already name what exists for one-type relations.
     - An entity's binding maps the end's columns in its `fields`, so its read and write statements (`binding_sql`) carry them, and MQ4047 (every column accounted for) counts them. Part 2 lifts MQ4116 for binding fields.
     - Validation checks that each named key leads from the right table to the right type, that the id column fits the types' keys and the type column holds text, and that the table has a check for the chosen storage (info when it doesn't, with the check text to copy). Drift (`Model/BindingDrift.cs`) follows the named columns.
     - The engine writes no column. `sql-ddl` writes the table files as it writes any designed table.
     - **Waits:** engine-made tables for such relations, and materialize, which writes a projection's shape into table files and so needs path A's shapes.
-27. **(part 2, path A) Tables the engine makes: a sketch.** Confidence: medium-high; settled in part 2's design.
+27. **(part 2, path A) Tables the engine makes: a sketch.** Confidence: medium-high; settled in part 2's design. **Waits** (section 13). Its check texts serve part 2's MQ4118 text to copy (decision 47). Its conventions and keys are not added.
     - The mapping's `typeStorage` alone decides. The engine adds the columns, foreign keys and checks to tables it makes from entity mappings.
     - **Checks** are plain SQL text, the same form in all five dialects, since expression-language checks are lowered to PostgreSQL only (MQ4056 elsewhere; `Resolution/ResolvedExpressions.cs:386-391`). Column per type, `min` 1: `(CASE WHEN "attached_to_part_id" IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN "attached_to_assembly_id" IS NOT NULL THEN 1 ELSE 0 END) = 1`, with `<= 1` for `min` 0 and, for a composite key, a clause that each set is all null or all set. Type and id, `min` 1: both columns not null and `"attached_to_type" IN ('Assembly', 'Part')`; `min` 0 adds "both null, or both set". Identifiers follow the database's quoting, codes are sorted ordinally, and the check is named by `checkName` with `{name}` set to the end's role.
     - **Names:** two new conventions, `typeKeyColumn` (default `{role}_{entity}_{key}`, such as `attached_to_part_id`) and `typeColumn` (default `{role}_type`); the id column uses `foreignKeyColumn` with `{key}` set to `id`; a junction per type uses `junctionTable` with each type in the end's place, such as `comment_part`.
     - **Keys** stay the same across renames: `<endId>.<entityId>.<keyAttributeId>`, `<endId>.type`, `<endId>.id`, `<relationId>.<entityId>@<databaseId>`.
     - **Refused for now (MQ4117):** a holding table that is designed, imported or bound; a reference-typed collection attribute beside `table-per-type`, since `sql-ddl` finds those through one junction. Materialize refuses an entity whose table holds such storage (MQ4055).
     - **Waits:** designed and imported tables, entity bindings and materialize.
-28. **(part 2) A type code is the code of the object's own entity: the `discriminatorValue` of the entity's mapping in that database, else the entity's name.** This is the rule the TPH discriminator follows today (`DatabaseRun.Finish.cs:436`). Confidence: medium; question 5.
+28. **(part 2) A type code is the code of the object's own entity: the `discriminatorValue` of the entity's mapping in that database, else the entity's name.** This is the rule the TPH discriminator follows today (`DatabaseRun.Finish.cs:436`). Confidence: medium; question 5. **Settled in decision 42:** an entity binding may set `discriminatorValue` too, since a bound entity ignores its mapping element (MQ4054); a type column may be an integer column holding integer codes; collisions are checked among the entities a type column holds.
     - Every covered entity that can have objects (not abstract) and is placed in the database has a code, derived ones included, since an object's type column names its own entity.
     - Today `discriminatorValue` is refused on an entity outside an inheritance hierarchy (`Validation/MappingRules.cs:146`, MQ4009). It becomes allowed when a `type-and-id` storage in that database covers the entity.
     - Two covered entities with one code are refused (MQ4117), with the fix to set `discriminatorValue`.
     - The type column is text; an engine-made one has length 64, as the TPH discriminator (`DatabaseRun.cs:1026`). An integer code is written as its text.
-29. **(part 2) What the database can't enforce is said once, as info MQ4118.** A `type-and-id` storage can't apply the end's delete rule, nor a composition's cascade, so the team's system applies it. A `base-table` storage can't refuse a link to a base row of a type the end doesn't list. Confidence: high.
-30. **(part 2) Joins.** Today `navigation.joins[db]` and an entity mapping's `joins` hold one path of equal columns (`RJoinPath`, `ResolvedConceptual.cs:535-558`), built by `BuildJoins`, which matches on `navigation.From.Entity` (`DatabaseRun.Finish.cs:504-544`, line 524). Confidence: medium-high; the member names come with part 2's design.
+29. **(part 2) What the database can't enforce is said once, as info MQ4118.** **Settled in decision 47**, with the text to copy for each missing check or unique. A `type-and-id` storage can't apply the end's delete rule, nor a composition's cascade, so the team's system applies it. A `base-table` storage can't refuse a link to a base row of a type the end doesn't list. Confidence: high.
+30. **(part 2) Joins.** **Settled in decision 48:** paths between table columns, one per pair of targets, with `conditions` on a step, `from_type` and `to_type` on a path, and `type_joins` on navigations and entity mappings. Today `navigation.joins[db]` and an entity mapping's `joins` hold one path of equal columns (`RJoinPath`, `ResolvedConceptual.cs:535-558`), built by `BuildJoins`, which matches on `navigation.From.Entity` (`DatabaseRun.Finish.cs:504-544`, line 524). Confidence: medium-high; the member names come with part 2's design.
     - A navigation to or from an end with several types gets one path per type: for `column-per-type`, `table-per-type` and a key on each type's table, a path of equal columns; for `type-and-id`, the id equality plus "the type column equals the type's code", which `RJoinPath` can't say today, so part 2 adds one member for it; for `base-table`, today's single path to the base's table.
     - `BuildJoins` uses coverage in place of `From.Entity`. Records and tests cover each storage.
-31. **(part 2) One-to-one uniques work in every dialect.** Confidence: high.
+31. **(part 2) One-to-one uniques work in every dialect.** Confidence: high. **Settled for path B in decision 47:** a missing unique is info, with the text to copy (a filtered unique index on SQL Server); the engine-made index waits with path A.
     - Today a one-to-one adds a plain `UNIQUE` on the key columns (`DatabaseRun.Relations.cs:139-140`), and `sql-ddl` adds `NULLS NOT DISTINCT` on PostgreSQL only (`packs/sql-ddl/_sql.scriban:284`). PostgreSQL, MySQL, SQLite and Oracle let several rows leave the key empty under a unique key; SQL Server allows one such row.
     - With `column-per-type` every set is nullable by design, and so is `type-and-id` with `min` 0. Part 2 makes each of these a unique index filtered to rows where the key is set on SQL Server, and a plain unique key elsewhere. On path B, validation says when a designed table lacks it. A five-dialect golden pins it.
     - Today's optional one-to-one on SQL Server has the same limit; part 2 doesn't change it.
-32. **(part 2) Migrations and the other packs follow the tables.** Confidence: high.
+32. **(part 2) Migrations and the other packs follow the tables.** Confidence: high. **Settled for path B in decision 52 and section 19.9:** the team's table edits carry the facts; a changed type code is warning MQ4119.
     - A carrier added to a stereotype end adds a column set or a junction, or rewrites a check, as any change to a table does. A type that leaves the end drops its column or junction, which needs a migration fact like any drop (MQ4102). A changed type code rewrites the check, so rows that hold the old code make the migration fail loudly rather than lose links quietly. A value-map fact for a type code comes later (section 13).
     - `csharp-dapper` already turns every unmapped column of an entity's table into an entity property (`storage_columns`, `packs/csharp-dapper/_dapper.scriban:101`), and a bound entity's repository uses its binding's statements, so the new columns reach it on either path. Section 10 lists each pack.
 
@@ -210,7 +215,7 @@ Each decision gives its confidence: **high**, **medium-high** or **medium**. A d
     - One naming key, **`et:ends`**, records which relation ends name a stereotype or any entity. A model without such ends never records it.
 36. **Two parts, each a minor release.** Confidence: high, with question 6.
     - Part 1 is 0.21.0 and part 2 is 0.22.0. Part 1 starts from `main` once sign-off part 2 (0.20.0) is merged, since that branch changes `ExpressionRules.cs`, `ResolvedRecords.cs`, `Documents.cs`, `ModelIndexer.cs` and the MQ9305 and MQ8102 texts. Part 2 starts once part 1 is merged and question 2 is answered.
-    - An older engine refuses a file with `types` or `anyEntity` (part 1), or with `typeStorage` and part 2's other keys. `formatVersion` stays 1.
+    - An older engine refuses a file with `types` or `anyEntity` (part 1), or with part 2's new keys (section 19.6), or with several types at both ends (MQ3041 in 0.21.0). `formatVersion` stays 1.
     - Each pull request may be built and made green. The tags wait for the owner.
 
 ## 5. Schema and files
@@ -243,14 +248,7 @@ Each decision gives its confidence: **high**, **medium-high** or **medium**. A d
 
 Each comment is attached to exactly one part, assembly or controlled document. `Part`, `Assembly` and every entity that carries `controlledDocument` get a `comments` navigation. `Comment.attachedTo` leads to one of them.
 
-**Part 2** follows the owner's answer to question 2. On either path, `mapping.json` gains `typeStorage` (after `shape`): `type-and-id`, `column-per-type`, `table-per-type` or `base-table`, relation mappings only, and `openapi.yaml` gains the storage members of `RelationMappingRecord` and the join member. Path B adds mapping keys that name the existing foreign keys, junctions, type column and id column, and a binding field form for the type column. Path A adds the conventions `typeColumn` and `typeKeyColumn` to `maquettiste.json`. A path B mapping might read:
-
-```json
-{ "kind": "mapping", "name": "AttachedTo in main", "database": "<id of main>", "relation": "<id of AttachedTo>",
-  "typeStorage": "type-and-id", "typeColumn": "<id of comments.attached_to_type>", "idColumn": "<id of comments.attached_to_id>" }
-```
-
-and a path A mapping only `"typeStorage": "column-per-type"`, with the engine adding `attached_to_part_id`, `attached_to_assembly_id`, a column per controlled document type, their foreign keys and the check.
+**Part 2** is in section 19.6: `mapping.json`'s `ends` entries gain `foreignKeys`, `types`, `idColumn`, `typeColumn` and `referencesColumn`, the mapping gains `constants`, `attributes[].column` serves relation mappings, an entity binding gains `discriminatorValue` and two field forms, and `openapi.yaml` gains the storage members of `RelationMappingRecord`, `BindingFieldRecord` and the database view. `typeStorage` is question 8. Path A's conventions are not added.
 
 Also updated in both parts: the sample app's schema copies, the editor files generated from `openapi.yaml`, and the recorded rule list, each by its fixed command.
 
@@ -258,7 +256,7 @@ Also updated in both parts: the sample app's schema copies, the editor files gen
 
 | Rule | Sev | Part | Change |
 | --- | --- | --- | --- |
-| MQ3041 | E | 1 | **New.** An end with several types where it can't be: on an n-ary relation, on both ends of a relation, or `anyEntity` on a composition's child end. "Relation 'Link' is n-ary, so its end 'target' can't have several types; give it one entity." "Relation 'Link' has several types on both ends; keep them on one end." "End 'item' is the part in composition 'Holds', so it can't be any entity; list the types it may be." |
+| MQ3041 | E | 1, 2 | **New.** An end with several types where it can't be: on an n-ary relation, on both ends of a relation (part 1 only; part 2 drops this case, section 19.12), or `anyEntity` on a composition's child end. "Relation 'Link' is n-ary, so its end 'target' can't have several types; give it one entity." "Relation 'Link' has several types on both ends; keep them on one end." "End 'item' is the part in composition 'Holds', so it can't be any entity; list the types it may be." |
 | MQ3042 | W | 1 | **New.** "End 'target' lists only entity 'Part' in types; write it as entity." Quick fix: use entity |
 | MQ3043 | W | 1 | **New.** An entry another entry covers. "End 'target' lists entity 'PurchasedPart', which entity 'Part' already covers, since it derives from it; remove the entry." "End 'target' lists entity 'Contract', which carries stereotype 'approvable', also listed; remove the entry." |
 | MQ2003 | E | 1 | Also an unknown key in an end's stereotype entry |
@@ -271,14 +269,16 @@ Also updated in both parts: the sample app's schema copies, the editor files gen
 | MQ9305 | E | 1 | A link fits when the target's entity is covered; a connect step through such an end checks the same (decision 18). "Object 'n1' links to 't1' through end 'AttachedTo.attachedTo', which leads to Part, Assembly, or an entity derived from one, not to entity 'Tool'; link to an object of one of those, or through another end." |
 | MQ8102, MQ9903 | E | 1 | Same texts. The ends every subject holds now include ends held through a covered type |
 | MQ7105 | E | 1 | Also an entity seed's column for an end with several types, and a seed of a relation with such an end. "Seed 'Notes' has a column for end 'attachedTo', which leads to several types; seeds can't hold such links yet." |
-| MQ4009 | E | 1, 2 | Part 1: a mapping of a relation with an end of several types sets only `ignore`. Part 2: `typeStorage` missing where needed, written where the end holds the key or on a relation without such an end, `table-per-type` beside the foreign-key shape, `column-per-type` beside a junction, the `promoted` shape; `discriminatorValue` allowed on an entity a type-and-id storage covers |
-| MQ4115 | I in part 1, W in part 2 | 1, 2 | **New.** "Relation 'AttachedTo' has an end with several types, so database 'main' stores nothing for it." Part 2 adds "; add a mapping for it that states typeStorage, or set ignore." Reported when every end has a covered type placed in the database |
-| MQ4116 | E | 1 | **New.** A binding field, a query field or a query collection names an end with several types, or a navigation to one, which leads to more than one table (`schemas/v1/query.json`, `collections`). "Field 3 of the binding of 'Comment' names end 'attachedTo', which leads to several types; a field can't map it." Also, in part 1, a field or collection that names another end of such a relation, as a navigation from one of its types does, since nothing is stored: "Collection 0 of query 'PartNotes' names end 'comment' of relation 'AttachedTo', which has an end with several types; a collection can't fill it." A field of a collection's select list says "Field 0 of collection 1 of query …". Part 2's path B lifts it for binding fields |
-| MQ4117 | E | 2 | **New.** A database can't store the relation as its mapping asks: type-and-id over keys that aren't one column of one type; column-per-type or table-per-type on an `anyEntity` end; two types with one code; no shared base held in one table for base-table; on path B, a named key or column that doesn't fit; on path A, a holding table that is designed, imported or bound, or a reference-typed collection attribute beside table-per-type |
-| MQ4118 | I | 2 | **New.** What the database can't enforce for the chosen storage (decision 29). "Database 'main' stores end 'attachedTo' as a type and an id, so it can't apply its delete rule 'cascade'; the team's system applies it." |
-| MQ4055 | E | 2 | Path A: also an entity whose table holds the storage of a relation with an end of several types |
+| MQ4009 | E | 1, 2 | Part 1: a mapping of a relation with an end of several types sets only `ignore`. Part 2: the cases of section 19.7 |
+| MQ4115 | I in part 1; part 2: question 7 | 1, 2 | **New.** "Relation 'AttachedTo' has an end with several types, so database 'main' stores nothing for it." Reported when every end has a covered type placed in the database. Part 2 adds a second text for a placed type a mapping's entries don't reach (decision 49) |
+| MQ4116 | E | 1 | **New.** A binding field, a query field or a query collection names an end with several types, or a navigation to one, which leads to more than one table (`schemas/v1/query.json`, `collections`). "Field 3 of the binding of 'Comment' names end 'attachedTo', which leads to several types; a field can't map it." Also, in part 1, a field or collection that names another end of such a relation, as a navigation from one of its types does, since nothing is stored: "Collection 0 of query 'PartNotes' names end 'comment' of relation 'AttachedTo', which has an end with several types; a collection can't fill it." A field of a collection's select list says "Field 0 of collection 1 of query …". Part 2 lifts it for binding fields in the forms of decision 46, and keeps it for queries |
+| MQ4117 | E | 2 | **New.** What a mapping or a binding names doesn't fit together: section 19.7 |
+| MQ4118 | I | 2 | **New.** What the database can't enforce for an end, with the text to copy: section 19.7 |
+| MQ4119 | W | 2 | **New.** A type code changed since the baseline: section 19.7 |
+| MQ4011, MQ4051 | E, W | 2 | Section 19.7 |
+| MQ4055 | E | later | Path A, which waits: also an entity whose table holds the storage of a relation with an end of several types |
 
-Every new rule and new case needs an end with several types or `typeStorage`. The catalog descriptions of MQ2003, MQ2020, MQ3016, MQ3116, MQ4009, MQ4055, MQ7105, MQ9211, MQ9305 and MQ9604 grow, so `list_validation_rules` answers differently for every project, as in earlier items.
+Every new rule and new case needs an end with several types or one of part 2's new keys. The catalog descriptions of MQ2003, MQ2020, MQ3016, MQ3116, MQ4009, MQ4055, MQ7105, MQ9211, MQ9305 and MQ9604 grow, so `list_validation_rules` answers differently for every project, as in earlier items.
 
 **Incremental validation,** as decision 12 says: entity, package and stereotype saves check again relations whose ends name a stereotype (MQ3009, MQ3016, MQ3043, MQ4115) and the scenarios that link through them (MQ9305); entity saves check again relations with an `anyEntity` end (MQ3009); mapping, database and settings saves check again every relation with an end of several types (MQ4115). Without such ends nothing extra runs.
 
@@ -310,7 +310,7 @@ Every new rule and new case needs an end with several types or `typeStorage`. Th
 - **`entity.relations` and `entity.navigations`,** while such an end exists, also key on each such end's `ec:` key, on `et:ends` and on `cs:` of each named key. A new `anyEntity` relation, or an entity gaining a named stereotype, renders them again. Without such ends their keys don't change.
 - **The planner** hashes `et` from the model alone. `Planning/ImpactKeys.cs` needs an `et` case that fires only when the change writes a relation and the hash differs, as `rn` and `tn` do (lines 114-117), with a no-change test; without it, the switch's `_ => true` would report units as rendering again on every dry run. The plan explainer words it "The relation ends that name a stereotype or any entity".
 
-**Part 2: `RRelationMapping`** (`relation.mappings[db]`). A sketch, settled with question 2: `type_storage`; one entry per placed type in type order with its `entity`, its foreign key or junction table; `type_column` and `id_column` for `type-and-id`; `type_codes`, each covered entity that can have objects with its `code`, by qualified name, then id; `base_entity` for `base-table`; the check; and `left_out`, the covered types not placed in the database. `RelationMappingRecord` gains the same, as ids and keys, each left out when unused. The tables, columns, foreign keys and checks are ordinary physical objects, so a pack that writes DDL from tables needs nothing more. A pack that stores links its own way reads the part 1 members.
+**Part 2: `RRelationMapping`** (`relation.mappings[db]`): settled in section 19.8 (`links`, `constants`, `attributes`, `left_out`, `not_stored`, `type_codes`), with the join members of decision 48 and the binding members `holds` and `key_of`. The tables, columns, foreign keys and checks are the team's physical objects, so a pack that writes DDL from tables needs nothing more. A pack that stores links its own way reads the part 1 members.
 
 ## 8. Simulation and scenarios
 
@@ -325,24 +325,24 @@ Every new rule and new case needs an end with several types or `typeStorage`. Th
 
 - **No new tool.** Tools take documents and answer with records, so they follow the schema and the records.
 - **Part 1:** `get_resolved_model`, `get_template_context` and `preview_expression` show the new members and scope. `get_references` and `delete_element` handle entries (decision 21). `apply_batch` takes qualified names in `types[].entity`, as in any reference. `simulate_process`, `record_scenario` and `verify_scenarios` accept links through such ends. `get_model_index` rows gain the end summary fields.
-- **Part 2:** `get_database_view` and the database views show each type's storage and what is left out; `plan` and `get_plan_diff` show the tables as usual; on path B, `get_binding_drift` follows the named columns.
+- **Part 2** (section 19.8): `get_database_view` gains `relationStorage` (holding tables, types left out or not stored, and what the database can't enforce with the text to copy); `plan` and `get_plan_diff` show the tables as usual; `get_binding_drift` names the new field forms.
 - **`openapi.yaml`, part 1:** `EndRecord` and `NavigationRecord` as section 7. `RelationEndSummary` makes `entity` optional and gains `entities` (ids of entity entries), `stereotypes` (ids), `anyEntity` and `covers` (the carriers of its stereotypes, for the explorer), each left out when unused. The index format moves to `maquettiste-index/e14` (`Editor/ModelReads.cs:23`). `RelationEndSummary` gains list members, so its equality must compare them by value, since `IndexRow` equality relies on it (`Model/Documents.cs:242`).
 - **`covers` is filled after the rows,** since each index row is built from its own file (`ModelIndexer.cs:1084-1086`). `WithSubjectCoverage` (`ModelIndexer.cs:991-1037`), which fills a process row's `covers` today, also fills each relation end's, in the same order: per entry, by qualified name, then id. Its early return (lines 994-995) also checks for relation ends that name a stereotype.
-- **Part 2:** `RelationMappingRecord` and the join member as section 7; on path A, the conventions in the settings schema.
-- **Tool texts:** `ModelTools.cs`, `ProcessTools.cs`, `Agent/tools.json` and the Functions endpoints, where they describe relation ends and mappings. The conventions resource (`McpServerSetup.cs`), the modeling skill (`skills/maquettiste-modeling/SKILL.md`) and the assistant's prompt describe `types`, `anyEntity` and, in part 2, `typeStorage`.
+- **Part 2:** `RelationMappingRecord`, `BindingFieldRecord`, `EntityBindingRecord` and the database view as section 19.8. No settings change.
+- **Tool texts:** `ModelTools.cs`, `ProcessTools.cs`, `Agent/tools.json` and the Functions endpoints, where they describe relation ends and mappings. The conventions resource (`McpServerSetup.cs`), the modeling skill (`skills/maquettiste-modeling/SKILL.md`) and the assistant's prompt describe `types`, `anyEntity` and, in part 2, the per-end storage entries, `constants`, attribute columns, type codes, the binding field forms and both ends (section 19.8).
 - **The editor's mock server** (`src/editor/src/mocks/model/`) re-implements the rules and must change in step. Part 1: `validate.ts`, `refs.ts`, `cascade.ts`, `modelIndex.ts`, `store.ts` (its index rows, line 1631), `rightRules.ts`, `rightsCheck.ts`, `triggerRules.ts`, `triggerRun.ts`, `relativeRules.ts`, `stepper.ts`, `queries.ts` and `bindings.ts` (MQ4116), `seed.ts` and `processSeed.ts` (MQ7105), `physical.ts` (skip such relations, MQ4115). Part 2: `physical.ts` and `bindings.ts` (the ways to store on the chosen path), `validate.ts` (MQ4009, MQ4117, MQ4118).
 
 ## 10. Packs
 
-Every change depends on an end with several types or `typeStorage`, so today's output is the same bytes.
+Every change depends on an end with several types or one of part 2's new keys, so today's output is the same bytes.
 
 | Pack | Part 1 | Part 2 |
 | --- | --- | --- |
-| `sql-ddl` | Nothing to write: the relation has no table, column or key. Its one relation loop, `ref_collections` (`_reference.scriban:582`), reads a mapping's junction table, which such a relation lacks. Golden test: output unchanged | No template change: tables, columns, foreign keys, checks and filtered unique indexes come from the physical model, designed or engine-made (`_table.scriban:42` writes `$t.checks`). Golden tests in all five dialects for each way to store, the one-to-one uniques, and migration tests for a type added and removed |
-| `csharp-dapper` | No change: it generates no navigations (README, "Not covered"), and rights and trigger points print ends by name | No template change: the new columns become entity properties through `storage_columns`, or come through a bound entity's binding statements, and the repository writes them. The README says the team's code sets the type column or the one key column, and the database check guards them. A build test with warnings as errors |
-| `process-docs` | No change: it prints ends by name (`_docs.scriban:87-96, 495-500`) and objects by entity. A golden test with a right on such an end and a scenario link through it | No change |
+| `sql-ddl` | Nothing to write: the relation has no table, column or key. Its one relation loop, `ref_collections` (`_reference.scriban:582`), reads a mapping's junction table, which such a relation lacks. Golden test: output unchanged | No template change: the team's designed tables are written as they are (section 19.9). Golden tests in all five dialects for ways 1 to 10 of section 19.4, and a migration test for a type added and removed |
+| `csharp-dapper` | No change: it generates no navigations (README, "Not covered"), and rights and trigger points print ends by name | No template change: a bound holder's new fields become entity properties and its repository writes them; a mapped holder's link columns come through `storage_columns` (section 19.9). A build test with warnings as errors |
+| `process-docs` | No change: it prints ends by name (`_docs.scriban:87-96, 495-500`) and objects by entity. A golden test with a right on such an end and a scenario link through it | No change; a golden with several types at both ends |
 | `seed-data` | Seeds of such links are refused (MQ7105) | The same |
-| `samples/typescript-pack` | It reads `nav.target.name` (`entity.scriban:31, 55-61`; `schema.scriban:47`) and would write broken code for a null target. It writes a union type from `nav.targets` (`attachedTo?: Part \| Assembly`), `unknown` for any entity, and no `…Id` property for such a navigation | No change |
+| `samples/typescript-pack` | It reads `nav.target.name` (`entity.scriban:31, 55-61`; `schema.scriban:47`) and would write broken code for a null target. It writes a union type from `nav.targets` (`attachedTo?: Part \| Assembly`), `unknown` for any entity, and no `…Id` property for such a navigation | No change; a golden with both ends |
 
 A pack outside this repository that reads `end.entity` or `navigation.target` should check `end.has_several_types`. The release notes and `packs/README.md` say so.
 
@@ -350,10 +350,10 @@ A pack outside this repository that reads `end.entity` or `navigation.target` sh
 
 **The relation's form** (`inspector/fields.tsx`, `EndEditor` and the ends list)
 - Each end has a **Type** choice: **One entity**, **Several types** or **Any entity**. Several types shows the entries as chips, in file order, with a picker that lists entities, then a **Stereotypes** group with those that apply to entities. A chip has a remove button with a tooltip.
-- Once one end has several types, the other end's choice keeps only One entity, with the tooltip "Only one end may have several types." An n-ary relation keeps only One entity: "An n-ary relation's ends name one entity each." A composition's child end leaves out Any entity.
+- Once one end has several types, the other end's choice keeps only One entity, with the tooltip "Only one end may have several types." (part 1 only: part 2 drops this limit, section 19.12). An n-ary relation keeps only One entity: "An n-ary relation's ends name one entity each." A composition's child end leaves out Any entity.
 - Going back to One entity with one entity entry writes `entity`. With more, the person picks one.
 - MQ3042 and MQ3043 have quick fixes (`problems/quickFix.ts`): use entity, remove the entry.
-- The **Storage** tab: part 1 says "No database stores a relation with an end of several types." Part 2 shows, per database, **Type storage** with the four choices, each with one line saying what it needs or makes, the columns, keys and check involved, what the database can't enforce (MQ4118), the types left out, and why a column appeared when a carrier gained the stereotype.
+- The **Storage** tab: part 1 says "No database stores a relation with an end of several types." Part 2's tab is in section 19.10: per database, **Type storage** as Held in and Points by, the pickers, the types left out or not stored, and what the database can't enforce with the text to copy.
 
 **The canvas** (`canvas/model.ts`, `RelationEdge.tsx`, `workspaces/entities/EntitiesWorkspace.tsx`, and new node types). The three looks the owner agreed, with `Comment` at the end that names one entity:
 
@@ -400,6 +400,7 @@ Collapsed by the toggle: one line to a list
 - **A type not on the canvas** gets no line; the node or box says "+2 not shown", with their names in a tooltip.
 - **Which relations show** in a domain view (`viewElements`, `canvas/model.ts:55`): the other end's entity is a card, and the end with several types has an entity entry that is a card, or names a stereotype or any entity.
 - **Unchanged:** a one-type relation's drawing, and the n-ary limit (the first two ends only).
+- **Several types at both ends** (part 2): one junction node with lines to both ends' types, and one collapsed box that lists each end's entries under its role (section 19.12).
 - **Exports** (`canvas/export.ts`) include the nodes and boxes. Auto-layout members added near a relation (`canvas/model.ts:258-270`) walk the entity entries.
 
 **Elsewhere:** a shared helper (`model/endTypes.ts`) answers "does this end cover this entity" and "what is this end's label" from index rows. These files use it:
@@ -425,25 +426,28 @@ Labels use plain words; no product names.
 - **Speed:** the same. The helper, the extra checks and the extra keys run only with such ends. **Pinned by** the bench and its baseline (`bench/baseline.json`).
 - **Once, as on any upgrade:** every unit renders again with the same bytes, since the engine version is part of each unit's key; the `.schema` copies refresh (MQ1008 until then); the index cache is read in full once (format `e14`).
 
-**After part 2:**
-- **A project that uses part 1 but no `typeStorage`** keeps its files, output, findings and keys, except that MQ4115 becomes a warning.
-- **A project that uses neither part** keeps everything above. New keys and conventions have defaults and change no table that doesn't use them. One-to-one uniques change only for storage of an end with several types.
+**After part 2:** section 19.15.
 
 ## 13. What comes next
 
 | Item | What it takes from this |
 | --- | --- |
-| The part 2 path not picked first | Path B needs path A's shapes for materialize; path A needs path B's naming keys for designed tables. Decisions 26 and 27 sketch both |
-| Materialize of such storage | Writes path A's columns, keys and checks into table files, and the mapping keys of path B |
+| Tables the engine makes for such relations (path A) | Decision 27's sketch: the engine adds the columns, keys, checks and filtered uniques that MQ4118 today only suggests. It reuses part 2's per-end entries for designed tables |
+| Materialize of such storage | Writes path A's columns, keys and checks into table files, and part 2's per-end entries into the mapping |
 | Seeds of such links | A seed column names the type and the key. Lifts MQ7105's new case |
 | A query through such an end | A query names which type it joins, using part 2's joins. Lifts MQ4116 for queries |
 | A stereotype's attributes through a navigation | The item stereotype sets left open ("by navigation, not yet"): nested rows in `RowOf`, the resolved path target, pack behavior. For every navigation at once, not only these ends |
-| Several types on both ends | Holders from both ends; a junction with two type-and-id pairs, or one per pair of types; two nodes on the canvas |
+| A link table per pair of types | When both ends have several types and each pair has its own table. A `types` item would name the pair; the keys of section 19.6 stay |
+| Column pointers spread over several holding tables | When one end's types live in several tables and each holds a type and an id (or an id) pointing at the other end. An entry would name a column per table; `foreignKeys` already covers keys |
+| An attribute column per holding table | When the links of a relation with attributes live in several tables. An `attributes` item would name a column per table |
+| A relation binding | Read, write and delete statements for links, like an entity binding, over the tables part 2's mapping names. The mapping's entries already name the columns |
+| A field form for a relation attribute in a bound row | An entity binding field that maps a relation attribute stored in the holding entity's row, so its repository writes it |
+| Schemas a table can't model on its own | Attribute values stored as rows (entity-attribute-value), value tables split by data type, table sets repeated per partition, ends made of a partition and an id, ends that point at a shared id table, one table with document columns for every entity. Packs implement them, reading the model and the tables separately (section 19.1). Not designed or promised |
 | Several types on an n-ary relation | The canvas first draws every end of an n-ary relation |
 | `exceptEntities` on an end | "Any entity except Comment", as named trigger points have it. An optional key |
 | A right or trigger point narrowed to one type of an end | A narrowing key. Until then they speak for every type |
-| A database-wide storage default | A convention for `typeStorage`, if teams find one mapping per relation too much |
-| A value-map fact for a renamed type code | Code maps exist (`Migrations/CodeMap.cs`), so a rename could rewrite the type column's rows instead of failing the migration |
+| A database-wide storage default | A convention for the per-end entries, if teams find one mapping per relation too much |
+| A value-map fact for a renamed type code | Code maps exist (`Migrations/CodeMap.cs`), so a rename could rewrite the type column's rows. Until then MQ4119 warns (decision 52) |
 
 ## 14. What the independent check changed
 
@@ -468,21 +472,27 @@ The owner answered all six questions on 2026-11-08, each as recommended, and sai
 3. **Limits.**
    - (a) **Accepted.** Several types are allowed on one end of a two-ended relation. An n-ary relation is refused (MQ3041), which matches a canvas that draws only the first two ends. A composition's child end may list types, and may not be `anyEntity`.
    - (b) **Accepted.** The other path, materialize, seeds, queries, both ends, n-ary relations, a stereotype's attributes through a navigation, and narrowing a right or a trigger point all wait. Part 1 refuses a seed or a field that would need one table (MQ7105, MQ4116).
-4. **No storage default: yes.** Part 1 stores nothing, and MQ4115 is info. In part 2 the same finding becomes a warning until a mapping states the storage or sets `ignore`, so a model that already uses part 1 gets that warning on the upgrade to 0.22.0. When the end with several types holds the key, the mapping doesn't set `typeStorage`: it names one foreign key on each type's table (decision 25). That is the natural shape, not a fifth value, and nothing is stored until that mapping exists.
+4. **No storage default: yes.** Part 1 stores nothing, and MQ4115 is info. In part 2 the same finding becomes a warning until a mapping states the storage or sets `ignore`, so a model that already uses part 1 gets that warning on the upgrade to 0.22.0. (Question 7, section 19.14, asks to revisit the warning in light of the principle that entities and tables may stay separate models.) When the end with several types holds the key, the mapping doesn't set `typeStorage`: it names one foreign key on each type's table (decision 25). That is the natural shape, not a fifth value, and nothing is stored until that mapping exists.
 5. **Type codes: the name, with collisions refused.** The stored code is the `discriminatorValue` of the entity's mapping in that database, otherwise the entity's name, the rule a shared-table discriminator already follows. Two covered entities with one code are refused (MQ4117). No second code scheme, such as qualified names, is added.
 6. **Releases: two.** Part 1 is 0.21.0, after sign-off part 2 is merged. Part 2 is 0.22.0.
 
 **One constraint for part 2's design, from the owner:** `column-per-type` and `table-per-type` are refused on an `anyEntity` end (MQ4117), since a new entity would add a column or a table. `type-and-id` is the way such an end is stored. An end that names a stereotype may still use the other ways, since the team named the set.
 
+**Part 2's principles, from the owner, 2026-11-08** (section 19.1):
+- **An `anyEntity` end may also be stored as an id alone,** with no type column, when ids are unique across tables ("yes, allow it"). The reason stays: no form of storage may grow with the model. A type and an id, and an id alone, both fit; a key per type and a table per type stay refused there (MQ4117). The database can't check the type an id points at, which MQ4118 says once (info). Decision 43.
+- **Entities and tables are separate models.** They don't always map clearly together, and a pack may be what puts them together. A relation's storage mapping is optional, always; part 2 supports the usual correlations a table can model, and leaves the rest (attribute values stored as rows, partitioned table sets, one table with document columns for every entity) to packs.
+- **"Entities can have a different id system than tables."** A table may carry its own surrogate id that no attribute maps. A link points at a unique column or key of each type's table, never at the entity's key attributes, and joins are between table columns. Decision 41.
+- **Every combination of end kinds,** "including a relation that allows any to any": one entity, several types or any entity at each end of a two-ended relation. Cardinality stays `min` and `max` per end. An n-ary relation keeps one entity per end (answer 3a). Part 2 lifts the one-end limit (decision 53, section 19.12).
+
 ## 16. New names
 
 - **In the format, part 1:** the end keys `types` and `anyEntity`, and the end type entry `{ entity }` or `{ stereotype }` (schema title "End type").
-- **In the format, part 2:** the mapping key `typeStorage` and its values `type-and-id`, `column-per-type`, `table-per-type` and `base-table`. Path B: mapping keys naming the existing keys, junctions, type column and id column, and a binding field form for the type column. Path A: the conventions `typeColumn` (default `{role}_type`) and `typeKeyColumn` (default `{role}_{entity}_{key}`), and the physical keys `<endId>.<entityId>.<keyAttributeId>`, `<endId>.type`, `<endId>.id` and `<relationId>.<entityId>@<databaseId>`. Part 2's design lists them exactly.
-- **Rules:** MQ3041, MQ3042, MQ3043, MQ4115, MQ4116; part 2: MQ4117, MQ4118.
-- **Template members:** `end.types`, `end.has_several_types`, `end.stereotypes`, `end.any_entity`, `end.common_base`, `navigation.targets`; part 2: the storage members of a relation mapping and the join member of a navigation (section 7).
-- **API:** `EndRecord.types`, `.hasSeveralTypes`, `.stereotypes`, `.anyEntity`, `.commonBase`; `NavigationRecord.targets`; `RelationEndSummary.entities`, `.stereotypes`, `.anyEntity`, `.covers`; the index format `e14`; part 2: the storage members of `RelationMappingRecord` and the join member.
-- **In the engine:** the naming key `et:ends`; the end coverage helper; the entry record mirroring `TriggerPointSubject`.
-- **In the editor:** Type, One entity, Several types, Any entity, Stereotypes, Collapse lines, Expand lines, "+N not shown", "through *key* (stereotype)", "any entity"; part 2: Type storage, A type and an id, A column per type, A table per type, A key to the shared base table, Not in this database.
+- **In the format, part 2** (section 19.6): in a relation mapping's `ends` entry, `foreignKeys` (a list of foreign key ids), `types` (items `{ entity, foreignKey }` or `{ entity, referencesColumn }`, schema title "End type storage"), `idColumn`, `typeColumn` and `referencesColumn`; the mapping key `constants` (items `{ column, value }`); `attributes[].column` newly allowed on a relation mapping; the entity binding key `discriminatorValue`; the binding field forms `<endId>.type` and `<endId>.<entityId>`. **`typeStorage` and its values `type-and-id`, `column-per-type`, `table-per-type` and `base-table`** were confirmed but never released; question 8 recommends leaving them out of the format and keeping the four ways as editor labels (if kept, a fifth value `unique-id`). Path A's conventions `typeColumn` and `typeKeyColumn` and its physical keys are not added (path A waits).
+- **Rules:** MQ3041, MQ3042, MQ3043, MQ4115, MQ4116; part 2: MQ4117, MQ4118, MQ4119.
+- **Template members:** `end.types`, `end.has_several_types`, `end.stereotypes`, `end.any_entity`, `end.common_base`, `navigation.targets`; part 2 (section 19.8): on a relation mapping `links` (each with `table` and `ends`, each end with `end`, `type`, `holds`, `columns`, `table`, `references`, `foreign_key`, `type_column`, `codes`), `constants` (`column`, `values`), `attributes` (`attribute`, `column`), `left_out` and `not_stored` (`end`, `entity`), `type_codes` (`entity`, `code`); `step.conditions` (`column`, `values`), `path.from_type`, `path.to_type`, `navigation.type_joins`, `entity_mapping.type_joins`; on a binding field `holds` and `key_of`; on a binding `discriminator_value`.
+- **API:** `EndRecord.types`, `.hasSeveralTypes`, `.stereotypes`, `.anyEntity`, `.commonBase`; `NavigationRecord.targets`; `RelationEndSummary.entities`, `.stereotypes`, `.anyEntity`, `.covers`; the index format `e14`; part 2: `RelationMappingRecord.links`, `.constants`, `.attributes`, `.leftOut`, `.notStored`, `.typeCodes`; `BindingFieldRecord.holds`, `.keyOf`; `EntityBindingRecord.discriminatorValue`; `DatabaseView.relationStorage` (`relationId`, `relationName`, `mappingId`, `tables`, `leftOut`, `notStored`, `gaps` with `endId`, `kind`, `text`). The index format stays `e14`.
+- **In the engine:** the naming key `et:ends`; the end coverage helper; the entry record mirroring `TriggerPointSubject`; part 2: `RelationEndTypeStorage`, `RColumnCondition`, `RelationPhysical.TypeLinks`, `ResolveTypeStorage`.
+- **In the editor:** Type, One entity, Several types, Any entity, Stereotypes, Collapse lines, Expand lines, "+N not shown", "through *key* (stereotype)", "any entity"; part 2: Type storage, Held in, The other end's table, Each type's table, A link table, A table per type, Not in this database, Points by, A key, A column per type, A type and an id, An id unique across types, A key to the shared base table, As written, Refers to, Rows of this relation, Left out, Not stored, What the database can't enforce, Copy, Add to table …, Move it to the end's entry.
 - **Names a builder adds** follow these patterns and are listed in the pull request and the release notes for the review to settle.
 
 ## 17. Tests
@@ -501,15 +511,7 @@ The owner answered all six questions on 2026-11-08, each as recommended, and sai
 - **Editor:** unit tests for the end helper, the form's conversions, which relations show, the starting look, the toggle and positions, the References tab pointers, the seed grid; one end-to-end test that makes an end several types, collapses it and reloads.
 - **Acceptance,** on an invented model: comments attached to parts, assemblies or controlled documents, an approval lifecycle over `approvable` with a right on the link's end, and a scenario that links and replays.
 
-**Part 2,** for the chosen path
-- **`RelationTypeStorageTests` (new):** each way to store in each cardinality decision 25 allows, over TPH, TPT and TPC placements; MQ4009 misfits; MQ4115 as a warning; MQ4117 cases; MQ4118 for each case; codes from `discriminatorValue` and names, sorted; a type not placed left out; a TPH-derived holder forced nullable as today; on path A the check texts byte for byte; on path B the named keys and columns, the binding fields and drift.
-- **Joins:** the per-type paths for each storage, records, and `BuildJoins` from an end with several types.
-- **Uniques:** one-to-one in each storage, in all five dialects, with the SQL Server filtered index.
-- **Stale output:** a carrier added renders its table again; a `discriminatorValue` changed renders the check again; a model with no `typeStorage` keeps its keys.
-- **Migrations:** a type added and removed, in each way to store; a code changed.
-- **Packs:** `sql-ddl` goldens, create and migrate, in five dialects; `csharp-dapper` build with warnings as errors; `seed-data` refusal.
-- **Editor:** the Storage tab and the mock's physical model.
-- **No change** for a project that uses part 1 only, beyond MQ4115's severity.
+**Part 2:** section 19.16.
 
 ## 18. Tasks and the build plan
 
@@ -530,17 +532,7 @@ The sizes are days for a person who knows the code, with tests and a review.
 
 That comes to about nine and three quarter days for a person.
 
-**Part 2,** on either path
-
-| Wave | Group | What | Size |
-| --- | --- | --- | --- |
-| 1 | Contract and engine | `mapping.json` and the path's keys, `openapi.yaml`, rule texts; the four ways to store; on path B the naming keys, binding fields, validation and drift, on path A the resolver's columns, keys and checks; codes; `MappingRules` | Two and a half days |
-| 1 | Editor | The Storage tab, the database views, the mock's physical model and bindings | A day and a half |
-| 2 | Joins, uniques, readers, tools and migrations | `BuildJoins` and the join member; the dialect uniques; `PhysicalRules`, `BindingViews`, `DatabaseTables`, `DatabaseViews`, `DatabaseReach`, `CodeHolders`, records; migration tests | A day and a half |
-| 2 | Packs | `sql-ddl` goldens in five dialects, `csharp-dapper` build, READMEs | A day |
-| 3 | Docs | User guide (storage), releases, `next.md` | A quarter day |
-
-That comes to about six and three quarter days for a person.
+**Part 2:** section 19.17.
 
 **Checklist for every group.**
 - **Every reader of `RelationEnd.Entity`,** from the compiler once it turns optional, the list in section 2, and a grep for what the compiler misses: `.Entity` beside `Ends`, `end.Entity`, `e.Entity`, `string.Equals(…Entity…)`, `==` and `ReferenceEquals` on an end's entity (`ResolveRun.Conceptual.cs:742`, `DatabaseRun.Finish.cs:524`), `.entity` in Scriban templates under `packs/` and `samples/`, and `.entity` on ends in `src/editor/src`. A reader that only reads end ids (rights, trigger points, freezing, traces) needs no change.
@@ -558,7 +550,7 @@ That comes to about six and three quarter days for a person.
 
 **This item's size,** with tests, without pack expected files.
 - **Part 1, about 7,500 to 8,500 lines:** contract and model about 550; rules, expressions and processes about 1,000 and their tests about 1,150; resolver, index, deletes, records and keys about 850 and tests about 850; editor form, helper, labels and pickers about 1,150; canvas about 950; mock about 500; editor tests about 450; samples and pack goldens about 200; docs about 400. The main risks are the reader sweep (every picker that asks which ends an entity holds) and keeping replays unchanged.
-- **Part 2, about 5,000 to 6,000 lines,** on either path: contract about 300; engine (path B's naming, bindings, validation and drift, or path A's resolver) about 1,200 and tests about 1,100; joins and uniques about 300 and tests about 250; readers, tools and records about 400 and tests about 300; editor and mock about 1,000 and tests about 250; pack tests about 300; docs about 300. The main risk is the four ways to store across inheritance placements. Part 2's final estimate follows the owner's answer to question 2.
+- **Part 2:** section 19.17 (about 8,500 to 9,500 lines with both ends).
 
 **Agents.** Each is capped at about 100 steps or 200k context. Opus builds the engine and the pack output and runs every review. Sonnet builds the editor, the mock and the docs, and runs the browser passes. **At most three agents run at once.** Agents work in their own worktrees, fast-forwarded to the branch, and their work is merged by patch, as in earlier items.
 
@@ -577,16 +569,7 @@ That comes to about six and three quarter days for a person.
 | 4 | Fixers, split by area (engine and output; editor and mock; docs) | Opus or Sonnet | About 40 each | The review's and the browser pass's findings |
 | 4 | A short second browser pass on the fixes | Sonnet | About 25 | The editor fixer's finish |
 
-**Part 2 agents,** on either path
-
-| Wave | Agent | Model | Steps | Starts from |
-| --- | --- | --- | --- | --- |
-| 1 | Contract and engine; contract first | Opus | About 100, with a fresh agent for the rest if it runs over | `main` once part 1 is merged and question 2 answered |
-| 1 | Editor and mock | Sonnet | About 90 | The contract commit |
-| 2 | Joins, uniques, readers, tools, records and migrations. Owns the tool files | Opus | About 90 | The contract and engine agent's finish |
-| 2 | Pack tests and READMEs | Opus | About 70 | The contract and engine agent's finish, beside the joins agent |
-| 3 | Review, docs, browser pass | Opus, Sonnet, Sonnet | About 60, 30, 40 | All builders' finish |
-| 4 | Fixers, split by area | Opus or Sonnet | About 40 each | The findings |
+**Part 2 agents:** section 19.17.
 
 - **One pull request per part, into `main`,** with the contract, engine, editor, output, docs and fix commits. Each is its own release. The owner merges part 1 first, and tags each.
 - **Generated files** (the editor's API types, the recorded rule list, the sample app's copies) are written only by the fixed commands, after each merge into the branch. Pack expected files stay with the builder, so their changes are reviewed.
@@ -604,19 +587,442 @@ That comes to about six and three quarter days for a person.
 | Wave 4 (fixes, second browser pass, CI) | About 0.7 hours | 0.23M | 0.75M | 45M |
 | In all | **About 3.5 hours** | **About 1.25M** | **About 4.4M** | **About 255M** |
 
-**Part 2,** on either path
+**Part 2:** section 19.17: about 3.8 hours, 1.33M output, 4.4M new input and 325M cached re-reads, with both ends.
+
+**Each part stays under the 400M cap without a further split.** Part 1's likely range was 230M to 290M (it came to 296M); part 2's is 290M to 370M (section 19.17). If a wave 2 agent needs a fresh agent to finish, add about 30M. If part 1's wave 2 ends above 200M, the rest is tracked step by step and the owner is told before wave 4 starts.
+
+**Both parts:** part 1's actuals (about 8,500 lines, 1.09M output, 3.32M new input, 296M cached) and part 2's estimate (about 8,500 to 9,500 lines, 1.33M, 4.4M, 325M).
+
+## 19. Part 2: storage in the team's tables, and several types at both ends
+
+**Status (2026-11-08): designed, not built, for one release (0.22.0).** This section is part 2's final design. It settles decisions 24 to 32 for the team's designed and imported tables (path B, the owner's answer 2), and it lifts part 1's limit of several types on one end only (decision 8), as the owner asked on 2026-11-08 (section 15). Two questions are open (19.14). Every code fact was checked on branch `several-types-2` at 0.21.0 (`597ecb30`); line numbers will move. A path without a project prefix is under `src/Maquettiste.Engine/`. The examples are invented.
+
+### 19.1 Principles
+
+Four principles from the owner, all of 2026-11-08 (section 15), shape everything below.
+
+1. **Entities and tables are separate models.** They don't always map clearly to each other. A relation's storage mapping is **optional, always**: a team may never map it, and its packs may read the relation and the tables separately and put them together as the team's code does. Nothing in part 2 assumes a mapping exists. Without one, the engine stores nothing for the relation, makes no column and asks for nothing beyond part 1's MQ4115 (question 7).
+2. **The usual correlations, where a table can model them.** Part 2 describes the ways a table holds a link that teams commonly use (19.4). It doesn't try to describe every schema. Attribute values stored as rows, value tables split by data type, partitioned table sets, ends made of a partition and an id, and ends that point at a shared id table are possible, and packs implement them; they are neither designed nor promised here (section 13).
+3. **Entities can have a different id system than tables.** An entity's key attributes need not be the id its table uses: a table may carry its own surrogate id, such as an integer or a GUID column that no attribute maps. So a link points at a unique column or a unique key of each type's table, never at "the entity's key". Every rule and every join below is worded on table columns.
+4. **Every combination of end kinds.** Each end of a two-ended relation may name one entity, several types or any entity, up to any entity at both ends. Cardinality stays `min` and `max` per end and is independent of this. An n-ary relation keeps one entity per end (the owner's answer 3a). Section 19.12 designs it.
+
+The standing rules hold: the engine never makes up a table or a column; a database holds only what is mapped to it; generation is optional; previews never touch the whole model; determinism is byte-exact.
+
+### 19.2 In short
+
+| Layer | What changes |
+| --- | --- |
+| The model | Both ends of a two-ended relation may have several types or be any entity. MQ3041 keeps its n-ary and composition-part cases (19.12) |
+| The relation mapping, optional | For a relation with an end of several types, it describes per end, in today's `ends` list, how the team's tables hold each link: one foreign key, keys in several tables, a key per type, or an id column with an optional type column. `junctionTable` names a link table, as today. Two small additions serve every relation mapping with a designed link table: `constants` (fixed values that pick this relation's rows in a shared table) and `attributes[].column` (a relation attribute's column) |
+| Entity bindings | `discriminatorValue` (the entity's type code in that database); two field forms that map a link's type column and a key column per type; MQ4116 lifted for binding fields |
+| Rules | New: MQ4117 (what is named doesn't fit together), MQ4118 (what the database can't enforce, info), MQ4119 (a type code changed since the baseline). Changed: MQ3041, MQ4009, MQ4011, MQ4051, MQ4115, MQ4116 |
+| Resolved model | A relation mapping's storage members; join paths per pair of types, with conditions on table columns |
+| Packs | No template change. Goldens in five dialects |
+| The editor | The relation form allows several types at both ends, and the canvas draws them. The Storage tab describes each database's storage with a few choices and pickers, lists the types left out, and shows what the database can't enforce with the text to copy |
+| A project that uses none of this | Same files, output bytes, findings, keys, records and replays (19.15) |
+
+### 19.3 What changed since the sketches
+
+- **No list of shapes.** Decisions 25 to 27 named four shapes (`typeStorage`). The owner then said storage takes many shapes, and later scaled that back to the usual correlations a table can model. So the mapping describes the team's tables per end, and the entries compose. The four shapes become four combinations of entries (19.4). Question 8 asks to leave `typeStorage` out of the format.
+- **No relation binding yet.** A binding for links, with read, write and delete statements like an entity binding, was weighed. It waits (section 13): the engine has no statements for links today, packs build link access from the mapping, and the mapping already names designed junctions for one-type relations. Nothing in the format blocks it.
+- **Table columns, not entity keys** (principle 3). Decision 25's "every placed type's key is one attribute of one built-in type and length" becomes "the id column refers to one unique column of each type's table, of a compatible type". Decision 25's "one entity every placed type is or derives from, placed with TPH or TPT" becomes "a table that holds the rows of every placed type".
+- **Both ends** may have several types (principle 4).
+
+### 19.4 The usual ways, and how a mapping writes each
+
+The examples: a `Comment` attached to one `Part` or `Assembly` (end `attachedTo` has several types); a `Folder` that holds parts and assemblies (end `items` has several types, end `folder` names `Folder`); and, for both ends, a `Link` from a `Comment` or a `Note` to a `Part` or an `Assembly`. Table and column names are the team's; the mapping names ids, shown here by name.
+
+| # | Way | The team's columns | The relation mapping writes | The database enforces |
+| --- | --- | --- | --- | --- |
+| 1 | A key on each type's table: the end with several types holds the key | `parts.folder_id`, `assemblies.folder_id` | `{ "end": folder, "foreignKeys": [ parts.fk_folder, assemblies.fk_folder ] }` | Each key |
+| 2 | A column per type: a key per type in the other end's table | `comments.part_id`, `comments.assembly_id` | `{ "end": attachedTo, "types": [ { "entity": Part, "foreignKey": comments.fk_part }, { "entity": Assembly, "foreignKey": comments.fk_assembly } ] }` | Each key. A check on how many are set is the team's |
+| 3 | A type and an id | `comments.attached_type`, `comments.attached_id` | `{ "end": attachedTo, "typeColumn": comments.attached_type, "idColumn": comments.attached_id }` | Nothing on its own. A check on the codes is the team's |
+| 4 | An id unique across types | `comments.attached_id` | `{ "end": attachedTo, "idColumn": comments.attached_id }` | Nothing on its own |
+| 5 | A key to a shared base table | `comments.item_id`, a key to `items` | `{ "end": attachedTo, "foreignKey": comments.fk_item }` | The key; not the type |
+| 6 | A link table, with attribute columns | `comment_links (comment_id, target_type, target_id, note)` | `"junctionTable": comment_links`, `{ "end": comment, "foreignKey": comment_links.fk_comment }`, `{ "end": attachedTo, "typeColumn": …, "idColumn": … }`, `"attributes": [ { "attribute": note, "column": comment_links.note } ]` | The comment key |
+| 7 | A table per type | `comment_parts`, `comment_assemblies` | `{ "end": comment, "foreignKeys": [ comment_parts.fk_comment, comment_assemblies.fk_comment ] }`, `{ "end": attachedTo, "types": [ { "entity": Part, "foreignKey": comment_parts.fk_part }, { "entity": Assembly, "foreignKey": comment_assemblies.fk_assembly } ] }` | Every key |
+| 8 | One link table for several relations | `links (relation_code, …)` | Any way with a `junctionTable`, plus `"constants": [ { "column": links.relation_code, "value": "AttachedTo" } ]` | As that way |
+| 9 | Both ends: a type and an id at each side | `links (from_type, from_id, to_type, to_id, note)` | `"junctionTable": links`, `{ "end": source, "typeColumn": links.from_type, "idColumn": links.from_id }`, `{ "end": target, "typeColumn": links.to_type, "idColumn": links.to_id }` | Nothing on its own |
+| 10 | Both ends: ids unique across types at each side | `links (from_id, to_id)` | `"junctionTable": links`, two entries with `idColumn` only | Nothing on its own |
+
+- **Part 1's names** map onto these: `column-per-type` is way 2, `type-and-id` way 3, `base-table` way 5 and `table-per-type` way 7. Way 1 is the case of the owner's answer 4, which needs no `typeStorage`. Way 4 is new; the owner allowed it on an any-entity end.
+- **Entries combine.** A link table may hold a key at one side and a type and an id at the other (way 6), or a key per type at each side. A one-type end in a link table may have a type column too; it holds that entity's code.
+- **What the database can't enforce** is said once per end and database, with the check or unique to copy (decision 47).
+
+### 19.5 Decisions
+
+Numbering continues from section 4. Each gives its confidence.
+
+37. **The relation mapping describes the storage, per end, in today's `ends` list. It is optional.** Confidence: medium-high.
+    - Today a relation mapping names what exists for a one-type relation: `foreignKey`, `junctionTable` and `ends` (`Model/Mapping.cs:60-76`; `schemas/v1/mapping.json:163-189`). Part 2 extends `ends`, as decision 26 said.
+    - Without a mapping in a database, the engine stores nothing for such a relation there, as in part 1 (`Resolution/DatabaseRun.Relations.cs:53`). Packs may still store links their own way from part 1's members (`end.types`, `navigation.targets`).
+    - Part 1's rule that such a mapping sets only `ignore` (`Validation/MappingRules.cs:209-225`, MQ4009) gives way to the checks below.
+    - No rule asks for a mapping. MQ4011, which today asks for a key between two bound tables (`MappingRules.cs:301-305, 343-364`), still skips a relation with an end of several types.
+
+38. **An `ends` entry says how the holding table points at its end, in exactly one way.** Confidence: medium-high.
+    - **`foreignKey`** (today's key): one existing foreign key. On a one-type end, as today. On an end with several types, a key to a table that holds the rows of every placed type (way 5).
+    - **`foreignKeys`** (new): several existing foreign keys that point at the end, one per table that holds links (ways 1 and 7).
+    - **`types`** (new): a key per type of this end, `[ { "entity": <id>, "foreignKey": <id> } ]` (ways 2 and 7). `entity` is an entity the end covers, listed once.
+    - **`idColumn`** (new): the column that holds the linked object's id (ways 3, 4, 6, 9 and 10). **`typeColumn`** (new), beside it: the column that holds the linked object's type code. The id refers to one unique column of each type's table: the table's primary key when it has one column, else **`referencesColumn`** (new) on the entry, when one table holds the rows of every placed type, or per type in `types: [ { "entity": <id>, "referencesColumn": <id> } ]`.
+    - `ends` items require only `end` from now on (today `["end", "foreignKey"]`, `mapping.json:185`). One way per entry is MQ4009, not a schema `oneOf`, so the editor can save an entry half filled and the message says what is missing.
+    - **Why these four:** each is one thing a column or a key does. Together they cover every usual correlation (19.4), and the format has room for more without changing them.
+
+39. **Where each link lives (its holding table) follows from what is named.** Confidence: medium-high.
+    - **A target** is an entity whose rows a pointer can reach in one table: each of the end's types placed in the database, and each covered entity whose rows aren't in the table of a covered base (TPC, or bound to a table of its own). A one-type end has one target, its entity.
+    - For each pair of targets, one per end, the pointers are: the entry's one way (`foreignKey`, or `idColumn` with `typeColumn`), or its `types` item for that target, or the item of `foreignKeys` that the holding table owns.
+    - **With `junctionTable`,** the link table holds every link. Every end needs an entry, as for today's designed junction (MQ4011, `MappingRules.cs:291-299`), and every pointer is in that table.
+    - **Without it, and one end has no entry,** that end's rows hold the link: the holding table is the table of that end's target. The other end's pointer must be in it.
+    - **Without it, and every end has an entry,** each target of the end with `types` has a link table of its own (way 7): the table that owns its key. The other end's pointer is the item of `foreignKeys` that table owns.
+    - A pointer must be in its pair's holding table (MQ4117). A column or a key is in one table, so when one end's targets live in several tables, the other end needs `foreignKeys`, one per table, or a key to a shared table. Column pointers spread over several holding tables wait (section 13).
+    - Both ends with `types` and no `junctionTable` would need a link table per pair of types. That waits (section 13), and is MQ4117 until then.
+
+40. **A table row holds one link.** When an end's own rows hold the link, the other end must be to-one (`max` 1), as today's to-one key in a binding (`Resolution/DatabaseRun.Bindings.cs:506`); MQ4117 otherwise. In a one-to-one, either end may hold it: the entries say which, so `foreignKeyEnd` isn't used (MQ4009). A many-to-many needs a link table (MQ4117 otherwise). Confidence: high.
+
+41. **Ids and keys are table columns** (principle 3). Confidence: high.
+    - **A foreign key leads to the right table** when its referenced table holds the rows of the target it serves: the target's table, or the table of a base that holds the target's rows (TPH or TPT, or a base bound to the same table). A key at a one-type end leads to that entity's table. A single key at an end with several types leads to a table that holds the rows of every placed target (way 5). MQ4117 otherwise. That the referenced columns are a key of that table is MQ4059 already (`Validation/PhysicalRules.cs:779-823`).
+    - **An id column refers to one column of each target's table:** `referencesColumn` when named, else the table's primary key when it has one column. That column must be the table's primary key or a unique key, by MQ4059's test (a unique constraint, or a unique index without a filter, and on Oracle only a constraint), and the id column's type must match it as a foreign key column must match (MQ4005's comparison, `Resolution/DatabaseRun.Finish.cs:254-264`). MQ4117 otherwise.
+    - Nothing compares a column with an entity's key attributes. A surrogate id that no attribute maps is fine.
+    - **A target's table** is the table its placement holds rows in (`Placement.Table`, `Resolution/TableBuild.cs:191-192`): a bound table, a binding's write table (else its source table), or a table the engine makes.
+
+42. **A type code is decision 28's, and an entity binding may set it.** Confidence: medium.
+    - The code of an entity in a database: the `discriminatorValue` of its binding to that database, else of its mapping element there, else its name.
+    - **Why a binding key:** an entity bound to a database ignores its mapping element there (MQ4054, `Resolution/DatabaseRun.cs:664`), so a mapping element could not set a bound entity's code. The binding is that entity's mapping in the database (erratum E43). The key has the mapping's name, type (`["string", "integer"]`, `mapping.json:125-127`) and meaning.
+    - **A number that names a type in a type-definition table** is an integer `discriminatorValue`. A text type column holds it as text (`'17'`); an integer type column needs every code it holds to be an integer.
+    - **A type column holds the codes** of the entities its end covers that can have objects (not abstract) and are placed in the database, derived ones included, since an object's code names its own entity. A one-type end's type column holds its entity's code and those of its derived entities.
+    - **Two of them with one code** is MQ4117, with the fix to set `discriminatorValue`. **A code its column can't hold** is MQ4117: a column that is neither text nor an integer, an integer column and a code that isn't an integer, a text column shorter than a code.
+    - **`discriminatorValue` outside an inheritance hierarchy** (MQ4009 today, `MappingRules.cs:147-148`) is allowed when an end with several types covers the entity. The binding's key follows the same rule.
+
+43. **An any-entity end: no way that grows with the model** (the owner, 2026-11-08). A type and an id, an id alone, a key to a shared table and a link table holding those are allowed. A key per type pointing at it (`types` items with `foreignKey`, ways 2 and 7) and keys spread over its types' tables (way 1, where the any-entity end holds the key) are refused (MQ4117), since every new entity would need a new column or table. `types` items with `referencesColumn` are allowed: they add no column. Confidence: high.
+
+44. **`constants`: fixed values on a link table.** `[ { "column": <id>, "value": … } ]`, the shape of a binding's constants (`Model/Bindings.cs:122-131`). Each is a filter on the link table's rows and the value an insert sets, such as a relation code in a table that holds several relations (way 8). Confidence: medium-high.
+    - It needs `junctionTable`, and each column must be one of that table's columns (MQ4009). A value its column can't hold is MQ4051, as for a binding's constant.
+    - Allowed on every relation mapping that names a designed `junctionTable`, one-type relations included, since a shared table holds those too.
+    - Two mappings in one database whose links one table holds, with the same constants, would read each other's links: MQ4117. It is reported only when one of the two writes `constants` or describes a relation with several types, so today's models get nothing new.
+    - A relation code is the team's value. There is no relation code scheme.
+
+45. **`attributes[].column`: a relation attribute's column, when one table holds every link.** Confidence: medium-high.
+    - Today a relation mapping can't name an attribute's column: the check needs a bound `table` (`MappingRules.cs:186-192`), which a relation mapping lacks, and a designed junction maps its attribute columns to nothing (`DatabaseRun.Relations.cs:213-232`).
+    - Part 2 allows `column` when the links live in one designed table: the link table, or the other end's table. The column must be in it (MQ4009 for a junction table, MQ4117 for an end's table). With links in several tables, it is MQ4117: one column can't be in several tables. A form per table waits (section 13).
+    - Allowed for one-type relations with a designed junction too.
+    - On a link table, the column gets the attribute, as an engine-made junction's column does. On an entity's table, the column keeps its own meaning, since packs read unmapped columns as storage columns (`packs/csharp-dapper/_dapper.scriban:101`); the pairing is recorded in the relation mapping only.
+    - `storage` and `prefix` on such an entry shape engine-made columns, so they stay MQ4009 (path A).
+
+46. **Entity bindings map the link's columns** (settles decision 26). Confidence: medium-high.
+    - Beside today's `<endId>` (a to-one end's key), two field forms: **`<endId>.type`**, the column holding the linked object's type code; and **`<endId>.<entityId>`**, the column that points at a linked object of that entity (a column per type). `<endId>` on an end with several types maps its id column. What a column points at in the type's table is the mapping's to say (decision 41), not the entity's key.
+    - A field may name an end the binding's entity holds: the entity is covered by the other end, and the named end is to-one. The skips for several types (`DatabaseRun.Bindings.cs:443-445, 505-506`) go, and the test `end.Opposite is { Entity: … }` (`:506`) reads coverage, so way 1's `<endId>` on each type's binding works.
+    - Names: `<navigation>Type` and `<navigation><Entity>Id`, else the role's, as today's `<navigation>Id` (`:511`).
+    - A field for a column that a mapping names must map that same column (MQ4117). With no mapping, the fields stand alone: the binding reads and writes the columns, and nothing more is checked.
+    - This lifts MQ4116 for binding fields. A field that names an end the entity can't hold stays MQ4045.
+
+47. **What the database can't enforce is info, once per end and database** (MQ4118; settles decisions 29 and 31). Confidence: high.
+    - The finding lists, over the end's holding tables: no foreign key on the pointer, so the database can't refuse a link to a missing row nor apply the end's delete rule or a composition's cascade; a key to a shared table, so it can't refuse a row of a type the end doesn't cover; an id alone, so it can't check the type an id points at; a type column with no check found on its codes; keys per type with no check found on how many are set; a one-to-one with no unique found on the pointer; a link table, for a relation that doesn't allow duplicates, with no unique found on both ends' pointers.
+    - **The text to copy** comes with each missing check or unique, in the database's dialect and quoting: decision 27's check texts, codes sorted ordinally and an integer code unquoted, named by `checkName` with `{name}` set to the end's role; a unique as `UNIQUE (…)`, or on SQL Server a unique index filtered to rows where the pointer is set (decision 31).
+    - **"Found" is a hint, not a proof.** A check counts when it is a column check on the column, or its condition reads the column, or its SQL text names the column as a word. The message says "finds no check that names column …".
+    - The database view carries the same list, each item with its text, for the Storage tab (19.8). The engine writes none of it; that waits with path A.
+
+48. **Joins are paths between table columns, one per pair of targets** (settles decision 30). Confidence: medium-high.
+    - **`RJoinStep` gains `conditions`:** a list of a column and the values it holds (`RColumnCondition`). A step through a holding table with a type column has "the type column holds the target's codes". A step through a link table with `constants` has each constant. A step into a table that several targets of the end share has what picks the target's rows: its TPH discriminator (`REntityMapping.DiscriminatorColumn`, `Resolution/ResolvedConceptual.cs:560`) or its binding's constants. Today's paths have none.
+    - **`RJoinPath` gains `from_type` and `to_type`:** the targets at the path's two ends, each set only when that end has several types; null on today's paths.
+    - **`RNavigation` gains `type_joins`:** by database name, the path of every pair of targets, ordered by the target at the navigation's from end, then at its to end, each in type order. `joins[db]` keeps one path; for way 5, it holds that single path as for a one-type relation, and `type_joins` holds the per-target paths with their conditions.
+    - **`REntityMapping`:** `joins[name]` holds the entity's own path when there is one (a navigation from a target, such as `Part.comments`); a new `type_joins[name]` holds the paths of a navigation that leads to an end with several types.
+    - **`BuildJoins`** (`DatabaseRun.Finish.cs:505-544`) takes the pairs from the relation's storage instead of matching `navigation.From.Entity` (`:527`). `JoinFor` (`:552-591`) builds each step from the pointer's columns and the referenced columns.
+    - Join paths reach templates only; no record carries them today, so no record changes.
+
+49. **MQ4115 gains a second text, and its severity is question 7.** Part 1's text reports a database where every end has a covered type placed and nothing stores the relation. Part 2 adds a text for a placed target that a mapping's entries reach with no pointer: "Relation 'AttachedTo' covers entity 'Memo' in database 'main', but its mapping names nothing that points at it there, so links to a Memo aren't stored." The first text stays a validation rule (`Validation/RelationTypeRules.cs:166-191`); the second is reported by the database run, which knows the placements. Confidence: high on the texts.
+
+50. **Refusals: only where a mapping would contradict itself or mean nothing.** Confidence: high.
+
+    | Refusal | Why it stays |
+    | --- | --- |
+    | MQ3041: several types on an n-ary relation's end; any entity as a composition's part | The owner's answer 3a; a composition owning every entity means nothing (decision 9) |
+    | MQ4009: two ways in one entry, none, `typeColumn` or `referencesColumn` without `idColumn` | An entry that says two things, or nothing |
+    | MQ4009: `foreignKeyEnd`, `promoted`, `promotedName`, `storage` and `prefix`, top-level `foreignKey` on such a relation | They decide engine-made shapes, or repeat what the entries say (one place per fact) |
+    | MQ4117: a key that leads to the wrong table; a pointer outside its holding table; a column that isn't unique or doesn't match; two types with one code; a code its column can't hold; a row holding a link to a to-many end | Contradictions: the stored links would be wrong or couldn't be written |
+    | MQ4117: a key per type on an any-entity end | The owner's rule: no storage may grow with the model |
+    | MQ4117: a link table per pair of types; column pointers spread over several holding tables; one attribute column for links in several tables | The format can't say it yet (section 13). Named as waiting, not as wrong |
+    | MQ4116: a query field or collection through such an end | A query names one column path; through such an end there is one per type, and the query language can't yet say which (section 13) |
+    | MQ7105: seeds of such links | A seed column can't yet name the type (section 13) |
+
+51. **The mapping's other keys, for a relation with an end of several types.** `shape` may be left out; when written, it must agree with the entries (`junction` with a link table, `foreign-key` with links in an end's tables), else MQ4009. `ignore` keeps its meaning. Confidence: medium-high.
+
+52. **Migrations follow the team's tables** (settles decision 32 for path B). Confidence: medium.
+    - The team edits its table files, and migration facts follow those changes as today. A type added means a column, a key or a table the team adds; a type removed drops them, which needs a fact like any drop (MQ4102).
+    - A type code that changes changes no table, so no fact asks for it, and stored links that hold the old code stop matching. `validate --against` reports it as a warning, **MQ4119**, beside MQ4112 (`Migrations/BaselineCheck.cs:472`), for each database whose mapping has a type column that holds the code. A value-map fact for type codes stays in section 13.
+
+53. **Several types or any entity at both ends** (lifts decision 8; the owner, 2026-11-08). Section 19.12. Confidence: high.
+
+### 19.6 Format
+
+| File | Key | Type | Notes |
+| --- | --- | --- | --- |
+| `mapping.json` | `ends[].foreignKeys` (after `foreignKey`) | list of foreign key ids, `minItems` 1, `uniqueItems` | Decision 38 |
+| `mapping.json` | `ends[].types` | list of `{ entity, foreignKey }` or `{ entity, referencesColumn }`, `minItems` 1 | Title "End type storage". Each item has `entity` and exactly one of the two |
+| `mapping.json` | `ends[].idColumn`, `ends[].typeColumn`, `ends[].referencesColumn` | column ids | Decision 38 |
+| `mapping.json` | `ends[]` `required` | `["end"]` | Was `["end", "foreignKey"]` (line 185). A valid file of today stays valid |
+| `mapping.json` | `constants` (after `ends`) | list of `{ column, value }`, as a binding's | Decision 44 |
+| `mapping.json` | descriptions of `ends`, `attributes[].column` | | Decisions 38 and 45 |
+| `entity.json` | binding `discriminatorValue` (after `delete`) | string or integer | Decision 42 |
+| `entity.json` | description of a binding field's `attribute` | | The forms of decision 46 |
+| `relation.json` | descriptions of `types` and `anyEntity` | | Both ends (19.12). No new key |
+| `openapi.yaml` | `RelationMappingRecord`, `BindingFieldRecord`, `DatabaseView.relationStorage` | | 19.8 |
+
+**In code:** `RelationEndMapping` (`Model/Mapping.cs:103-113`) makes `ForeignKey` optional and gains `ForeignKeys`, `Types` (a new record `RelationEndTypeStorage { Entity, ForeignKey?, ReferencesColumn? }`), `IdColumn`, `TypeColumn` and `ReferencesColumn`. `Mapping` gains `Constants` (`IReadOnlyList<BindingConstant>`). `EntityBinding` (`Model/Bindings.cs:13-73`) gains `DiscriminatorValue` (`JsonElement?`). Keys carry `[ElementRef(IndexKinds = ["key"])]`, columns `["column"]`, entities `ElementKind.Entity`, as `ForeignKey` and `AttributeMapping.Column` do today, so references, renames, cascades and batch names work through the generic walker. Deleting an entity removes the `types` items that name it; an entry left with no way is MQ4009.
+
+Way 9, both ends, a type and an id at each side, with an attribute column:
+
+```json
+{ "kind": "mapping", "name": "Link in main", "database": "<main>", "relation": "<Link>",
+  "junctionTable": "<links>",
+  "ends": [
+    { "end": "<source>", "typeColumn": "<links.from_type>", "idColumn": "<links.from_id>" },
+    { "end": "<target>", "typeColumn": "<links.to_type>", "idColumn": "<links.to_id>" }
+  ],
+  "attributes": [ { "attribute": "<note>", "column": "<links.note>" } ],
+  "constants": [ { "column": "<links.relation_code>", "value": 17 } ] }
+```
+
+Way 7, a table per type. Each key refers to whatever key its foreign key names in the type's table, often a surrogate id no attribute maps:
+
+```json
+{ "kind": "mapping", "name": "AttachedTo in main", "database": "<main>", "relation": "<AttachedTo>",
+  "ends": [
+    { "end": "<comment>", "foreignKeys": [ "<comment_parts.fk_comment>", "<comment_assemblies.fk_comment>" ] },
+    { "end": "<attachedTo>", "types": [
+      { "entity": "<Part>", "foreignKey": "<comment_parts.fk_part>" },
+      { "entity": "<Assembly>", "foreignKey": "<comment_assemblies.fk_assembly>" } ] }
+  ] }
+```
+
+Way 4, ids unique across types, where the id refers to each type table's `uid` column, a unique key that isn't the primary key (decision 41):
+
+```json
+{ "kind": "mapping", "name": "AttachedTo in main", "database": "<main>", "relation": "<AttachedTo>",
+  "ends": [
+    { "end": "<attachedTo>", "idColumn": "<comments.attached_uid>", "types": [
+      { "entity": "<Part>", "referencesColumn": "<parts.uid>" },
+      { "entity": "<Assembly>", "referencesColumn": "<assemblies.uid>" } ] }
+  ] }
+```
+
+An entity binding that holds way 3:
+
+```json
+{ "id": "…", "database": "<main>", "source": "<comments>", "discriminatorValue": 4,
+  "fields": [
+    { "attribute": "<Comment.id>", "column": "id" },
+    { "attribute": "<attachedTo>.type", "column": "attached_type" },
+    { "attribute": "<attachedTo>", "column": "attached_id" } ] }
+```
+
+### 19.7 Rules
+
+| Rule | Sev | Change |
+| --- | --- | --- |
+| MQ3041 | E | Drops "several types on both ends" (`RelationTypeRules.cs:96-98`). Keeps the n-ary case and any entity as a composition's part |
+| MQ4009 | E | On a mapping of a relation with an end of several types: an entry with no way or two; `typeColumn` or `referencesColumn` without `idColumn`; `types` items of the wrong kind for the entry; a key that isn't a foreign key of a designed or imported table of the database, or a column that isn't a column of one (today's texts); `foreignKeyEnd`, `promoted`, `promotedName`, top-level `foreignKey`; `storage` or `prefix` in `attributes`; a `shape` that disagrees; `constants` without `junctionTable`, or a constant column outside it. On any relation mapping: `foreignKeys`, `types`, `idColumn`, `typeColumn` or `referencesColumn` on a relation whose ends each have one type ("…needs a relation with an end of several types"). On an entity mapping: `constants`. On a binding: `discriminatorValue` where no end with several types covers the entity. Relaxed: `discriminatorValue` outside a hierarchy when such an end covers the entity; `attributes[].column` on a relation mapping whose links one designed table holds; `ends` without `junctionTable` on such a relation |
+| MQ4011 | E | A link table of a relation with an end of several types needs an entry for every end, as a designed junction does |
+| MQ4051 | W | Also a relation mapping's constant that its column can't hold |
+| MQ4115 | I or W (question 7) | A second text for a placed target no pointer reaches (decision 49). "…; add a mapping for it, or set ignore" only where the first text is a warning |
+| MQ4116 | E | Lifted for binding fields in the forms of decision 46. Kept for query fields and query collections |
+| MQ4117 | E | **New.** What a mapping or a binding names doesn't fit together (decisions 39 to 46, 50). Examples: "Foreign key 'fk_part' of table 'comments' is named for type 'Part' of end 'attachedTo', but it refers to table 'assemblies', which doesn't hold Part rows." "Column 'attached_id' of table 'comments' refers to column 'code' of table 'parts', which is neither its primary key nor a unique key." "Types 'Part' and 'PurchasedPart' both have code 'P' in database 'main', so column 'attached_type' can't tell them apart; set discriminatorValue on one." "End 'attachedTo' is any entity, so it can't have a key per type: every new entity would need a column. Use a type and an id, or an id alone." Also a `types` item that names an entity the end doesn't cover, checked by the database run since carriers change |
+| MQ4118 | I | **New.** What the database can't enforce for an end (decision 47). "Database 'main' holds end 'attachedTo' of relation 'AttachedTo' as a type and an id in table 'comments', so it can't refuse a link to a missing part or assembly, nor apply the delete rule 'cascade'; and it finds no check that names column 'attached_type'. To check the codes, add: CHECK (\"attached_type\" IN ('Assembly', 'Part'))" |
+| MQ4119 | W | **New.** "Since the baseline, the type code of 'Part' in database 'main' changed from 'Part' to 'P', and column 'attached_type' of table 'comments' holds codes of relation 'AttachedTo'; links stored with the old code no longer find their object. Update those rows." |
+
+Every new rule and case needs an end with several types, or one of part 2's new keys. The catalog texts of MQ3041, MQ4009, MQ4011, MQ4051, MQ4115 and MQ4116 change, so `list_validation_rules` answers differently for every project.
+
+**Incremental validation.** The new keys are references, so a save of a named table checks the mapping again through today's reference dependents (`Validation/ModelValidator.cs:721-731`). The checks that read placements or coverage (MQ4117, MQ4118, MQ4115's second text) run in the database run, which every validate already includes, so no new dependents are needed. Decision 12's dependents for MQ4115's first text stay.
+
+### 19.8 Resolved model, records, views and tools
+
+**`RRelationMapping`** (`Resolution/ResolvedConceptual.cs:489-508`; `relation.mappings[db]` in templates) gains, for a relation with an end of several types and for any mapping with `constants` or attribute columns, each empty or null otherwise:
+
+| Member | What it holds |
+| --- | --- |
+| `links` | One entry per pair of targets, in type order: `table` (the holding table) and `ends`, one per end: `end`, `type` (the target at that end), `holds` (whether this end's rows hold the link), `columns` (the pointer's columns in the holding table), `table` and `references` (the referenced table and its columns), `foreign_key` (when the pointer is a key), `type_column` and `codes` (when it has a type column) |
+| `constants` | `column` and `values` (`RColumnCondition`) |
+| `attributes` | `attribute` and `column` |
+| `left_out` | `end` and `entity`: covered entities not placed in the database. No finding (decision 25) |
+| `not_stored` | `end` and `entity`: placed targets no pointer reaches (MQ4115's second text) |
+| `type_codes` | `entity` and `code`, for every entity a type column holds, by qualified name, then id |
+
+`shape` is `junction` with a link table, else `foreign-key`; `junction_table` is set when one link table holds every link; `foreign_key` stays null for such a relation. A pack that writes DDL from tables needs none of this: the tables are designed.
+
+**Joins:** `RColumnCondition`, `RJoinStep.conditions`, `RJoinPath.from_type` and `to_type`, `RNavigation.type_joins`, `REntityMapping.type_joins` (decision 48).
+
+**Bindings:** `RBindingField` (`Resolution/ResolvedBindings.cs:102-163`) gains `holds` (`id`, `type` or `key`, for the new forms; null on today's fields) and `key_of` (the entity of a `<endId>.<entityId>` field). `REntityBinding` gains `discriminator_value`.
+
+**The database run.** `ResolveRelation` (`DatabaseRun.Relations.cs:48-70`) still skips a relation with an end of several types that has no mapping in the database. With one that doesn't ignore it, a new `ResolveTypeStorage` works out the targets, the holding tables and the pointers (decisions 39 to 41), the codes (42), the checks of MQ4117 and the gaps of MQ4118 (47), and records `RelationPhysical.TypeLinks` for `BuildJoins`. Designed keys are found through `_foreignKeysById` (`DatabaseRun.cs:36`), as a one-type relation's are (`DatabaseRun.Relations.cs:115, 219`). Constants and attribute columns of a one-type designed junction are applied in its branch (`:213-232`).
+
+**Dependency keys.** The new members key on the mapping file, the files of the named tables, each target's key table (`KeyDeps`, `DatabaseRun.Relations.cs:190-202`), the file that sets each code (the entity's file for a binding, the mapping file), and the end's types key `ec:<end id>`, as `FinishRelationMappings` adds a one-type relation's (`DatabaseRun.Finish.cs:359-386`). Navigations add the same for `type_joins`. A model with no such mapping records no new key.
+
+**Records** (`get_resolved_model`). `RelationMappingRecord` (`Editor/ResolvedRecords.cs:331`, built at `:1734-1735`) gains `links`, `constants`, `attributes`, `leftOut`, `notStored` and `typeCodes`, each left out when empty: ids for ends and entities, keys for tables and columns, names for foreign keys (as today's `foreignKey`). `BindingFieldRecord` (`Editor/BindingViews.cs:53-54`) gains `holds` and `keyOf`, left out when null; `EntityBindingRecord` (`:34`) gains `discriminatorValue`, left out when unset.
+
+**The database view** (`get_database_view`, `Editor/DatabaseViews.cs:40`) gains `relationStorage`, left out when empty: per relation with an end of several types placed in the database, its mapping's id, the holding tables, `leftOut`, `notStored` and `gaps` (`endId`, `kind` and `text`, the MQ4118 items with their text to copy).
+
+**Tools.** No new tool. `get_resolved_model`, `get_template_context` and `get_database_view` show the members; `get_binding_drift` names the new fields. The descriptions in `src/Maquettiste.Cli/Mcp/ModelTools.cs`, `Agent/tools.json`, the Functions endpoints, the conventions resource (`McpServerSetup.cs`), the modeling skill and the assistant's prompt (`Agent/AssistantPrompt.cs`) describe the per-end entries, `constants`, attribute columns, codes, the field forms and both ends.
+
+### 19.9 Packs
+
+| Pack | Change |
+| --- | --- |
+| `sql-ddl` | **No template change.** It writes designed tables as they are: columns, keys, checks (`packs/sql-ddl/_table.scriban:42-44`), uniques and indexes, with an index filter on every dialect but MySQL and Oracle (`_sql.scriban:585-586`), and `NULLS NOT DISTINCT` on PostgreSQL (`:283-285`). The engine adds nothing. Golden tests in all five dialects for ways 1 to 10, each with the checks and uniques MQ4118 suggests written into the tables by the team, prove the DDL is the tables' own; a migration test adds a type's column and drops another's |
+| `csharp-dapper` | **No template change.** A bound holder's new fields carry `end`, so `bind_key_fields` declares them as entity properties (`packs/csharp-dapper/_dapper.scriban:317-329`) and the repository reads and writes them (`_binding.scriban:31, 61`). A holder mapped to a designed `table` gets its link columns as storage columns (`_dapper.scriban:101`). The README says the team's code sets the type column, or the one key column per type, and the database's checks guard them. A build test with warnings as errors |
+| `process-docs` | No change. A golden test with a relation that has several types at both ends |
+| `seed-data` | Seeds of such links stay refused (MQ7105) |
+| `samples/typescript-pack` | No change: it writes a union from `nav.targets` (section 10). A golden test with both ends |
+
+### 19.10 The editor: storage
+
+**The relation's Storage tab** (`editors/storage/RelationStorage.tsx`). The part 1 notice (lines 71-76) gives way to one card per database:
+- **Type storage**, as two choices. **Held in:** The other end's table, Each type's table, A link table, A table per type, or Not in this database (which writes `ignore`). Only the choices the cardinality allows are offered (decision 40). **Points by**, per end that doesn't hold the link: A key, A column per type, A type and an id, An id unique across types, or A key to the shared base table. An any-entity end offers no per-type choice (decision 43). A mapping that matches no pair of choices shows "As written", with every end's entry editable.
+- **Pickers** for what the choices need: keys of the holding table that refer to the right table; the type and id columns of the holding table, the id column filtered by type; **Refers to**, per type, shown when a type table's primary key isn't one column or the person opens it (default: the primary key); the link table, or one per type; **Rows of this relation** (constants), with the binding editor's constants grid (`editors/storage/StorageTab.tsx:771`); a column per relation attribute when one table holds every link.
+- **Lists:** "Left out (not in this database): Tool"; "Not stored: Memo, no key or column points at it".
+- **What the database can't enforce**, from the database view, each with **Copy** and **Add to table 'comments'**, which writes the check or the unique into the designed table file (one save, one undo step).
+- **Problems:** the mapping's findings and the relation's MQ4115 for that database, as today's tab filters them (`RelationStorage.tsx:102-106`).
+- The pickers read the table documents as today (`useElements`), and placements and gaps from the database view. `relationStorage.ts` gains the pure helpers (choices from entries and back, key and column filters), unit tested without React.
+
+**The entity's field map** (`editors/storage/fieldMap.ts:148-177`): the skip at lines 157-158 goes, and the binding offers the new forms with origin "relation": "attachedTo type", "attachedTo id", "attachedTo Part key". Map by name matches them.
+
+**Quick fixes** (`problems/quickFix.ts`): MQ4115, "Not in this database" and "Open the Storage tab"; MQ4118, "Copy the check" and "Add the check to table …"; MQ4009, remove the key, or for a top-level `foreignKey` on such a relation, "Move it to the end's entry".
+
+**The mock server** (`src/editor/src/mocks/model/`): `endRules.ts` (MQ3041, MQ4009, MQ4115, MQ4116), `physical.ts` (the skip at line 678 becomes the storage of decisions 39 to 48: targets, holding tables, codes, MQ4117, MQ4118 and its texts), `bindings.ts` (the field forms), and the database view's `relationStorage`.
+
+**Parity, extending part 1's pattern.** A new fixture, `src/editor/tests/fixtures/several-types-storage/`, holds every way of 19.4 and one misfit per MQ4117 case. A new engine test, `SeveralTypesStorageParityTests` (beside `tests/Maquettiste.Engine.Tests/Validation/SeveralTypesParityTests.cs`), records its findings for MQ4009, MQ4011, MQ4051, MQ4115, MQ4116, MQ4117 and MQ4118 in `diagnostics.json`; `mock-several-types-storage-parity.test.ts` checks the mock against it field by field. Part 1's fixture is recorded again where part 2 changes its answers (the MQ3041 both-ends case, the MQ4116 binding cases now lifted, the MQ4009 text on its mapping), and its `Hit` list drops those cases and asserts they are gone.
+
+### 19.11 Drift and the by-name operations
+
+- **The mapping names ids,** so a renamed column or key is followed with no drift. A removed one is a missing reference, as for today's `foreignKey`. A retyped id column fails MQ4117's type check.
+- **Binding drift** (`Model/BindingDrift.cs`): `AttributeName` (`:259`) names the new field forms (`attachedToType`, `attachedToPartId`), so MQ4087 and the drift report speak of them. Re-sync keeps them, since it follows columns by id.
+- **Map by name** (`Loading/Materializer.Bindings.cs:427-436`) offers the new forms as candidates for a holding entity, and `<endId>` for each type when the end with several types holds the key. `materialize-tables` is unchanged: a projection has no such columns, so a team adds them by hand (materialize of such storage waits with path A).
+
+### 19.12 Several types or any entity at both ends
+
+The owner, 2026-11-08: every combination, "including a relation that allows any to any". Below, "one entity", "several types" and "any entity" say what an end may point at; cardinality stays `min` and `max`.
+
+- **The model and the rules.** MQ3041 drops its both-ends case (`RelationTypeRules.cs:96-98`) and keeps the n-ary case (`:68-69`) and any entity as a composition's part (`:101-105`). A composition's owner end and its part end may both have several types; MQ3016 counts each covered entity of the part end, as in part 1.
+- **Coverage and navigations** are per end already: `EndCoverage` (`Model/EndCoverage.cs`) answers per end, and `BuildNavigations` (`Resolution/ResolveRun.Conceptual.cs:894-927`) makes one navigation per pair of ends, whose `From.Entity` and `Target` are null when that end has several types. A navigation between two such ends is held by every type of its from end, is listed in `entity.navigations` of each, and lists the far end's types in `targets`. An entity covered by both ends holds both navigations; MQ3009 reports a name clash, as today.
+- **Expressions.** A path through such a navigation reads what every entity the far end covers holds under one id (decision 13), from any holder. `in_state` follows decision 15 per far end (MQ3116).
+- **Rights, trigger points, freezing and actors** name ends by id, and an end is held by every covered entity of the other end (decision 16), so MQ8102 and MQ9903 read the holders as they do.
+- **Scenarios and connect steps.** A link fits when the object is covered by the end it holds and the target by the other end (`Processes/ScenarioObjects.cs:183-196`, `Processes/VerbStepFields.cs:84-87`), which read coverage for such ends already. Tests pin both ends, a replay included.
+- **Keys:** `ec:<end id>` and `et:ends` are per end already.
+- **Records and the index:** `EndRecord`, `NavigationRecord` and `RelationEndSummary` are per end, so their shapes don't change, and the index format stays `maquettiste-index/e14` (`Editor/ModelReads.cs:23`). A file with several types at both ends is refused by 0.21.0 (MQ3041), so an older engine still refuses what it can't read; `formatVersion` stays 1.
+- **Storage:** the per-end entries cover both ends: ways 9 and 10, and a link table with any way at each side. A link table per pair of types, and column pointers spread over several holding tables, wait (decision 39).
+- **Seeds and queries:** as in part 1 (MQ7105, MQ4116).
+- **The relation's form** (`inspector/relationEnds.ts`): the limit "Only one end may have several types." (line 12) goes; the n-ary and composition limits stay.
+- **The canvas** extends the agreed drawing (section 11) to both ends:
+  - **Expanded:** one junction node at the relation member's `x` and `y`. One line runs from the node to each type card or box of either end, and each line shows its end's role and cardinality. A stereotype or any-entity box sits on its end's side of the node and moves with it. Each end says "+N not shown" for its types not on the canvas.
+  - **Collapsed** by the one toggle: one box at `x` and `y` that lists each end's entries under its role ("source: Comment, Note"; "target: Part, Assembly"). The toggle is offered when either end has two or more entries.
+  - Nothing new in the diagram file: the member's `collapsed`, `x` and `y`, as in part 1. A relation with one end of several types keeps part 1's looks.
+  - Which relations show in a domain view (`canvas/model.ts:52-57`): each end has an entry that is a card, or names a stereotype or any entity. `canvas/severalTypes.ts` gains the both-ends plan beside its near and far plan (lines 1-40). Exports and auto-layout include the node and boxes.
+  - The browser pass shows the owner the both-ends look.
+
+  ```
+  Both ends with several types: one node
+
+  +---------+ source *                    target 1 +----------+
+  | Comment |-----------+          +---------------| Part     |
+  +---------+           |   Link   |               +----------+
+                        +---(o)----+
+  +---------+ source *  |          |    target 1   +----------+
+  | Note    |-----------+          +---------------| Assembly |
+  +---------+                                      +----------+
+
+  Collapsed by the toggle: one box
+
+  +-----------------------------+
+  | Link                        |
+  | source *: Comment, Note     |
+  | target 1: Part, Assembly    |
+  +-----------------------------+
+  ```
+- **The mock and parity:** `endRules.ts` drops the case; part 1's fixture keeps `both.json` as a valid relation, and the storage fixture adds a both-ends relation with ways 9 and 10.
+
+### 19.13 What waits, with the reason
+
+Added to section 13: a link table per pair of types; column pointers spread over several holding tables; an attribute column form per holding table; a relation binding with statements for links; a value-map fact for type codes; an engine-made check, unique or column (path A) and materialize; attribute values stored as rows, value tables split by data type, partitioned table sets, ends made of a partition and an id, ends that point at a shared id table, and other schemas a table can't model on its own, which packs implement (principle 2). None of them needs a change to the keys above.
+
+### 19.14 Questions for the owner
+
+7. **MQ4115's severity.** Your answer 4 made it a warning in part 2 until a mapping states the storage or sets `ignore`. Principle 1 says entities and tables may stay separate models, and a warning on every unmapped relation would push teams to map what they keep apart on purpose. **Recommendation:** keep the first text as info; make the second text a warning, since it fires only where a mapping in that database states storage and leaves a placed type out. A model that uses part 1 then gets nothing new on the upgrade. *Alternative:* warn on the first text only when every end's covered types are bound to designed or imported tables in that database.
+8. **`typeStorage` and its four values** (confirmed, never released). The per-end entries say everything it would say, and more: way 1 has no value, way 4 would need a fifth (`unique-id`), and `table-per-type` names where links live, not how an end is pointed at. Writing both could disagree. **Recommendation:** leave `typeStorage` out of the format. Keep its four ways as the editor's choice labels and the guide's words (A column per type, A type and an id, A key to the shared base table, A table per type). *If you keep it:* it becomes an optional summary checked against the entries (MQ4009 when they disagree), with the fifth value `unique-id` and no value for way 1.
+
+Both ends fit in this release: together the estimate stays under the 400M cap (19.17), so no split is proposed.
+
+### 19.15 A project that uses none of this
+
+- **A project with no end of several types and no new key** keeps its files, output bytes, findings and messages, keys, records, index and replays. New members are empty or left out; `type_joins` and `conditions` are empty; the database view leaves `relationStorage` out. **Pinned by** the pack goldens and replays, which pass untouched, a resolver test that a model without such ends gives the same records, and a key test. Some answers change for every project, as in earlier items: `list_validation_rules` (six catalog texts) and `get_schema` for mappings and entities.
+- **A one-type relation** keeps today's behavior unless its mapping writes `constants` or `attributes[].column`. Its MQ4011 and foreign key checks are unchanged.
+- **A model that uses part 1** keeps everything, with three differences: MQ4115 per question 7 (nothing new if answered as recommended); MQ4116 on a binding field that names such an end in a form decision 46 allows goes away (the field now resolves); MQ4009's text on a mapping of such a relation changes. A model that had both ends with several types loses its MQ3041 error.
+- **Speed:** the new checks run only for mappings of such relations. **Pinned by** the bench and its baseline.
+
+### 19.16 Tests
+
+- **`RelationTypeStorageTests` (new):** each way of 19.4 in each cardinality its holding table allows, over TPH, TPT, TPC and bound placements; a type table whose primary key is its own surrogate id, with the entity's key a natural code, as the referenced column; `referencesColumn` to a unique column, and to one that isn't unique; MQ4009, MQ4011 and MQ4117, each case; MQ4118, each gap with its text in five dialects; codes from a binding, a mapping and a name; integer codes in text and integer columns; collisions; MQ4115, both texts; MQ4119 against a baseline; `constants` on a shared link table holding two relations, with MQ4117 only when part 2 keys are used; `attributes[].column` on a link table, on an end's table, and refused over several tables; the binding field forms, MQ4116 lifted, and a field that disagrees with the mapping.
+- **Joins:** the paths of every pair for each way; conditions from type codes, constants, a TPH discriminator and a binding's constants; `joins` and `type_joins` for way 5; entity mapping joins; `BuildJoins` from targets.
+- **Records and views:** `RelationMappingRecord`'s members, left out when unused; `BindingFieldRecord`; the database view's `relationStorage`.
+- **Stale output:** a carrier added renders `relation.mappings` again; a changed `discriminatorValue` does; a named table's change does; a model with no such mapping keeps its keys. Each stale test is checked to fail without its fix.
+- **Both ends:** MQ3041's both-ends case gone and its other cases kept; navigations both ways; `entity.navigations` with an entity covered by both ends; a guard and `in_state` through both; rights and trigger points held by every covered entity; scenario links, connect steps and a replay; ways 9 and 10.
+- **Packs:** `sql-ddl` goldens in five dialects for ways 1 to 10, create and migrate; `csharp-dapper` build with warnings as errors, with a bound holder mapping the new fields; `process-docs` and the TypeScript sample with both ends.
+- **Editor:** unit tests for the choices and entries, the pickers' filters, the field forms and the both-ends drawing, toggle and export; the two parity tests; one end-to-end test that describes a type and an id, sees a gap, adds the check and reloads.
+- **No change:** the existing goldens and replays pass untouched; a part-1-only model keeps its findings except as 19.15 says.
+
+### 19.17 Tasks, build plan and estimate
+
+**Tasks,** in days for a person who knows the code, with tests and a review.
+
+| Wave | Group | What | Size |
+| --- | --- | --- | --- |
+| 1 | Contract | `mapping.json`, `entity.json` and `relation.json` texts, `openapi.yaml`, rule texts; `RelationEndMapping`, `Mapping.Constants`, `EntityBinding.DiscriminatorValue`; MQ3041 change; every reader compiling with today's behavior | Three quarters of a day |
+| 1 | Editor, part one | The relation form for both ends; the Storage tab's choices and pickers; the field map's forms; the mock's file rules (MQ3041, MQ4009, MQ4115, MQ4116) | A day and a half |
+| 2 | Storage engine | `MappingRules` (MQ4009, MQ4011, constants, attribute columns, codes' keys); `ResolveTypeStorage`: targets, holding tables, pointers, codes, MQ4117, MQ4118 and texts, MQ4115's second text; binding field forms | Two days |
+| 2 | Joins, readers and both ends | Conditions, `BuildJoins` and `type_joins`; records, the database view, drift and map by name; MQ4119; tool texts; both-ends tests for rules, expressions, processes and scenarios; pack goldens | Two days |
+| 2 | Editor, part two | The both-ends canvas; the Storage tab's lists, gaps and quick fixes; the mock's storage and view; the parity fixture | A day and three quarters |
+| 3 | Docs | User guide (relations at both ends, storage), the releases, the modeling skill, the conventions resource, `next.md` | Half a day |
+
+That comes to about eight and a half days for a person.
+
+**Size,** with tests, without pack expected files: about **8,500 to 9,500 lines.**
+- **Part 2 storage, about 6,500 to 7,500:** contract about 350; file rules about 450 and tests 500; the storage run about 900 and tests 900; joins about 300 and tests 300; readers, views, drift, MQ4119 and tool texts about 450 and tests 350; editor and mock about 1,450 and tests 350; pack tests about 250; docs about 300.
+- **Both ends, about 2,000:** rule and resolver changes about 150 and tests about 650; storage cases and goldens about 250; form about 60, canvas about 500 and tests about 250; docs about 150.
+
+**Agents.** As in part 1: each is capped at about 100 steps or 200k context; Opus builds the engine and the pack output and runs the review; Sonnet builds the editor, the mock and the docs and runs the browser passes; at most three agents run at once, in their own worktrees fast-forwarded to the branch, merged by patch.
+
+| Wave | Agent | Model | Steps | Starts from |
+| --- | --- | --- | --- | --- |
+| 1 | Contract first: schemas, `openapi.yaml`, rule texts, model records, MQ3041, every reader compiling | Opus | About 90 | `main` with part 1 merged, once questions 7 and 8 are answered |
+| 1 | Editor and mock, part one | Sonnet | About 100 | The contract commit |
+| 2 | Storage engine: file rules, the storage run, codes, MQ4115, MQ4117, MQ4118, binding forms | Opus | About 100, with a fresh agent for the rest if it runs over | The contract agent's finish |
+| 2 | Joins, records, views, drift, MQ4119, tool texts, both-ends engine tests, pack goldens. **Owns the tool files** | Opus | About 100 | The contract agent's finish, beside the storage agent |
+| 2 | Editor, part two: both-ends canvas, Storage lists and gaps, quick fixes, mock storage, parity fixture | Sonnet | About 100 | Wave 1's editor agent, in the first free slot |
+| 3 | Review of the pull request | Opus | About 60 | All builders' finish |
+| 3 | Docs | Sonnet | About 40 | Beside the review |
+| 3 | Browser pass, which shows the owner the both-ends drawing and the Storage tab | Sonnet | About 50 | Beside the review |
+| 4 | Fixers, split by area | Opus or Sonnet | About 40 each | The findings |
+| 4 | A short second browser pass | Sonnet | About 25 | The editor fixer's finish |
+
+**What earlier items cost.** Part 1, about 8,500 lines, came to 1.09M output, 3.32M new input and 296M cached re-reads in about 3 hours, against an estimate of 255M. Sign-off part 2, about 4,500 lines, came to 194M. A straight line through the two gives about 80M before size counts and about 25M per thousand lines.
+
+**Estimate**
 
 | | Wall time | Output | New input | Cached re-reads |
 | --- | --- | --- | --- | --- |
-| Wave 1 (contract and engine, editor) | About 1.0 hours | 0.35M | 1.2M | 70M |
-| Wave 2 (joins, uniques, readers and migrations, pack tests) | About 1.0 hours | 0.38M | 1.3M | 75M |
-| Wave 3 (review, docs, browser pass) | About 0.6 hours | 0.22M | 0.8M | 45M |
-| Wave 4 (fixes, CI) | About 0.6 hours | 0.2M | 0.7M | 40M |
-| In all | **About 3.2 hours** | **About 1.15M** | **About 4.0M** | **About 230M** |
+| Wave 1 (contract, editor part one) | About 0.95 hours | 0.36M | 1.2M | 70M |
+| Wave 2 (storage engine, joins and readers, editor part two) | About 1.5 hours | 0.55M | 1.85M | 150M |
+| Wave 3 (review, docs, browser pass) | About 0.7 hours | 0.22M | 0.75M | 55M |
+| Wave 4 (fixes, second browser pass, CI) | About 0.65 hours | 0.2M | 0.6M | 50M |
+| In all | **About 3.8 hours** | **About 1.33M** | **About 4.4M** | **About 325M** |
 
-**Each part stays under the 400M cap without a further split.** Part 1's likely range is 230M to 290M; part 2's is 200M to 260M. If a wave 2 agent needs a fresh agent to finish, add about 30M. If part 1's wave 2 ends above 200M, the rest is tracked step by step and the owner is told before wave 4 starts.
+| Part, if measured alone | Lines | Wall time | Output | New input | Cached re-reads |
+| --- | --- | --- | --- | --- | --- |
+| Part 2 storage | 6,500 to 7,500 | About 3.3 hours | About 1.1M | About 3.6M | About 260M (230M to 300M) |
+| Both ends, inside the same release | About 2,000 | About 0.5 hours more | About 0.23M more | About 0.8M more | About 65M more |
+| Both ends, as a release of its own | About 2,000 | About 1.6 hours | About 0.4M | About 1.3M | About 130M |
 
-**Both parts:** about 12,500 to 14,500 lines, about 6.7 hours, about 2.4M output, about 8.4M new input and about 485M cached re-reads.
+**One release, 0.22.0, under the 400M cap.** The likely range is 290M to 370M. Part 1 ran 16% over its estimate; the same here would be about 377M, still under the cap. If wave 2 ends above 230M, the rest is tracked step by step and the owner is told before wave 4; if it is clear then that the cap would be passed, the both-ends canvas moves to 0.23.0 and the rest ships.
+
+- **One pull request into `main`,** with the contract, engine, editor, output, docs and fix commits. The tag waits for the owner.
+- **Generated files** (the editor's API types, the recorded rule list, the sample app's copies) are written only by the fixed commands, after each merge into the branch. Pack expected files stay with the builder.
+- **Fixers** are fresh agents with the exact findings. **A design gap found while building** stops the work, and the owner is asked.
 
 ## Sources
 
