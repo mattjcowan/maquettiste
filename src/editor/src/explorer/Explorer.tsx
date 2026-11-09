@@ -117,7 +117,7 @@ import { useStorageChipIds } from "@/editors/storage/useStorage";
 import { StorageNewMenuItems } from "@/editors/storage/StorageNewMenu";
 import { addToDiagram } from "@/workspaces/entities/actions";
 import { isProcessDiagram } from "@/canvas/statechart/diagram";
-import { ELEMENTS_MIME, relatedWithin, type RelationLookup } from "@/canvas/model";
+import { ELEMENTS_MIME, relatedWithin, relationLookup, type RelationLookup } from "@/canvas/model";
 
 const EMPTY_TABLES = new Map<string, TablesInput | undefined>();
 
@@ -319,11 +319,19 @@ function useCanvasMembers(): ReadonlySet<string> {
   }, [active, diagramId, draft, doc.data, index.data]);
 }
 
-/** The relation walk over the tree's related maps (no document loads). */
-const relationsIn = (forest: Forest): RelationLookup => ({
-  relationsOf: (id) => forest.related.relationsOf.get(id) ?? [],
-  endsOf: (id) => forest.related.endsOf.get(id),
-});
+/**
+ * The relation walk over the index rows of the forest (no document loads). It walks the entities a relation lists, as the canvas does:
+ * a stereotype entry's carriers are not added as cards, since the relation's box stands for them (several-types-design.md section 11).
+ */
+const lookupsOfForest = new WeakMap<Forest, RelationLookup>();
+const relationsIn = (forest: Forest): RelationLookup => {
+  let lookup = lookupsOfForest.get(forest);
+  if (!lookup) {
+    lookup = relationLookup([...forest.byId.values()]);
+    lookupsOfForest.set(forest, lookup);
+  }
+  return lookup;
+};
 
 /**
  * The chip data the worker cannot see (3.2): the elements with errors (Has errors) and the chosen diagram's members

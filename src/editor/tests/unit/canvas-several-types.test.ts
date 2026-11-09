@@ -18,7 +18,7 @@ import {
   toggleMemberCollapsed,
   type PlanContext,
 } from "@/canvas/severalTypes";
-import { applyPositions, expandRelated, planMembers, relationEnds, relationLookup, viewElements } from "@/canvas/model";
+import { NODE_HEIGHT, applyPositions, expandRelated, planMembers, relationEnds, relationLookup, viewElements } from "@/canvas/model";
 import { newDomainDiagram, syncDomainMembers } from "@/canvas/domainDiagram";
 
 const names: Record<string, string> = { C: "Comment", P: "Part", A: "Assembly", T: "Tool", D: "Document" };
@@ -212,6 +212,35 @@ describe("positions", () => {
     expect(leftOf.x).toBeLessThan(900);
   });
 
+  it("a bundle's fork is never pinned: a stored position (from before the look became a bundle) is ignored", () => {
+    const bundle = plan(ent("P", "A"));
+    expect(bundle.look).toBe("bundle");
+    const free = buildGraph(bundle, { positionOf: cards }).nodes[0].position;
+    expect(buildGraph(bundle, { positionOf: cards, hub: { x: 5, y: 5 } }).nodes[0].position).toEqual(free);
+    // A junction still takes it.
+    expect(buildGraph(plan(ent("P", "A", "D")), { positionOf: cards, hub: { x: 5, y: 5 } }).nodes[0].position).toEqual({ x: 5, y: 5 });
+  });
+
+  it("the trunk runs straight by default: the node or fork sits at the near card's own height", () => {
+    const near = cards.get("C")!;
+    const centreY = near.y + NODE_HEIGHT / 2;
+    for (const p of [plan(ent("P", "A")), plan(ent("P", "A", "D"))]) {
+      const hub = buildGraph(p, { positionOf: cards }).nodes[0];
+      expect(hub.position.y + hub.height / 2).toBe(centreY);
+    }
+  });
+
+  it("a collapsed list or a box sits on the side of the cards it stands for", () => {
+    const left = new Map([
+      ["C", { x: 900, y: 0 }],
+      ["P", { x: 0, y: 0 }],
+      ["A", { x: 0, y: 300 }],
+    ]);
+    const list = planSeveralTypes(rel(ent("P", "A")), ctx(["C", "P", "A"], true))!;
+    expect(list.look).toBe("list");
+    expect(buildGraph(list, { positionOf: left }).nodes[0].position.x).toBeLessThan(900);
+  });
+
   it("relations drawn from one card take a step lower each, so their nodes do not sit on one another", () => {
     const junction = plan(ent("P", "A", "D"));
     const first = buildGraph(junction, { positionOf: cards, slot: 0 }).nodes[0].position;
@@ -370,6 +399,55 @@ describe("which relations show", () => {
     expect(added.map((m) => m.element)).toEqual(["P", "plain", "some"]);
   });
 
+  it("pairs the near card with the first entity of the end with several types, whichever end comes first", () => {
+    const withEnds = relationLookup([
+      {
+        id: "R1",
+        kind: "relation",
+        ends: [
+          { entity: "C", role: "c" },
+          { entities: ["P", "A"], role: "x" },
+        ],
+      },
+      {
+        id: "R2",
+        kind: "relation",
+        ends: [
+          { entities: ["P", "A"], role: "x" },
+          { entity: "C", role: "c" },
+        ],
+      },
+      {
+        id: "R3",
+        kind: "relation",
+        ends: [
+          { entity: "C", role: "c" },
+          { anyEntity: true, role: "x" },
+        ],
+      },
+    ] as never);
+    expect(withEnds.pairOf("R1")).toEqual(["C", "P"]);
+    expect(withEnds.pairOf("R2")).toEqual(["C", "P"]);
+    expect(withEnds.pairOf("R3")).toBeUndefined();
+  });
+
+  it("an addition from the Explorer adds the listed entities only, never the carriers of a stereotype entry", () => {
+    const lookup = relationLookup([
+      { id: "C", kind: "entity" },
+      { id: "X", kind: "entity" },
+      {
+        id: "R",
+        kind: "relation",
+        ends: [
+          { entity: "C", role: "c" },
+          { stereotypes: ["S"], covers: ["X"], role: "x" },
+        ],
+      },
+    ] as never);
+    expect(lookup.endsOf("R")).toEqual(["C"]);
+    expect(planMembers({ members: [], entities: ["C"], lookup }).map((m) => m.element)).toEqual(["C", "R"]);
+  });
+
   it("Add related walks the entity entries of an end with several types", async () => {
     const relation = {
       id: "R",
@@ -408,6 +486,24 @@ describe("what each line shows", () => {
     expect(lineMarkers(r, "crowsfoot", { part: "branch", endIndex: 1 })).toEqual({ start: undefined, end: "url(#mq-cf-zero-or-one)" });
   });
 
+  it("a line into a box or list shows the far end's role, cardinality and marker at the box", () => {
+    const box = planSeveralTypes(rel({ anyEntity: true }), ctx(["C"]))!;
+    const trunk = buildGraph(box, { positionOf: new Map([["C", { x: 0, y: 0 }]]) }).edges[0];
+    expect(trunk.farEndIndex).toBe(1);
+    expect(lineMarkers(plain, "crowsfoot", { part: "trunk", endIndex: 0, farEndIndex: 1 })).toEqual({
+      start: "url(#mq-cf-many)",
+      end: "url(#mq-cf-zero-or-one)",
+    });
+    const junction = planSeveralTypes(rel(ent("P", "A", "D")), ctx(["C", "P", "A", "D"]))!;
+    const at = new Map([
+      ["C", { x: 0, y: 0 }],
+      ["P", { x: 500, y: 0 }],
+      ["A", { x: 500, y: 200 }],
+      ["D", { x: 500, y: 400 }],
+    ]);
+    expect(buildGraph(junction, { positionOf: at }).edges[0].farEndIndex).toBeUndefined();
+  });
+
   it("selecting a line or box of a relation selects the relation", () => {
     expect(relationOfFlowId(branchEdgeId("R", 3))).toBe("R");
     expect(relationOfFlowId(boxNodeId("R", 1))).toBe("R");
@@ -424,6 +520,8 @@ describe("the count a stereotype box shows", () => {
     const count = stereotypeCounter(two, { ends: [{}, { covers: ["x", "y", "z"] }] }, (id) => own[id]);
     expect([count("approvable"), count("audited")]).toEqual([2, 2]);
     expect(stereotypeCounter(one, undefined, () => undefined)("approvable")).toBeUndefined();
+    // A known row with no carriers: the engine leaves an empty `covers` out, and the box says 0 entities.
+    expect(stereotypeCounter(one, { ends: [{}, {}] }, () => undefined)("approvable")).toBe(0);
   });
 });
 

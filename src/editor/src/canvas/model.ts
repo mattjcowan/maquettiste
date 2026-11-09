@@ -324,7 +324,12 @@ export interface RelationLookup {
   relationsOf(entityId: string): readonly string[];
   endsOf(relationId: string): readonly string[] | undefined;
   /** Whether the relation can be drawn once these elements are on a diagram (an end with several types needs one entry, or a box). */
-  shows?(relationId: string, onDiagram: ReadonlySet<string>): boolean;
+  shows(relationId: string, onDiagram: ReadonlySet<string>): boolean;
+  /**
+   * Two entities the relation joins, for placing and centring: the one-type end's entity first, then the first entity the other end lists.
+   * Undefined when an end lists none (a stereotype or any entity), or the relation has no two ends.
+   */
+  pairOf(relationId: string): readonly [string, string] | undefined;
 }
 
 const relationLookups = new WeakMap<readonly unknown[], RelationLookup & { ends: Map<string, string[]> }>();
@@ -364,7 +369,15 @@ function buildRelationLookup(rows: readonly Pick<IndexRow, "id" | "kind" | "ends
     }
   }
   const shows = (id: string, onDiagram: ReadonlySet<string>) => (rowEnds.get(id) ?? []).every((e) => endShows(e, onDiagram));
-  return { relationsOf: (id) => relations.get(id) ?? [], endsOf: (id) => ends.get(id), shows, ends };
+  const pairOf = (id: string): readonly [string, string] | undefined => {
+    const list = rowEnds.get(id);
+    if (!list || list.length < 2) return undefined;
+    const firsts = list.slice(0, 2).map((e) => endListedEntities(e)[0]);
+    if (!firsts[0] || !firsts[1]) return undefined;
+    // The end with several types comes second: the card it hangs on is the anchor.
+    return endHasSeveralTypes(list[0]) ? [firsts[1], firsts[0]] : [firsts[0], firsts[1]];
+  };
+  return { relationsOf: (id) => relations.get(id) ?? [], endsOf: (id) => ends.get(id), shows, pairOf, ends };
 }
 
 /** The entities within `depth` relation hops of the start entities (the start entities included). */
@@ -413,10 +426,7 @@ export function planMembers(input: {
   const onDiagram = new Set([...present, ...fresh]);
   const relations = new Set<string>();
   for (const r of input.relations ?? []) if (!present.has(r)) relations.add(r);
-  for (const e of fresh)
-    for (const r of input.lookup.relationsOf(e))
-      if (!present.has(r) && (input.lookup.shows ? input.lookup.shows(r, onDiagram) : (input.lookup.endsOf(r) ?? []).every((x) => onDiagram.has(x))))
-        relations.add(r);
+  for (const e of fresh) for (const r of input.lookup.relationsOf(e)) if (!present.has(r) && input.lookup.shows(r, onDiagram)) relations.add(r);
   for (const r of relations) out.push({ element: r });
   return out;
 }

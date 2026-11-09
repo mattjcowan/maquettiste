@@ -79,12 +79,25 @@ export function endLabel(end: EndLike, nameOf: (id: string) => string | undefine
   return `${parts.slice(0, -1).join(", ")} or ${parts[parts.length - 1]}`;
 }
 
+/**
+ * A stereotype's key from its index row: its file is named for the key (`<key>.json`), and the row's `name` is the display name. One
+ * spelling, "approvable (stereotype)", is used for a stereotype entry everywhere (the design's).
+ */
+export function stereotypeKeyOfRow(row: { name: string; path?: string } | undefined): string | undefined {
+  if (!row) return undefined;
+  const file = row.path
+    ?.split("/")
+    .pop()
+    ?.replace(/\.json$/, "");
+  return file || row.name;
+}
+
 /** The text a related list shows for how an entity is reached through the end: "through stereotype approvable", "any entity", or "". */
 export function endReach(end: EndLike, entityId: string, nameOfStereotype: (id: string) => string | undefined): string {
   if (end.anyEntity) return "any entity";
   if (end.entity || endNamesEntity(end, entityId)) return "";
-  const via = (end.stereotypes ?? []).map((id) => nameOfStereotype(id) ?? id);
-  return via.length ? `through stereotype ${via.join(", ")}` : "";
+  const via = (end.stereotypes ?? []).map((id) => `${nameOfStereotype(id) ?? id} (stereotype)`);
+  return via.length ? `through ${via.join(", ")}` : "";
 }
 
 /** An end as the relation document writes it: exactly one of `entity`, `types` or `anyEntity`. */
@@ -119,7 +132,7 @@ export function endSummaryOf(end: Record<string, unknown>, stereotypeIds?: Reado
   const role = String(end.role ?? "");
   const doc = end as EndDocLike;
   const single = docEndSingleEntity(doc);
-  if (single) return { entity: single, role };
+  if (single) return doc.entity ? { entity: single, role } : { entity: single, role, entities: [single] };
   if (doc.anyEntity === true) return { role, anyEntity: true as const };
   const types = doc.types ?? [];
   if (types.length === 0) return { entity: String(end.entity ?? ""), role };

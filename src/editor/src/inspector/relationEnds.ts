@@ -69,7 +69,7 @@ export function endChoiceLimits(relation: RelationForm, index: number): Partial<
 /**
  * Moves the end to a choice, in place, when that needs no pick; returns false when the person has to pick first (the end stays as it
  * was). To One entity: an end listing exactly one entity entry writes `entity`; anything else needs a pick. To Several types: an end
- * with one entity lists it; from Any entity the first picked entry makes the list. To Any entity: the other keys go.
+ * with one entity or any entity waits for a picked entry, which makes the list (with the entity first). To Any entity: the other keys go.
  */
 export function moveEnd(end: EndForm, to: EndChoice): boolean {
   if (to === "any") {
@@ -86,12 +86,9 @@ export function moveEnd(end: EndForm, to: EndChoice): boolean {
     delete end.types;
     return true;
   }
-  // Several types.
-  if (end.entity) {
-    end.types = [{ entity: end.entity }];
-    delete end.entity;
-    return true;
-  }
+  // Several types. An end with one entity waits for a second entry: a list of one entity is a warning (MQ3042) the person didn't cause,
+  // and the editor always writes `entity` for one entity (decision 2). `addEntry` starts the list from the entity and the new entry.
+  if (end.entity) return false;
   return end.types !== undefined && end.anyEntity !== true;
 }
 

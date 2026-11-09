@@ -68,7 +68,7 @@ function TypesNodeView({ data, selected }: NodeProps<TypesFlowNode>) {
   if (kind === "junction") {
     return (
       <div className="relative size-4" data-testid={`relation-node-${relationName}`}>
-        <div className={cn("size-4 rounded-full border-2 bg-surface", border)} />
+        <div className={cn("m-0.5 size-3 rounded-full border", border, selected ? "bg-accent" : "bg-[var(--mq-border-strong)]")} />
         <div className="nodrag nopan absolute left-5 top-0 flex items-center gap-1 whitespace-nowrap text-11 text-secondary">
           {canToggle ? <ToggleButton collapsed={collapsed} onClick={toggle} testid={`relation-node-toggle-${relationName}`} /> : null}
           {notShown ? (

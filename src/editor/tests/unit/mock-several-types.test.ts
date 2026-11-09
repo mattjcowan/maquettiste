@@ -78,7 +78,7 @@ describe("the mock's index row for an end with several types", () => {
 
   it("reads a list of one entity as a one-type end", () => {
     const backend = backendWith([near, far({ types: types({ entity: ID.part }) })]);
-    expect(backend.model.index().find((r) => r.id === ID.rel)!.ends![1]).toEqual({ entity: ID.part, role: "attachedTo" });
+    expect(backend.model.index().find((r) => r.id === ID.rel)!.ends![1]).toEqual({ entity: ID.part, role: "attachedTo", entities: [ID.part] });
   });
 });
 

@@ -6,6 +6,7 @@
 import type { DatabaseView, Diagnostic, MaterializeChange, MaterializePlan, MaterializeStatus, BindingSqlResult, TableView } from "@/api/types";
 import { bindingProblems, columnRows, findColumn, sourceOf, storageAttributes, writes, type Binding } from "@/editors/storage/fieldMap";
 import { applyCase, resolveDatabase, type PhysicalInput } from "./physical";
+import { docEndSingleEntity, type EndDocLike } from "@/model/endTypes";
 
 type Json = Record<string, unknown>;
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -950,7 +951,7 @@ export function bindingFindings(view: DatabaseView, docs: ReadonlyMap<string, Js
       relationMappings.set(String(d.relation), d);
   }
   for (const r of relations.sort(byName)) {
-    const ends = arr(r.ends);
+    const ends = arr(r.ends).map((e): Json => ({ ...e, entity: docEndSingleEntity(e as EndDocLike) ?? undefined }));
     if (ends.length !== 2 || !ends.every((e) => boundTable(e.entity))) continue;
     const mapping = relationMappings.get(String(r.id));
     const manyToMany = ends.every((e) => (e.max ?? "*") === "*");

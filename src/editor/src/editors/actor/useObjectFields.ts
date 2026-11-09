@@ -31,6 +31,7 @@ export function useObjectFields(entities: readonly string[]): { fields: ObjectFi
     relations: relationIds.map(doc).filter((d): d is Rec => !!d),
     stereotype: (key: string) => stereotypeIds.map(doc).find((s) => s?.key === key),
     kindOf: (id: string) => lookup.byId.get(id)?.kind,
+    nameOf: (id: string) => lookup.byId.get(id)?.name,
     // The carriers of an end's stereotypes come from the relation's index row.
     carriers: (relation: Rec, endIndex: number) => lookup.byId.get(String(relation.id))?.ends?.[endIndex]?.covers,
   };

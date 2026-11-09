@@ -60,13 +60,14 @@ describe("the end helper over index rows", () => {
     expect(endReach(any, "X", name)).toBe("any entity");
     expect(endReach(one, "P", name)).toBe("");
     expect(endReach({ role: "b", entities: ["P"], stereotypes: ["S"] }, "P", name)).toBe("");
-    expect(endReach({ role: "b", entities: ["P"], stereotypes: ["S"] }, "C", name)).toBe("through stereotype approvable");
+    expect(endReach({ role: "b", entities: ["P"], stereotypes: ["S"] }, "C", name)).toBe("through approvable (stereotype)");
   });
 
   it("writes the index row of a document end as the engine does", () => {
     const stereotypes = new Map([["approvable", "SID"]]);
     expect(endSummaryOf({ id: "e", entity: "P", role: "a" })).toEqual({ entity: "P", role: "a" });
-    expect(endSummaryOf({ id: "e", role: "a", types: [{ entity: "P" }] })).toEqual({ entity: "P", role: "a" });
+    // A list of one entity: the engine writes the entity and the list.
+    expect(endSummaryOf({ id: "e", role: "a", types: [{ entity: "P" }] })).toEqual({ entity: "P", role: "a", entities: ["P"] });
     expect(endSummaryOf({ id: "e", role: "a", types: [{ entity: "P" }, { stereotype: "approvable" }, { entity: "A" }] }, stereotypes)).toEqual({
       role: "a",
       entities: ["P", "A"],
@@ -125,8 +126,13 @@ describe("the relation form's choices and limits", () => {
 
   it("moves between the choices, writing exactly one of entity, types and anyEntity", () => {
     const end: EndForm = { entity: "P" };
-    expect(moveEnd(end, "several")).toBe(true);
-    expect(end).toEqual({ types: [{ entity: "P" }] });
+    // One entity to Several types waits for a second entry: a list of one entity would be MQ3042.
+    expect(moveEnd(end, "several")).toBe(false);
+    expect(end).toEqual({ entity: "P" });
+    addEntry(end, { entity: "Q" });
+    expect(end).toEqual({ types: [{ entity: "P" }, { entity: "Q" }] });
+    delete end.types;
+    end.entity = "P";
     addEntry(end, { stereotype: "approvable" });
     addEntry(end, { entity: "A" });
     addEntry(end, { entity: "A" });
@@ -195,7 +201,7 @@ describe("the quick fixes of MQ3042 and MQ3043", () => {
 
   it("MQ3043 removes the entry its pointer names", () => {
     const f = fix("MQ3043", "/ends/1/types/1", relation([{ entity: "P" }, { entity: "D" }, { entity: "A" }]))!;
-    expect(f.label).toBe("Remove D");
+    expect(f.label).toBe("Remove the entry");
     expect(((f.json.ends as Json[])[1] as Json).types).toEqual([{ entity: "P" }, { entity: "A" }]);
   });
 

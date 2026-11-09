@@ -17,9 +17,11 @@ export function indexReferences(target: string, rows: readonly ElementSummary[])
     if (row.entity === target) add(row, "/entity", "entity");
     if (row.database === target) add(row, "/database", "database");
     row.ends?.forEach((end, i) => {
-      if (end.entity === target) add(row, `/ends/${i}/entity`, "entity");
-      // An entry of an end's `types`: the row doesn't say where in the list it stands, so the pointer names the list.
-      else if (end.entities?.includes(target) || end.stereotypes?.includes(target)) add(row, `/ends/${i}/types`, "types");
+      // An entry of an end's `types`: the row gives the entity entries in order but not stereotype entries between them, so the index is the entity entry's.
+      const at = end.entities?.indexOf(target) ?? -1;
+      if (at >= 0) add(row, `/ends/${i}/types/${at}/entity`, "entity");
+      else if (end.entity === target) add(row, `/ends/${i}/entity`, "entity");
+      else if (end.stereotypes?.includes(target)) add(row, `/ends/${i}/types`, "types");
     });
   }
   return out;

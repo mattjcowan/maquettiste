@@ -43,6 +43,8 @@ export interface FieldSources {
    * (`covers`). Without it an end with several types covers its listed entities only.
    */
   carriers?(relation: Json, endIndex: number): readonly string[] | undefined;
+  /** An element's name from the index, for entities whose documents are not loaded (an end's listed types). */
+  nameOf?(id: string): string | undefined;
 }
 
 /** The entity and its bases, nearest first. */
@@ -139,7 +141,7 @@ export function objectFields(entity: string, src: FieldSources): ObjectField[] {
               entities: docEndEntities(other),
               stereotypes: arr(other.types).flatMap((t) => (typeof t.stereotype === "string" ? [t.stereotype] : [])),
             },
-            (id) => (typeof src.doc(id)?.name === "string" ? String(src.doc(id)!.name) : undefined),
+            (id) => src.nameOf?.(id) ?? (typeof src.doc(id)?.name === "string" ? String(src.doc(id)!.name) : undefined),
             (key) => key,
           ),
           many: other.max !== 1,
@@ -150,7 +152,7 @@ export function objectFields(entity: string, src: FieldSources): ObjectField[] {
       const target = docEndSingleEntity(other);
       if (!target) continue;
       seen.add(other.id);
-      const name = other.navigation || other.role || String(src.doc(target)?.name ?? other.id);
+      const name = other.navigation || other.role || String(src.nameOf?.(target) ?? src.doc(target)?.name ?? other.id);
       out.push({ id: other.id, name, kind: "end", target, many: other.max !== 1, valueObject: false });
     }
   }

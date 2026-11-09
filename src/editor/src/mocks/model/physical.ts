@@ -20,6 +20,7 @@ import type {
   ViewView,
 } from "@/api/types";
 import { BUILTIN_TYPES } from "@/model/model";
+import { docEndSingleEntity, type EndDocLike } from "@/model/endTypes";
 import { resolveQueries } from "./queries";
 
 type Json = Record<string, unknown>;
@@ -674,7 +675,8 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
   // Relations: a foreign key on the "many" side, or a junction table for many-to-many.
   const relations = all.filter((d) => d.kind === "relation").sort((a, b) => String(a.id).localeCompare(String(b.id)));
   for (const relation of relations) {
-    const ends = arr(relation.ends);
+    // A `types` list of one entity is a one-type end (the same meaning as `entity`); an end with several types is stored nowhere.
+    const ends = arr(relation.ends).map((e): Json => ({ ...e, entity: docEndSingleEntity(e as EndDocLike) ?? undefined }));
     if (ends.length !== 2) continue;
     const [a, b] = ends;
     const known = (id: unknown) => entityIds.has(String(id)) || pkColumnsByEntity.has(String(id));

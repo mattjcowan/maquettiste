@@ -25,7 +25,7 @@ import { domIdOf, EditorLayout, MarkChips, NameAndDomain, useCodeGenerationTab, 
 import { baseChain, relatedOf } from "./related";
 import { SeedDataTab } from "./SeedDataTab";
 import { StorageTab } from "./storage/StorageTab";
-import { endLabel, endReach, type EndLike } from "@/model/endTypes";
+import { endLabel, endReach, stereotypeKeyOfRow, type EndLike } from "@/model/endTypes";
 import {
   fieldSources,
   inHierarchy,
@@ -505,13 +505,13 @@ function RelationshipsTab({ id, domain }: { id: string; domain: string | null })
               const cardinality = doc ? ` ${cardinalityOf(e as RelationEndDoc)}` : "";
               // The index row's end says what an end with several types covers ("Part, Assembly or approvable (stereotype)").
               const row: EndLike = r.ends?.[i] ?? (e as EndLike);
-              return `${endLabel(row, lookup.nameOf, lookup.nameOf) || (e as EndLike).entity}${e.role ? ` (${e.role})` : ""}${cardinality}`;
+              return `${endLabel(row, lookup.nameOf, (sid) => stereotypeKeyOfRow(lookup.byId.get(sid))) || (e as EndLike).entity}${e.role ? ` (${e.role})` : ""}${cardinality}`;
             })
             .join(" – ");
           const count = doc?.attributes?.length ?? 0;
           const attributes = doc ? ` · ${count} attribute${count === 1 ? "" : "s"}` : "";
           // An entity reached through a stereotype an end names says so: "through stereotype approvable".
-          const reach = (r.ends ?? []).map((e) => endReach(e, id, lookup.nameOf)).find(Boolean);
+          const reach = (r.ends ?? []).map((e) => endReach(e, id, (sid) => stereotypeKeyOfRow(lookup.byId.get(sid)))).find(Boolean);
           return (
             <li key={r.id}>
               <ElementLink summary={r} secondary={endText + attributes + (reach ? ` · ${reach}` : "")} />

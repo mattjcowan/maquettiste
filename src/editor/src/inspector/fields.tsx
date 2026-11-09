@@ -536,8 +536,9 @@ function EndEditor({
   const form = end as EndForm;
   const shown = pending ?? endChoiceOf(form);
   const limits = endChoiceLimits(relation as RelationForm, index);
-  const limitText = limits.several ?? limits.any;
-  const entries = form.types ?? [];
+  const limitText = [...new Set([limits.several, limits.any].filter(Boolean))].join(" ") || undefined;
+  // While Several types waits for a second entry, the one entity shows as the first chip; the file still says `entity`.
+  const entries = form.types ?? (form.entity ? [{ entity: form.entity }] : []);
   const nameOfEntity = (id: string | undefined) => entities.find((en) => en.id === id)?.name ?? id ?? "";
   const entryLabel = (e: EndEntry) => (e.entity !== undefined ? nameOfEntity(e.entity) : `${e.stereotype ?? ""} (stereotype)`);
   const listed = new Set(entries.map(entryKey));
@@ -644,7 +645,7 @@ function EndEditor({
                     .filter((s) => !listed.has(`stereotype:${s.key}`))
                     .map((s) => (
                       <option key={s.key} value={`stereotype:${s.key}`}>
-                        {s.name || s.key}
+                        {s.key} (stereotype)
                       </option>
                     ))}
                 </optgroup>

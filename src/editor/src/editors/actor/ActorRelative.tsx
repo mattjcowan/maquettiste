@@ -43,7 +43,7 @@ function PathPicker({
   empty: string;
 }) {
   const { fields } = useObjectFields(entities);
-  useEffect(() => onNames(Object.fromEntries(fields.map((f) => [f.id, f.name]))), [fields, onNames]);
+  useEffect(() => onNames(Object.fromEntries(fields.map((f) => [f.id, f.kind === "end" ? fieldOptionLabel(f) : f.name]))), [fields, onNames]);
   const options = fields.filter((f) => (finish === "end" ? f.kind === "end" && !f.many : canNamePerson(f)));
   const chosen = fields.find((f) => f.id === value[0]);
   // An end with several types goes on through what every type it covers has by id (nothing for any entity or a stereotype nothing carries).
@@ -74,6 +74,11 @@ function PathPicker({
           </option>
         ))}
       </Select>
+      {chosen?.kind === "end" && !chosen.many && !next && finish === "field" ? (
+        <p className="text-11 text-secondary" data-testid={`${idBase}-stops`}>
+          {L.nothingAfter}
+        </p>
+      ) : null}
       {next && value[0] ? (
         <PathPicker
           entities={next}
@@ -105,7 +110,7 @@ function useUsedSubjects(actor: string): string[] {
 /** Collects the names of the fields a path walks over, entity by entity, for the summary (it renders nothing). */
 function PathNames({ entities, path, onNames }: { entities: string[]; path: string[]; onNames: (names: Record<string, string>) => void }) {
   const { fields } = useObjectFields(entities);
-  useEffect(() => onNames(Object.fromEntries(fields.map((f) => [f.id, f.name]))), [fields, onNames]);
+  useEffect(() => onNames(Object.fromEntries(fields.map((f) => [f.id, f.kind === "end" ? fieldOptionLabel(f) : f.name]))), [fields, onNames]);
   const step = fields.find((f) => f.id === path[0]);
   const next = step?.target ? [step.target] : step?.anyEntity ? undefined : step?.targets?.length ? step.targets : undefined;
   return step?.kind === "end" && next && path.length > 1 ? <PathNames entities={next} path={path.slice(1)} onNames={onNames} /> : null;

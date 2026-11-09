@@ -154,6 +154,8 @@ export interface GraphEdge {
   part: "trunk" | "branch";
   /** Which end's role and cardinality the edge shows at its card, and where. */
   endIndex: 0 | 1;
+  /** For the one line into a box or list, which has no branches: the far end, whose role and cardinality show at the box. */
+  farEndIndex?: 0 | 1;
   /** The relation's label (its name pill) sits on the trunk only. */
   labelled: boolean;
 }
@@ -185,9 +187,10 @@ export function hubSize(plan: SeveralPlan): { kind: HubKind; width: number; heig
  * or list beside the near card, on the side the types are (right when there are none). `cards` are the type cards' positions. `slot`
  * is the place of this relation among those drawn from the same card: each takes a step lower, so their nodes do not sit on one another.
  */
-export function defaultHubPosition(plan: SeveralPlan, near: Point, cards: readonly Point[], slot = 0): Point {
+export function defaultHubPosition(plan: SeveralPlan, near: Point, cards: readonly Point[], slot = 0, nearSize?: { width: number; height: number }): Point {
   const size = hubSize(plan);
-  const nc = centreOf(near, NODE_WIDTH, NODE_HEIGHT);
+  // The near card's measured size when the canvas knows it: its handles are at the middle of what is drawn, not of the nominal card.
+  const nc = centreOf(near, nearSize?.width || NODE_WIDTH, nearSize?.height || NODE_HEIGHT);
   const centroid = cards.length
     ? {
         x: cards.reduce((s, p) => s + p.x + NODE_WIDTH / 2, 0) / cards.length,
@@ -195,7 +198,8 @@ export function defaultHubPosition(plan: SeveralPlan, near: Point, cards: readon
       }
     : null;
   if (plan.look === "junction" || plan.look === "bundle") {
-    const c = centroid ? { x: (nc.x + centroid.x) / 2, y: (nc.y + centroid.y) / 2 } : { x: nc.x + NODE_WIDTH / 2 + 90, y: nc.y };
+    // Midway in x, and at the near card's own height, so the trunk leaves the card's handle and runs straight through its label.
+    const c = centroid ? { x: (nc.x + centroid.x) / 2, y: nc.y } : { x: nc.x + NODE_WIDTH / 2 + 90, y: nc.y };
     return { x: Math.round(c.x - size.width / 2), y: Math.round(c.y - size.height / 2 + slot * SLOT_STEP) };
   }
   const dir = centroid && centroid.x < nc.x ? -1 : 1;
@@ -213,16 +217,23 @@ export interface GraphInput {
   hub?: Point | undefined;
   /** Where this relation falls among those drawn from the same near card (0 for the first). */
   slot?: number;
+  /** The measured sizes of the cards, by entity id, when the canvas has them. */
+  sizeOf?: (entityId: string) => { width: number; height: number } | undefined;
 }
 
 /** The nodes and edges the canvas draws for a plan. */
 export function buildGraph(plan: SeveralPlan, input: GraphInput): SeveralGraph {
   const near = input.positionOf.get(plan.nearEntity);
   if (!near) return { nodes: [], edges: [] };
-  const cardEntries = plan.shown.filter((e) => e.kind === "entity" && e.entity && input.positionOf.has(e.entity));
+  // A list or box draws no line to the cards, but sits on the side of the cards it stands for.
+  const cardEntries = (plan.look === "list" || plan.look === "box" ? plan.entries : plan.shown).filter(
+    (e) => e.kind === "entity" && e.entity && input.positionOf.has(e.entity),
+  );
   const cardPositions = cardEntries.map((e) => input.positionOf.get(e.entity!)!);
   const size = hubSize(plan);
-  const hubAt = input.hub ?? defaultHubPosition(plan, near, cardPositions, input.slot ?? 0);
+  // The fork of a bundle is placed by the cards and never saved: a stored position (a hub the person dragged before the look became a bundle) is ignored.
+  const hubAt =
+    (plan.look === "bundle" ? undefined : input.hub) ?? defaultHubPosition(plan, near, cardPositions, input.slot ?? 0, input.sizeOf?.(plan.nearEntity));
   const hub: GraphNode = {
     id: plan.relationId,
     kind: size.kind,
@@ -235,7 +246,7 @@ export function buildGraph(plan: SeveralPlan, input: GraphInput): SeveralGraph {
   };
   const nodes: GraphNode[] = [hub];
   const hubCentre = centreOf(hubAt, size.width, size.height);
-  const nearCentreX = near.x + NODE_WIDTH / 2;
+  const nearCentreX = near.x + (input.sizeOf?.(plan.nearEntity)?.width || NODE_WIDTH) / 2;
   const edges: GraphEdge[] = [
     {
       id: plan.relationId,
@@ -244,6 +255,7 @@ export function buildGraph(plan: SeveralPlan, input: GraphInput): SeveralGraph {
       ...handlesFor(nearCentreX, hubCentre.x),
       part: "trunk",
       endIndex: plan.nearIndex,
+      ...(plan.look === "box" || plan.look === "list" ? { farEndIndex: plan.farIndex } : {}),
       labelled: true,
     },
   ];
@@ -307,15 +319,19 @@ export type MarkerName = string | undefined;
 export function lineMarkers(
   relation: Pick<RelationDoc, "ends" | "relationKind">,
   notation: "uml" | "crowsfoot",
-  edge: { part: "trunk" | "branch"; endIndex: 0 | 1 },
+  edge: { part: "trunk" | "branch"; endIndex: 0 | 1; farEndIndex?: 0 | 1 | undefined },
 ): { start: MarkerName; end: MarkerName } {
-  const end = relation.ends?.[edge.endIndex];
   const kind = relationKind(relation as RelationDoc);
   const diamond = kind === "composition" ? "url(#mq-diamond-filled)" : kind === "aggregation" ? "url(#mq-diamond-hollow)" : undefined;
-  const foot = notation === "crowsfoot" && end ? `url(#mq-cf-${crowsFoot(end)})` : undefined;
-  const marker = edge.endIndex === 0 && diamond ? diamond : foot;
-  // A trunk starts at the near card; a branch ends at a type's card.
-  return edge.part === "trunk" ? { start: marker, end: undefined } : { start: undefined, end: marker };
+  const markerOf = (index: 0 | 1): MarkerName => {
+    const end = relation.ends?.[index];
+    const foot = notation === "crowsfoot" && end ? `url(#mq-cf-${crowsFoot(end)})` : undefined;
+    return index === 0 && diamond ? diamond : foot;
+  };
+  const marker = markerOf(edge.endIndex);
+  // A trunk starts at the near card (and, into a box, ends at the box with the far end's marker); a branch ends at a type's card.
+  if (edge.part === "trunk") return { start: marker, end: edge.farEndIndex === undefined ? undefined : markerOf(edge.farEndIndex) };
+  return { start: undefined, end: marker };
 }
 
 /** The text at a line's card: the end's role, and in UML its multiplicity ("attachedTo 1"); in crow's foot the marker says the cardinality. */
@@ -351,7 +367,8 @@ export function stereotypeCounter(
 ): (key: string) => number | undefined {
   const farIndex = relation.ends?.findIndex((e) => docEndHasSeveralTypes(e as EndDocLike)) ?? -1;
   const covers = farIndex >= 0 ? row?.ends?.[farIndex]?.covers : undefined;
-  if (!covers) return () => undefined;
+  // The engine leaves an empty `covers` out of the row, so a known row without it means no carriers.
+  if (!covers) return row ? () => 0 : () => undefined;
   const keys = ((relation.ends?.[farIndex] as EndDocLike | undefined)?.types ?? []).flatMap((t) => t.stereotype ?? []);
   if (keys.length <= 1) return () => covers.length;
   return (key) => covers.filter((id) => stereotypesOf(id)?.includes(key)).length;

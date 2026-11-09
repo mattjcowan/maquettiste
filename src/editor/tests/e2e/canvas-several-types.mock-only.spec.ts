@@ -44,7 +44,7 @@ const relation = (id: string, name: string, n: number, far: Record<string, unkno
 });
 
 /** Creates the entities, the relations and a diagram that shows them, on the mock server. */
-async function seed(page: Page) {
+async function seed(page: Page, bundleAt?: { x: number; y: number }) {
   const operations = [
     entity(ID.comment, "Comment", 1),
     entity(ID.part, "Part", 2),
@@ -62,7 +62,7 @@ async function seed(page: Page) {
     { element: ID.part, x: 700, y: 0 },
     { element: ID.assembly, x: 700, y: 260 },
     { element: ID.document, x: 700, y: 520 },
-    ...[ID.junction, ID.bundle, ID.any, ID.hidden].map((element) => ({ element })),
+    ...[ID.bundle, ID.junction, ID.any, ID.hidden].map((element) => ({ element, ...(element === ID.bundle && bundleAt ? bundleAt : {}) })),
   ];
   operations.push({ op: "create", element: { kind: "diagram", id: ID.diagram, name: "Attachments", package: BILLING, members } } as never);
   const outcome = await page.evaluate(
@@ -79,9 +79,9 @@ const diagram = (page: Page, id: string) =>
   page.evaluate(async (diagramId) => ((await (await fetch(`/api/model/elements/${diagramId}`)).json()) as { json: { members: Member[] } }).json, id);
 const member = async (page: Page, element: string) => (await diagram(page, ID.diagram)).members.find((m) => m.element === element);
 
-async function openAttachments(page: Page) {
+async function openAttachments(page: Page, bundleAt?: { x: number; y: number }) {
   await openEditor(page);
-  await seed(page);
+  await seed(page, bundleAt);
   await page.getByTestId("diagram-picker").selectOption({ label: "Attachments" });
   await expect(page.getByTestId("relation-node-AttachedTo")).toBeVisible();
 }
@@ -195,4 +195,49 @@ test("a click on a line, node or box selects the relation, and Auto-layout keeps
   await expect(lines(page, ID.bundle)).toHaveCount(3);
   // The fork of bundled lines is placed by the cards: no position is saved for it.
   expect(await member(page, ID.bundle)).toEqual({ element: ID.bundle });
+});
+
+test("the fork of bundled lines is placed by the cards: a stored position is ignored, the trunk runs straight, and nothing is saved for it", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  // A position saved from before the look became a bundle (a junction that was dragged, then a type card was removed).
+  await openAttachments(page, { x: 3000, y: 3000 });
+  const centre = async (selector: string) => {
+    const box = (await page.locator(selector).first().boundingBox())!;
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  };
+  const fork = () => centre('[data-testid="relation-fork-Reviews"]');
+  const comment = await centre(`.react-flow__node[data-id="${ID.comment}"]`);
+  const before = await fork();
+  expect(Math.abs(before.y - comment.y), JSON.stringify({ before, comment })).toBeLessThan(3);
+  expect(before.x).toBeLessThan(comment.x + 700);
+
+  // Drag Part away: the fork follows the cards instead of staying where the file said.
+  const part = page.locator(`.react-flow__node[data-id="${ID.part}"]`);
+  const box = (await part.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 10);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 120, box.y - 100, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.abs((await fork()).x - before.x) + Math.abs((await fork()).y - before.y)).toBeGreaterThan(5);
+  // Auto-layout and the drag never write the fork's position; the stored one is left as the file had it.
+  await page.getByTestId("auto-layout").click();
+  await page.waitForTimeout(600);
+  expect(await member(page, ID.bundle)).toEqual({ element: ID.bundle, x: 3000, y: 3000 });
+});
+
+test("clicking a line of an already selected relation keeps it selected", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openAttachments(page);
+  const inspector = page.getByRole("region", { name: /^Inspector: / });
+  await page.getByTestId("relation-label-Reviews").click();
+  await expect(inspector).toContainText("Reviews");
+  for (const index of [0, 1, 2]) {
+    await lines(page, ID.bundle).nth(index).locator(".react-flow__edge-interaction").dispatchEvent("click");
+    await expect(inspector).toContainText("Reviews");
+  }
+  // A click on a branch of an unselected relation selects it.
+  await lines(page, ID.junction).nth(1).locator(".react-flow__edge-interaction").dispatchEvent("click");
+  await expect(inspector).toContainText("AttachedTo");
 });

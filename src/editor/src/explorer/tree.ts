@@ -13,7 +13,7 @@ import { soleSubject } from "@/model/process";
 import { memberOfText } from "@/model/actors";
 import { relativeRowText } from "@/model/objectFields";
 import { tableKeyOf } from "@/search/engine";
-import { endCoveredEntities, endLabel, endListedEntities } from "@/model/endTypes";
+import { endCoveredEntities, endLabel, endListedEntities, stereotypeKeyOfRow } from "@/model/endTypes";
 import type { TablePart, TablePartKind } from "@/workspaces/database/tableParts";
 import { patchesBetween, type IndexPatch } from "@/api/indexPatch";
 import {
@@ -363,7 +363,7 @@ function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row, actsIn?: ReadonlyM
   };
   if (r.kind === "relation" && r.ends?.length) {
     // Several types: "Comment → Part, Assembly or approvable (stereotype)" (several-types-design.md section 11).
-    const stereotypeName = (id: string) => byId.get(id)?.name;
+    const stereotypeName = (id: string) => stereotypeKeyOfRow(byId.get(id));
     return r.ends.map((e) => endLabel(e, nameOf, stereotypeName) || "?").join(" → ");
   }
   if (r.kind === "trigger-point") return [r.type ? r.type[0].toUpperCase() + r.type.slice(1) : "Check", ...(r.verbs ?? []).slice(0, 3)].join(" ");
@@ -1741,7 +1741,10 @@ export function usesOf(forest: Forest, id: string): string[] {
   const add = (to: string | null | undefined) => {
     if (to && !out.includes(to)) out.push(to);
   };
-  for (const e of r.ends ?? []) add(e.entity);
+  for (const e of r.ends ?? []) {
+    for (const id of endListedEntities(e)) add(id);
+    for (const id of e.stereotypes ?? []) add(id);
+  }
   add(r.entity);
   add(r.database);
   add(r.target);
@@ -1911,7 +1914,7 @@ function elementChildren(forest: Forest, node: TreeNode): TreeNode[] {
                   endLabel(
                     e,
                     (id) => forest.byId.get(id)?.name,
-                    (id) => forest.byId.get(id)?.name,
+                    (id) => stereotypeKeyOfRow(forest.byId.get(id)),
                   ) || "?",
               )
               .join(" → ")

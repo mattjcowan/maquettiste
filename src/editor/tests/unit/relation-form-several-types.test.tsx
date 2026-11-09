@@ -69,7 +69,8 @@ describe("the relation form's Type choice", () => {
         .map((o) => o.textContent),
     ).toEqual(["One entity", "Several types", "Any entity"]);
     fireEvent.change(first, { target: { value: "several" } });
-    expect((last().ends as Json[])[0]).toEqual({ id: "a", role: "ra", types: [{ entity: IDS.invoice }] });
+    // Nothing is written yet: a list of one entity is a warning (MQ3042), so the end waits for its second entry.
+    expect((last().ends as Json[] | undefined)?.[0]).toBeUndefined();
     // The chip and the picker are there; the picker offers entities, then a Stereotypes group when stereotypes apply to entities.
     expect(screen.getAllByTestId("end-0-chip")).toHaveLength(1);
     const picker = screen.getByLabelText("Add a type to end 1") as HTMLSelectElement;

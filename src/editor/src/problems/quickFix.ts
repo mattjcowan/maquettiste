@@ -164,9 +164,10 @@ export function endTypesFix(rule: string, element: ModelJson, pointer: string): 
   }
   const entry = at[2] === undefined ? undefined : types[Number(at[2])];
   if (!entry || types.length < 2) return null;
-  const named = str((entry as Json).entity) ?? str((entry as Json).stereotype);
+  // An entity entry holds an id, which the fix has no name for; a stereotype entry holds its key.
+  const key = str((entry as Json).stereotype);
   types.splice(Number(at[2]), 1);
-  return { json: next, label: named ? `Remove ${named}` : "Remove the entry" };
+  return { json: next, label: key ? `Remove ${key} (stereotype)` : "Remove the entry" };
 }
 
 /** Removes the array item (or the property) at `pointer`; null when nothing is there. */
