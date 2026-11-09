@@ -703,7 +703,8 @@ public sealed class REntityMapping
 
     /// <summary>
     /// By navigation name, the paths of a navigation of the entity that leads to an end with several types, one per pair of targets
-    /// (several-types-design.md decision 48), in the order of <see cref="RNavigation.TypeJoins"/>. Empty otherwise.
+    /// (several-types-design.md decision 48), in the order of <see cref="RNavigation.TypeJoins"/>; also of a navigation with more than one path
+    /// from the entity, such as to a one-type end over an abstract TPC root, which <see cref="Joins"/> can't hold. Empty otherwise.
     /// </summary>
     public IReadOnlyDictionary<string, IReadOnlyList<RJoinPath>> TypeJoins { get; internal set; } = FrozenDictionary<string, IReadOnlyList<RJoinPath>>.Empty;
 

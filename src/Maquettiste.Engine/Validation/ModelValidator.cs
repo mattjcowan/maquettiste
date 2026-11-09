@@ -777,34 +777,77 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     }
 
     /// <summary>
-    /// The files whose MQ4009 on <c>discriminatorValue</c> an end with several types decides (several-types-design.md section 19.7): for each
-    /// entity such an end of the relation covers, its file when a binding sets one, and its mappings that set one. Nothing for a relation
-    /// whose ends each have one type.
+    /// The files whose MQ4009 on <c>discriminatorValue</c> an end with several types of the relation decides (several-types-design.md
+    /// section 19.7): see <see cref="TypeCodeFiles"/>. Nothing for a relation whose ends each have one type.
     /// </summary>
     private static IEnumerable<ElementDocument> TypeCodePeers(ValidationContext context, Relation relation)
     {
         var model = context.Model;
-        foreach (var end in relation.Ends)
+        foreach (var id in TypeCodeFiles(model, r => string.Equals(r.Id, relation.Id, StringComparison.Ordinal)))
         {
-            if (!end.HasSeveralTypes)
+            if (model.GetDocument(id) is { } peer)
+                yield return peer;
+        }
+    }
+
+    /// <summary>
+    /// The files whose MQ4009 on <c>discriminatorValue</c> depends on what the ends with several types of the relations
+    /// <paramref name="relevant"/> picks cover (several-types-design.md decision 42 and section 19.7): for each entity such an end covers, its
+    /// file when a binding sets <c>discriminatorValue</c>, and its mappings that set one. Worked out on one model; the store asks it of the
+    /// model before a change too, since an entity that loses coverage has its finding back. Nothing while no end has several types or no
+    /// file sets <c>discriminatorValue</c>.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="relevant">Which relations with an end of several types count.</param>
+    /// <returns>The element ids (an entity's or a mapping's); duplicates are possible.</returns>
+    internal static IEnumerable<string> TypeCodeFiles(ModelSnapshot model, Func<Relation, bool> relevant)
+    {
+        if (!EndCoverage.Of(model).Any)
+            yield break;
+        var setters = new List<(string Entity, string File)>();
+        foreach (var mapping in model.All<Mapping>())
+        {
+            if (mapping is { Entity: { } entityId, DiscriminatorValue: not null })
+                setters.Add((entityId, mapping.Id));
+        }
+
+        foreach (var entity in model.All<Entity>())
+        {
+            if (entity.Bindings.Any(b => b.DiscriminatorValue is not null))
+                setters.Add((entity.Id, entity.Id));
+        }
+
+        if (setters.Count == 0)
+            yield break;
+        foreach (var relation in model.All<Relation>())
+        {
+            if (!EndCoverage.HasSeveralTypes(relation) || !relevant(relation))
                 continue;
-            foreach (var entityId in EndCoverage.CoveredBy(model, end))
+            foreach (var end in relation.Ends)
             {
-                if (model.Get<Entity>(entityId) is not { } entity)
+                if (!end.HasSeveralTypes)
                     continue;
-                if (entity.Bindings.Any(b => b.DiscriminatorValue is not null) && model.GetDocument(entityId) is { } entityDocument)
-                    yield return entityDocument;
-                foreach (var database in model.All<Database>())
+                foreach (var (entityId, file) in setters)
                 {
-                    foreach (var peer in context.MappingsOf(database.Id, entityId))
-                    {
-                        if (peer.Element is Mapping { DiscriminatorValue: not null })
-                            yield return peer;
-                    }
+                    if (EndCoverage.Covers(model, end, entityId))
+                        yield return file;
                 }
             }
         }
     }
+
+    /// <summary>
+    /// Whether a change of <paramref name="element"/> may move what an end with several types of <paramref name="relation"/> covers without
+    /// a save of the relation: a stereotype entry's carriers (an entity, package or stereotype save), any entity (an entity save), or an end
+    /// that covers the entity saved. The relations <see cref="SeveralTypesPeers"/> brings for carriers, shared with the store's former peers.
+    /// </summary>
+    internal static bool MovesCoverage(ModelSnapshot model, Element element, Relation relation) =>
+        element switch
+        {
+            Entity => relation.Ends.Any(e => EndCoverage.NamesStereotypeOrAny(e) || (e.HasSeveralTypes && EndCoverage.Covers(model, e, element.Id))),
+            Package or Stereotype => relation.Ends.Any(e => e.Types?.Any(t => t.Stereotype is not null) == true),
+            _ => false,
+        };
 
     /// <summary>
     /// The other compositions of a composition's children (MQ3016): of its one-type child end's entity, or of each entity a child end with
@@ -847,9 +890,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
             if (!EndCoverage.HasSeveralTypes(relation))
                 continue;
             // An entity also brings the relations whose end with several types covers it: a derived entity of a listed one is no referrer.
-            var names = carriers && relation.Ends.Any(e => element is Entity
-                ? EndCoverage.NamesStereotypeOrAny(e) || (e.HasSeveralTypes && EndCoverage.Covers(model, e, element.Id))
-                : e.Types?.Any(t => t.Stereotype is not null) == true);
+            var names = carriers && MovesCoverage(model, element, relation);
             if (!names && !placement)
                 continue;
             if (model.GetDocument(relation.Id) is { } peer && !ReferenceEquals(peer.Element, element))
@@ -858,6 +899,10 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 continue;
             foreach (var composition in CompositionPeers(context, relation))
                 yield return composition;
+            // Carriers that moved move the relaxed MQ4009 on discriminatorValue too (decision 42, section 19.7); the store adds the files
+            // of entities that were covered before the change.
+            foreach (var typeCode in TypeCodePeers(context, relation))
+                yield return typeCode;
             if (relation.Ends.Any(e => e.Types?.Any(t => t.Stereotype is not null) == true))
                 linked.Add(relation);
         }

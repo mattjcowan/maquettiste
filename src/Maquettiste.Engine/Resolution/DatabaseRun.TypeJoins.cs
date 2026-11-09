@@ -49,6 +49,65 @@ internal static class TypeJoinPaths
     }
 
     /// <summary>
+    /// Way 5's one path (decision 48): when an end with several types is pointed at by one key to a table that holds the rows of every
+    /// target (its entry's <c>foreignKey</c>), the pairs' paths differ only in what picks each target's rows in that table and in
+    /// <c>from_type</c> or <c>to_type</c> at that end. Without those, they are one path, which <see cref="RNavigation.Joins"/> holds.
+    /// <see langword="null"/> when no end is stored that way, no pair resolved, or the paths still differ (the other end's targets live in
+    /// several tables).
+    /// </summary>
+    /// <param name="links">The relation's storage.</param>
+    /// <param name="from">The navigation's from end.</param>
+    /// <param name="to">The navigation's to end.</param>
+    /// <param name="constants">The link table's constants.</param>
+    /// <param name="rows">What picks a target's rows in a table it enters.</param>
+    /// <returns>The one path, or <see langword="null"/>.</returns>
+    public static RJoinPath? Shared(TypeLinks links, REnd from, REnd to, IReadOnlyList<RColumnCondition> constants,
+        Func<Placement, RTable, IReadOnlyList<RColumnCondition>> rows)
+    {
+        var fromShared = IsShared(links, from);
+        var toShared = IsShared(links, to);
+        if (!fromShared && !toShared)
+            return null;
+        // Rows are picked only on the step that enters the to end's target table: dropped when that end shares one table.
+        var paths = Of(links, from, to, constants, toShared ? (_, _) => [] : rows);
+        if (paths.Count == 0)
+            return null;
+        var first = paths[0].Path;
+        if (!paths.TrueForAll(p => SameSteps(p.Path, first)))
+            return null;
+        return new RJoinPath
+        {
+            Steps = first.Steps,
+            FromType = fromShared ? null : first.FromType,
+            ToType = toShared ? null : first.ToType,
+        };
+    }
+
+    /// <summary>Whether an end with several types is pointed at by one key to a shared table (way 5).</summary>
+    private static bool IsShared(TypeLinks links, REnd end) =>
+        end.HasSeveralTypes && links.Ends.Any(e => ReferenceEquals(e.End, end) && e.Entry?.ForeignKey is not null);
+
+    private static bool SameSteps(RJoinPath a, RJoinPath b)
+    {
+        if (a.Steps.Count != b.Steps.Count)
+            return false;
+        for (var i = 0; i < a.Steps.Count; i++)
+        {
+            var (x, y) = (a.Steps[i], b.Steps[i]);
+            if (!ReferenceEquals(x.FromTable, y.FromTable) || !ReferenceEquals(x.ToTable, y.ToTable) || x.ViaJunction != y.ViaJunction
+                || !x.FromColumns.SequenceEqual(y.FromColumns) || !x.ToColumns.SequenceEqual(y.ToColumns) || x.Conditions.Count != y.Conditions.Count)
+                return false;
+            for (var k = 0; k < x.Conditions.Count; k++)
+            {
+                if (!ReferenceEquals(x.Conditions[k].Column, y.Conditions[k].Column) || !x.Conditions[k].Values.SequenceEqual(y.Conditions[k].Values))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// One pair's path from <paramref name="pf"/>'s target to <paramref name="pt"/>'s: one step when either end's rows hold the link, else two
     /// through the link table; <see langword="null"/> when a pointer didn't resolve.
     /// </summary>
@@ -133,9 +192,10 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// Step 3 for every relation stored as <see cref="TypeLinks"/>: each navigation's paths per pair (<see cref="RNavigation.TypeJoins"/>, and
-    /// <see cref="RNavigation.Joins"/> when there is exactly one), and per entity with an entity mapping, the paths from the target that stands
-    /// for it (<see cref="REntityMapping.Joins"/> when there is one, <see cref="REntityMapping.TypeJoins"/> when the navigation leads to an end
-    /// with several types or there are several). Does nothing in a database with no such relation.
+    /// <see cref="RNavigation.Joins"/> when there is exactly one: way 5's path to the shared table, or a single pair's), and per entity with an
+    /// entity mapping, the paths from the target that stands for it (<see cref="REntityMapping.Joins"/> when there is one, or way 5's;
+    /// <see cref="REntityMapping.TypeJoins"/> when the navigation leads to an end with several types, or there are several, as from an end
+    /// over an abstract TPC root). Does nothing in a database with no such relation.
     /// </summary>
     private void BuildTypeJoins()
     {
@@ -146,32 +206,33 @@ internal sealed partial class DatabaseRun
 
         // Paths read finished tables and keys only: computed per relation in parallel, committed in relation order.
         RowsByTable(); // built once here, read by the parallel loop
-        var computed = new List<(RNavigation Navigation, List<TypeJoinPaths.PairPath> Paths, List<string> Keys)>[stored.Count];
+        var computed = new List<(RNavigation Navigation, List<TypeJoinPaths.PairPath> Paths, RJoinPath? Shared, List<string> Keys)>[stored.Count];
         _run.ForEach(stored.Count, i => computed[i] = RelationTypeJoins(stored[i]));
 
         for (var i = 0; i < stored.Count; i++)
         {
             var relationKeys = _run.DepsOf(stored[i].Relation!).ToList();
-            foreach (var (navigation, pairs, keys) in computed[i])
+            foreach (var (navigation, pairs, shared, keys) in computed[i])
             {
                 var paths = pairs.Select(p => p.Path).ToList();
                 _run.SetTypeJoins(navigation, _db.Name, paths);
-                if (paths.Count == 1)
-                    _run.SetJoin(navigation, _db.Name, paths[0]);
+                // Exactly one path: way 5's, or a single pair's (decision 48).
+                if ((shared ?? (paths.Count == 1 ? paths[0] : null)) is { } one)
+                    _run.SetJoin(navigation, _db.Name, one);
                 // The paths follow what the relation's storage keys on (the storage run adds those to the relation), and the files that pick
                 // a target's rows (section 19.8, "Dependency keys").
                 _run.DepsOf(navigation).AddRange(relationKeys).AddRange(keys);
-                AddEntityTypeJoins(stored[i].TypeLinks!, navigation, pairs, relationKeys, keys);
+                AddEntityTypeJoins(stored[i].TypeLinks!, navigation, pairs, shared, relationKeys, keys);
             }
         }
     }
 
-    private List<(RNavigation Navigation, List<TypeJoinPaths.PairPath> Paths, List<string> Keys)> RelationTypeJoins(RelationPhysical phys)
+    private List<(RNavigation Navigation, List<TypeJoinPaths.PairPath> Paths, RJoinPath? Shared, List<string> Keys)> RelationTypeJoins(RelationPhysical phys)
     {
         var rel = phys.Relation!;
         var links = phys.TypeLinks!;
         var constants = phys.Mapping?.Constants ?? [];
-        var result = new List<(RNavigation, List<TypeJoinPaths.PairPath>, List<string>)>();
+        var result = new List<(RNavigation, List<TypeJoinPaths.PairPath>, RJoinPath?, List<string>)>();
         foreach (var from in rel.Ends)
         {
             foreach (var to in rel.Ends)
@@ -180,7 +241,8 @@ internal sealed partial class DatabaseRun
                     continue;
                 var keys = new DependencySet(_run.Keys);
                 var paths = TypeJoinPaths.Of(links, from, to, constants, (target, table) => RowsOf(target, table, keys));
-                result.Add((navigation, paths, keys.ToList().ToList()));
+                var shared = TypeJoinPaths.Shared(links, from, to, constants, (target, table) => RowsOf(target, table, keys));
+                result.Add((navigation, paths, shared, keys.ToList().ToList()));
             }
         }
 
@@ -199,8 +261,8 @@ internal sealed partial class DatabaseRun
     /// For each entity with an entity mapping that holds the navigation: the paths from the target that stands for it (itself, else its nearest
     /// base among the from end's targets).
     /// </summary>
-    private void AddEntityTypeJoins(TypeLinks links, RNavigation navigation, List<TypeJoinPaths.PairPath> pairs, IReadOnlyList<string> relationKeys,
-        IReadOnlyList<string> keys)
+    private void AddEntityTypeJoins(TypeLinks links, RNavigation navigation, List<TypeJoinPaths.PairPath> pairs, RJoinPath? shared,
+        IReadOnlyList<string> relationKeys, IReadOnlyList<string> keys)
     {
         var fromEnd = links.Ends.FirstOrDefault(e => ReferenceEquals(e.End, navigation.From));
         if (fromEnd is null || pairs.Count == 0)
@@ -218,8 +280,9 @@ internal sealed partial class DatabaseRun
             var own = pairs.Where(p => ReferenceEquals(p.From, target)).Select(p => p.Path).ToList();
             if (own.Count == 0)
                 continue;
-            if (own.Count == 1)
-                Map(_joinsByEntity, entityId).TryAdd(navigation.Name, own[0]);
+            // The entity's own path when there is one: its single pair's, or way 5's one path to the shared table.
+            if ((own.Count == 1 ? own[0] : shared) is { } one)
+                Map(_joinsByEntity, entityId).TryAdd(navigation.Name, one);
             if (navigation.To.HasSeveralTypes || own.Count > 1)
                 Map(_typeJoinsByEntity, entityId).TryAdd(navigation.Name, own);
             if (_run.EntityById(entityId) is { } entity)

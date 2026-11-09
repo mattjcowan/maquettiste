@@ -171,4 +171,24 @@ public sealed class RelationBothEndsTests
         Assert.Contains(notHeld, d => d.Severity == DiagnosticSeverity.Error && (d.FilePath ?? "").Contains("/processes/parts", StringComparison.Ordinal)
             && (d.JsonPointer ?? "").StartsWith("/rights/0", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public async Task A_trigger_points_ends_are_held_by_every_entity_the_other_end_covers()
+    {
+        // several-types-design.md section 19.12: a trigger point names ends by id, and an end is held by every entity the other end covers
+        // (MQ8102 reads the holders as a right's MQ9903 does).
+        string Parts(string end) => $$"""
+            {"kind":"process","id":"01JPRC00000000000000000955","name":"Parts","package":"{{Sales}}","use":"lifecycle",
+             "subjects":[{"id":"01JSBJ00000000000000000953","entity":"{{PurchasedPart}}"},{"id":"01JSBJ00000000000000000954","entity":"{{Assembly}}"}],
+             "triggerPoints":[{"id":"01JPRX00000000000000000955","name":"NoLink","type":"check","verbs":["connect"],"ends":["{{end}}"],"condition":{"value":true} }],
+             "states":[{"id":"01JSTA00000000000000000955","name":"Draft"}],"initial":"01JSTA00000000000000000955"}
+            """;
+
+        // Both subjects are covered by the target end, so both hold the source end; only PurchasedPart (through Part) by the source end.
+        var held = await ValidateAsync(With(h => h.Write("model/processes/parts.json", Parts(SourceEnd))));
+        Assert.DoesNotContain(held, d => d.Severity == DiagnosticSeverity.Error && (d.FilePath ?? "").Contains("/processes/parts", StringComparison.Ordinal));
+        var notHeld = await ValidateAsync(With(h => h.Write("model/processes/parts.json", Parts(TargetEnd))));
+        Assert.Contains(notHeld, d => d.Rule == "MQ8102" && (d.FilePath ?? "").Contains("/processes/parts", StringComparison.Ordinal)
+            && (d.JsonPointer ?? "").StartsWith("/triggerPoints/0", StringComparison.Ordinal));
+    }
 }

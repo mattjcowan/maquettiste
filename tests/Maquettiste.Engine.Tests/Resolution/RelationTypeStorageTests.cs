@@ -13,7 +13,7 @@ namespace Maquettiste.Engine.Tests.Resolution;
 /// and Filed (a folder holds parts and assemblies). Each test writes one relation mapping and reads the resolved members, the run's findings
 /// (MQ4117, MQ4118, MQ4120, MQ4051) and the database's storage notes.
 /// </summary>
-public sealed class RelationTypeStorageTests
+public sealed partial class RelationTypeStorageTests
 {
     private const string Main = "01JDBS00000000000000000951";
     private const string P = "01JST2", Pt = "01JST3", Ft = "01JST4";

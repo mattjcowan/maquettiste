@@ -1207,7 +1207,8 @@ public sealed partial class ModelStore : IAsyncDisposable
         // baseline too, so their pre-existing errors never block the delete.
         var changed = plan.ChangeByElement.Keys.Order(StringComparer.Ordinal).ToList();
         var placements = FormerPlacements(changed, before, candidate).Concat(FormerRowTables(changed, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
-        var followers = FormerFactFollowers(changed, before, candidate).Concat(FormerActorPeers(changed, before, candidate)).ToList();
+        var followers = FormerFactFollowers(changed, before, candidate).Concat(FormerActorPeers(changed, before, candidate))
+            .Concat(FormerTypeCodePeers(changed, before, candidate)).ToList();
         // A dry run counts the deletes too: what a deleted element had shows as removed.
         if ((preview is null ? plan.ChangedIds.Count : changed.Count) == 0 && placements.Count == 0 && followers.Count == 0)
             return [];
@@ -1372,6 +1373,27 @@ public sealed partial class ModelStore : IAsyncDisposable
             yield break;
         foreach (var actor in candidate.All<Actor>())
             yield return actor.Id;
+    }
+
+    /// <summary>
+    /// The files whose relaxed MQ4009 on <c>discriminatorValue</c> a change may bring back (several-types-design.md decision 42 and section
+    /// 19.7): a relation saved or deleted, or a carrier moved by an entity, package or stereotype change, leaves an entity that an end with
+    /// several types covered before the change; the validator reaches the entities covered after it, and this the ones covered before. Nothing
+    /// while the model before the change has no end with several types.
+    /// </summary>
+    private static IEnumerable<string> FormerTypeCodePeers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        if (!EndCoverage.Of(before).Any)
+            yield break;
+        var elements = changedIds.Select(id => before.GetDocument(id)?.Element).Where(e => e is Relation or Entity or Package or Stereotype).ToList();
+        if (elements.Count == 0)
+            yield break;
+        foreach (var id in Validation.ModelValidator.TypeCodeFiles(before, r => elements.Exists(e =>
+            e is Relation ? string.Equals(e.Id, r.Id, StringComparison.Ordinal) : Validation.ModelValidator.MovesCoverage(before, e!, r))))
+        {
+            if (candidate.GetDocument(id) is not null)
+                yield return id;
+        }
     }
 
     private static IEnumerable<string> FormerReferrers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
