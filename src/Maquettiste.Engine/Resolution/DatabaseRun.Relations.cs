@@ -35,19 +35,15 @@ internal sealed partial class DatabaseRun
     private readonly List<(REntity Entity, TableBuild Table)> _promotedTables = [];
 
     /// <summary>
-    /// Whether a binding field, a query field or a query collection names a relation end with several types, or a path under one: MQ4116
-    /// refuses it (several-types-design.md decision 22), so resolution reports nothing more about it.
+    /// Whether a binding field, a query field or a query collection names any end of a relation with an end of several types, or a path
+    /// under one: MQ4116 refuses it (several-types-design.md decision 22), since part 1 stores nothing for such a
+    /// relation, so resolution reports nothing more about it.
     /// </summary>
     /// <param name="model">The model.</param>
     /// <param name="reference">The field's or collection's <c>attribute</c>.</param>
-    /// <returns>Whether it names such an end.</returns>
-    internal static bool NamesSeveralTypesEnd(ModelSnapshot model, string reference)
-    {
-        var dot = reference.IndexOf('.', StringComparison.Ordinal);
-        var id = dot > 0 ? reference[..dot] : reference;
-        return model.TryGetEntry(id, out var entry) && entry.Kind == "end"
-            && model.Get<Relation>(entry.OwnerId)?.Ends.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal)) is { HasSeveralTypes: true };
-    }
+    /// <returns>Whether it goes through such a relation.</returns>
+    internal static bool NamesSeveralTypesEnd(ModelSnapshot model, string reference) =>
+        EndCoverage.Of(model).Any && Validation.RelationTypeRules.ThroughSeveralTypes(model, reference) is not null;
 
     private void ResolveRelation(RRelation rel)
     {

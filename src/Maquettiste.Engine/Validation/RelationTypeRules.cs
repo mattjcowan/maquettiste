@@ -200,7 +200,10 @@ internal static class RelationTypeRules
         return Resolution.DatabaseScope.Places(context.Model, database, entity.Package, mappings.Length > 0 ? mappings[0].Element as Mapping : null);
     }
 
-    /// <summary>MQ4116 on an entity's bindings: a field that names a relation end with several types, which leads to more than one table.</summary>
+    /// <summary>
+    /// MQ4116 on an entity's bindings: a field that names a relation end with several types, which leads to more than one table, or another
+    /// end of a relation with such an end, which no database stores yet.
+    /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="entity">The entity.</param>
     /// <param name="report">The report.</param>
@@ -213,9 +216,9 @@ internal static class RelationTypeRules
             var fields = entity.Bindings[b].Fields;
             for (var i = 0; i < fields.Count; i++)
             {
-                if (SeveralTypesEnd(context.Model, fields[i].Attribute) is { } end)
+                if (ThroughSeveralTypes(context.Model, fields[i].Attribute) is { } through)
                 {
-                    report.Add("MQ4116", $"Field {i.ToString(CultureInfo.InvariantCulture)} of the binding of '{entity.Name}' names end '{end.Role}', which leads to several types; a field can't map it.",
+                    report.Add("MQ4116", $"Field {i.ToString(CultureInfo.InvariantCulture)} of the binding of '{entity.Name}' names {Named(through)}; a field can't map it.",
                         Ptr.At(Ptr.At("/bindings", b) + "/fields", i) + "/attribute");
                 }
             }
@@ -224,7 +227,8 @@ internal static class RelationTypeRules
 
     /// <summary>
     /// MQ4116 on a query: a field of its select list, or of a collection's nested select list, or a collection, that names a relation end
-    /// with several types, which leads to more than one table.
+    /// with several types, which leads to more than one table, or another end of a relation with such an end (as a navigation from one of
+    /// that end's types does), which no database stores yet. A nested field's text names its collection.
     /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="query">The query.</param>
@@ -234,37 +238,49 @@ internal static class RelationTypeRules
         var model = context.Model;
         if (!EndCoverage.Of(model).Any)
             return;
-        CheckFields(query.Select, "/select");
+        CheckFields(query.Select, "/select", "");
         for (var c = 0; c < query.Collections.Count; c++)
         {
             var collection = query.Collections[c];
             var pointer = Ptr.At("/collections", c);
-            if (SeveralTypesEnd(model, collection.Attribute) is { } end)
-            {
-                report.Add("MQ4116", $"Collection {c.ToString(CultureInfo.InvariantCulture)} of query '{query.Name}' names end '{end.Role}', which leads to several types; a collection can't fill it.",
-                    pointer + "/attribute");
-            }
+            var index = c.ToString(CultureInfo.InvariantCulture);
+            if (ThroughSeveralTypes(model, collection.Attribute) is { } through)
+                report.Add("MQ4116", $"Collection {index} of query '{query.Name}' names {Named(through)}; a collection can't fill it.", pointer + "/attribute");
 
-            CheckFields(collection.Query.Select, pointer + "/query/select");
+            CheckFields(collection.Query.Select, pointer + "/query/select", " of collection " + index);
         }
 
-        void CheckFields(IReadOnlyList<QueryField> fields, string at)
+        void CheckFields(IReadOnlyList<QueryField> fields, string at, string within)
         {
             for (var i = 0; i < fields.Count; i++)
             {
-                if (fields[i].Attribute is { } attribute && SeveralTypesEnd(model, attribute) is { } end)
+                if (fields[i].Attribute is { } attribute && ThroughSeveralTypes(model, attribute) is { } through)
                 {
-                    report.Add("MQ4116", $"Field {i.ToString(CultureInfo.InvariantCulture)} of query '{query.Name}' names end '{end.Role}', which leads to several types; a field can't map it.",
+                    report.Add("MQ4116", $"Field {i.ToString(CultureInfo.InvariantCulture)}{within} of query '{query.Name}' names {Named(through)}; a field can't map it.",
                         Ptr.At(at, i) + "/attribute");
                 }
             }
         }
     }
 
-    // The end with several types a field's reference names (its first id segment), or null.
-    private static RelationEnd? SeveralTypesEnd(ModelSnapshot model, string reference)
+    /// <summary>
+    /// The relation with an end of several types that a binding field's, query field's or query collection's <c>attribute</c> goes through,
+    /// and the end it names: its first id segment is an end of such a relation, the end with several types or another one (a path under the
+    /// end included). <see langword="null"/> otherwise, and always for a relation whose ends each have one type.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="reference">The <c>attribute</c>.</param>
+    /// <returns>The relation and the end named.</returns>
+    public static (Relation Relation, RelationEnd End)? ThroughSeveralTypes(ModelSnapshot model, string reference)
     {
         var dot = reference.IndexOf('.', StringComparison.Ordinal);
-        return EndOf(model, dot > 0 ? reference[..dot] : reference) is { End.HasSeveralTypes: true } found ? found.End : null;
+        var first = dot > 0 ? reference[..dot] : reference;
+        return EndOf(model, dot > 0 ? reference[..dot] : reference) is { } found && EndCoverage.HasSeveralTypes(found.Relation) ? found : null;
     }
+
+    // "end 'attachedTo', which leads to several types" for the end with several types itself; "end 'comment' of relation 'AttachedTo', which
+    // has an end with several types" for another end of such a relation, in the words MQ7105 uses.
+    private static string Named((Relation Relation, RelationEnd End) through) => through.End.HasSeveralTypes
+        ? $"end '{through.End.Role}', which leads to several types"
+        : $"end '{through.End.Role}' of relation '{through.Relation.Name}', which has an end with several types";
 }

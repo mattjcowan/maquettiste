@@ -14,8 +14,8 @@ one.
   `anyEntity` covers every entity. Role, cardinality, navigation and delete rule stay one per end.
 - **Rules.** MQ3041 (an end with several types where it can't be: on an n-ary relation, on both ends of a relation, or `anyEntity` on a
   composition's part end), MQ3042 (a list of one entity: write `entity`, with a quick fix), MQ3043 (an entry another entry covers),
-  MQ4115 (info: no database stores such a relation yet) and MQ4116 (a binding field, a query field or a query collection through such an
-  end). The catalog texts of MQ2003, MQ2020, MQ3016, MQ3116, MQ4009, MQ7105, MQ9211, MQ9305 and MQ9604 grow.
+  MQ4115 (info: no database stores such a relation yet) and MQ4116 (a binding field, a query field or a query collection through such a
+  relation). The catalog texts of MQ2003, MQ2020, MQ3016, MQ3116, MQ4009, MQ7105, MQ9211, MQ9305 and MQ9604 grow.
 - **Guards, sign-off and scenarios.** A guard path through such an end reads what every type holds under one id. `in_state` through it
   is unknown for an object whose type the lifecycle doesn't govern. Unknown is not "no": a guard reading `in_state(...)` or
   `not in_state(...)` is false for that object, and a signature's "Needed when" treats it as needed. Scenario links and connect

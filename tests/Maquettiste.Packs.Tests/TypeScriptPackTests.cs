@@ -154,6 +154,34 @@ public sealed class TypeScriptPackTests
     }
 
     [Fact]
+    public async Task The_union_follows_an_entity_moved_from_under_another_carrier_as_a_clean_run_writes_it()
+    {
+        // A remark attached to anything approvable or a part. Memo carries approvable and derives from Document, so it is no type of its own;
+        // once Memo no longer derives from Document it is one, and an incremental run rewrites the union as a forced run would.
+        const string Billing = "01J92P0V01KDRN8GX5PGYCNKSX";
+        using var repo = PackRepo.TypeScript("billing");
+        static string Entity(string id, string name, string key, string extra = "") =>
+            $$"""{"kind":"entity","id":"{{id}}","name":"{{name}}","package":"{{Billing}}"{{extra}},"key":{"attributes":["{{key}}"]},"attributes":[{"id":"{{key}}","name":"id","type":"uuid","required":true}]}""";
+        repo.Write(".maquettiste/model/vocabularies/stereotypes/approvable.json", """{"kind":"stereotype","id":"01K9ST00000000000000000040","key":"approvable","name":"approvable","appliesTo":["entity"]}""");
+        repo.Write(".maquettiste/model/entities/part.json", Entity("01K9ST00000000000000000001", "Part", "01K9ST00000000000000000011"));
+        repo.Write(".maquettiste/model/entities/document.json", Entity("01K9ST00000000000000000004", "Document", "01K9ST00000000000000000014", ",\"stereotypes\":[\"approvable\"]"));
+        repo.Write(".maquettiste/model/entities/memo.json",
+            $$"""{"kind":"entity","id":"01K9ST00000000000000000005","name":"Memo","package":"{{Billing}}","base":"01K9ST00000000000000000004","stereotypes":["approvable"]}""");
+        repo.Write(".maquettiste/model/entities/remark.json", Entity("01K9ST00000000000000000003", "Remark", "01K9ST00000000000000000013"));
+        repo.Write(".maquettiste/model/relations/attached-to.json",
+            $$"""{"kind":"relation","id":"01K9ST00000000000000000021","name":"AttachedTo","package":"{{Billing}}","ends":[{"id":"01K9ST00000000000000000022","entity":"01K9ST00000000000000000003","role":"remark","max":"*","navigation":"remarks"},{"id":"01K9ST00000000000000000023","types":[{"stereotype":"approvable"},{"entity":"01K9ST00000000000000000001"}],"role":"attachedTo","max":1,"navigation":"attachedTo"}]}""");
+        await repo.GenerateCleanlyAsync();
+        string Remark() => repo.Read(Listing(repo).Single(f => f.EndsWith("/remark.ts", StringComparison.Ordinal)));
+        Assert.Contains("  attachedTo?: Document | Part;", Remark(), StringComparison.Ordinal);
+
+        repo.Write(".maquettiste/model/entities/memo.json", Entity("01K9ST00000000000000000005", "Memo", "01K9ST00000000000000000015", ",\"stereotypes\":[\"approvable\"]"));
+        await repo.GenerateCleanlyAsync();
+        Assert.Contains("  attachedTo?: Document | Memo | Part;", Remark(), StringComparison.Ordinal);
+        var forced = await repo.GenerateCleanlyAsync(force: true);
+        Assert.DoesNotContain(forced.Changes, c => Writes.Contains(c.Kind));
+    }
+
+    [Fact]
     public async Task The_output_type_checks_its_scenario_tests_pass_and_every_step_matches_the_engine()
     {
         var tools = await ToolsOrSkipAsync();

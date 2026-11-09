@@ -1555,7 +1555,7 @@
   {
     "id": "MQ4116",
     "defaultSeverity": "error",
-    "description": "A binding field, a query field or a query collection names a relation end with several types, or a navigation to one, which leads to more than one table; a field can't map it.",
+    "description": "A binding field, a query field or a query collection names a relation end with several types, or a navigation to one, which leads to more than one table; or it names another end of a relation with such an end, which no database stores yet; a field can't map it.",
     "family": "MQ41xx",
     "familyLabel": "Migrations",
     "canBeOff": true

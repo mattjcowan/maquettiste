@@ -92,7 +92,7 @@ public sealed class RelationTypesResolverTests
         Assert.Equal((true, false), (attached.HasSeveralTypes, attached.AnyEntity));
         Assert.Equal([Approvable], Ids(attached.Stereotypes));
         Assert.Null(attached.CommonBase);
-        Assert.Equal(new[] { "cs:approvable", "e:" + AttachedTo, "e:" + Assembly, "e:" + Part, "r:" + Assembly, "r:" + Part }.Order(StringComparer.Ordinal), attached.Dependencies.Order(StringComparer.Ordinal));
+        Assert.Equal(new[] { "cs:approvable", "e:" + AttachedTo, "ec:" + AttachedEnd, "e:" + Assembly, "e:" + Part, "r:" + Assembly, "r:" + Part }.Order(StringComparer.Ordinal), attached.Dependencies.Order(StringComparer.Ordinal));
 
         // Any entity: every entity with no base, by qualified name, then id.
         var mentioned = RelationOf(model, Mentions).Ends[1];
@@ -100,7 +100,9 @@ public sealed class RelationTypesResolverTests
         Assert.Contains(Comment, Ids(mentioned.Types));
         Assert.DoesNotContain(Memo, Ids(mentioned.Types));
         Assert.Empty(mentioned.Stereotypes);
-        Assert.Contains("k:entity", mentioned.Dependencies);
+        // Its types key, which a base change or a rename that reorders the roots moves; the entity and package kinds are not read.
+        Assert.Contains("ec:" + MentionsEnd, mentioned.Dependencies);
+        Assert.DoesNotContain("k:entity", mentioned.Dependencies);
 
         // Two derived entities share their base.
         Assert.Equal(Part, RelationOf(model, Siblings).Ends[1].CommonBase!.Id);

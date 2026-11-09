@@ -328,15 +328,19 @@ internal static class ExprResolution
     }
 
     /// <summary>
-    /// The keys of what the ends with several types an expression's paths go through cover (several-types-design.md decision 20): each
-    /// entity entry's referrers (which cover derived entities), <c>cs:&lt;key&gt;</c> per stereotype entry, and the entity and package kinds for
-    /// <c>anyEntity</c>. Empty for paths through one-type ends only, so their keys never change.
+    /// The keys of what the ends with several types an expression's paths go through cover (several-types-design.md decision 20): each end's
+    /// types key (<see cref="EndCoverage.TypesKey"/>), each entity entry and its referrers (which cover derived entities), and
+    /// <c>cs:&lt;key&gt;</c> per stereotype entry. Empty for paths through one-type ends only, so their keys never change; a model without such
+    /// ends walks nothing.
     /// </summary>
     /// <param name="model">The model.</param>
     /// <param name="typed">The typed expression.</param>
     /// <returns>The keys, ordinal.</returns>
     public static IReadOnlyList<string> CoverageKeys(ModelSnapshot model, TypedExpr typed)
     {
+        // A model without such ends walks nothing (several-types-design.md section 12, speed).
+        if (!EndCoverage.Of(model).Any)
+            return [];
         DependencySet? keys = null;
         var pending = new Stack<TypedExpr>();
         pending.Push(typed);

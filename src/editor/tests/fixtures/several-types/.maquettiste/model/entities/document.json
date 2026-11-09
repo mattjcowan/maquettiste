@@ -1,0 +1,22 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01KST0ENT00000000000000005",
+  "name": "Document",
+  "package": "01KST0PKG00000000000000001",
+  "stereotypes": [
+    "approvable"
+  ],
+  "key": {
+    "attributes": [
+      "01KST0ATT00000000000000005"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01KST0ATT00000000000000005",
+      "name": "id",
+      "type": "uuid"
+    }
+  ]
+}

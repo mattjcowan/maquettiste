@@ -1,0 +1,56 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01KST0PRC00000000000000002",
+  "name": "Triage",
+  "package": "01KST0PKG00000000000000001",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01KST0SBJ00000000000000002",
+      "entity": "01KST0ENT00000000000000008"
+    }
+  ],
+  "events": [
+    {
+      "id": "01KST0PRX00000000000000001",
+      "name": "go"
+    }
+  ],
+  "guards": [
+    {
+      "id": "01KST0PRX00000000000000011",
+      "name": "attachedOpen",
+      "condition": {
+        "inState": [
+          "01KST0STA00000000000000001"
+        ],
+        "of": [
+          "01KST0END00000000000000002"
+        ]
+      }
+    }
+  ],
+  "states": [
+    {
+      "id": "01KST0STA00000000000000011",
+      "name": "S1"
+    },
+    {
+      "id": "01KST0STA00000000000000012",
+      "name": "S2"
+    }
+  ],
+  "initial": "01KST0STA00000000000000011",
+  "transitions": [
+    {
+      "id": "01KST0TRN00000000000000001",
+      "source": "01KST0STA00000000000000011",
+      "event": "01KST0PRX00000000000000001",
+      "guard": "01KST0PRX00000000000000011",
+      "targets": [
+        "01KST0STA00000000000000012"
+      ]
+    }
+  ]
+}

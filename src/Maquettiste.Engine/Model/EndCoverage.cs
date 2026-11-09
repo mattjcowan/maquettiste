@@ -25,6 +25,13 @@ internal sealed class EndCoverage
     /// </summary>
     public const string NamingKey = "et:ends";
 
+    /// <summary>
+    /// The prefix of an end's types key, <c>ec:&lt;end id&gt;</c>: a hash of what the end resolves to, its types in order and its common base. A
+    /// base change or a package rename can move them while every entry's own keys stay the same, so whatever reads an end's types records it.
+    /// Recorded only for an end with several types.
+    /// </summary>
+    public const string TypesPrefix = "ec:";
+
     private static readonly ConditionalWeakTable<ModelSnapshot, EndCoverage> ByModel = new();
 
     private static readonly ConditionalWeakTable<ModelSnapshot, string> NamingHashes = new();
@@ -134,7 +141,8 @@ internal sealed class EndCoverage
                 }
             }
 
-            byEnd[end.Id] = new Covered(covered.ToFrozenSet(StringComparer.Ordinal), [.. types], CommonBase(model, chains, types));
+            var common = CommonBase(model, chains, types);
+            byEnd[end.Id] = new Covered(covered.ToFrozenSet(StringComparer.Ordinal), [.. types], common, TypesHashOf(types, common));
         }
 
         _ends = byEnd.ToFrozenDictionary(StringComparer.Ordinal);
@@ -324,6 +332,36 @@ internal sealed class EndCoverage
         });
     }
 
+    /// <summary>The key that records what an end with several types resolves to (<see cref="TypesPrefix"/>).</summary>
+    /// <param name="endId">The end's id.</param>
+    /// <returns>The key.</returns>
+    public static string TypesKey(string endId) => TypesPrefix + endId;
+
+    /// <summary>
+    /// The current hash of <see cref="TypesKey"/>: the end's types in order (decision 5) and its common base (decision 19). It changes when an
+    /// entity moves under another base inside what the end covers, when a carrier comes or goes, and, for <c>anyEntity</c>, when a rename moves
+    /// the roots' order. <see langword="null"/> when the end is unknown or has one type.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="endId">The end's id.</param>
+    /// <returns>The hash, or <see langword="null"/>.</returns>
+    public static string? TypesHash(ModelSnapshot model, string endId)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(endId);
+        return Of(model)._ends.TryGetValue(endId, out var covered) ? covered.Hash : null;
+    }
+
+    private static string TypesHashOf(List<Entity> types, Entity? common)
+    {
+        using var hash = new Hashing.HashBuilder();
+        hash.Add("ec");
+        foreach (var type in types)
+            hash.Add(type.Id);
+        hash.Add("/").Add(common?.Id ?? "-");
+        return hash.Finish();
+    }
+
     private static Entity? CommonBase(ModelSnapshot model, Dictionary<string, List<string>> chains, List<Entity> types)
     {
         if (types.Count == 0)
@@ -338,5 +376,5 @@ internal sealed class EndCoverage
         return null;
     }
 
-    private sealed record Covered(FrozenSet<string> Set, ImmutableArray<Entity> Types, Entity? CommonBase);
+    private sealed record Covered(FrozenSet<string> Set, ImmutableArray<Entity> Types, Entity? CommonBase, string Hash);
 }

@@ -111,6 +111,40 @@ public sealed class RelationTypesProcessTests
         Assert.True((await RunAsync(store, Check, "d1", Document)).Accepted);
     }
 
+    [Fact]
+    public async Task A_signature_whose_needed_when_reads_in_state_through_such_an_end_is_needed_for_an_object_the_lifecycle_does_not_govern()
+    {
+        // Triage's go asks for one signature (read in S1, before any step), needed unless the concerned object is open in Review: not in_state(subject.concerns, Review.Open).
+        // Unknown counts as needed (decision 15): a Part, which Review doesn't govern, needs it; an open Document doesn't.
+        var (h, store) = await OpenAsync(x =>
+        {
+            x.Write("model/actors/checker.json", """{"kind":"actor","id":"01JACT00000000000000000901","name":"Checker","type":"role"}""");
+            x.Write(TriageFile, x.Read(TriageFile).Replace("\"actions\":[\"01JPRX00000000000000000931\"]}", $$"""
+                "actions":["01JPRX00000000000000000931"],"gate":{"id":"01JAPG00000000000000000901","name":"Sign","meanings":[{"id":"01JAPG00000000000000000902","name":"Seen"}],
+                 "stages":[{"id":"01JGST00000000000000000901","name":"Check","signatures":[{"id":"01JNSG00000000000000000901","name":"Checker","signers":["01JACT00000000000000000901"],
+                   "when":{"op":"not","args":[{"inState":["{{Open}}"],"of":["{{ConcernsEnd}}"]}]} }]}]} }
+                """.Trim(), StringComparison.Ordinal));
+        });
+        using var _ = h;
+        await using var __ = store;
+        Assert.DoesNotContain(store.Current!.LoadDiagnostics, d => d.Severity == DiagnosticSeverity.Error);
+
+        async Task<bool> NeededAsync(string concernedEntity)
+        {
+            JsonElement[] objects =
+            [
+                Json($$"""{"id":"01JXBJ00000000000000000901","name":"c1","entity":"{{Comment}}","links":[{"end":"{{ConcernsEnd}}","object":"01JXBJ00000000000000000902"}]}"""),
+                Json($$"""{"id":"01JXBJ00000000000000000902","name":"x1","entity":"{{concernedEntity}}"}"""),
+            ];
+            var call = await store.SimulateProcessAsync(Triage, new SimulateRequest { Steps = [], Objects = objects, Subject = "01JXBJ00000000000000000901" }, Ct);
+            Assert.True(call.Status == ProcessCallStatus.Ok, call.Detail + " " + string.Join(" | ", call.Diagnostics.Select(d => d.Message)));
+            return call.Value!.Gates.Single().Stages!.Single().Signatures.Single().Needed;
+        }
+
+        Assert.True(await NeededAsync(Part));
+        Assert.False(await NeededAsync(Document));
+    }
+
     // ---- scenarios ----
 
     private static string Scenario(string objects, string step = "") => $$"""

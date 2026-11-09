@@ -253,7 +253,7 @@ public static class RuleCatalog
         new("MQ4113", E, "An open value-map fact maps away a code that is a live code of its reference type."),
         new("MQ4114", W, "A write changed a kept reference row's code, or a reference type's name or plural name, outside the refactor operations, so no value map was recorded."),
         new("MQ4115", I, "A relation has an end with several types, and every end has a type it covers placed in a database, so that database stores nothing for the relation: no table, column or foreign key."),
-        new("MQ4116", E, "A binding field, a query field or a query collection names a relation end with several types, or a navigation to one, which leads to more than one table; a field can't map it."),
+        new("MQ4116", E, "A binding field, a query field or a query collection names a relation end with several types, or a navigation to one, which leads to more than one table; or it names another end of a relation with such an end, which no database stores yet; a field can't map it."),
 
         new("MQ5001", E, "Property fails its extension schema."),
         new("MQ5002", E, "Validation rule or calculation script error."),

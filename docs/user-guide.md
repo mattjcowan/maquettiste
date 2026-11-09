@@ -1834,7 +1834,8 @@ database. Code generation sees the types of each end, but a pack can't read tabl
 designed tables with explicit mappings. Until then these are refused:
 
 - an entity seed's column for such an end, and a seed of such a relationship (MQ7105);
-- a binding field, a query field or a query collection that names such an end, or a navigation to one (MQ4116).
+- a binding field, a query field or a query collection that names such an end, or a navigation to one (MQ4116); also one that names the
+  other end, as a query on Part with the collection `comments` does (MQ4116).
 
 The Storage tab says "No database stores a relation with an end of several types."
 

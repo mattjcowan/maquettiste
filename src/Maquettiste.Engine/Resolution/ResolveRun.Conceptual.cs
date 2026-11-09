@@ -716,8 +716,8 @@ internal sealed partial class ResolveRun
             };
             if (end.HasSeveralTypes)
             {
-                // Decision 20: what the end covers keys on each entity entry and its referrers (which cover derived entities), cs:<key> per
-                // stereotype entry, and the entity kind for anyEntity; the relation, the end and its navigations all read it.
+                // Decision 20: what the end covers keys on the end's types key (its types and common base), each entity entry and its
+                // referrers (which cover derived entities) and cs:<key> per stereotype entry; the relation, the end and its navigations all read it.
                 var coverage = new DependencySet(Keys).Element(relation.Id);
                 AddCoverageKeys(end, coverage);
                 AddCoverageKeys(end, deps);
@@ -806,19 +806,18 @@ internal sealed partial class ResolveRun
     private readonly List<(RelationEnd Source, REnd Resolved)> _severalTypeEnds = [];
 
     /// <summary>
-    /// Adds the keys of what an end with several types covers (several-types-design.md decision 20): each entity entry and its referrers,
-    /// <c>cs:&lt;key&gt;</c> per stereotype entry, and the entity and package kinds for <c>anyEntity</c> (its roots are ordered by qualified
-    /// name, which a package rename moves).
+    /// Adds the keys of what an end with several types covers (several-types-design.md decision 20): the end's types key
+    /// (<see cref="EndCoverage.TypesKey"/>, a hash of its types in order and its common base, which entities moving under other bases and
+    /// renames that reorder the roots of <c>anyEntity</c> change), each entity entry and its referrers, and <c>cs:&lt;key&gt;</c> per stereotype
+    /// entry.
     /// </summary>
     /// <param name="end">The end, with several types.</param>
     /// <param name="keys">The keys to add to.</param>
     internal static void AddCoverageKeys(RelationEnd end, DependencySet keys)
     {
+        keys.Add(EndCoverage.TypesKey(end.Id));
         if (end.AnyEntity == true)
-        {
-            keys.Add("k:entity").Add("k:package");
             return;
-        }
 
         foreach (var entry in end.Types ?? [])
         {
@@ -851,10 +850,11 @@ internal sealed partial class ResolveRun
     }
 
     /// <summary>
-    /// The keys <c>entity.relations</c> and <c>entity.navigations</c> add while some relation end names a stereotype or any entity
-    /// (several-types-design.md section 7): the naming key <c>et:ends</c> and <c>cs:</c> of each key such an end names, so a new any-entity
-    /// relation, or an entity gaining a named stereotype, renders them again. Empty otherwise, so a model without such ends keeps its keys.
-    /// Read only once every relation is committed.
+    /// The keys <c>entity.relations</c> and <c>entity.navigations</c> add while some relation end has several types (several-types-design.md
+    /// section 7): each such end's types key, so an entity that becomes or stops being one of its types through a base change renders them
+    /// again; and, for an end that names a stereotype or any entity, the naming key <c>et:ends</c> and <c>cs:</c> of each key it names, so a new
+    /// any-entity relation, or an entity gaining a named stereotype, renders them again. Empty otherwise, so a model without such ends keeps its
+    /// keys. Read only once every relation is committed.
     /// </summary>
     private IReadOnlyList<string> EndNamingKeys()
     {
@@ -863,6 +863,7 @@ internal sealed partial class ResolveRun
         var keys = new SortedSet<string>(StringComparer.Ordinal);
         foreach (var (source, _) in _severalTypeEnds)
         {
+            keys.Add(EndCoverage.TypesKey(source.Id));
             if (!EndCoverage.NamesStereotypeOrAny(source))
                 continue;
             keys.Add(EndCoverage.NamingKey);

@@ -280,8 +280,75 @@ public sealed class RelationTypesRuleTests
         [
             ("/select/1/attribute", "Field 1 of query 'Comments' names end 'attachedTo', which leads to several types; a field can't map it."),
             ("/collections/0/attribute", "Collection 0 of query 'Comments' names end 'tagged', which leads to several types; a collection can't fill it."),
-            ("/collections/0/query/select/0/attribute", "Field 0 of query 'Comments' names end 'attachedTo', which leads to several types; a field can't map it."),
+            ("/collections/0/query/select/0/attribute", "Field 0 of collection 0 of query 'Comments' names end 'attachedTo', which leads to several types; a field can't map it."),
         ], Of(found, "MQ4116", "/queries/comments"));
+
+        // MQ4116 alone: the resolver reports nothing more about such a field or collection.
+        Assert.DoesNotContain(found, d => d.Rule is "MQ4045" or "MQ4025" or "MQ4027" && ((d.FilePath ?? "").Contains("/entities/comment", StringComparison.Ordinal)
+            || (d.FilePath ?? "").Contains("/queries/comments", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task MQ4116_refuses_a_field_or_collection_through_such_a_relation_from_the_one_type_side_and_nothing_else_reports_it()
+    {
+        // Filed: a comment (to-one) filed under tools or documents. Tool's binding maps the comment end, a to-one end Tool holds through its
+        // type; a query on Part fills AttachedTo's comments, and one on Tool selects Filed's comment end. Part 1 stores nothing for
+        // such a relation, so each is MQ4116 alone, with no MQ4045, MQ4025 or MQ4027.
+        const string Tools = "01JTAB00000000000000000911", Parts = "01JTAB00000000000000000912", Comments = "01JTAB00000000000000000913";
+        const string Filed = "01JRXN00000000000000000991", FiledComment = "01JEND00000000000000000995", FiledUnder = "01JEND00000000000000000996";
+        var found = await ValidateAsync(h =>
+        {
+            h.Write("model/databases/main/database.json", Database());
+            foreach (var (id, name, second) in new[] { (Tools, "tools", "comment_id"), (Parts, "parts", "note"), (Comments, "comments", "text") })
+            {
+                h.Write($"model/databases/main/tables/{name}.json", $$"""
+                    {"kind":"table","id":"{{id}}","name":"{{name}}","database":"{{Main}}","origin":"designed",
+                     "columns":[{"id":"{{id[..^3]}}A{{id[^2..]}}","name":"id","type":"uuid"},{"id":"{{id[..^3]}}B{{id[^2..]}}","name":"{{second}}","type":"uuid"}]}
+                    """);
+            }
+
+            h.Write("model/relations/filed.json", RelationFile(Filed, "Filed", FiledComment, "comment", "comment", FiledUnder,
+                $$""" "types":[{"entity":"{{Tool}}"},{"entity":"{{Document}}"}] """, "filed", "filedUnder", "\"*\"", nearMax: "1"));
+            h.Write("model/entities/tool.json", EntityFile(Tool, "Tool", attributes: $$"""
+                ,"key":{"attributes":["01JATT00000000000000000971"]},"attributes":[{"id":"01JATT00000000000000000971","name":"id","type":"uuid"}],
+                "bindings":[{"id":"01JBND00000000000000000911","database":"{{Main}}","source":"{{Tools}}","fields":[{"attribute":"01JATT00000000000000000971","column":"id"},{"attribute":"{{FiledComment}}","column":"comment_id"}]}]
+                """));
+            h.Write("model/databases/main/queries/part-notes.json", $$"""
+                {"kind":"query","id":"01JQRY00000000000000000911","name":"PartNotes","database":"{{Main}}","entity":"{{Part}}","from":{"source":"{{Parts}}","alias":"p"},
+                 "select":[{"attribute":"01JATT00000000000000000911","expression":{"column":"p.id"} }],
+                 "collections":[{"attribute":"{{CommentsEnd}}","query":{"from":{"source":"{{Comments}}","alias":"n"},"select":[{"attribute":"01JATT00000000000000000981","expression":{"column":"n.id"} }]} }]}
+                """);
+            h.Write("model/databases/main/queries/tool-filing.json", $$"""
+                {"kind":"query","id":"01JQRY00000000000000000912","name":"ToolFiling","database":"{{Main}}","entity":"{{Tool}}","from":{"source":"{{Tools}}","alias":"t"},
+                 "select":[{"attribute":"01JATT00000000000000000971","expression":{"column":"t.id"} },{"attribute":"{{FiledComment}}","expression":{"column":"t.comment_id"} }]}
+                """);
+        });
+        Assert.Equal([("/bindings/0/fields/1/attribute", "Field 1 of the binding of 'Tool' names end 'comment' of relation 'Filed', which has an end with several types; a field can't map it.")],
+            Of(found, "MQ4116", "/entities/tool"));
+        Assert.Equal([("/collections/0/attribute", "Collection 0 of query 'PartNotes' names end 'comment' of relation 'AttachedTo', which has an end with several types; a collection can't fill it.")],
+            Of(found, "MQ4116", "/queries/part-notes"));
+        Assert.Equal([("/select/1/attribute", "Field 1 of query 'ToolFiling' names end 'comment' of relation 'Filed', which has an end with several types; a field can't map it.")],
+            Of(found, "MQ4116", "/queries/tool-filing"));
+        foreach (var path in new[] { "/entities/tool", "/queries/part-notes", "/queries/tool-filing" })
+            Assert.DoesNotContain(found, d => d.Rule is "MQ4045" or "MQ4025" or "MQ4027" && (d.FilePath ?? "").Contains(path, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Seed_column_names_leave_out_every_end_of_such_a_relation()
+    {
+        // A seed's bare column names become ids (SeedInput.Names): the to-one end of a one-type relation does; a to-one end with several types
+        // is not offered, so it stays an unknown name (the other end of such a relation has no one entity to be offered on).
+        var (h, store) = await OpenAsync();
+        using var _ = h;
+        await using var __ = store;
+        async Task<List<string?>> UnknownAsync(string target, params string[] columns)
+        {
+            var seed = $$"""{"kind":"seed","name":"S","target":"{{target}}","columns":[{{string.Join(",", columns.Select(c => "\"" + c + "\""))}}],"rows":[]}""";
+            var result = await store.CreateAsync(Encoding.UTF8.GetBytes(seed), ChangeSource.Editor, Ct);
+            return [.. result.Diagnostics.Where(d => d.Rule == "MQ1002").Select(d => d.JsonPointer)];
+        }
+
+        Assert.Equal(["/columns/2"], await UnknownAsync(Comment, "id", "onPart", "attachedTo"));
     }
 
     [Fact]

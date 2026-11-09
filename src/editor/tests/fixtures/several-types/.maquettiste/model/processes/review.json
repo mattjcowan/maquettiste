@@ -1,0 +1,25 @@
+{
+  "$schema": "../../.schema/v1/process.json",
+  "kind": "process",
+  "id": "01KST0PRC00000000000000001",
+  "name": "Review",
+  "package": "01KST0PKG00000000000000001",
+  "use": "lifecycle",
+  "subjects": [
+    {
+      "id": "01KST0SBJ00000000000000001",
+      "entity": "01KST0ENT00000000000000007"
+    }
+  ],
+  "states": [
+    {
+      "id": "01KST0STA00000000000000001",
+      "name": "Open"
+    },
+    {
+      "id": "01KST0STA00000000000000002",
+      "name": "Closed"
+    }
+  ],
+  "initial": "01KST0STA00000000000000001"
+}
