@@ -105,7 +105,7 @@ public sealed class ElementSummaryTests
         Assert.Equal(2, json["memberCount"]!.GetValue<int>());
         Assert.False(JsonSerializer.SerializeToNode(s.Model.Summaries().First(r => r.Kind == "entity"), web)!.AsObject().ContainsKey("type"));
         Assert.NotEqual(message, message with { Type = "notice" });
-        Assert.Equal("maquettiste-index/e13", Maquettiste.Engine.ModelReads.IndexFormat);
+        Assert.Equal("maquettiste-index/e14", Maquettiste.Engine.ModelReads.IndexFormat);
     }
 
     [Fact]

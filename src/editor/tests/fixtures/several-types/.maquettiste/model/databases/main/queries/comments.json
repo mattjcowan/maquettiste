@@ -1,0 +1,45 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01KST0QRY00000000000000001",
+  "name": "Comments",
+  "database": "01KST0DBS00000000000000001",
+  "entity": "01KST0ENT00000000000000008",
+  "from": {
+    "source": "01KST0TAB00000000000000001",
+    "alias": "c"
+  },
+  "select": [
+    {
+      "attribute": "01KST0ATT00000000000000008",
+      "expression": {
+        "column": "c.id"
+      }
+    },
+    {
+      "attribute": "01KST0END00000000000000002",
+      "expression": {
+        "column": "c.attached_id"
+      }
+    }
+  ],
+  "collections": [
+    {
+      "attribute": "01KST0END00000000000000006",
+      "query": {
+        "from": {
+          "source": "01KST0TAB00000000000000001",
+          "alias": "t"
+        },
+        "select": [
+          {
+            "attribute": "01KST0END00000000000000002",
+            "expression": {
+              "column": "t.id"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

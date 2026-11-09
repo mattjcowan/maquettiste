@@ -1,14 +1,25 @@
 // The fields of a process's object, for an actor taken from the object (actors-design.md decisions 8 to 11) and for a
 // subject's owner: an entity's attributes (own, inherited and from its stereotypes) and the to-one relation ends that
 // lead from it, with the rule that works out whether a path resolves. Pure, so the mock's rules, the pickers and tests share it.
+import { docEndEntities, docEndHasSeveralTypes, docEndSingleEntity, endLabel, type EndDocLike } from "@/model/endTypes";
+
 type Json = Record<string, unknown>;
 
 export interface ObjectField {
   id: string;
   name: string;
   kind: "attribute" | "end";
-  /** For an end, the entity it leads to. */
+  /** For an end, the entity it leads to. An end with several types has no one entity: it has `targets` instead. */
   target?: string;
+  /**
+   * For an end with several types (several-types-design.md decisions 2 and 13): the entities it covers (its listed entities and the carriers
+   * of its stereotypes, each with the entities derived from them), and what a path through it reads: the fields every one of them has by id.
+   * An end written with `anyEntity` has none listed and `anyEntity` true, and offers nothing beyond itself.
+   */
+  targets?: string[];
+  anyEntity?: boolean;
+  /** For an end with several types, its types in plain words ("Part, Assembly or approvable (stereotype)", "any entity"). */
+  typesLabel?: string;
   /** A collection attribute, or a to-many end. */
   many: boolean;
   /** An attribute typed by a value object, which is several fields and holds no single actor. */
@@ -27,6 +38,13 @@ export interface FieldSources {
   relations: readonly Json[];
   stereotype(key: string): Json | undefined;
   kindOf(id: string): string | undefined;
+  /**
+   * The entities that carry the stereotypes a relation's end names (the union over its stereotype entries); the end's index row holds them
+   * (`covers`). Without it an end with several types covers its listed entities only.
+   */
+  carriers?(relation: Json, endIndex: number): readonly string[] | undefined;
+  /** An element's name from the index, for entities whose documents are not loaded (an end's listed types). */
+  nameOf?(id: string): string | undefined;
 }
 
 /** The entity and its bases, nearest first. */
@@ -93,18 +111,72 @@ export function objectFields(entity: string, src: FieldSources): ObjectField[] {
   }
   const mine = new Set(chain.map((c) => String(c.id)));
   for (const r of [...src.relations].sort((x, y) => String(x.id).localeCompare(String(y.id)))) {
-    const ends = arr(r.ends) as { id?: string; entity?: string; role?: string; navigation?: string; max?: unknown }[];
+    const ends = arr(r.ends) as RelationEndJson[];
     if (ends.length !== 2) continue;
     for (let i = 0; i < 2; i++) {
       const self = ends[i];
       const other = ends[1 - i];
-      if (!self.entity || !mine.has(self.entity) || !other.id || !other.entity || seen.has(other.id)) continue;
+      if (!other.id || seen.has(other.id)) continue;
+      // The entity holds this end when its own end covers it: a one-type end that is it or a base, or an end with several types that covers one of them.
+      const selfCovers = docEndHasSeveralTypes(self)
+        ? severalCovers(self, mine, src.carriers?.(r, i))
+        : (docEndSingleEntity(self) ?? "") !== "" && mine.has(docEndSingleEntity(self)!);
+      if (!selfCovers) continue;
+      if (docEndHasSeveralTypes(other)) {
+        // Both ends with several types is refused (MQ3041); the end leads to every type it covers.
+        if (docEndHasSeveralTypes(self)) continue;
+        seen.add(other.id);
+        const name = other.navigation || other.role || other.id;
+        const covered = [...new Set([...docEndEntities(other), ...(src.carriers?.(r, 1 - i) ?? [])])];
+        out.push({
+          id: other.id,
+          name,
+          kind: "end",
+          targets: covered,
+          ...(other.anyEntity ? { anyEntity: true } : {}),
+          typesLabel: endLabel(
+            {
+              entity: undefined,
+              anyEntity: other.anyEntity,
+              entities: docEndEntities(other),
+              stereotypes: arr(other.types).flatMap((t) => (typeof t.stereotype === "string" ? [t.stereotype] : [])),
+            },
+            (id) => src.nameOf?.(id) ?? (typeof src.doc(id)?.name === "string" ? String(src.doc(id)!.name) : undefined),
+            (key) => key,
+          ),
+          many: other.max !== 1,
+          valueObject: false,
+        });
+        continue;
+      }
+      const target = docEndSingleEntity(other);
+      if (!target) continue;
       seen.add(other.id);
-      const name = other.navigation || other.role || String(src.doc(other.entity)?.name ?? other.id);
-      out.push({ id: other.id, name, kind: "end", target: other.entity, many: other.max !== 1, valueObject: false });
+      const name = other.navigation || other.role || String(src.nameOf?.(target) ?? src.doc(target)?.name ?? other.id);
+      out.push({ id: other.id, name, kind: "end", target, many: other.max !== 1, valueObject: false });
     }
   }
   return out;
+}
+
+type RelationEndJson = EndDocLike & { id?: string; role?: string; navigation?: string; max?: unknown };
+
+/** Whether an end with several types covers one of `mine` (an entity and its bases): `anyEntity`, a listed entity, or a carrier. */
+function severalCovers(end: RelationEndJson, mine: ReadonlySet<string>, carriers: readonly string[] | undefined): boolean {
+  if (end.anyEntity) return true;
+  return [...docEndEntities(end), ...(carriers ?? [])].some((id) => mine.has(id));
+}
+
+/** The fields every covered entity has by id, for a path that goes on through an end with several types. */
+export function targetFields(field: ObjectField, fieldsOf: (entity: string) => readonly ObjectField[]): ObjectField[] {
+  if (field.target) return [...fieldsOf(field.target)];
+  if (field.anyEntity || !field.targets?.length) return [];
+  return commonFields(field.targets.map(fieldsOf));
+}
+
+/** An end's text in a picker: its name, and for an end with several types the types it leads to, "attachedTo (Part, Assembly or any entity)". */
+export function fieldOptionLabel(f: ObjectField): string {
+  return f.typesLabel ? `${f.name} (${f.typesLabel})` : f.name;
 }
 
 /** The fields every one of the entities has by id: what an id can mean for all the subjects of a process. */
@@ -134,15 +206,21 @@ export function pathProblem(
   fieldsOf: (entity: string) => readonly ObjectField[],
   finish: "field" | "end",
 ): string | null {
-  let at = entity;
+  // `at` is the one entity the path stands on; through an end with several types it stands on what every covered entity has (`current`).
+  let at: string | null = entity;
+  let current: readonly ObjectField[] = [];
   for (let i = 0; i < steps.length; i++) {
-    const field = fieldsOf(at).find((f) => f.id === steps[i]);
+    const field: ObjectField | undefined = (at === null ? current : fieldsOf(at)).find((f) => f.id === steps[i]);
     if (!field) return `'${steps[i]}' is no attribute or end of this entity or what it derives from`;
     const last = i === steps.length - 1;
     if (!last || finish === "end") {
       if (field.kind !== "end") return `'${field.name}' is an attribute, so the path cannot go on through it`;
       if (field.many) return `'${field.name}' leads to many, so the path cannot go on through it`;
-      at = field.target!;
+      if (field.target) at = field.target;
+      else {
+        current = targetFields(field, fieldsOf);
+        at = null;
+      }
     } else if (field.many) return `'${field.name}' holds many values, not one actor`;
     else if (field.valueObject) return `'${field.name}' is a value object, which is several fields and not one actor`;
   }

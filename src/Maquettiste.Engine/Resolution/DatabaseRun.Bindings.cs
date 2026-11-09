@@ -439,7 +439,13 @@ internal sealed partial class DatabaseRun
                 var at = "/fields/" + i.ToString(CultureInfo.InvariantCulture);
                 var field = new RBindingField { AttributeRef = f.Attribute, Column = f.Column };
                 if (!Target(field, f.Attribute))
-                    Report("MQ4045", $"Field {i.ToString(CultureInfo.InvariantCulture)} of the binding of entity '{entity.Name}' to database '{run._db.Name}' names '{f.Attribute}', which is neither an attribute of the entity, a member of one of its value object attributes, nor the end of a to-one relation of the entity.", at + "/attribute");
+                {
+                    // An end with several types is MQ4116's alone; its column stays accounted for.
+                    if (NamesSeveralTypesEnd(run._run.Model, f.Attribute))
+                        field.Name = f.Attribute;
+                    else
+                        Report("MQ4045", $"Field {i.ToString(CultureInfo.InvariantCulture)} of the binding of entity '{entity.Name}' to database '{run._db.Name}' names '{f.Attribute}', which is neither an attribute of the entity, a member of one of its value object attributes, nor the end of a to-one relation of the entity.", at + "/attribute");
+                }
                 else if (!attributes.TryAdd(f.Attribute, i))
                     Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps '{field.Name}' twice (fields {attributes[f.Attribute].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}).", at + "/attribute");
 
@@ -496,7 +502,8 @@ internal sealed partial class DatabaseRun
 
             foreach (var (relation, end) in run._run.RelationsWithEnd(reference))
             {
-                if (relation.Ends.Count != 2 || end.IsMany || end.Opposite is not { } from || !IsSelfOrBase(from.Entity))
+                // A relation with an end of several types has no one table for the end (MQ4116): no binding field names it in part 1.
+                if (relation.Ends.Count != 2 || end.IsMany || end.HasSeveralTypes || end.Opposite is not { Entity: { } from } || !IsSelfOrBase(from))
                     continue;
                 _deps.Element(relation.Id);
                 field.End = end;

@@ -1,0 +1,14 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01KST0TAB00000000000000003",
+  "name": "parts",
+  "database": "01KST0DBS00000000000000001",
+  "columns": [
+    {
+      "id": "01KST0CMN00000000000000005",
+      "name": "id",
+      "type": "uuid"
+    }
+  ]
+}

@@ -369,6 +369,19 @@ internal sealed partial class ChangePlanner
             }
         }
 
+        // An entity or a stereotype a relation end's types names (several-types-design.md decision 21): its entry goes in either resolution, as
+        // a named trigger point's subject does, and one entity entry left is a valid one-type end. The last entry falls through to today's
+        // "a relation that loses an end" below: delete-dependents deletes the relation, remove-references refuses.
+        if (referrer.Element is Relation && EndTypeEntry(reference.JsonPointer) is { } endType && Remaining(referrer.Json, endType.List, ops) > 1)
+        {
+            List<CascadeOp> dropped = [.. ops.Where(o => o.Pointer != endType.Item && !IsUnder(o.Pointer, endType.Item)), new CascadeOp(endType.Item, true, reference, index)];
+            if (TryOps(referrer, dropped, narrow, out _) is null)
+            {
+                Commit(referrerId, dropped);
+                return;
+            }
+        }
+
         // The attribute an action's set writes (object-effects-design.md section 8): a set means nothing without it, so in either resolution
         // the set goes, and the action keeps its other sets.
         if ((referrer.Element is TriggerPoint ? NamedTriggerHolder(reference.JsonPointer, "attribute") : referrer.Element is Process ? SetOfAttribute(reference.JsonPointer) : null)
@@ -992,6 +1005,16 @@ internal sealed partial class ChangePlanner
             return JsonPointer.Build(segments[..4]);
         return JsonPointer.Build(segments[..2]);
     }
+
+    /// <summary>
+    /// The <c>types</c> entry of a relation end (<c>/ends/1/types/0</c>) whose <c>entity</c> or <c>stereotype</c> a pointer is, with its list
+    /// (<c>/ends/1/types</c>), several-types-design.md decision 21; <see langword="null"/> for any other pointer.
+    /// </summary>
+    private static (string List, string Item)? EndTypeEntry(string pointer) =>
+        pointer.StartsWith("/ends/", StringComparison.Ordinal) && JsonPointer.TryParse(pointer, out var segments) && segments.Length == 5
+            && segments[2] == "types" && segments[4] is "entity" or "stereotype" && JsonPointer.TryIndex(segments[1], out _) && JsonPointer.TryIndex(segments[3], out _)
+            ? (JsonPointer.Build(segments[..3]), JsonPointer.Build(segments[..4]))
+            : null;
 
     /// <summary>The <c>subjects</c> entry (<c>/subjects/2</c>) whose <c>entity</c> or <c>stereotype</c> (stereotype-sets-design.md decision 11) a
     /// pointer is; <see langword="null"/> for any other pointer.</summary>

@@ -47,6 +47,7 @@ import {
 import { verbGroups } from "@/model/verbList";
 import { useVerbs } from "@/verbs/useVerbs";
 import { useObjectFields } from "../actor/useObjectFields";
+import { fieldOptionLabel } from "@/model/objectFields";
 import { getTriggerPointCovers } from "../process/api";
 import { useProblems } from "../process/shared";
 import { useStereotypes } from "../process/ProcessControls";
@@ -118,7 +119,7 @@ function TriggerPointBody({ ctx, draft }: { ctx: EditorContext; draft: Parameter
     transitions: [],
     entities: covered.map((e) => ({ value: e.id, label: e.name })),
     attributes: objectFields.fields.filter((f) => f.kind === "attribute").map((f) => ({ value: f.id, label: f.name })),
-    ends: objectFields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: f.name })),
+    ends: objectFields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: fieldOptionLabel(f) })),
   };
   const teamCode = type === "check" ? !point.condition : !(Array.isArray(point.sets) && point.sets.length);
   const what =

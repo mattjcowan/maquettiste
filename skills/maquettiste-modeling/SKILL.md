@@ -373,6 +373,13 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
 - Names are PascalCase for entities and camelCase for attributes; table and column names come from the project's
   conventions (plural snake_case by default), overridable per element.
 - `displayName`, `pluralName` and `description` feed generated UI and documentation; keep them meaningful.
+- Relation ends: an end writes exactly one of `entity` (one entity), `types` (a list of `{ "entity": id }` or `{ "stereotype": key }`
+  entries; a stereotype covers the entities that carry it) or `anyEntity: true`. A list of one entity is MQ3042: write `entity`. Only one
+  end of a two-ended relation may have several types, and a composition's part end can't be `anyEntity` (MQ3041); an entry another entry
+  covers is MQ3043. `role`, `navigation`, `min`, `max` and `onDelete` are one per end. A path through such an end reads what every type
+  holds under one id; `in_state` through it is unknown for an object of a type the lifecycle doesn't govern. Nothing is stored for such a
+  relation yet (MQ4115, info); seeds, query fields and binding fields through it are refused (MQ7105, MQ4116). Never add a shared base
+  entity or one relation per type just to avoid this, unless asked.
 - A database holds only what is mapped to it: `byConvention` on the database file is `all`, `packages` (the domains
   listed in `packages`, with their sub-domains) or `none`; a mapping file adds one entity (or ignores one) either way. Write
   `byConvention` on every new database (`none` unless asked); a file without it keeps the older rule (every entity when

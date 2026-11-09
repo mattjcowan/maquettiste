@@ -12,6 +12,7 @@ import { baseChain } from "@/editors/related";
 import { newId } from "@/lib/ids";
 import { clone } from "@/lib/json";
 import { attributesOf } from "@/model/model";
+import { endSingleEntity } from "@/model/endTypes";
 import { useEditor } from "@/state/store";
 import {
   endRowOptions,
@@ -44,7 +45,7 @@ export function seedTargetPlan(rows: readonly ElementSummary[], targetId: string
   if (target?.kind !== "entity") return { target, documents: [], lineage: [], relations: [] };
   const lineage = [targetId, ...baseChain(byId, target.base)];
   const inLineage = new Set(lineage);
-  const relations = rows.filter((r) => r.kind === "relation" && (r.ends ?? []).some((e) => inLineage.has(e.entity))).map((r) => r.id);
+  const relations = rows.filter((r) => r.kind === "relation" && (r.ends ?? []).some((e) => inLineage.has(endSingleEntity(e) ?? ""))).map((r) => r.id);
   return { target, documents: [...lineage, ...relations], lineage, relations };
 }
 

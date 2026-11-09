@@ -46,10 +46,10 @@ public sealed record DiagramMember
     [ElementRef]
     public required string Element { get; init; }
 
-    /// <summary>The x position.</summary>
+    /// <summary>The x position; on a relation with an end of several types, of its junction node or box (several-types-design.md decision 33).</summary>
     public double X { get; init; }
 
-    /// <summary>The y position.</summary>
+    /// <summary>The y position; on a relation with an end of several types, of its junction node or box.</summary>
     public double Y { get; init; }
 
     /// <summary>The width, when resized.</summary>
@@ -58,7 +58,7 @@ public sealed record DiagramMember
     /// <summary>The height, when resized.</summary>
     public double? Height { get; init; }
 
-    /// <summary>Whether the node is collapsed.</summary>
+    /// <summary>Whether the node is collapsed; on a relation with an end of several types, whether its lines are collapsed into one line to a box.</summary>
     public bool Collapsed { get; init; }
 }
 

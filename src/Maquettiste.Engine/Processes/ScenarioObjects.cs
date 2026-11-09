@@ -185,12 +185,21 @@ internal static class ScenarioObjects
                     continue;
                 var target = byId.GetValueOrDefault(link.Object);
                 var targetEntity = target is null ? null : model.Get<Entity>(target.Entity);
-                var from = relation.Ends.Any(e => !string.Equals(e.Id, end.Id, StringComparison.Ordinal) && chain.Contains(e.Entity));
-                if (!from || (targetEntity is not null && !Chain(model, targetEntity).Contains(end.Entity)))
+                if (EndCoverage.HasSeveralTypes(relation))
+                {
+                    // Through a relation with an end of several types (several-types-design.md decision 18): the object holds the end when
+                    // another end covers its entity, and the target fits when the end covers the target's entity.
+                    if (LinkProblem(model, obj, entity, relation, end, target, targetEntity) is { } problem)
+                        return (problem, pointer + "/links/" + k.ToString(CultureInfo.InvariantCulture) + "/end");
+                    continue;
+                }
+
+                var from = relation.Ends.Any(e => !string.Equals(e.Id, end.Id, StringComparison.Ordinal) && e.SingleEntity is { } near && chain.Contains(near));
+                if (!from || (targetEntity is not null && (end.SingleEntity is not { } far || !Chain(model, targetEntity).Contains(far))))
                 {
                     var endName = relation.Name + "." + (string.IsNullOrEmpty(end.Role) ? end.Id : end.Role);
                     return (from
-                        ? $"Object '{obj.Name}' links to '{target!.Name}' through end '{endName}', which leads to entity '{model.Get<Entity>(end.Entity)?.Name ?? end.Entity}', not to entity '{targetEntity!.Name}' or one of its bases; link to an object of that entity, or through an end that leads to '{targetEntity.Name}'."
+                        ? $"Object '{obj.Name}' links to '{target!.Name}' through end '{endName}', which leads to entity '{model.Get<Entity>(end.SingleEntity!)?.Name ?? end.SingleEntity}', not to entity '{targetEntity!.Name}' or one of its bases; link to an object of that entity, or through an end that leads to '{targetEntity.Name}'."
                         : $"Object '{obj.Name}' links through end '{endName}', which does not lead from entity '{entity.Name}' or one of its bases; use an end of a relation of '{entity.Name}'.",
                         pointer + "/links/" + k.ToString(CultureInfo.InvariantCulture) + "/end");
                 }
@@ -212,6 +221,22 @@ internal static class ScenarioObjects
         }
 
         return null;
+    }
+
+    // Why a link through a relation with an end of several types does not fit (MQ9305, several-types-design.md decision 18), or null: the object
+    // holds the end when another end covers its entity, and the linked object fits when the end covers its entity. A target that is not one of
+    // the objects, or whose entity is not in the model, is left to the other checks.
+    private static string? LinkProblem(ModelSnapshot model, ScenarioObject obj, Entity entity, Relation relation, RelationEnd end, ScenarioObject? target,
+        Entity? targetEntity)
+    {
+        var endName = relation.Name + "." + (string.IsNullOrEmpty(end.Role) ? end.Id : end.Role);
+        if (!relation.Ends.Any(e => !string.Equals(e.Id, end.Id, StringComparison.Ordinal) && EndCoverage.Covers(model, e, entity.Id)))
+            return $"Object '{obj.Name}' links through end '{endName}', which does not lead from entity '{entity.Name}' or one of its bases; use an end of a relation of '{entity.Name}'.";
+        if (target is null || targetEntity is null || EndCoverage.Covers(model, end, targetEntity.Id))
+            return null;
+        return end.HasSeveralTypes
+            ? $"Object '{obj.Name}' links to '{target.Name}' through end '{endName}', which leads to {Validation.RelationTypeRules.TypesText(model, end)}, not to entity '{targetEntity.Name}'; link to an object of one of those, or through another end."
+            : $"Object '{obj.Name}' links to '{target.Name}' through end '{endName}', which leads to entity '{model.Get<Entity>(end.SingleEntity!)?.Name ?? end.SingleEntity}', not to entity '{targetEntity.Name}' or one of its bases; link to an object of that entity, or through an end that leads to '{targetEntity.Name}'.";
     }
 
     // An object's states (object-effects-design.md decision 10, MQ9305): each a state an object can be in, of a lifecycle that governs the

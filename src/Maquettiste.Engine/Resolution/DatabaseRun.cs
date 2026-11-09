@@ -483,8 +483,7 @@ internal sealed partial class DatabaseRun
             return null;
         }
 
-        foreach (var id in ExprResolution.Names(_run.Model, typed.Typed))
-            t.Deps.Element(id);
+        ExprResolution.AddNames(_run.Model, typed.Typed, t.Deps);
         return new TreeCheck(new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Check, ExprColumns.None), keyPrefix, elementId, pointer);
     }
 

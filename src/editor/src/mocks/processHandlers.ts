@@ -23,6 +23,7 @@ import { Coverage } from "./model/coverage";
 import { namedCovered } from "./model/triggerRules";
 import { entitySequenceOf, resolveCheckNames, sequenceOf } from "./model/triggerRun";
 import { entityChain } from "@/model/objectFields";
+import { severalEnds } from "./model/endCover";
 import { builtInVerbs } from "@/model/verbs";
 
 type Json = Record<string, unknown>;
@@ -307,6 +308,14 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
     namedRights: new Map([...model.entries.values()].filter((e) => e.json.kind === "right").map((e) => [e.id, e.json] as [string, Json])),
     subjectEntity: subjectsOf(doc).find((e) => e.entity)?.entity,
     entityChain: (entity: string) => entityChain(entity, (id) => model.entries.get(id)?.json).map((d) => String(d.id)),
+    // in_state through an object: a lifecycle that doesn't govern the object's entity (or a base) answers unknown (several-types-design.md decision 15).
+    governs: (lifecycle: Json, entity: string) => {
+      const governed = new Set(governedBy(lifecycle));
+      return entityChain(entity, (id) => model.entries.get(id)?.json).some((d) => governed.has(String(d.id)));
+    },
+    // Ends with several types: a connect step through one checks the connected object's entity (decision 18).
+    severalEnds: severalEnds(model.entries.values()),
+    entityNames: (id: string) => String(model.entries.get(id)?.json.name ?? id),
     lifecycles: [...[...model.entries.values()].map((e) => e.json).filter((j) => j.kind === "process" && j.use === "lifecycle" && j.id !== doc.id), doc],
   });
   const hasExpectedValues = (scenario: Json) => arr(scenario.steps).some((st) => (st.expect as Json | undefined)?.values !== undefined);

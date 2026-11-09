@@ -1,0 +1,249 @@
+{
+  "about": "The engine's findings for the rules below on the project in .maquettiste, sorted by rule, element id, pointer and message. Written by SeveralTypesParityTests with MAQUETTISTE_RECORD=1; the editor's mock must give the same.",
+  "rules": [
+    "MQ2003",
+    "MQ3041",
+    "MQ3042",
+    "MQ3043",
+    "MQ3116",
+    "MQ4009",
+    "MQ4115",
+    "MQ4116",
+    "MQ7105",
+    "MQ9211",
+    "MQ9305"
+  ],
+  "diagnostics": [
+    {
+      "rule": "MQ2003",
+      "elementId": "01KST0END00000000000000025",
+      "pointer": "/ends/1/types/1/stereotype",
+      "message": "Stereotype 'nope' is not defined in model/vocabularies/stereotypes.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ3041",
+      "elementId": "01KST0END00000000000000011",
+      "pointer": "/ends/2",
+      "message": "Relation 'Link3' is n-ary, so its end 'target' can't have several types; give it one entity.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ3041",
+      "elementId": "01KST0END00000000000000015",
+      "pointer": "/ends/1/anyEntity",
+      "message": "End 'item' is the part in composition 'Holds', so it can't be any entity; list the types it may be.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ3041",
+      "elementId": "01KST0RXN00000000000000006",
+      "pointer": "/ends",
+      "message": "Relation 'Both' has several types on both ends; keep them on one end.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ3042",
+      "elementId": "01KST0END00000000000000017",
+      "pointer": "/ends/1/types",
+      "message": "End 'tool' lists only entity 'Tool' in types; write it as entity.",
+      "severity": "warning"
+    },
+    {
+      "rule": "MQ3043",
+      "elementId": "01KST0END00000000000000019",
+      "pointer": "/ends/1/types/1",
+      "message": "End 'target' lists entity 'PurchasedPart', which entity 'Part' already covers, since it derives from it; remove the entry.",
+      "severity": "warning"
+    },
+    {
+      "rule": "MQ3043",
+      "elementId": "01KST0END00000000000000021",
+      "pointer": "/ends/1/types/1",
+      "message": "End 'target' lists entity 'Document', which carries stereotype 'approvable', also listed; remove the entry.",
+      "severity": "warning"
+    },
+    {
+      "rule": "MQ3043",
+      "elementId": "01KST0END00000000000000023",
+      "pointer": "/ends/1/types/1",
+      "message": "End 'target' lists entity 'Memo', which stereotype 'approvable' already covers, since it derives from entity 'Document', which carries it; remove the entry.",
+      "severity": "warning"
+    },
+    {
+      "rule": "MQ3116",
+      "elementId": "01KST0PRX00000000000000011",
+      "pointer": "/guards/0/condition",
+      "message": "Lifecycle Review can't govern any type the object in_state reaches: Part, Assembly, or an entity derived from one.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST0MAP00000000000000001",
+      "pointer": "/shape",
+      "message": "Relation 'AttachedTo' has an end with several types, so a mapping of it sets only ignore; remove 'shape'.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST0END00000000000000002",
+      "pointer": "/ends/1",
+      "message": "Relation 'AttachedTo' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST0END00000000000000004",
+      "pointer": "/ends/1",
+      "message": "Relation 'Concerns' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST0END00000000000000006",
+      "pointer": "/ends/1",
+      "message": "Relation 'Tagged' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST0END00000000000000008",
+      "pointer": "/ends/1",
+      "message": "Relation 'Filed' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST0END00000000000000012",
+      "pointer": "/ends/0",
+      "message": "Relation 'Both' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST0END00000000000000015",
+      "pointer": "/ends/1",
+      "message": "Relation 'Holds' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST0END00000000000000019",
+      "pointer": "/ends/1",
+      "message": "Relation 'DerivedBeside' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST0END00000000000000021",
+      "pointer": "/ends/1",
+      "message": "Relation 'CarrierBeside' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST0END00000000000000023",
+      "pointer": "/ends/1",
+      "message": "Relation 'FromCarrier' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST0END00000000000000025",
+      "pointer": "/ends/1",
+      "message": "Relation 'Entries' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4116",
+      "elementId": "01KST0ENT00000000000000007",
+      "pointer": "/bindings/0/fields/1/attribute",
+      "message": "Field 1 of the binding of 'Tool' names end 'comment' of relation 'Filed', which has an end with several types; a field can't map it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4116",
+      "elementId": "01KST0ENT00000000000000008",
+      "pointer": "/bindings/0/fields/1/attribute",
+      "message": "Field 1 of the binding of 'Comment' names end 'attachedTo', which leads to several types; a field can't map it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4116",
+      "elementId": "01KST0QRY00000000000000001",
+      "pointer": "/collections/0/attribute",
+      "message": "Collection 0 of query 'Comments' names end 'tagged', which leads to several types; a collection can't fill it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4116",
+      "elementId": "01KST0QRY00000000000000001",
+      "pointer": "/collections/0/query/select/0/attribute",
+      "message": "Field 0 of collection 0 of query 'Comments' names end 'attachedTo', which leads to several types; a field can't map it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4116",
+      "elementId": "01KST0QRY00000000000000001",
+      "pointer": "/select/1/attribute",
+      "message": "Field 1 of query 'Comments' names end 'attachedTo', which leads to several types; a field can't map it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4116",
+      "elementId": "01KST0QRY00000000000000002",
+      "pointer": "/collections/0/attribute",
+      "message": "Collection 0 of query 'PartNotes' names end 'comment' of relation 'AttachedTo', which has an end with several types; a collection can't fill it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4116",
+      "elementId": "01KST0QRY00000000000000003",
+      "pointer": "/select/1/attribute",
+      "message": "Field 1 of query 'ToolFiling' names end 'comment' of relation 'Filed', which has an end with several types; a field can't map it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ7105",
+      "elementId": "01KST0SED00000000000000001",
+      "pointer": "/columns/1",
+      "message": "Seed 'Notes' has a column for end 'attachedTo', which leads to several types; seeds can't hold such links yet.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ7105",
+      "elementId": "01KST0SED00000000000000002",
+      "pointer": "/columns/1",
+      "message": "Seed 'Parts' has a column for end 'concernedBy' of relation 'Concerns', which has an end with several types; seeds can't hold such links yet.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ7105",
+      "elementId": "01KST0SED00000000000000003",
+      "pointer": "/target",
+      "message": "Seed 'Attached' holds rows of relation 'AttachedTo', which has an end with several types; seeds can't hold such links yet.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ9211",
+      "elementId": "01KST0END00000000000000025",
+      "pointer": "/ends/1/types/2/stereotype",
+      "message": "Type 3 of end 'target' names stereotype 'table-only', which applies to table, not to entities, so no entity can carry it; name a stereotype entities carry, or an entity.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ9305",
+      "elementId": "01KST0SCN00000000000000001",
+      "pointer": "/objects/0/links/0/end",
+      "message": "Scenario 'Links': Object 'c1' links to 't1' through end 'AttachedTo.attachedTo', which leads to Part, Assembly, or an entity derived from one, not to entity 'Tool'; link to an object of one of those, or through another end.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ9305",
+      "elementId": "01KST0SCN00000000000000002",
+      "pointer": "/steps/0/object",
+      "message": "Step 1: object 't1' is an object of entity 'Tool', but end 'AttachedTo.attachedTo' leads to Part, Assembly, or an entity derived from one; connect an object of one of those, or use another end.",
+      "severity": "error"
+    }
+  ]
+}

@@ -27,6 +27,7 @@ import {
   type TableDocLike,
 } from "./relationStorage";
 import { databasesOf } from "./useStorage";
+import { docEndHasSeveralTypes, docEndSingleEntity } from "@/model/endTypes";
 
 type Json = Record<string, unknown>;
 
@@ -52,8 +53,11 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
       id: m.id,
     }))
     .filter((m) => m.relation === id);
-  const entityDocs = useElements([...new Set(ends.map((e) => e.entity))]);
-  const bound = databases.map((d) => ends.map((e) => boundTableOf(entityDocs.byId.get(e.entity)?.json as Json | undefined, d.id)));
+  // Part 1 of several types: no database stores a relation with such an end, so only one-type ends read their entity's table.
+  const endEntity = (e: (typeof ends)[number]) => docEndSingleEntity(e) ?? "";
+  const hasSeveralTypes = ends.some(docEndHasSeveralTypes);
+  const entityDocs = useElements([...new Set(ends.map(endEntity).filter(Boolean))]);
+  const bound = databases.map((d) => ends.map((e) => boundTableOf(entityDocs.byId.get(endEntity(e))?.json as Json | undefined, d.id)));
   const junctions = mappings.map((m) => m.junctionTable).filter((t): t is string => !!t);
   const tableDocs = useElements([...new Set([...bound.flat().filter((t): t is string => !!t && !t.includes("@")), ...junctions])]);
   const tableOf = (tid: string | null | undefined) => (tid ? (tableDocs.byId.get(tid)?.json as TableDocLike | undefined) : undefined);
@@ -64,6 +68,12 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
   // Until the mapping documents are read, which database has a mapping is not known: no pick until then (no duplicate mapping).
   const mappingsLoading = mappingDocs.pending;
   const creating = useRef(new Set<string>());
+  if (hasSeveralTypes)
+    return (
+      <p className="text-12 text-secondary" data-testid="relation-storage-several-types">
+        No database stores a relation with an end of several types.
+      </p>
+    );
   return (
     <div className="flex flex-col gap-2" data-testid="relation-storage">
       {databases.length ? null : <p className="text-12 text-secondary">No database yet.</p>}
@@ -114,7 +124,7 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
                 tables={lookup.ofKind("table").filter((t) => t.database === d.id && !t.entity)}
                 junction={tableOf(mapping?.junctionTable)}
                 value={mapping?.junctionTable ?? ""}
-                ends={ends.map((e) => ({ id: e.id, label: `${lookup.nameOf(e.entity) ?? e.entity} (${e.role})` }))}
+                ends={ends.map((e) => ({ id: e.id, label: `${lookup.nameOf(endEntity(e)) ?? endEntity(e)} (${e.role})` }))}
                 endKeys={mapping?.ends ?? []}
                 loading={mappingsLoading}
                 onTable={(table) => change((j) => setJunctionTable(j, table))}

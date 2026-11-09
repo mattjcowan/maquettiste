@@ -183,7 +183,7 @@ entity its key, **Base entity**, **Is abstract**, stereotypes, tags and category
   conventions give) and the **Discriminator value**. The strategy is written on the root entity's mapping in that
   database (disabled, with a tooltip, while the root has none); the discriminator value on this entity's mapping.
   **Storage** binds the entity to databases (see [Storage: binding an entity](#storage-binding-an-entity)).
-- **Relationship**: its ends at the top, then Attributes, Storage, Code generation, References. **Storage** says, per
+- **Relationship**: its ends at the top (each end's **Type** is One entity, Several types or Any entity; see [Relationships with several types at an end](#relationships-with-several-types-at-an-end)), then Attributes, Storage, Code generation, References. **Storage** says, per
   database, how the relationship is stored (see [Relationship storage](#relationship-storage)); every edit there is one
   undo step.
 - **Enum**: Members; **value object**: Attributes; **custom type**: Definition; each with Code generation and References.
@@ -1768,6 +1768,76 @@ are read, so a pick never makes a second mapping. A many-to-many names its **Jun
 table's foreign key for it. Two bound ends with nothing named is MQ4011, shown in the section. While the ends are not both
 bound, the section says "Bind both ends to a table to name the foreign key"; a shape an older mapping names (Foreign key,
 Junction table, Promoted to an entity) shows there read only, and no mapping of that older format is made from here.
+
+### Relationships with several types at an end
+
+Most relationships link one entity to another. Sometimes one end can be several things: a Comment attached to a Part, an
+Assembly or a controlled document. Give that end several types instead of adding a shared base entity or one relationship per
+type.
+
+In the relationship's editor, each end has a **Type** choice:
+
+- **One entity**: today's choice. The end covers that entity and the entities derived from it.
+- **Several types**: a list of entities and stereotypes, shown as chips. Add one with the picker, which lists entities, then a
+  **Stereotypes** group. A stereotype covers every entity that carries it, and the entities derived from them. A stereotype
+  nothing carries yet covers nothing, so you can model the relationship first and mark the types later. Remove a chip with its
+  button.
+- **Any entity**: the end may be any entity of the model.
+
+The role, cardinality, navigation and **On delete** are one per end. "At most one of Part, Assembly or document" is one maximum
+of 1. The navigation the end names appears on the other end's entity as usual. The other end's navigation appears on each type.
+
+**Limits.**
+
+- Only one end of a two-ended relationship may have several types. Give the other end One entity.
+- An n-ary relationship keeps One entity at every end.
+- A composition's owner end may have several types. Its part end may list types, but can't be **Any entity**: that would make
+  every entity a part of one owner. The form says so in a tooltip.
+- A list that holds one entity means the same as One entity (MQ3042, with a quick fix). An entry another entry already covers is
+  MQ3043, a warning (a derived entity beside its base, or an entity beside a stereotype it carries). A warning, because carriers
+  change without any edit to the relationship.
+- An end needs at least one type. Remove the last chip, and the form asks you to choose One entity or Any entity instead.
+
+**In guards and sign-off.** A path through such an end reads what every type holds under one id: the attributes and
+navigations of a base they share. Types that share nothing offer nothing beyond the end itself. A stereotype's own attributes
+are not read through a navigation. Paths still follow to-one ends only.
+
+`in_state(path, ...)` through such an end is valid when the lifecycle can govern at least one type the end covers (MQ3116
+otherwise). In a run, an object whose type the lifecycle doesn't govern has no state in it, so the answer is **unknown**. Unknown
+is not "no". It means the engine can't tell:
+
+- A guard is true only when its condition is true. A guard that reads `in_state(...)` or `not in_state(...)` is false for such an
+  object. `not in_state(...)` is not true there.
+- A signature's **Needed when** treats unknown as needed. Such a signature is needed.
+
+Scenario links and connect steps through such an end are checked against its types: an object may link through the end only to an
+object of an entity the end covers (MQ9305). Rights, trigger points and freezing name the end by id, so they speak for every type.
+
+**On the canvas.** The editor picks the first look:
+
+- **Two types:** bundled lines. One line leaves the other end's card with the relationship's label and forks to each type.
+- **Three or more:** a junction node. One line runs to the node, and one from the node to each type.
+- **A stereotype or Any entity:** one line to a box. A stereotype's box says how many entities it covers, as "3 entities".
+
+Each line shows its end's role and cardinality. A type that isn't on the diagram gets no line, and the node or box says
+"+N not shown" (point at it for the names). Drag the node or box to move it; Auto-layout places it again.
+
+**Collapse lines** (on the label, the node, or the line's menu) draws one line to a box that lists the types. **Expand lines**
+draws them again. The toggle is offered when the end has two or more entries. It changes only the drawing, never the model, and is
+saved in the diagram with positions and zoom.
+
+In an entity's editor, the Relationships tab says "through stereotype approvable" for a relationship it reaches through a
+stereotype, and "any entity" for one that reaches it as any entity.
+
+**Nothing is stored yet.** No database stores such a relationship: no table, column or foreign key. MQ4115 (info) says so for each
+database. Code generation sees the types of each end, but a pack can't read tables for it. Storage comes in a later release, on your
+designed tables with explicit mappings. Until then these are refused:
+
+- an entity seed's column for such an end, and a seed of such a relationship (MQ7105);
+- a binding field, a query field or a query collection that names such an end, or a navigation to one (MQ4116); also one that names the
+  other end, as a query on Part with the collection `comments` does (MQ4116).
+
+The Storage tab says "No database stores a relation with an end of several types."
 
 ### Tables laid out by convention (older projects)
 

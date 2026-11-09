@@ -342,8 +342,8 @@ internal sealed partial class SyntheticModel
             adjacency[i] = [];
         foreach (var relation in relations)
         {
-            var a = entityIndex[relation.Ends[0].Entity];
-            var b = entityIndex[relation.Ends[1].Entity];
+            var a = entityIndex[relation.Ends[0].Entity!];
+            var b = entityIndex[relation.Ends[1].Entity!];
             adjacency[a].Add(b);
             adjacency[b].Add(a);
         }
@@ -368,7 +368,7 @@ internal sealed partial class SyntheticModel
                 members.Add(new DiagramMember { Element = _entities[chosen[k]].Id, X = 40 + k % columns * 320, Y = 40 + k / columns * 240 });
             foreach (var relation in relations)
             {
-                if (set.Contains(relation.Ends[0].Entity) && set.Contains(relation.Ends[1].Entity))
+                if (set.Contains(relation.Ends[0].Entity!) && set.Contains(relation.Ends[1].Entity!))
                     members.Add(new DiagramMember { Element = relation.Id });
             }
 

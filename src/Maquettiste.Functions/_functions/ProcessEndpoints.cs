@@ -120,7 +120,7 @@ public static class ProcessEndpoints
     /// <param name="state">A state id of the lifecycle the object is in.</param>
     /// <param name="entity">An entity id the lifecycle governs.</param>
     /// <param name="attributes">Comma-separated attribute ids the step reads or changes.</param>
-    /// <param name="end">A relation end id of the subject.</param>
+    /// <param name="end">A relation end id of the subject (an end with several types is held by every entity it covers).</param>
     /// <param name="transition">A transition id of the lifecycle.</param>
     /// <param name="context">The request.</param>
     /// <param name="store">The model store.</param>
@@ -147,7 +147,7 @@ public static class ProcessEndpoints
     /// <param name="id">The entity id.</param>
     /// <param name="verb">The verb key: an object, link or own verb.</param>
     /// <param name="attributes">Comma-separated attribute ids the step reads or changes.</param>
-    /// <param name="end">A relation end id of the entity.</param>
+    /// <param name="end">A relation end id of the entity (an end with several types is held by every entity it covers).</param>
     /// <param name="context">The request.</param>
     /// <param name="store">The model store.</param>
     /// <param name="ct">Cancellation.</param>

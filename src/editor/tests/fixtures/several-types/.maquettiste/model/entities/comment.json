@@ -1,0 +1,42 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01KST0ENT00000000000000008",
+  "name": "Comment",
+  "package": "01KST0PKG00000000000000001",
+  "key": {
+    "attributes": [
+      "01KST0ATT00000000000000008"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01KST0ATT00000000000000008",
+      "name": "id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST0ATT00000000000000009",
+      "name": "text",
+      "type": "string",
+      "length": 40
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01KST0BND00000000000000001",
+      "database": "01KST0DBS00000000000000001",
+      "source": "01KST0TAB00000000000000001",
+      "fields": [
+        {
+          "attribute": "01KST0ATT00000000000000008",
+          "column": "id"
+        },
+        {
+          "attribute": "01KST0END00000000000000002",
+          "column": "attached_id"
+        }
+      ]
+    }
+  ]
+}

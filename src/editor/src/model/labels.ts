@@ -791,6 +791,7 @@ export const ACTOR_RELATIVE_LABELS = {
   pick: "(choose)",
   pickEntity: "(choose an entity)",
   then: "(then…)",
+  nothingAfter: "This end can lead to different entities with nothing in common to read, so the path stops here.",
   role: "Role",
   noRoles: "There is no plain role, group or organization yet.",
   context: "Within",

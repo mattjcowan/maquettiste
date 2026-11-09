@@ -262,7 +262,10 @@ internal sealed partial class ResolveRun
         {
             DepsOf(relation).ToList();
             foreach (var end in relation.Ends)
-                DepsOf(end.Entity).ToList();
+            {
+                if (end.Entity is { } entity)
+                    DepsOf(entity).ToList();
+            }
         }
 
         var navigations = new List<RNavigation>[_relationOrder.Count];
@@ -271,7 +274,16 @@ internal sealed partial class ResolveRun
         {
             foreach (var navigation in list)
             {
-                ListOf(_navigations, navigation.From.Entity.Id).Add(navigation);
+                // A navigation held through an end with several types is listed on each of its types, and so on their derived entities by
+                // inheritance (decision 10).
+                if (navigation.From.Entity is { } holder)
+                    ListOf(_navigations, holder.Id).Add(navigation);
+                else
+                {
+                    foreach (var type in navigation.From.Types)
+                        ListOf(_navigations, type.Id).Add(navigation);
+                }
+
                 Register(navigation);
             }
         }
@@ -555,6 +567,7 @@ internal sealed partial class ResolveRun
                         StringComparer.Ordinal)];
                     foreach (var id in c.DependsOn)
                         deps.Element(id);
+                    deps.AddRange(ExprResolution.CoverageKeys(Model, typed.Typed));
                 }
 
                 checks.Add(c);
@@ -572,9 +585,7 @@ internal sealed partial class ResolveRun
             var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Value,
                 ExprResolution.ApiColumns(Model, attribute.Id, Model.GetDocument(declaring.Id)?.Path));
             derived.Value = ExprResolution.Build(root, Target, EnumMemberOf);
-            var deps = DepsOf(byId[attribute.Id]);
-            foreach (var name in ExprResolution.Names(Model, typed.Typed))
-                deps.Element(name);
+            ExprResolution.AddNames(Model, typed.Typed, DepsOf(byId[attribute.Id]));
         }
     }
 
@@ -651,8 +662,7 @@ internal sealed partial class ResolveRun
                 var root = new ExprRoot(typed.Tree, typed.Typed, typed.Scope, ExprSiteKind.Check,
                     ExprResolution.ApiColumns(Model, constraint.Id, Model.GetDocument(constraint.Id)?.Path));
                 r.Condition = ExprResolution.Build(root, m => byId.GetValueOrDefault(m.Id), EnumMemberOf);
-                foreach (var name in ExprResolution.Names(Model, typed.Typed))
-                    deps.Element(name);
+                ExprResolution.AddNames(Model, typed.Typed, deps);
             }
 
             Register(r);
@@ -665,15 +675,20 @@ internal sealed partial class ResolveRun
     /// <summary>A relation built by <see cref="BuildRelation"/>, waiting for <see cref="CommitRelation"/>.</summary>
     private sealed record ResolvedRelation(Relation Source, RRelation Relation, List<REnd> Ends, List<RAttribute> Attributes);
 
-    /// <summary>Builds a relation's resolved objects; <see langword="null"/> for a dangling end (MQ2001 leaves the relation out).</summary>
+    /// <summary>
+    /// Builds a relation's resolved objects; <see langword="null"/> for a dangling one-type end (MQ2001 leaves the relation out). An end with
+    /// several types (several-types-design.md decision 19) resolves whatever it covers, with a null entity, its types, stereotypes (filled once
+    /// the definitions are resolved, <see cref="ResolveEndStereotypes"/>), <c>any_entity</c> and common base; an entity entry that names no
+    /// entity is MQ2001 and covers nothing.
+    /// </summary>
     private ResolvedRelation? BuildRelation(Relation relation)
     {
         Ct.ThrowIfCancellationRequested();
-        var dangling = false;
         foreach (var end in relation.Ends)
-            dangling |= !_entities.ContainsKey(end.Entity);
-        if (dangling)
-            return null;
+        {
+            if (!end.HasSeveralTypes && (end.SingleEntity is not { } entityId || !_entities.ContainsKey(entityId)))
+                return null;
+        }
 
         var r = new RRelation();
         var deps = DepsOf(r);
@@ -691,7 +706,6 @@ internal sealed partial class ResolveRun
             var e = new REnd
             {
                 Id = end.Id,
-                Entity = _entities[end.Entity],
                 Role = end.Role,
                 Navigation = end.Navigation.Length == 0 ? null : end.Navigation,
                 Min = end.Min,
@@ -700,8 +714,27 @@ internal sealed partial class ResolveRun
                 OnDelete = ResolutionValues.Kebab(end.OnDelete),
                 Ordered = end.Ordered,
             };
-            e.Dependencies = endDeps;
-            deps.Element(end.Entity).Referrers(end.Entity);
+            if (end.HasSeveralTypes)
+            {
+                // Decision 20: what the end covers keys on the end's types key (its types and common base), each entity entry and its
+                // referrers (which cover derived entities) and cs:<key> per stereotype entry; the relation, the end and its navigations all read it.
+                var coverage = new DependencySet(Keys).Element(relation.Id);
+                AddCoverageKeys(end, coverage);
+                AddCoverageKeys(end, deps);
+                var keys = coverage.ToList();
+                e.Dependencies = keys;
+                e.HasSeveralTypes = true;
+                e.AnyEntity = end.AnyEntity == true;
+                e.Types = new RList<REntity>([.. EndCoverage.TypesOf(Model, end).Select(t => _entities.GetValueOrDefault(t.Id)).OfType<REntity>().Where(t => t.Id.Length > 0)], keys);
+                e.CommonBase = EndCoverage.CommonBaseOf(Model, end) is { } common ? _entities.GetValueOrDefault(common.Id) : null;
+            }
+            else
+            {
+                e.Entity = _entities[end.SingleEntity!];
+                e.Dependencies = endDeps;
+                deps.Element(end.SingleEntity!).Referrers(end.SingleEntity!);
+            }
+
             ends.Add(e);
         }
 
@@ -734,17 +767,119 @@ internal sealed partial class ResolveRun
         foreach (var attribute in attributes)
             Register(attribute);
         _relations[relation.Id] = r;
-        for (var i = 0; i < relation.Ends.Count; i++)
+        if (!EndCoverage.HasSeveralTypes(relation))
         {
-            var entityId = relation.Ends[i].Entity;
-            var repeated = false;
-            for (var j = 0; j < i && !repeated; j++)
-                repeated = string.Equals(relation.Ends[j].Entity, entityId, StringComparison.Ordinal);
-            if (!repeated)
-                ListOf(_relationsByEntity, entityId).Add(r);
+            for (var i = 0; i < relation.Ends.Count; i++)
+            {
+                var entityId = relation.Ends[i].SingleEntity!;
+                var repeated = false;
+                for (var j = 0; j < i && !repeated; j++)
+                    repeated = string.Equals(relation.Ends[j].SingleEntity, entityId, StringComparison.Ordinal);
+                if (!repeated)
+                    ListOf(_relationsByEntity, entityId).Add(r);
+            }
         }
+        else
+        {
+            // Decision 19: listed in entity.relations of each of its types (a one-type end's entity is its one type), once per entity.
+            foreach (var (source, end) in relation.Ends.Zip(ends))
+            {
+                if (source.HasSeveralTypes)
+                    _severalTypeEnds.Add((source, end));
+            }
+
+            var listed = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var end in ends)
+            {
+                foreach (var type in end.Types)
+                {
+                    if (listed.Add(type.Id))
+                        ListOf(_relationsByEntity, type.Id).Add(r);
+                }
+            }
+        }
+
         Register(r);
     }
+
+    /// <summary>The ends with several types, as written and as resolved, in model order (their stereotypes are filled late).</summary>
+    private readonly List<(RelationEnd Source, REnd Resolved)> _severalTypeEnds = [];
+
+    /// <summary>
+    /// Adds the keys of what an end with several types covers (several-types-design.md decision 20): the end's types key
+    /// (<see cref="EndCoverage.TypesKey"/>, a hash of its types in order and its common base, which entities moving under other bases and
+    /// renames that reorder the roots of <c>anyEntity</c> change), each entity entry and its referrers, and <c>cs:&lt;key&gt;</c> per stereotype
+    /// entry.
+    /// </summary>
+    /// <param name="end">The end, with several types.</param>
+    /// <param name="keys">The keys to add to.</param>
+    internal static void AddCoverageKeys(RelationEnd end, DependencySet keys)
+    {
+        keys.Add(EndCoverage.TypesKey(end.Id));
+        if (end.AnyEntity == true)
+            return;
+
+        foreach (var entry in end.Types ?? [])
+        {
+            if (entry.Entity is { } id)
+                keys.Element(id).Referrers(id);
+            else if (entry.Stereotype is { } key)
+                keys.Add(Processes.SubjectCoverage.CarrierSetKey(key));
+        }
+    }
+
+    /// <summary>
+    /// Fills the stereotypes of every end with several types (several-types-design.md section 7), once the definitions are resolved: the
+    /// stereotypes its entries name, in entry order, without repeats; a key that names no stereotype is left out. The list keys on the end's
+    /// coverage keys, whose <c>cs:</c> keys change when a key starts or stops naming a stereotype.
+    /// </summary>
+    private void ResolveEndStereotypes()
+    {
+        foreach (var (source, end) in _severalTypeEnds)
+        {
+            var stereotypes = new List<RStereotypeDefinition>();
+            foreach (var entry in source.Types ?? [])
+            {
+                if (entry.Stereotype is { } key && _stereotypeDefinitions.GetValueOrDefault(key) is { } stereotype && !stereotypes.Contains(stereotype))
+                    stereotypes.Add(stereotype);
+            }
+
+            if (stereotypes.Count > 0)
+                end.Stereotypes = new RList<RStereotypeDefinition>(stereotypes, end.Dependencies);
+        }
+    }
+
+    /// <summary>
+    /// The keys <c>entity.relations</c> and <c>entity.navigations</c> add while some relation end has several types (several-types-design.md
+    /// section 7): each such end's types key, so an entity that becomes or stops being one of its types through a base change renders them
+    /// again; and, for an end that names a stereotype or any entity, the naming key <c>et:ends</c> and <c>cs:</c> of each key it names, so a new
+    /// any-entity relation, or an entity gaining a named stereotype, renders them again. Empty otherwise, so a model without such ends keeps its
+    /// keys. Read only once every relation is committed.
+    /// </summary>
+    private IReadOnlyList<string> EndNamingKeys()
+    {
+        if (_endNamingKeys is { } memo)
+            return memo;
+        var keys = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var (source, _) in _severalTypeEnds)
+        {
+            keys.Add(EndCoverage.TypesKey(source.Id));
+            if (!EndCoverage.NamesStereotypeOrAny(source))
+                continue;
+            keys.Add(EndCoverage.NamingKey);
+            foreach (var entry in source.Types ?? [])
+            {
+                if (entry.Stereotype is { } key)
+                    keys.Add(Processes.SubjectCoverage.CarrierSetKey(key));
+            }
+        }
+
+        IReadOnlyList<string> list = [.. keys];
+        Interlocked.CompareExchange(ref _endNamingKeys, list, null);
+        return _endNamingKeys;
+    }
+
+    private IReadOnlyList<string>? _endNamingKeys;
 
     /// <summary><c>one-to-one</c>, <c>one-to-many</c>, <c>many-to-many</c> or <c>n-ary</c>.</summary>
     public static string CardinalityOf(Relation relation)
@@ -778,7 +913,13 @@ internal sealed partial class ResolveRun
                     Target = to.Entity,
                     IsCollection = to.IsMany,
                 };
-                DepsOf(navigation).AddRange(DepsOf(relation).ToList()).AddRange(DepsOf(from.Entity).ToList()).AddRange(DepsOf(to.Entity).ToList());
+
+                // An end with several types adds no entity's keys: the relation's keys hold what it covers (decision 20).
+                var navigationDeps = DepsOf(navigation).AddRange(DepsOf(relation).ToList());
+                if (from.Entity is { } holder)
+                    navigationDeps.AddRange(DepsOf(holder).ToList());
+                if (to.Entity is { } target)
+                    navigationDeps.AddRange(DepsOf(target).ToList());
                 built.Add(navigation);
             }
         }
@@ -886,11 +1027,14 @@ internal sealed partial class ResolveRun
     {
         var deps = DepsOf(r);
         var navigations = InheritedNavigations(r.Id).OrderBy(n => n.Name, StringComparer.Ordinal).ThenBy(n => n.Id, StringComparer.Ordinal).ToList();
-        r.Navigations = new RList<RNavigation>(navigations, deps.ToList());
+        var naming = EndNamingKeys();
+        r.Navigations = new RList<RNavigation>(navigations, naming.Count == 0 ? deps.ToList() : new DependencySet(Keys).AddRange(deps.ToList()).AddRange(naming).ToList());
         var relations = _relationsByEntity.TryGetValue(r.Id, out var list) ? Sorted(list) : [];
 
-        // Promotion adds relations (<relationId>.<endId>) to each end entity, so the list also depends on what decides promotion.
-        r.Relations = new RList<RRelation>(relations, relations.Count == 0 ? deps.ToList() : new DependencySet(Keys).AddRange(deps.ToList()).AddRange(_entityMembership).ToList());
+        // Promotion adds relations (<relationId>.<endId>) to each end entity, so the list also depends on what decides promotion. An end that
+        // names a stereotype or any entity adds relations as carriers and entities change (several-types-design.md section 7).
+        r.Relations = new RList<RRelation>(relations, relations.Count == 0 && naming.Count == 0 ? deps.ToList()
+            : new DependencySet(Keys).AddRange(deps.ToList()).AddRange(relations.Count == 0 ? [] : _entityMembership).AddRange(naming).ToList());
         r.Derived = new RList<REntity>(derivedByBase.TryGetValue(r, out var derivedList) ? derivedList : [], [Keys.Referrers(r.Id)]);
         r.Mappings = _entityMappings.TryGetValue(r.Id, out var mappings) ? SortedMap(mappings) : ImmutableSortedDictionary<string, REntityMapping>.Empty;
         r.Bindings = _entityBindings.TryGetValue(r.Id, out var bindings) ? SortedMap(bindings) : ImmutableSortedDictionary<string, REntityBinding>.Empty;
@@ -1223,7 +1367,7 @@ internal sealed partial class ResolveRun
     {
         if (_promoted.TryGetValue(relation.Id, out var existing))
             return existing;
-        var name = promotedName ?? Casing.Pascal(string.Join('_', relation.Ends.Select(e => e.Entity.Name)));
+        var name = promotedName ?? Casing.Pascal(string.Join('_', relation.Ends.Select(e => e.OneEntity.Name)));
         var entity = new REntity
         {
             Id = relation.Id,
@@ -1255,11 +1399,11 @@ internal sealed partial class ResolveRun
         {
             foreach (var end in relation.Ends)
             {
-                foreach (var ka in end.Entity.Key?.Attributes ?? RList<RAttribute>.Empty)
+                foreach (var ka in end.OneEntity.Key?.Attributes ?? RList<RAttribute>.Empty)
                 {
                     var keyName = Casing.Camel(end.Role + "_" + ka.Name);
                     var attribute = KeyAttribute(entity, relation.Id + "/" + end.Id + "/" + ka.Id, keyName, ka.Type, ka.Length, ka.Precision, ka.Scale, deps);
-                    DepsOf(attribute).AddRange(DepsOf(end.Entity).ToList());
+                    DepsOf(attribute).AddRange(DepsOf(end.OneEntity).ToList());
                     keyAttributes.Add((attribute, end.Id + "." + ka.Id));
                 }
             }
@@ -1331,7 +1475,7 @@ internal sealed partial class ResolveRun
             _inheritedNavigations.Clear();
             ListOf(_relationsByEntity, entity.Id).Add(r);
             if (!ReferenceEquals(end.Entity, entity))
-                ListOf(_relationsByEntity, end.Entity.Id).Add(r);
+                ListOf(_relationsByEntity, end.OneEntity.Id).Add(r);
             _promotedRelations.Add(r);
             Register(r);
             Register(principal);
@@ -1380,5 +1524,5 @@ internal sealed partial class ResolveRun
 
     /// <summary>The navigation of a promoted entity towards an end entity.</summary>
     public RNavigation PromotionNavigation(RRelation promotionRelation) =>
-        _navigations[promotionRelation.Ends[1].Entity.Id].First(n => ReferenceEquals(n.Relation, promotionRelation));
+        _navigations[promotionRelation.Ends[1].OneEntity.Id].First(n => ReferenceEquals(n.Relation, promotionRelation));
 }

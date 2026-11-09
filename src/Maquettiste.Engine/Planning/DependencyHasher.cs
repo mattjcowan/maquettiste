@@ -224,6 +224,10 @@ internal sealed class DependencyHasher(ModelSnapshot model, ResolvedModel resolv
             // Which entities carry a stereotype, and which stereotypes the processes' subjects name (stereotype-sets-design.md section 6).
             "cs" => Processes.SubjectCoverage.CarrierSetHash(model, rest),
             "sn" => string.Equals(key, Processes.SubjectCoverage.NamingKey, StringComparison.Ordinal) ? Processes.SubjectCoverage.NamingHash(model) : Absent,
+            // Which relation ends name a stereotype or any entity (several-types-design.md section 7); recorded only while such an end exists.
+            "et" => string.Equals(key, EndCoverage.NamingKey, StringComparison.Ordinal) ? EndCoverage.NamingHash(model) : Absent,
+            // What one end with several types resolves to, its types in order and its common base; absent once the end is gone or has one type.
+            "ec" => EndCoverage.TypesHash(model, rest) ?? Absent,
             // Which verb keys the model names, with the vocabulary (verbs-design.md section 6): what model.verbs holds.
             "vn" => string.Equals(key, ModelSnapshot.VerbNamingKey, StringComparison.Ordinal) ? model.VerbNamingHash() : Absent,
             // Which rights the lifecycles state (rights-design.md section 6): a lifecycle's first right, its default, the verbs it can deny.

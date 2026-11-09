@@ -60,7 +60,7 @@ export class Coverage {
     return out;
   }
 
-  private chain(entity: Json): string[] {
+  chain(entity: Json): string[] {
     const ids: string[] = [];
     for (let at: Json | undefined = entity; at && !ids.includes(String(at.id)); at = typeof at.base === "string" ? this.docs.get(at.base) : undefined)
       ids.push(String(at.id));
@@ -91,6 +91,15 @@ export class Coverage {
       this.carriersMemo.set(key, list);
     }
     return list;
+  }
+
+  /** The entities with no base, by qualified name then id (the types of an end that is any entity). */
+  roots(): string[] {
+    return this.entities
+      .filter((e) => typeof e.base !== "string" || !this.docs.has(e.base))
+      .map((e) => ({ id: String(e.id), q: this.qualified(e) }))
+      .sort((a, b) => (a.q < b.q ? -1 : a.q > b.q ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map((e) => e.id);
   }
 
   /** Whether the stereotype covers the entity: it or a base carries it. */

@@ -3,6 +3,7 @@
 // are written back into a diagram, and what "Add related to depth N" adds.
 import type { AttributeDoc, DiagramDoc, DiagramMember, ElementSummary, RelationDoc } from "@/api/types";
 import { indexPatchOf } from "@/api/indexPatch";
+import { docEndEntities, docEndSingleEntity, endHasSeveralTypes, endListedEntities, endSingleEntity, type EndLike } from "@/model/endTypes";
 import type { LayoutEdge, LayoutNode } from "./layout";
 
 export const NODE_WIDTH = 240;
@@ -27,7 +28,7 @@ interface IndexRow {
   id: string;
   kind: string;
   package?: string | null;
-  ends?: readonly { entity: string }[];
+  ends?: readonly EndLike[];
 }
 
 /**
@@ -51,8 +52,9 @@ export function viewElements(
       .slice(0, ALL_OF_CAP);
     const shown = new Set(entityIds);
     // A relation shows when both its ends are cards (the index row's `ends`); a row without ends (an older server) is
-    // kept and the canvas drops an edge whose ends are not cards.
-    const relationIds = rows.filter((r) => r.kind === "relation" && (!r.ends?.length || r.ends.every((e) => shown.has(e.entity)))).map((r) => r.id);
+    // kept and the canvas drops an edge whose ends are not cards. An end with several types counts when one of its entity
+    // entries is a card, or it names a stereotype or any entity (the drawing then says "+N not shown", or draws a box).
+    const relationIds = rows.filter((r) => r.kind === "relation" && (!r.ends?.length || r.ends.every((e) => endShows(e, shown)))).map((r) => r.id);
     return { entityIds, relationIds };
   }
   const kinds = new Map(rows.map((r) => [r.id, r.kind]));
@@ -67,6 +69,12 @@ export function viewElements(
     else if (kind === "relation") relationIds.push(m.element);
   }
   return { entityIds, relationIds };
+}
+
+/** Whether an end of a relation can be drawn in a view whose cards are `shown` (see viewElements). */
+export function endShows(end: EndLike, shown: ReadonlySet<string>): boolean {
+  if (!endHasSeveralTypes(end)) return endSingleEntity(end) !== null && shown.has(endSingleEntity(end)!);
+  return end.anyEntity === true || (end.stereotypes?.length ?? 0) > 0 || endListedEntities(end).some((id) => shown.has(id));
 }
 
 /** The stored position of a card: the diagram member's x/y, or the per-browser package position. */
@@ -115,11 +123,15 @@ export interface EdgeEnds {
 export function relationEnds(relation: Pick<RelationDoc, "ends">, positionOf: ReadonlyMap<string, Point>, width: number = NODE_WIDTH): EdgeEnds | null {
   const [a, b] = relation.ends ?? [];
   if (!a || !b) return null;
-  const pa = positionOf.get(a.entity);
-  const pb = positionOf.get(b.entity);
+  // An end with several types is drawn by severalTypes.ts (a node and lines); this is the one-line drawing only.
+  const ea = docEndSingleEntity(a);
+  const eb = docEndSingleEntity(b);
+  if (!ea || !eb) return null;
+  const pa = positionOf.get(ea);
+  const pb = positionOf.get(eb);
   if (!pa || !pb) return null;
   const forward = pa.x + width / 2 <= pb.x + width / 2;
-  return { source: a.entity, target: b.entity, sourceHandle: forward ? "r" : "sl", targetHandle: forward ? "l" : "tr" };
+  return { source: ea, target: eb, sourceHandle: forward ? "r" : "sl", targetHandle: forward ? "l" : "tr" };
 }
 
 /** Writes rounded positions into the diagram's members (in place); members not listed are untouched. */
@@ -208,14 +220,15 @@ export function layoutInput(
     id: string;
     source: string;
     target: string;
-    data?: { relation?: Pick<RelationDoc, "name" | "attributes">; attributeBox?: AttributeBox | null };
+    data?: { relation?: Pick<RelationDoc, "name" | "attributes">; attributeBox?: AttributeBox | null; labelled?: boolean };
   }[],
 ): { nodes: LayoutNode[]; edges: LayoutEdge[] } {
   return {
     nodes: nodes.map((n) => ({ id: n.id, width: n.measured?.width || NODE_WIDTH, height: n.measured?.height || NODE_HEIGHT })),
     edges: edges.map((e) => {
       const relation = e.data?.relation;
-      const label = relation ? relationLabelSize(relation, e.data?.attributeBox) : null;
+      // A relation with an end of several types carries its label on its trunk line only.
+      const label = relation && e.data?.labelled !== false ? relationLabelSize(relation, e.data?.attributeBox) : null;
       return {
         id: e.id,
         source: e.source,
@@ -258,13 +271,14 @@ export async function expandRelated(input: ExpandInput): Promise<DiagramMember[]
           present.add(relation.id);
           added.push({ element: relation.id });
         }
-        for (const end of relation.ends ?? []) {
-          if (seen.has(end.entity)) continue;
-          seen.add(end.entity);
-          next.push(end.entity);
-          if (present.has(end.entity)) continue;
-          present.add(end.entity);
-          added.push({ element: end.entity, x: Math.round(input.origin.x + 320 * level), y: Math.round(input.origin.y + 180 * row++) });
+        // An end with several types walks its entity entries; a stereotype or any entity adds no card (the box stands for them).
+        for (const entity of (relation.ends ?? []).flatMap((end) => docEndEntities(end))) {
+          if (seen.has(entity)) continue;
+          seen.add(entity);
+          next.push(entity);
+          if (present.has(entity)) continue;
+          present.add(entity);
+          added.push({ element: entity, x: Math.round(input.origin.x + 320 * level), y: Math.round(input.origin.y + 180 * row++) });
         }
       }
     }
@@ -309,6 +323,13 @@ export const ELEMENTS_MIME = "application/x-maquettiste-elements";
 export interface RelationLookup {
   relationsOf(entityId: string): readonly string[];
   endsOf(relationId: string): readonly string[] | undefined;
+  /** Whether the relation can be drawn once these elements are on a diagram (an end with several types needs one entry, or a box). */
+  shows(relationId: string, onDiagram: ReadonlySet<string>): boolean;
+  /**
+   * Two entities the relation joins, for placing and centring: the one-type end's entity first, then the first entity the other end lists.
+   * Undefined when an end lists none (a stereotype or any entity), or the relation has no two ends.
+   */
+  pairOf(relationId: string): readonly [string, string] | undefined;
 }
 
 const relationLookups = new WeakMap<readonly unknown[], RelationLookup & { ends: Map<string, string[]> }>();
@@ -334,17 +355,29 @@ export function relationLookup(rows: readonly Pick<IndexRow, "id" | "kind" | "en
 function buildRelationLookup(rows: readonly Pick<IndexRow, "id" | "kind" | "ends">[]): RelationLookup & { ends: Map<string, string[]> } {
   const relations = new Map<string, string[]>();
   const ends = new Map<string, string[]>();
+  const rowEnds = new Map<string, readonly EndLike[]>();
   for (const r of rows) {
     if (r.kind !== "relation" || !r.ends) continue;
-    const list = r.ends.map((e) => e.entity);
+    // An end with several types is found from each entity entry it lists (a stereotype or any entity names no card).
+    const list = r.ends.flatMap((e) => endListedEntities(e));
     ends.set(r.id, list);
+    rowEnds.set(r.id, r.ends);
     for (const e of new Set(list)) {
       const bucket = relations.get(e) ?? [];
       bucket.push(r.id);
       relations.set(e, bucket);
     }
   }
-  return { relationsOf: (id) => relations.get(id) ?? [], endsOf: (id) => ends.get(id), ends };
+  const shows = (id: string, onDiagram: ReadonlySet<string>) => (rowEnds.get(id) ?? []).every((e) => endShows(e, onDiagram));
+  const pairOf = (id: string): readonly [string, string] | undefined => {
+    const list = rowEnds.get(id);
+    if (!list || list.length < 2) return undefined;
+    const firsts = list.slice(0, 2).map((e) => endListedEntities(e)[0]);
+    if (!firsts[0] || !firsts[1]) return undefined;
+    // The end with several types comes second: the card it hangs on is the anchor.
+    return endHasSeveralTypes(list[0]) ? [firsts[1], firsts[0]] : [firsts[0], firsts[1]];
+  };
+  return { relationsOf: (id) => relations.get(id) ?? [], endsOf: (id) => ends.get(id), shows, pairOf, ends };
 }
 
 /** The entities within `depth` relation hops of the start entities (the start entities included). */
@@ -393,8 +426,7 @@ export function planMembers(input: {
   const onDiagram = new Set([...present, ...fresh]);
   const relations = new Set<string>();
   for (const r of input.relations ?? []) if (!present.has(r)) relations.add(r);
-  for (const e of fresh)
-    for (const r of input.lookup.relationsOf(e)) if (!present.has(r) && (input.lookup.endsOf(r) ?? []).every((x) => onDiagram.has(x))) relations.add(r);
+  for (const e of fresh) for (const r of input.lookup.relationsOf(e)) if (!present.has(r) && input.lookup.shows(r, onDiagram)) relations.add(r);
   for (const r of relations) out.push({ element: r });
   return out;
 }

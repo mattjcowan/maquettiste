@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../../.schema/v1/query.json",
+  "kind": "query",
+  "id": "01KST0QRY00000000000000003",
+  "name": "ToolFiling",
+  "database": "01KST0DBS00000000000000001",
+  "entity": "01KST0ENT00000000000000007",
+  "from": {
+    "source": "01KST0TAB00000000000000002",
+    "alias": "t"
+  },
+  "select": [
+    {
+      "attribute": "01KST0ATT00000000000000007",
+      "expression": {
+        "column": "t.id"
+      }
+    },
+    {
+      "attribute": "01KST0END00000000000000007",
+      "expression": {
+        "column": "t.comment_id"
+      }
+    }
+  ]
+}

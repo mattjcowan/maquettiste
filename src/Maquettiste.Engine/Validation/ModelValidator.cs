@@ -513,6 +513,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
     /// (next-phase-2-design.md section 3.2, <see cref="TypedColumnPeers"/>): an enum, a reference type or a seed of a reference type brings
     /// the tables whose columns the type types, the table seeds of those tables and the entities and reference types whose bindings give
     /// those tables' columns constants (MQ7014, MQ4083 and MQ4084 read the type's values, codes and bindings, which no reference reaches).
+    /// Relations with an end of several types (several-types-design.md decision 12, <see cref="SeveralTypesPeers"/>): an entity, package or
+    /// stereotype brings those whose ends name a stereotype (an entity also those with an <c>anyEntity</c> end or an end covering it), with
+    /// their children's other compositions and the scenarios linking through them; a mapping or database brings all of them (MQ4115).
     /// </summary>
     /// <param name="context">The validation context.</param>
     /// <param name="document">The document in scope.</param>
@@ -645,6 +648,9 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         foreach (var peer in ProcessPeers(model, element))
             yield return peer;
 
+        foreach (var peer in SeveralTypesPeers(context, element))
+            yield return peer;
+
         // The files a default list reaches are judged on the effective set it gives (MQ2004, MQ2013 to MQ2015, MQ2018 and every rule
         // that reads stereotypes), and they are not the referrers of the package, database or stereotype (next-phase-2-design.md
         // section 3.1).
@@ -735,17 +741,15 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
 
                 break;
             case Relation relation:
-                if (ValidationContext.CompositionEnds(relation) is { } ends)
-                {
-                    foreach (var peer in context.CompositionsOwning(relation.Ends[ends.Child].Entity))
-                        yield return peer;
-                }
+                // A child end with several types reaches the compositions of every entity it covers (several-types-design.md decision 9).
+                foreach (var peer in CompositionPeers(context, relation))
+                    yield return peer;
 
                 for (var i = 0; i < relation.Ends.Count; i++)
                 {
                     if (relation.Ends[i].Navigation.Length == 0)
                         continue;
-                    foreach (var holderId in ValidationContext.NavigationHolders(relation, i))
+                    foreach (var holderId in ValidationContext.NavigationHolders(model, relation, i))
                     {
                         if (model.Get<Entity>(holderId) is { } holder)
                         {
@@ -766,6 +770,71 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                 }
 
                 break;
+        }
+    }
+
+    /// <summary>
+    /// The other compositions of a composition's children (MQ3016): of its one-type child end's entity, or of each entity a child end with
+    /// several types covers (several-types-design.md decision 9). Nothing for any other relation.
+    /// </summary>
+    private static IEnumerable<ElementDocument> CompositionPeers(ValidationContext context, Relation relation)
+    {
+        if (ValidationContext.CompositionEnds(relation) is not { } ends)
+            yield break;
+        var childEnd = relation.Ends[ends.Child];
+        IEnumerable<string> children = childEnd.HasSeveralTypes
+            ? childEnd.AnyEntity == true ? [] : EndCoverage.CoveredBy(context.Model, childEnd)
+            : childEnd.SingleEntity is { } single ? [single] : [];
+        foreach (var child in children)
+        {
+            foreach (var peer in context.CompositionsOwning(child))
+                yield return peer;
+        }
+    }
+
+    /// <summary>
+    /// The relations with an end of several types whose findings a document can move without referencing them (several-types-design.md
+    /// decision 12 and section 6), and only while such an end exists: an entity, package or stereotype change may move a stereotype's carriers,
+    /// so it brings the relations whose ends name a stereotype (MQ3009, MQ3016, MQ3043, MQ4115), the other compositions of their children
+    /// and the scenarios that link through them (MQ9305); an entity change also brings the relations with an <c>anyEntity</c> end (MQ3009);
+    /// a mapping or a database, or a package while a database places entities by package, changes where the types are placed, so it brings
+    /// every relation with an end of several types (MQ4115). A settings save validates the whole model.
+    /// </summary>
+    private static IEnumerable<ElementDocument> SeveralTypesPeers(ValidationContext context, Element element)
+    {
+        var model = context.Model;
+        if (element is not (Entity or Package or Stereotype or Mapping or Database) || !EndCoverage.Of(model).Any)
+            yield break;
+        var placement = element is Mapping or Database
+            || (element is Package && model.All<Database>().Any(d => d.ByConvention is null ? d.Packages.Count > 0 : d.ByConvention == ConventionMapping.Packages));
+        var carriers = element is Entity or Package or Stereotype;
+        var linked = new List<Relation>();
+        foreach (var relation in model.All<Relation>())
+        {
+            if (!EndCoverage.HasSeveralTypes(relation))
+                continue;
+            // An entity also brings the relations whose end with several types covers it: a derived entity of a listed one is no referrer.
+            var names = carriers && relation.Ends.Any(e => element is Entity
+                ? EndCoverage.NamesStereotypeOrAny(e) || (e.HasSeveralTypes && EndCoverage.Covers(model, e, element.Id))
+                : e.Types?.Any(t => t.Stereotype is not null) == true);
+            if (!names && !placement)
+                continue;
+            if (model.GetDocument(relation.Id) is { } peer && !ReferenceEquals(peer.Element, element))
+                yield return peer;
+            if (!names)
+                continue;
+            foreach (var composition in CompositionPeers(context, relation))
+                yield return composition;
+            if (relation.Ends.Any(e => e.Types?.Any(t => t.Stereotype is not null) == true))
+                linked.Add(relation);
+        }
+
+        if (linked.Count == 0)
+            yield break;
+        foreach (var scenario in model.All<Scenario>())
+        {
+            if (linked.Exists(r => ObjectsReach(model, scenario, r)) && model.GetDocument(scenario.Id) is { } peer)
+                yield return peer;
         }
     }
 

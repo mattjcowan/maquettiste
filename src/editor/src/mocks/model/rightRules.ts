@@ -9,6 +9,8 @@ import { gateSignerIds } from "@/model/approvals";
 import { commonFields, objectFields } from "@/model/objectFields";
 import { subjectsOf } from "@/model/process";
 import { ATTRIBUTE_VERBS, LINK_VERBS } from "@/model/rights";
+import { docEndHasSeveralTypes, docEndSingleEntity, type EndDocLike } from "@/model/endTypes";
+import { severalEnds } from "./endCover";
 import { fieldSourcesOf } from "./relativeRules";
 import type { ModelEntry } from "./validate";
 
@@ -231,6 +233,96 @@ export function rightDiagnostics(json: Json, all: () => Iterable<ModelEntry>, em
       tasks(s.states, `${base}/${i}/states`);
     });
   tasks(json.states, "/states");
+}
+
+/**
+ * MQ9305 on a scenario's link or connect step through an end with several types (ScenarioObjects.LinkProblem and VerbStepFields): the object
+ * holds the end when another end covers its entity, and the linked or connected object fits when the end covers its entity (several-types-design.md
+ * decision 18, section 8). The engine reports the first such problem of a scenario: a link at `/objects/i/links/j/end`, worded with the
+ * scenario's name, else a connect step at `/steps/i/object`, worded with the step's number. Through one-type ends the other checks apply.
+ */
+export function severalLinkDiagnostics(json: Json, emit: Emit, all: () => Iterable<ModelEntry>): void {
+  const id = str(json.id) ?? undefined;
+  const entries = [...all()];
+  const ends = severalEnds(entries);
+  if (!ends.size) return;
+  const docs = new Map(entries.map((e) => [e.id, e.json] as const));
+  const entityName = (entity: unknown) => String(docs.get(String(entity))?.name ?? entity);
+  const objects = new Map(arr(json.objects).map((o) => [str(o.id), o] as const));
+  const chainOf = (entityId: string): string[] => {
+    const out: string[] = [];
+    for (let at = docs.get(entityId); at && !out.includes(String(at.id)); at = typeof at.base === "string" ? docs.get(at.base) : undefined)
+      out.push(String(at.id));
+    return out;
+  };
+  // The relation an end id belongs to, and its other ends.
+  const relationOf = (endId: string) => entries.find((e) => e.json.kind === "relation" && arr(e.json.ends).some((x) => x.id === endId))?.json;
+  const holds = (relation: Json, endId: string, entity: string) =>
+    arr(relation.ends).some((e) => {
+      if (e.id === endId) return false;
+      const several = ends.get(String(e.id));
+      if (several) return several.covers(entity);
+      const single = docEndSingleEntity(e as EndDocLike);
+      return !!single && chainOf(entity).includes(single);
+    });
+  for (const [i, o] of arr(json.objects).entries()) {
+    const entity = String(o.entity);
+    if (!docs.has(entity)) continue;
+    for (const [j, l] of arr(o.links).entries()) {
+      const relation = relationOf(String(l.end));
+      if (!relation || !arr(relation.ends).some((e) => docEndHasSeveralTypes(e as EndDocLike))) continue;
+      const end = arr(relation.ends).find((e) => e.id === l.end)!;
+      const endName = `${str(relation.name)}.${str(end.role) || String(end.id)}`;
+      const at = `/objects/${i}/links/${j}/end`;
+      if (!holds(relation, String(l.end), entity)) {
+        emit(
+          "MQ9305",
+          "error",
+          `Scenario '${str(json.name)}': Object '${String(o.name)}' links through end '${endName}', which does not lead from entity '${entityName(entity)}' or one of its bases; use an end of a relation of '${entityName(entity)}'.`,
+          at,
+          id,
+        );
+        return;
+      }
+      const target = objects.get(str(l.object));
+      const several = ends.get(String(l.end));
+      if (!target || !docs.has(String(target.entity)) || !several || several.covers(String(target.entity))) continue;
+      emit(
+        "MQ9305",
+        "error",
+        `Scenario '${str(json.name)}': Object '${String(o.name)}' links to '${String(target.name)}' through end '${several.name}', which leads to ${several.leadsTo}, not to entity '${entityName(target.entity)}'; link to an object of one of those, or through another end.`,
+        at,
+        id,
+      );
+      return;
+    }
+  }
+  const subject = objects.get(str(json.subject));
+  const subjectEntity = subject ? String(subject.entity) : "";
+  if (!subject || !docs.has(subjectEntity)) return;
+  for (const [i, step] of arr(json.steps).entries()) {
+    if (step.verb !== "connect" || typeof step.end !== "string" || typeof step.object !== "string") continue;
+    const several = ends.get(step.end);
+    const relation = relationOf(step.end);
+    const linked = objects.get(step.object);
+    if (
+      !several ||
+      !relation ||
+      !linked ||
+      !docs.has(String(linked.entity)) ||
+      !holds(relation, step.end, subjectEntity) ||
+      several.covers(String(linked.entity))
+    )
+      continue;
+    emit(
+      "MQ9305",
+      "error",
+      `Step ${i + 1}: object '${String(linked.name)}' is an object of entity '${entityName(linked.entity)}', but end '${several.name}' leads to ${several.leadsTo}; connect an object of one of those, or use another end.`,
+      `/steps/${i}/object`,
+      id,
+    );
+    return;
+  }
 }
 
 /** MQ9305, part 2: `attributes` beside a verb other than `read`, and `frozen` on a link of an object other than the subject. */

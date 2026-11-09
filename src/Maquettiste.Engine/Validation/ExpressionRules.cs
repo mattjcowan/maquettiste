@@ -873,6 +873,14 @@ internal static class ExprSites
                 return "in_state names a state of '" + lifecycle + "', which is no process of the model.";
             if (through.Count > 0)
             {
+                // Through an end with several types (several-types-design.md decision 15): valid when the lifecycle can govern one entity the
+                // end covers, as a base passes when a derived entity is governed; a run still answers unknown for an object it doesn't govern.
+                if (through[^1].Entity is null && RelationTypeRules.EndOf(model, through[^1].Id) is { End: { HasSeveralTypes: true } several })
+                {
+                    return EndCoverage.TypesOf(model, several).Any(t => CanGovern(governing, t)) ? null
+                        : "Lifecycle " + governing.Name + " can't govern any type the object in_state reaches: " + RelationTypeRules.TypesText(model, several) + ".";
+                }
+
                 if (through[^1].Entity is not { } id || model.Get<Entity>(id) is not { } reached)
                     return "in_state's object reaches no entity of the model.";
                 return CanGovern(governing, reached) ? null
@@ -1296,7 +1304,8 @@ internal static class ExprSites
     /// <summary>
     /// The navigations a guard follows from an entity (and its bases), as resolution builds them: one per relation of two ends whose far
     /// end names its <c>navigation</c>, held in a path by that end's id, to-one when its maximum is one. What each leads to is filled
-    /// when an expression first reads through it.
+    /// when an expression first reads through it: the far end's entity, or for an end with several types what every type holds under one
+    /// id (several-types-design.md decision 13).
     /// </summary>
     private static void AddNavigations(ExprContainer container, ModelSnapshot model, Entity entity, string? prefix) =>
         AddNavigations(container, model, NavigationsOf(model, entity).Select(n => n.To), prefix);
@@ -1305,18 +1314,64 @@ internal static class ExprSites
     {
         foreach (var to in ends)
         {
-            var target = model.Get<Entity>(to.Entity);
+            if (to.HasSeveralTypes)
+            {
+                container.Add(new ExprNavigation(to.Id, to.Navigation, new ExprContainer(c =>
+                {
+                    var (attributes, navigations) = HeldByTypes(model, to);
+                    AddAttributes(c, model, attributes, null);
+                    AddNavigations(c, model, navigations, null);
+                }), to.Max == MaxCardinality.One, to.Min == 0) { Prefix = prefix });
+                continue;
+            }
+
+            var target = to.SingleEntity is { } targetId ? model.Get<Entity>(targetId) : null;
             container.Add(new ExprNavigation(to.Id, to.Navigation, new ExprContainer(c =>
             {
                 if (target is null)
                     return;
                 AddAttributes(c, model, AttributesOf(model, target), null);
                 AddNavigations(c, model, target, null);
-            }), to.Max == MaxCardinality.One, to.Min == 0) { Prefix = prefix, Entity = to.Entity });
+            }), to.Max == MaxCardinality.One, to.Min == 0) { Prefix = prefix, Entity = to.SingleEntity });
         }
     }
 
-    /// <summary>The relation ends an entity (or one of its bases) navigates to, with the relation, in model order.</summary>
+    /// <summary>
+    /// What a path reads beyond an end with several types (several-types-design.md decision 13): what every one of the end's types holds under
+    /// one id, so the attributes and navigations of a shared base; a stereotype's attributes stay out, as through any navigation. Nothing
+    /// when the end has no type. Attributes nearest first and navigations in model order, as the first type has them.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="end">The end with several types.</param>
+    /// <returns>The attributes and the relation ends navigated to.</returns>
+    internal static (IReadOnlyList<ModelAttribute> Attributes, IReadOnlyList<RelationEnd> Navigations) HeldByTypes(ModelSnapshot model, RelationEnd end)
+    {
+        List<ModelAttribute>? attributes = null;
+        List<RelationEnd>? navigations = null;
+        foreach (var type in EndCoverage.TypesOf(model, end))
+        {
+            var held = AttributesOf(model, type).DistinctBy(a => a.Id).ToList();
+            var reached = NavigationsOf(model, type).Select(n => n.To).DistinctBy(e => e.Id).ToList();
+            if (attributes is null || navigations is null)
+            {
+                (attributes, navigations) = (held, reached);
+                continue;
+            }
+
+            var heldIds = held.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+            attributes.RemoveAll(a => !heldIds.Contains(a.Id));
+            var reachedIds = reached.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
+            navigations.RemoveAll(e => !reachedIds.Contains(e.Id));
+        }
+
+        return (attributes ?? [], navigations ?? []);
+    }
+
+    /// <summary>
+    /// The relation ends an entity (or one of its bases) navigates to, with the relation, in model order: the far end of each relation of two
+    /// ends whose near end leads from the entity, a one-type end by its entity or a base, an end with several types by covering the entity
+    /// (several-types-design.md decision 10: the navigation is generated on each of its types, and so on their derived entities).
+    /// </summary>
     internal static IEnumerable<(RelationEnd To, Relation Relation)> NavigationsOf(ModelSnapshot model, Entity entity)
     {
         var chain = new HashSet<string>(StringComparer.Ordinal);
@@ -1331,7 +1386,8 @@ internal static class ExprSites
             for (var k = 0; k < 2; k++)
             {
                 var (from, to) = (relation.Ends[1 - k], relation.Ends[k]);
-                if (to.Navigation.Length > 0 && chain.Contains(from.Entity))
+                if (to.Navigation.Length > 0
+                    && (from.HasSeveralTypes ? EndCoverage.Covers(model, from, entity.Id) : from.SingleEntity is { } fromEntity && chain.Contains(fromEntity)))
                     yield return (to, relation);
             }
         }

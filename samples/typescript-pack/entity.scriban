@@ -1,6 +1,7 @@
 {{-
 # One interface per entity: attributes typed from the model, "?" when not required, and for each relation end a to-one
-# navigation adds its id (customerId) while every navigation adds an optional property (customer?, lines?). A reference
+# navigation adds its id (customerId) while every navigation adds an optional property (customer?, lines?). A navigation to an end
+# with several types is the union of its types (attachedTo?: Part | Assembly), unknown for any entity, and has no id. A reference
 # attribute holds a row's code: the type's union of codes, or string while the type has no rows.
 func attr_type(a)
   if a.type.kind == "enum"
@@ -17,6 +18,28 @@ func attr_type(a)
   end
   ret $t
 end
+# The type a navigation leads to: its target, or the union of the types of an end with several types (unknown for any entity, or
+# while the end covers no type yet).
+func nav_type(nav)
+  if nav.target
+    $t = pascal nav.target.name
+  else if nav.to.any_entity || nav.targets.size == 0
+    $t = "unknown"
+  else
+    $names = []
+    for $x in nav.targets
+      $names[$names.size] = pascal $x.name
+    end
+    $t = $names | array.join " | "
+    if nav.is_collection && nav.targets.size > 1
+      $t = "(" + $t + ")"
+    end
+  end
+  if nav.is_collection
+    ret $t + "[]"
+  end
+  ret $t
+end
 name = pascal entity.name
 ext = pack.params.importExtension
 imports = []
@@ -29,8 +52,10 @@ for a in entity.attributes
   end
 end
 for nav in entity.navigations
-  if (pascal nav.target.name) != name && !(imports | array.contains (pascal nav.target.name))
-    imports[imports.size] = pascal nav.target.name
+  for t in (nav.to.any_entity ? [] : nav.targets)
+    if (pascal t.name) != name && !(imports | array.contains (pascal t.name))
+      imports[imports.size] = pascal t.name
+    end
   end
 end
 imports = imports | array.sort
@@ -53,11 +78,11 @@ export interface {{ name }}{{ if entity.base }} extends {{ pascal entity.base.na
 {{- end }}
 {{- end }}
 {{- for nav in entity.navigations }}
-{{- if !nav.is_collection && nav.target.key }}
+{{- if !nav.is_collection && nav.target && nav.target.key }}
   {{ camel nav.name }}Id{{ if nav.to.min < 1 }}?{{ end }}: {{ ts_type nav.target.key.attributes[0].type.builtin }};
 {{- end }}
 {{- end }}
 {{- for nav in entity.navigations }}
-  {{ camel nav.name }}?: {{ pascal nav.target.name }}{{ if nav.is_collection }}[]{{ end }};
+  {{ camel nav.name }}?: {{ nav_type(nav) }};
 {{- end }}
 }

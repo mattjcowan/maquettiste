@@ -320,7 +320,7 @@ internal sealed class SubjectCoverage
         return chain;
     }
 
-    private static ImmutableArray<Entity> Ordered(ModelSnapshot model, List<Entity> entities)
+    internal static ImmutableArray<Entity> Ordered(ModelSnapshot model, List<Entity> entities)
     {
         if (entities.Count == 0)
             return [];

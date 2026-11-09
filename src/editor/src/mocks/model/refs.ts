@@ -200,6 +200,16 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
     case "relation":
       arr(doc.ends).forEach((e, i) => {
         if (str(e.entity)) out.push({ fromId: str(e.id) ?? id, pointer: `/ends/${i}/entity`, field: "entity", toId: e.entity as string, required: true });
+        // An entry of an end's types (several-types-design.md decision 21): a deleted entity or stereotype takes its entry with it, under either
+        // delete choice. The entries that remain are checked as a group in the cascade: an end left with none loses its relation.
+        const types = arr(e.types);
+        types.forEach((t, j) => {
+          const at = `/ends/${i}/types/${j}`;
+          const to = str(t.entity) ?? (typeof t.stereotype === "string" ? rows?.stereotypeIdOf?.(t.stereotype) : null);
+          const field = str(t.entity) ? "entity" : "stereotype";
+          if (to && !own.has(to) && to !== id)
+            out.push({ fromId: str(e.id) ?? id, pointer: `${at}/${field}`, field, toId: to, required: false, removeItem: at });
+        });
       });
       attributeRefs(id, "/attributes", doc.attributes, out);
       break;

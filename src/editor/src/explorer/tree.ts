@@ -13,6 +13,7 @@ import { soleSubject } from "@/model/process";
 import { memberOfText } from "@/model/actors";
 import { relativeRowText } from "@/model/objectFields";
 import { tableKeyOf } from "@/search/engine";
+import { endCoveredEntities, endLabel, endListedEntities } from "@/model/endTypes";
 import type { TablePart, TablePartKind } from "@/workspaces/database/tableParts";
 import { patchesBetween, type IndexPatch } from "@/api/indexPatch";
 import {
@@ -202,6 +203,8 @@ export interface TreeInput {
   groupTablesByDomain?: boolean;
   /** Scenario id → its last verify result (the Processes explorer's passed counts). */
   scenarioStatus?: ReadonlyMap<string, ScenarioStatus>;
+  /** Stereotype id → its key (the document's `key`), so a relation's end text names a stereotype entry by its real key. */
+  stereotypeKeys?: ReadonlyMap<string, string>;
 }
 
 export interface RelatedMaps {
@@ -267,6 +270,8 @@ export interface Forest {
   unplaced: string[];
   /** Folders whose element rows are built on first ask (`childKeys`), so the first paint pays only for what it shows. */
   pending: Map<string, () => TreeNode[]>;
+  /** Stereotype id → key, as the input gave it. */
+  stereotypeKeys: ReadonlyMap<string, string>;
   /** State the incremental patch (`patchForest`) keeps current; not for readers. */
   patch: PatchState;
 }
@@ -355,15 +360,20 @@ export function soleSeedOf(seeds: readonly unknown[]): boolean {
 }
 
 /** An element row's secondary text: a relation's ends, a diagram's member count (a process diagram: whose statechart it is), a seed's row count. */
-function rowSecondary(byId: ReadonlyMap<string, Row>, r: Row, actsIn?: ReadonlyMap<string, number>): string | undefined {
+function rowSecondary(
+  byId: ReadonlyMap<string, Row>,
+  r: Row,
+  actsIn?: ReadonlyMap<string, number>,
+  stereotypeKeys?: ReadonlyMap<string, string>,
+): string | undefined {
   const nameOf = (id: string) => {
     const e = byId.get(id);
     return e ? e.displayName || e.name : undefined;
   };
   if (r.kind === "relation" && r.ends?.length) {
-    let text = "";
-    for (const e of r.ends) text = text ? `${text} → ${nameOf(e.entity) ?? "?"}` : (nameOf(e.entity) ?? "?");
-    return text;
+    // Several types: "Comment → Part, Assembly or approvable (stereotype)" (several-types-design.md section 11).
+    const stereotypeName = (id: string) => stereotypeKeys?.get(id);
+    return r.ends.map((e) => endLabel(e, nameOf, stereotypeName) || "?").join(" → ");
   }
   if (r.kind === "trigger-point") return [r.type ? r.type[0].toUpperCase() + r.type.slice(1) : "Check", ...(r.verbs ?? []).slice(0, 3)].join(" ");
   if (r.kind === "right") return [r.access === "allow" ? "Allows" : "Denies", ...(r.verbs ?? []).slice(0, 3)].join(" ");
@@ -420,6 +430,7 @@ function newElementNode(
   key: string,
   errors: number,
   actsIn?: ReadonlyMap<string, number>,
+  stereotypeKeys?: ReadonlyMap<string, string>,
 ): TreeNode {
   const f = kindFolder(r.kind) ?? OTHER_FOLDER;
   const label = rowLabel(byId, r);
@@ -429,7 +440,7 @@ function newElementNode(
   node.errors = errors;
   if (DOCUMENT_KINDS.has(r.kind)) node.load = "document";
   if (!INDEX_CHILD_KINDS.has(r.kind)) node.children = [];
-  node.secondary = rowSecondary(byId, r, actsIn);
+  node.secondary = rowSecondary(byId, r, actsIn, stereotypeKeys);
   return node;
 }
 
@@ -468,6 +479,7 @@ function sameExtras(input: TreeInput, last: TreeInput): boolean {
     input.categoryNames === last.categoryNames &&
     input.errors === last.errors &&
     input.scenarioStatus === last.scenarioStatus &&
+    input.stereotypeKeys === last.stereotypeKeys &&
     !!input.groupTablesByDomain === !!last.groupTablesByDomain &&
     !!input.referenceFlat === !!last.referenceFlat
   );
@@ -658,7 +670,8 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
   for (const row of added) {
     byId.set(row.id, row);
     if (row.kind === "relation" && row.ends) {
-      const ends = row.ends.map((e) => e.entity);
+      // An end with several types is reached from every entity it lists and every carrier of its stereotypes.
+      const ends = row.ends.flatMap((e) => endCoveredEntities(e));
       ends.forEach((e, i) => {
         if (ends.indexOf(e) === i) related.relationsOf.set(e, [...(related.relationsOf.get(e) ?? []), row.id]);
       });
@@ -673,7 +686,7 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
     folderOf.set(row.id, key);
     const folder = edit(key, { count: (nodes.get(key)!.count ?? 0) + 1 })!;
     if (folder.children && !forest.pending.has(key)) {
-      const node = newElementNode(byId, row, "domain-model", row.id, 0, related.actsIn);
+      const node = newElementNode(byId, row, "domain-model", row.id, 0, related.actsIn, forest.stereotypeKeys);
       node.parent = key;
       nodes.set(node.key, node);
       insertChild(key, node);
@@ -685,7 +698,7 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
     replaceInList(old, row);
     touch(row);
     const label = rowLabel(byId, row);
-    const node = edit(row.id, { label, sort: label.toLowerCase(), secondary: rowSecondary(byId, row, related.actsIn) });
+    const node = edit(row.id, { label, sort: label.toLowerCase(), secondary: rowSecondary(byId, row, related.actsIn, forest.stereotypeKeys) });
     if (!node) continue;
     if (node.parent && nodes.get(node.parent)?.children) insertChild(node.parent, node);
   }
@@ -694,7 +707,7 @@ export function patchForest(forest: Forest, patch: IndexPatch): Forest | null {
     if (row.kind === "entity")
       for (const rel of related.relationsOf.get(row.id) ?? []) {
         const r = byId.get(rel);
-        if (r) edit(rel, { secondary: rowSecondary(byId, r) });
+        if (r) edit(rel, { secondary: rowSecondary(byId, r, undefined, forest.stereotypeKeys) });
       }
   for (const id of reset) {
     const node = nodes.get(id);
@@ -757,7 +770,7 @@ export function buildForest(input: TreeInput): Forest {
     return holder;
   };
   const elementNode = (r: Row, explorer: ExplorerId, key = r.id): TreeNode => {
-    const node = newElementNode(byId, r, explorer, key, errorsOf(r.id), related.actsIn);
+    const node = newElementNode(byId, r, explorer, key, errorsOf(r.id), related.actsIn, input.stereotypeKeys);
     place.set(r.id, key);
     return add(node);
   };
@@ -831,13 +844,9 @@ export function buildForest(input: TreeInput): Forest {
         otherRows.push(r);
     }
     if (r.kind === "relation" && r.ends) {
-      const list = r.ends;
-      const ends: string[] = new Array(list.length);
-      for (let i = 0; i < list.length; i++) {
-        const e = list[i].entity;
-        ends[i] = e;
-        if (ends.indexOf(e) === i) push(related.relationsOf, e, r.id);
-      }
+      const ends: string[] = [];
+      for (const end of r.ends) for (const e of endCoveredEntities(end)) ends.push(e);
+      for (let i = 0; i < ends.length; i++) if (ends.indexOf(ends[i]) === i) push(related.relationsOf, ends[i], r.id);
       related.endsOf.set(r.id, ends);
     } else if (r.kind === "mapping") {
       if (r.entity) push(related.mappingsOf, r.entity, r.id);
@@ -1530,7 +1539,7 @@ export function buildForest(input: TreeInput): Forest {
   };
   const statusOf = input.scenarioStatus;
   for (const r of processRows) {
-    const node = add(newElementNode(byId, r, "processes", processKey(r.id), errorsOf(r.id)));
+    const node = add(newElementNode(byId, r, "processes", processKey(r.id), errorsOf(r.id), undefined, input.stereotypeKeys));
     processPlace.set(r.id, node.key);
     node.load = "document";
     const failed = (id: string) => !!statusOf?.get(id) && !statusOf.get(id)!.passed;
@@ -1579,7 +1588,7 @@ export function buildForest(input: TreeInput): Forest {
         list
           .map((m) => {
             const key = `${node.key}/m:${m.id}`;
-            const row = add(newElementNode(byId, m, "processes", key, 0, related.actsIn));
+            const row = add(newElementNode(byId, m, "processes", key, 0, related.actsIn, input.stereotypeKeys));
             row.home = false;
             row.target = processPlace.get(m.id);
             row.load = undefined;
@@ -1591,7 +1600,7 @@ export function buildForest(input: TreeInput): Forest {
       );
     };
     const actorNodes = actorRows.map((r) => {
-      const node = add(newElementNode(byId, r, "processes", `${ROOTS.processes}/a:${r.id}`, errorsOf(r.id), related.actsIn));
+      const node = add(newElementNode(byId, r, "processes", `${ROOTS.processes}/a:${r.id}`, errorsOf(r.id), related.actsIn, input.stereotypeKeys));
       processPlace.set(r.id, node.key);
       attachMembers(node, [r.id]);
       // An actor taken from the object sits only in From the object, whatever its type.
@@ -1695,6 +1704,7 @@ export function buildForest(input: TreeInput): Forest {
     vocabularies: vocabularyChains,
     unplaced,
     pending,
+    stereotypeKeys: input.stereotypeKeys ?? new Map(),
     patch: {
       lists,
       rollup,
@@ -1743,7 +1753,10 @@ export function usesOf(forest: Forest, id: string): string[] {
   const add = (to: string | null | undefined) => {
     if (to && !out.includes(to)) out.push(to);
   };
-  for (const e of r.ends ?? []) add(e.entity);
+  for (const e of r.ends ?? []) {
+    for (const id of endListedEntities(e)) add(id);
+    for (const id of e.stereotypes ?? []) add(id);
+  }
   add(r.entity);
   add(r.database);
   add(r.target);
@@ -1906,7 +1919,18 @@ function elementChildren(forest: Forest, node: TreeNode): TreeNode[] {
       const holderKey = `${node.key}/relations`;
       const members = relations.map((rel) => {
         const relation = forest.byId.get(rel);
-        const ends = (related.endsOf.get(rel) ?? []).map((e) => forest.byId.get(e)?.name ?? "?").join(" → ");
+        const ends = relation?.ends?.length
+          ? relation.ends
+              .map(
+                (e) =>
+                  endLabel(
+                    e,
+                    (id) => forest.byId.get(id)?.name,
+                    (id) => forest.stereotypeKeys.get(id),
+                  ) || "?",
+              )
+              .join(" → ")
+          : (related.endsOf.get(rel) ?? []).map((e) => forest.byId.get(e)?.name ?? "?").join(" → ");
         const away = relation && relation.package !== r.package ? domainPath(forest, relation.package) : "";
         return navigation(forest, holderKey, rel, away ? `${ends} · ${away}` : ends);
       });
@@ -1962,7 +1986,10 @@ function elementChildren(forest: Forest, node: TreeNode): TreeNode[] {
     const ends = r.ends ?? [];
     if (ends.length) {
       // Keyed by position: both ends of a self relation name one entity.
-      const members = ends.map((e, i) => navigation(forest, `${node.key}/ends`, e.entity, e.role || undefined, `${node.key}/ends/${i}`));
+      // An end with several types lists each entity it names, with its role; its stereotypes and "any entity" have no element to open.
+      const members = ends.flatMap((e, i) =>
+        endListedEntities(e).map((id, j) => navigation(forest, `${node.key}/ends`, id, e.role || undefined, `${node.key}/ends/${i}${j ? `/${j}` : ""}`)),
+      );
       out.push(navFolder(forest, node, "ends", GROUP_LABELS.ends, "relationship", members));
     }
   }

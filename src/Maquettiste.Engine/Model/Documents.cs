@@ -292,9 +292,46 @@ public sealed record ElementSummary(string Id, string Kind, string Name, string?
 }
 
 /// <summary>One end of a relation, on the relation's index row (E5).</summary>
-/// <param name="Entity">The id of the entity at this end.</param>
+/// <param name="Entity">The id of the entity at this end; <see langword="null"/> on an end with several types (several-types-design.md section 9).</param>
 /// <param name="Role">The end's role name.</param>
-public sealed record RelationEndSummary(string Entity, string Role);
+public sealed record RelationEndSummary([property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Entity, string Role)
+{
+    /// <summary>The ids of the end's entity entries, in entry order, on an end that writes <c>types</c>; <see langword="null"/> otherwise.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Entities { get; init; }
+
+    /// <summary>The ids of the stereotypes the end's entries name, in entry order, when it names some; <see langword="null"/> otherwise.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Stereotypes { get; init; }
+
+    /// <summary>Whether the end may be any entity. Left out of the JSON when false.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool AnyEntity { get; init; }
+
+    /// <summary>
+    /// The carriers of the stereotypes the end names, per entry, by qualified name then id (for the explorer), when there are some;
+    /// <see langword="null"/> otherwise. Filled after the rows, as a process row's <c>covers</c>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? Covers { get; init; }
+
+    /// <inheritdoc/>
+    public bool Equals(RelationEndSummary? other) =>
+        other is not null
+        && string.Equals(Entity, other.Entity, StringComparison.Ordinal)
+        && string.Equals(Role, other.Role, StringComparison.Ordinal)
+        && AnyEntity == other.AnyEntity
+        && SameList(Entities, other.Entities)
+        && SameList(Stereotypes, other.Stereotypes)
+        && SameList(Covers, other.Covers);
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => HashCode.Combine(
+        Entity is null ? 0 : StringComparer.Ordinal.GetHashCode(Entity), StringComparer.Ordinal.GetHashCode(Role), AnyEntity);
+
+    private static bool SameList(IReadOnlyList<string>? a, IReadOnlyList<string>? b) =>
+        ReferenceEquals(a, b) || (a is not null && b is not null && a.SequenceEqual(b, StringComparer.Ordinal));
+}
 
 /// <summary>A loaded extension schema file.</summary>
 /// <param name="Schema">The extension.</param>

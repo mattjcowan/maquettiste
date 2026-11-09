@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../.schema/v1/stereotype.json",
+  "kind": "stereotype",
+  "id": "01KST0STR00000000000000002",
+  "key": "table-only",
+  "name": "TableOnly",
+  "appliesTo": [
+    "table"
+  ]
+}

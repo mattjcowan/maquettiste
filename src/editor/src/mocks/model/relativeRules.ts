@@ -13,6 +13,8 @@ import {
   type ObjectField,
   type RelativeDoc,
 } from "@/model/objectFields";
+import { Coverage } from "./coverage";
+import { carriersOf } from "./endCover";
 import { referencesOf } from "./refs";
 import type { ModelEntry } from "./validate";
 
@@ -20,7 +22,8 @@ type Json = Record<string, unknown>;
 type Emit = (rule: string, severity: Diagnostic["severity"], message: string, pointer: string, elementId?: string) => void;
 
 /** Field sources over a model's entries: the documents by id, the relations and the stereotypes by key. */
-export function fieldSourcesOf(all: Iterable<ModelEntry>): FieldSources {
+export function fieldSourcesOf(allEntries: Iterable<ModelEntry>): FieldSources {
+  const all = [...allEntries];
   const byId = new Map<string, Json>();
   const relations: Json[] = [];
   const stereotypes = new Map<string, Json>();
@@ -29,7 +32,15 @@ export function fieldSourcesOf(all: Iterable<ModelEntry>): FieldSources {
     if (e.json.kind === "relation") relations.push(e.json);
     if (e.json.kind === "stereotype" && typeof e.json.key === "string") stereotypes.set(e.json.key, e.json);
   }
-  return { doc: (id) => byId.get(id), relations, stereotype: (key) => stereotypes.get(key), kindOf: (id) => byId.get(id)?.kind as string | undefined };
+  // The carriers of an end's stereotypes (an end with several types is held by each type it covers), read only when a relation has such an end.
+  let coverage: Coverage | undefined;
+  return {
+    doc: (id) => byId.get(id),
+    relations,
+    stereotype: (key) => stereotypes.get(key),
+    kindOf: (id) => byId.get(id)?.kind as string | undefined,
+    carriers: (relation, endIndex) => carriersOf(relation, endIndex, (coverage ??= new Coverage(all))),
+  };
 }
 
 const STEREOTYPE_PREFIX = "stereotype:";

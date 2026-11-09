@@ -1,0 +1,11 @@
+{
+  "$schema": "../../.schema/v1/seed.json",
+  "kind": "seed",
+  "id": "01KST0SED00000000000000003",
+  "name": "Attached",
+  "target": "01KST0RXN00000000000000001",
+  "columns": [
+    "01KST0END00000000000000001",
+    "01KST0END00000000000000002"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01KST0RXN00000000000000002",
+  "name": "Concerns",
+  "package": "01KST0PKG00000000000000001",
+  "ends": [
+    {
+      "id": "01KST0END00000000000000003",
+      "entity": "01KST0ENT00000000000000008",
+      "role": "concernedBy",
+      "navigation": "concernedBy"
+    },
+    {
+      "id": "01KST0END00000000000000004",
+      "types": [
+        {
+          "entity": "01KST0ENT00000000000000002"
+        },
+        {
+          "stereotype": "approvable"
+        }
+      ],
+      "role": "concerns",
+      "navigation": "concerns",
+      "max": 1
+    }
+  ]
+}

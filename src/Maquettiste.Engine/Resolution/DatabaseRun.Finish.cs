@@ -363,7 +363,7 @@ internal sealed partial class DatabaseRun
         {
             if (phys.Shape != RelationShape.ForeignKey || phys.Mapping is not { } mapping)
                 continue;
-            var dependentTable = phys.Dependent is { } dependent ? TableOf(dependent.Entity.Id) : null;
+            var dependentTable = phys.Dependent is { } dependent ? TableOf(dependent.OneEntity.Id) : null;
             var primary = phys.Foreign.FirstOrDefault(s => s.Resolved && ReferenceEquals(s.Host, dependentTable)) ?? phys.Foreign.FirstOrDefault(s => s.Resolved);
             mapping.ForeignKey = primary?.Result;
             if (phys.Relation is not { } relation)
@@ -379,7 +379,7 @@ internal sealed partial class DatabaseRun
                     deps.Element(overlay.Id);
                 if (host.Table.Entity is { } hostEntity)
                     deps.AddRange(_run.DepsOf(hostEntity).ToList());
-                if (phys.Principal is { } principal && _placements.TryGetValue(principal.Entity.Id, out var pp))
+                if (phys.Principal is { } principal && _placements.TryGetValue(principal.OneEntity.Id, out var pp))
                     deps.AddRange(KeyDeps(pp));
             }
         }
@@ -556,7 +556,7 @@ internal sealed partial class DatabaseRun
         if (phys.Shape == RelationShape.ForeignKey)
         {
             var fromIsDependent = ReferenceEquals(navigation.From, phys.Dependent);
-            var dependentTable = TableOf(fromIsDependent ? fromEntityId : navigation.To.Entity.Id);
+            var dependentTable = TableOf(fromIsDependent ? fromEntityId : navigation.To.OneEntity.Id);
             var spec = dependentTable is null ? null : phys.Foreign.FirstOrDefault(s => s.Resolved && ReferenceEquals(s.Host, dependentTable));
             if (spec is null)
                 return null;

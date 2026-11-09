@@ -182,12 +182,13 @@ internal static class SeedInput
                     Attributes(ancestor.Attributes);
                 foreach (var relation in view.Relations())
                 {
-                    if (relation.Ends.Count != 2)
+                    // Seed columns leave out a relation with an end of several types (several-types-design.md decision 21): MQ7105 refuses such a column.
+                    if (relation.Ends.Count != 2 || EndCoverage.HasSeveralTypes(relation))
                         continue;
                     for (var end = 0; end < 2; end++)
                     {
                         var far = relation.Ends[end];
-                        if (far.Max != MaxCardinality.Many && lineage.Contains(relation.Ends[1 - end].Entity))
+                        if (far.Max != MaxCardinality.Many && relation.Ends[1 - end].SingleEntity is { } near && lineage.Contains(near))
                             children.Add(new Child(far.Role, far.Id, "end"));
                     }
                 }

@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01KST0TAB00000000000000001",
+  "name": "comments",
+  "database": "01KST0DBS00000000000000001",
+  "columns": [
+    {
+      "id": "01KST0CMN00000000000000001",
+      "name": "id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST0CMN00000000000000002",
+      "name": "attached_id",
+      "type": "uuid"
+    }
+  ]
+}

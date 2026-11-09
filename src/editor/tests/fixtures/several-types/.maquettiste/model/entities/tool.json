@@ -1,0 +1,36 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01KST0ENT00000000000000007",
+  "name": "Tool",
+  "package": "01KST0PKG00000000000000001",
+  "key": {
+    "attributes": [
+      "01KST0ATT00000000000000007"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01KST0ATT00000000000000007",
+      "name": "id",
+      "type": "uuid"
+    }
+  ],
+  "bindings": [
+    {
+      "id": "01KST0BND00000000000000002",
+      "database": "01KST0DBS00000000000000001",
+      "source": "01KST0TAB00000000000000002",
+      "fields": [
+        {
+          "attribute": "01KST0ATT00000000000000007",
+          "column": "id"
+        },
+        {
+          "attribute": "01KST0END00000000000000007",
+          "column": "comment_id"
+        }
+      ]
+    }
+  ]
+}

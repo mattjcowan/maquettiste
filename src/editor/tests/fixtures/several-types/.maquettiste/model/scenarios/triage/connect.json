@@ -1,0 +1,40 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01KST0SCN00000000000000002",
+  "name": "Connect",
+  "process": "01KST0PRC00000000000000002",
+  "objects": [
+    {
+      "id": "01KST0XBJ00000000000000004",
+      "name": "c1",
+      "entity": "01KST0ENT00000000000000008",
+      "links": [
+        {
+          "end": "01KST0END00000000000000002",
+          "object": "01KST0XBJ00000000000000006"
+        }
+      ]
+    },
+    {
+      "id": "01KST0XBJ00000000000000005",
+      "name": "t1",
+      "entity": "01KST0ENT00000000000000007"
+    },
+    {
+      "id": "01KST0XBJ00000000000000006",
+      "name": "p1",
+      "entity": "01KST0ENT00000000000000002"
+    }
+  ],
+  "subject": "01KST0XBJ00000000000000004",
+  "steps": [
+    {
+      "id": "01KST0STP00000000000000002",
+      "input": "verb",
+      "verb": "connect",
+      "end": "01KST0END00000000000000002",
+      "object": "01KST0XBJ00000000000000005"
+    }
+  ]
+}

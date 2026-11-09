@@ -67,7 +67,7 @@ internal static partial class ResolutionKit
             }
 
             foreach (var n in e.Navigations)
-                sb.Append("  nav ").Append(n.Name).Append(" -> ").Append(n.Target.Name).Append(n.IsCollection ? "[]" : "").Append(" via ")
+                sb.Append("  nav ").Append(n.Name).Append(" -> ").Append(n.Target?.Name ?? string.Join('|', n.Targets.Select(t => t.Name))).Append(n.IsCollection ? "[]" : "").Append(" via ")
                     .Append(n.Relation.Name).Append('\n');
             foreach (var (db, m) in e.Mappings)
             {
@@ -83,7 +83,7 @@ internal static partial class ResolutionKit
         foreach (var r in model.Relations)
         {
             sb.Append("relation ").Append(r.Name).Append(' ').Append(r.Cardinality).Append(' ').Append(r.RelationKind).Append(" ends=")
-                .Append(string.Join(',', r.Ends.Select(e => $"{e.Role}:{e.Entity.Name}[{e.Min}..{e.Max}]"))).Append('\n');
+                .Append(string.Join(',', r.Ends.Select(e => $"{e.Role}:{e.Entity?.Name ?? string.Join('|', e.Types.Select(t => t.Name))}[{e.Min}..{e.Max}]"))).Append('\n');
             foreach (var (db, m) in r.Mappings)
             {
                 sb.Append("  mapping ").Append(db).Append(' ').Append(m.Shape)

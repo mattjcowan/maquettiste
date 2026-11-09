@@ -13,10 +13,19 @@ import { bindingDiagnostics } from "./lifecycleRules";
 import { verbDiagnostics, verbGlobalsOf, type VerbGlobals } from "./verbs";
 import { relativeUseDiagnostics } from "./relativeRules";
 import { approvalDiagnostics } from "./approvalRules";
-import { rightDiagnostics } from "./rightRules";
+import { rightDiagnostics, severalLinkDiagnostics } from "./rightRules";
 import { assumeKindDiagnostics, namedTriggerDiagnostics, triggerDiagnostics } from "./triggerRules";
 import { appliesToEntities, Coverage } from "./coverage";
 import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
+import {
+  endTypeDiagnostics,
+  fieldDiagnostics,
+  guardDiagnostics,
+  mappingDiagnostics,
+  relationHasSeveralTypes,
+  seedDiagnostics,
+  storageDiagnostics,
+} from "./endRules";
 
 type Json = Record<string, unknown>;
 export interface ModelEntry {
@@ -73,6 +82,8 @@ export interface ValidationContext extends ModelGlobals {
   lookup?(id: string): ModelEntry | undefined;
   /** Every entry (the lifecycle rules read the other lifecycles, the types' users and a reference type's rows). */
   all?(): Iterable<ModelEntry>;
+  /** The entry that owns an id, an element's own or a sub-element's (MQ4116 reads the end a field names). */
+  ownerOf?(id: string): ModelEntry | undefined;
 }
 
 /** MQ9203: a lifecycle's root-level states (not history or choice) against its bound enum's members, in order. */
@@ -351,7 +362,23 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
     ends.forEach((e, i) => {
       if (e.onDelete === "set-null" && e.min === 1) out.push(diag("MQ3011", "error", "set-null on a required end.", entry, `/ends/${i}/onDelete`));
     });
+    // MQ3041 to MQ3043 and MQ4115: an end with several types (endRules.ts); nothing runs for a relation without one.
+    const emit = (rule: string, severity: Diagnostic["severity"], message: string, pointer: string, elementId?: string) =>
+      out.push(diag(rule, severity, message, entry, pointer, elementId));
+    endTypeDiagnostics(json, ctx, emit);
+    if (relationHasSeveralTypes(json)) storageDiagnostics(json, ctx, emit);
   }
+  // MQ4009, MQ7105 and MQ3116 where a relation has an end with several types (endRules.ts); each reads nothing for a model without one.
+  if (kind === "mapping" || kind === "seed" || (kind === "process" && Array.isArray(json.guards) && json.guards.length)) {
+    const emitSeveral = (rule: string, severity: Diagnostic["severity"], message: string, pointer: string, elementId?: string) =>
+      out.push(diag(rule, severity, message, entry, pointer, elementId));
+    mappingDiagnostics(json, ctx, emitSeveral);
+    seedDiagnostics(json, ctx, emitSeveral);
+    guardDiagnostics(json, ctx, emitSeveral);
+  }
+  // MQ4116: a binding field, a query field or a collection that names an end with several types.
+  if ((kind === "entity" && Array.isArray(json.bindings) && json.bindings.length) || kind === "query")
+    fieldDiagnostics(json, ctx, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
   // MQ4057 a column facet its type does not have; MQ4056 a DDL feature the database's dialect lacks (PhysicalRules.cs).
   if (kind === "table") out.push(...tableFacetDiagnostics(json, entry, ctx.lookup));
   if (kind === "view") out.push(...viewDialectDiagnostics(json, entry, ctx.lookup));
@@ -376,6 +403,8 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   if (kind === "trigger-point" && ctx.all)
     namedTriggerDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
   // MQ2002 on a scenario's assume keys: a guard's key given a word, a trigger point's key given a boolean
+  if (kind === "scenario" && ctx.all)
+    severalLinkDiagnostics(json, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)), ctx.all);
   if (kind === "scenario" && ctx.all)
     assumeKindDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
   // MQ9601, MQ9602, MQ9603 and MQ9605: an actor's memberOf and relative and the one system actor (actorRules.ts)
@@ -447,12 +476,15 @@ export function validateModel(input: ValidationInput): Diagnostic[] {
   }
   const names = new Map<string, ModelEntry>();
   const byId = new Map([...entries].map((e) => [e.id, e]));
+  const subOwner = new Map<string, string>();
+  for (const e of entries) for (const sub of subElementIds(e.json)) subOwner.set(sub, e.id);
   const ctx: ValidationContext = {
     ...globalsOf(entries),
     hasId: (id) => owner.has(id),
     extensions: input.extensions,
     lookup: (id) => byId.get(id),
     all: () => byId.values(),
+    ownerOf: (id) => byId.get(id) ?? byId.get(subOwner.get(id) ?? ""),
     firstInScope: (scope, entry) => {
       const first = names.get(scope);
       if (!first) names.set(scope, entry);

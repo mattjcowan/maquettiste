@@ -34,10 +34,23 @@ internal sealed partial class DatabaseRun
 {
     private readonly List<(REntity Entity, TableBuild Table)> _promotedTables = [];
 
+    /// <summary>
+    /// Whether a binding field, a query field or a query collection names any end of a relation with an end of several types, or a path
+    /// under one: MQ4116 refuses it (several-types-design.md decision 22), since part 1 stores nothing for such a
+    /// relation, so resolution reports nothing more about it.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="reference">The field's or collection's <c>attribute</c>.</param>
+    /// <returns>Whether it goes through such a relation.</returns>
+    internal static bool NamesSeveralTypesEnd(ModelSnapshot model, string reference) =>
+        EndCoverage.Of(model).Any && Validation.RelationTypeRules.ThroughSeveralTypes(model, reference) is not null;
+
     private void ResolveRelation(RRelation rel)
     {
         var src = _run.RelationSource(rel.Id);
-        if (src is null || rel.Ends.Any(e => !_placements.ContainsKey(e.Entity.Id)))
+        // Part 1 stores nothing for a relation with an end of several types (several-types-design.md decision 22), as for a relation whose
+        // end entity isn't placed; every reader below sees one-type ends only.
+        if (src is null || EndCoverage.HasSeveralTypes(src) || rel.Ends.Any(e => !_placements.ContainsKey(e.OneEntity.Id)))
             return;
         var m = _run.MappingOf(_db.Id, rel.Id);
         if (m is { Ignore: true })
@@ -92,8 +105,8 @@ internal sealed partial class DatabaseRun
     private void ResolveForeignKeyShape(RRelation rel, Relation src, Mapping? m)
     {
         var (principal, dependent) = PrincipalAndDependent(rel, m);
-        var pp = _placements[principal.Entity.Id];
-        var dp = _placements[dependent.Entity.Id];
+        var pp = _placements[principal.OneEntity.Id];
+        var dp = _placements[dependent.OneEntity.Id];
         var phys = new RelationPhysical(RelationShape.ForeignKey) { Relation = rel, Principal = principal, Dependent = dependent };
         var relationDeps = _run.DepsOf(rel).ToList();
         if (dp.Bound)
@@ -162,7 +175,7 @@ internal sealed partial class DatabaseRun
             var ka = key.Attributes[i];
             var referenced = target is not null && i < targetKeys.Count ? target.Resolve(targetKeys[i]) : null;
             var columnKey = end.Id + "." + ka.Id;
-            var name = Render(_conv.ForeignKeyColumn, ("role", end.Role), ("key", ka.Name), ("entity", end.Entity.Name), ("relation", rel.Name),
+            var name = Render(_conv.ForeignKeyColumn, ("role", end.Role), ("key", ka.Name), ("entity", end.OneEntity.Name), ("relation", rel.Name),
                 ("table", host.Table.Name));
             AddColumn(host, columnKey, name, referenced?.Type ?? ka.Type.Builtin ?? "string", referenced?.Length ?? ka.Length,
                 referenced?.Precision ?? ka.Precision, referenced?.Scale ?? ka.Scale, nullable, null, null, null,
@@ -258,8 +271,8 @@ internal sealed partial class DatabaseRun
         var allKeys = new List<string>();
         foreach (var end in rel.Ends)
         {
-            var ep = _placements[end.Entity.Id];
-            t.Deps.AddRange(KeyDeps(ep)).Referrers(end.Entity.Id);
+            var ep = _placements[end.OneEntity.Id];
+            t.Deps.AddRange(KeyDeps(ep)).Referrers(end.OneEntity.Id);
             if (ep.Root.Entity.Key is not { Attributes.Count: > 0 } endKey)
                 continue;
             var keys = AddReferenceColumns(t, end, rel, endKey, ep.Table, ep.Table?.PrimaryKey ?? [], false);
@@ -333,8 +346,8 @@ internal sealed partial class DatabaseRun
     private string JunctionName(RRelation rel) =>
         NamePattern.Render(_conv.JunctionTable, new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["entity1"] = rel.Ends[0].Entity.Name,
-            ["entity2"] = string.Join('_', rel.Ends.Skip(1).Select(e => e.Entity.Name)),
+            ["entity1"] = rel.Ends[0].OneEntity.Name,
+            ["entity2"] = string.Join('_', rel.Ends.Skip(1).Select(e => e.OneEntity.Name)),
             ["relation"] = rel.Name,
         }, _conv.TableCase);
 }

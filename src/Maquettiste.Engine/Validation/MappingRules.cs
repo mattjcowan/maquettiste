@@ -4,7 +4,8 @@ namespace Maquettiste.Engine.Validation;
 
 /// <summary>
 /// Mapping rules: MQ4004 (two mappings for one target), MQ4009 (option invalid for the element), MQ4011 (bound relations),
-/// MQ4012 (an entity in no database), MQ4013 (convention packages a database does not use).
+/// MQ4012 (an entity in no database), MQ4013 (convention packages a database does not use), and MQ4115 through
+/// <see cref="RelationTypeRules.CheckStoredNothing"/>.
 /// </summary>
 internal static class MappingRules
 {
@@ -205,6 +206,24 @@ internal static class MappingRules
         if (model.Get<Relation>(mapping.Relation!) is not { } relation)
             return;
 
+        // Part 1 stores nothing for a relation with an end of several types (several-types-design.md decision 22): its mapping sets only
+        // ignore, so every other relation key is MQ4009, and the foreign key and junction checks below don't apply.
+        if (EndCoverage.HasSeveralTypes(relation))
+        {
+            foreach (var (pointer, set) in new (string, bool)[]
+            {
+                ("/attributes", mapping.Attributes.Count > 0), ("/shape", mapping.Shape is not null), ("/foreignKeyEnd", mapping.ForeignKeyEnd is not null),
+                ("/foreignKey", mapping.ForeignKey is not null), ("/junctionTable", mapping.JunctionTable is not null), ("/ends", mapping.Ends.Count > 0),
+                ("/promotedName", mapping.PromotedName is not null),
+            })
+            {
+                if (set)
+                    Invalid(report, pointer, $"Relation '{relation.Name}' has an end with several types, so a mapping of it sets only ignore; remove '{pointer[1..]}'.");
+            }
+
+            return;
+        }
+
         for (var i = 0; i < mapping.Attributes.Count; i++)
         {
             var item = mapping.Attributes[i];
@@ -309,8 +328,9 @@ internal static class MappingRules
             return;
         }
 
-        if (DependentEnd(relation, mapping) is { } dependent && BoundTable(context, mapping.Database, relation.Ends[dependent].Entity) is { } boundId
-            && boundId != owner.Id)
+        // A relation with an end of several types never gets here: its mapping sets only ignore (MQ4009, above).
+        if (DependentEnd(relation, mapping) is { } dependent && relation.Ends[dependent].SingleEntity is { } dependentEntity
+            && BoundTable(context, mapping.Database, dependentEntity) is { } boundId && boundId != owner.Id)
         {
             Invalid(report, "/foreignKey", $"Foreign key '{foreignKeyId}' belongs to table '{owner.Name}', not to the table bound to the dependent end '{relation.Ends[dependent].Role}'.");
         }
@@ -324,6 +344,14 @@ internal static class MappingRules
     {
         if (relation.Ends.Count != 2)
             return;
+        // A relation with an end of several types is never bound in part 1, so it never asks for a mapping; where its types are placed, the
+        // database stores nothing for it (MQ4115, several-types-design.md decision 22).
+        if (EndCoverage.HasSeveralTypes(relation))
+        {
+            RelationTypeRules.CheckStoredNothing(context, relation, report);
+            return;
+        }
+
         foreach (var database in context.Model.All<Database>())
         {
             if (!context.MappingsOf(database.Id, relation.Id).IsEmpty)
@@ -335,8 +363,9 @@ internal static class MappingRules
         }
     }
 
+    // An end with several types is never bound in part 1, so such a relation never asks for a mapping (MQ4011; CheckRelationBindings skips it).
     private static bool BothEndsBound(ValidationContext context, Relation relation, string databaseId) =>
-        relation.Ends.Count == 2 && relation.Ends.All(e => BoundTable(context, databaseId, e.Entity) is not null);
+        relation.Ends.Count == 2 && relation.Ends.All(e => e.SingleEntity is { } entityId && BoundTable(context, databaseId, entityId) is not null);
 
     private static string? BoundTable(ValidationContext context, string databaseId, string entityId)
     {

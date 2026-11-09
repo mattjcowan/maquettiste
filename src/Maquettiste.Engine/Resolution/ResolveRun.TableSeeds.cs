@@ -672,7 +672,7 @@ internal sealed partial class ResolveRun
     {
         if (row.Values.GetValueOrDefault(cellName) is not string id || !seedRowsById.TryGetValue(id, out var referenced))
             return null;
-        var keyAttributes = end.Entity.Key?.Attributes;
+        var keyAttributes = end.Entity?.Key?.Attributes;
         if (keyAttributes is null || index >= keyAttributes.Count)
             return null;
         var name = keyAttributes[index].Name;

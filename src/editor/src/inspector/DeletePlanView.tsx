@@ -44,6 +44,15 @@ export function deletesAlone(plans: DeletePlans): boolean {
   );
 }
 
+/** How many elements and parts the "delete dependents" plan deletes or removes that the "clear references" plan leaves alone. */
+export function dependentsOf(plans: DeletePlans): number {
+  const cleared = new Set(plans.clear.removes.map((r) => `${r.id}${r.pointer}`));
+  const alsoDeleted = new Set(plans.clear.deletes.map((d) => d.id));
+  return (
+    plans.dependents.deletes.filter((d) => !alsoDeleted.has(d.id)).length + plans.dependents.removes.filter((r) => !cleared.has(`${r.id}${r.pointer}`)).length
+  );
+}
+
 const isKind = (kind: string | null | undefined): kind is ElementKind => !!kind && kind in KIND_LABELS;
 
 function PlanRow({ kind, name, detail }: { kind: string | null | undefined; name: string; detail: string }) {
@@ -252,8 +261,9 @@ export function DeletePlanDialog({
   }, [key, preloaded]);
 
   const alone = plans ? deletesAlone(plans) : false;
-  // Dependents: the elements deleted with it and the parts (attributes, members, keys) removed from others.
-  const dependents = (plans?.dependents.deletes.length ?? 0) + (plans?.dependents.removes.length ?? 0);
+  // Dependents: what only the dependents way does beyond the clearing way: elements deleted with it, and parts (attributes, members, keys)
+  // removed from others that clearing does not remove. An entry taken out of a list (a relation's types) happens either way, so it is no dependent.
+  const dependents = plans ? dependentsOf(plans) : 0;
   // With no dependents both ways through clear the same references: one list, one button.
   const choice = !!plans && !alone && dependents > 0;
   const shown = plans ? (view === "dependents" && choice ? plans.dependents : plans.clear) : null;

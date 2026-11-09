@@ -424,6 +424,11 @@ export interface StepperOptions {
   stereotypeCovers?: StereotypeCover;
   /** The entities that carry a stereotype themselves (by key), in name order: a run with no object tests a stereotype subject against them. */
   stereotypeCarriers?: (key: string) => string[];
+  /** Whether a lifecycle governs an entity (it or a base is a subject): in_state of an object of a type it doesn't govern is unknown, with no note. */
+  governs?: (lifecycle: Json, entity: string) => boolean;
+  /** The ends with several types, by end id, and entity names: a connect step through one checks the connected object's entity. */
+  severalEnds?: ReadonlyMap<string, { name: string; covers(entityId: string): boolean; leadsTo: string }>;
+  entityNames?: (id: string) => string;
   /** Replay also records each step's `expect.triggerPoints` (the record operation's `triggerPoints: true`). */
   recordTriggerPoints?: boolean;
 }
@@ -683,6 +688,9 @@ class Interpreter {
   namedPoints: Json[] = [];
   stereotypeCovers: StereotypeCover = () => false;
   stereotypeCarriers: (key: string) => string[] = () => [];
+  governs: ((lifecycle: Json, entity: string) => boolean) | undefined;
+  severalEnds: NonNullable<StepperOptions["severalEnds"]> = new Map();
+  entityNames: (id: string) => string = (id) => id;
   entityChain: (entity: string) => string[] = (e) => [e];
   private prep = new Map<Edge, { sign: Prepared | null; move: Prepared | null }>();
   private auditSeq = 0;
@@ -1216,6 +1224,17 @@ class Interpreter {
       return this.refuse("no-transition");
     }
     if (this.frozenRefused(verb, input.end ?? null, input.object ?? null)) return;
+    // A connect step through an end with several types checks that the connected object's entity is covered (decision 18).
+    // Through a one-type end it keeps today's checks, which don't look at the connected object's entity.
+    const several = verb === "connect" && input.end ? this.severalEnds.get(input.end) : undefined;
+    const connected = several && input.object ? this.cast.objects.find((o) => o.id === input.object) : undefined;
+    if (several && connected && !several.covers(String(connected.entity))) {
+      this.problem(
+        "MQ9305",
+        `object '${String(connected.name)}' is an object of entity '${this.entityNames(String(connected.entity))}', but end '${several.name}' leads to ${several.leadsTo}; connect an object of one of those, or use another end.`,
+      );
+      return this.refuse("no-transition");
+    }
     const object = this.subjectObject();
     const entity = str(object?.entity) ?? this.subjectEntity ?? "";
     // The attributes a read or modify names, as ids: each is checked on its own (decision 21). None named: not known, so it fails closed.
@@ -2000,6 +2019,8 @@ class Interpreter {
     if (proc.id === this.chart.doc.id && (!of || of.length === 0)) return states.some((x) => [...this.config].some((n) => n.id === x));
     const object = this.objectOf(of ?? []);
     if (!object) return null;
+    // An object of a type the lifecycle doesn't govern holds no states in it: unknown, with no note (decision 15).
+    if (of && of.length > 0 && this.governs && !this.governs(proc, String(object.entity))) return null;
     const own = ids(object.states).filter((x) => stateIds(proc.states).has(x));
     const active = new Set<string>();
     if (own.length) for (const x of own) enterState(proc.states, x, active);
@@ -2781,6 +2802,9 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
   run.stereotypeCarriers = options.stereotypeCarriers ?? (() => []);
   run.triggers = usesTriggers([doc, ...run.lifecycles], run.namedPoints);
   run.entityChain = options.entityChain ?? ((e) => [e]);
+  run.governs = options.governs;
+  run.severalEnds = options.severalEnds ?? new Map();
+  run.entityNames = options.entityNames ?? ((id) => id);
   run.rightsOn = options.refusedBy === true || usesRights(run.lifecycles) || run.triggers;
   const at = readAt(start?.at);
   const traces = [run.start(start?.context, typeof at === "number" ? at : null)];

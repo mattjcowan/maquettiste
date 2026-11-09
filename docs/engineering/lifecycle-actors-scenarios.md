@@ -127,7 +127,7 @@ Each feature then says the same thing in the same terms:
 6. **Trigger points,** on every verb, as check, override and action, with the generated step methods.
 7. **Richer sign-off:** several named signatures, conditions on who must sign, delegation, escalation, separation of duties across steps. Approval stages (4.3) come with it.
 
-Rights come before trigger points. They serve three of the four uses directly, the simulator can check them, and scenarios can prove refusals. Trigger points matter once a pack or a lifecycle system uses them. Scenarios grow with each item. **Relations with several types** can run alongside once the stereotype question in item 2 is settled and their drawing is agreed (section 11).
+Rights come before trigger points. They serve three of the four uses directly, the simulator can check them, and scenarios can prove refusals. Trigger points matter once a pack or a lifecycle system uses them. Scenarios grow with each item. **Relations with several types** can run alongside once the stereotype question in item 2 is settled and their drawing is agreed (section 11). Both are now done: stereotype sets were built in 0.14.0, and the owner agreed the drawing on 2026-11-08.
 
 ## 11. Relations with several types at an end
 
@@ -143,6 +143,10 @@ Rights come before trigger points. They serve three of the four uses directly, t
   | One line to a shared base entity or stereotype | Simplest | Types that share one |
 
   Recommended: a junction node by default, bundled lines for two, and a toggle to collapse to one line and a list. Each line shows its end's role and cardinality.
+
+  **The owner agreed on 2026-11-08.** The editor picks the starting look: bundled lines for two types, a junction node for three or more. Each relation has one toggle that collapses its lines into one line to a box listing the types, and back. The toggle changes only the drawing, never the model, and is saved with the diagram like positions and zoom. An end that names a stereotype or a shared base entity draws one line to it. The types an end covers are chosen in the relation's form, not on the canvas.
+
+- **The design** is in [Relations with several types at an end](several-types-design.md). **Part 1 is built** (0.21.0): the model, the rules, processes and scenarios, the resolved model and the editor, with no storage. Storage is part 2 (0.22.0).
 
 ## 12. What stays out of the model
 

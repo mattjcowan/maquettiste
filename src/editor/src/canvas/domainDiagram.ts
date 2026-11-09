@@ -5,6 +5,7 @@
 // membership decides it, never a name (renaming the domain or the diagram changes nothing). Kept free of React so it
 // can be unit tested.
 import type { DiagramDoc, DiagramMember } from "@/api/types";
+import type { EndLike } from "@/model/endTypes";
 import { viewElements, type Point } from "./model";
 
 interface Row {
@@ -12,7 +13,7 @@ interface Row {
   kind: string;
   name?: string;
   package?: string | null;
-  ends?: readonly { entity: string }[];
+  ends?: readonly EndLike[];
 }
 
 const ordinal = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -62,10 +63,13 @@ export function newDomainDiagram(input: {
   rows: readonly Row[];
   positions: Readonly<Record<string, Point>>;
   viewport?: { x: number; y: number; zoom: number } | null;
+  /** The relations whose lines the person collapsed before the diagram existed (relations with an end of several types). */
+  collapsed?: readonly string[];
 }): DiagramDoc {
   const members = (syncDomainMembers([], input.rows, input.domain.id) ?? []).map((m) => {
     const p = input.positions[m.element];
-    return p ? { element: m.element, x: Math.round(p.x), y: Math.round(p.y) } : m;
+    const out: DiagramMember = p ? { element: m.element, x: Math.round(p.x), y: Math.round(p.y) } : m;
+    return input.collapsed?.includes(m.element) ? { ...out, collapsed: true } : out;
   });
   return {
     kind: "diagram",

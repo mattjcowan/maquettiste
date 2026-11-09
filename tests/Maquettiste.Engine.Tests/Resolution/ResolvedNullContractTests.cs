@@ -26,6 +26,10 @@ public sealed class ResolvedNullContractTests
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> Derived = new Dictionary<string, string>(StringComparer.Ordinal)
     {
+        // Relations with several types at an end, part 1 (several-types-design.md section 7): any_entity is false on an end that names an
+        // entity or types, so a pack can test it without a null check.
+        ["REnd.AnyEntity"] = "true when the end writes anyEntity, else false",
+
         // Physical objects.
         ["RDatabase.ByConvention"] = "the file's byConvention, else all without convention packages and packages with them",
         ["RColumn.Key"] = "the attribute path of a synthesized column (its overlay entry's attribute), else the column's own key",

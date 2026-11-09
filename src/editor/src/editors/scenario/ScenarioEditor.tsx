@@ -16,6 +16,7 @@ import { TextField } from "@/inspector/fields";
 import { newId } from "@/lib/ids";
 import { parseValuesText } from "@/model/effects";
 import { useObjectFields } from "../actor/useObjectFields";
+import { fieldOptionLabel } from "@/model/objectFields";
 import { describeVerb, verbGroups } from "@/model/verbList";
 import { useVerbs } from "@/verbs/useVerbs";
 import { indexLookup } from "@/model/index";
@@ -206,7 +207,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const verbOptions: GridOption[] = verbGroups("right", verbs.own, verbs.hidden)
     .filter((g) => g.id !== "move" && g.id !== "signature" && g.id !== "task")
     .flatMap((g) => g.options.map((o) => ({ value: o.key, label: o.label })));
-  const endOptions: GridOption[] = objectFields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: f.name }));
+  const endOptions: GridOption[] = objectFields.fields.filter((f) => f.kind === "end").map((f) => ({ value: f.id, label: fieldOptionLabel(f) }));
   const attributeOptions: GridOption[] = objectFields.fields.filter((f) => f.kind === "attribute").map((f) => ({ value: f.id, label: f.name }));
   const objectOptions: GridOption[] = (scenario.objects ?? []).map((o) => ({ value: o.id, label: o.name }));
   const verbSteps = rows.some((r) => r.input === "verb");

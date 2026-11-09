@@ -149,12 +149,13 @@ export function storageAttributes(entityId: string, docs: ReadonlyMap<string, Js
   const relations = [...docs.values()].filter((d) => d.kind === "relation").sort((x, y) => String(x.id).localeCompare(String(y.id)));
   const mine = new Set(chain);
   for (const r of relations) {
-    const ends = (r.ends as { id: string; entity: string; role?: string; navigation?: string; max?: 1 | "*" }[] | undefined) ?? [];
+    const ends = (r.ends as { id: string; entity?: string; role?: string; navigation?: string; max?: 1 | "*" }[] | undefined) ?? [];
     if (ends.length !== 2) continue;
     for (let i = 0; i < 2; i++) {
       const self = ends[i];
       const other = ends[1 - i];
-      if (!mine.has(self.entity) || other.max !== 1 || seen.has(other.id)) continue;
+      // An end with several types leads to more than one table: no field maps it (MQ4116).
+      if (!self.entity || !other.entity || !mine.has(self.entity) || other.max !== 1 || seen.has(other.id)) continue;
       seen.add(other.id);
       const otherName = String(docs.get(other.entity)?.name ?? "");
       const base = other.navigation || other.role || lowerFirst(otherName) || "ref";

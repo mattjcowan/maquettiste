@@ -1,0 +1,9 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST0MAP00000000000000001",
+  "name": "attached in main",
+  "database": "01KST0DBS00000000000000001",
+  "relation": "01KST0RXN00000000000000001",
+  "shape": "junction"
+}

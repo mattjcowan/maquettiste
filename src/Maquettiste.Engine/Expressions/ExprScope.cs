@@ -41,7 +41,10 @@ public sealed record ExprNavigation(string Id, string Name, ExprContainer Target
     /// <summary>The dotted identifiers the text writes before <see cref="Name"/>, or <see langword="null"/>.</summary>
     public string? Prefix { get; init; }
 
-    /// <summary>The id of the entity it leads to, which <c>in_state</c> asks a lifecycle about, or <see langword="null"/>.</summary>
+    /// <summary>
+    /// The id of the entity it leads to, which <c>in_state</c> asks a lifecycle about, or <see langword="null"/>: also for a relation end with
+    /// several types, whose types the engine reads from the end <see cref="Id"/> names (several-types-design.md decision 15).
+    /// </summary>
     public string? Entity { get; init; }
 }
 
