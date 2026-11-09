@@ -148,6 +148,15 @@ public sealed class ResolvedNullContractTests
         ["RNotBy"] = "approvals: ResolvedApprovalTests",
         ["RSignatureCount"] = "approvals: ResolvedApprovalTests",
         ["RExpectedNotice"] = "approvals, part 2: ResolvedApprovalPart2Tests",
+
+        // Relations with several types, part 2 (several-types-design.md section 19.8): no fixture model stores such a relation or names a
+        // mapping constant, so that their golden output stays as it was; the storage run's tests resolve them.
+        ["RRelationLink"] = "several types, part 2: the storage run's tests",
+        ["RRelationLinkEnd"] = "several types, part 2: the storage run's tests",
+        ["RColumnCondition"] = "several types, part 2: the storage run's and the joins' tests",
+        ["RRelationAttributeColumn"] = "several types, part 2: the storage run's tests",
+        ["REndEntity"] = "several types, part 2: the storage run's tests",
+        ["RTypeCode"] = "several types, part 2: the storage run's tests",
     };
 
     [Fact]

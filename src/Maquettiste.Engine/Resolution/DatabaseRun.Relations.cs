@@ -27,6 +27,112 @@ internal sealed class RelationPhysical(RelationShape shape)
 
     /// <summary>The junction or promoted table.</summary>
     public TableBuild? Junction { get; set; }
+
+    /// <summary>
+    /// For a relation with an end of several types whose mapping states storage (several-types-design.md section 19.8): what step 1
+    /// (<c>CollectTypeStorage</c>) works out, step 2 (<c>FinishTypeStorage</c>) resolves and step 3 (<c>BuildJoins</c>) reads;
+    /// <see langword="null"/> for every other relation.
+    /// </summary>
+    public TypeLinks? TypeLinks { get; set; }
+}
+
+/// <summary>
+/// The storage of a relation with an end of several types in one database (several-types-design.md decisions 39 to 42 and section 19.8).
+/// Step 1 records the ends, their targets and the pairs with their holding tables and pointers from placements and the mapping file; step 2
+/// fills each pointer's <see cref="TypeLinkPointer.Result"/> and each pair's <see cref="TypeLink.Result"/> once keys and uniques are resolved;
+/// step 3 builds a join path per pair from them.
+/// </summary>
+internal sealed class TypeLinks
+{
+    /// <summary>The relation mapping file in this database.</summary>
+    public required Mapping Mapping { get; init; }
+
+    /// <summary>The designed link table the mapping names (<c>junctionTable</c>), or <see langword="null"/>.</summary>
+    public TableBuild? LinkTable { get; init; }
+
+    /// <summary>One per relation end, in file order.</summary>
+    public required IReadOnlyList<TypeLinkEnd> Ends { get; init; }
+
+    /// <summary>
+    /// One per pair of targets, one target per end, in target order (decision 39): by the first end's target, then the second's. A pair whose
+    /// holding table step 1 couldn't settle (MQ4117) is left out.
+    /// </summary>
+    public List<TypeLink> Pairs { get; } = [];
+}
+
+/// <summary>One end of a relation stored as <see cref="TypeLinks"/>.</summary>
+internal sealed class TypeLinkEnd
+{
+    /// <summary>The relation end.</summary>
+    public required REnd End { get; init; }
+
+    /// <summary>The mapping's entry for the end, or <see langword="null"/> when it has none (that end's rows then hold the link).</summary>
+    public RelationEndMapping? Entry { get; init; }
+
+    /// <summary>
+    /// The end's targets in target order (decision 39): covered entities placed in the database, with a table, whose rows aren't in a covered
+    /// base's table. Each type gives itself when it is a target, then its covered derived targets by qualified name, then id.
+    /// </summary>
+    public List<Placement> Targets { get; } = [];
+
+    /// <summary>Covered entities not placed in the database, by qualified name, then id.</summary>
+    public List<REntity> LeftOut { get; } = [];
+
+    /// <summary>Targets no pointer of the entry reaches (MQ4120), in target order.</summary>
+    public List<Placement> NotStored { get; } = [];
+}
+
+/// <summary>One pair of targets and the table that holds its links.</summary>
+internal sealed class TypeLink
+{
+    /// <summary>The holding table: the link table, the table of the holding end's target, or a table per type (way 7).</summary>
+    public required TableBuild Table { get; init; }
+
+    /// <summary>One per relation end, in file order.</summary>
+    public required IReadOnlyList<TypeLinkPointer> Ends { get; init; }
+
+    /// <summary>The resolved link, which step 2 fills; <see langword="null"/> until then, or when step 2 refuses the pair (MQ4117).</summary>
+    public RRelationLink? Result { get; set; }
+}
+
+/// <summary>
+/// How a pair's holding table points at one end's target (decision 39): exactly one of <see cref="ForeignKey"/> and <see cref="IdColumn"/>,
+/// or neither on the end whose rows hold the link (<see cref="IsHolder"/>).
+/// </summary>
+internal sealed class TypeLinkPointer
+{
+    /// <summary>The relation end.</summary>
+    public required REnd End { get; init; }
+
+    /// <summary>The target at this end.</summary>
+    public required Placement Target { get; init; }
+
+    /// <summary>Whether this end's rows hold the link: <see cref="TypeLink.Table"/> is the target's table.</summary>
+    public bool IsHolder { get; init; }
+
+    /// <summary>
+    /// The pointer when it is a designed foreign key (an entry's <c>foreignKey</c>, the <c>foreignKeys</c> item the holding table owns, or the
+    /// <c>types</c> item's); its <see cref="ForeignKeySpec.Result"/> is complete after <c>FinishTables</c>.
+    /// </summary>
+    public ForeignKeySpec? ForeignKey { get; init; }
+
+    /// <summary>The pointer when it is an id column: the column's id in the holding table (<c>idColumn</c>).</summary>
+    public string? IdColumn { get; init; }
+
+    /// <summary>Beside <see cref="IdColumn"/>: the id of the column that holds the type code (<c>typeColumn</c>), or <see langword="null"/>.</summary>
+    public string? TypeColumn { get; init; }
+
+    /// <summary>
+    /// Beside <see cref="IdColumn"/>: the column of the target's table the id refers to, as the file names it (the entry's or the
+    /// <c>types</c> item's <c>referencesColumn</c>); <see langword="null"/> refers to the table's one-column primary key.
+    /// </summary>
+    public string? ReferencesColumn { get; init; }
+
+    /// <summary>
+    /// The resolved pointer, which step 2 fills: its columns, referenced table and columns, key, type column and codes; <see langword="null"/>
+    /// until then, or when step 2 refuses it (MQ4117).
+    /// </summary>
+    public RRelationLinkEnd? Result { get; set; }
 }
 
 /// <summary>Relations: foreign keys, junction tables, promoted entities and bindings to existing foreign keys.</summary>

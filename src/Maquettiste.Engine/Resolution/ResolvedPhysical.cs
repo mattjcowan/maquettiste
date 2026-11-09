@@ -60,6 +60,13 @@ public sealed class RDatabase : RAnnotated
     /// </summary>
     internal List<(RTable Owner, RAttribute Attribute)> TemplateCollections { get; } = [];
 
+    /// <summary>
+    /// How this database stores each relation with an end of several types placed in it, and what it can't enforce (several-types-design.md
+    /// section 19.8 and decision 47), in relation order; the database view's <c>relationStorage</c> reads it. The run fills it after
+    /// <c>FinishTables</c> (step 2), also in a partial run, which publishes no relation's mappings. Empty in a model with no such relation.
+    /// </summary>
+    internal IReadOnlyList<RelationStorageNote> RelationStorage { get; set; } = [];
+
     /// <inheritdoc/>
     public override string Kind => "database";
 
@@ -127,6 +134,74 @@ public sealed class RDatabase : RAnnotated
 
     /// <summary>The packages whose entities map here by convention, each with the schema its conventional tables go to, in file order.</summary>
     public IReadOnlyList<RConventionPackage> Packages { get; internal set; } = [];
+}
+
+/// <summary>
+/// How a database stores one relation with an end of several types (several-types-design.md section 19.8): one item of the database view's
+/// <c>relationStorage</c>. A relation is listed when every end has a covered entity placed in the database, with or without a mapping there.
+/// </summary>
+internal sealed class RelationStorageNote
+{
+    /// <summary>The relation.</summary>
+    public required RRelation Relation { get; init; }
+
+    /// <summary>The id of the relation's mapping in the database, or <see langword="null"/> when there is none.</summary>
+    public string? MappingId { get; init; }
+
+    /// <summary>
+    /// The resolved mapping, when the mapping states storage (a <c>junctionTable</c> or an <c>ends</c> entry, decision 49): its links, type
+    /// columns and codes (MQ4119 reads these); <see langword="null"/> otherwise.
+    /// </summary>
+    public RRelationMapping? Mapping { get; init; }
+
+    /// <summary>The tables that hold the links, each once, in the order of <see cref="RRelationMapping.Links"/>; empty when nothing is stored.</summary>
+    public IReadOnlyList<RTable> Tables { get; init; } = [];
+
+    /// <summary>Covered entities not placed in the database, by end in file order, then qualified name, then id.</summary>
+    public IReadOnlyList<REndEntity> LeftOut { get; init; } = [];
+
+    /// <summary>Placed targets no pointer reaches (MQ4120), in the order of <see cref="LeftOut"/>; empty without a mapping that states storage.</summary>
+    public IReadOnlyList<REndEntity> NotStored { get; init; } = [];
+
+    /// <summary>What the database can't enforce, per end (MQ4118, decision 47): by end in file order, then in the order the kinds are found.</summary>
+    public IReadOnlyList<StorageGap> Gaps { get; init; } = [];
+}
+
+/// <summary>One thing a database can't enforce for a relation end it stores (MQ4118, several-types-design.md decision 47).</summary>
+/// <param name="End">The end.</param>
+/// <param name="Kind">One of <see cref="StorageGapKinds"/>.</param>
+/// <param name="Text">The check or unique to copy, in the database's dialect and quoting; <see langword="null"/> when the kind has none.</param>
+internal sealed record StorageGap(REnd End, string Kind, string? Text);
+
+/// <summary>The kinds of <see cref="StorageGap"/> (several-types-design.md decision 47); API values, so they stay.</summary>
+internal static class StorageGapKinds
+{
+    /// <summary>No foreign key on the pointer: the database can't refuse a link to a missing row, nor apply the delete rule or a cascade.</summary>
+    public const string NoForeignKey = "no-foreign-key";
+
+    /// <summary>A key to a shared table: the database can't refuse a row of a type the end doesn't cover.</summary>
+    public const string SharedTable = "shared-table";
+
+    /// <summary>An id alone: the database can't check the type the id points at.</summary>
+    public const string IdOnly = "id-only";
+
+    /// <summary>A type column with no check found on its codes; the text is a check.</summary>
+    public const string TypeCheck = "type-check";
+
+    /// <summary>Keys per type with no check found on how many are set; the text is a check.</summary>
+    public const string CountCheck = "count-check";
+
+    /// <summary>A one-to-one with no unique found on the pointer; the text is a unique.</summary>
+    public const string OneToOneUnique = "one-to-one-unique";
+
+    /// <summary>A link table for a relation that doesn't allow duplicates, with no unique found over both ends' pointers; the text is a unique.</summary>
+    public const string LinkUnique = "link-unique";
+
+    /// <summary>Keys per type in a link table: a unique over nullable columns doesn't stop duplicate links in most databases.</summary>
+    public const string PerTypeDuplicates = "per-type-duplicates";
+
+    /// <summary>A target's table holds rows of other entities and nothing tells them apart (no discriminator, no binding constants).</summary>
+    public const string RowsNotToldApart = "rows-not-told-apart";
 }
 
 /// <summary>One package a database takes by convention.</summary>

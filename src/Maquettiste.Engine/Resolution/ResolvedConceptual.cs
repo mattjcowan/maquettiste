@@ -505,6 +505,127 @@ public sealed class RRelationMapping
     /// them as the effective storage strategy calls for (junction table, array column, JSON).
     /// </summary>
     public IReadOnlyList<RAttribute> TemplateDefined { get; internal set; } = [];
+
+    /// <summary>
+    /// For a relation with an end of several types whose mapping states storage (several-types-design.md section 19.8): one entry per pair
+    /// of targets, one target per end, in target order (decision 39), with the table that holds the link and how it points at each end.
+    /// Empty for every other relation.
+    /// </summary>
+    public IReadOnlyList<RRelationLink> Links { get; internal set; } = [];
+
+    /// <summary>
+    /// The link table's columns with a fixed value (decision 44), in file order: each a filter on the links the mapping reads and the value
+    /// it sets on every link it inserts. Empty when the mapping writes no <c>constants</c>.
+    /// </summary>
+    public IReadOnlyList<RColumnCondition> Constants { get; internal set; } = [];
+
+    /// <summary>
+    /// The relation attributes' columns in the one table that holds every link (decision 45), in file order. Empty when the mapping names no
+    /// attribute column.
+    /// </summary>
+    public IReadOnlyList<RRelationAttributeColumn> Attributes { get; internal set; } = [];
+
+    /// <summary>
+    /// Covered entities not placed in the database, by end in file order, then qualified name, then id (decision 39); no finding speaks of
+    /// them. Empty for a relation whose ends each have one type.
+    /// </summary>
+    public IReadOnlyList<REndEntity> LeftOut { get; internal set; } = [];
+
+    /// <summary>Placed targets no pointer of the mapping reaches (MQ4120), in the order of <see cref="LeftOut"/>.</summary>
+    public IReadOnlyList<REndEntity> NotStored { get; internal set; } = [];
+
+    /// <summary>The code of every entity a type column of the mapping holds (decision 42), by qualified name, then id.</summary>
+    public IReadOnlyList<RTypeCode> TypeCodes { get; internal set; } = [];
+}
+
+/// <summary>
+/// Where one pair of targets of a relation with an end of several types is linked in a database (several-types-design.md section 19.8): the
+/// table that holds the link and how it points at each end's target.
+/// </summary>
+public sealed class RRelationLink
+{
+    /// <summary>The table that holds the link: a link table, or the table of the target whose rows hold it.</summary>
+    public RTable Table { get; internal set; } = null!;
+
+    /// <summary>How the holding table points at each end's target, one per relation end, in file order.</summary>
+    public IReadOnlyList<RRelationLinkEnd> Ends { get; internal set; } = [];
+}
+
+/// <summary>How the table that holds a link points at one end's target (several-types-design.md section 19.8).</summary>
+public sealed class RRelationLinkEnd
+{
+    /// <summary>The relation end.</summary>
+    public REnd End { get; internal set; } = null!;
+
+    /// <summary>The target at this end: a covered entity placed in the database whose rows aren't in a covered base's table (decision 39).</summary>
+    public REntity Type { get; internal set; } = null!;
+
+    /// <summary>Whether this end's rows hold the link: the holding table is this target's table, so the end has no pointer of its own.</summary>
+    public bool IsHolder { get; internal set; }
+
+    /// <summary>The pointer's columns in the holding table; empty on the end that holds the link.</summary>
+    public IReadOnlyList<RColumn> Columns { get; internal set; } = [];
+
+    /// <summary>The table the pointer refers to (as <see cref="RForeignKey.ReferencedTable"/>); <see langword="null"/> on the end that holds the link.</summary>
+    public RTable? ReferencedTable { get; internal set; }
+
+    /// <summary>The columns the pointer refers to, in the order of <see cref="Columns"/>; empty on the end that holds the link.</summary>
+    public IReadOnlyList<RColumn> ReferencedColumns { get; internal set; } = [];
+
+    /// <summary>The foreign key, when the pointer is one; <see langword="null"/> for an id column.</summary>
+    public RForeignKey? ForeignKey { get; internal set; }
+
+    /// <summary>The column that holds the linked object's type code, when the entry names one; else <see langword="null"/>.</summary>
+    public RColumn? TypeColumn { get; internal set; }
+
+    /// <summary>
+    /// The codes <see cref="TypeColumn"/> holds for this target (decision 42): its own and those of its covered derived entities whose rows
+    /// are in its table that can have objects, sorted ordinally; each a string or an integer. Empty without a type column.
+    /// </summary>
+    public IReadOnlyList<object> Codes { get; internal set; } = [];
+}
+
+/// <summary>A column and the values it holds: a condition a join step or a link table's rows meet (several-types-design.md decisions 44 and 48).</summary>
+public sealed class RColumnCondition
+{
+    /// <summary>The column.</summary>
+    public RColumn Column { get; internal set; } = null!;
+
+    /// <summary>The values the column holds, any one of them: strings, numbers or booleans; <see langword="null"/> is SQL NULL.</summary>
+    public IReadOnlyList<object?> Values { get; internal set; } = [];
+}
+
+/// <summary>A relation attribute and its column in the table that holds every link (several-types-design.md decision 45).</summary>
+public sealed class RRelationAttributeColumn
+{
+    /// <summary>The relation attribute.</summary>
+    public RAttribute Attribute { get; internal set; } = null!;
+
+    /// <summary>The column.</summary>
+    public RColumn Column { get; internal set; } = null!;
+}
+
+/// <summary>A covered entity at one end of a relation stored in a database (several-types-design.md section 19.8).</summary>
+public sealed class REndEntity
+{
+    /// <summary>The relation end.</summary>
+    public REnd End { get; internal set; } = null!;
+
+    /// <summary>The entity.</summary>
+    public REntity Entity { get; internal set; } = null!;
+}
+
+/// <summary>An entity's type code in a database (several-types-design.md decision 42).</summary>
+public sealed class RTypeCode
+{
+    /// <summary>The entity.</summary>
+    public REntity Entity { get; internal set; } = null!;
+
+    /// <summary>
+    /// The code: the <c>discriminatorValue</c> of the entity's binding to the database, else of its mapping there, else its name; a string
+    /// or an integer.
+    /// </summary>
+    public object Code { get; internal set; } = null!;
 }
 
 /// <summary>A resolved navigation property.</summary>
@@ -537,11 +658,23 @@ public sealed class RNavigation : RObject
     /// <summary>Whether the navigation is a collection.</summary>
     public bool IsCollection { get; internal set; }
 
-    /// <summary>Join paths by database name.</summary>
+    /// <summary>
+    /// Join paths by database name. For a relation with an end of several types, set only where the database has exactly one path for the
+    /// navigation (several-types-design.md decision 48); <see cref="TypeJoins"/> holds every path.
+    /// </summary>
     public IReadOnlyDictionary<string, RJoinPath> Joins { get; internal set; } = FrozenDictionary<string, RJoinPath>.Empty;
 
     /// <summary>The join paths the database runs record, by database name, until the resolver publishes them as <see cref="Joins"/>.</summary>
     internal SortedDictionary<string, RJoinPath>? PendingJoins;
+
+    /// <summary>
+    /// For a navigation of a relation with an end of several types (several-types-design.md decision 48): by database name, the path of every
+    /// pair of targets, ordered by the target at the navigation's from end, then at its to end, each in target order. Empty otherwise.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<RJoinPath>> TypeJoins { get; internal set; } = FrozenDictionary<string, IReadOnlyList<RJoinPath>>.Empty;
+
+    /// <summary>The paths per pair the database runs record, by database name, until the resolver publishes them as <see cref="TypeJoins"/>.</summary>
+    internal SortedDictionary<string, IReadOnlyList<RJoinPath>>? PendingTypeJoins;
 }
 
 /// <summary>A resolved entity mapping in one database.</summary>
@@ -568,6 +701,12 @@ public sealed class REntityMapping
     /// <summary>Join paths by navigation name.</summary>
     public IReadOnlyDictionary<string, RJoinPath> Joins { get; internal set; } = FrozenDictionary<string, RJoinPath>.Empty;
 
+    /// <summary>
+    /// By navigation name, the paths of a navigation of the entity that leads to an end with several types, one per pair of targets
+    /// (several-types-design.md decision 48), in the order of <see cref="RNavigation.TypeJoins"/>. Empty otherwise.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<RJoinPath>> TypeJoins { get; internal set; } = FrozenDictionary<string, IReadOnlyList<RJoinPath>>.Empty;
+
     /// <summary>Collection attributes typed by a reference type, which no column or table stores: the templates realize them.</summary>
     public IReadOnlyList<RAttribute> TemplateDefined { get; internal set; } = [];
 }
@@ -587,6 +726,12 @@ public sealed class RJoinPath
 {
     /// <summary>The steps, in order.</summary>
     public IReadOnlyList<RJoinStep> Steps { get; internal set; } = [];
+
+    /// <summary>The target at the path's from end, set only when that end has several types (several-types-design.md decision 48).</summary>
+    public REntity? FromType { get; internal set; }
+
+    /// <summary>The target at the path's to end, set only when that end has several types (several-types-design.md decision 48).</summary>
+    public REntity? ToType { get; internal set; }
 }
 
 /// <summary>One join step.</summary>
@@ -606,4 +751,10 @@ public sealed class RJoinStep
 
     /// <summary>Whether the step goes through a junction table.</summary>
     public bool ViaJunction { get; internal set; }
+
+    /// <summary>
+    /// What the step's rows must also meet (several-types-design.md decision 48): a type column's codes, a link table's constants, or what
+    /// picks a target's rows in a table shared with other entities. Empty on a path of a relation whose ends each have one type.
+    /// </summary>
+    public IReadOnlyList<RColumnCondition> Conditions { get; internal set; } = [];
 }
