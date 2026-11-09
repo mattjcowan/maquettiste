@@ -180,6 +180,32 @@ describe("MQ4009 on a mapping of a one-type relation", () => {
   });
 });
 
+describe("MQ4009 on a one-type mapping, as the engine reads it now", () => {
+  it("lets an empty foreignKeys list pass, as the engine counts items", () => {
+    expect(findings(ID.one, { junctionTable: ID.table, ends: [{ end: ID.o1, foreignKey: ID.fk1, foreignKeys: [] }] })).toEqual([]);
+  });
+
+  it("checks the entries of an ignored mapping, naming the missing key only when its junction is designed", () => {
+    expect(findings(ID.one, { ignore: true, junctionTable: ID.table, ends: [{ end: ID.o1 }] }).map((f) => f.pointer)).toEqual(["/ends/0"]);
+    expect(findings(ID.one, { ignore: true, ends: [{ end: ID.o1 }] })).toEqual([]);
+    expect(findings(ID.one, { ignore: true, ends: [{ end: ID.o1, idColumn: ID.cId }] }).map((f) => f.pointer)).toEqual(["/ends/0/idColumn"]);
+  });
+
+  it("gives one finding for constants with no storage on a relation with several types", () => {
+    expect(findings(ID.rel, { constants: [{ column: ID.cCode, value: "A" }] }).map((f) => f.pointer)).toEqual(["/constants"]);
+  });
+
+  it("names two types items for one entity", () => {
+    const types = [
+      { entity: ID.part, foreignKey: ID.fk1 },
+      { entity: ID.part, foreignKey: ID.fk2 },
+    ];
+    expect(findings(ID.rel, { ends: [{ end: ID.e2, types }] })).toEqual([
+      { pointer: "/ends/0/types/1/entity", message: "End entry 0 of relation 'AttachedTo' lists entity 'Part' in two types items; keep one." },
+    ]);
+  });
+});
+
 describe("MQ4115 and a mapping that stores the relation", () => {
   const info = () => ctx.backend.model.validate().diagnostics.filter((d) => d.rule === "MQ4115" && d.elementId === ID.e2).length;
   it("goes quiet once an entry or a link table is named", () => {

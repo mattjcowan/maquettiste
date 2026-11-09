@@ -250,7 +250,8 @@ export function mappingDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
   const relationEnds = arr(relation.ends);
   const entries = arr(json.ends);
   const junction = typeof json.junctionTable === "string" ? ctx.lookup?.(json.junctionTable)?.json : undefined;
-  const designed = junction !== undefined && junction.kind === "table";
+  // The mapping's junction when it is a designed or imported table of the mapping's database (MappingRules.DesignedJunction).
+  const designed = junction !== undefined && junction.kind === "table" && junction.origin !== "synthesized" && junction.database === json.database;
   const stores = storesRelation(json);
   const roleOf = (endId: unknown) => str(relationEnds.find((e) => e.id === endId)?.role) || str(endId);
   const bad = (pointer: string, message: string) => emit("MQ4009", "error", message, pointer);
@@ -296,11 +297,11 @@ export function mappingDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
   entries.forEach((entry, i) => {
     const at = `/ends/${i}`;
     const role = roleOf(entry.end);
-    if (typeof entry.end === "string") {
+    const ways = entryWays(entry);
+    if (several && typeof entry.end === "string") {
       if (seenEnds.has(entry.end)) bad(`${at}/end`, `End '${role}' of relation '${name}' has two entries; keep one.`);
       seenEnds.add(entry.end);
     }
-    const ways = entryWays(entry);
     if (!several) {
       // A one-type relation keeps the words of a missing key and refuses the keys of an end with several types.
       if (ways.length === 0 && designed)
@@ -309,7 +310,7 @@ export function mappingDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
           `End entry ${i} names no 'foreignKey'; junction table '${str(junction.name)}' is designed, so the entry needs the foreign key that references its end's table.`,
         );
       for (const key of ["foreignKeys", "types", "idColumn", "typeColumn", "referencesColumn"])
-        if (entry[key] !== undefined)
+        if (Array.isArray(entry[key]) ? (entry[key] as unknown[]).length > 0 : entry[key] !== undefined)
           bad(`${at}/${key}`, `End entry ${i} of relation '${name}' sets '${key}', which needs a relation with an end of several types.`);
       return;
     }
@@ -340,6 +341,17 @@ export function mappingDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
         `${at}/foreignKeys`,
         `End entry ${i} of relation '${name}' sets 'foreignKeys' beside 'junctionTable'; in a link table an end is pointed at by one key, a key per type or an id.`,
       );
+    // Each type is listed once (decision 38): a second item for it would give its rows a second pointer.
+    const listed = new Set<string>();
+    types.forEach((t, k) => {
+      if (typeof t.entity !== "string") return;
+      if (listed.has(t.entity))
+        bad(
+          `${at}/types/${k}/entity`,
+          `End entry ${i} of relation '${name}' lists entity '${str(ctx.lookup?.(t.entity)?.json.name) || t.entity}' in two types items; keep one.`,
+        );
+      listed.add(t.entity);
+    });
   });
 
   // constants and attribute columns serve every relation mapping with a designed link table (answer 9).
@@ -368,7 +380,9 @@ export function mappingDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
       ...arr(e.types).flatMap((t) => keyColumns(t.foreignKey)),
     ]),
   );
+  // A relation with an end of several types that stores nothing has its constants refused above, once, as the engine does.
   arr(json.constants).forEach((c, i) => {
+    if (several && !stores) return;
     const at = `/constants/${i}`;
     if (!designed) return bad(at, `Constant ${i} needs a designed 'junctionTable' that holds its column.`);
     if (typeof c.column === "string" && !columns.has(c.column)) bad(`${at}/column`, `'${c.column}' is not a column of link table '${str(junction.name)}'.`);
@@ -376,12 +390,26 @@ export function mappingDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
       bad(`${at}/column`, `Constant ${i} names a column that an end entry already uses as a pointer; a constant needs a column of its own.`);
   });
   arr(json.attributes).forEach((a, i) => {
-    if (typeof a.column !== "string" || !designed) return;
+    if (typeof a.column !== "string") return;
+    if (!designed) {
+      // Without a link table the column is checked against the end's table by the run; a collection or value object can't map one column.
+      const attribute = arr(relation.attributes).find((x) => x.id === a.attribute);
+      if (several && stores && attribute && isCompound(attribute, ctx))
+        bad(`/attributes/${i}/column`, `Attribute ${i} is a collection or value object, so it can't map one column.`);
+      return;
+    }
     if (!columns.has(a.column)) bad(`/attributes/${i}/column`, `'${a.column}' is not a column of link table '${str(junction.name)}'.`);
     const attribute = arr(relation.attributes).find((x) => x.id === a.attribute);
-    if (attribute && (attribute.collection === true || (typeof attribute.type === "object" && attribute.type !== null)))
-      bad(`/attributes/${i}/column`, `Attribute ${i} is a collection or value object, so it can't map one column.`);
+    if (attribute && isCompound(attribute, ctx)) bad(`/attributes/${i}/column`, `Attribute ${i} is a collection or value object, so it can't map one column.`);
   });
+}
+
+/** Whether an attribute is a collection or typed by a value object: one column can't hold it (MappingRules.IsCompound). */
+function isCompound(attribute: Json, ctx: EndRuleContext): boolean {
+  if (attribute.collection === true) return true;
+  const type = attribute.type as Json | string | undefined;
+  const ref = type && typeof type === "object" ? type.ref : undefined;
+  return typeof ref === "string" && ctx.lookup?.(ref)?.json.kind === "value-object";
 }
 
 // Whether an end with several types covers an entity (given as its base chain): a listed entity, a carrier or any entity.

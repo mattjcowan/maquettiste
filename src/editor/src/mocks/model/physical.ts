@@ -1037,7 +1037,7 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
   // The queries over its tables and views (queries.ts), bound against the view just built.
   view.queries = resolveQueries(view, input.docs).queries;
   // The storage of relations with an end of several types: the view's relationStorage, and the run's findings kept for the resolver findings.
-  const run = typeStorageRun(input.docs, view);
+  const run = typeStorageRun(input.docs, view, conventions);
   if (run.storage.length) view.relationStorage = run.storage;
   runDiagnostics.set(view, run.diagnostics);
   return view;

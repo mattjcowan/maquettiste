@@ -489,9 +489,21 @@ export function planBothEnds(relation: Pick<RelationDoc, "id" | "ends">, ctx: Bo
   return { relationId: relation.id, look: collapsed ? "list" : "junction", ends, canToggle, collapsed };
 }
 
-/** The "+N not shown" text of each end of the node, and the names for its tooltip; null for an end that has every entry drawn. */
-export function notShownByEnd(plan: Pick<BothEndsPlan, "ends">): [ReturnType<typeof notShown>, ReturnType<typeof notShown>] {
-  return [notShown(plan.ends[0]), notShown(plan.ends[1])];
+/**
+ * The "+N not shown" text of each end of the node, and the names for its tooltip; null for an end that has every entry drawn. With the
+ * relation, each text names its end by role ("source: +1 not shown"), so the two labels on one node can be told apart.
+ */
+export function notShownByEnd(
+  plan: Pick<BothEndsPlan, "ends">,
+  relation?: Pick<RelationDoc, "ends">,
+): [ReturnType<typeof notShown>, ReturnType<typeof notShown>] {
+  const one = (index: 0 | 1) => {
+    const n = notShown(plan.ends[index]);
+    if (!n || !relation) return n;
+    const role = relation.ends?.[index]?.role || (index === 0 ? "first end" : "second end");
+    return { ...n, text: `${role}: ${n.text}` };
+  };
+  return [one(0), one(1)];
 }
 
 /** The tooltip of the junction node: each end's role with every entry, so the node says what it joins. */

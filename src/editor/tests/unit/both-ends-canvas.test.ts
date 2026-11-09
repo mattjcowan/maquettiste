@@ -101,6 +101,11 @@ describe("the both-ends plan", () => {
     expect(first).toEqual({ text: "+1 not shown", names: "Note" });
     expect(second).toEqual({ text: "+1 not shown", names: "Assembly" });
     expect(buildBothEndsGraph(plan, { positionOf: at("C", "P") }).edges.map((e) => e.target)).toEqual(["C", "P"]);
+    // With the relation, each label names its end, so the two on one node read differently.
+    expect(notShownByEnd(plan, link)).toEqual([
+      { text: "source: +1 not shown", names: "Note" },
+      { text: "target: +1 not shown", names: "Assembly" },
+    ]);
     expect(notShownByEnd(planBothEnds(link, ctx(["C", "N", "P", "A"]))!)).toEqual([null, null]);
     expect(bothEndsTitle(link, plan)).toBe("source: Comment, Note\ntarget: Part, Assembly");
   });
@@ -301,5 +306,58 @@ describe("guard, actor and owner paths through several types at both ends", () =
     } as unknown as Json;
     const fields = objectFields("P", { ...sources, relations: [both] });
     expect(fields.filter((f) => f.kind === "end").map((f) => f.id)).toEqual(["to", "from"]);
+  });
+});
+
+describe("auto-layout of several both-ends relations", () => {
+  // Three relations over six cards: each node sits between its own cards, the first end's cards left of it and the second end's right.
+  const relation = (id: string, a: string[], b: string[]) =>
+    ({
+      id,
+      name: id,
+      ends: [
+        { id: `${id}-a`, types: a.map((entity) => ({ entity })), role: "source", max: "*" },
+        { id: `${id}-b`, types: b.map((entity) => ({ entity })), role: "target", max: "*" },
+      ],
+    }) as unknown as RelationDoc;
+  const relations = [relation("R1", ["c1", "c2"], ["c3", "c7"]), relation("R2", ["c4", "c8"], ["c5", "c6"]), relation("R3", ["c3", "c9"], ["c4", "c10"])];
+
+  it("reverses the first end's lines so the layout reads from first end to node to second end", async () => {
+    const { layoutInput } = await import("@/canvas/model");
+    const cards = Array.from({ length: 10 }, (_, i) => ({ id: `c${i + 1}` }));
+    const flowNodes = [...cards, ...relations.map((r) => ({ id: r.id }))];
+    const flowEdges = relations.flatMap((r) =>
+      [0, 1].flatMap((end) =>
+        r.ends![end].types!.map((t, i) => ({
+          id: `${r.id}-${end}-${i}`,
+          source: r.id,
+          target: t.entity!,
+          data: { relation: r, part: "branch", endIndex: end, labelled: false },
+        })),
+      ),
+    );
+    const input = layoutInput(flowNodes, flowEdges);
+    const first = input.edges.find((e) => e.id === "R1-0-0")!;
+    const second = input.edges.find((e) => e.id === "R1-1-0")!;
+    expect([first.source, first.target]).toEqual(["c1", "R1"]);
+    expect([second.source, second.target]).toEqual(["R1", "c3"]);
+
+    const { default: ELK } = await import("elkjs/lib/elk.bundled.js");
+    const { elkEngine } = await import("@/canvas/layout");
+    const positions = await elkEngine(async () => new ELK()).layout(input.nodes, input.edges);
+    for (const r of relations) {
+      const hub = positions.get(r.id)!;
+      for (const t of r.ends![0].types!) expect(positions.get(t.entity!)!.x).toBeLessThan(hub.x);
+      for (const t of r.ends![1].types!) expect(positions.get(t.entity!)!.x).toBeGreaterThan(hub.x);
+    }
+    // The cards no longer share one column.
+    expect(new Set([...positions.values()].map((p) => p.x)).size).toBeGreaterThan(2);
+  });
+
+  it("leaves a one-end relation's lines as they were", async () => {
+    const { layoutInput } = await import("@/canvas/model");
+    const one = { id: "R", name: "R", ends: [{ id: "a", entity: "c1", max: "*" }, link.ends![1]] } as unknown as RelationDoc;
+    const input = layoutInput([{ id: "R" }, { id: "P" }], [{ id: "e", source: "R", target: "P", data: { relation: one, part: "branch", endIndex: 0 } }]);
+    expect([input.edges[0].source, input.edges[0].target]).toEqual(["R", "P"]);
   });
 });

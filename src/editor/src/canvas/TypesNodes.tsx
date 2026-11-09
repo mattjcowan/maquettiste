@@ -118,7 +118,12 @@ function TypesNodeView({ data, selected }: NodeProps<TypesFlowNode>) {
   if (kind === "list") {
     return (
       <div
-        className={cn("w-[190px] overflow-hidden rounded-panel border bg-surface text-primary", border)}
+        className={cn(
+          "overflow-hidden rounded-panel border bg-surface text-primary",
+          // The both-ends box lists whole entries: it grows to its longest line (and wraps past 340), where a one-end list keeps its 190.
+          groups ? "w-max min-w-[190px] max-w-[340px]" : "w-[190px]",
+          border,
+        )}
         data-testid={`relation-list-${relationName}`}
         aria-label={`Types of ${relationName}`}
       >
@@ -131,8 +136,8 @@ function TypesNodeView({ data, selected }: NodeProps<TypesFlowNode>) {
             ? groups.map((g, i) => {
                 const names = g.entries.map((e) => e.label).join(", ");
                 return (
-                  <li key={i} className="flex h-[18px] items-center px-2 text-12" title={names} data-testid="relation-list-group">
-                    <span className="min-w-0 flex-1 truncate">{g.text ? `${g.text}: ${names}` : names}</span>
+                  <li key={i} className="flex min-h-[18px] items-center px-2 text-12 leading-4" title={names} data-testid="relation-list-group">
+                    <span className="min-w-0 flex-1 whitespace-normal break-words">{g.text ? `${g.text}: ${names}` : names}</span>
                   </li>
                 );
               })

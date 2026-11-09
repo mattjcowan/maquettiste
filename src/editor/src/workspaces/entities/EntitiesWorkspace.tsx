@@ -397,7 +397,7 @@ function EntitiesCanvas() {
         });
         canToggle = plan.canToggle;
         collapsed = plan.collapsed;
-        both = { notShown: notShownByEnd(plan), title: bothEndsTitle(relation, plan) };
+        both = { notShown: notShownByEnd(plan, relation), title: bothEndsTitle(relation, plan) };
       } else {
         const plan = planSeveralTypes(relation, {
           onCanvas: (id) => positionOf.has(id),
