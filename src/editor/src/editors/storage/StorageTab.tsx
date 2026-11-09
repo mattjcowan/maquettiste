@@ -768,16 +768,21 @@ function statusText(status: ColumnStatus, attribute: string | undefined, value: 
 
 // ------------------------------------------------------------------ constants
 
-function ConstantsGrid({
+/** The constants grid of a binding. A relation mapping's "Rows of this relation" reuses it, with its own title and empty text. */
+export function ConstantsGrid({
   dom,
   binding,
   columns,
   onEdit,
+  title = "Constants",
+  emptyText = "None: every row of the source is this entity's.",
 }: {
   dom: string;
   binding: Binding;
   columns: BindingSource["columns"];
   onEdit: (change: (b: Binding) => void) => void;
+  title?: string;
+  emptyText?: string;
 }) {
   const constants = binding.constants ?? [];
   const set = (next: typeof constants) => onEdit((b) => setConstants(b, next));
@@ -799,7 +804,7 @@ function ConstantsGrid({
           </Button>
         }
       >
-        Constants
+        {title}
       </SectionTitle>
       {constants.length ? (
         <table className="w-full text-13" aria-label="Constant columns" data-testid="binding-constants">
@@ -860,7 +865,7 @@ function ConstantsGrid({
           </tbody>
         </table>
       ) : (
-        <p className="text-12 text-secondary">None: every row of the source is this entity's.</p>
+        <p className="text-12 text-secondary">{emptyText}</p>
       )}
     </section>
   );

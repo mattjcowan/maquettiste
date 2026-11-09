@@ -145,32 +145,61 @@ export function storageAttributes(entityId: string, docs: ReadonlyMap<string, Js
     for (const key of (level.stereotypes as string[] | undefined) ?? [])
       for (const a of (stereotypes.get(key)?.attributes as AttributeJson[] | undefined) ?? []) add(a, "virtual", `«${key}»`);
   }
-  // To-one navigations: in a two-ended relation, the end opposite this entity's with max 1 is a key the binding can map.
+  // To-one navigations: in a two-ended relation, the end opposite this entity's with max 1 is a key the binding can map. The entity
+  // holds an end when the other end covers it: its entity, a listed entity or one it derives from, a carried stereotype, or any entity.
   const relations = [...docs.values()].filter((d) => d.kind === "relation").sort((x, y) => String(x.id).localeCompare(String(y.id)));
   const mine = new Set(chain);
+  const carried = new Set(chain.flatMap((id) => (docs.get(id)?.stereotypes as string[] | undefined) ?? []));
+  type EndJson = {
+    id: string;
+    entity?: string;
+    role?: string;
+    navigation?: string;
+    max?: 1 | "*";
+    anyEntity?: boolean;
+    types?: { entity?: string; stereotype?: string }[];
+  };
+  const covers = (end: EndJson) =>
+    end.anyEntity === true ||
+    (end.entity ? mine.has(end.entity) : (end.types ?? []).some((t) => (t.entity ? mine.has(t.entity) : !!t.stereotype && carried.has(t.stereotype))));
+  const listedOf = (end: EndJson) => (end.entity ? [end.entity] : (end.types ?? []).flatMap((t) => t.entity ?? []));
+  const severalTypes = (end: EndJson) => !end.entity && (end.anyEntity === true || (end.types ?? []).length > 1 || (end.types ?? []).some((t) => t.stereotype));
   for (const r of relations) {
-    const ends = (r.ends as { id: string; entity?: string; role?: string; navigation?: string; max?: 1 | "*" }[] | undefined) ?? [];
+    const ends = (r.ends as EndJson[] | undefined) ?? [];
     if (ends.length !== 2) continue;
     for (let i = 0; i < 2; i++) {
       const self = ends[i];
       const other = ends[1 - i];
-      // An end with several types leads to more than one table: no field maps it (MQ4116).
-      if (!self.entity || !other.entity || !mine.has(self.entity) || other.max !== 1 || seen.has(other.id)) continue;
+      if (!covers(self) || other.max !== 1 || seen.has(other.id)) continue;
+      const names = listedOf(other).map((e) => String(docs.get(e)?.name ?? ""));
+      if (!severalTypes(other)) {
+        if (!listedOf(other)[0]) continue;
+        seen.add(other.id);
+        const otherName = names[0] ?? "";
+        const base = other.navigation || other.role || lowerFirst(otherName) || "ref";
+        out.push({
+          ref: other.id,
+          name: `${base}Id`,
+          origin: "relation",
+          from: `${String(r.name ?? "")} → ${otherName}`,
+          type: null,
+          isKey: false,
+          required: false,
+          readOnly: false,
+          // The dependent of a many-to-one holds the key; a one-to-one may hold it on either side, so it is not expected.
+          expected: self.max !== 1,
+        });
+        continue;
+      }
+      // An end with several types leads to more than one table: a type column, an id column, and a key column per type (decision 46).
       seen.add(other.id);
-      const otherName = String(docs.get(other.entity)?.name ?? "");
-      const base = other.navigation || other.role || lowerFirst(otherName) || "ref";
-      out.push({
-        ref: other.id,
-        name: `${base}Id`,
-        origin: "relation",
-        from: `${String(r.name ?? "")} → ${otherName}`,
-        type: null,
-        isKey: false,
-        required: false,
-        readOnly: false,
-        // The dependent of a many-to-one holds the key; a one-to-one may hold it on either side, so it is not expected.
-        expected: self.max !== 1,
-      });
+      const base = other.navigation || other.role || "ref";
+      const from = `${String(r.name ?? "")} → ${other.anyEntity === true ? "any entity" : names.filter(Boolean).join(", ") || "several types"}`;
+      const form = (ref: string, name: string) =>
+        out.push({ ref, name, origin: "relation", from, type: null, isKey: false, required: false, readOnly: false, expected: false });
+      form(`${other.id}.type`, `${base}Type`);
+      form(other.id, `${base}Id`);
+      for (const entity of listedOf(other)) form(`${other.id}.${entity}`, `${base}${String(docs.get(entity)?.name ?? "")}Id`);
     }
   }
   return out;

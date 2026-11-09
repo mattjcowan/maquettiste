@@ -27,7 +27,9 @@ import {
   type TableDocLike,
 } from "./relationStorage";
 import { databasesOf } from "./useStorage";
-import { docEndHasSeveralTypes, docEndSingleEntity } from "@/model/endTypes";
+import { docEndEntities, docEndHasSeveralTypes, docEndSingleEntity } from "@/model/endTypes";
+import { LinkTableExtras, SeveralTypesCard } from "./RelationStorageSeveral";
+import type { StorageEndSource, StorageMapping, TableDocWithKeys } from "./relationStorage";
 
 type Json = Record<string, unknown>;
 
@@ -37,7 +39,7 @@ const SHAPE_LABELS: Record<RelationShape, string> = {
   promoted: "Promoted to an entity",
 };
 
-type RelationMappingDoc = RelationMappingLike & { foreignKey?: string; junctionTable?: string; ends?: { end: string; foreignKey: string }[] };
+type RelationMappingDoc = RelationMappingLike & StorageMapping & { foreignKey?: string; junctionTable?: string; ends?: { end: string; foreignKey?: string }[] };
 
 export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc }) {
   const index = useIndex();
@@ -53,14 +55,24 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
       id: m.id,
     }))
     .filter((m) => m.relation === id);
-  // Part 1 of several types: no database stores a relation with such an end, so only one-type ends read their entity's table.
+  // An end with several types lists entities; a one-type end names one. Every listed entity's document gives its bound table, and the
+  // bases of those entities give the tables a key to a shared base table may lead to (several-types-design.md 19.10).
   const endEntity = (e: (typeof ends)[number]) => docEndSingleEntity(e) ?? "";
   const hasSeveralTypes = ends.some(docEndHasSeveralTypes);
-  const entityDocs = useElements([...new Set(ends.map(endEntity).filter(Boolean))]);
+  const severalMode = hasSeveralTypes && ends.length === 2;
+  const listed = [...new Set(ends.flatMap((e) => docEndEntities(e)))];
+  const withBases = new Set(listed);
+  if (severalMode)
+    for (const entity of listed)
+      for (let at = lookup.byId.get(entity)?.base, guard = 0; at && !withBases.has(at) && guard < 64; at = lookup.byId.get(at)?.base, guard++)
+        withBases.add(at);
+  const entityDocs = useElements(severalMode ? [...withBases] : [...new Set(ends.map(endEntity).filter(Boolean))]);
+  const boundIn = (entity: string, database: string) => boundTableOf(entityDocs.byId.get(entity)?.json as Json | undefined, database);
   const bound = databases.map((d) => ends.map((e) => boundTableOf(entityDocs.byId.get(endEntity(e))?.json as Json | undefined, d.id)));
+  const severalTables = severalMode ? databases.flatMap((d) => [...withBases].map((en) => boundIn(en, d.id))) : [];
   const junctions = mappings.map((m) => m.junctionTable).filter((t): t is string => !!t);
-  const tableDocs = useElements([...new Set([...bound.flat().filter((t): t is string => !!t && !t.includes("@")), ...junctions])]);
-  const tableOf = (tid: string | null | undefined) => (tid ? (tableDocs.byId.get(tid)?.json as TableDocLike | undefined) : undefined);
+  const tableDocs = useElements([...new Set([...bound.flat(), ...severalTables].filter((t): t is string => !!t && !t.includes("@")).concat(junctions))]);
+  const tableOf = (tid: string | null | undefined) => (tid ? (tableDocs.byId.get(tid)?.json as TableDocWithKeys | undefined) : undefined);
   const validation = useValidation();
   const edits = useElementEdits();
   const relationName = json.name;
@@ -68,12 +80,6 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
   // Until the mapping documents are read, which database has a mapping is not known: no pick until then (no duplicate mapping).
   const mappingsLoading = mappingDocs.pending;
   const creating = useRef(new Set<string>());
-  if (hasSeveralTypes)
-    return (
-      <p className="text-12 text-secondary" data-testid="relation-storage-several-types">
-        No database stores a relation with an end of several types.
-      </p>
-    );
   return (
     <div className="flex flex-col gap-2" data-testid="relation-storage">
       {databases.length ? null : <p className="text-12 text-secondary">No database yet.</p>}
@@ -93,15 +99,50 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
         const [a, b] = bound[di] ?? [];
         const bothBound = ends.length === 2 && !!a && !!b;
         // The relation mapping's own findings, and the relationship's storage rules (MQ4011: bound ends, no key named) in this database.
-        const problems = (validation.data?.diagnostics ?? []).filter(
+        const endIds = new Set(ends.map((e) => e.id));
+        const diagnostics = validation.data?.diagnostics ?? [];
+        const problems = diagnostics.filter(
           (x) =>
-            x.severity !== "info" && ((!!mapping && x.elementId === mapping.id) || (x.elementId === id && x.rule === "MQ4011" && x.message.includes(d.name))),
+            x.severity !== "info" &&
+            ((!!mapping && x.elementId === mapping.id) ||
+              (x.elementId === id && x.rule === "MQ4011" && x.message.includes(d.name)) ||
+              (["MQ4117", "MQ4120"].includes(x.rule) && (x.elementId === id || endIds.has(x.elementId ?? "")) && x.message.includes(`'${d.name}'`))),
         );
+        // MQ4115 (info): nothing is stored in this database for a relation with an end of several types.
+        const nothingStored = diagnostics.some((x) => x.rule === "MQ4115" && endIds.has(x.elementId ?? "") && x.message.includes(`database '${d.name}'`));
         const summary = mapping ? lookup.byId.get(mapping.id) : undefined;
         return (
           <section key={d.id} className="flex flex-col gap-1" data-testid="relation-storage-database" data-database={d.name}>
             <SectionTitle>{d.name}</SectionTitle>
-            {bothBound && !manyToMany ? (
+            {severalMode ? (
+              <SeveralTypesCard
+                dom={`${id}-${d.id}`}
+                databaseName={d.name}
+                ends={ends as StorageEndSource[]}
+                roleOf={(endId) => ends.find((e) => e.id === endId)?.role ?? endId}
+                mapping={mapping}
+                change={(mutate) => change((j) => mutate(j as unknown as StorageMapping))}
+                loading={mappingsLoading || tableDocs.pending || entityDocs.pending}
+                tableOf={tableOf}
+                boundTable={(entity) => boundIn(entity, d.id)}
+                sharedBound={(entity) => {
+                  const out = new Set<string>();
+                  for (let at: string | undefined = entity, guard = 0; at && guard < 64; at = lookup.byId.get(at)?.base, guard++) {
+                    const t = boundIn(at, d.id);
+                    if (t) out.add(t);
+                  }
+                  return out;
+                }}
+                entityName={(entity) => lookup.nameOf(entity) ?? entity}
+                linkTables={lookup
+                  .ofKind("table")
+                  .filter((t) => t.database === d.id && !t.entity)
+                  .map((t) => ({ id: t.id, name: t.name }))}
+                attributes={(json.attributes ?? [])
+                  .filter((a) => (a as { collection?: boolean }).collection !== true && typeof a.type !== "object")
+                  .map((a) => ({ id: a.id, name: a.name }))}
+              />
+            ) : bothBound && !manyToMany ? (
               <ForeignKeyPicker
                 dom={`${id}-${d.id}`}
                 databaseName={d.name}
@@ -133,6 +174,23 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
             ) : (
               <OlderShape mapping={mapping} />
             )}
+            {!severalMode && bothBound && manyToMany && tableOf(mapping?.junctionTable) && mapping ? (
+              <LinkTableExtras
+                dom={`${id}-${d.id}`}
+                junction={tableOf(mapping.junctionTable)!}
+                mapping={mapping}
+                attributes={(json.attributes ?? [])
+                  .filter((a) => (a as { collection?: boolean }).collection !== true && typeof a.type !== "object")
+                  .map((a) => ({ id: a.id, name: a.name }))}
+                change={(mutate) => change((j) => mutate(j as unknown as StorageMapping))}
+                loading={mappingsLoading}
+              />
+            ) : null}
+            {nothingStored ? (
+              <p className="text-12 text-secondary" data-testid="relation-storage-nothing-stored">
+                Nothing is stored in this database.
+              </p>
+            ) : null}
             {problems.length ? (
               <ul className="flex flex-col gap-0.5 text-12 text-danger" data-testid="relation-storage-problems">
                 {problems.map((p, i) => (
@@ -227,7 +285,7 @@ function JunctionPicker({
   junction: TableDocLike | undefined;
   value: string;
   ends: { id: string; label: string }[];
-  endKeys: { end: string; foreignKey: string }[];
+  endKeys: { end: string; foreignKey?: string | undefined }[];
   loading: boolean;
   onTable: (table: string | null) => void;
   onEnd: (end: string, key: string | null) => void;

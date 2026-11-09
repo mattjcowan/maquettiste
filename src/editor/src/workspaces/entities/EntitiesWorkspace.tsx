@@ -53,6 +53,8 @@ import { TypesEdge, type TypesFlowEdge } from "@/canvas/TypesEdge";
 import { TypesNode, type TypesFlowNode } from "@/canvas/TypesNodes";
 import {
   buildGraph,
+  bothEndsFallback,
+  hasSeveralTypesBothEnds,
   hasSeveralTypesEnd,
   lineText,
   textWidth,
@@ -365,7 +367,8 @@ function EntitiesCanvas() {
       const doc = docs.byId.get(rid);
       if (!doc) continue;
       const relation = (draftsState[rid]?.json ?? doc.json) as unknown as RelationDoc;
-      if (!hasSeveralTypesEnd(relation)) continue;
+      // Several types at both ends is drawn as the plain edge below, with no node and no toggle (the fallback of 19.12).
+      if (!hasSeveralTypesEnd(relation) || hasSeveralTypesBothEnds(relation)) continue;
       const plan = planSeveralTypes(relation, {
         onCanvas: (id) => positionOf.has(id),
         nameOf,
@@ -483,17 +486,19 @@ function EntitiesCanvas() {
           const relation = (draftsState[rid]?.json ?? doc.json) as unknown as RelationDoc;
           const ends = relationEnds(relation, positionOf);
           if (!ends) return null;
+          // Several types at both ends: each end's label says "+N more", with the entries in its tooltip.
+          const fallback = bothEndsFallback(relation, { onCanvas: (id) => positionOf.has(id), nameOf });
           return {
             id: rid,
             type: "relation" as const,
             ...ends,
             selected: canvasSelection.includes(rid),
             ariaLabel: `${KIND_LABELS.relation} ${relation.name}`,
-            data: { relation, notation: display.notation, attributeBox, onSelect: selectRelation },
+            data: { relation, notation: display.notation, attributeBox, onSelect: selectRelation, ...(fallback ? { more: fallback.more } : {}) },
           };
         })
         .filter((e): e is NonNullable<typeof e> => e !== null),
-    [relationIds, docs.byId, draftsState, positionOf, canvasSelection, display.notation, attributeBox, selectRelation],
+    [relationIds, docs.byId, draftsState, positionOf, nameOf, canvasSelection, display.notation, attributeBox, selectRelation],
   );
 
   const allEdges: FlowEdge[] = useMemo(() => [...edges, ...severalTypes.edges], [edges, severalTypes.edges]);

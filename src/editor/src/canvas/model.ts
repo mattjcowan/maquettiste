@@ -3,7 +3,15 @@
 // are written back into a diagram, and what "Add related to depth N" adds.
 import type { AttributeDoc, DiagramDoc, DiagramMember, ElementSummary, RelationDoc } from "@/api/types";
 import { indexPatchOf } from "@/api/indexPatch";
-import { docEndEntities, docEndSingleEntity, endHasSeveralTypes, endListedEntities, endSingleEntity, type EndLike } from "@/model/endTypes";
+import {
+  docEndEntities,
+  docEndHasSeveralTypes,
+  docEndSingleEntity,
+  endHasSeveralTypes,
+  endListedEntities,
+  endSingleEntity,
+  type EndLike,
+} from "@/model/endTypes";
 import type { LayoutEdge, LayoutNode } from "./layout";
 
 export const NODE_WIDTH = 240;
@@ -124,8 +132,14 @@ export function relationEnds(relation: Pick<RelationDoc, "ends">, positionOf: Re
   const [a, b] = relation.ends ?? [];
   if (!a || !b) return null;
   // An end with several types is drawn by severalTypes.ts (a node and lines); this is the one-line drawing only.
-  const ea = docEndSingleEntity(a);
-  const eb = docEndSingleEntity(b);
+  let ea = docEndSingleEntity(a);
+  let eb = docEndSingleEntity(b);
+  // Several types at both ends: the plain line between the first card of each end, in the order it lists them (the fallback of
+  // several-types-design.md 19.12; severalTypes.ts `bothEndsFallback` words the labels). An end with no card on the canvas draws no line.
+  if (!ea && !eb && docEndHasSeveralTypes(a) && docEndHasSeveralTypes(b)) {
+    ea = docEndEntities(a).find((id) => positionOf.has(id)) ?? null;
+    eb = docEndEntities(b).find((id) => positionOf.has(id)) ?? null;
+  }
   if (!ea || !eb) return null;
   const pa = positionOf.get(ea);
   const pb = positionOf.get(eb);

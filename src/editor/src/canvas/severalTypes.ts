@@ -423,3 +423,46 @@ export function hasSeveralTypesEnd(relation: Pick<RelationDoc, "ends">): boolean
   const [a, b] = relation.ends ?? [];
   return !!a && !!b && (docEndHasSeveralTypes(a as EndDocLike) || docEndHasSeveralTypes(b as EndDocLike));
 }
+
+// ------------------------------------------------------------------ several types at both ends: the plain fallback
+
+/** An end's "+N more" label and the tooltip that lists every entry of the end. */
+export interface MoreLabel {
+  text: string;
+  names: string;
+}
+
+export interface BothEndsFallback {
+  /** The first card on the canvas of each end, in the order the end lists its entries. */
+  entities: [string, string];
+  /** Per end: "+N more" when the end has more entries than the one card the line reaches, else null. */
+  more: [MoreLabel | null, MoreLabel | null];
+}
+
+/** Whether both of the relation's first two ends have several types: the canvas draws the plain fallback for it, not a node. */
+export function hasSeveralTypesBothEnds(relation: Pick<RelationDoc, "ends">): boolean {
+  const [a, b] = relation.ends ?? [];
+  return !!a && !!b && docEndHasSeveralTypes(a as EndDocLike) && docEndHasSeveralTypes(b as EndDocLike);
+}
+
+/**
+ * The plain drawing of a relation with several types at both ends (several-types-design.md 19.12): one line between the first card of
+ * each end, each end's label saying "+N more" with a tooltip that lists the entries. No node, no toggle and nothing saved in the diagram file.
+ * Null when the relation is not one of these, or an end has no card on the canvas (any entity and stereotype entries draw no line here).
+ */
+export function bothEndsFallback(
+  relation: Pick<RelationDoc, "ends">,
+  ctx: Pick<PlanContext, "onCanvas" | "nameOf" | "stereotypeCount">,
+): BothEndsFallback | null {
+  if (!hasSeveralTypesBothEnds(relation)) return null;
+  const entities: string[] = [];
+  const more: (MoreLabel | null)[] = [];
+  for (const end of (relation.ends ?? []).slice(0, 2)) {
+    const entries = endEntries(end as EndDocLike, ctx);
+    const first = entries.find((e) => e.kind === "entity" && e.shown);
+    if (!first?.entity) return null;
+    entities.push(first.entity);
+    more.push(entries.length > 1 ? { text: `+${entries.length - 1} more`, names: entries.map((e) => e.label).join(", ") } : null);
+  }
+  return { entities: [entities[0] ?? "", entities[1] ?? ""], more: [more[0] ?? null, more[1] ?? null] };
+}

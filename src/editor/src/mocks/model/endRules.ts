@@ -46,14 +46,12 @@ export function endTypeDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
   const relation = str(json.name);
   const nameOf = (id: unknown) => str(ctx.lookup?.(str(id))?.json.name) || str(id);
   const nAry = json.relationKind === "n-ary" || ends.length > 2;
-  let several = 0;
   let coverage: Coverage | null = null;
   ends.forEach((e, i) => {
     const endId = str(e.id) || undefined;
     const pointer = `/ends/${i}`;
     const many = docEndHasSeveralTypes(e as EndDocLike);
     if (many) {
-      several++;
       if (nAry)
         emit("MQ3041", "error", `Relation '${relation}' is n-ary, so its end '${str(e.role)}' can't have several types; give it one entity.`, pointer, endId);
     }
@@ -111,8 +109,6 @@ export function endTypeDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
       if (message !== null) emit("MQ3043", "warning", message, `${pointer}/types/${j}`, endId);
     });
   });
-  // MQ3041: several types on both ends; an n-ary relation is reported per end above.
-  if (!nAry && several > 1) emit("MQ3041", "error", `Relation '${relation}' has several types on both ends; keep them on one end.`, "/ends");
   // MQ3041: a composition's child end can't be any entity.
   const child = compositionChild(json, ends);
   if (child !== null && ends[child].anyEntity === true)
@@ -125,9 +121,14 @@ export function endTypeDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
     );
 }
 
+/** Whether a relation mapping states how the relation is stored: it names a link table or has an `ends` entry (decision 49). */
+export function storesRelation(mapping: Json): boolean {
+  return typeof mapping.junctionTable === "string" || arr(mapping.ends).length > 0;
+}
+
 /**
  * MQ4115 (info): for each database where every end has a covered type placed, "Relation 'AttachedTo' has an end with several types, so
- * database 'main' stores nothing for it." A relation mapping that sets `ignore` says so already and silences it.
+ * database 'main' stores nothing for it." A relation mapping that sets `ignore`, or that stores the relation, silences it.
  */
 export function storageDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit): void {
   if (!relationHasSeveralTypes(json) || !ctx.all) return;
@@ -157,7 +158,8 @@ export function storageDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
   const parentOf = (id: string) => str(byId.get(id)?.parent) || null;
   for (const database of [...databases].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
     const mappings = entries.filter((e) => e.json.kind === "mapping" && e.json.database === database.id);
-    if (mappings.some((m) => m.json.relation === json.id && m.json.ignore === true)) continue;
+    // A mapping that sets ignore says so already; one that stores the relation (a junctionTable or an ends entry) leaves nothing to say (decision 49).
+    if (mappings.some((m) => m.json.relation === json.id && (m.json.ignore === true || storesRelation(m.json)))) continue;
     const convention = conventionOf(database.json as Parameters<typeof conventionOf>[0]);
     // Placed: a binding there, else the mapping and the database's convention.
     const placed = entities.filter(
@@ -202,6 +204,7 @@ const named = (t: { relation: Json; end: Json }): string =>
  */
 export function fieldDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit): void {
   if (!ctx.ownerOf) return;
+  // Part 2 drops the binding cases (decision 46); they stay while the engine's recorded fixture still holds them (parity test).
   if (json.kind === "entity") {
     arr(json.bindings).forEach((b, bi) =>
       arr(b.fields).forEach((f, fi) => {
@@ -237,31 +240,135 @@ export function fieldDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit): v
   });
 }
 
+/** The ways an `ends` entry can point at its end (decision 38): `types` counts as a way only when its items carry `foreignKey`. */
+export function entryWays(entry: Json): string[] {
+  const ways: string[] = [];
+  if (entry.foreignKey !== undefined) ways.push("foreignKey");
+  if (arr(entry.foreignKeys).length > 0) ways.push("foreignKeys");
+  if (arr(entry.types).some((t) => t.foreignKey !== undefined)) ways.push("types");
+  if (entry.idColumn !== undefined) ways.push("idColumn");
+  return ways;
+}
+
 /**
- * MQ4009 on a mapping of a relation with an end of several types: part 1 stores nothing for it, so such a mapping sets only `ignore`, and
- * every other relation key is refused (MappingRules).
+ * MQ4009 on a relation mapping, the file cases of several-types-design.md section 19.7 that need no resolved tables: an `ends` entry with
+ * no way or two, the keys that go with `idColumn`, two entries for one end, the keys a one-type relation doesn't take, and `constants` and
+ * attribute columns against the designed `junctionTable`. A mapping that states no storage keeps part 1's words for the keys it can't
+ * set (the engine's text until its storage rules land).
  */
 export function mappingDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit): void {
   if (json.kind !== "mapping" || typeof json.relation !== "string") return;
   const relation = ctx.lookup?.(json.relation)?.json;
-  if (!relation || !relationHasSeveralTypes(relation)) return;
-  const set: [string, boolean][] = [
-    ["/attributes", arr(json.attributes).length > 0],
-    ["/shape", json.shape !== undefined],
-    ["/foreignKeyEnd", json.foreignKeyEnd !== undefined],
-    ["/foreignKey", json.foreignKey !== undefined],
-    ["/junctionTable", json.junctionTable !== undefined],
-    ["/ends", Array.isArray(json.ends) ? json.ends.length > 0 : json.ends !== undefined],
-    ["/promotedName", json.promotedName !== undefined],
-  ];
-  for (const [pointer, isSet] of set)
-    if (isSet)
-      emit(
-        "MQ4009",
-        "error",
-        `Relation '${str(relation.name)}' has an end with several types, so a mapping of it sets only ignore; remove '${pointer.slice(1)}'.`,
-        pointer,
+  if (!relation || relation.kind !== "relation") return;
+  const several = relationHasSeveralTypes(relation);
+  const name = str(relation.name);
+  const relationEnds = arr(relation.ends);
+  const entries = arr(json.ends);
+  const junction = typeof json.junctionTable === "string" ? ctx.lookup?.(json.junctionTable)?.json : undefined;
+  const designed = junction !== undefined && junction.kind === "table";
+  const stores = storesRelation(json);
+  const roleOf = (endId: unknown) => str(relationEnds.find((e) => e.id === endId)?.role) || str(endId);
+  const bad = (pointer: string, message: string) => emit("MQ4009", "error", message, pointer);
+
+  // The keys that part 1 refused on such a relation and part 2 still refuses (decision 50), in part 1's words while nothing is stored.
+  if (several) {
+    const refused: [string, boolean][] = [
+      ["/foreignKeyEnd", json.foreignKeyEnd !== undefined],
+      ["/foreignKey", json.foreignKey !== undefined],
+      ["/promotedName", json.promotedName !== undefined],
+      ["/shape", json.shape === "promoted" || (json.shape !== undefined && !stores)],
+      ["/attributes", !stores && arr(json.attributes).length > 0],
+    ];
+    for (const [pointer, isSet] of refused)
+      if (isSet) bad(pointer, `Relation '${name}' has an end with several types, so a mapping of it sets only ignore; remove '${pointer.slice(1)}'.`);
+    if (stores) {
+      const shape = json.shape === "junction" || json.shape === "foreign-key" ? json.shape : null;
+      const inLinkTables = typeof json.junctionTable === "string" || entries.some((e) => arr(e.types).some((t) => t.foreignKey !== undefined));
+      if (shape && (shape === "junction") !== inLinkTables)
+        bad(
+          "/shape",
+          shape === "junction"
+            ? `Relation '${name}' keeps its links in the tables of its ends, so shape 'junction' disagrees with its entries; remove 'shape'.`
+            : `Relation '${name}' keeps its links in link tables, so shape 'foreign-key' disagrees with its entries; remove 'shape'.`,
+        );
+      arr(json.attributes).forEach((a, i) => {
+        for (const key of ["storage", "prefix"])
+          if (a[key] !== undefined)
+            bad(
+              `/attributes/${i}/${key}`,
+              `Relation '${name}' has an end with several types, so '${key}' of attribute ${i} can't shape engine-made columns; remove it.`,
+            );
+      });
+    }
+  }
+
+  const seenEnds = new Set<string>();
+  entries.forEach((entry, i) => {
+    const at = `/ends/${i}`;
+    const role = roleOf(entry.end);
+    if (typeof entry.end === "string") {
+      if (seenEnds.has(entry.end)) bad(`${at}/end`, `End '${role}' of relation '${name}' has two entries; keep one.`);
+      seenEnds.add(entry.end);
+    }
+    const ways = entryWays(entry);
+    if (!several) {
+      // A one-type relation keeps the words of a missing key and refuses the keys of an end with several types.
+      if (ways.length === 0 && designed)
+        bad(
+          at,
+          `End entry ${i} names no 'foreignKey'; junction table '${str(junction.name)}' is designed, so the entry needs the foreign key that references its end's table.`,
+        );
+      for (const key of ["foreignKeys", "types", "idColumn", "typeColumn", "referencesColumn"])
+        if (entry[key] !== undefined)
+          bad(`${at}/${key}`, `End entry ${i} of relation '${name}' sets '${key}', which needs a relation with an end of several types.`);
+      return;
+    }
+    if (ways.length === 0)
+      bad(
+        at,
+        `End entry ${i} of relation '${name}' names no way to point at end '${role}'; give it a foreignKey, foreignKeys, types with foreignKey items or an idColumn.`,
       );
+    else if (ways.length > 1) bad(at, `End entry ${i} of relation '${name}' names more than one way to point at end '${role}' (${ways.join(", ")}); keep one.`);
+    for (const key of ["typeColumn", "referencesColumn"])
+      if (entry[key] !== undefined && entry.idColumn === undefined)
+        bad(`${at}/${key}`, `End entry ${i} of relation '${name}' sets '${key}' with no 'idColumn'; it describes the id column.`);
+    const types = arr(entry.types);
+    const keyed = types.filter((t) => t.foreignKey !== undefined);
+    const refers = types.filter((t) => t.referencesColumn !== undefined);
+    if (keyed.length && refers.length)
+      bad(`${at}/types`, `End entry ${i} of relation '${name}' mixes types items with foreignKey and with referencesColumn; use one kind.`);
+    else if (keyed.length && entry.idColumn !== undefined)
+      bad(`${at}/types`, `End entry ${i} of relation '${name}' has types items with foreignKey beside 'idColumn'; use one way.`);
+    else if (refers.length && entry.idColumn === undefined)
+      bad(`${at}/types`, `End entry ${i} of relation '${name}' has types items with referencesColumn but no 'idColumn'.`);
+    if (entry.referencesColumn !== undefined && refers.length)
+      bad(`${at}/referencesColumn`, `End entry ${i} of relation '${name}' sets 'referencesColumn' on the entry and in types items; keep one.`);
+    if (entry.typeColumn !== undefined && entry.typeColumn === entry.idColumn)
+      bad(`${at}/typeColumn`, `End entry ${i} of relation '${name}' uses one column for 'typeColumn' and 'idColumn'.`);
+    if (arr(entry.foreignKeys).length > 0 && json.junctionTable !== undefined)
+      bad(
+        `${at}/foreignKeys`,
+        `End entry ${i} of relation '${name}' sets 'foreignKeys' beside 'junctionTable'; in a link table an end is pointed at by one key, a key per type or an id.`,
+      );
+  });
+
+  // constants and attribute columns serve every relation mapping with a designed link table (answer 9).
+  const columns = new Set(arr(junction?.columns).map((c) => str(c.id)));
+  const pointerColumns = new Set(entries.flatMap((e) => [e.idColumn, e.typeColumn].filter((c): c is string => typeof c === "string")));
+  arr(json.constants).forEach((c, i) => {
+    const at = `/constants/${i}`;
+    if (!designed) return bad(at, `Constant ${i} needs a designed 'junctionTable' that holds its column.`);
+    if (typeof c.column === "string" && !columns.has(c.column)) bad(`${at}/column`, `'${c.column}' is not a column of link table '${str(junction.name)}'.`);
+    else if (typeof c.column === "string" && pointerColumns.has(c.column))
+      bad(`${at}/column`, `Constant ${i} names a column that an end entry already uses as a pointer; a constant needs a column of its own.`);
+  });
+  arr(json.attributes).forEach((a, i) => {
+    if (typeof a.column !== "string" || !designed) return;
+    if (!columns.has(a.column)) bad(`/attributes/${i}/column`, `'${a.column}' is not a column of link table '${str(junction.name)}'.`);
+    const attribute = arr(relation.attributes).find((x) => x.id === a.attribute);
+    if (attribute && (attribute.collection === true || (typeof attribute.type === "object" && attribute.type !== null)))
+      bad(`/attributes/${i}/column`, `Attribute ${i} is a collection or value object, so it can't map one column.`);
+  });
 }
 
 // Whether an end with several types covers an entity (given as its base chain): a listed entity, a carrier or any entity.
