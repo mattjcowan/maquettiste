@@ -386,6 +386,7 @@ internal sealed partial class DatabaseRun
             }
         }
 
+        FinishLinkTableLinks();
         FinishTypeStorage();
     }
 

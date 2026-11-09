@@ -4080,8 +4080,7 @@ export interface components {
         /** @description How the table that holds a link points at one end's target. */
         RelationLinkEndRecord: {
             end: components["schemas"]["Ulid"];
-            /** @description The target entity at this end. */
-            type: string;
+            type: components["schemas"]["Ulid"];
             /** @description Whether this end's rows hold the link. */
             isHolder: boolean;
             /** @description The keys of the pointer's columns in the holding table. */

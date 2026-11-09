@@ -252,6 +252,19 @@ public sealed partial class RelationTypeStorageTests
     }
 
     [Fact]
+    public async Task MQ4009_refuses_a_type_listed_twice_in_an_entry()
+    {
+        // Decision 38: each type of an entry's types is listed once; the second item for Part is refused at its entity.
+        var body = $$""","ends":[{"end":"{{AttachedToEnd}}","types":["""
+            + $$"""{"entity":"{{SPart}}","foreignKey":"{{Fk(Comments, 1)}}"},{"entity":"{{SAssembly}}","foreignKey":"{{Fk(Comments, 2)}}"},"""
+            + $$"""{"entity":"{{SPart}}","foreignKey":"{{Fk(Comments, 1)}}"}]}]""";
+        var (_, validation) = await ResolveAsync(h => h.Write("model/mappings/attached.json", RelationMapping(Attached, body)));
+        Assert.Equal(
+            [("/ends/0/types/2/entity", "End entry 0 of relation 'AttachedTo' lists entity 'Part' in two types items; keep one.")],
+            validation.Where(x => x.Rule == "MQ4009" && x.ElementId == N(P, 990)).Select(x => (x.JsonPointer, x.Message)));
+    }
+
+    [Fact]
     public async Task A_binding_maps_the_type_column_and_the_id_and_MQ4117_says_when_it_maps_another_column_than_the_mapping()
     {
         var (model, validation) = await ResolveAsync(h => h.Write("model/mappings/attached.json", RelationMapping(Attached, Way3)), bindComment: true);

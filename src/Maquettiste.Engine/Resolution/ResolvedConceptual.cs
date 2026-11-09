@@ -509,6 +509,8 @@ public sealed class RRelationMapping
     /// <summary>
     /// For a relation with an end of several types whose mapping states storage (several-types-design.md section 19.8): one entry per pair
     /// of targets, one target per end, in target order (decision 39), with the table that holds the link and how it points at each end.
+    /// For a one-type relation whose designed link table's mapping writes constants or attribute columns (answer 9): its one link, each end
+    /// pointed at by the key its entry names, since a key a shared link table's relations all use names the end of only one of them.
     /// Empty for every other relation.
     /// </summary>
     public IReadOnlyList<RRelationLink> Links { get; internal set; } = [];

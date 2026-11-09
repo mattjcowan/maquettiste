@@ -234,6 +234,24 @@ public sealed class RelationStorageContractTests
     }
 
     [Fact]
+    public async Task An_ignored_one_type_mapping_still_checks_its_entries()
+    {
+        // The schema required each entry's foreignKey on an ignored mapping too (MQ1002); the entry checks run before ignore stops the rest.
+        using var h = new LoaderHarness();
+        h.CopyFixture("models", "showcase");
+        h.Write(MappingPath, MappingWith($$"""{"end":"{{JobEnd}}"},{"end":"{{PartEnd}}","foreignKey":"{{PartKey}}","idColumn":"{{JobColumn}}"}""", ""","ignore":true"""));
+        await using var store = new ModelStore(h.Options, h.Services() with { Validator = EngineServices.Create(h.Options).Validator });
+        await store.LoadAsync(Ct);
+        var found = await ActorKit.ValidateAsync(h, store.Current!);
+        Assert.Equal(
+            [
+                ("/ends/0", "End entry 0 names no 'foreignKey'; junction table 'repair_job_parts' is designed, so the entry needs the foreign key that references its end's table."),
+                ("/ends/1/idColumn", "End entry 1 of relation 'uses' sets 'idColumn', which needs a relation with an end of several types."),
+            ],
+            found.Where(d => d.Rule == "MQ4009" && d.ElementId == UsesMapping).Select(d => (d.JsonPointer, d.Message)).Order());
+    }
+
+    [Fact]
     public async Task Deleting_a_designed_junctions_keys_keeps_todays_plans()
     {
         using var h = new LoaderHarness();

@@ -10210,8 +10210,7 @@ components:
         end:
           $ref: '#/components/schemas/Ulid'
         type:
-          type: string
-          description: The target entity at this end.
+          $ref: '#/components/schemas/Ulid'
         isHolder:
           type: boolean
           description: Whether this end's rows hold the link.

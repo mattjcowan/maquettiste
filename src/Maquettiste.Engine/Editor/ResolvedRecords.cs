@@ -328,8 +328,8 @@ public sealed record EndRecord(string Id, string? Entity, string Role, string? N
 /// <param name="ForeignKey">The foreign key's name, for the <c>foreign-key</c> shape.</param>
 /// <param name="JunctionTable">The junction table's key, for the <c>junction</c> shape.</param>
 /// <param name="PromotedEntity">The promoted entity's id, for the <c>promoted</c> shape.</param>
-/// <param name="Links">For a relation with an end of several types: one entry per pair of targets (several-types-design.md section 19.8);
-/// left out when empty.</param>
+/// <param name="Links">For a relation with an end of several types: one entry per pair of targets (several-types-design.md section 19.8); for
+/// a one-type relation whose designed link table's mapping writes constants or attribute columns, its one link; left out when empty.</param>
 /// <param name="Constants">The link table's columns with a fixed value (decision 44); left out when empty.</param>
 /// <param name="Attributes">The relation attributes' columns in the table that holds every link (decision 45); left out when empty.</param>
 /// <param name="LeftOut">Covered entities not placed in the database; left out when empty.</param>

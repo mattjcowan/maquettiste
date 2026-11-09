@@ -140,6 +140,9 @@ internal sealed partial class DatabaseRun
 {
     private readonly List<(REntity Entity, TableBuild Table)> _promotedTables = [];
 
+    /// <summary>One-type relations whose designed link table's mapping writes constants or attribute columns (answer 9), in relation order.</summary>
+    private readonly List<(RRelation Relation, RelationPhysical Physical)> _linkTableLinks = [];
+
     /// <summary>
     /// Whether a query field or a query collection names any end of a relation with an end of several types, or a path under one: MQ4116
     /// refuses it (several-types-design.md decisions 22 and 46), so resolution reports nothing more about it.
@@ -314,6 +317,36 @@ internal sealed partial class DatabaseRun
         return cached;
     }
 
+    /// <summary>
+    /// The one link of a one-type relation whose designed link table's mapping writes constants or attribute columns (several-types-design.md
+    /// section 19.8 and answer 9), once keys are resolved: each end's key from this relation's own entries. Several relations can share such a
+    /// table and its keys, and a key's <see cref="RForeignKey.End"/> names the end of only one of them, so a reader that writes this relation's
+    /// links (its seed rows) takes the keys from here. Left empty when an end has no resolved key (MQ4009 or MQ4011 reports it).
+    /// </summary>
+    private void FinishLinkTableLinks()
+    {
+        foreach (var (rel, phys) in _linkTableLinks)
+        {
+            if (phys.Mapping is not { JunctionTable: { } table } mapping)
+                continue;
+            var ends = new List<RRelationLinkEnd>(rel.Ends.Count);
+            foreach (var end in rel.Ends)
+            {
+                if (!phys.EndKeys.TryGetValue(end.Id, out var spec) || !spec.Resolved || end.Entity is not { } entity)
+                    break;
+                var key = spec.Result;
+                ends.Add(new RRelationLinkEnd
+                {
+                    End = end, Type = entity, Columns = key.Columns, ReferencedTable = key.ReferencedTable, ReferencedColumns = key.ReferencedColumns,
+                    ForeignKey = key,
+                });
+            }
+
+            if (ends.Count == rel.Ends.Count)
+                mapping.Links = [new RRelationLink { Table = table, Ends = ends }];
+        }
+    }
+
     private static AttributeMapping? RelationAttributeMapping(Mapping? m, RAttribute a) =>
         m?.Attributes.FirstOrDefault(x => string.Equals(x.Attribute, a.Id, StringComparison.Ordinal));
 
@@ -344,6 +377,8 @@ internal sealed partial class DatabaseRun
             phys.Mapping = new RRelationMapping { Shape = "junction", JunctionTable = designed.Table };
             _run.SetRelationMapping(rel, _db.Name, phys.Mapping);
             CollectLinkTableExtras(rel, m, designed, phys.Mapping);
+            if (m.Constants.Count > 0 || m.Attributes.Any(a => a.Column is not null))
+                _linkTableLinks.Add((rel, phys));
             return;
         }
 

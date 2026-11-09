@@ -282,6 +282,9 @@ internal static class MappingRules
                 Invalid(report, "/foreignKeyEnd", "'foreignKeyEnd' breaks one-to-one ties only; the relation is not one to one.");
         }
 
+        // The per-entry ways (several-types-design.md decision 38) hold whether or not the mapping stores the relation: the schema required
+        // each entry's foreignKey, and refused the other keys, on an ignored mapping too (MQ1002). Its junction is the named designed table.
+        CheckOneTypeEntryWays(mapping, relation, mapping.Ignore ? DesignedJunction(context, mapping) : null, report);
         if (mapping.Ignore)
             return; // not stored in this database: nothing to bind, so no foreign key or junction checks (MQ4011 included)
 
@@ -311,21 +314,8 @@ internal static class MappingRules
             var pointer = Ptr.At("/ends", i);
             if (!relation.Ends.Any(e => e.Id == end.End) && model.TryGetEntry(end.End, out _))
                 Invalid(report, pointer + "/end", $"'{end.End}' is not an end of relation '{relation.Name}'.");
-            // The schema requires only an entry's end (several-types-design.md decision 38): on a one-type relation an entry with no way keeps
-            // the words of a missing key, which the schema reported before (MQ1002).
-            // The per-end ways of an end with several types don't apply to a one-type relation (decision 38).
-            foreach (var (key, set) in new (string, bool)[]
-            {
-                ("foreignKeys", end.ForeignKeys.Count > 0), ("types", end.Types.Count > 0), ("idColumn", end.IdColumn is not null),
-                ("typeColumn", end.TypeColumn is not null), ("referencesColumn", end.ReferencesColumn is not null),
-            })
-            {
-                if (set)
-                    Invalid(report, pointer + "/" + key, $"End entry {i.ToString(CultureInfo.InvariantCulture)} of relation '{relation.Name}' sets '{key}', which needs a relation with an end of several types.");
-            }
-
             if (junction is not null && !end.HasWay)
-                Invalid(report, pointer, $"End entry {i} names no 'foreignKey'; junction table '{junction.Name}' is designed, so the entry needs the foreign key that references its end's table.");
+                MissingForeignKey(report, pointer, i, junction);
             if (junction is not null && end.ForeignKey is { } endForeignKey && !junction.ForeignKeys.Any(f => f.Id == endForeignKey) && model.TryGetEntry(endForeignKey, out _))
                 Invalid(report, pointer + "/foreignKey", $"'{endForeignKey}' is not a foreign key of junction table '{junction.Name}'.");
         }
@@ -346,6 +336,36 @@ internal static class MappingRules
             report.Add("MQ4011", $"Both ends of relation '{relation.Name}' are bound to designed or imported tables in this database; name the existing foreign key with 'foreignKey'.", "/relation");
         }
     }
+
+    /// <summary>
+    /// MQ4009 on the <c>ends</c> entries of a one-type relation's mapping (several-types-design.md decision 38): the per-end ways of an end with
+    /// several types don't apply, and with <paramref name="junction"/> (an ignored mapping's designed junction) an entry with no way keeps the
+    /// words of a missing key, which the schema reported before (MQ1002). A stored mapping's missing keys are checked against its junction later.
+    /// </summary>
+    private static void CheckOneTypeEntryWays(Mapping mapping, Relation relation, Table? junction, Report report)
+    {
+        for (var i = 0; i < mapping.Ends.Count; i++)
+        {
+            var end = mapping.Ends[i];
+            var pointer = Ptr.At("/ends", i);
+            foreach (var (key, set) in new (string, bool)[]
+            {
+                ("foreignKeys", end.ForeignKeys.Count > 0), ("types", end.Types.Count > 0), ("idColumn", end.IdColumn is not null),
+                ("typeColumn", end.TypeColumn is not null), ("referencesColumn", end.ReferencesColumn is not null),
+            })
+            {
+                if (set)
+                    Invalid(report, pointer + "/" + key, $"End entry {i.ToString(CultureInfo.InvariantCulture)} of relation '{relation.Name}' sets '{key}', which needs a relation with an end of several types.");
+            }
+
+            if (junction is not null && !end.HasWay)
+                MissingForeignKey(report, pointer, i, junction);
+        }
+    }
+
+    /// <summary>MQ4009 for a one-type entry with no key in a designed junction, in the words of a missing key.</summary>
+    private static void MissingForeignKey(Report report, string pointer, int index, Table junction) =>
+        Invalid(report, pointer, $"End entry {index.ToString(CultureInfo.InvariantCulture)} names no 'foreignKey'; junction table '{junction.Name}' is designed, so the entry needs the foreign key that references its end's table.");
 
     /// <summary>
     /// MQ4009 and MQ4011 on a mapping of a relation with an end of several types (several-types-design.md section 19.7): the per-end entries,
@@ -434,6 +454,14 @@ internal static class MappingRules
                 Invalid(report, at + "/typeColumn", $"End entry {n} of relation '{relation.Name}' uses one column for 'typeColumn' and 'idColumn'.");
             if (entry.ForeignKeys.Count > 0 && mapping.JunctionTable is not null)
                 Invalid(report, at + "/foreignKeys", $"End entry {n} of relation '{relation.Name}' sets 'foreignKeys' beside 'junctionTable'; in a link table an end is pointed at by one key, a key per type or an id.");
+            // Each type is listed once (decision 38): a second item for it would give its rows a second pointer.
+            var listed = new HashSet<string>(StringComparer.Ordinal);
+            for (var k = 0; k < entry.Types.Count; k++)
+            {
+                var type = entry.Types[k].Entity;
+                if (!listed.Add(type))
+                    Invalid(report, Ptr.At(at + "/types", k) + "/entity", $"End entry {n} of relation '{relation.Name}' lists entity '{model.Get<Entity>(type)?.Name ?? type}' in two types items; keep one.");
+            }
 
             // Each named key is a foreign key, and each named column a column, of a designed or imported table of the database.
             if (entry.ForeignKey is { } foreignKey)
