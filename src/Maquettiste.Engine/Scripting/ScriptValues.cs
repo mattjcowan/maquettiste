@@ -308,6 +308,10 @@ internal sealed class ScriptValues
                 owner.State.Record(resolved.Dependencies);
                 next = hop + 1;
             }
+            else if (value is ITrackedValue { Dependencies.Count: > 0 } tracked)
+            {
+                owner.State.Record(tracked.Dependencies);
+            }
 
             // Kept before the members are copied, so a cycle of helper objects (a category's parent and children) closes on it.
             var copy = new JsObject(owner.Engine);

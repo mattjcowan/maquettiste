@@ -111,6 +111,14 @@ internal static class TypeJoinPaths
     /// One pair's path from <paramref name="pf"/>'s target to <paramref name="pt"/>'s: one step when either end's rows hold the link, else two
     /// through the link table; <see langword="null"/> when a pointer didn't resolve.
     /// </summary>
+    /// <remarks>
+    /// A step ends in the table the pointer refers to and doesn't step on from there (decision 48: paths between the pointer's columns and the
+    /// columns they refer to). When that is a base's table holding the rows of every target, as one key at an end with several types over TPT
+    /// (way 5), the step's condition is what picks the target's rows there: a TPT base table has no discriminator, so with no binding
+    /// constants a pair's path to one type also reaches the rows of the end's other types, as way 5's single path in <c>joins</c> does. MQ4118's
+    /// <c>shared-table</c> gap says the key can't tell the types apart. A reader that needs one type's rows joins on into that type's own table,
+    /// from <c>to_type</c>'s entity mapping.
+    /// </remarks>
     private static RJoinPath? Path(TypeLink pair, TypeLinkPointer pf, TypeLinkPointer pt, IReadOnlyList<RColumnCondition> constants,
         Func<Placement, RTable, IReadOnlyList<RColumnCondition>> rows)
     {
@@ -206,33 +214,37 @@ internal sealed partial class DatabaseRun
 
         // Paths read finished tables and keys only: computed per relation in parallel, committed in relation order.
         RowsByTable(); // built once here, read by the parallel loop
-        var computed = new List<(RNavigation Navigation, List<TypeJoinPaths.PairPath> Paths, RJoinPath? Shared, List<string> Keys)>[stored.Count];
+        var computed = new List<(RNavigation Navigation, List<TypeJoinPaths.PairPath> Paths, RJoinPath? Shared, IReadOnlyList<string> Keys)>[stored.Count];
         _run.ForEach(stored.Count, i => computed[i] = RelationTypeJoins(stored[i]));
 
         for (var i = 0; i < stored.Count; i++)
         {
-            var relationKeys = _run.DepsOf(stored[i].Relation!).ToList();
-            foreach (var (navigation, pairs, shared, keys) in computed[i])
+            var storageKeys = _storageKeys.GetValueOrDefault(stored[i].Relation!) ?? _run.DepsOf(stored[i].Relation!).ToList();
+            foreach (var (navigation, pairs, shared, rowKeys) in computed[i])
             {
-                var paths = pairs.Select(p => p.Path).ToList();
+                // The paths carry what the relation's storage keys on and the files that pick a target's rows (section 19.8, "Dependency
+                // keys"), so only a unit that reads them records those keys: the navigation and the entities that hold it keep their own.
+                var keys = rowKeys.Count == 0 ? storageKeys : new DependencySet(_run.Keys).AddRange(storageKeys).AddRange(rowKeys).ToList();
+                foreach (var pair in pairs)
+                    pair.Path.Keys = keys;
+                if (shared is not null)
+                    shared.Keys = keys;
+                var paths = new KeyedList<RJoinPath>([.. pairs.Select(p => p.Path)], keys);
                 _run.SetTypeJoins(navigation, _db.Name, paths);
                 // Exactly one path: way 5's, or a single pair's (decision 48).
                 if ((shared ?? (paths.Count == 1 ? paths[0] : null)) is { } one)
                     _run.SetJoin(navigation, _db.Name, one);
-                // The paths follow what the relation's storage keys on (the storage run adds those to the relation), and the files that pick
-                // a target's rows (section 19.8, "Dependency keys").
-                _run.DepsOf(navigation).AddRange(relationKeys).AddRange(keys);
-                AddEntityTypeJoins(stored[i].TypeLinks!, navigation, pairs, shared, relationKeys, keys);
+                AddEntityTypeJoins(stored[i].TypeLinks!, navigation, pairs, shared, keys);
             }
         }
     }
 
-    private List<(RNavigation Navigation, List<TypeJoinPaths.PairPath> Paths, RJoinPath? Shared, List<string> Keys)> RelationTypeJoins(RelationPhysical phys)
+    private List<(RNavigation Navigation, List<TypeJoinPaths.PairPath> Paths, RJoinPath? Shared, IReadOnlyList<string> Keys)> RelationTypeJoins(RelationPhysical phys)
     {
         var rel = phys.Relation!;
         var links = phys.TypeLinks!;
         var constants = phys.Mapping?.Constants ?? [];
-        var result = new List<(RNavigation, List<TypeJoinPaths.PairPath>, RJoinPath?, List<string>)>();
+        var result = new List<(RNavigation, List<TypeJoinPaths.PairPath>, RJoinPath?, IReadOnlyList<string>)>();
         foreach (var from in rel.Ends)
         {
             foreach (var to in rel.Ends)
@@ -240,9 +252,13 @@ internal sealed partial class DatabaseRun
                 if (ReferenceEquals(from, to) || NavigationOf(rel, from, to) is not { } navigation)
                     continue;
                 var keys = new DependencySet(_run.Keys);
-                var paths = TypeJoinPaths.Of(links, from, to, constants, (target, table) => RowsOf(target, table, keys));
-                var shared = TypeJoinPaths.Shared(links, from, to, constants, (target, table) => RowsOf(target, table, keys));
-                result.Add((navigation, paths, shared, keys.ToList().ToList()));
+                // Rows are picked at the to end only: its targets, with what that end covers.
+                var entry = _typeStorage.First(x => ReferenceEquals(x.Relation, rel));
+                var index = entry.Ends.ToList().FindIndex(e => ReferenceEquals(e.End, to));
+                var (at, covered) = (entry.Ends[index], entry.Covered[index]);
+                var paths = TypeJoinPaths.Of(links, from, to, constants, (target, table) => RowsOf(at, covered, target, table, keys));
+                var shared = TypeJoinPaths.Shared(links, from, to, constants, (target, table) => RowsOf(at, covered, target, table, keys));
+                result.Add((navigation, paths, shared, keys.ToList()));
             }
         }
 
@@ -262,7 +278,7 @@ internal sealed partial class DatabaseRun
     /// base among the from end's targets).
     /// </summary>
     private void AddEntityTypeJoins(TypeLinks links, RNavigation navigation, List<TypeJoinPaths.PairPath> pairs, RJoinPath? shared,
-        IReadOnlyList<string> relationKeys, IReadOnlyList<string> keys)
+        IReadOnlyList<string> keys)
     {
         var fromEnd = links.Ends.FirstOrDefault(e => ReferenceEquals(e.End, navigation.From));
         if (fromEnd is null || pairs.Count == 0)
@@ -284,9 +300,7 @@ internal sealed partial class DatabaseRun
             if ((own.Count == 1 ? own[0] : shared) is { } one)
                 Map(_joinsByEntity, entityId).TryAdd(navigation.Name, one);
             if (navigation.To.HasSeveralTypes || own.Count > 1)
-                Map(_typeJoinsByEntity, entityId).TryAdd(navigation.Name, own);
-            if (_run.EntityById(entityId) is { } entity)
-                _run.DepsOf(entity).AddRange(relationKeys).AddRange(keys);
+                Map(_typeJoinsByEntity, entityId).TryAdd(navigation.Name, new KeyedList<RJoinPath>(own, keys));
         }
 
         static SortedDictionary<string, TValue> Map<TValue>(Dictionary<string, SortedDictionary<string, TValue>> byEntity, string entityId)
@@ -303,70 +317,71 @@ internal sealed partial class DatabaseRun
 
     /// <summary>
     /// What picks <paramref name="target"/>'s rows in <paramref name="table"/> (decision 48), when the table holds rows of an entity the target
-    /// doesn't stand for (itself and its derived entities): its TPH discriminator, else its binding's constants read from its file and resolved
-    /// against the table by name or key, as a binding does. Empty when the table holds the target's rows only, or when nothing picks them
+    /// doesn't stand for (<see cref="StandsFor(TypeLinkEnd, HashSet{string}, Placement)"/>: itself and its covered derived entities whose rows
+    /// are in its table): see <see cref="PickRows"/>. Empty when the table holds the rows of those entities only, or when nothing picks them
     /// (MQ4118 then reports <c>rows-not-told-apart</c>).
     /// </summary>
-    private IReadOnlyList<RColumnCondition> RowsOf(Placement target, RTable table, DependencySet keys)
+    private IReadOnlyList<RColumnCondition> RowsOf(TypeLinkEnd end, HashSet<string> covered, Placement target, RTable table, DependencySet keys)
     {
-        var rowsByTable = RowsByTable();
-        if (!rowsByTable.TryGetValue(table, out var placed))
+        if (!RowsByTable().TryGetValue(table, out var placed) || !placed.Exists(p => !ReferenceEquals(p, target) && !p.Entity.IsAbstract))
             return [];
-        var stood = new List<Placement>();
-        var others = false;
-        foreach (var p in placed)
-        {
-            if (StandsFor(target, p))
-                stood.Add(p);
-            else if (!p.Entity.IsAbstract)
-                others = true;
-        }
+        var stands = StandsFor(end, covered, target);
+        if (!placed.Exists(p => !p.Entity.IsAbstract && !stands.Contains(p)))
+            return [];
+        return PickRows(target, table, stands, keys) ?? [];
+    }
 
-        if (!others)
-            return [];
+    /// <summary>
+    /// The conditions that pick the rows of the entities a target stands for in a table that also holds other rows (decision 48): the TPH
+    /// discriminator holding their codes; else their bindings' constants, read from their files and resolved against the table by name or
+    /// key, as a binding does. One entity's constants are each a condition (a constant whose column isn't in the table gives none: MQ4048 or
+    /// MQ4049 reports it). Several entities each set one constant, on the same column, which then holds the union of their values. Otherwise
+    /// <see langword="null"/>: nothing picks the rows (MQ4118 <c>rows-not-told-apart</c>).
+    /// </summary>
+    private List<RColumnCondition>? PickRows(Placement target, RTable table, List<Placement> stands, DependencySet? keys)
+    {
+        var rows = stands.Where(p => !p.Entity.IsAbstract).ToList();
         if (!target.Bound && _discriminators.TryGetValue(table.Key, out var discriminator))
         {
             var values = new List<object?>();
-            foreach (var p in stood.Where(p => !p.Entity.IsAbstract))
+            foreach (var p in rows)
             {
                 values.Add(ResolutionValues.Plain(p.Mapping?.DiscriminatorValue) ?? p.Entity.Name);
-                keys.Element(p.Entity.Id);
+                keys?.Element(p.Entity.Id);
                 if (p.Mapping is { } mapping)
-                    keys.Element(mapping.Id);
+                    keys?.Element(mapping.Id);
             }
 
             return values.Count == 0 ? [] : [new RColumnCondition { Column = discriminator, Values = [.. values.Distinct().OrderBy(Text, StringComparer.Ordinal)] }];
         }
 
-        if (target.ViaBinding && _bindingByEntity.TryGetValue(target.Entity.Id, out var bound) && bound.Binding.Constants.Count > 0)
+        if (rows.Count == 0)
+            return [];
+        var each = new List<List<RColumnCondition>>(rows.Count);
+        foreach (var p in rows)
         {
-            keys.Element(target.Entity.Id);
+            if (!p.ViaBinding || !_bindingByEntity.TryGetValue(p.Entity.Id, out var bound) || bound.Binding.Constants.Count == 0)
+                return null;
+            keys?.Element(p.Entity.Id);
             var conditions = new List<RColumnCondition>();
             foreach (var constant in bound.Binding.Constants)
             {
-                // A constant whose column isn't in the table gives no condition: MQ4048 or MQ4049 reports it.
                 if (BindingBuilder.FindTableColumn(table, constant.Column) is { } column)
                     conditions.Add(new RColumnCondition { Column = column, Values = [ResolutionValues.Plain(constant.Value)] });
             }
 
-            return conditions;
+            if (rows.Count > 1 && bound.Binding.Constants.Count != 1)
+                return null;
+            each.Add(conditions);
         }
 
-        return [];
+        if (each.Count == 1)
+            return each[0];
+        if (each[0] is not [var first] || !each.TrueForAll(c => c is [var only] && ReferenceEquals(only.Column, first.Column)))
+            return null;
+        return [new RColumnCondition { Column = first.Column, Values = [.. each.SelectMany(c => c[0].Values).Distinct().OrderBy(Text, StringComparer.Ordinal)] }];
 
         static string Text(object? value) => Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
-    }
-
-    /// <summary>Whether <paramref name="target"/> stands for <paramref name="p"/>: it is the target or derives from it.</summary>
-    private static bool StandsFor(Placement target, Placement p)
-    {
-        for (var x = p; x is not null; x = x.Base)
-        {
-            if (ReferenceEquals(x, target))
-                return true;
-        }
-
-        return false;
     }
 
     private Dictionary<RTable, List<Placement>> RowsByTable()

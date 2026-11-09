@@ -277,7 +277,7 @@
       "rule": "MQ4120",
       "elementId": "01KST2MAP00000000000000010",
       "pointer": "/ends/0",
-      "message": "Relation 'PinnedTo' covers entity 'Note' in database 'main', but its mapping names nothing that points at it there, so links to a Note aren't stored.",
+      "message": "Relation 'PinnedTo' covers entity 'Note' in database 'main', but its mapping names nothing that points at it there, so links to Note objects aren't stored.",
       "severity": "warning"
     }
   ]

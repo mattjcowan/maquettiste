@@ -25,6 +25,9 @@ internal sealed partial class DatabaseRun
 
     private readonly HashSet<(string, string?, string)> _typeStorageRefusals = [];
 
+    /// <summary>The storage keys of each relation stored as <see cref="TypeLinks"/> in this database (step 2), which its join paths carry (step 3).</summary>
+    private readonly Dictionary<RRelation, IReadOnlyList<string>> _storageKeys = new(ReferenceEqualityComparer.Instance);
+
     // ---- step 1 ---------------------------------------------------------------------------------------------------------------
 
     /// <summary>
@@ -538,21 +541,23 @@ internal sealed partial class DatabaseRun
             {
                 notStored.Add(new REndEntity { End = e.End, Entity = target.Entity });
                 _run.AddDiagnostic("MQ4120",
-                    $"Relation '{s.Relation.Name}' covers entity '{target.Entity.Name}' in database '{_db.Name}', but its mapping names nothing that points at it there, so links to a {target.Entity.Name} aren't stored.",
+                    $"Relation '{s.Relation.Name}' covers entity '{target.Entity.Name}' in database '{_db.Name}', but its mapping names nothing that points at it there, so links to {target.Entity.Name} objects aren't stored.",
                     m.Id, e.Entry is null ? "/ends" : EntryPointer(m, e.End.Id));
             }
         }
 
         var holding = links.Pairs.Where(p => p.Result is not null).Select(p => p.Table).Distinct().ToList();
-        result.Links = resolved;
-        if (links.LinkTable is { } linkTable)
-            result.Constants = Constants(s.Relation, m, linkTable);
-        result.Attributes = AttributeColumns(s.Relation, m, links.LinkTable is { } lt ? [lt] : holding, link: links.LinkTable is not null);
-        result.LeftOut = leftOut;
-        result.NotStored = notStored;
-        result.TypeCodes = typeCodes;
+        // The members carry the storage's keys, so only a unit that reads them keys on every covered entity (section 19.8, "Dependency keys").
+        var keys = StorageKeys(s, links);
+        _storageKeys[s.Relation] = keys;
+        result.Links = new KeyedList<RRelationLink>(resolved, keys);
+        result.Constants = new KeyedList<RColumnCondition>(links.LinkTable is { } linkTable ? Constants(s.Relation, m, linkTable) : [], keys);
+        result.Attributes = new KeyedList<RRelationAttributeColumn>(
+            AttributeColumns(s.Relation, m, links.LinkTable is { } lt ? [lt] : holding, link: links.LinkTable is not null), keys);
+        result.LeftOut = new KeyedList<REndEntity>(leftOut, keys);
+        result.NotStored = new KeyedList<REndEntity>(notStored, keys);
+        result.TypeCodes = new KeyedList<RTypeCode>(typeCodes, keys);
         var gaps = Gaps(s, links, result);
-        AddTypeStorageDeps(s, links);
         return new RelationStorageNote
         {
             Relation = s.Relation, MappingId = m.Id, Mapping = result, Tables = [.. holding.Select(t => t.Table)], LeftOut = leftOut, NotStored = notStored,
@@ -673,17 +678,24 @@ internal sealed partial class DatabaseRun
     /// The type code of an entity in this database (decision 42): its binding's <c>discriminatorValue</c>, else its mapping's, else its name;
     /// read from the files. A number is an integer code.
     /// </summary>
-    private object CodeOf(REntity entity)
+    private object CodeOf(REntity entity) =>
+        CodeValue(_bindingByEntity.TryGetValue(entity.Id, out var bound) ? bound.Binding.DiscriminatorValue : _run.MappingOf(_db.Id, entity.Id)?.DiscriminatorValue)
+        ?? entity.Name;
+
+    /// <summary>
+    /// The code a <c>discriminatorValue</c> gives (decision 42), the one rule the run and MQ4119 (<see cref="Migrations.TypeCodeCheck"/>) share: a
+    /// text, an integer, or any other value as its invariant text; <see langword="null"/> when it is unset or null, so the name is the code. A
+    /// binding to the database wins over a mapping (MQ4054): its value is read, and the mapping's isn't.
+    /// </summary>
+    /// <param name="value">The binding's value when the entity has a binding to the database, else its mapping's there.</param>
+    /// <returns>The code, or <see langword="null"/>.</returns>
+    internal static object? CodeValue(System.Text.Json.JsonElement? value) => ResolutionValues.Plain(value) switch
     {
-        System.Text.Json.JsonElement? value = _bindingByEntity.TryGetValue(entity.Id, out var bound) ? bound.Binding.DiscriminatorValue : _run.MappingOf(_db.Id, entity.Id)?.DiscriminatorValue;
-        return ResolutionValues.Plain(value) switch
-        {
-            string text => text,
-            long number => number,
-            null => entity.Name,
-            var other => Convert.ToString(other, CultureInfo.InvariantCulture) ?? entity.Name,
-        };
-    }
+        null => null,
+        string text => text,
+        long number => number,
+        var other => Convert.ToString(other, CultureInfo.InvariantCulture),
+    };
 
     private static string CodeText(object code) => code is long l ? l.ToString(CultureInfo.InvariantCulture) : (string)code;
 
@@ -989,7 +1001,10 @@ internal sealed partial class DatabaseRun
         return gaps;
     }
 
-    /// <summary>Whether a target's table holds rows of entities it doesn't stand for, with no discriminator and no binding constants to tell them apart.</summary>
+    /// <summary>
+    /// Whether a target's table holds rows of entities it doesn't stand for, with nothing to tell them apart: no discriminator, and no binding
+    /// constants the join paths can read (<see cref="PickRows"/>, the same rule).
+    /// </summary>
     private bool RowsNotToldApart(TypeLinkEnd e, HashSet<string> covered, Placement target)
     {
         var table = target.Table!;
@@ -998,7 +1013,7 @@ internal sealed partial class DatabaseRun
             return false;
         if (target.Strategy == InheritanceStrategy.Tph && !target.Bound)
             return false; // the discriminator
-        return !(_bindingByEntity.TryGetValue(target.Entity.Id, out var bound) && bound.Binding.Constants.Count > 0);
+        return PickRows(target, table.Table, stands, keys: null) is null;
     }
 
     /// <summary>Whether some check of the table names every one of the columns: a column check on it, or its text names it as a word.</summary>
@@ -1073,13 +1088,15 @@ internal sealed partial class DatabaseRun
     // ---- dependency keys ------------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// What a stored relation's members depend on (section 19.8): the mapping file, the named tables' files, each target's key, the files
-    /// that set the codes, the ends' types keys, and every covered entity's own and referrers' keys (a covered entity can gain or lose its
-    /// placement while no other key moves).
+    /// What a stored relation's members and join paths depend on (section 19.8), which they carry themselves (<see cref="ITrackedValue"/>), so
+    /// the relation, its navigations and the entities that hold them keep their own keys: the relation's keys, the mapping file, the named
+    /// tables' files, each target's key, the files that set the codes, the types keys of the ends with several types, and for every end the
+    /// covered entities' own, referrers' and mapping keys with their package chains (a covered entity can gain or lose its placement while no
+    /// other key moves: a mapping, its <c>ignore</c>, a binding, or a package moved under a by-package database's package).
     /// </summary>
-    private void AddTypeStorageDeps(TypeStorageEntry s, TypeLinks links)
+    private IReadOnlyList<string> StorageKeys(TypeStorageEntry s, TypeLinks links)
     {
-        var deps = _run.DepsOf(s.Relation);
+        var deps = new DependencySet(_run.Keys).AddRange(_run.DepsOf(s.Relation).ToList());
         deps.Add(Conventions).Element(_db.Id).Element(links.Mapping.Id);
         foreach (var pair in links.Pairs)
         {
@@ -1095,17 +1112,22 @@ internal sealed partial class DatabaseRun
             }
         }
 
+        // A one-type end's coverage (its entity and derived entities) feeds its targets, codes and row conditions too.
+        var packages = new HashSet<string>(StringComparer.Ordinal);
         for (var i = 0; i < s.Ends.Count; i++)
         {
-            if (!s.Ends[i].End.HasSeveralTypes)
-                continue;
-            deps.Add(EndCoverage.TypesKey(s.Ends[i].End.Id));
+            if (s.Ends[i].End.HasSeveralTypes)
+                deps.Add(EndCoverage.TypesKey(s.Ends[i].End.Id));
             foreach (var id in s.Covered[i].Order(StringComparer.Ordinal))
             {
                 deps.Element(id).Referrers(id);
                 if (_run.MappingOf(_db.Id, id) is { } entityMapping)
                     deps.Element(entityMapping.Id);
+                if (_run.Model.Get<Entity>(id)?.Package is { } package && packages.Add(package))
+                    _run.AddPackageChain(deps, package);
             }
         }
+
+        return deps.ToList();
     }
 }

@@ -725,10 +725,18 @@ public sealed class RColumnMapping
 }
 
 /// <summary>A join path between tables.</summary>
-public sealed class RJoinPath
+public sealed class RJoinPath : ITrackedValue
 {
     /// <summary>The steps, in order.</summary>
     public IReadOnlyList<RJoinStep> Steps { get; internal set; } = [];
+
+    /// <summary>
+    /// What a path of a relation stored as several types reads (several-types-design.md section 19.8, "Dependency keys"): the relation's storage
+    /// keys and the files that pick a target's rows; recorded when a unit reads the path. Empty on every other path, whose holder's keys cover it.
+    /// </summary>
+    internal IReadOnlyList<string> Keys { get; set; } = [];
+
+    IReadOnlyList<string> ITrackedValue.Dependencies => Keys;
 
     /// <summary>The target at the path's from end, set only when that end has several types (several-types-design.md decision 48).</summary>
     public REntity? FromType { get; internal set; }

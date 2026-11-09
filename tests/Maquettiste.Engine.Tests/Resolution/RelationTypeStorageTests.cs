@@ -154,7 +154,7 @@ public sealed partial class RelationTypeStorageTests
 
         var partOnly = $$""","ends":[{"end":"{{AttachedToEnd}}","types":[{"entity":"{{SPart}}","foreignKey":"{{Fk(Comments, 1)}}"}]}]""";
         var (left, _) = await ResolveAsync(h => h.Write("model/mappings/attached.json", RelationMapping(Attached, partOnly)));
-        Assert.Equal(["Relation 'AttachedTo' covers entity 'Assembly' in database 'main', but its mapping names nothing that points at it there, so links to a Assembly aren't stored."],
+        Assert.Equal(["Relation 'AttachedTo' covers entity 'Assembly' in database 'main', but its mapping names nothing that points at it there, so links to Assembly objects aren't stored."],
             Messages(left, "MQ4120"));
         Assert.Equal([("attachedTo", "Assembly")], MappingOf(left, Attached).NotStored.Select(x => (x.End.Role, x.Entity.Name)));
     }

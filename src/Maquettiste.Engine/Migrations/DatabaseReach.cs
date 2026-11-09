@@ -15,7 +15,8 @@ namespace Maquettiste.Engine.Migrations;
 /// mappings and facts), the elements that name one of those (entity and reference type bindings, seeds) and the entities its
 /// convention takes (<see cref="DatabaseScope.ByConvention"/>). It then closes over what each reached element references (base
 /// entities, value objects, scalar types, enums, reference types, stereotypes, packages and their parents), over the relations
-/// that name a reached entity (and so the entities at their other ends, every entity an end with several types covers included) and
+/// that name a reached entity (and so the entities at their other ends, every entity an end with several types covers included where a mapping
+/// of the relation in the database states storage) and
 /// over the entities that derive from a reached one. A
 /// reached stereotype's <c>implies</c> are references too, so the stereotypes it implies are reached: an element's effective set
 /// (next-phase-1-design.md section 4.2) is in the reach of every database that reaches the element. Default stereotypes
@@ -87,9 +88,10 @@ internal static class DatabaseReach
                 case Package package when package.Parent is { } parent:
                     Reach(parent);
                     break;
-                case Relation relation when EndCoverage.HasSeveralTypes(relation):
+                case Relation relation when EndCoverage.HasSeveralTypes(relation) && StatesStorage(model, relation.Id, database.Id):
                     // An end with several types covers entities its file doesn't name (derived entities, a stereotype's carriers, any entity):
-                    // a mapping of the relation keys on each of them (several-types-design.md section 19.8, "Dependency keys").
+                    // a mapping of the relation that states storage in this database keys on each of them (several-types-design.md section 19.8,
+                    // "Dependency keys"). Without one, nothing in the database reads them, so a model that only uses part 1 keeps its reach.
                     foreach (var end in relation.Ends.Where(e => e.HasSeveralTypes))
                     {
                         foreach (var covered in EndCoverage.CoveredBy(model, end))
@@ -101,5 +103,22 @@ internal static class DatabaseReach
         }
 
         return reached.ToFrozenSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Whether the relation's mapping in the database (the first by id, as the database run reads it) states storage: not ignored, with a
+    /// <c>junctionTable</c> or an <c>ends</c> entry (decision 49).
+    /// </summary>
+    private static bool StatesStorage(ModelSnapshot model, string relationId, string databaseId)
+    {
+        Mapping? first = null;
+        foreach (var reference in model.ReferencesTo(relationId))
+        {
+            if (model.GetDocument(reference.FromElementId)?.Element is Mapping m && string.Equals(m.Relation, relationId, StringComparison.Ordinal)
+                && string.Equals(m.Database, databaseId, StringComparison.Ordinal) && (first is null || string.CompareOrdinal(m.Id, first.Id) < 0))
+                first = m;
+        }
+
+        return first is { Ignore: false } && (first.JunctionTable is not null || first.Ends.Count > 0);
     }
 }

@@ -19,17 +19,31 @@ public sealed class TypeCodeCheckTests
 
     private static Database Db => new() { Id = Main, Name = "main", Dialect = Dialect.PostgreSql };
 
-    private static ModelSnapshot Model(string partName, JsonElement? bindingCode = null, JsonElement? mappingCode = null)
+    private const string AttachedTo = "01JRXN00000000000000000001", AttachedToEnd = "01JEND00000000000000000002";
+    private const string TypeColumn = "01JCMN00000000000000000001";
+
+    private static ModelSnapshot Model(string partName, JsonElement? bindingCode = null, JsonElement? mappingCode = null, bool bound = false,
+        string? typeColumn = TypeColumn)
     {
         var b = new ModelBuilder().Add(Db);
         b.Add(new Entity
         {
             Id = Part, Name = partName,
-            Bindings = bindingCode is null ? [] : [new EntityBinding { Id = "01JBND00000000000000000001", Database = Main, Source = "parts", DiscriminatorValue = bindingCode }],
+            Bindings = bindingCode is null && !bound ? [] : [new EntityBinding { Id = "01JBND00000000000000000001", Database = Main, Source = "parts", DiscriminatorValue = bindingCode }],
         });
         b.Add(new Entity { Id = Assembly, Name = "Assembly" });
         if (mappingCode is not null)
             b.Add(new Mapping { Id = "01JMAP00000000000000000001", Name = "Part in main", Database = Main, Entity = Part, DiscriminatorValue = mappingCode });
+        // The relation mapping whose type column holds the codes; the baseline's tells whether links were stored with them.
+        if (typeColumn is not null)
+        {
+            b.Add(new Mapping
+            {
+                Id = "01JMAP00000000000000000009", Name = "AttachedTo in main", Database = Main, Relation = AttachedTo,
+                Ends = [new RelationEndMapping { End = AttachedToEnd, TypeColumn = typeColumn, IdColumn = "01JCMN00000000000000000002" }],
+            });
+        }
+
         return b.Build();
     }
 
@@ -39,8 +53,8 @@ public sealed class TypeCodeCheckTests
     {
         [Main] =
         [
-            new(Part, "Part", "Part", "attached_type", "comments", "AttachedTo"),
-            new(Assembly, "Assembly", "Assembly", "attached_type", "comments", "AttachedTo"),
+            new(Part, "Part", "Part", "attached_type", "comments", "AttachedTo", AttachedTo, AttachedToEnd),
+            new(Assembly, "Assembly", "Assembly", "attached_type", "comments", "AttachedTo", AttachedTo, AttachedToEnd),
         ],
     };
 
@@ -52,6 +66,11 @@ public sealed class TypeCodeCheckTests
         Assert.Equal(((object)17L, "01JMAP00000000000000000001", "/discriminatorValue"), Simple(TypeCodeCheck.CodeOf(mapped, Get(mapped), Main)));
         var bound = Model("Part", Json("\"P\""), Json("17"));
         Assert.Equal(((object)"P", Part, "/bindings/0/discriminatorValue"), Simple(TypeCodeCheck.CodeOf(bound, Get(bound), Main)));
+
+        // A binding wins (MQ4054): with no value of its own the name is the code, and the mapping's leftover value is ignored, as the run does.
+        var boundNoCode = Model("Part", mappingCode: Json("\"P\""), bound: true);
+        Assert.Equal(((object)"Part", Part, "/name"), Simple(TypeCodeCheck.CodeOf(boundNoCode, Get(boundNoCode), Main)));
+        Assert.Empty(TypeCodeCheck.Findings(Model("Part", bound: true), boundNoCode, [Db], Held, "main@v1"));
 
         static Entity Get(ModelSnapshot m) => m.Get<Entity>(Part)!;
         static (object, string, string) Simple((object Code, string ElementId, string Pointer) x) => (x.Code is int i ? (long)i : x.Code, x.ElementId, x.Pointer);
@@ -86,6 +105,16 @@ public sealed class TypeCodeCheckTests
         Assert.Empty(TypeCodeCheck.Findings(Model("Item"), Model("Part"), [Db], new Dictionary<string, IReadOnlyList<TypeCodeHolder>>(), "main@v1"));
         var baseline = new ModelBuilder().Add(Db).Add(new Entity { Id = Assembly, Name = "Assembly" }).Build();
         Assert.Empty(TypeCodeCheck.Findings(Model("Item"), baseline, [Db], Held, "main@v1"));
+    }
+
+    [Fact]
+    public void A_type_column_the_baseline_did_not_have_holds_no_stored_links()
+    {
+        // The mapping (and so the type column) added in the same change as the rename: no links were stored with the old code.
+        Assert.Empty(TypeCodeCheck.Findings(Model("Item"), Model("Part", typeColumn: null), [Db], Held, "main@v1"));
+        // A different type column since the baseline holds none either.
+        Assert.Empty(TypeCodeCheck.Findings(Model("Item"), Model("Part", typeColumn: "01JCMN00000000000000000003"), [Db], Held, "main@v1"));
+        Assert.Single(TypeCodeCheck.Findings(Model("Item"), Model("Part"), [Db], Held, "main@v1"));
     }
 
     [Fact]

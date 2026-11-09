@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
@@ -13,13 +12,17 @@ namespace Maquettiste.Engine.Migrations;
 /// <param name="Column">The type column's name.</param>
 /// <param name="Table">The name of the table that holds it.</param>
 /// <param name="Relation">The relation's name.</param>
-internal sealed record TypeCodeHolder(string EntityId, string EntityName, object Code, string Column, string Table, string Relation);
+/// <param name="RelationId">The relation's id.</param>
+/// <param name="EndId">The id of the end whose type column it is.</param>
+internal sealed record TypeCodeHolder(string EntityId, string EntityName, object Code, string Column, string Table, string Relation, string RelationId,
+    string EndId);
 
 /// <summary>
 /// MQ4119 (several-types-design.md decision 52): a type code that changed since the baseline while a type column holds it. A changed code changes
 /// no table, so no migration fact asks for it, and stored links that hold the old code stop matching. The working side's codes and type columns
-/// come from the database run (<see cref="RDatabase.RelationStorage"/>); the baseline's codes are read from its files, with no resolution: the
-/// binding's <c>discriminatorValue</c>, then the mapping's, then the entity's name. No fact settles it, so it repeats until the baseline moves
+/// come from the database run (<see cref="RDatabase.RelationStorage"/>); the baseline's codes are read from its files, with no resolution, by the
+/// run's rule (<see cref="DatabaseRun.CodeValue"/>): a binding's <c>discriminatorValue</c>, else the mapping's, else the entity's name. A type
+/// column the baseline's mapping didn't name holds no stored links, so it gives nothing. No fact settles it, so it repeats until the baseline moves
 /// past the change; a suppression works, as for any finding.
 /// </summary>
 internal static class TypeCodeCheck
@@ -44,7 +47,7 @@ internal static class TypeCodeCheck
                 foreach (var code in mapping.TypeCodes.Where(c => DerivesFrom(c.Entity, end.End.Type)))
                 {
                     found.Add(new TypeCodeHolder(code.Entity.Id, code.Entity.Name, code.Code, end.End.TypeColumn!.Name, end.End.TypeColumn.Table?.Name ?? end.Link.Table.Name,
-                        note.Relation.Name));
+                        note.Relation.Name, note.Relation.Id, end.End.End.Id));
                 }
             }
         }
@@ -76,16 +79,20 @@ internal static class TypeCodeCheck
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(entity);
+        // A binding to the database wins (MQ4054): its value, else the name; a mapping's value is then ignored, as the run ignores it.
         for (var i = 0; i < entity.Bindings.Count; i++)
         {
-            if (string.Equals(entity.Bindings[i].Database, databaseId, StringComparison.Ordinal) && Plain(entity.Bindings[i].DiscriminatorValue) is { } bound)
-                return (bound, entity.Id, "/bindings/" + i.ToString(CultureInfo.InvariantCulture) + "/discriminatorValue");
+            if (!string.Equals(entity.Bindings[i].Database, databaseId, StringComparison.Ordinal))
+                continue;
+            return DatabaseRun.CodeValue(entity.Bindings[i].DiscriminatorValue) is { } bound
+                ? (bound, entity.Id, "/bindings/" + i.ToString(CultureInfo.InvariantCulture) + "/discriminatorValue")
+                : (entity.Name, entity.Id, "/name");
         }
 
         var mapping = model.All<Mapping>()
             .Where(m => string.Equals(m.Entity, entity.Id, StringComparison.Ordinal) && string.Equals(m.Database, databaseId, StringComparison.Ordinal))
             .OrderBy(m => m.Id, StringComparer.Ordinal).FirstOrDefault();
-        if (mapping is not null && Plain(mapping.DiscriminatorValue) is { } mapped)
+        if (mapping is not null && DatabaseRun.CodeValue(mapping.DiscriminatorValue) is { } mapped)
             return (mapped, mapping.Id, "/discriminatorValue");
         return (entity.Name, entity.Id, "/name");
     }
@@ -118,7 +125,11 @@ internal static class TypeCodeCheck
                 var before = CodeOf(baseline, old, database.Id).Code;
                 if (Same(before, now.Code))
                     continue;
-                var columns = string.Join(" and ", byEntity.Select(h => $"column '{h.Column}' of table '{h.Table}' holds codes of relation '{h.Relation}'").Distinct());
+                // Only a type column the baseline had holds stored links: one added since then holds none yet.
+                var stored = byEntity.Where(h => HeldInBaseline(working, baseline, database.Id, h)).ToList();
+                if (stored.Count == 0)
+                    continue;
+                var columns = string.Join(" and ", stored.Select(h => $"column '{h.Column}' of table '{h.Table}' holds codes of relation '{h.Relation}'").Distinct());
                 found.Add(RuleCatalog.Create("MQ4119",
                     $"Since the baseline, the type code of '{entity.Name}' in database '{database.Name}' changed from {Quoted(before)} to {Quoted(now.Code)}, and {columns}; links stored with the old code no longer find their object. Update those rows, or keep the stored code.",
                     now.ElementId, working.GetDocument(now.ElementId)?.Path, now.Pointer));
@@ -128,7 +139,19 @@ internal static class TypeCodeCheck
         return found;
     }
 
-    private static object? Plain(JsonElement? value) => value is { ValueKind: JsonValueKind.String or JsonValueKind.Number } ? ResolutionValues.Plain(value) : null;
+    /// <summary>
+    /// Whether the baseline stored the holder's codes: its mapping of the relation in the database (the first by id, as the run reads it, and not
+    /// ignored) names the same type column for the end as the working model's.
+    /// </summary>
+    private static bool HeldInBaseline(ModelSnapshot working, ModelSnapshot baseline, string databaseId, TypeCodeHolder holder) =>
+        TypeColumnOf(working, databaseId, holder) is { } now && string.Equals(TypeColumnOf(baseline, databaseId, holder), now, StringComparison.Ordinal);
+
+    private static string? TypeColumnOf(ModelSnapshot model, string databaseId, TypeCodeHolder holder) =>
+        model.All<Mapping>()
+            .Where(m => string.Equals(m.Relation, holder.RelationId, StringComparison.Ordinal) && string.Equals(m.Database, databaseId, StringComparison.Ordinal))
+            .OrderBy(m => m.Id, StringComparer.Ordinal).FirstOrDefault() is { Ignore: false } mapping
+            ? mapping.Ends.FirstOrDefault(e => string.Equals(e.End, holder.EndId, StringComparison.Ordinal))?.TypeColumn
+            : null;
 
     private static bool Same(object a, object b) =>
         (a is string) == (b is string) && string.Equals(Text(a), Text(b), StringComparison.Ordinal);

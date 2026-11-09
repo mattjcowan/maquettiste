@@ -75,6 +75,8 @@ internal sealed class TrackingTemplateContext : TemplateContext
     {
         if (target is IResolvedObject resolved)
             Recorder.RecordObject(resolved);
+        else if (target is ITrackedValue { Dependencies.Count: > 0 } tracked)
+            Recorder.RecordAll(tracked.Dependencies);
     }
 
     /// <summary>
@@ -109,6 +111,10 @@ internal sealed class TrackingTemplateContext : TemplateContext
                 return Wrap(TemplateValues.Plain(json));
         }
 
+        // A value with keys of its own (a relation's storage members and their join paths, several-types-design.md section 19.8) records
+        // them when it is read, empty or not.
+        if (value is ITrackedValue { Dependencies.Count: > 0 } tracked)
+            Recorder.RecordAll(tracked.Dependencies);
         var catalog = _unit.Run.Catalog;
         switch (catalog.Shape(value.GetType()))
         {
