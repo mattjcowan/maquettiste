@@ -17,7 +17,15 @@ import { rightDiagnostics, severalLinkDiagnostics } from "./rightRules";
 import { assumeKindDiagnostics, namedTriggerDiagnostics, triggerDiagnostics } from "./triggerRules";
 import { appliesToEntities, Coverage } from "./coverage";
 import { keysOfDocument, referencedKeyMessage, referencedKeyProblem } from "@/model/foreignKeyTarget";
-import { endTypeDiagnostics, fieldDiagnostics, relationHasSeveralTypes, storageDiagnostics } from "./endRules";
+import {
+  endTypeDiagnostics,
+  fieldDiagnostics,
+  guardDiagnostics,
+  mappingDiagnostics,
+  relationHasSeveralTypes,
+  seedDiagnostics,
+  storageDiagnostics,
+} from "./endRules";
 
 type Json = Record<string, unknown>;
 export interface ModelEntry {
@@ -359,6 +367,14 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
       out.push(diag(rule, severity, message, entry, pointer, elementId));
     endTypeDiagnostics(json, ctx, emit);
     if (relationHasSeveralTypes(json)) storageDiagnostics(json, ctx, emit);
+  }
+  // MQ4009, MQ7105 and MQ3116 where a relation has an end with several types (endRules.ts); each reads nothing for a model without one.
+  if (kind === "mapping" || kind === "seed" || (kind === "process" && Array.isArray(json.guards) && json.guards.length)) {
+    const emitSeveral = (rule: string, severity: Diagnostic["severity"], message: string, pointer: string, elementId?: string) =>
+      out.push(diag(rule, severity, message, entry, pointer, elementId));
+    mappingDiagnostics(json, ctx, emitSeveral);
+    seedDiagnostics(json, ctx, emitSeveral);
+    guardDiagnostics(json, ctx, emitSeveral);
   }
   // MQ4116: a binding field, a query field or a collection that names an end with several types.
   if ((kind === "entity" && Array.isArray(json.bindings) && json.bindings.length) || kind === "query")

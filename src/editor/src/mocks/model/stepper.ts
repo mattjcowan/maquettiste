@@ -1231,7 +1231,7 @@ class Interpreter {
     if (several && connected && !several.covers(String(connected.entity))) {
       this.problem(
         "MQ9305",
-        `A connect step links to '${String(connected.name)}' through end '${several.name}', which leads to ${several.leadsTo}, not to entity '${this.entityNames(String(connected.entity))}'; connect an object of one of those, or use another end.`,
+        `object '${String(connected.name)}' is an object of entity '${this.entityNames(String(connected.entity))}', but end '${several.name}' leads to ${several.leadsTo}; connect an object of one of those, or use another end.`,
       );
       return this.refuse("no-transition");
     }

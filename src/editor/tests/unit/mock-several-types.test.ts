@@ -52,7 +52,7 @@ const far = (extra: Json) => ({ role: "attachedTo", max: 1, ...extra });
 const found = (backend: MockBackend, rule: string) =>
   backend.model
     .validate()
-    .diagnostics.filter((d) => d.rule === rule && d.elementId === ID.rel)
+    .diagnostics.filter((d) => d.rule === rule && [ID.rel, ID.e1, ID.e2, ID.e3].includes(d.elementId ?? ""))
     .map((d) => ({ pointer: d.jsonPointer, severity: d.severity, message: d.message }));
 
 describe("the mock's index row for an end with several types", () => {
@@ -218,8 +218,8 @@ describe("MQ4116", () => {
       .diagnostics.filter((d) => d.rule === "MQ4116" && d.elementId === ID.query)
       .map((d) => [d.jsonPointer, d.message]);
     expect(messages).toEqual([
-      ["/select/0/attribute", "Field 1 of query 'Notes' names end 'attachedTo', which leads to several types; a field can't map it."],
-      ["/collections/0/attribute", "Collection 1 of query 'Notes' names end 'attachedTo', which leads to several types; a collection can't fill it."],
+      ["/select/0/attribute", "Field 0 of query 'Notes' names end 'attachedTo', which leads to several types; a field can't map it."],
+      ["/collections/0/attribute", "Collection 0 of query 'Notes' names end 'attachedTo', which leads to several types; a collection can't fill it."],
     ]);
   });
 

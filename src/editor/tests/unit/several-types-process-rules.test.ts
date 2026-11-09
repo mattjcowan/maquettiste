@@ -262,7 +262,7 @@ describe("the mock's scenario links through an end with several types", () => {
     const refused = b.model.save(ID.scenario, scenario(ID.tool), b.model.get(ID.scenario)!.hash);
     const message = refused.diagnostics.find((d) => d.rule === "MQ9305")?.message;
     expect(message).toBe(
-      "Object 'note' links to 'target' through end 'AttachedTo.attachedTo', which leads to Part, Assembly, an entity with stereotype approvable, or an entity derived from one, not to entity 'Tool'; link to an object of one of those, or through another end.",
+      "Scenario 'Attach': Object 'note' links to 'target' through end 'AttachedTo.attachedTo', which leads to Part, Assembly, Contract, or an entity derived from one, not to entity 'Tool'; link to an object of one of those, or through another end.",
     );
   });
 
@@ -283,7 +283,8 @@ describe("the mock's scenario links through an end with several types", () => {
       },
     ];
     const ends = severalEnds(entries as never);
-    expect(ends.get("y")!.covers("anything")).toBe(true);
+    expect(ends.get("y")!.covers("e")).toBe(true);
+    expect(ends.get("y")!.covers("anything")).toBe(false);
     expect(ends.get("x")).toBeUndefined();
     expect(severalEnds([entries[0]] as never).size).toBe(0);
   });
@@ -313,7 +314,7 @@ describe("the mock's stepper through an end with several types", () => {
   it("a connect step through the end checks the connected object's entity (MQ9305); a covered or derived one passes", () => {
     const bad = simulate(doc, null, connect("o3"), options);
     expect(bad.trace[1].accepted).toBe(false);
-    expect(bad.diagnostics?.some((d) => d.rule === "MQ9305" && d.message.includes("not to entity 'Tool'"))).toBe(true);
+    expect(bad.diagnostics?.some((d) => d.rule === "MQ9305" && d.message.includes("is an object of entity 'Tool'"))).toBe(true);
     const good = simulate(doc, null, connect("o2"), options);
     expect(good.diagnostics?.filter((d) => d.rule === "MQ9305") ?? []).toEqual([]);
   });

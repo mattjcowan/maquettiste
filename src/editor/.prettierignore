@@ -10,3 +10,4 @@ src/mocks/recorded
 package-lock.json
 playwright-report
 test-results
+tests/fixtures
