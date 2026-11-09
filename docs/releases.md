@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.22.0 (not yet released)
+## 0.22.0 (2026-11-09)
 
 - **Relations with several types at an end, part 2.** A relation mapping can now say, per end, how the team's own tables hold each
   link. Storage stays optional: a team may keep entities and tables as separate models, and a pack can join them its own way. The
