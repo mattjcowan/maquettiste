@@ -29,7 +29,8 @@ import {
 import { databasesOf } from "./useStorage";
 import { docEndEntities, docEndHasSeveralTypes, docEndSingleEntity } from "@/model/endTypes";
 import { LinkTableExtras, SeveralTypesCard } from "./RelationStorageSeveral";
-import type { StorageEndSource, StorageMapping, TableDocWithKeys } from "./relationStorage";
+import { DatabaseRunLists } from "./RelationStorageRun";
+import { coveredTargets, type StorageEndSource, type StorageMapping, type TableDocWithKeys } from "./relationStorage";
 
 type Json = Record<string, unknown>;
 
@@ -60,7 +61,14 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
   const endEntity = (e: (typeof ends)[number]) => docEndSingleEntity(e) ?? "";
   const hasSeveralTypes = ends.some(docEndHasSeveralTypes);
   const severalMode = hasSeveralTypes && ends.length === 2;
-  const listed = [...new Set(ends.flatMap((e) => docEndEntities(e)))];
+  // The per-type pickers cover every target: the listed entities, the carriers of stereotype entries and what is derived from each.
+  // An any-entity end names no list (a key per type is refused there), so it doesn't pull every entity in.
+  const summaryEnds = lookup.byId.get(id)?.ends ?? [];
+  const entityRows = hasSeveralTypes && ends.length === 2 ? lookup.ofKind("entity") : [];
+  const covered = ends.map((e, i) =>
+    hasSeveralTypes && ends.length === 2 ? coveredTargets(docEndEntities(e), summaryEnds[i]?.covers ?? [], false, entityRows) : docEndEntities(e),
+  );
+  const listed = [...new Set(covered.flat())];
   const withBases = new Set(listed);
   if (severalMode)
     for (const entity of listed)
@@ -118,7 +126,11 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
               <SeveralTypesCard
                 dom={`${id}-${d.id}`}
                 databaseName={d.name}
-                ends={ends as StorageEndSource[]}
+                ends={(ends as StorageEndSource[]).map((e, i) => ({
+                  ...e,
+                  // A derived or carrier target is offered where the database has a table for it; a listed one always (as before).
+                  covered: covered[i].filter((en) => docEndEntities(ends[i]).includes(en) || boundIn(en, d.id)),
+                }))}
                 roleOf={(endId) => ends.find((e) => e.id === endId)?.role ?? endId}
                 mapping={mapping}
                 change={(mutate) => change((j) => mutate(j as unknown as StorageMapping))}
@@ -184,6 +196,14 @@ export function RelationStorageTab({ id, json }: { id: string; json: RelationDoc
                   .map((a) => ({ id: a.id, name: a.name }))}
                 change={(mutate) => change((j) => mutate(j as unknown as StorageMapping))}
                 loading={mappingsLoading}
+              />
+            ) : null}
+            {severalMode ? (
+              <DatabaseRunLists
+                databaseId={d.id}
+                relationId={id}
+                nameOf={(entity) => lookup.nameOf(entity) ?? entity}
+                roleOf={(endId) => ends.find((e) => e.id === endId)?.role ?? endId}
               />
             ) : null}
             {nothingStored ? (

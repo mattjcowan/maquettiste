@@ -4,6 +4,8 @@
 // RBindingColumn), Map by name, and the edits a gesture makes to a binding. Column references follow the engine: a key or
 // a physical name, found by key, then by name, then loosely by name.
 
+import { coveredTargets } from "./relationStorage";
+
 type Json = Record<string, unknown>;
 
 export interface BindingConstant {
@@ -163,6 +165,14 @@ export function storageAttributes(entityId: string, docs: ReadonlyMap<string, Js
     end.anyEntity === true ||
     (end.entity ? mine.has(end.entity) : (end.types ?? []).some((t) => (t.entity ? mine.has(t.entity) : !!t.stereotype && carried.has(t.stereotype))));
   const listedOf = (end: EndJson) => (end.entity ? [end.entity] : (end.types ?? []).flatMap((t) => t.entity ?? []));
+  const entityList = [...docs.values()]
+    .filter((d) => d.kind === "entity")
+    .map((d) => ({ id: String(d.id), name: String(d.name ?? ""), base: typeof d.base === "string" ? d.base : undefined }));
+  const carriersOf = (end: EndJson) =>
+    entityList
+      .filter((e) => (end.types ?? []).some((t) => !!t.stereotype && ((docs.get(e.id)?.stereotypes as string[] | undefined) ?? []).includes(t.stereotype)))
+      .map((e) => e.id);
+  const coveredOf = (end: EndJson) => coveredTargets(listedOf(end), carriersOf(end), false, entityList);
   const severalTypes = (end: EndJson) => !end.entity && (end.anyEntity === true || (end.types ?? []).length > 1 || (end.types ?? []).some((t) => t.stereotype));
   for (const r of relations) {
     const ends = (r.ends as EndJson[] | undefined) ?? [];
@@ -199,7 +209,8 @@ export function storageAttributes(entityId: string, docs: ReadonlyMap<string, Js
         out.push({ ref, name, origin: "relation", from, type: null, isKey: false, required: false, readOnly: false, expected: false });
       form(`${other.id}.type`, `${base}Type`);
       form(other.id, `${base}Id`);
-      for (const entity of listedOf(other)) form(`${other.id}.${entity}`, `${base}${String(docs.get(entity)?.name ?? "")}Id`);
+      // A key per covered target: the listed entities, the carriers of stereotype entries and what is derived from each (19.10).
+      for (const entity of coveredOf(other)) form(`${other.id}.${entity}`, `${base}${String(docs.get(entity)?.name ?? "")}Id`);
     }
   }
   return out;

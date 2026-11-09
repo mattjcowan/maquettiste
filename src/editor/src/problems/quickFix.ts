@@ -11,6 +11,7 @@ import { fixEscalationPair, reorderStages } from "@/model/approvals";
 import { subjectsOf, uniqueName, type GateDoc, type NamedSignatureDoc, type SubjectDoc } from "@/model/process";
 import { builtInVerbs } from "@/model/verbs";
 import type { VerbFix } from "@/verbs/verbFixes";
+import { relationOfMapping, STORAGE_FIX_RULES, storageExtras, storageFix, type StorageFix } from "./storageFix";
 
 type Json = Record<string, unknown>;
 
@@ -25,6 +26,8 @@ export type QuickFix =
   | { kind: "sync-codes"; process: string; entity?: string; stereotype?: string; attribute: string; label: string }
   /** A fix that reaches the project's verb vocabulary (verbFixes.ts). */
   | VerbFix
+  /** A storage finding of a relation with an end of several types (storageFix.ts). */
+  | StorageFix
   /** A plain update of one document. */
   | { kind: "update"; id: string; json: ModelJson; label: string }
   /** Opens a part of a lifecycle on its tab (no change to the model). */
@@ -70,6 +73,7 @@ const EDITOR_FIXES = new Set([
   "MQ3116",
   "MQ3042",
   "MQ3043",
+  ...STORAGE_FIX_RULES,
 ]);
 
 /** True when the diagnostic's rule has a quick fix: a catalog `quickFix` or one the editor builds. */
@@ -104,6 +108,8 @@ function entryOf(element: Json, pointer: string): SubjectDoc | undefined {
  */
 export function fixDocuments(d: Diagnostic, element: ModelJson | undefined, have?: (id: string) => ModelJson | undefined): string[] {
   if (!d.elementId) return [];
+  const mappingRelation = relationOfMapping(d, element);
+  if (mappingRelation) return [d.elementId, mappingRelation];
   const related =
     d.rule === "MQ9205" || (d.rule === "MQ9201" && (d.jsonPointer === "/subject" || d.jsonPointer?.startsWith("/subjects")))
       ? element
@@ -468,6 +474,7 @@ function verbFix(rule: string, element: ModelJson, pointer: string, id: string):
  */
 export function extraQuickFixes(d: Diagnostic, doc: (id: string) => ModelJson | undefined): QuickFix[] {
   const element = d.elementId ? doc(d.elementId) : undefined;
+  if (element && d.rule === "MQ4115") return storageExtras(d, element);
   if (!element || !d.elementId || element.kind !== "process") return [];
   const id = typeof element.id === "string" ? element.id : d.elementId;
   if (d.rule === "MQ9904") {
@@ -495,6 +502,10 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
   // The process comes from the fetched document, never from a finding's element id (a state's or an entry's id).
   if (d.rule === "MQ9206") return null;
   if (d.rule.startsWith("MQ97")) return verbFix(d.rule, element, pointer, id);
+  if ((STORAGE_FIX_RULES as readonly string[]).includes(d.rule)) {
+    const relation = relationOfMapping(d, element);
+    return storageFix(d, element, relation ? doc(relation) : undefined);
+  }
   if (catalogFix === "sync-codes") {
     // The finding sits on the binding (`/subjects/<i>/boundAttribute`, or `/boundAttribute`): its entry names the entity and the attribute.
     if (element.kind !== "process") return null;

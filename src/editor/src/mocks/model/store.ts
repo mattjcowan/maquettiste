@@ -42,7 +42,7 @@ import { planDelete } from "./cascade";
 import { typedElement } from "./typed";
 import { applyRules, diagnosticKey, enumDrift, validateModel, type ModelEntry } from "./validate";
 import { ModelIndex } from "./modelIndex";
-import { applyCase, foreignKeyMismatches, resolveDatabase } from "./physical";
+import { applyCase, foreignKeyMismatches, resolveDatabase, typeStorageDiagnostics } from "./physical";
 import { resolveQueries } from "./queries";
 import { bindingFindings, materializeStatus, planMaterialize, type MaterializeRequest } from "./bindings";
 import { retag, tagUsage, type RetagOp } from "./tags";
@@ -513,6 +513,13 @@ export class MockModel {
       );
       if (!view) continue;
       out.push(...foreignKeyMismatches(view, docs).map((d) => ({ ...d, filePath: d.elementId ? (this.entries.get(d.elementId)?.path ?? null) : null })));
+      // The storage run of relations with an end of several types (MQ4051 for a constant, MQ4117, MQ4118, MQ4120; typeStorage.ts).
+      out.push(
+        ...applyRules(
+          typeStorageDiagnostics(view).map((d) => ({ ...d, filePath: d.elementId ? (this.entries.get(d.elementId)?.path ?? null) : null })),
+          this.rules(),
+        ),
+      );
       // The queries' findings (MQ3001, MQ4018, MQ4021 to MQ4043), which only the resolver can see (queries.ts).
       const paths = new Map([...this.entries.values()].filter((e) => e.json.kind === "query").map((e) => [e.id, e.path]));
       out.push(...applyRules(resolveQueries(view, docs, paths).diagnostics, this.rules()));

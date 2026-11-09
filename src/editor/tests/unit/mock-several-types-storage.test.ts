@@ -135,9 +135,13 @@ describe("MQ4009 on a mapping of a relation with several types", () => {
     expect(findings(ID.rel, { junctionTable: ID.table, ends: [{ end: ID.e1, foreignKeys: [ID.fk1] }] }).map((f) => f.pointer)).toEqual(["/ends/0/foreignKeys"]);
   });
 
-  it("keeps part 1's words for keys that are still refused, and refuses a shape that disagrees", () => {
+  it("gives the engine's words for keys that are still refused, and refuses a shape that disagrees", () => {
     expect(findings(ID.rel, { shape: "junction" })).toEqual([
-      { pointer: "/shape", message: "Relation 'AttachedTo' has an end with several types, so a mapping of it sets only ignore; remove 'shape'." },
+      {
+        pointer: "/shape",
+        message:
+          "Relation 'AttachedTo' has an end with several types, so a mapping of it doesn't take 'shape'; its 'ends' entries say how it is stored. Remove it.",
+      },
     ]);
     expect(findings(ID.rel, { foreignKeyEnd: ID.e1, ends: [{ end: ID.e2, idColumn: ID.cId }] }).map((f) => f.pointer)).toEqual(["/foreignKeyEnd"]);
     expect(findings(ID.rel, { shape: "junction", ends: [{ end: ID.e2, idColumn: ID.cId }] }).map((f) => f.pointer)).toEqual(["/shape"]);

@@ -174,11 +174,49 @@ export interface StorageEndSource {
   max?: number | "*" | undefined;
   anyEntity?: boolean | undefined;
   types?: readonly { entity?: string | undefined; stereotype?: string | undefined }[] | undefined;
+  /** Every covered entity a per-type picker may name (`coveredTargets`); without it, the listed entities. */
+  covered?: readonly string[] | undefined;
+}
+
+/**
+ * Every entity a relation end covers that a per-type picker may name (several-types-design.md 19.10), in the order the engine's targets
+ * follow (decision 39): each listed entity, then the carriers of the end's stereotype entries, each followed by the entities derived from it
+ * (by name, then id). An end that is any entity covers every entity.
+ */
+export function coveredTargets(
+  listed: readonly string[],
+  carriers: readonly string[],
+  any: boolean,
+  entities: readonly { id: string; name: string; base?: string | undefined }[],
+): string[] {
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  const chainHas = (id: string, root: string) => {
+    for (let at = byId.get(id)?.base, guard = 0; at && guard < 64; at = byId.get(at)?.base, guard++) if (at === root) return true;
+    return false;
+  };
+  const byName = (a: { id: string; name: string }, b: { id: string; name: string }) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  const roots = any
+    ? entities
+        .filter((e) => !e.base || !byId.has(e.base))
+        .sort(byName)
+        .map((e) => e.id)
+    : [...listed, ...carriers];
+  const out: string[] = [];
+  const add = (id: string) => void (!out.includes(id) && out.push(id));
+  for (const root of roots) {
+    add(root);
+    entities
+      .filter((e) => chainHas(e.id, root))
+      .sort(byName)
+      .forEach((e) => add(e.id));
+  }
+  return out;
 }
 
 /** The end of a relation document as the choices read it. A `types` list of one entity is a one-type end. */
 export function storageEndOf(end: StorageEndSource): StorageEnd {
-  const listed = end.entity ? [end.entity] : (end.types ?? []).flatMap((t) => t.entity ?? []);
+  const listed = end.entity ? [end.entity] : end.covered ? [...end.covered] : (end.types ?? []).flatMap((t) => t.entity ?? []);
   const several = !end.entity && (end.anyEntity === true || (end.types?.length ?? 0) > 1 || (end.types ?? []).some((t) => t.stereotype !== undefined));
   return { id: end.id, several, any: end.anyEntity === true && !end.entity, toOne: end.max === 1, entities: listed };
 }

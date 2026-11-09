@@ -204,21 +204,6 @@ const named = (t: { relation: Json; end: Json }): string =>
  */
 export function fieldDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit): void {
   if (!ctx.ownerOf) return;
-  // Part 2 drops the binding cases (decision 46); they stay while the engine's recorded fixture still holds them (parity test).
-  if (json.kind === "entity") {
-    arr(json.bindings).forEach((b, bi) =>
-      arr(b.fields).forEach((f, fi) => {
-        const found = typeof f.attribute === "string" ? through(f.attribute, ctx) : null;
-        if (found)
-          emit(
-            "MQ4116",
-            "error",
-            `Field ${fi} of the binding of '${str(json.name)}' names ${named(found)}; a field can't map it.`,
-            `/bindings/${bi}/fields/${fi}/attribute`,
-          );
-      }),
-    );
-  }
   if (json.kind !== "query") return;
   const fields = (list: Json[], at: string, within: string) =>
     list.forEach((f, fi) => {
@@ -278,9 +263,14 @@ export function mappingDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
       ["/promotedName", json.promotedName !== undefined],
       ["/shape", json.shape === "promoted" || (json.shape !== undefined && !stores)],
       ["/attributes", !stores && arr(json.attributes).length > 0],
+      ["/constants", !stores && arr(json.constants).length > 0],
     ];
     for (const [pointer, isSet] of refused)
-      if (isSet) bad(pointer, `Relation '${name}' has an end with several types, so a mapping of it sets only ignore; remove '${pointer.slice(1)}'.`);
+      if (isSet)
+        bad(
+          pointer,
+          `Relation '${name}' has an end with several types, so a mapping of it doesn't take '${pointer.slice(1)}'; its 'ends' entries say how it is stored. Remove it.`,
+        );
     if (stores) {
       const shape = json.shape === "junction" || json.shape === "foreign-key" ? json.shape : null;
       const inLinkTables = typeof json.junctionTable === "string" || entries.some((e) => arr(e.types).some((t) => t.foreignKey !== undefined));
@@ -354,7 +344,30 @@ export function mappingDiagnostics(json: Json, ctx: EndRuleContext, emit: Emit):
 
   // constants and attribute columns serve every relation mapping with a designed link table (answer 9).
   const columns = new Set(arr(junction?.columns).map((c) => str(c.id)));
-  const pointerColumns = new Set(entries.flatMap((e) => [e.idColumn, e.typeColumn].filter((c): c is string => typeof c === "string")));
+  // A link table of a relation with an end of several types needs an entry for every end, as a designed junction does (MQ4011).
+  if (several && designed)
+    for (const end of relationEnds)
+      if (!entries.some((e) => e.end === end.id))
+        emit(
+          "MQ4011",
+          "error",
+          `Link table '${str(junction.name)}' holds relation '${name}', so end '${str(end.role)}' needs an 'ends' entry that says how the table points at it.`,
+          "/junctionTable",
+        );
+  // The columns of every key an entry names count as pointer columns, beside `idColumn` and `typeColumn`.
+  const keyColumns = (id: unknown): string[] => {
+    const owner = typeof id === "string" ? ctx.ownerOf?.(id) : undefined;
+    const fk = arr(owner?.json.foreignKeys).find((k) => k.id === id);
+    return Array.isArray(fk?.columns) ? (fk.columns as string[]) : [];
+  };
+  const pointerColumns = new Set(
+    entries.flatMap((e) => [
+      ...[e.idColumn, e.typeColumn].filter((c): c is string => typeof c === "string"),
+      ...keyColumns(e.foreignKey),
+      ...(Array.isArray(e.foreignKeys) ? (e.foreignKeys as unknown[]).flatMap(keyColumns) : []),
+      ...arr(e.types).flatMap((t) => keyColumns(t.foreignKey)),
+    ]),
+  );
   arr(json.constants).forEach((c, i) => {
     const at = `/constants/${i}`;
     if (!designed) return bad(at, `Constant ${i} needs a designed 'junctionTable' that holds its column.`);
