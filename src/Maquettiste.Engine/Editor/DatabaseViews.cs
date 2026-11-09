@@ -581,15 +581,27 @@ internal static class DatabaseViews
     public static DatabaseView From(RDatabase database)
     {
         ArgumentNullException.ThrowIfNull(database);
-        // several-types-2: joins — relationStorage, one item per relation with an end of several types placed here (section 19.8).
         return new DatabaseView(database.Id, database.Name, database.Dialect, database.Version, database.DefaultSchema,
             [.. database.Tables.Select(Table)], [.. database.Views.Select(View)], [.. database.Sequences.Select(Sequence)],
             [.. database.Routines.Select(ProjectRoutine)], [.. database.Types.Select(ProjectType)], [.. database.Objects.Select(ProjectObject)],
             [.. database.Queries.Select(QueryViews.Project)], [.. database.Schemas.Select(Schema)], database.Quoting, database.MaxIdentifierLength, database.ByConvention,
             [.. database.Packages.Select(p => new ConventionPackageView(p.PackageId, p.Schema))],
             OrNull(database.DisplayName), OrNull(database.PluralName), database.Description, [.. database.Stereotypes.Select(s => s.Key)],
-            database.Tags, database.Category?.Id, database.Properties, database.Generation);
+            database.Tags, database.Category?.Id, database.Properties, database.Generation, RelationStorage(database.RelationStorage));
     }
+
+    /// <summary>
+    /// <c>relationStorage</c>: one item per relation with an end of several types placed in the database (several-types-design.md section 19.8),
+    /// in relation order; <see langword="null"/> (left out) when there is none, so a model without such relations keeps its view.
+    /// </summary>
+    internal static IReadOnlyList<RelationStorageView>? RelationStorage(IReadOnlyList<RelationStorageNote> notes) => notes.Count == 0 ? null :
+    [
+        .. notes.Select(n => new RelationStorageView(n.Relation.Id, n.Relation.Name, n.MappingId, [.. n.Tables.Select(t => t.Key)],
+            [.. n.LeftOut.Select(EndEntity)], [.. n.NotStored.Select(EndEntity)],
+            [.. n.Gaps.Select(g => new RelationStorageGapView(g.End.Id, g.Kind, g.Text))])),
+    ];
+
+    private static RelationStorageEntityView EndEntity(REndEntity e) => new(e.End.Id, e.Entity.Id);
 
     private static SchemaView Schema(RSchema schema) => new(
         schema.Id,

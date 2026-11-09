@@ -15,7 +15,8 @@ namespace Maquettiste.Engine.Migrations;
 /// mappings and facts), the elements that name one of those (entity and reference type bindings, seeds) and the entities its
 /// convention takes (<see cref="DatabaseScope.ByConvention"/>). It then closes over what each reached element references (base
 /// entities, value objects, scalar types, enums, reference types, stereotypes, packages and their parents), over the relations
-/// that name a reached entity (and so the entities at their other ends) and over the entities that derive from a reached one. A
+/// that name a reached entity (and so the entities at their other ends, every entity an end with several types covers included) and
+/// over the entities that derive from a reached one. A
 /// reached stereotype's <c>implies</c> are references too, so the stereotypes it implies are reached: an element's effective set
 /// (next-phase-1-design.md section 4.2) is in the reach of every database that reaches the element. Default stereotypes
 /// (next-phase-2-design.md section 3.1) need no walk of their own: the database's schema entries and every package on a reached
@@ -85,6 +86,16 @@ internal static class DatabaseReach
                     break;
                 case Package package when package.Parent is { } parent:
                     Reach(parent);
+                    break;
+                case Relation relation when EndCoverage.HasSeveralTypes(relation):
+                    // An end with several types covers entities its file doesn't name (derived entities, a stereotype's carriers, any entity):
+                    // a mapping of the relation keys on each of them (several-types-design.md section 19.8, "Dependency keys").
+                    foreach (var end in relation.Ends.Where(e => e.HasSeveralTypes))
+                    {
+                        foreach (var covered in EndCoverage.CoveredBy(model, end))
+                            Reach(covered);
+                    }
+
                     break;
             }
         }

@@ -430,12 +430,24 @@ internal sealed partial class Materializer
             for (var i = 0; i < 2; i++)
             {
                 var (self, other) = (relation.Ends[i], relation.Ends[1 - i]);
-                // Field candidates skip a relation with an end of several types (several-types-design.md decision 21): MQ4116 refuses such a field.
-                // several-types-2: joins — map by name offers the new field forms for a holding entity (section 19.11).
-                if (self.SingleEntity is not { } selfEntity || other.HasSeveralTypes || !mine.Contains(selfEntity) || other.Max != MaxCardinality.One
-                    || !seen.Add(other.Id))
+                // The entity holds the other end when this end covers it and the other end is to-one (several-types-design.md decision 46);
+                // on a relation whose ends each have one type, as before: this end's entity is the entity or a base.
+                var holds = self.SingleEntity is { } selfEntity ? mine.Contains(selfEntity)
+                    : self.HasSeveralTypes && EndCoverage.Covers(snapshot, self, entity.Id);
+                if (!holds || other.Max != MaxCardinality.One || !seen.Add(other.Id))
                     continue;
+                var stem = other.Navigation.Length > 0 ? other.Navigation : Casing.Camel(other.Role);
                 result.Add(new FieldCandidate(other.Id, other.Navigation.Length > 0 ? other.Navigation + "Id" : Casing.Camel(other.Role + "Id"), true));
+                if (!other.HasSeveralTypes)
+                    continue;
+                // An end with several types: its type column, and a key column per covered type, except on an any-entity end, which can't
+                // have a key per type (decision 43).
+                result.Add(new FieldCandidate(other.Id + ".type", stem + "Type", false));
+                if (other.AnyEntity == true)
+                    continue;
+                foreach (var covered in EndCoverage.CoveredBy(snapshot, other).Select(id => snapshot.Get<Entity>(id)).OfType<Entity>()
+                    .OrderBy(e => e.Name, StringComparer.Ordinal).ThenBy(e => e.Id, StringComparer.Ordinal))
+                    result.Add(new FieldCandidate(other.Id + "." + covered.Id, stem + Casing.Pascal(covered.Name) + "Id", true));
             }
         }
 

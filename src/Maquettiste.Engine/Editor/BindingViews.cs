@@ -117,11 +117,13 @@ internal static class BindingViews
         b.SoftDeleteColumn?.Name,
         b.SoftDeleteValue,
         Constants(b),
-        // several-types-2: joins — holds and keyOf on the field forms of decision 46, and the binding's discriminatorValue (section 19.8).
+        // holds and keyOf on the field forms of several-types-design.md decision 46, and the binding's discriminatorValue (section 19.8): each
+        // left out when null, so today's bindings keep their records.
         [.. b.Fields.Select(f => new BindingFieldRecord(f.Name, f.AttributeRef, f.Attribute?.Id, f.Member?.Id, f.End?.Id, f.ColumnName, f.SourceColumn?.Key,
-            f.WriteColumn?.Key, f.Type, f.Nullable, f.IsKey, f.IsGenerated, f.InInsert, f.InUpdate))],
+            f.WriteColumn?.Key, f.Type, f.Nullable, f.IsKey, f.IsGenerated, f.InInsert, f.InUpdate, f.Holds, f.KeyOf?.Id))],
         Columns(b.Columns),
-        Columns(b.WriteColumns));
+        Columns(b.WriteColumns),
+        b.DiscriminatorValue);
 
     private static IReadOnlyList<BindingColumnRecord> Columns(IReadOnlyList<RBindingColumn> columns) =>
         [.. columns.Select(c => new BindingColumnRecord(c.Name, c.Column?.Key, c.Status, c.Field?.Name))];

@@ -1106,6 +1106,13 @@ public sealed partial class ModelStore
         /// caller asks for them.
         /// </summary>
         public IReadOnlyDictionary<string, CodeHolders> Holders { get; init; } = FrozenDictionary<string, CodeHolders>.Empty;
+
+        /// <summary>
+        /// Per database id that resolved and has one, what its relation mappings' type columns hold (several-types-design.md decision 52,
+        /// MQ4119); filled only when the caller asks for them.
+        /// </summary>
+        public IReadOnlyDictionary<string, IReadOnlyList<TypeCodeHolder>> TypeCodes { get; init; } =
+            FrozenDictionary<string, IReadOnlyList<TypeCodeHolder>>.Empty;
     }
 
     /// <summary>
@@ -1139,9 +1146,10 @@ public sealed partial class ModelStore
     /// <param name="databaseIds">The database ids.</param>
     /// <param name="ct">Cancellation.</param>
     /// <param name="holders">Whether to read where each database stores reference-type codes too (<see cref="DatabaseCaptures.Holders"/>).</param>
+    /// <param name="typeCodes">Whether to read what each database's type columns hold too (<see cref="DatabaseCaptures.TypeCodes"/>).</param>
     /// <returns>The captures.</returns>
     internal async Task<DatabaseCaptures> CaptureDatabasesAsync(ModelSnapshot snapshot, IReadOnlyList<string> databaseIds, CancellationToken ct,
-        bool holders = false)
+        bool holders = false, bool typeCodes = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(databaseIds);
@@ -1172,12 +1180,17 @@ public sealed partial class ModelStore
         }
 
         var holderMap = new Dictionary<string, CodeHolders>(StringComparer.Ordinal);
-        if (holders)
+        var typeCodeMap = new Dictionary<string, IReadOnlyList<TypeCodeHolder>>(StringComparer.Ordinal);
+        if (holders || typeCodes)
         {
             for (var i = 0; i < databaseIds.Count; i++)
             {
-                if ((resolved[i] ?? shared.Model?.Databases.FirstOrDefault(d => string.Equals(d.Id, databaseIds[i], StringComparison.Ordinal))) is { } database)
+                if ((resolved[i] ?? shared.Model?.Databases.FirstOrDefault(d => string.Equals(d.Id, databaseIds[i], StringComparison.Ordinal))) is not { } database)
+                    continue;
+                if (holders)
                     holderMap[databaseIds[i]] = CodeHolders.Of(database);
+                if (typeCodes && TypeCodeCheck.HoldersOf(database) is { Count: > 0 } held)
+                    typeCodeMap[databaseIds[i]] = held;
             }
         }
 
@@ -1205,7 +1218,7 @@ public sealed partial class ModelStore
         }
 
         JoinCache(snapshot, added);
-        return new DatabaseCaptures(captures, failed) { Holders = holderMap };
+        return new DatabaseCaptures(captures, failed) { Holders = holderMap, TypeCodes = typeCodeMap };
     }
 
     /// <summary>
@@ -1236,7 +1249,7 @@ public sealed partial class ModelStore
             return found.Count == 0 ? found : await SettleAsync(snapshot, found, ct).ConfigureAwait(false);
 
         var ids = databases.Select(d => d.Id).ToList();
-        var working = await CaptureDatabasesAsync(snapshot, ids, ct).ConfigureAwait(false);
+        var working = await CaptureDatabasesAsync(snapshot, ids, ct, typeCodes: true).ConfigureAwait(false);
         var based = await BaselineCheck.CapturesAsync(baseline, snapshot, ids, ct, holders: true).ConfigureAwait(false);
         var codes = BaselineCodes.Of(baseModel);
         var failed = working.FailedOwners.Union(based.FailedOwners, StringComparer.Ordinal).ToFrozenSet(StringComparer.Ordinal);
@@ -1286,6 +1299,8 @@ public sealed partial class ModelStore
         // Codes and names of reference types changed since the baseline need value maps in the databases that hold them (MQ4112).
         found.AddRange(BaselineCheck.ValueMapFindings(snapshot, baseModel, codes, [.. databases.Where(d => based.Holders.ContainsKey(d.Id))], based.Holders,
             f => !based.Facts.Contains(f.Id), baseline.Label));
+        // Type codes a relation mapping's type column holds, changed since the baseline (MQ4119, several-types-design.md decision 52).
+        found.AddRange(TypeCodeCheck.Findings(snapshot, baseModel, [.. databases.Where(d => based.Captures.ContainsKey(d.Id))], working.TypeCodes, baseline.Label));
         return await SettleAsync(snapshot, found, ct).ConfigureAwait(false);
 
         static string Shown(IReadOnlyList<string> names) =>

@@ -374,12 +374,28 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   conventions (plural snake_case by default), overridable per element.
 - `displayName`, `pluralName` and `description` feed generated UI and documentation; keep them meaningful.
 - Relation ends: an end writes exactly one of `entity` (one entity), `types` (a list of `{ "entity": id }` or `{ "stereotype": key }`
-  entries; a stereotype covers the entities that carry it) or `anyEntity: true`. A list of one entity is MQ3042: write `entity`. Only one
-  end of a two-ended relation may have several types, and a composition's part end can't be `anyEntity` (MQ3041); an entry another entry
-  covers is MQ3043. `role`, `navigation`, `min`, `max` and `onDelete` are one per end. A path through such an end reads what every type
-  holds under one id; `in_state` through it is unknown for an object of a type the lifecycle doesn't govern. Nothing is stored for such a
-  relation yet (MQ4115, info); seeds, query fields and binding fields through it are refused (MQ7105, MQ4116). Never add a shared base
-  entity or one relation per type just to avoid this, unless asked.
+  entries; a stereotype covers the entities that carry it) or `anyEntity: true`. A list of one entity is MQ3042: write `entity`. Both
+  ends of a two-ended relation may have several types or be any entity; an n-ary relation's ends name one entity each, and a composition's
+  part end can't be `anyEntity` (MQ3041); an entry another entry covers is MQ3043. `role`, `navigation`, `min`, `max` and `onDelete` are
+  one per end. A path through such an end reads what every type holds under one id; `in_state` through it is unknown for an object of a
+  type the lifecycle doesn't govern. Seeds and query fields through it are refused (MQ7105, MQ4116). Never add a shared base entity or one
+  relation per type just to avoid this, unless asked.
+- Storing a relation with an end of several types is optional: without a relation mapping in a database nothing is stored there (MQ4115,
+  info), and entities and tables may stay separate models. To describe the team's existing tables, the mapping's `ends` entries say per end
+  how the table that holds the link points at it, in exactly one way: `foreignKey` (one key; on an end with several types, a key to a table
+  that holds every type's rows), `foreignKeys` (a key in each type's table), `types` with `{ "entity", "foreignKey" }` items (a key per type),
+  or `idColumn` with an optional `typeColumn` (the linked object's type code); `referencesColumn`, on the entry or per type, names the unique
+  column the id refers to when it isn't the table's one-column primary key. An end with no entry is the end whose rows hold the link;
+  `junctionTable` names a link table, and a link table per type needs `foreignKeys` at one end and `types` at the other. Ids and keys are
+  table columns, never the entity's key attributes. A type code is the entity's binding's `discriminatorValue` in that database, else its
+  mapping's, else its name; two types with one code are refused. An any-entity end takes a type and an id, an id alone, a key to a shared
+  table or a link table, never a key or table per type. Any mapping with a designed `junctionTable` may write `constants` (`{ "column", "value" }`:
+  fixed values that pick this relation's rows in a link table several relations share) and `attributes[].column` (a relation attribute's
+  column). An entity binding maps a held end's id column as `<endId>`, its type column as `<endId>.type` and a key column per type as
+  `<endId>.<entityId>`. MQ4117 refuses what doesn't fit together, MQ4118 (info) lists what the database can't enforce with the check or
+  unique to copy into the team's table, MQ4120 warns about a placed type no pointer reaches, and `validate --against` warns when a stored
+  type code changed since the baseline (MQ4119): set `discriminatorValue` to the old code to keep stored links. The engine never adds a
+  column, key or check for this.
 - A database holds only what is mapped to it: `byConvention` on the database file is `all`, `packages` (the domains
   listed in `packages`, with their sub-domains) or `none`; a mapping file adds one entity (or ignores one) either way. Write
   `byConvention` on every new database (`none` unless asked); a file without it keeps the older rule (every entity when

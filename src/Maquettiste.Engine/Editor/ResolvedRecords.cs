@@ -1782,10 +1782,28 @@ public static class ResolvedRecords
         public RelationRecord Relation(RRelation r) => new(r.Id, "relation", r.Name, r.Package?.Id, r.InverseName, r.RelationKind, r.Cardinality, r.AllowDuplicates,
             [.. r.Ends.Select(End)],
             [.. r.Attributes.Select(a => Attribute(a))],
-            // several-types-2: joins — the storage members links, constants, attributes, leftOut, notStored and typeCodes (section 19.8).
-            [.. r.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => new RelationMappingRecord(DatabaseId(m.Key), m.Value.Shape, m.Value.ForeignKey?.Name,
-                m.Value.JunctionTable?.Key, m.Value.PromotedEntity?.Id))],
+            [.. r.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => RelationMapping(DatabaseId(m.Key), m.Value))],
             Ids(r.Seeds), r.DisplayName!, r.PluralName!, r.Description, r.Tags, r.Category?.Id, Keys(r.Stereotypes), Plain(r.Properties), r.Generation);
+
+        /// <summary>
+        /// A relation mapping's record; the storage members of several-types-design.md section 19.8 are left out when empty, so a mapping of a
+        /// relation whose ends each have one type, with no constants or attribute columns, keeps today's record.
+        /// </summary>
+        internal static RelationMappingRecord RelationMapping(string database, RRelationMapping m) => new(database, m.Shape, m.ForeignKey?.Name,
+            m.JunctionTable?.Key, m.PromotedEntity?.Id,
+            NullIfEmpty(m.Links, l => new RelationLinkRecord(l.Table.Key, [.. l.Ends.Select(LinkEnd)])),
+            NullIfEmpty(m.Constants, c => new RelationConstantRecord(c.Column.Key, [.. c.Values])),
+            NullIfEmpty(m.Attributes, a => new RelationAttributeColumnRecord(a.Attribute.Id, a.Column.Key)),
+            NullIfEmpty(m.LeftOut, e => new RelationEndEntityRecord(e.End.Id, e.Entity.Id)),
+            NullIfEmpty(m.NotStored, e => new RelationEndEntityRecord(e.End.Id, e.Entity.Id)),
+            NullIfEmpty(m.TypeCodes, c => new TypeCodeRecord(c.Entity.Id, c.Code)));
+
+        private static RelationLinkEndRecord LinkEnd(RRelationLinkEnd e) => new(e.End.Id, e.Type.Id, e.IsHolder, [.. e.Columns.Select(c => c.Key)],
+            e.ReferencedTable?.Key, [.. e.ReferencedColumns.Select(c => c.Key)], e.ForeignKey?.Name, e.TypeColumn?.Key,
+            e.TypeColumn is null ? null : [.. e.Codes]);
+
+        private static IReadOnlyList<TRecord>? NullIfEmpty<TItem, TRecord>(IReadOnlyList<TItem> items, Func<TItem, TRecord> project) =>
+            items.Count == 0 ? null : [.. items.Select(project)];
 
         public EnumRecord Enum(REnum e) => new(e.Id, "enum", e.Name, e.Package?.Id, e.Flags,
             [.. e.Members.Select(m => new EnumMemberRecord(m.Id, m.Name, m.DisplayName, m.Description, m.Value, m.Code, Plain(m.Properties)))],
