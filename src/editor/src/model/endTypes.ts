@@ -79,19 +79,6 @@ export function endLabel(end: EndLike, nameOf: (id: string) => string | undefine
   return `${parts.slice(0, -1).join(", ")} or ${parts[parts.length - 1]}`;
 }
 
-/**
- * A stereotype's key from its index row: its file is named for the key (`<key>.json`), and the row's `name` is the display name. One
- * spelling, "approvable (stereotype)", is used for a stereotype entry everywhere (the design's).
- */
-export function stereotypeKeyOfRow(row: { name: string; path?: string } | undefined): string | undefined {
-  if (!row) return undefined;
-  const file = row.path
-    ?.split("/")
-    .pop()
-    ?.replace(/\.json$/, "");
-  return file || row.name;
-}
-
 /** The text a related list shows for how an entity is reached through the end: "through stereotype approvable", "any entity", or "". */
 export function endReach(end: EndLike, entityId: string, nameOfStereotype: (id: string) => string | undefined): string {
   if (end.anyEntity) return "any entity";

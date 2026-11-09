@@ -54,6 +54,8 @@ import { TypesNode, type TypesFlowNode } from "@/canvas/TypesNodes";
 import {
   buildGraph,
   hasSeveralTypesEnd,
+  lineText,
+  textWidth,
   notShown,
   planSeveralTypes,
   relationOfFlowId,
@@ -80,6 +82,7 @@ import {
   needsLayout,
   parseView,
   relationEnds,
+  relationLabelSize,
   relationLookup,
   selectedEntities,
   storedPosition,
@@ -376,6 +379,11 @@ function EntitiesCanvas() {
         positionOf,
         slot,
         sizeOf: (id) => measured[id],
+        labels: {
+          near: textWidth(lineText(relation, display.notation, plan.nearIndex)),
+          far: plan.look === "box" || plan.look === "list" ? textWidth(lineText(relation, display.notation, plan.farIndex)) : 0,
+          pill: relationLabelSize(relation).width + (plan.canToggle ? 20 : 0),
+        },
         hub: dragging[rid] ?? storedPosition(view, memberOf.get(rid), pkgPositions, rid),
       });
       const hidden = notShown(plan);

@@ -7,6 +7,7 @@ import {
   boxNodeId,
   branchEdgeId,
   buildGraph,
+  defaultGap,
   defaultHubPosition,
   lineMarkers,
   lineText,
@@ -14,11 +15,12 @@ import {
   planSeveralTypes,
   relationOfFlowId,
   stereotypeCounter,
+  textWidth,
   toggleLabel,
   toggleMemberCollapsed,
   type PlanContext,
 } from "@/canvas/severalTypes";
-import { NODE_HEIGHT, applyPositions, expandRelated, planMembers, relationEnds, relationLookup, viewElements } from "@/canvas/model";
+import { NODE_HEIGHT, NODE_WIDTH, applyPositions, expandRelated, planMembers, relationEnds, relationLookup, viewElements } from "@/canvas/model";
 import { newDomainDiagram, syncDomainMembers } from "@/canvas/domainDiagram";
 
 const names: Record<string, string> = { C: "Comment", P: "Part", A: "Assembly", T: "Tool", D: "Document" };
@@ -177,6 +179,29 @@ describe("the nodes and lines of each look", () => {
     expect(list.nodes[0]).toMatchObject({ kind: "list", draggable: true });
     expect(list.nodes[0].entries?.map((e) => e.label)).toEqual(["Part", "Assembly", "Document"]);
     expect(list.edges).toHaveLength(1);
+  });
+
+  it("with no saved position a box or list leaves room for the near text, the far text and the name chip", () => {
+    const plan = planSeveralTypes(rel({ anyEntity: true }), ctx(["C"]))!;
+    const labels = { near: textWidth("tag *"), far: textWidth("taggedThing 0..1"), pill: 60 };
+    const gapOf = (l?: typeof labels) => {
+      const at = defaultHubPosition(plan, { x: 0, y: 100 }, [], 0, undefined, l);
+      return at.x - NODE_WIDTH;
+    };
+    // Known widths: the gap holds both ends' text and the chip, and is wider than the bare 100.
+    expect(defaultGap("box", labels)).toBeGreaterThanOrEqual(labels.near + labels.far + labels.pill);
+    expect(gapOf(labels)).toBe(defaultGap("box", labels));
+    expect(gapOf(labels)).toBeGreaterThan(100);
+    // Unknown widths: a safe minimum; no text never goes under the old distance.
+    expect(gapOf()).toBe(190);
+    expect(defaultGap("list", { near: 0, far: 0, pill: 0 })).toBe(100);
+    // A saved position is never moved.
+    expect(buildGraph(plan, { positionOf: cards, hub: { x: 10, y: 20 }, labels }).nodes[0].position).toEqual({ x: 10, y: 20 });
+    // A junction's node keeps the chip clear of the near text when it has no cards to sit between.
+    const junction = planSeveralTypes(rel({ types: [{ stereotype: "a" }, { stereotype: "b" }] }), ctx(["C"]))!;
+    const wide = { near: 120, far: 0, pill: 80 };
+    const hub = defaultHubPosition(junction, { x: 0, y: 100 }, [], 0, undefined, wide);
+    expect(hub.x - NODE_WIDTH).toBeGreaterThanOrEqual(defaultGap("junction", wide));
   });
 
   it("chooses handles by which side the other node is on", () => {

@@ -115,6 +115,7 @@ import { CreateButtons } from "./NewElementDialog";
 import { isStorageAction, runStorageAction } from "@/editors/storage/menuItems";
 import { useStorageChipIds } from "@/editors/storage/useStorage";
 import { StorageNewMenuItems } from "@/editors/storage/StorageNewMenu";
+import { useStereotypes } from "@/editors/process/ProcessControls";
 import { addToDiagram } from "@/workspaces/entities/actions";
 import { isProcessDiagram } from "@/canvas/statechart/diagram";
 import { ELEMENTS_MIME, relatedWithin, relationLookup, type RelationLookup } from "@/canvas/model";
@@ -136,6 +137,7 @@ function errorsOf(report: { diagnostics: readonly Diagnostic[] } | undefined, ro
   if (lastErrors?.report !== report || lastErrors.rows !== rows) lastErrors = { report, rows, map: errorCounts(report.diagnostics, rows) };
   return lastErrors.map;
 }
+let lastStereotypeKeys: { signature: string; map: Map<string, string> } | null = null;
 let lastDatabases: { signature: string; map: Map<string, DatabaseInfo> } | null = null;
 let lastTables: { signature: string; map: Map<string, TablesInput | undefined> } | null = null;
 const NOT_IN_DOMAIN = "@domain-model/not-in-domain";
@@ -223,6 +225,16 @@ export function useForest(): { forest: Forest | null; rows: readonly ElementSumm
   const { store } = useServices();
   const referenceFlat = useEditor(store, (s) => s.explorer.referenceFlat);
   const scenarioStatus = useScenarioStatuses();
+  // Stereotype keys come from the stereotype documents (a file is not always named for its key), shared across callers like the databases.
+  const stereotypes = useStereotypes();
+  const stereotypeSignature = stereotypes.map((x) => `${x.id}=${x.key}`).join(",");
+  const stereotypeKeys = useMemo(() => {
+    if (lastStereotypeKeys?.signature === stereotypeSignature) return lastStereotypeKeys.map;
+    const map = new Map(stereotypes.map((x) => [x.id, x.key] as const));
+    lastStereotypeKeys = { signature: stereotypeSignature, map };
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the signature stands for the documents
+  }, [stereotypeSignature]);
   // The search worker takes the same rows, table summaries and categories (3.1).
   useSearchRows(rows);
   useEffect(() => {
@@ -237,12 +249,12 @@ export function useForest(): { forest: Forest | null; rows: readonly ElementSumm
       rows
         ? perfSync(
             "explorer:build",
-            () => forestOf({ rows, tables, databases, errors, folders, categoryParents, categoryNames, referenceFlat, scenarioStatus }),
+            () => forestOf({ rows, tables, databases, errors, folders, categoryParents, categoryNames, referenceFlat, scenarioStatus, stereotypeKeys }),
             // `patched`: the rows came from a model.changed or save patch, which forestOf applies in place (4.4).
             () => ({ elements: rows.length, patched: !!indexPatchOf(rows) }),
           )
         : null,
-    [rows, tables, databases, errors, folders, categoryParents, categoryNames, referenceFlat, scenarioStatus],
+    [rows, tables, databases, errors, folders, categoryParents, categoryNames, referenceFlat, scenarioStatus, stereotypeKeys],
   );
   // In idle time, build the folders the first paint left pending (4.3), so a first search or expand finds them built.
   useEffect(() => {

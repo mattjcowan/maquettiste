@@ -130,6 +130,29 @@ test("the starting looks: a junction for three types, bundled lines for two, a b
   expect(JSON.stringify(await page.evaluate(async (id) => (await (await fetch(`/api/model/elements/${id}`)).json()) as unknown, OVERVIEW))).toBe(overview);
 });
 
+test("at the default placement the near and far labels of a line to a box do not overlap", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openAttachments(page);
+  const box = async (testid: string) => {
+    const b = await page.getByTestId(testid).first().boundingBox();
+    expect(b, testid).not.toBeNull();
+    return b!;
+  };
+  type Rect = { x: number; y: number; width: number; height: number };
+  const apart = (a: Rect, b: Rect) => a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y;
+  // Tagged (any entity) sits at the default place: no saved position.
+  await expect(page.getByTestId("relation-end-Tagged-1")).toBeVisible();
+  const near = await box("relation-end-Tagged-0");
+  const far = await box("relation-end-Tagged-1");
+  const chip = await box("relation-label-Tagged");
+  expect(apart(near, far), "near and far labels").toBe(true);
+  expect(apart(near, chip), "near label and name chip").toBe(true);
+  expect(apart(far, chip), "far label and name chip").toBe(true);
+  // The far label stays clear of the near card.
+  const card = await page.locator(`.react-flow__node[data-id="${ID.comment}"]`).boundingBox();
+  expect(far.x).toBeGreaterThanOrEqual(card!.x + card!.width);
+});
+
 test("the toggle collapses the lines to a list and back, saved on the relation's member; dragging the node saves its position", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await openAttachments(page);

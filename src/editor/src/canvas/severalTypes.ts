@@ -187,7 +187,14 @@ export function hubSize(plan: SeveralPlan): { kind: HubKind; width: number; heig
  * or list beside the near card, on the side the types are (right when there are none). `cards` are the type cards' positions. `slot`
  * is the place of this relation among those drawn from the same card: each takes a step lower, so their nodes do not sit on one another.
  */
-export function defaultHubPosition(plan: SeveralPlan, near: Point, cards: readonly Point[], slot = 0, nearSize?: { width: number; height: number }): Point {
+export function defaultHubPosition(
+  plan: SeveralPlan,
+  near: Point,
+  cards: readonly Point[],
+  slot = 0,
+  nearSize?: { width: number; height: number },
+  labels?: LabelWidths,
+): Point {
   const size = hubSize(plan);
   // The near card's measured size when the canvas knows it: its handles are at the middle of what is drawn, not of the nominal card.
   const nc = centreOf(near, nearSize?.width || NODE_WIDTH, nearSize?.height || NODE_HEIGHT);
@@ -199,12 +206,46 @@ export function defaultHubPosition(plan: SeveralPlan, near: Point, cards: readon
     : null;
   if (plan.look === "junction" || plan.look === "bundle") {
     // Midway in x, and at the near card's own height, so the trunk leaves the card's handle and runs straight through its label.
-    const c = centroid ? { x: (nc.x + centroid.x) / 2, y: nc.y } : { x: nc.x + NODE_WIDTH / 2 + 90, y: nc.y };
+    const room = defaultGap(plan.look, labels);
+    const nearWidth = nearSize?.width || NODE_WIDTH;
+    const midway = centroid ? (nc.x + centroid.x) / 2 : nc.x + NODE_WIDTH / 2 + 90;
+    // At least `room` clear of the near card's edge, on the side the cards are (right with none), so the label and the name chip do not meet.
+    const side = centroid && centroid.x < nc.x ? -1 : 1;
+    const farEnough = nc.x + side * (nearWidth / 2 + room + size.width / 2);
+    const c = { x: side > 0 ? Math.max(midway, farEnough) : Math.min(midway, farEnough), y: nc.y };
     return { x: Math.round(c.x - size.width / 2), y: Math.round(c.y - size.height / 2 + slot * SLOT_STEP) };
   }
   const dir = centroid && centroid.x < nc.x ? -1 : 1;
-  const x = dir > 0 ? near.x + NODE_WIDTH + 100 : near.x - 100 - size.width;
+  const gap = defaultGap(plan.look, labels);
+  const nearWidth = nearSize?.width || NODE_WIDTH;
+  const x = dir > 0 ? near.x + nearWidth + gap : near.x - gap - size.width;
   return { x: Math.round(x), y: Math.round(nc.y - size.height / 2 + slot * SLOT_STEP) };
+}
+
+/** The widths of the texts on a relation's trunk: the near end's text, the far end's text (into a box or list) and the name chip. */
+export interface LabelWidths {
+  near: number;
+  far: number;
+  pill: number;
+}
+
+/** A text's width at the canvas's label size, estimated from its length (zero for no text). */
+export const LABEL_CHAR_PX = 6.6;
+export const textWidth = (text: string): number => (text ? Math.ceil(text.length * LABEL_CHAR_PX) + 8 : 0);
+
+/** The box or list gap with no label widths known: wide enough for ordinary role names (the browser check read well from 190). */
+export const MIN_BOX_GAP = 190;
+
+/**
+ * The room a trunk needs with no saved position. A box or list sits this far from the near card's edge so the near text, the far
+ * text and the name chip all read (they overlap when closer). A junction or fork sits so the name chip, midway, clears the near text.
+ * With no widths known, a safe minimum.
+ */
+export function defaultGap(look: SeveralLook, labels?: LabelWidths): number {
+  const boxed = look === "box" || look === "list";
+  if (!labels) return boxed ? MIN_BOX_GAP : 90;
+  const need = boxed ? labels.near + labels.far + labels.pill + 16 : 2 * labels.near + labels.pill + 16;
+  return Math.max(boxed ? 100 : 90, Math.ceil(need));
 }
 
 /** How far each further relation from one card sits below the one before, with no saved position. */
@@ -219,6 +260,8 @@ export interface GraphInput {
   slot?: number;
   /** The measured sizes of the cards, by entity id, when the canvas has them. */
   sizeOf?: (entityId: string) => { width: number; height: number } | undefined;
+  /** The widths of the texts on the trunk, to leave room for them when there is no saved position. */
+  labels?: LabelWidths;
 }
 
 /** The nodes and edges the canvas draws for a plan. */
@@ -233,7 +276,8 @@ export function buildGraph(plan: SeveralPlan, input: GraphInput): SeveralGraph {
   const size = hubSize(plan);
   // The fork of a bundle is placed by the cards and never saved: a stored position (a hub the person dragged before the look became a bundle) is ignored.
   const hubAt =
-    (plan.look === "bundle" ? undefined : input.hub) ?? defaultHubPosition(plan, near, cardPositions, input.slot ?? 0, input.sizeOf?.(plan.nearEntity));
+    (plan.look === "bundle" ? undefined : input.hub) ??
+    defaultHubPosition(plan, near, cardPositions, input.slot ?? 0, input.sizeOf?.(plan.nearEntity), input.labels);
   const hub: GraphNode = {
     id: plan.relationId,
     kind: size.kind,

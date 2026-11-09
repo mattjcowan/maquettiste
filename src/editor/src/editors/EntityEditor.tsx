@@ -4,6 +4,7 @@
 import { useMemo, useState } from "react";
 import { KeyRound, Plus, Trash2 } from "lucide-react";
 import { useElements, useIndex, useSettings } from "@/api/queries";
+import { useStereotypes } from "@/editors/process/ProcessControls";
 import type { AttributeDoc, components, ElementSummary, EntityDoc, RelationDoc, RelationEndDoc } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { CheckboxField } from "@/components/ui/checkbox";
@@ -25,7 +26,7 @@ import { domIdOf, EditorLayout, MarkChips, NameAndDomain, useCodeGenerationTab, 
 import { baseChain, relatedOf } from "./related";
 import { SeedDataTab } from "./SeedDataTab";
 import { StorageTab } from "./storage/StorageTab";
-import { endLabel, endReach, stereotypeKeyOfRow, type EndLike } from "@/model/endTypes";
+import { endLabel, endReach, type EndLike } from "@/model/endTypes";
 import {
   fieldSources,
   inHierarchy,
@@ -481,6 +482,8 @@ function RelationshipsTab({ id, domain }: { id: string; domain: string | null })
   const { relations } = relatedOf(index.data, id);
   // The relation documents (one batched read) carry each end's cardinality and the relation's attributes.
   const docs = useElements(relations.map((r) => r.id));
+  // A stereotype entry is named by the stereotype's own key, not its file name.
+  const stereotypeKeys = new Map(useStereotypes().map((x) => [x.id, x.key] as const));
   const newRelationship = (
     <Button size="sm" onClick={() => store.getState().requestNew({ kind: "relation", domain, source: id })} data-testid="editor-new-relationship">
       <Plus /> New relationship…
@@ -505,13 +508,13 @@ function RelationshipsTab({ id, domain }: { id: string; domain: string | null })
               const cardinality = doc ? ` ${cardinalityOf(e as RelationEndDoc)}` : "";
               // The index row's end says what an end with several types covers ("Part, Assembly or approvable (stereotype)").
               const row: EndLike = r.ends?.[i] ?? (e as EndLike);
-              return `${endLabel(row, lookup.nameOf, (sid) => stereotypeKeyOfRow(lookup.byId.get(sid))) || (e as EndLike).entity}${e.role ? ` (${e.role})` : ""}${cardinality}`;
+              return `${endLabel(row, lookup.nameOf, (sid) => stereotypeKeys.get(sid)) || (e as EndLike).entity}${e.role ? ` (${e.role})` : ""}${cardinality}`;
             })
             .join(" – ");
           const count = doc?.attributes?.length ?? 0;
           const attributes = doc ? ` · ${count} attribute${count === 1 ? "" : "s"}` : "";
           // An entity reached through a stereotype an end names says so: "through stereotype approvable".
-          const reach = (r.ends ?? []).map((e) => endReach(e, id, (sid) => stereotypeKeyOfRow(lookup.byId.get(sid)))).find(Boolean);
+          const reach = (r.ends ?? []).map((e) => endReach(e, id, (sid) => stereotypeKeys.get(sid))).find(Boolean);
           return (
             <li key={r.id}>
               <ElementLink summary={r} secondary={endText + attributes + (reach ? ` · ${reach}` : "")} />

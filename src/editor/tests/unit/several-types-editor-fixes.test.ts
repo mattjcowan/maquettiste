@@ -5,7 +5,8 @@ import type { ElementSummary } from "@/api/types";
 import type { DeletePlan } from "@/api/types";
 import { dependentsOf, type DeletePlans } from "@/inspector/DeletePlanView";
 import { indexReferences } from "@/references/data";
-import { stereotypeKeyOfRow } from "@/model/endTypes";
+import { endLabel } from "@/model/endTypes";
+import { buildForest, childKeys, nodeOf, type TreeNode } from "@/explorer/tree";
 import { objectFields, type FieldSources } from "@/model/objectFields";
 
 const row = (r: Partial<ElementSummary> & { id: string }) => r as ElementSummary;
@@ -85,9 +86,41 @@ describe("names in an end's type list", () => {
     expect(end.typesLabel).toBe("Car or Truck");
   });
 
-  it("one spelling for a stereotype entry: its key", () => {
-    expect(stereotypeKeyOfRow({ name: "Audited", path: "stereotypes/audited.json" })).toBe("audited");
-    expect(stereotypeKeyOfRow({ name: "Audited" })).toBe("Audited");
-    expect(stereotypeKeyOfRow(undefined)).toBeUndefined();
+  it("one spelling for a stereotype entry: its key, even when the file is named otherwise", () => {
+    const rows = [
+      row({ id: "D", kind: "package", name: "Docs", path: "d.json" }),
+      row({ id: "C", kind: "entity", name: "Comment", path: "c.json", package: "D" }),
+      row({ id: "S", kind: "stereotype", name: "Stamped", path: "vocabularies/stereotypes/zz-stamped.json" }),
+      row({
+        id: "R",
+        kind: "relation",
+        name: "Stamps",
+        package: "D",
+        path: "r.json",
+        ends: [
+          { role: "a", entity: "C" },
+          { role: "b", stereotypes: ["S"] },
+        ],
+      }),
+    ];
+    const forest = buildForest({ rows, stereotypeKeys: new Map([["S", "stamped"]]) });
+    const walk = (key: string): TreeNode | undefined => {
+      const n = nodeOf(forest, key);
+      if (n?.id === "R") return n;
+      for (const k of childKeys(forest, key)) {
+        const found = walk(k);
+        if (found) return found;
+      }
+      return undefined;
+    };
+    const secondary = walk(forest.roots["domain-model"])?.secondary;
+    expect(secondary).toBe("Comment → stamped (stereotype)");
+    expect(
+      endLabel(
+        { stereotypes: ["S"] },
+        () => undefined,
+        (id) => new Map([["S", "stamped"]]).get(id),
+      ),
+    ).toBe("stamped (stereotype)");
   });
 });
