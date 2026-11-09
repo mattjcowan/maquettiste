@@ -96,12 +96,14 @@ describe("the relation form's choices and limits", () => {
     expect(endChoiceLimits(ends(oneEnd("P"), oneEnd("A")), 0)).toEqual({});
   });
 
-  it("keeps only One entity on the other end once one end has several types", () => {
+  it("offers every choice on the other end once one end has several types (part 2 lifts the one-end limit)", () => {
     const relation = ends(oneEnd("P"), { types: [{ entity: "P" }, { entity: "A" }], max: 1 });
-    expect(endChoiceLimits(relation, 0)).toEqual({ several: END_LIMIT_TEXTS.oneEnd, any: END_LIMIT_TEXTS.oneEnd });
-    // The end that has them keeps its own choice.
+    expect(endChoiceLimits(relation, 0)).toEqual({});
     expect(endChoiceLimits(relation, 1)).toEqual({});
-    expect(END_LIMIT_TEXTS.oneEnd).toBe("Only one end may have several types.");
+    const both = ends({ types: [{ entity: "P" }, { entity: "A" }], max: "*" }, { anyEntity: true, max: 1 });
+    expect(endChoiceLimits(both, 0)).toEqual({});
+    expect(endChoiceLimits(both, 1)).toEqual({});
+    expect("oneEnd" in END_LIMIT_TEXTS).toBe(false);
   });
 
   it("keeps only One entity on an n-ary relation", () => {

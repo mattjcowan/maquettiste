@@ -1792,9 +1792,7 @@ of 1. The navigation the end names appears on the other end's entity as usual. T
 
 - **Both ends** of a two-ended relationship may have several types or be any entity, in every combination, up to any entity at
   both ends. Cardinality stays a minimum and a maximum per end. The model, the rules, the Storage tab and the mapping all accept
-  this. The relationship's form still offers several types on one end only (its tooltip says "Only one end may have several
-  types."), so make such a relationship in its file, with a tool or with the assistant. The form opens it, shows each end's entries
-  and saves it without loss.
+  this, and so does the relationship's form: each end has its own **Type** choice.
 - An n-ary relationship keeps One entity at every end.
 - A composition's owner end may have several types. Its part end may list types, but can't be **Any entity**: that would make
   every entity a part of one owner. The form says so in a tooltip.
@@ -1824,8 +1822,9 @@ object of an entity the end covers (MQ9305). Rights, trigger points and freezing
 - **Three or more:** a junction node. One line runs to the node, and one from the node to each type.
 - **A stereotype or Any entity:** one line to a box. A stereotype's box says how many entities it covers, as "3 entities".
 
-**Several types at both ends:** the canvas draws one plain line between the first card of each end. Each end's label says "+N
-more", and pointing at it lists the entries. There is no node and no collapse toggle for these yet.
+**Several types at both ends:** one node, with a line from it to each type card or box of either end. Each line shows its end's
+role and cardinality, and a stereotype or Any entity box sits on its end's side of the node. **Collapse lines** turns it into one
+box that lists each end's entries under its role, with no lines; **Expand lines** brings the node back.
 
 Each line shows its end's role and cardinality. A type that isn't on the diagram gets no line, and the node or box says
 "+N not shown" (point at it for the names). Drag the node or box to move it; Auto-layout places it again.

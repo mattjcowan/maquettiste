@@ -4,7 +4,7 @@ import { memo, type MouseEvent } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { Merge, Split } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { toggleLabel, type HubKind, type PlanEntry } from "./severalTypes";
+import { toggleLabel, type HubKind, type ListGroup, type PlanEntry } from "./severalTypes";
 
 export interface TypesNodeData extends Record<string, unknown> {
   kind: HubKind;
@@ -15,6 +15,10 @@ export interface TypesNodeData extends Record<string, unknown> {
   count?: number;
   /** "+2 not shown" and the hidden entries' names for its tooltip. */
   notShown?: { text: string; names: string } | null;
+  /** Several types at both ends: "+N not shown" per end (first end left, second right) and the tooltip that lists every entry. The relation's name sits on a pill over the node. */
+  both?: { notShown: readonly [{ text: string; names: string } | null, { text: string; names: string } | null]; title: string };
+  /** The collapsed both-ends box: each end's role and its entries. */
+  groups?: ListGroup[];
   canToggle: boolean;
   collapsed: boolean;
   onToggle?: (relationId: string) => void;
@@ -52,7 +56,7 @@ function Handles() {
 }
 
 function TypesNodeView({ data, selected }: NodeProps<TypesFlowNode>) {
-  const { kind, relationName, entry, entries, count, notShown, canToggle, collapsed, onToggle } = data;
+  const { kind, relationName, entry, entries, groups, count, notShown, both, canToggle, collapsed, onToggle } = data;
   const toggle = (e: MouseEvent) => {
     e.stopPropagation();
     onToggle?.(data.relationId);
@@ -61,6 +65,36 @@ function TypesNodeView({ data, selected }: NodeProps<TypesFlowNode>) {
   if (kind === "fork") {
     return (
       <div className="size-2 rounded-full bg-[var(--mq-border-strong)]" data-testid={`relation-fork-${relationName}`}>
+        <Handles />
+      </div>
+    );
+  }
+  if (kind === "junction" && both) {
+    return (
+      <div className="relative size-4" title={both.title} data-testid={`relation-node-${relationName}`}>
+        <div className={cn("m-0.5 size-3 rounded-full border", border, selected ? "bg-accent" : "bg-[var(--mq-border-strong)]")} />
+        <div
+          className={cn(
+            "nodrag nopan absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap rounded-full border bg-surface px-2 py-0.5 text-11 font-medium text-primary",
+            selected ? "border-accent" : "border-default",
+          )}
+          data-testid={`relation-label-${relationName}`}
+        >
+          <span>{relationName}</span>
+          {canToggle ? <ToggleButton collapsed={collapsed} onClick={toggle} testid={`relation-node-toggle-${relationName}`} /> : null}
+        </div>
+        {both.notShown.map((n, i) =>
+          n ? (
+            <span
+              key={i}
+              className={cn("absolute top-5 whitespace-nowrap text-11 text-secondary", i === 0 ? "right-4" : "left-4")}
+              title={n.names}
+              data-testid={`relation-not-shown-${relationName}-${i}`}
+            >
+              {n.text}
+            </span>
+          ) : null,
+        )}
         <Handles />
       </div>
     );
@@ -93,7 +127,17 @@ function TypesNodeView({ data, selected }: NodeProps<TypesFlowNode>) {
           {canToggle ? <ToggleButton collapsed={collapsed} onClick={toggle} testid={`relation-node-toggle-${relationName}`} /> : null}
         </div>
         <ul className="py-0.5">
-          {(entries ?? []).map((e, i) => (
+          {groups
+            ? groups.map((g, i) => {
+                const names = g.entries.map((e) => e.label).join(", ");
+                return (
+                  <li key={i} className="flex h-[18px] items-center px-2 text-12" title={names} data-testid="relation-list-group">
+                    <span className="min-w-0 flex-1 truncate">{g.text ? `${g.text}: ${names}` : names}</span>
+                  </li>
+                );
+              })
+            : null}
+          {(groups ? [] : (entries ?? [])).map((e, i) => (
             <li key={i} className="flex h-[18px] items-center px-2 text-12" data-testid="relation-list-entry">
               <span className="min-w-0 flex-1 truncate">{e.label}</span>
               {e.kind === "stereotype" && e.count !== undefined ? <span className="shrink-0 text-11 text-secondary">{e.count}</span> : null}

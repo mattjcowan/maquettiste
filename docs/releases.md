@@ -14,8 +14,8 @@ one.
   optional `typeColumn` and `referencesColumn` (a type and an id, or an id alone). The engine adds no table, column or check.
 - **Several types or any entity at both ends.** Both ends of a two-ended relation may now have several types or be any entity, up to
   any entity at both ends. An n-ary relation still keeps one entity per end. Held in a link table, each end names its own way.
-  The editor's form still offers several types on one end only; a relation with both ends is made in its file, with a tool or with
-  the assistant, and the form opens and saves it without loss. The canvas draws it as one plain line, with "+N more" on each end.
+  The editor's form offers the **Type** choice at both ends. The canvas draws one node with a line to each type of either end, and
+  **Collapse lines** turns it into one box that lists each end's entries under its role.
 - **Fixed values and attribute columns.** `constants` (`{ column, value }`) picks a relation's rows in a link table that several
   relations share. `attributes[].column` names the column of a relation attribute. Both apply to every relation mapping with a designed
   `junctionTable`, a one-type relation too. A mapping that writes neither keeps its bytes.
@@ -41,8 +41,7 @@ one.
 - **Upgrading.** Update the schema copies and the `maquettiste-modeling` skill your repository holds. An older engine refuses the new
   keys, so teams upgrade together.
 - **Still waiting.** A link table for each pair of types, one column that points into tables spread over several types, a binding for
-  links with its own statements, an engine-made check or column, the "Add to table" button, and the both-ends drawing with its node
-  and collapsed box. Seeds and query fields through such an end stay refused (MQ7105, MQ4116).
+  links with its own statements, an engine-made check or column and the "Add to table" button. Seeds and query fields through such an end stay refused (MQ7105, MQ4116).
 - **New names, from the design (section 16, part 2) and added while building. These wait for the owner's confirmation.**
   - Format: in a relation mapping's `ends` entry, `foreignKeys`, `types` (items `{ entity, foreignKey }` or `{ entity, referencesColumn }`,
     schema title "End type storage"), `idColumn`, `typeColumn` and `referencesColumn`; the mapping key `constants` (items
@@ -61,7 +60,7 @@ one.
   - Editor: Type storage, Held in, The other end's table, Each type's table, A link table, A table per type, Not in this database,
     Linked by, A key, A column per type, A type and an id, An id unique across types, A key to the shared base table, As written, Refers
     to, Rows of this relation, Left out, Not stored, "Nothing is stored in this database.", What the database can't enforce, Copy, "Move it
-    to the end's entry", "Copy the check", "Keep the stored code", and "+N more" on a both-ends line.
+    to the end's entry", "Copy the check", and "Keep the stored code".
 
 ## 0.21.0 (2026-11-08)
 

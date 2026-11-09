@@ -8,7 +8,6 @@ import type { RelationDoc } from "@/api/types";
 import { crowsFoot, multiplicity, relationKind } from "@/model/model";
 import { cn } from "@/lib/cn";
 import { AttributeRow } from "./EntityNode";
-import type { MoreLabel } from "./severalTypes";
 import { BOX_GAP, BOX_HEADER, LABEL_GAP, relationBoxRows, relationBoxSize, relationLabelSize, type AttributeBox } from "./model";
 
 /**
@@ -75,8 +74,6 @@ export interface RelationEdgeData extends Record<string, unknown> {
   attributeBox?: AttributeBox | null;
   /** Selects the relation (a click on its pill or its box); with `additive`, adds it to the selection. */
   onSelect?: (id: string, additive: boolean) => void;
-  /** Several types at both ends (the plain fallback): per end, "+N more" with the entries as its tooltip. */
-  more?: readonly [MoreLabel | null, MoreLabel | null];
 }
 
 export type RelationFlowEdge = Edge<RelationEdgeData, "relation">;
@@ -196,26 +193,6 @@ function RelationEdgeView({ id, sourceX, sourceY, targetX, targetY, sourcePositi
             </span>
           </>
         ) : null}
-        {data.more
-          ? (
-              [
-                [data.more[0], sourceX, sourceY, sourcePosition],
-                [data.more[1], targetX, targetY, targetPosition],
-              ] as const
-            ).map(([label, x, y, position], i) =>
-              label ? (
-                <span
-                  key={i}
-                  className="nodrag nopan pointer-events-auto absolute cursor-default font-mono text-11 text-secondary"
-                  style={{ transform: `translate(-50%, 20%) translate(${offset(x, position)}px, ${y}px)` }}
-                  title={label.names}
-                  data-testid={`relation-more-${relation.name}-${i}`}
-                >
-                  {label.text}
-                </span>
-              ) : null,
-            )
-          : null}
       </EdgeLabelRenderer>
     </>
   );

@@ -79,18 +79,28 @@ describe("the relation form's Type choice", () => {
     expect(screen.getAllByTestId("end-0-chip").map((c) => c.textContent)).toEqual(["Invoice", "Payment"]);
   });
 
-  it("keeps only One entity on the other end once one end has several types, with the tooltip", async () => {
+  it("opens a relation with several types at both ends, with no limit text", async () => {
+    await mount([
+      end("a", { types: [{ entity: IDS.invoice }, { entity: IDS.payment }] }),
+      end("b", { types: [{ entity: IDS.invoice }, { entity: IDS.payment }] }),
+    ]);
+    const [first, second] = screen.getAllByLabelText("Type") as HTMLSelectElement[];
+    expect([first.value, second.value]).toEqual(["several", "several"]);
+    expect(screen.queryByText("Only one end may have several types.")).toBeNull();
+  });
+
+  it("offers every choice on the other end once one end has several types", async () => {
     await mount([end("a", { entity: IDS.invoice }), end("b", { types: [{ entity: IDS.invoice }, { entity: IDS.payment }] })]);
     const [first, second] = screen.getAllByLabelText("Type") as HTMLSelectElement[];
     expect(second.value).toBe("several");
     const options = within(first).getAllByRole("option") as HTMLOptionElement[];
     expect(options.map((o) => [o.textContent, o.disabled])).toEqual([
       ["One entity", false],
-      ["Several types", true],
-      ["Any entity", true],
+      ["Several types", false],
+      ["Any entity", false],
     ]);
-    expect(first.title).toBe("Only one end may have several types.");
-    expect(screen.getByTestId("end-0-type-limit")).toHaveTextContent("Only one end may have several types.");
+    expect(first.title).toBe("");
+    expect(screen.queryByTestId("end-0-type-limit")).toBeNull();
   });
 
   it("keeps only One entity on an n-ary relation", async () => {

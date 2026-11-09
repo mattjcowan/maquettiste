@@ -3,15 +3,7 @@
 // are written back into a diagram, and what "Add related to depth N" adds.
 import type { AttributeDoc, DiagramDoc, DiagramMember, ElementSummary, RelationDoc } from "@/api/types";
 import { indexPatchOf } from "@/api/indexPatch";
-import {
-  docEndEntities,
-  docEndHasSeveralTypes,
-  docEndSingleEntity,
-  endHasSeveralTypes,
-  endListedEntities,
-  endSingleEntity,
-  type EndLike,
-} from "@/model/endTypes";
+import { docEndEntities, docEndSingleEntity, endHasSeveralTypes, endListedEntities, endSingleEntity, type EndLike } from "@/model/endTypes";
 import type { LayoutEdge, LayoutNode } from "./layout";
 
 export const NODE_WIDTH = 240;
@@ -131,15 +123,9 @@ export interface EdgeEnds {
 export function relationEnds(relation: Pick<RelationDoc, "ends">, positionOf: ReadonlyMap<string, Point>, width: number = NODE_WIDTH): EdgeEnds | null {
   const [a, b] = relation.ends ?? [];
   if (!a || !b) return null;
-  // An end with several types is drawn by severalTypes.ts (a node and lines); this is the one-line drawing only.
-  let ea = docEndSingleEntity(a);
-  let eb = docEndSingleEntity(b);
-  // Several types at both ends: the plain line between the first card of each end, in the order it lists them (the fallback of
-  // several-types-design.md 19.12; severalTypes.ts `bothEndsFallback` words the labels). An end with no card on the canvas draws no line.
-  if (!ea && !eb && docEndHasSeveralTypes(a) && docEndHasSeveralTypes(b)) {
-    ea = docEndEntities(a).find((id) => positionOf.has(id)) ?? null;
-    eb = docEndEntities(b).find((id) => positionOf.has(id)) ?? null;
-  }
+  // An end with several types is drawn by severalTypes.ts (a node and lines, at one end or both); this is the one-line drawing only.
+  const ea = docEndSingleEntity(a);
+  const eb = docEndSingleEntity(b);
   if (!ea || !eb) return null;
   const pa = positionOf.get(ea);
   const pb = positionOf.get(eb);
@@ -388,8 +374,9 @@ function buildRelationLookup(rows: readonly Pick<IndexRow, "id" | "kind" | "ends
     if (!list || list.length < 2) return undefined;
     const firsts = list.slice(0, 2).map((e) => endListedEntities(e)[0]);
     if (!firsts[0] || !firsts[1]) return undefined;
-    // The end with several types comes second: the card it hangs on is the anchor.
-    return endHasSeveralTypes(list[0]) ? [firsts[1], firsts[0]] : [firsts[0], firsts[1]];
+    // The end with several types comes second: the card it hangs on is the anchor. With several types at both ends, the first
+    // listed entity of each end in end order (the node sits between them).
+    return endHasSeveralTypes(list[0]) && !endHasSeveralTypes(list[1]) ? [firsts[1], firsts[0]] : [firsts[0], firsts[1]];
   };
   return { relationsOf: (id) => relations.get(id) ?? [], endsOf: (id) => ends.get(id), shows, pairOf, ends };
 }

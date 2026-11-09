@@ -397,8 +397,8 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
   type code changed since the baseline (MQ4119): set `discriminatorValue` to the old code to keep stored links. The engine never adds a
   column, key or check for this. A covered type with no table in the database is left out with no finding, a read-only binding's entity
   (write `none`, or a view or query source) included; `ignore` on the mapping stores nothing there. A link table for each pair of types
-  and one column pointer spread over several types' tables are refused (MQ4117). The editor's relation form offers several types on one
-  end only; write a relation with several types at both ends in its file or through a tool.
+  and one column pointer spread over several types' tables are refused (MQ4117). The editor's relation form offers several types at
+  either end or both.
 - A database holds only what is mapped to it: `byConvention` on the database file is `all`, `packages` (the domains
   listed in `packages`, with their sub-domains) or `none`; a mapping file adds one entity (or ignores one) either way. Write
   `byConvention` on every new database (`none` unless asked); a file without it keeps the older rule (every entity when
