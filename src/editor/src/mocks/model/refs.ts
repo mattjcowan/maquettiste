@@ -19,6 +19,11 @@ export interface Ref {
   drops?: boolean;
   /** Removing it deletes the document that holds it, in either resolution (the last actor or end of a named right). */
   deletesHolder?: boolean;
+  /**
+   * A required reference whose holder is a part with no id of its own (an `ends` entry of a relation mapping, a constant): delete-dependents
+   * removes the item at this pointer, remove-references refuses (several-types-design.md 19.6).
+   */
+  dependentItem?: string;
 }
 
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -34,6 +39,37 @@ function attributeRefs(owner: string, base: string, attributes: unknown, out: Re
     if (type && typeof type === "object" && str(type.ref))
       out.push({ fromId: holder, pointer: `${base}/${i}/type/ref`, field: "ref", toId: type.ref as string, required: true });
     if (str(a.category)) out.push({ fromId: holder, pointer: `${base}/${i}/category`, field: "category", toId: a.category as string, required: false });
+  });
+}
+
+/**
+ * The references of one `ends` entry of a relation mapping (several-types-design.md 19.6). What makes the entry point at its end (a key, an id
+ * column, a type column, a referenced column) is required: losing it would leave the entry with no way or change what the id means, so
+ * delete-dependents removes the whole entry and remove-references refuses. An item of `foreignKeys` or `types` follows the generic rule for
+ * a list item, and the last one leaves the entry with no way, so the entry rule applies. An entity in a `types` item takes the item with it.
+ */
+function mappingEntryRefs(out: Ref[], id: string, own: ReadonlySet<string>, entry: Json, at: string): void {
+  const add = (pointer: string, field: string, value: unknown, extra: Partial<Ref>) => {
+    const to = str(value);
+    if (to && !own.has(to) && to !== id) out.push({ fromId: id, pointer, field, toId: to, required: true, ...extra });
+  };
+  const whole = { dependentItem: at };
+  add(`${at}/foreignKey`, "foreignKey", entry.foreignKey, whole);
+  add(`${at}/idColumn`, "idColumn", entry.idColumn, whole);
+  add(`${at}/typeColumn`, "typeColumn", entry.typeColumn, whole);
+  add(`${at}/referencesColumn`, "referencesColumn", entry.referencesColumn, whole);
+  const keys = strings(entry.foreignKeys);
+  keys.forEach((k, j) => {
+    const item = `${at}/foreignKeys/${j}`;
+    if (keys.length > 1) add(item, "foreignKeys", k, { required: false, removeItem: item });
+    else add(item, "foreignKeys", k, whole);
+  });
+  const types = arr(entry.types);
+  types.forEach((t, j) => {
+    const item = `${at}/types/${j}`;
+    add(`${item}/entity`, "entity", t.entity, { required: false, removeItem: item });
+    for (const field of ["foreignKey", "referencesColumn"] as const)
+      add(`${item}/${field}`, field, t[field], types.length > 1 ? { required: false, removeItem: item } : whole);
   });
 }
 
@@ -234,7 +270,18 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
         push(`/attributes/${i}/attribute`, "attribute", a.attribute, false, `/attributes/${i}`);
         push(`/attributes/${i}/column`, "column", a.column, false);
       });
-      arr(doc.ends).forEach((e, i) => push(`/ends/${i}/end`, "end", e.end, false, `/ends/${i}`));
+      push("/junctionTable", "junctionTable", doc.junctionTable, false);
+      push("/foreignKey", "foreignKey", doc.foreignKey, false);
+      arr(doc.ends).forEach((e, i) => {
+        const at = `/ends/${i}`;
+        push(`${at}/end`, "end", e.end, false, at);
+        mappingEntryRefs(out, id, own, e, at);
+      });
+      arr(doc.constants).forEach((c, i) => {
+        const to = str(c.column);
+        if (to && !own.has(to) && to !== id)
+          out.push({ fromId: id, pointer: `/constants/${i}/column`, field: "column", toId: to, required: true, dependentItem: `/constants/${i}` });
+      });
       break;
     case "table":
       push("/database", "database", doc.database, true);
@@ -568,6 +615,8 @@ export function subElementIds(doc: Json): string[] {
   collect(doc.columns);
   collect(doc.indexes);
   collect(doc.checks);
+  // A table's foreign keys are sub-elements a relation mapping names (the entry rule of several-types-design.md 19.6).
+  collect(doc.foreignKeys);
   if (doc.kind === "entity" || doc.kind === "reference-type") collect(doc.bindings);
   if (doc.kind === "trigger-point") collect(doc.sets);
   if (doc.kind === "enum") collect(doc.members);

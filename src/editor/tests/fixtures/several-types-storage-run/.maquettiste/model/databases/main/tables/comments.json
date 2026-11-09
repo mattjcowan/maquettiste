@@ -1,0 +1,119 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01KST2TAB00000000000000006",
+  "name": "comments",
+  "database": "01KST2DBS00000000000000001",
+  "columns": [
+    {
+      "id": "01KST2CMN00000000000000011",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01KST2CMN00000000000000012",
+      "name": "attached_type",
+      "type": "string",
+      "length": 20
+    },
+    {
+      "id": "01KST2CMN00000000000000013",
+      "name": "attached_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000014",
+      "name": "part_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000015",
+      "name": "assembly_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000016",
+      "name": "gizmo_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000017",
+      "name": "ref_uid",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000018",
+      "name": "cover_type",
+      "type": "string",
+      "length": 20
+    },
+    {
+      "id": "01KST2CMN00000000000000019",
+      "name": "cover_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000020",
+      "name": "gizmo_type",
+      "type": "string",
+      "length": 20
+    },
+    {
+      "id": "01KST2CMN00000000000000021",
+      "name": "gizmo_ref",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000022",
+      "name": "kind_no",
+      "type": "int32"
+    },
+    {
+      "id": "01KST2CMN00000000000000023",
+      "name": "note",
+      "type": "string",
+      "length": 40
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01KST2CMN00000000000000011"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01KST2FKY00000000000000004",
+      "name": "fk_part",
+      "columns": [
+        "01KST2CMN00000000000000014"
+      ],
+      "referencesTable": "01KST2TAB00000000000000004",
+      "referencesColumns": [
+        "01KST2CMN00000000000000004"
+      ]
+    },
+    {
+      "id": "01KST2FKY00000000000000005",
+      "name": "fk_assembly",
+      "columns": [
+        "01KST2CMN00000000000000015"
+      ],
+      "referencesTable": "01KST2TAB00000000000000005",
+      "referencesColumns": [
+        "01KST2CMN00000000000000008"
+      ]
+    },
+    {
+      "id": "01KST2FKY00000000000000006",
+      "name": "fk_gizmo",
+      "columns": [
+        "01KST2CMN00000000000000016"
+      ],
+      "referencesTable": "01KST2TAB00000000000000003",
+      "referencesColumns": [
+        "01KST2CMN00000000000000003"
+      ]
+    }
+  ]
+}

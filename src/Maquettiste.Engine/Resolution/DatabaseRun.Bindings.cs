@@ -240,7 +240,7 @@ internal sealed partial class DatabaseRun
         Dictionary<string, RQuery> queries)
     {
         private readonly string _at = Pointer(index);
-        private readonly REntityBinding _b = new() { Id = file.Id, Definition = file, Index = index };
+        private readonly REntityBinding _b = new() { Id = file.Id, Definition = file, Index = index, DiscriminatorValue = ResolutionValues.Plain(file.DiscriminatorValue) };
         private DependencySet _deps = null!;
 
         public REntityBinding Build()
@@ -440,11 +440,8 @@ internal sealed partial class DatabaseRun
                 var field = new RBindingField { AttributeRef = f.Attribute, Column = f.Column };
                 if (!Target(field, f.Attribute))
                 {
-                    // An end with several types is MQ4116's alone; its column stays accounted for.
-                    if (NamesSeveralTypesEnd(run._run.Model, f.Attribute))
-                        field.Name = f.Attribute;
-                    else
-                        Report("MQ4045", $"Field {i.ToString(CultureInfo.InvariantCulture)} of the binding of entity '{entity.Name}' to database '{run._db.Name}' names '{f.Attribute}', which is neither an attribute of the entity, a member of one of its value object attributes, nor the end of a to-one relation of the entity.", at + "/attribute");
+                    // Every field form that names a relation end resolves or gets MQ4045 (several-types-design.md decision 46).
+                    Report("MQ4045", $"Field {i.ToString(CultureInfo.InvariantCulture)} of the binding of entity '{entity.Name}' to database '{run._db.Name}' names '{f.Attribute}', which is neither an attribute of the entity, a member of one of its value object attributes, nor the end of a to-one relation of the entity.", at + "/attribute");
                 }
                 else if (!attributes.TryAdd(f.Attribute, i))
                     Report("MQ4045", $"The binding of entity '{entity.Name}' to database '{run._db.Name}' maps '{field.Name}' twice (fields {attributes[f.Attribute].ToString(CultureInfo.InvariantCulture)} and {i.ToString(CultureInfo.InvariantCulture)}).", at + "/attribute");
@@ -466,6 +463,8 @@ internal sealed partial class DatabaseRun
                 }
 
                 field.WriteColumn = WriteColumnFor(f.Column, field.ColumnName, field.SourceColumn);
+                if (field.End is not null)
+                    CheckAgainstStorage(field, at);
                 fields.Add(field);
             }
 
@@ -500,20 +499,92 @@ internal sealed partial class DatabaseRun
                 return true;
             }
 
-            foreach (var (relation, end) in run._run.RelationsWithEnd(reference))
+            // An end the entity holds: the entity is covered by the other end, and the end is to-one (several-types-design.md decision 46).
+            // <endId> maps its key or id column; on an end with several types, <endId>.type its type column and <endId>.<entityId> its key
+            // column for that type.
+            var (endId, form) = dot > 0 ? (reference[..dot], reference[(dot + 1)..]) : (reference, null);
+            foreach (var (relation, end) in run._run.RelationsWithEnd(endId))
             {
-                // A relation with an end of several types has no one table for the end (MQ4116): no binding field names it in part 1.
-                if (relation.Ends.Count != 2 || end.IsMany || end.HasSeveralTypes || end.Opposite is not { Entity: { } from } || !IsSelfOrBase(from))
+                if (relation.Ends.Count != 2 || end.IsMany || end.Opposite is not { } opposite || !HoldsEnd(relation, opposite))
+                    continue;
+                REntity? keyOf = null;
+                if (form is not null && (!end.HasSeveralTypes || (form != "type" && (keyOf = CoveredBy(relation, end, form)) is null)))
                     continue;
                 _deps.Element(relation.Id);
+                if (opposite.HasSeveralTypes)
+                    _deps.Add(EndCoverage.TypesKey(opposite.Id));
                 field.End = end;
                 field.Navigation = run._run.InheritedNavigations(entity.Id).FirstOrDefault(n => ReferenceEquals(n.To, end));
-                field.Name = field.Navigation is { } navigation ? navigation.Name + "Id" : Casing.Camel(end.Role + "Id");
+                var stem = field.Navigation?.Name;
+                (field.Name, field.Holds, field.KeyOf) = form switch
+                {
+                    null => (stem is not null ? stem + "Id" : Casing.Camel(end.Role + "Id"), end.HasSeveralTypes ? "id" : null, null),
+                    "type" => (stem is not null ? stem + "Type" : Casing.Camel(end.Role + "Type"), "type", null),
+                    _ => (stem is not null ? stem + Casing.Pascal(keyOf!.Name) + "Id" : Casing.Camel(end.Role + Casing.Pascal(keyOf!.Name) + "Id"), "key", keyOf),
+                };
                 return true;
             }
 
             field.Name = reference;
             return false;
+        }
+
+        /// <summary>Whether the entity holds an end through its opposite: it is (or derives from) the opposite's entity, or the opposite covers it.</summary>
+        private bool HoldsEnd(RRelation relation, REnd opposite)
+        {
+            if (opposite.Entity is { } from)
+                return IsSelfOrBase(from);
+            return run._run.RelationSource(relation.Id)?.Ends.FirstOrDefault(e => e.Id == opposite.Id) is { } source
+                && EndCoverage.Covers(run._run.Model, source, entity.Id);
+        }
+
+        /// <summary>The entity an end with several types covers, by id, or <see langword="null"/>.</summary>
+        private REntity? CoveredBy(RRelation relation, REnd end, string entityId) =>
+            run._run.RelationSource(relation.Id)?.Ends.FirstOrDefault(e => e.Id == end.Id) is { } source && EndCoverage.Covers(run._run.Model, source, entityId)
+                ? run._run.EntityById(entityId)
+                : null;
+
+        /// <summary>
+        /// MQ4117 for a field that names an end of a relation with an end of several types stored in this database (decision 46): it maps
+        /// another column than the mapping names for it, or <c>&lt;endId&gt;.&lt;entityId&gt;</c> names an entity that isn't a target there,
+        /// or whose pointer has several columns. With no such mapping the field stands alone.
+        /// </summary>
+        private void CheckAgainstStorage(RBindingField field, string at)
+        {
+            var end = field.End!;
+            if (run._typeStorage.Find(x => x.Relation.Ends.Contains(end)) is not { Links: { } links })
+                return;
+            var i = ReferenceEquals(links.Ends[0].End, end) ? 0 : 1;
+            var table = _b.WriteTable ?? _b.SourceTable;
+            var pairs = links.Pairs.Where(p => p.Result is not null && !p.Ends[i].IsHolder && ReferenceEquals(p.Table.Table, table)
+                && ReferenceEquals(p.Ends[1 - i].Target.Entity, entity)).ToList();
+            var mapping = links.Mapping;
+            if (field.Holds == "key")
+            {
+                var pair = pairs.Find(p => ReferenceEquals(p.Ends[i].Target.Entity, field.KeyOf));
+                if (pair is null)
+                {
+                    if (!links.Ends[i].Targets.Exists(t => ReferenceEquals(t.Entity, field.KeyOf)))
+                        Report("MQ4117", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' names type '{field.KeyOf!.Name}' of end '{end.Role}', which isn't a target there: it isn't placed in the database, or its rows are in a covered base's table.", at + "/attribute");
+                    return;
+                }
+
+                if (pair.Ends[i].Result!.Columns.Count > 1)
+                {
+                    Report("MQ4117", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' maps one column, but the key of type '{field.KeyOf!.Name}' of end '{end.Role}' has {pair.Ends[i].Result!.Columns.Count.ToString(CultureInfo.InvariantCulture)}; list its columns in the binding's 'columns' instead.", at + "/attribute");
+                    return;
+                }
+
+                pairs = [pair];
+            }
+
+            var named = pairs.Select(p => field.Holds == "type" ? p.Ends[i].Result!.TypeColumn : p.Ends[i].Result!.Columns.Count == 1 ? p.Ends[i].Result!.Columns[0] : null)
+                .OfType<RColumn>().Distinct().ToList();
+            var column = field.SourceColumn ?? field.WriteColumn;
+            if (named.Count == 1 && column is not null && !ReferenceEquals(named[0], column) && !ReferenceEquals(named[0], field.WriteColumn))
+            {
+                Report("MQ4117", $"Field '{field.Name}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' maps column '{column.Name}', but mapping '{mapping.Name}' names column '{named[0].Name}' of table '{named[0].Table.Name}' for it.", at + "/column");
+            }
         }
 
         private bool IsSelfOrBase(REntity other)
@@ -567,29 +638,7 @@ internal sealed partial class DatabaseRun
         /// <summary>MQ4051: a constant whose value does not fit its column (type, length, range, null).</summary>
         private void CheckFit(object? value, string? type, int? length, bool nullable, string column, string pointer)
         {
-            if (type is null)
-                return;
-            string? problem = value switch
-            {
-                null => nullable ? null : "is NULL, and the column is not nullable",
-                bool => type == "bool" ? null : "is a boolean",
-                long l => type switch
-                {
-                    "int16" when l is < short.MinValue or > short.MaxValue => "does not fit a 16-bit integer",
-                    "int32" when l is < int.MinValue or > int.MaxValue => "does not fit a 32-bit integer",
-                    "int16" or "int32" or "int64" or "decimal" or "float" or "double" => null,
-                    _ => "is a number",
-                },
-                decimal or double => type is "decimal" or "float" or "double" ? null : "is a number with a fraction",
-                string s => type switch
-                {
-                    "int16" or "int32" or "int64" or "decimal" or "float" or "double" or "bool" => "is a text",
-                    "string" when length is { } max && s.Length > max => $"is {s.Length.ToString(CultureInfo.InvariantCulture)} characters long, over the column's {max.ToString(CultureInfo.InvariantCulture)}",
-                    _ => null,
-                },
-                _ => null,
-            };
-            if (problem is not null)
+            if (type is not null && FitProblem(value, type, length, nullable) is { } problem)
                 Report("MQ4051", $"The constant for column '{column}' of the binding of entity '{entity.Name}' to database '{run._db.Name}' {problem} (the column is {type}).", pointer);
         }
 

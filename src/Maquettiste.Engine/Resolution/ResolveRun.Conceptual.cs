@@ -180,6 +180,13 @@ internal sealed partial class ResolveRun
     public void SetJoin(RNavigation navigation, string database, RJoinPath path) =>
         (navigation.PendingJoins ??= new SortedDictionary<string, RJoinPath>(StringComparer.Ordinal))[database] = path;
 
+    /// <summary>
+    /// Records a navigation's paths per pair of targets in a database (several-types-design.md decision 48), in the order of
+    /// <see cref="RNavigation.TypeJoins"/>.
+    /// </summary>
+    public void SetTypeJoins(RNavigation navigation, string database, IReadOnlyList<RJoinPath> paths) =>
+        (navigation.PendingTypeJoins ??= new SortedDictionary<string, IReadOnlyList<RJoinPath>>(StringComparer.Ordinal))[database] = paths;
+
     /// <summary>Records a key sequence of an entity in a database.</summary>
     public void SetKeySequence(REntity entity, string database, RSequence sequence) => Map(_keySequences, entity.Id)[database] = sequence;
 
@@ -959,13 +966,22 @@ internal sealed partial class ResolveRun
                     navigation.Joins = SortedMap(joins);
                     navigation.PendingJoins = null;
                 }
+
+                if (navigation.PendingTypeJoins is { } typeJoins)
+                {
+                    navigation.TypeJoins = SortedMap(typeJoins);
+                    navigation.PendingTypeJoins = null;
+                }
             }
         }
 
         foreach (var navigations in _navigations.Values)
         {
             foreach (var navigation in navigations)
+            {
                 navigation.PendingJoins = null; // not listed by any entity: nothing publishes them
+                navigation.PendingTypeJoins = null;
+            }
         }
 
         var relations = _relations.Values.Concat(_promotedRelations).ToList();

@@ -83,14 +83,12 @@ describe("the mock's index row for an end with several types", () => {
 });
 
 describe("MQ3041", () => {
-  it("refuses several types on both ends", () => {
+  it("allows several types on both ends (part 2)", () => {
     const backend = backendWith([
       { role: "a", max: "*", types: types({ entity: ID.part }, { entity: ID.assembly }) },
       far({ types: types({ entity: ID.part }, { entity: ID.assembly }) }),
     ]);
-    expect(found(backend, "MQ3041")).toEqual([
-      { pointer: "/ends", severity: "error", message: "Relation 'AttachedTo' has several types on both ends; keep them on one end." },
-    ]);
+    expect(found(backend, "MQ3041")).toEqual([]);
   });
 
   it("refuses several types on an n-ary relation", () => {

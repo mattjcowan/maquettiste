@@ -168,7 +168,7 @@ internal sealed partial class ResolveRun
                     break;
                 case RRelation relation when relation.Mappings.TryGetValue(database.Name, out var link) && link.JunctionTable is { } junction
                     && _tables.Contains(junction):
-                    source = new Source(junction, "relation", seed.OrderedRows, row => ThroughJunction(seed, row, junction, seedRowsById), [], []);
+                    source = new Source(junction, "relation", seed.OrderedRows, row => ThroughJunction(seed, row, link, junction, seedRowsById), [], []);
                     break;
             }
 
@@ -647,16 +647,23 @@ internal sealed partial class ResolveRun
         return Cells(cells);
     }
 
-    /// <summary>A relation row into its junction table: each end's key columns and the relation's attribute columns.</summary>
-    private static IReadOnlyDictionary<string, object?> ThroughJunction(RSeed seed, RSeedRow row, RTable junction, Dictionary<string, RSeedRow> seedRowsById)
+    /// <summary>
+    /// A relation row into its junction table: each end's key columns, the relation's attribute columns, then the mapping's constants
+    /// (several-types-design.md decision 44 and answer 9), so the row is one of this relation's links and its key holds the constants' columns.
+    /// When the mapping has its link (a designed link table with constants or attribute columns), each end's key comes from it: a table several
+    /// relations share has one key per end for all of them, and that key's <see cref="RForeignKey.End"/> names only one relation's end.
+    /// </summary>
+    private static IReadOnlyDictionary<string, object?> ThroughJunction(RSeed seed, RSeedRow row, RRelationMapping mapping, RTable junction,
+        Dictionary<string, RSeedRow> seedRowsById)
     {
+        var link = mapping.Links.Count == 1 && ReferenceEquals(mapping.Links[0].Table, junction) ? mapping.Links[0] : null;
         var cells = new List<(RColumn, object?)>();
         foreach (var sc in seed.Columns)
         {
-            if (sc.Kind == "end" && sc.End is { } end && junction.ForeignKeys.FirstOrDefault(f => f.End?.Id == end.Id) is { } key)
+            if (sc.Kind == "end" && sc.End is { } end && KeyColumnsOf(end) is { } columns)
             {
-                for (var i = 0; i < key.Columns.Count; i++)
-                    cells.Add((key.Columns[i], KeyOfReferenced(row, sc.Name, end, i, seedRowsById)));
+                for (var i = 0; i < columns.Count; i++)
+                    cells.Add((columns[i], KeyOfReferenced(row, sc.Name, end, i, seedRowsById)));
             }
             else if (sc.Kind == "attribute" && sc.Attribute is { } attribute && junction.Columns.FirstOrDefault(c => c.AttributePath == attribute.Id) is { } column)
             {
@@ -664,7 +671,13 @@ internal sealed partial class ResolveRun
             }
         }
 
+        foreach (var constant in mapping.Constants)
+            cells.Add((constant.Column, constant.Values.Count > 0 ? constant.Values[0] : null));
         return Cells(cells);
+
+        IReadOnlyList<RColumn>? KeyColumnsOf(REnd end) => link is not null
+            ? link.Ends.FirstOrDefault(e => e.End.Id == end.Id)?.Columns
+            : junction.ForeignKeys.FirstOrDefault(f => f.End?.Id == end.Id)?.Columns;
     }
 
     /// <summary>The key value (part <paramref name="index"/>) of the row an end cell names: the referenced row's key attribute.</summary>

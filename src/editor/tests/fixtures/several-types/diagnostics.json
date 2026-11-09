@@ -36,13 +36,6 @@
       "severity": "error"
     },
     {
-      "rule": "MQ3041",
-      "elementId": "01KST0RXN00000000000000006",
-      "pointer": "/ends",
-      "message": "Relation 'Both' has several types on both ends; keep them on one end.",
-      "severity": "error"
-    },
-    {
       "rule": "MQ3042",
       "elementId": "01KST0END00000000000000017",
       "pointer": "/ends/1/types",
@@ -81,7 +74,7 @@
       "rule": "MQ4009",
       "elementId": "01KST0MAP00000000000000001",
       "pointer": "/shape",
-      "message": "Relation 'AttachedTo' has an end with several types, so a mapping of it sets only ignore; remove 'shape'.",
+      "message": "Relation 'AttachedTo' has an end with several types, so a mapping of it doesn't take 'shape'; its 'ends' entries say how it is stored. Remove it.",
       "severity": "error"
     },
     {
@@ -153,20 +146,6 @@
       "pointer": "/ends/1",
       "message": "Relation 'Entries' has an end with several types, so database 'main' stores nothing for it.",
       "severity": "info"
-    },
-    {
-      "rule": "MQ4116",
-      "elementId": "01KST0ENT00000000000000007",
-      "pointer": "/bindings/0/fields/1/attribute",
-      "message": "Field 1 of the binding of 'Tool' names end 'comment' of relation 'Filed', which has an end with several types; a field can't map it.",
-      "severity": "error"
-    },
-    {
-      "rule": "MQ4116",
-      "elementId": "01KST0ENT00000000000000008",
-      "pointer": "/bindings/0/fields/1/attribute",
-      "message": "Field 1 of the binding of 'Comment' names end 'attachedTo', which leads to several types; a field can't map it.",
-      "severity": "error"
     },
     {
       "rule": "MQ4116",

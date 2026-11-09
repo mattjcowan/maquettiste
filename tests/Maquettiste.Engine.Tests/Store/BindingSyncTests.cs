@@ -221,16 +221,17 @@ public sealed class BindingSyncTests
     }
 
     [Fact]
-    public async Task Map_by_name_resync_and_materialize_attributes_never_map_an_end_of_a_relation_with_several_types()
+    public async Task Map_by_name_maps_the_field_forms_of_an_end_with_several_types_that_the_entity_holds()
     {
-        // Several-types-design.md decision 21: the field candidates skip a relation with an end of several types, as MQ4116 refuses such a
-        // field. AttachedTo attaches an entry to one customer or invoice; Filed files entries and invoices under one customer. Their key
-        // columns are free, and a one-type relation's would map (see above).
+        // Several-types-design.md decisions 46 and section 19.11 (part 2 lifts part 1's decision 21): the field candidates of a holding entity
+        // include an end with several types, as <endId> (its id column), <endId>.type and <endId>.<entityId>, and on way 1 the one-type end each
+        // covered type holds. AttachedTo attaches an entry to one customer or invoice; Filed files entries and invoices under one customer.
         await using var r = EditorRepo.Create(packs: false);
         const string AttachedEnd = "01K7SYNC0000000000000000R7", FiledCustomer = "01K7SYNC0000000000000000R9";
         await LedgerAsync(r, EntryId, extraColumns: """
             , { "id": "01K7SYNC0000000000000000D1", "name": "attached_to_id", "type": "uuid" }
             , { "id": "01K7SYNC0000000000000000D2", "name": "filed_customer_id", "type": "uuid" }
+            , { "id": "01K7SYNC0000000000000000D4", "name": "attached_to_type", "type": "text" }
             """);
         await CreateAsync(r, $$"""
             { "kind": "relation", "id": "01K7SYNC0000000000000000R6", "name": "AttachedTo", "package": "{{EditorRepo.BillingPackageId}}",
@@ -242,20 +243,14 @@ public sealed class BindingSyncTests
               "ends": [ { "id": "01K7SYNC0000000000000000RB", "types": [ { "entity": "{{LedgerEntry}}" }, { "entity": "{{EditorRepo.InvoiceId}}" } ], "role": "filed" },
                         { "id": "{{FiledCustomer}}", "entity": "{{EditorRepo.CustomerId}}", "role": "filedCustomer", "navigation": "filedCustomer", "max": 1 } ] }
             """);
-        bool NamesAnEnd() => Fields(r, LedgerEntry).Any(f => f.Attribute is AttachedEnd or FiledCustomer);
 
         AssertSaved(await ApplyAsync(r, MapByName(LedgerEntry)));
-        Assert.Equal([(EntryIdAttribute, EntryIdColumn)], Fields(r, LedgerEntry));
-
-        // resync-binding maps the free columns by name too (its step 4), here after a column is added.
-        await EditLedgerOnDiskAsync(r, columns => columns.Add(JsonNode.Parse("""{ "id": "01K7SYNC0000000000000000D3", "name": "extra", "type": "text" }""")));
-        AssertSaved(await ApplyAsync(r, Resync(LedgerEntry)));
-        Assert.False(NamesAnEnd(), string.Join(", ", Fields(r, LedgerEntry)));
-
-        // materialize-attributes turns the free columns into attributes, never into fields for such an end.
-        AssertSaved(await ApplyAsync(r, $$"""{ "op": "materialize-attributes", "database": "{{Main}}", "entities": ["{{LedgerEntry}}"] }"""));
-        Assert.False(NamesAnEnd(), string.Join(", ", Fields(r, LedgerEntry)));
-        Assert.Contains(Entity(r, LedgerEntry).Attributes, a => a.Name == "attachedToId");
+        Assert.Equal(
+            [
+                (EntryIdAttribute, EntryIdColumn), (AttachedEnd, "01K7SYNC0000000000000000D1"), (FiledCustomer, "01K7SYNC0000000000000000D2"),
+                (AttachedEnd + ".type", "01K7SYNC0000000000000000D4"),
+            ],
+            Fields(r, LedgerEntry));
     }
 
     [Fact]

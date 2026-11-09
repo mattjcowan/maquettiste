@@ -1,0 +1,54 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01KST2TAB00000000000000008",
+  "name": "comment_parts",
+  "database": "01KST2DBS00000000000000001",
+  "columns": [
+    {
+      "id": "01KST2CMN00000000000000031",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01KST2CMN00000000000000032",
+      "name": "comment_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000033",
+      "name": "part_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01KST2CMN00000000000000031"
+    ]
+  },
+  "foreignKeys": [
+    {
+      "id": "01KST2FKY00000000000000009",
+      "name": "fk_cp_comment",
+      "columns": [
+        "01KST2CMN00000000000000032"
+      ],
+      "referencesTable": "01KST2TAB00000000000000006",
+      "referencesColumns": [
+        "01KST2CMN00000000000000011"
+      ]
+    },
+    {
+      "id": "01KST2FKY00000000000000010",
+      "name": "fk_cp_part",
+      "columns": [
+        "01KST2CMN00000000000000033"
+      ],
+      "referencesTable": "01KST2TAB00000000000000004",
+      "referencesColumns": [
+        "01KST2CMN00000000000000004"
+      ]
+    }
+  ]
+}

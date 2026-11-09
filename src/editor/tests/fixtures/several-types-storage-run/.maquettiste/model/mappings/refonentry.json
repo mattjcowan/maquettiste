@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST2MAP00000000000000028",
+  "name": "RefOnEntry in main",
+  "database": "01KST2DBS00000000000000001",
+  "relation": "01KST2RXN00000000000000021",
+  "ends": [
+    {
+      "end": "01KST2END00000000000000042",
+      "idColumn": "01KST2CMN00000000000000017",
+      "referencesColumn": "01KST2CMN00000000000000007"
+    }
+  ]
+}

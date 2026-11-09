@@ -5,6 +5,8 @@
 //   bundle    two entity entries, both cards on the canvas: one line with the label that forks into a line to each card
 //   junction  three or more entries, or two where one is a stereotype or not a card: one line to a node, one from it to each type
 //   list      the toggle's collapsed look: one line to a box that lists every entry
+// Several types (or any entity) at both ends is drawn by the both-ends plan below (section 19.12): one junction node with a line to
+// each type card or box of either end, or, collapsed, one box that lists each end's entries under its role.
 // A diagram that has no such relation never reaches this file, so it draws and saves exactly as before.
 import type { DiagramDoc, RelationDoc } from "@/api/types";
 import { docEndHasSeveralTypes, docEndSingleEntity, type EndDocLike } from "@/model/endTypes";
@@ -132,6 +134,12 @@ const LIST_ROW = 18;
 
 export type HubKind = "junction" | "fork" | "stereotype" | "any" | "list";
 
+/** One end of the collapsed both-ends box: the end's role and cardinality as its line shows them, and its entries. */
+export interface ListGroup {
+  text: string;
+  entries: PlanEntry[];
+}
+
 export interface GraphNode {
   id: string;
   kind: HubKind;
@@ -142,6 +150,8 @@ export interface GraphNode {
   draggable: boolean;
   entry?: PlanEntry;
   entries?: PlanEntry[];
+  /** The collapsed both-ends box: each end's role and entries. */
+  groups?: ListGroup[];
   count?: number;
 }
 
@@ -408,8 +418,10 @@ export function stereotypeCounter(
   relation: Pick<RelationDoc, "ends">,
   row: { ends?: readonly { covers?: readonly string[] | undefined }[] | undefined } | undefined,
   stereotypesOf: (entityId: string) => readonly string[] | undefined,
+  /** The end to count for; without it, the first end with several types (the far end of a one-sided relation). */
+  endIndex?: 0 | 1,
 ): (key: string) => number | undefined {
-  const farIndex = relation.ends?.findIndex((e) => docEndHasSeveralTypes(e as EndDocLike)) ?? -1;
+  const farIndex = endIndex ?? relation.ends?.findIndex((e) => docEndHasSeveralTypes(e as EndDocLike)) ?? -1;
   const covers = farIndex >= 0 ? row?.ends?.[farIndex]?.covers : undefined;
   // The engine leaves an empty `covers` out of the row, so a known row without it means no carriers.
   if (!covers) return row ? () => 0 : () => undefined;
@@ -422,4 +434,176 @@ export function stereotypeCounter(
 export function hasSeveralTypesEnd(relation: Pick<RelationDoc, "ends">): boolean {
   const [a, b] = relation.ends ?? [];
   return !!a && !!b && (docEndHasSeveralTypes(a as EndDocLike) || docEndHasSeveralTypes(b as EndDocLike));
+}
+
+// ------------------------------------------------------------------ several types at both ends (section 19.12)
+
+/** Whether both of the relation's first two ends have several types: the canvas draws one junction node (or one box) for it. */
+export function hasSeveralTypesBothEnds(relation: Pick<RelationDoc, "ends">): boolean {
+  const [a, b] = relation.ends ?? [];
+  return !!a && !!b && docEndHasSeveralTypes(a as EndDocLike) && docEndHasSeveralTypes(b as EndDocLike);
+}
+
+/** What one end of a both-ends relation draws. */
+export interface BothEnd {
+  index: 0 | 1;
+  entries: PlanEntry[];
+  /** Entries that get a line (a card or a box). */
+  shown: PlanEntry[];
+  /** Entries with no line because their card is not on the canvas. */
+  hidden: PlanEntry[];
+}
+
+export interface BothEndsPlan {
+  relationId: string;
+  /** "junction" is the expanded look (one node, a line to each type), "list" the toggle's collapsed box (no lines). */
+  look: "junction" | "list";
+  ends: [BothEnd, BothEnd];
+  /** The toggle is offered when either end has two or more entries. */
+  canToggle: boolean;
+  collapsed: boolean;
+}
+
+export interface BothEndsContext extends Pick<PlanContext, "onCanvas" | "nameOf" | "collapsed"> {
+  /** The number of entities each stereotype entry of an end covers, by key, when the index can say. */
+  stereotypeCount?(endIndex: 0 | 1, key: string): number | undefined;
+}
+
+/**
+ * The look for a relation with several types at both ends, or null when it is not one, or an end has nothing to draw: no entity
+ * entry with a card on the canvas, and no stereotype or any-entity box (the domain view keeps such a relation out, as for one end).
+ */
+export function planBothEnds(relation: Pick<RelationDoc, "id" | "ends">, ctx: BothEndsContext): BothEndsPlan | null {
+  if (!hasSeveralTypesBothEnds(relation)) return null;
+  const ends = ([0, 1] as const).map((index): BothEnd => {
+    const entries = endEntries(relation.ends![index] as EndDocLike, {
+      onCanvas: ctx.onCanvas,
+      nameOf: ctx.nameOf,
+      stereotypeCount: (key) => ctx.stereotypeCount?.(index, key),
+    });
+    return { index, entries, shown: entries.filter((e) => e.shown), hidden: entries.filter((e) => !e.shown) };
+  }) as [BothEnd, BothEnd];
+  if (ends.some((e) => !e.shown.length)) return null;
+  const canToggle = ends.some((e) => e.entries.length >= 2);
+  const collapsed = canToggle && ctx.collapsed;
+  return { relationId: relation.id, look: collapsed ? "list" : "junction", ends, canToggle, collapsed };
+}
+
+/**
+ * The "+N not shown" text of each end of the node, and the names for its tooltip; null for an end that has every entry drawn. With the
+ * relation, each text names its end by role ("source: +1 not shown"), so the two labels on one node can be told apart.
+ */
+export function notShownByEnd(
+  plan: Pick<BothEndsPlan, "ends">,
+  relation?: Pick<RelationDoc, "ends">,
+): [ReturnType<typeof notShown>, ReturnType<typeof notShown>] {
+  const one = (index: 0 | 1) => {
+    const n = notShown(plan.ends[index]);
+    if (!n || !relation) return n;
+    const role = relation.ends?.[index]?.role || (index === 0 ? "first end" : "second end");
+    return { ...n, text: `${role}: ${n.text}` };
+  };
+  return [one(0), one(1)];
+}
+
+/** The tooltip of the junction node: each end's role with every entry, so the node says what it joins. */
+export function bothEndsTitle(relation: Pick<RelationDoc, "ends">, plan: Pick<BothEndsPlan, "ends">): string {
+  return plan.ends
+    .map((e) => {
+      const role = relation.ends?.[e.index]?.role;
+      return `${role ? `${role}: ` : ""}${e.entries.map((x) => x.label).join(", ")}`;
+    })
+    .join("\n");
+}
+
+/** The first end's entries use positions 0.., the second end's start here, so a node or line id names its end and entry. */
+export const BOTH_ENDS_STRIDE = 1000;
+
+export interface BothEndsInput {
+  /** Positions of the cards on the canvas, by entity id. */
+  positionOf: ReadonlyMap<string, Point>;
+  /** The node's position when one is stored or being dragged. */
+  hub?: Point | undefined;
+  /** The text of each end's line at its card ("source *"), for the collapsed box. */
+  endText?: readonly [string, string];
+  /** Where this relation falls among those drawn from the same place: each takes a step lower. */
+  slot?: number;
+}
+
+/** The nodes and edges the canvas draws for a both-ends plan. */
+export function buildBothEndsGraph(plan: BothEndsPlan, input: BothEndsInput): SeveralGraph {
+  const cards = plan.ends.flatMap((end) =>
+    end.shown.flatMap((e) => (e.kind === "entity" && e.entity && input.positionOf.get(e.entity) ? [input.positionOf.get(e.entity)!] : [])),
+  );
+  const size = plan.look === "list" ? { width: BOX_WIDTH, height: 28 + plan.ends.length * LIST_ROW } : { width: JUNCTION_SIZE, height: JUNCTION_SIZE };
+  // With no saved position, the node sits at the middle of the cards it joins.
+  const mid = cards.length
+    ? {
+        x: cards.reduce((sum, p) => sum + p.x + NODE_WIDTH / 2, 0) / cards.length,
+        y: cards.reduce((sum, p) => sum + p.y + NODE_HEIGHT / 2, 0) / cards.length,
+      }
+    : { x: NODE_WIDTH / 2, y: NODE_HEIGHT / 2 };
+  const hubAt = input.hub ?? { x: Math.round(mid.x - size.width / 2), y: Math.round(mid.y - size.height / 2 + (input.slot ?? 0) * SLOT_STEP) };
+  const hub: GraphNode = {
+    id: plan.relationId,
+    kind: plan.look === "list" ? "list" : "junction",
+    position: hubAt,
+    width: size.width,
+    height: size.height,
+    draggable: true,
+    ...(plan.look === "list"
+      ? {
+          entries: plan.ends.flatMap((end) => end.entries),
+          groups: plan.ends.map((end) => ({ text: input.endText?.[end.index] ?? "", entries: end.entries })),
+        }
+      : {}),
+  };
+  const nodes: GraphNode[] = [hub];
+  const edges: GraphEdge[] = [];
+  if (plan.look === "list") return { nodes, edges };
+
+  const hubCentre = centreOf(hubAt, size.width, size.height);
+  for (const end of plan.ends) {
+    // A stereotype or any-entity box sits on its end's side of the node (the first end left, the second right) and moves with it.
+    const dir = end.index === 0 ? -1 : 1;
+    const boxes = end.entries.map((e, i) => ({ e, i })).filter(({ e }) => e.kind !== "entity");
+    boxes.forEach(({ e, i }, n) => {
+      const x = dir > 0 ? hubAt.x + size.width + 110 : hubAt.x - 110 - BOX_WIDTH;
+      const y = hubCentre.y + (n - (boxes.length - 1) / 2) * (BOX_HEIGHT + 14) - BOX_HEIGHT / 2;
+      nodes.push({
+        id: boxNodeId(plan.relationId, end.index * BOTH_ENDS_STRIDE + i),
+        kind: e.kind === "any" ? "any" : "stereotype",
+        position: { x: Math.round(x), y: Math.round(y) },
+        width: BOX_WIDTH,
+        height: BOX_HEIGHT,
+        draggable: false,
+        entry: e,
+        ...(e.count !== undefined ? { count: e.count } : {}),
+      });
+    });
+    end.entries.forEach((e, i) => {
+      const at = end.index * BOTH_ENDS_STRIDE + i;
+      let target: string;
+      let targetCentreX: number;
+      if (e.kind !== "entity") {
+        target = boxNodeId(plan.relationId, at);
+        targetCentreX = nodes.find((n) => n.id === target)!.position.x + BOX_WIDTH / 2;
+      } else {
+        const p = e.shown && e.entity ? input.positionOf.get(e.entity) : undefined;
+        if (!p) return;
+        target = e.entity!;
+        targetCentreX = p.x + NODE_WIDTH / 2;
+      }
+      edges.push({
+        id: branchEdgeId(plan.relationId, at),
+        source: hub.id,
+        target,
+        ...handlesFor(hubCentre.x, targetCentreX),
+        part: "branch",
+        endIndex: end.index,
+        labelled: false,
+      });
+    });
+  }
+  return { nodes, edges };
 }

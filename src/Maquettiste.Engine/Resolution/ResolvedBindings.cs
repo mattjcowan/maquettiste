@@ -60,6 +60,12 @@ public sealed class REntityBinding : RAnnotated
     /// <summary>The value a soft delete sets (a plain value; <see langword="null"/> is SQL NULL).</summary>
     public object? SoftDeleteValue { get; internal set; }
 
+    /// <summary>
+    /// The entity's type code in the database as the binding sets it (<c>discriminatorValue</c>, several-types-design.md decision 42): a
+    /// string or an integer; <see langword="null"/> when the binding sets none.
+    /// </summary>
+    public object? DiscriminatorValue { get; internal set; }
+
     /// <summary>The fields that map the entity's key attributes, in key order.</summary>
     public IReadOnlyList<RBindingField> Key { get; internal set; } = [];
 
@@ -160,6 +166,16 @@ public sealed class RBindingField
 
     /// <summary>Whether the column is nullable.</summary>
     public bool Nullable { get; internal set; } = true;
+
+    /// <summary>
+    /// On a relation end with several types (several-types-design.md decision 46), what the field's column holds: <c>id</c> (the field
+    /// names <c>&lt;endId&gt;</c>), <c>type</c> (<c>&lt;endId&gt;.type</c>) or <c>key</c> (<c>&lt;endId&gt;.&lt;entityId&gt;</c>);
+    /// <see langword="null"/> on every other field, a one-type end's key included.
+    /// </summary>
+    public string? Holds { get; internal set; }
+
+    /// <summary>The entity of an <c>&lt;endId&gt;.&lt;entityId&gt;</c> field (<see cref="Holds"/> is <c>key</c>); <see langword="null"/> otherwise.</summary>
+    public REntity? KeyOf { get; internal set; }
 }
 
 /// <summary>A source (or write table) column of a resolved binding and what accounts for it.</summary>

@@ -154,6 +154,42 @@ public sealed class TypeScriptPackTests
     }
 
     [Fact]
+    public async Task A_relation_with_several_types_at_both_ends_writes_a_union_each_way()
+    {
+        // Several types at both ends (several-types-design.md section 19.12): a link from a remark or a memo to one part or assembly, in the
+        // billing fixture's package Billing. Each covered entity holds the navigation to the other end, typed as the union of its types; the
+        // four entity files are pinned under tests/fixtures/golden/typescript/several-types-both-ends.
+        const string Billing = "01J92P0V01KDRN8GX5PGYCNKSX";
+        using var repo = PackRepo.TypeScript("billing");
+        static string Entity(string id, string name, string key) =>
+            $$"""{"kind":"entity","id":"{{id}}","name":"{{name}}","package":"{{Billing}}","key":{"attributes":["{{key}}"]},"attributes":[{"id":"{{key}}","name":"id","type":"uuid","required":true}]}""";
+        repo.Write(".maquettiste/model/entities/part.json", Entity("01K9ST00000000000000000001", "Part", "01K9ST00000000000000000011"));
+        repo.Write(".maquettiste/model/entities/assembly.json", Entity("01K9ST00000000000000000002", "Assembly", "01K9ST00000000000000000012"));
+        repo.Write(".maquettiste/model/entities/remark.json", Entity("01K9ST00000000000000000003", "Remark", "01K9ST00000000000000000013"));
+        repo.Write(".maquettiste/model/entities/memo.json", Entity("01K9ST00000000000000000004", "Memo", "01K9ST00000000000000000014"));
+        repo.Write(".maquettiste/model/relations/links.json",
+            $$"""{"kind":"relation","id":"01K9ST00000000000000000041","name":"Links","package":"{{Billing}}","ends":[{"id":"01K9ST00000000000000000042","types":[{"entity":"01K9ST00000000000000000003"},{"entity":"01K9ST00000000000000000004"}],"role":"source","max":"*","navigation":"sources"},{"id":"01K9ST00000000000000000043","types":[{"entity":"01K9ST00000000000000000001"},{"entity":"01K9ST00000000000000000002"}],"role":"target","max":1,"navigation":"linkedTo"}]}""");
+        await repo.GenerateCleanlyAsync();
+
+        var files = Listing(repo);
+        string Source(string name) => repo.Read(files.Single(f => f.EndsWith("/" + name + ".ts", StringComparison.Ordinal)));
+        foreach (var source in new[] { "remark", "memo" })
+        {
+            Assert.Contains("  linkedTo?: Part | Assembly;", Source(source), StringComparison.Ordinal);
+            Assert.DoesNotContain("linkedToId", Source(source), StringComparison.Ordinal);
+        }
+
+        foreach (var target in new[] { "part", "assembly" })
+            Assert.Contains("sources?: (Remark | Memo)[];", Source(target), StringComparison.Ordinal);
+
+        var pinned = repo.PathOf("pinned");
+        Directory.CreateDirectory(pinned);
+        foreach (var name in new[] { "assembly", "memo", "part", "remark" })
+            File.WriteAllText(Path.Combine(pinned, name + ".ts"), Source(name));
+        Golden.AssertMatches(Fixtures.Path("golden", "typescript", "several-types-both-ends"), pinned);
+    }
+
+    [Fact]
     public async Task The_union_follows_an_entity_moved_from_under_another_carrier_as_a_clean_run_writes_it()
     {
         // A remark attached to anything approvable or a part. Memo carries approvable and derives from Document, so it is no type of its own;

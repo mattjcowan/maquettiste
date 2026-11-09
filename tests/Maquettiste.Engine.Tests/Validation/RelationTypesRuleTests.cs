@@ -52,7 +52,7 @@ public sealed class RelationTypesRuleTests
     // ---- MQ3041 ----
 
     [Fact]
-    public async Task MQ3041_refuses_an_n_ary_end_both_ends_and_an_any_entity_child()
+    public async Task MQ3041_refuses_an_n_ary_end_and_an_any_entity_child_but_no_longer_both_ends()
     {
         var nAry = await ValidateAsync(h => h.Write("model/relations/link.json", $$"""
             {"kind":"relation","id":"01JRXN00000000000000000990","name":"Link","package":"{{Sales}}","relationKind":"n-ary","ends":[
@@ -66,7 +66,28 @@ public sealed class RelationTypesRuleTests
               {"id":"01JEND00000000000000000991","types":[{"entity":"{{Comment}}"},{"entity":"{{Tool}}"}],"role":"source","max":"*"},
               {"id":"01JEND00000000000000000992","anyEntity":true,"role":"target","max":1}]}
             """));
-        Assert.Equal([("/ends", "Relation 'Link' has several types on both ends; keep them on one end.")], Of(both, "MQ3041"));
+        // Part 2 lifts the one-end limit (several-types-design.md decision 53, section 19.12): several types or any entity at both ends.
+        Assert.Empty(Of(both, "MQ3041"));
+        var anyToAny = await ValidateAsync(h => h.Write("model/relations/link.json", $$"""
+            {"kind":"relation","id":"01JRXN00000000000000000990","name":"Link","package":"{{Sales}}","ends":[
+              {"id":"01JEND00000000000000000991","anyEntity":true,"role":"source","max":"*"},
+              {"id":"01JEND00000000000000000992","anyEntity":true,"role":"target","max":"*"}]}
+            """));
+        Assert.Empty(Of(anyToAny, "MQ3041"));
+        var composedBoth = await ValidateAsync(h => h.Write("model/relations/link.json", $$"""
+            {"kind":"relation","id":"01JRXN00000000000000000990","name":"Link","package":"{{Sales}}","relationKind":"composition","ends":[
+              {"id":"01JEND00000000000000000991","types":[{"entity":"{{Comment}}"},{"entity":"{{Tool}}"}],"role":"owner","max":1},
+              {"id":"01JEND00000000000000000992","types":[{"entity":"{{Part}}"},{"entity":"{{Assembly}}"}],"role":"part","max":"*"}]}
+            """));
+        Assert.Empty(Of(composedBoth, "MQ3041"));
+
+        // An n-ary relation still refuses several types at each such end, two of them included.
+        var nAryTwo = await ValidateAsync(h => h.Write("model/relations/link.json", $$"""
+            {"kind":"relation","id":"01JRXN00000000000000000990","name":"Link","package":"{{Sales}}","relationKind":"n-ary","ends":[
+              {"id":"01JEND00000000000000000991","anyEntity":true,"role":"comment"},{"id":"01JEND00000000000000000992","entity":"{{Tool}}","role":"tool"},
+              {"id":"01JEND00000000000000000993","types":[{"entity":"{{Part}}"},{"entity":"{{Assembly}}"}],"role":"target"}]}
+            """));
+        Assert.Equal(["/ends/0", "/ends/2"], Of(nAryTwo, "MQ3041").Select(f => f.Item1));
 
         var child = await ValidateAsync(h => h.Write("model/relations/link.json", RelationWith(""" "anyEntity":true """, kind: "composition", farMax: "\"*\"", nearMax: "1")));
         Assert.Equal([("/ends/1/anyEntity", "End 'target' is the part in composition 'Link', so it can't be any entity; list the types it may be.")], Of(child, "MQ3041"));
@@ -210,7 +231,7 @@ public sealed class RelationTypesRuleTests
     // ---- MQ4009, MQ4115, MQ4116, MQ7105 ----
 
     [Fact]
-    public async Task MQ4009_lets_a_mapping_of_such_a_relation_set_only_ignore()
+    public async Task MQ4009_refuses_the_keys_that_shape_engine_made_storage_on_a_mapping_of_such_a_relation()
     {
         var found = await ValidateAsync(h =>
         {
@@ -220,8 +241,8 @@ public sealed class RelationTypesRuleTests
         });
         Assert.Equal(
         [
-            ("/shape", "Relation 'AttachedTo' has an end with several types, so a mapping of it sets only ignore; remove 'shape'."),
-            ("/foreignKeyEnd", "Relation 'AttachedTo' has an end with several types, so a mapping of it sets only ignore; remove 'foreignKeyEnd'."),
+            ("/shape", "Relation 'AttachedTo' has an end with several types, so a mapping of it doesn't take 'shape'; its 'ends' entries say how it is stored. Remove it."),
+            ("/foreignKeyEnd", "Relation 'AttachedTo' has an end with several types, so a mapping of it doesn't take 'foreignKeyEnd'; its 'ends' entries say how it is stored. Remove it."),
         ], Of(found, "MQ4009", "/mappings/attached"));
         Assert.Empty(Of(found, "MQ4009", "/mappings/concerns"));
     }
@@ -253,7 +274,7 @@ public sealed class RelationTypesRuleTests
     }
 
     [Fact]
-    public async Task MQ4116_refuses_a_binding_field_a_query_field_and_a_query_collection_naming_such_an_end()
+    public async Task MQ4116_refuses_a_query_field_and_a_query_collection_naming_such_an_end_and_a_binding_field_resolves()
     {
         const string Table = "01JTAB00000000000000000901";
         var found = await ValidateAsync(h =>
@@ -274,8 +295,8 @@ public sealed class RelationTypesRuleTests
                  "collections":[{"attribute":"{{TaggedEnd}}","query":{"from":{"source":"{{Table}}","alias":"t"},"select":[{"attribute":"{{AttachedEnd}}","expression":{"column":"t.id"} }]} }]}
                 """);
         });
-        Assert.Equal([("/bindings/0/fields/1/attribute", "Field 1 of the binding of 'Comment' names end 'attachedTo', which leads to several types; a field can't map it.")],
-            Of(found, "MQ4116", "/entities/comment"));
+        // Part 2: the binding field resolves (several-types-design.md decision 46): Comment holds the to-one end, which has several types.
+        Assert.Empty(Of(found, "MQ4116", "/entities/comment"));
         Assert.Equal(
         [
             ("/select/1/attribute", "Field 1 of query 'Comments' names end 'attachedTo', which leads to several types; a field can't map it."),
@@ -323,8 +344,8 @@ public sealed class RelationTypesRuleTests
                  "select":[{"attribute":"01JATT00000000000000000971","expression":{"column":"t.id"} },{"attribute":"{{FiledComment}}","expression":{"column":"t.comment_id"} }]}
                 """);
         });
-        Assert.Equal([("/bindings/0/fields/1/attribute", "Field 1 of the binding of 'Tool' names end 'comment' of relation 'Filed', which has an end with several types; a field can't map it.")],
-            Of(found, "MQ4116", "/entities/tool"));
+        // Part 2: Tool's binding field resolves, as a key Tool holds through its type (way 1, decision 46).
+        Assert.Empty(Of(found, "MQ4116", "/entities/tool"));
         Assert.Equal([("/collections/0/attribute", "Collection 0 of query 'PartNotes' names end 'comment' of relation 'AttachedTo', which has an end with several types; a collection can't fill it.")],
             Of(found, "MQ4116", "/queries/part-notes"));
         Assert.Equal([("/select/1/attribute", "Field 1 of query 'ToolFiling' names end 'comment' of relation 'Filed', which has an end with several types; a field can't map it.")],

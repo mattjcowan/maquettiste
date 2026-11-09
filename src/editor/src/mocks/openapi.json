@@ -15496,7 +15496,7 @@
       },
       "RelationMappingRecord": {
         "x-engine-record": "Maquettiste.Engine.RelationMappingRecord",
-        "description": "A relation's mapping to one database.",
+        "description": "A relation's mapping to one database. The storage members (`links` to `typeCodes`, several-types-design.md section 19.8) are\nset for a relation with an end of several types, and for a mapping with constants or attribute columns; each is left out when\nempty, so a relation that uses none of them keeps today's record.\n",
         "type": "object",
         "required": [
           "database",
@@ -15511,26 +15511,248 @@
           },
           "shape": {
             "type": "string",
-            "description": "`foreign-key`, `junction` or `promoted`."
+            "description": "`foreign-key`, `junction` or `promoted`. For a relation with an end of several types, `junction` when its links live in link tables, else `foreign-key`."
           },
           "foreignKey": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The foreign key name."
+            "description": "The foreign key name; null for a relation with an end of several types."
           },
           "junctionTable": {
             "type": [
               "string",
               "null"
             ],
-            "description": "The junction table key."
+            "description": "The junction table key; for a relation with an end of several types, the one link table that holds every link, and null for a table per type."
           },
           "promotedEntity": {
             "type": [
               "string",
               "null"
+            ]
+          },
+          "links": {
+            "type": "array",
+            "description": "One entry per pair of targets, one per end, in target order (decision 39).",
+            "items": {
+              "$ref": "#/components/schemas/RelationLinkRecord"
+            }
+          },
+          "constants": {
+            "type": "array",
+            "description": "The link table's columns with a fixed value (decision 44).",
+            "items": {
+              "$ref": "#/components/schemas/RelationConstantRecord"
+            }
+          },
+          "attributes": {
+            "type": "array",
+            "description": "The relation attributes' columns in the table that holds every link (decision 45).",
+            "items": {
+              "$ref": "#/components/schemas/RelationAttributeColumnRecord"
+            }
+          },
+          "leftOut": {
+            "type": "array",
+            "description": "Covered entities not placed in the database, by end in file order, then qualified name, then id. No finding.",
+            "items": {
+              "$ref": "#/components/schemas/RelationEndEntityRecord"
+            }
+          },
+          "notStored": {
+            "type": "array",
+            "description": "Placed targets no pointer reaches (MQ4120), in the same order.",
+            "items": {
+              "$ref": "#/components/schemas/RelationEndEntityRecord"
+            }
+          },
+          "typeCodes": {
+            "type": "array",
+            "description": "The code of every entity a type column holds, by qualified name, then id (decision 42).",
+            "items": {
+              "$ref": "#/components/schemas/TypeCodeRecord"
+            }
+          }
+        }
+      },
+      "RelationLinkRecord": {
+        "x-engine-record": "Maquettiste.Engine.RelationLinkRecord",
+        "description": "Where one pair of targets of a relation mapping is linked (several-types-design.md section 19.8).",
+        "type": "object",
+        "required": [
+          "table",
+          "ends"
+        ],
+        "properties": {
+          "table": {
+            "type": "string",
+            "description": "The key of the table that holds the link."
+          },
+          "ends": {
+            "type": "array",
+            "description": "One per relation end, in file order.",
+            "items": {
+              "$ref": "#/components/schemas/RelationLinkEndRecord"
+            }
+          }
+        }
+      },
+      "RelationLinkEndRecord": {
+        "x-engine-record": "Maquettiste.Engine.RelationLinkEndRecord",
+        "description": "How the table that holds a link points at one end's target.",
+        "type": "object",
+        "required": [
+          "end",
+          "type",
+          "isHolder",
+          "columns",
+          "referencedTable",
+          "referencedColumns",
+          "foreignKey",
+          "typeColumn",
+          "codes"
+        ],
+        "properties": {
+          "end": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "isHolder": {
+            "type": "boolean",
+            "description": "Whether this end's rows hold the link."
+          },
+          "columns": {
+            "type": "array",
+            "description": "The keys of the pointer's columns in the holding table.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "referencedTable": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The key of the table the pointer refers to."
+          },
+          "referencedColumns": {
+            "type": "array",
+            "description": "The keys of the columns the pointer refers to.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "foreignKey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The foreign key's name, when the pointer is a key."
+          },
+          "typeColumn": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The key of the column that holds the type code, when there is one."
+          },
+          "codes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "The codes the type column holds for this target, when there is a type column.",
+            "items": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            }
+          }
+        }
+      },
+      "RelationConstantRecord": {
+        "x-engine-record": "Maquettiste.Engine.RelationConstantRecord",
+        "description": "A link table's column with a fixed value (several-types-design.md decision 44).",
+        "type": "object",
+        "required": [
+          "column",
+          "values"
+        ],
+        "properties": {
+          "column": {
+            "type": "string",
+            "description": "The column's key."
+          },
+          "values": {
+            "type": "array",
+            "description": "The values the column holds; null is SQL NULL.",
+            "items": {
+              "type": [
+                "string",
+                "number",
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "RelationAttributeColumnRecord": {
+        "x-engine-record": "Maquettiste.Engine.RelationAttributeColumnRecord",
+        "description": "A relation attribute's column in the table that holds every link (several-types-design.md decision 45).",
+        "type": "object",
+        "required": [
+          "attribute",
+          "column"
+        ],
+        "properties": {
+          "attribute": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "column": {
+            "type": "string",
+            "description": "The column's key."
+          }
+        }
+      },
+      "RelationEndEntityRecord": {
+        "x-engine-record": "Maquettiste.Engine.RelationEndEntityRecord",
+        "description": "A covered entity at one end of a relation mapping.",
+        "type": "object",
+        "required": [
+          "end",
+          "entity"
+        ],
+        "properties": {
+          "end": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/Ulid"
+          }
+        }
+      },
+      "TypeCodeRecord": {
+        "x-engine-record": "Maquettiste.Engine.TypeCodeRecord",
+        "description": "An entity's type code in a database (several-types-design.md decision 42).",
+        "type": "object",
+        "required": [
+          "entity",
+          "code"
+        ],
+        "properties": {
+          "entity": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "code": {
+            "type": [
+              "string",
+              "integer"
             ]
           }
         }
@@ -19742,6 +19964,123 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/GenerationHintsView"
             }
+          },
+          "relationStorage": {
+            "type": "array",
+            "description": "One item per relation with an end of several types placed in the database (several-types-design.md section 19.8); left out when empty.",
+            "items": {
+              "$ref": "#/components/schemas/RelationStorageView"
+            }
+          }
+        }
+      },
+      "RelationStorageView": {
+        "x-engine-record": "Maquettiste.Engine.RelationStorageView",
+        "description": "How a database stores a relation with an end of several types, and what it can't enforce (MQ4118).",
+        "type": "object",
+        "required": [
+          "relationId",
+          "relationName",
+          "mappingId",
+          "tables",
+          "leftOut",
+          "notStored",
+          "gaps"
+        ],
+        "properties": {
+          "relationId": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "relationName": {
+            "type": "string"
+          },
+          "mappingId": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Ulid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The relation's mapping in the database; null when there is none."
+          },
+          "tables": {
+            "type": "array",
+            "description": "The keys of the tables that hold the links.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "leftOut": {
+            "type": "array",
+            "description": "Covered entities not placed in the database.",
+            "items": {
+              "$ref": "#/components/schemas/RelationStorageEntityView"
+            }
+          },
+          "notStored": {
+            "type": "array",
+            "description": "Placed targets no pointer reaches (MQ4120).",
+            "items": {
+              "$ref": "#/components/schemas/RelationStorageEntityView"
+            }
+          },
+          "gaps": {
+            "type": "array",
+            "description": "What the database can't enforce, per end (MQ4118, decision 47).",
+            "items": {
+              "$ref": "#/components/schemas/RelationStorageGapView"
+            }
+          }
+        }
+      },
+      "RelationStorageEntityView": {
+        "x-engine-record": "Maquettiste.Engine.RelationStorageEntityView",
+        "description": "A covered entity at one end of a relation stored in a database.",
+        "type": "object",
+        "required": [
+          "endId",
+          "entityId"
+        ],
+        "properties": {
+          "endId": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "entityId": {
+            "$ref": "#/components/schemas/Ulid"
+          }
+        }
+      },
+      "RelationStorageGapView": {
+        "x-engine-record": "Maquettiste.Engine.RelationStorageGapView",
+        "description": "One thing a database can't enforce for a relation end with several types (MQ4118, decision 47).",
+        "type": "object",
+        "required": [
+          "endId",
+          "kind"
+        ],
+        "properties": {
+          "endId": {
+            "$ref": "#/components/schemas/Ulid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "no-foreign-key",
+              "shared-table",
+              "id-only",
+              "type-check",
+              "count-check",
+              "one-to-one-unique",
+              "link-unique",
+              "per-type-duplicates",
+              "rows-not-told-apart"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "The check or unique to copy, in the database's dialect and quoting; left out when there is none."
           }
         }
       },
@@ -21846,6 +22185,13 @@
             "items": {
               "$ref": "#/components/schemas/BindingColumnRecord"
             }
+          },
+          "discriminatorValue": {
+            "type": [
+              "string",
+              "integer"
+            ],
+            "description": "The entity's type code the binding sets (several-types-design.md decision 42); left out when unset."
           }
         }
       },
@@ -21928,6 +22274,19 @@
           },
           "inUpdate": {
             "type": "boolean"
+          },
+          "holds": {
+            "type": "string",
+            "enum": [
+              "id",
+              "type",
+              "key"
+            ],
+            "description": "On a relation end with several types (several-types-design.md decision 46), what the field's column holds; left out on today's fields."
+          },
+          "keyOf": {
+            "type": "string",
+            "description": "The entity of an `endId.entityId` field (`holds` is `key`); left out otherwise."
           }
         }
       },
@@ -31620,6 +31979,7 @@
                 "columns",
                 "write",
                 "delete",
+                "discriminatorValue",
                 "provenance",
                 "checks",
                 "description",
@@ -31673,7 +32033,7 @@
                   "default": []
                 },
                 "fields": {
-                  "description": "The field map: an attribute of the entity (attributeId.memberId for a value object member, a relation end id for a to-one navigation's key) and the source column it reads.",
+                  "description": "The field map: an attribute of the entity (attributeId.memberId for a value object member, a relation end id for a to-one navigation's key or, on an end with several types, its id; endId.type for that end's type code and endId.entityId for its key per type) and the source column it reads.",
                   "type": "array",
                   "items": {
                     "title": "Binding field",
@@ -31684,7 +32044,7 @@
                     ],
                     "properties": {
                       "attribute": {
-                        "description": "An attribute id of the entity, attributeId.memberId, or the id of the relation end a to-one navigation leads to.",
+                        "description": "An attribute id of the entity, attributeId.memberId, or the id of a relation end the entity holds, which a to-one navigation leads to: endId maps its key column, or on an end with several types its id column; endId.type maps the column that holds the linked object's type code, and endId.entityId the column that points at a linked object of that entity (a column per type).",
                         "type": "string",
                         "minLength": 1
                       },
@@ -31809,6 +32169,13 @@
                       ],
                       "additionalProperties": false
                     }
+                  ]
+                },
+                "discriminatorValue": {
+                  "description": "The entity's type code in this database, where a type column holds it: a column of a relation end with several types, or the discriminator of an inheritance hierarchy. Absent: the discriminatorValue of the entity's mapping there, else the entity's name. An entity outside a hierarchy takes one only when an end with several types covers it (MQ4009).",
+                  "type": [
+                    "string",
+                    "integer"
                   ]
                 },
                 "provenance": {
@@ -32456,7 +32823,7 @@
             "items": {
               "title": "Relation end",
               "type": "object",
-              "description": "One end (role) of a relation. It names its type in exactly one way: entity (one entity, with the entities derived from it), types (several entities and stereotypes) or anyEntity. Only one end of a two-ended relation may have several types (MQ3041).",
+              "description": "One end (role) of a relation. It names its type in exactly one way: entity (one entity, with the entities derived from it), types (several entities and stereotypes) or anyEntity. Either end of a two-ended relation, or both, may have several types; each end of an n-ary relation names one entity (MQ3041).",
               "x-order": [
                 "id",
                 "entity",
@@ -32481,7 +32848,7 @@
                   "$ref": "#/components/schemas/id"
                 },
                 "types": {
-                  "description": "The types this end may be, at least one: an entity, with the entities derived from it, or a stereotype, standing for every entity that carries it and the entities derived from them. The end's types are the covered entities with no covered base, in the order the entries first reach them. A list that holds one entity means the same as entity (MQ3042); an entry another entry covers is MQ3043. Not written together with entity or anyEntity.",
+                  "description": "The types this end may be, at least one: an entity, with the entities derived from it, or a stereotype, standing for every entity that carries it and the entities derived from them. The end's types are the covered entities with no covered base, in the order the entries first reach them. A list that holds one entity means the same as entity (MQ3042); an entry another entry covers is MQ3043. Several types fit either end of a two-ended relation, or both, and no end of an n-ary relation (MQ3041). Not written together with entity or anyEntity.",
                   "type": "array",
                   "items": {
                     "title": "End type",
@@ -32520,7 +32887,7 @@
                   "uniqueItems": true
                 },
                 "anyEntity": {
-                  "description": "The end may be any entity of the model. Not written together with entity or types; never on a composition's child end (MQ3041).",
+                  "description": "The end may be any entity of the model, at either end of a two-ended relation or both. Not written together with entity or types; never on a composition's child end or an end of an n-ary relation (MQ3041).",
                   "const": true
                 },
                 "role": {
@@ -36631,6 +36998,7 @@
           "foreignKey",
           "junctionTable",
           "ends",
+          "constants",
           "promotedName",
           "properties",
           "generation",
@@ -36746,6 +37114,7 @@
                   "$ref": "#/components/schemas/id"
                 },
                 "column": {
+                  "description": "The id of the attribute's column. On an entity mapping: a column of the bound designed or imported table. On a relation mapping with a designed junctionTable: a column of the table that holds every link, the link table or the other end's table, for a relation attribute of one plain value (MQ4009, MQ4117).",
                   "$ref": "#/components/schemas/id"
                 },
                 "storage": {
@@ -36790,26 +37159,133 @@
             "$ref": "#/components/schemas/id"
           },
           "ends": {
-            "description": "For a designed junction table: the foreign key that realizes each relation end.",
+            "description": "How the database's tables point at each relation end, one entry per end. For a designed junctionTable of a relation whose ends each have one type: the foreign key that realizes each end. For a relation with an end of several types: how the pointer points at the end, in exactly one way, foreignKey, foreignKeys, types with foreignKey items or idColumn (MQ4009). Without junctionTable, an end with no entry holds the link in its own rows.",
             "type": "array",
             "items": {
               "title": "Relation end mapping",
               "type": "object",
               "x-order": [
                 "end",
-                "foreignKey"
+                "foreignKey",
+                "foreignKeys",
+                "types",
+                "idColumn",
+                "typeColumn",
+                "referencesColumn"
               ],
               "properties": {
                 "end": {
                   "$ref": "#/components/schemas/id"
                 },
                 "foreignKey": {
+                  "description": "The id of one existing foreign key that points at the end: in a designed junction table, the key that references the end's table; on an end with several types, a key to a table that holds the rows of every placed type.",
                   "$ref": "#/components/schemas/id"
+                },
+                "foreignKeys": {
+                  "description": "The ids of several existing foreign keys that point at the end, one per table that holds links: each type's table of the other end, or a link table per type. Only on a relation with an end of several types.",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/id"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "default": []
+                },
+                "types": {
+                  "description": "Per type of an end with several types: the foreign key that points at objects of that type (a key per type), or, beside idColumn, the unique column of the type's table the id refers to. Each entity is one the end covers, listed once, and every item is of one kind (MQ4009).",
+                  "type": "array",
+                  "items": {
+                    "title": "End type storage",
+                    "description": "One type of the end and how its objects are pointed at: entity, and exactly one of foreignKey and referencesColumn.",
+                    "type": "object",
+                    "x-order": [
+                      "entity",
+                      "foreignKey",
+                      "referencesColumn"
+                    ],
+                    "properties": {
+                      "entity": {
+                        "description": "The id of an entity the end covers.",
+                        "$ref": "#/components/schemas/id"
+                      },
+                      "foreignKey": {
+                        "description": "The id of the existing foreign key that points at objects of this type. Not written together with referencesColumn.",
+                        "$ref": "#/components/schemas/id"
+                      },
+                      "referencesColumn": {
+                        "description": "Beside the entry's idColumn: the column of this type's table the id refers to, unique in that table; a column id, or the key of a column of a table the engine makes. Not written together with foreignKey.",
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "entity"
+                    ],
+                    "oneOf": [
+                      {
+                        "required": [
+                          "foreignKey"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "referencesColumn"
+                        ]
+                      }
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1,
+                  "default": []
+                },
+                "idColumn": {
+                  "description": "The id of the column that holds the linked object's id, in the table that holds the link. It refers to referencesColumn, else to the primary key of each type's table when that key has one column. Only on a relation with an end of several types.",
+                  "$ref": "#/components/schemas/id"
+                },
+                "typeColumn": {
+                  "description": "Beside idColumn: the id of the column that holds the linked object's type code, the discriminatorValue of the type's binding or mapping in the database, else the entity's name. Needs idColumn (MQ4009).",
+                  "$ref": "#/components/schemas/id"
+                },
+                "referencesColumn": {
+                  "description": "Beside idColumn, when one table holds the rows of every placed type: the column of that table the id refers to, unique in it, instead of its primary key; a column id, or the key of a column of a table the engine makes. Needs idColumn (MQ4009).",
+                  "type": "string",
+                  "minLength": 1
                 }
               },
               "required": [
-                "end",
-                "foreignKey"
+                "end"
+              ],
+              "additionalProperties": false
+            },
+            "default": []
+          },
+          "constants": {
+            "description": "For a relation mapping with a designed junctionTable: columns of that table with a fixed value, a filter on the links it reads and a value on every link it inserts, such as a relation code in a table that holds several relations (MQ4009).",
+            "type": "array",
+            "items": {
+              "title": "Mapping constant",
+              "type": "object",
+              "x-order": [
+                "column",
+                "value"
+              ],
+              "properties": {
+                "column": {
+                  "description": "The id of a column of the junction table.",
+                  "$ref": "#/components/schemas/id"
+                },
+                "value": {
+                  "description": "The value; absent or null is SQL NULL.",
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "column"
               ],
               "additionalProperties": false
             },

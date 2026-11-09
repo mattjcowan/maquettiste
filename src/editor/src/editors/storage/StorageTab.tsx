@@ -768,16 +768,24 @@ function statusText(status: ColumnStatus, attribute: string | undefined, value: 
 
 // ------------------------------------------------------------------ constants
 
-function ConstantsGrid({
+/** The constants grid of a binding. A relation mapping's "Rows of this relation" reuses it, with its own title and empty text. */
+export function ConstantsGrid({
   dom,
   binding,
   columns,
   onEdit,
+  title = "Constants",
+  emptyText = "None: every row of the source is this entity's.",
+  skipPrimaryKey = false,
 }: {
   dom: string;
   binding: Binding;
   columns: BindingSource["columns"];
   onEdit: (change: (b: Binding) => void) => void;
+  title?: string;
+  emptyText?: string;
+  /** A new constant starts on the first free column that is not a primary key (a relation's link table does; an entity's source doesn't). */
+  skipPrimaryKey?: boolean;
 }) {
   const constants = binding.constants ?? [];
   const set = (next: typeof constants) => onEdit((b) => setConstants(b, next));
@@ -793,13 +801,13 @@ function ConstantsGrid({
             variant="ghost"
             disabled={!free.length}
             data-testid="binding-add-constant"
-            onClick={() => set([...constants, { column: free[0].key, value: "" }])}
+            onClick={() => set([...constants, { column: ((skipPrimaryKey ? free.find((c) => !c.isPrimaryKey) : undefined) ?? free[0]).key, value: "" }])}
           >
             <Plus /> Add constant
           </Button>
         }
       >
-        Constants
+        {title}
       </SectionTitle>
       {constants.length ? (
         <table className="w-full text-13" aria-label="Constant columns" data-testid="binding-constants">
@@ -860,7 +868,7 @@ function ConstantsGrid({
           </tbody>
         </table>
       ) : (
-        <p className="text-12 text-secondary">None: every row of the source is this entity's.</p>
+        <p className="text-12 text-secondary">{emptyText}</p>
       )}
     </section>
   );

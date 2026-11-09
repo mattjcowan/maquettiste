@@ -52,12 +52,18 @@ import { RelationEdge, type Notation, type RelationFlowEdge } from "@/canvas/Rel
 import { TypesEdge, type TypesFlowEdge } from "@/canvas/TypesEdge";
 import { TypesNode, type TypesFlowNode } from "@/canvas/TypesNodes";
 import {
+  bothEndsTitle,
+  buildBothEndsGraph,
   buildGraph,
+  hasSeveralTypesBothEnds,
   hasSeveralTypesEnd,
   lineText,
   textWidth,
   notShown,
+  notShownByEnd,
+  planBothEnds,
   planSeveralTypes,
+  type SeveralGraph,
   relationOfFlowId,
   HUB_SEPARATOR,
   stereotypeCounter,
@@ -366,27 +372,57 @@ function EntitiesCanvas() {
       if (!doc) continue;
       const relation = (draftsState[rid]?.json ?? doc.json) as unknown as RelationDoc;
       if (!hasSeveralTypesEnd(relation)) continue;
-      const plan = planSeveralTypes(relation, {
-        onCanvas: (id) => positionOf.has(id),
-        nameOf,
-        stereotypeCount: stereotypeCounter(relation, lookup.byId.get(rid), (id) => lookup.byId.get(id)?.stereotypes),
-        collapsed: isCollapsed(rid),
-      });
-      if (!plan) continue;
-      const slot = slots.get(plan.nearEntity) ?? 0;
-      slots.set(plan.nearEntity, slot + 1);
-      const graph = buildGraph(plan, {
-        positionOf,
-        slot,
-        sizeOf: (id) => measured[id],
-        labels: {
-          near: textWidth(lineText(relation, display.notation, plan.nearIndex)),
-          far: plan.look === "box" || plan.look === "list" ? textWidth(lineText(relation, display.notation, plan.farIndex)) : 0,
-          pill: relationLabelSize(relation).width + (plan.canToggle ? 20 : 0),
-        },
-        hub: dragging[rid] ?? storedPosition(view, memberOf.get(rid), pkgPositions, rid),
-      });
-      const hidden = notShown(plan);
+      let graph: SeveralGraph;
+      let canToggle: boolean;
+      let collapsed: boolean;
+      let hidden: ReturnType<typeof notShown> = null;
+      let both: TypesFlowNode["data"]["both"];
+      if (hasSeveralTypesBothEnds(relation)) {
+        // Several types at both ends: one node (or, collapsed, one box) joined to the types of either end (19.12).
+        const plan = planBothEnds(relation, {
+          onCanvas: (id) => positionOf.has(id),
+          nameOf,
+          stereotypeCount: (endIndex, key) => stereotypeCounter(relation, lookup.byId.get(rid), (id) => lookup.byId.get(id)?.stereotypes, endIndex)(key),
+          collapsed: isCollapsed(rid),
+        });
+        if (!plan) continue;
+        const firsts = plan.ends.map((end) => end.shown.find((e) => e.kind === "entity")?.entity ?? "").join("|");
+        const slot = slots.get(firsts) ?? 0;
+        slots.set(firsts, slot + 1);
+        graph = buildBothEndsGraph(plan, {
+          positionOf,
+          slot,
+          endText: [lineText(relation, display.notation, 0), lineText(relation, display.notation, 1)],
+          hub: dragging[rid] ?? storedPosition(view, memberOf.get(rid), pkgPositions, rid),
+        });
+        canToggle = plan.canToggle;
+        collapsed = plan.collapsed;
+        both = { notShown: notShownByEnd(plan, relation), title: bothEndsTitle(relation, plan) };
+      } else {
+        const plan = planSeveralTypes(relation, {
+          onCanvas: (id) => positionOf.has(id),
+          nameOf,
+          stereotypeCount: stereotypeCounter(relation, lookup.byId.get(rid), (id) => lookup.byId.get(id)?.stereotypes),
+          collapsed: isCollapsed(rid),
+        });
+        if (!plan) continue;
+        const slot = slots.get(plan.nearEntity) ?? 0;
+        slots.set(plan.nearEntity, slot + 1);
+        graph = buildGraph(plan, {
+          positionOf,
+          slot,
+          sizeOf: (id) => measured[id],
+          labels: {
+            near: textWidth(lineText(relation, display.notation, plan.nearIndex)),
+            far: plan.look === "box" || plan.look === "list" ? textWidth(lineText(relation, display.notation, plan.farIndex)) : 0,
+            pill: relationLabelSize(relation).width + (plan.canToggle ? 20 : 0),
+          },
+          hub: dragging[rid] ?? storedPosition(view, memberOf.get(rid), pkgPositions, rid),
+        });
+        canToggle = plan.canToggle;
+        collapsed = plan.collapsed;
+        hidden = notShown(plan);
+      }
       const selected = canvasSelection.includes(rid);
       for (const n of graph.nodes) {
         if (n.kind === "fork") forks.add(n.id);
@@ -408,10 +444,12 @@ function EntitiesCanvas() {
             relationName: relation.name,
             ...(n.entry ? { entry: n.entry } : {}),
             ...(n.entries ? { entries: n.entries } : {}),
+            ...(n.groups ? { groups: n.groups } : {}),
+            ...(both && n.id === rid && n.kind === "junction" ? { both } : {}),
             ...(n.count !== undefined ? { count: n.count } : {}),
             notShown: n.id === rid ? hidden : null,
-            canToggle: plan.canToggle,
-            collapsed: plan.collapsed,
+            canToggle,
+            collapsed,
             onToggle: toggleRelation,
           },
         });
@@ -435,8 +473,8 @@ function EntitiesCanvas() {
             ...(e.farEndIndex !== undefined ? { farEndIndex: e.farEndIndex } : {}),
             attributeBox: e.labelled ? attributeBox : null,
             labelled: e.labelled,
-            canToggle: plan.canToggle,
-            collapsed: plan.collapsed,
+            canToggle,
+            collapsed,
             onToggle: toggleRelation,
             onSelect: selectRelation,
           },

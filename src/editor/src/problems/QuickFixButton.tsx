@@ -5,7 +5,9 @@ import { useState } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { Wrench } from "lucide-react";
 import * as endpoints from "@/api/endpoints";
-import { indexQuery, useElement } from "@/api/queries";
+import { indexQuery, useElement, useIndex } from "@/api/queries";
+import { useElementEdits } from "@/editors/mappingEdit";
+import { applyStorageFix } from "./storageFixApply";
 import type { Diagnostic, ModelJson } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -38,7 +40,14 @@ export function QuickFixButton({
   const services = useServices();
   const { store, drafts } = services;
   const qc = useQueryClient();
-  const element = useElement(diagnostic.elementId);
+  const index = useIndex();
+  const edits = useElementEdits();
+  // MQ4115 sits on an end of the relation: its fix reads the relation.
+  const owner =
+    diagnostic.rule === "MQ4115"
+      ? (index.data?.find((r) => r.kind === "relation" && !!diagnostic.filePath && r.path === diagnostic.filePath)?.id ?? diagnostic.elementId)
+      : diagnostic.elementId;
+  const element = useElement(owner);
   const related = fixDocuments(diagnostic, element.data?.json as ModelJson | undefined)[1];
   const partner = useElement(related);
   const typeId = fixDocuments(diagnostic, element.data?.json as ModelJson | undefined, (id) =>
@@ -98,6 +107,7 @@ export function QuickFixButton({
       }
       if (fix.kind === "verb") return report(await applyVerbFix(services, fix), `${fix.label}: done.`);
       if (fix.kind === "open") return void focusProcess(fix.process, fix.tab, fix.node);
+      if (fix.kind === "storage") return report(await applyStorageFix(fix, { qc, store, edits }), fix.action === "copy" ? "Copied." : `${fix.label}: done.`);
       if (fix.kind === "sync-enum")
         return setPending({ kind: "sync", process: fix.process, entity: fix.entity, plan: await syncEnum(fix.process, true, fix.entity) });
       if (fix.kind === "sync-codes") {
@@ -154,6 +164,7 @@ export function QuickFixButton({
           onClick={() =>
             void run(async () => {
               if (extra.kind === "open") return void focusProcess(extra.process, extra.tab, extra.node);
+              if (extra.kind === "storage") return report(await applyStorageFix(extra, { qc, store, edits }), `${extra.label}: done.`);
               if (extra.kind === "update") report(await applyQuickFix(qc, store, extra), `${extra.label}: done.`);
             })
           }

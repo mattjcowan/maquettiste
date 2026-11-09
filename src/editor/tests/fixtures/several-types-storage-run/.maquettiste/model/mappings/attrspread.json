@@ -1,0 +1,23 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST2MAP00000000000000035",
+  "name": "AttrSpread in main",
+  "database": "01KST2DBS00000000000000001",
+  "relation": "01KST2RXN00000000000000028",
+  "ends": [
+    {
+      "end": "01KST2END00000000000000055",
+      "foreignKeys": [
+        "01KST2FKY00000000000000001",
+        "01KST2FKY00000000000000003"
+      ]
+    }
+  ],
+  "attributes": [
+    {
+      "attribute": "01KST2ATT00000000000000010",
+      "column": "01KST2CMN00000000000000007"
+    }
+  ]
+}

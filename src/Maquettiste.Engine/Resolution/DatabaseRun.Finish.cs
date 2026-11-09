@@ -359,9 +359,11 @@ internal sealed partial class DatabaseRun
     /// </summary>
     private void FinishRelationMappings()
     {
+        // A relation with an end of several types is finished by FinishTypeStorage, below (several-types-design.md section 19.8, step 2): its
+        // physical shape is never foreign-key, and the OneEntity reads here would throw on such an end.
         foreach (var phys in _relationPhysical.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => p.Value))
         {
-            if (phys.Shape != RelationShape.ForeignKey || phys.Mapping is not { } mapping)
+            if (phys.Shape != RelationShape.ForeignKey || phys.Mapping is not { } mapping || phys.TypeLinks is not null)
                 continue;
             var dependentTable = phys.Dependent is { } dependent ? TableOf(dependent.OneEntity.Id) : null;
             var primary = phys.Foreign.FirstOrDefault(s => s.Resolved && ReferenceEquals(s.Host, dependentTable)) ?? phys.Foreign.FirstOrDefault(s => s.Resolved);
@@ -383,6 +385,9 @@ internal sealed partial class DatabaseRun
                     deps.AddRange(KeyDeps(pp));
             }
         }
+
+        FinishLinkTableLinks();
+        FinishTypeStorage();
     }
 
     /// <summary>MQ4009: a table overlay that targets nothing this database synthesizes (for example a TPH-derived entity) is unused.</summary>
@@ -504,7 +509,8 @@ internal sealed partial class DatabaseRun
 
     private void BuildJoins()
     {
-        // Join paths read finished tables and foreign keys only: computed per entity in parallel, recorded in entity order.
+        // Join paths read finished tables and foreign keys only: computed per entity in parallel, recorded in entity order. A relation stored
+        // as TypeLinks (an end with several types) takes its pairs from there, with conditions and type_joins (BuildTypeJoins, decision 48).
         var owners = _placementOrder.Select(p => p.Entity).Concat(_promotedTables.Select(x => x.Entity)).ToList();
         var paths = new List<(RNavigation Navigation, RJoinPath Path)>[owners.Count];
         _run.ForEach(owners.Count, i =>
@@ -512,7 +518,8 @@ internal sealed partial class DatabaseRun
             var list = new List<(RNavigation, RJoinPath)>();
             foreach (var navigation in _run.InheritedNavigations(owners[i].Id))
             {
-                if (_relationPhysical.TryGetValue(navigation.Relation.Id, out var phys) && JoinFor(navigation, phys, owners[i].Id) is { } path)
+                if (_relationPhysical.TryGetValue(navigation.Relation.Id, out var phys) && phys.TypeLinks is null
+                    && !navigation.From.HasSeveralTypes && !navigation.To.HasSeveralTypes && JoinFor(navigation, phys, owners[i].Id) is { } path)
                     list.Add((navigation, path));
             }
 
@@ -536,12 +543,15 @@ internal sealed partial class DatabaseRun
             }
         }
 
+        BuildTypeJoins();
         foreach (var (entityId, mapping) in _mappingByEntity)
         {
             mapping.Joins = _joinsByEntity.TryGetValue(entityId, out var joins)
                 ? joins.ToImmutableSortedDictionary(StringComparer.Ordinal)
                 : ImmutableSortedDictionary<string, RJoinPath>.Empty;
         }
+
+        PublishEntityTypeJoins();
     }
 
     /// <summary>The join path of a navigation read from an entity (the declaring entity or one that inherits the navigation).</summary>
@@ -579,6 +589,8 @@ internal sealed partial class DatabaseRun
                 {
                     FromTable = from.Result.ReferencedTable, FromColumns = from.Result.ReferencedColumns,
                     ToTable = junction.Table, ToColumns = from.Result.Columns, ViaJunction = true,
+                    // A designed link table's constants pick this relation's rows (several-types-design.md decision 44, answer 9); none today.
+                    Conditions = phys.Mapping?.Constants ?? [],
                 },
                 new RJoinStep
                 {

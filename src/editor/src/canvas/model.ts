@@ -3,7 +3,16 @@
 // are written back into a diagram, and what "Add related to depth N" adds.
 import type { AttributeDoc, DiagramDoc, DiagramMember, ElementSummary, RelationDoc } from "@/api/types";
 import { indexPatchOf } from "@/api/indexPatch";
-import { docEndEntities, docEndSingleEntity, endHasSeveralTypes, endListedEntities, endSingleEntity, type EndLike } from "@/model/endTypes";
+import {
+  docEndEntities,
+  docEndHasSeveralTypes,
+  docEndSingleEntity,
+  endHasSeveralTypes,
+  endListedEntities,
+  endSingleEntity,
+  type EndDocLike,
+  type EndLike,
+} from "@/model/endTypes";
 import type { LayoutEdge, LayoutNode } from "./layout";
 
 export const NODE_WIDTH = 240;
@@ -123,7 +132,7 @@ export interface EdgeEnds {
 export function relationEnds(relation: Pick<RelationDoc, "ends">, positionOf: ReadonlyMap<string, Point>, width: number = NODE_WIDTH): EdgeEnds | null {
   const [a, b] = relation.ends ?? [];
   if (!a || !b) return null;
-  // An end with several types is drawn by severalTypes.ts (a node and lines); this is the one-line drawing only.
+  // An end with several types is drawn by severalTypes.ts (a node and lines, at one end or both); this is the one-line drawing only.
   const ea = docEndSingleEntity(a);
   const eb = docEndSingleEntity(b);
   if (!ea || !eb) return null;
@@ -220,7 +229,13 @@ export function layoutInput(
     id: string;
     source: string;
     target: string;
-    data?: { relation?: Pick<RelationDoc, "name" | "attributes">; attributeBox?: AttributeBox | null; labelled?: boolean };
+    data?: {
+      relation?: Pick<RelationDoc, "name" | "attributes"> & Partial<Pick<RelationDoc, "ends">>;
+      attributeBox?: AttributeBox | null;
+      labelled?: boolean;
+      part?: string;
+      endIndex?: number;
+    };
   }[],
 ): { nodes: LayoutNode[]; edges: LayoutEdge[] } {
   return {
@@ -229,10 +244,15 @@ export function layoutInput(
       const relation = e.data?.relation;
       // A relation with an end of several types carries its label on its trunk line only.
       const label = relation && e.data?.labelled !== false ? relationLabelSize(relation, e.data?.attributeBox) : null;
+      // A relation with several types at both ends has its node between its two ends: the first end's lines run into the node and the
+      // second end's leave it, so the layout puts each node beside its own cards (all from the node would put every card in one column).
+      const ends = relation?.ends;
+      const bothEnds = !!ends && ends.length >= 2 && docEndHasSeveralTypes(ends[0] as EndDocLike) && docEndHasSeveralTypes(ends[1] as EndDocLike);
+      const reversed = bothEnds && e.data?.part === "branch" && e.data.endIndex === 0;
       return {
         id: e.id,
-        source: e.source,
-        target: e.target,
+        source: reversed ? e.target : e.source,
+        target: reversed ? e.source : e.target,
         ...(label ? { label: { width: label.width + 2 * LABEL_GAP, height: label.height + LABEL_GAP } } : {}),
       };
     }),
@@ -374,8 +394,9 @@ function buildRelationLookup(rows: readonly Pick<IndexRow, "id" | "kind" | "ends
     if (!list || list.length < 2) return undefined;
     const firsts = list.slice(0, 2).map((e) => endListedEntities(e)[0]);
     if (!firsts[0] || !firsts[1]) return undefined;
-    // The end with several types comes second: the card it hangs on is the anchor.
-    return endHasSeveralTypes(list[0]) ? [firsts[1], firsts[0]] : [firsts[0], firsts[1]];
+    // The end with several types comes second: the card it hangs on is the anchor. With several types at both ends, the first
+    // listed entity of each end in end order (the node sits between them).
+    return endHasSeveralTypes(list[0]) && !endHasSeveralTypes(list[1]) ? [firsts[1], firsts[0]] : [firsts[0], firsts[1]];
   };
   return { relationsOf: (id) => relations.get(id) ?? [], endsOf: (id) => ends.get(id), shows, pairOf, ends };
 }

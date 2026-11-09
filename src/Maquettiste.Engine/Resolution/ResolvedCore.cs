@@ -20,6 +20,42 @@ public interface IResolvedObject
 }
 
 /// <summary>
+/// A value of the resolved model that is no <see cref="IResolvedObject"/> but carries dependency keys of its own, which a template or a script
+/// records when it reads the value or one of its members (several-types-design.md section 19.8, "Dependency keys"): the storage members of a
+/// relation with an end of several types and their join paths. So only a unit that reads them keys on what the storage reads, such as every
+/// entity an any-entity end covers, and the objects that hold them (a relation, a navigation, an entity) keep their own keys.
+/// </summary>
+internal interface ITrackedValue
+{
+    /// <summary>The dependency keys, ordinal and distinct; empty when the value keys on nothing beyond its holder.</summary>
+    IReadOnlyList<string> Dependencies { get; }
+}
+
+/// <summary>
+/// A read-only list whose content depends on its own keys (<see cref="ITrackedValue"/>): reading it records them, so a unit that reads an
+/// empty list still renders again when an item appears.
+/// </summary>
+/// <typeparam name="T">The item type.</typeparam>
+/// <param name="items">The items.</param>
+/// <param name="dependencies">The keys, ordinal and distinct.</param>
+internal sealed class KeyedList<T>(IReadOnlyList<T> items, IReadOnlyList<string> dependencies) : IReadOnlyList<T>, ITrackedValue
+{
+    /// <inheritdoc/>
+    public IReadOnlyList<string> Dependencies { get; } = dependencies;
+
+    /// <inheritdoc/>
+    public int Count => items.Count;
+
+    /// <inheritdoc/>
+    public T this[int index] => items[index];
+
+    /// <inheritdoc/>
+    public IEnumerator<T> GetEnumerator() => items.GetEnumerator();
+
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+/// <summary>
 /// Names the dependency key a template or a script records when it reads a plain value of <see cref="ResolvedModel"/>, which has no
 /// dependencies of its own (signoff-design.md decision 32).
 /// </summary>

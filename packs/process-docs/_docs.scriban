@@ -78,6 +78,12 @@ func right_who(r, up)
   ret r.everyone ? "everyone" : actor_links(r.actors, up)
 end
 
+# The name a page gives a relation end it speaks of links through: its navigation, the name the object reaches the links by, else its
+# role (an end has no name of its own).
+func end_name(e)
+  ret e.navigation ?? e.role
+end
+
 # What a right does: its verbs as code, and the links it speaks of through its ends.
 func right_does(r)
   $text = ""
@@ -87,7 +93,7 @@ func right_does(r)
   if r.ends.size > 0
     $ends = ""
     for $e in r.ends
-      $ends = $ends + (for.first ? "" : ", ") + (md_code $e.name)
+      $ends = $ends + (for.first ? "" : ", ") + (md_code end_name($e))
     end
     $text = $text + " on links through " + $ends
   end
@@ -495,7 +501,7 @@ func tp_where(tp, numbers)
   if tp.ends.size > 0
     $ends = ""
     for $e in tp.ends
-      $ends = $ends + (for.first ? "" : ", ") + (md_code $e.name)
+      $ends = $ends + (for.first ? "" : ", ") + (md_code end_name($e))
     end
     $parts[$parts.size] = "links through " + $ends
   end

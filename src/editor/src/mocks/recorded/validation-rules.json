@@ -642,7 +642,7 @@
   {
     "id": "MQ3041",
     "defaultSeverity": "error",
-    "description": "A relation end with several types (types with two or more entries or a stereotype entry, or anyEntity) where it can't be: on an n-ary relation, on both ends of a relation, or anyEntity on a composition's child end; give the end one entity, keep several types on one end, or list the types the child may be.",
+    "description": "A relation end with several types (types with two or more entries or a stereotype entry, or anyEntity) where it can't be: on an n-ary relation, or anyEntity on a composition's child end; give the end one entity, or list the types the child may be.",
     "family": "MQ30xx",
     "familyLabel": "Model structure",
     "canBeOff": true
@@ -851,7 +851,7 @@
   {
     "id": "MQ4009",
     "defaultSeverity": "error",
-    "description": "Mapping option invalid for the element. A mapping of a relation with an end of several types sets only ignore.",
+    "description": "Mapping option invalid for the element: a key, column or option the element, its relation or its tables don't allow; an ends entry that says no way or two ways to point at its end, or a way only a relation with an end of several types takes; constants or an attribute column outside the mapping's designed junctionTable; or a discriminatorValue on an entity outside an inheritance hierarchy that no relation end with several types covers.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -867,7 +867,7 @@
   {
     "id": "MQ4011",
     "defaultSeverity": "error",
-    "description": "Relation between bound tables names no foreign key or junction end binding.",
+    "description": "Relation between bound tables names no foreign key or junction end binding, or a designed junction or link table has no ends entry for one of the relation's ends.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1139,7 +1139,7 @@
   {
     "id": "MQ4045",
     "defaultSeverity": "error",
-    "description": "A binding names what it cannot resolve: a field attribute that is neither an attribute of the entity, a value object member nor a to-one relation end; a column its source does not have; a listed or soft-delete column of no table it uses; or an attribute or column mapped twice.",
+    "description": "A binding names what it cannot resolve: a field attribute that is neither an attribute of the entity, a value object member nor a to-one relation end the entity holds (endId, endId.type or endId.entityId on an end with several types); a column its source does not have; a listed or soft-delete column of no table it uses; or an attribute or column mapped twice.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1187,7 +1187,7 @@
   {
     "id": "MQ4051",
     "defaultSeverity": "warning",
-    "description": "A binding's constant (or soft-delete value) cannot fit its column: the wrong type, too long, out of range, or NULL in a column that is not nullable.",
+    "description": "A binding's constant (or soft-delete value), or a relation mapping's constant, cannot fit its column: the wrong type, too long, out of range, or NULL in a column that is not nullable.",
     "family": "MQ40xx",
     "familyLabel": "Databases and mappings",
     "canBeOff": true
@@ -1547,7 +1547,7 @@
   {
     "id": "MQ4115",
     "defaultSeverity": "info",
-    "description": "A relation has an end with several types, and every end has a type it covers placed in a database, so that database stores nothing for the relation: no table, column or foreign key.",
+    "description": "A relation has an end with several types, and every end has a type it covers placed in a database where no mapping stores the relation (with a junctionTable or an ends entry), so that database stores nothing for it: no table, column or foreign key.",
     "family": "MQ41xx",
     "familyLabel": "Migrations",
     "canBeOff": true
@@ -1555,7 +1555,39 @@
   {
     "id": "MQ4116",
     "defaultSeverity": "error",
-    "description": "A binding field, a query field or a query collection names a relation end with several types, or a navigation to one, which leads to more than one table; or it names another end of a relation with such an end, which no database stores yet; a field can't map it.",
+    "description": "A query field or a query collection names a relation end with several types, a navigation to one, or another end of a relation with such an end; a query can't yet say which type's table it joins.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4117",
+    "defaultSeverity": "error",
+    "description": "A relation mapping's storage doesn't fit together: a key that leads to the wrong table, a pointer outside the table that holds its links, entries that give no table to hold them, a referenced column that isn't unique or whose type doesn't match, a type that isn't a target or two types with one code, a code its column can't hold, a key per type at an any-entity end, two mappings that read each other's links, a binding field that maps another column than the mapping names, or a form that waits (a link table per pair of types, column pointers spread over several tables).",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4118",
+    "defaultSeverity": "info",
+    "description": "A database holds a relation end with several types in a way it can't fully enforce: no foreign key, a key to a shared table, an id alone, a type column or keys per type with no check found, a one-to-one or a link table with no unique found, keys per type in a link table, or a table whose rows nothing tells apart; the message gives the check or unique to copy.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4119",
+    "defaultSeverity": "warning",
+    "description": "Since the baseline, an entity's type code in a database changed, and a type column there holds codes of a relation with an end of several types; links stored with the old code no longer find their object.",
+    "family": "MQ41xx",
+    "familyLabel": "Migrations",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ4120",
+    "defaultSeverity": "warning",
+    "description": "A mapping states how a relation with an end of several types is stored in a database, but names nothing that points at a placed type the relation covers there, so links to it aren't stored.",
     "family": "MQ41xx",
     "familyLabel": "Migrations",
     "canBeOff": true

@@ -79,7 +79,7 @@ export function endLabel(end: EndLike, nameOf: (id: string) => string | undefine
   return `${parts.slice(0, -1).join(", ")} or ${parts[parts.length - 1]}`;
 }
 
-/** The text a related list shows for how an entity is reached through the end: "through stereotype approvable", "any entity", or "". */
+/** The text a related list shows for how an entity is reached through the end: "through approvable (stereotype)", "any entity", or "". */
 export function endReach(end: EndLike, entityId: string, nameOfStereotype: (id: string) => string | undefined): string {
   if (end.anyEntity) return "any entity";
   if (end.entity || endNamesEntity(end, entityId)) return "";

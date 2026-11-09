@@ -1,0 +1,31 @@
+{
+  "$schema": "../../.schema/v1/relation.json",
+  "kind": "relation",
+  "id": "01KST3RXN00000000000000009",
+  "name": "NoId",
+  "package": "01KST3PKG00000000000000001",
+  "relationKind": "association",
+  "ends": [
+    {
+      "id": "01KST3END00000000000000017",
+      "entity": "01KST3ENT00000000000000003",
+      "role": "comment",
+      "navigation": "",
+      "max": "*"
+    },
+    {
+      "id": "01KST3END00000000000000018",
+      "types": [
+        {
+          "entity": "01KST3ENT00000000000000001"
+        },
+        {
+          "entity": "01KST3ENT00000000000000002"
+        }
+      ],
+      "role": "target",
+      "navigation": "",
+      "max": 1
+    }
+  ]
+}

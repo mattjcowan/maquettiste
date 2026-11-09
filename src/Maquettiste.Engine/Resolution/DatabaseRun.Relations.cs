@@ -27,6 +27,112 @@ internal sealed class RelationPhysical(RelationShape shape)
 
     /// <summary>The junction or promoted table.</summary>
     public TableBuild? Junction { get; set; }
+
+    /// <summary>
+    /// For a relation with an end of several types whose mapping states storage (several-types-design.md section 19.8): what step 1
+    /// (<c>CollectTypeStorage</c>) works out, step 2 (<c>FinishTypeStorage</c>) resolves and step 3 (<c>BuildJoins</c>) reads;
+    /// <see langword="null"/> for every other relation.
+    /// </summary>
+    public TypeLinks? TypeLinks { get; set; }
+}
+
+/// <summary>
+/// The storage of a relation with an end of several types in one database (several-types-design.md decisions 39 to 42 and section 19.8).
+/// Step 1 records the ends, their targets and the pairs with their holding tables and pointers from placements and the mapping file; step 2
+/// fills each pointer's <see cref="TypeLinkPointer.Result"/> and each pair's <see cref="TypeLink.Result"/> once keys and uniques are resolved;
+/// step 3 builds a join path per pair from them.
+/// </summary>
+internal sealed class TypeLinks
+{
+    /// <summary>The relation mapping file in this database.</summary>
+    public required Mapping Mapping { get; init; }
+
+    /// <summary>The designed link table the mapping names (<c>junctionTable</c>), or <see langword="null"/>.</summary>
+    public TableBuild? LinkTable { get; init; }
+
+    /// <summary>One per relation end, in file order.</summary>
+    public required IReadOnlyList<TypeLinkEnd> Ends { get; init; }
+
+    /// <summary>
+    /// One per pair of targets, one target per end, in target order (decision 39): by the first end's target, then the second's. A pair whose
+    /// holding table step 1 couldn't settle (MQ4117) is left out.
+    /// </summary>
+    public List<TypeLink> Pairs { get; } = [];
+}
+
+/// <summary>One end of a relation stored as <see cref="TypeLinks"/>.</summary>
+internal sealed class TypeLinkEnd
+{
+    /// <summary>The relation end.</summary>
+    public required REnd End { get; init; }
+
+    /// <summary>The mapping's entry for the end, or <see langword="null"/> when it has none (that end's rows then hold the link).</summary>
+    public RelationEndMapping? Entry { get; init; }
+
+    /// <summary>
+    /// The end's targets in target order (decision 39): covered entities placed in the database, with a table, whose rows aren't in a covered
+    /// base's table. Each type gives itself when it is a target, then its covered derived targets by qualified name, then id.
+    /// </summary>
+    public List<Placement> Targets { get; } = [];
+
+    /// <summary>Covered entities not placed in the database, by qualified name, then id.</summary>
+    public List<REntity> LeftOut { get; } = [];
+
+    /// <summary>Targets no pointer of the entry reaches (MQ4120), in target order.</summary>
+    public List<Placement> NotStored { get; } = [];
+}
+
+/// <summary>One pair of targets and the table that holds its links.</summary>
+internal sealed class TypeLink
+{
+    /// <summary>The holding table: the link table, the table of the holding end's target, or a table per type (way 7).</summary>
+    public required TableBuild Table { get; init; }
+
+    /// <summary>One per relation end, in file order.</summary>
+    public required IReadOnlyList<TypeLinkPointer> Ends { get; init; }
+
+    /// <summary>The resolved link, which step 2 fills; <see langword="null"/> until then, or when step 2 refuses the pair (MQ4117).</summary>
+    public RRelationLink? Result { get; set; }
+}
+
+/// <summary>
+/// How a pair's holding table points at one end's target (decision 39): exactly one of <see cref="ForeignKey"/> and <see cref="IdColumn"/>,
+/// or neither on the end whose rows hold the link (<see cref="IsHolder"/>).
+/// </summary>
+internal sealed class TypeLinkPointer
+{
+    /// <summary>The relation end.</summary>
+    public required REnd End { get; init; }
+
+    /// <summary>The target at this end.</summary>
+    public required Placement Target { get; init; }
+
+    /// <summary>Whether this end's rows hold the link: <see cref="TypeLink.Table"/> is the target's table.</summary>
+    public bool IsHolder { get; init; }
+
+    /// <summary>
+    /// The pointer when it is a designed foreign key (an entry's <c>foreignKey</c>, the <c>foreignKeys</c> item the holding table owns, or the
+    /// <c>types</c> item's); its <see cref="ForeignKeySpec.Result"/> is complete after <c>FinishTables</c>.
+    /// </summary>
+    public ForeignKeySpec? ForeignKey { get; init; }
+
+    /// <summary>The pointer when it is an id column: the column's id in the holding table (<c>idColumn</c>).</summary>
+    public string? IdColumn { get; init; }
+
+    /// <summary>Beside <see cref="IdColumn"/>: the id of the column that holds the type code (<c>typeColumn</c>), or <see langword="null"/>.</summary>
+    public string? TypeColumn { get; init; }
+
+    /// <summary>
+    /// Beside <see cref="IdColumn"/>: the column of the target's table the id refers to, as the file names it (the entry's or the
+    /// <c>types</c> item's <c>referencesColumn</c>); <see langword="null"/> refers to the table's one-column primary key.
+    /// </summary>
+    public string? ReferencesColumn { get; init; }
+
+    /// <summary>
+    /// The resolved pointer, which step 2 fills: its columns, referenced table and columns, key, type column and codes; <see langword="null"/>
+    /// until then, or when step 2 refuses it (MQ4117).
+    /// </summary>
+    public RRelationLinkEnd? Result { get; set; }
 }
 
 /// <summary>Relations: foreign keys, junction tables, promoted entities and bindings to existing foreign keys.</summary>
@@ -34,10 +140,12 @@ internal sealed partial class DatabaseRun
 {
     private readonly List<(REntity Entity, TableBuild Table)> _promotedTables = [];
 
+    /// <summary>One-type relations whose designed link table's mapping writes constants or attribute columns (answer 9), in relation order.</summary>
+    private readonly List<(RRelation Relation, RelationPhysical Physical)> _linkTableLinks = [];
+
     /// <summary>
-    /// Whether a binding field, a query field or a query collection names any end of a relation with an end of several types, or a path
-    /// under one: MQ4116 refuses it (several-types-design.md decision 22), since part 1 stores nothing for such a
-    /// relation, so resolution reports nothing more about it.
+    /// Whether a query field or a query collection names any end of a relation with an end of several types, or a path under one: MQ4116
+    /// refuses it (several-types-design.md decisions 22 and 46), so resolution reports nothing more about it.
     /// </summary>
     /// <param name="model">The model.</param>
     /// <param name="reference">The field's or collection's <c>attribute</c>.</param>
@@ -48,9 +156,17 @@ internal sealed partial class DatabaseRun
     private void ResolveRelation(RRelation rel)
     {
         var src = _run.RelationSource(rel.Id);
-        // Part 1 stores nothing for a relation with an end of several types (several-types-design.md decision 22), as for a relation whose
-        // end entity isn't placed; every reader below sees one-type ends only.
-        if (src is null || EndCoverage.HasSeveralTypes(src) || rel.Ends.Any(e => !_placements.ContainsKey(e.OneEntity.Id)))
+        if (src is null)
+            return;
+        // A relation with an end of several types is stored only as its mapping describes (several-types-design.md section 19.8, step 1);
+        // every reader below sees one-type ends only.
+        if (EndCoverage.HasSeveralTypes(src))
+        {
+            CollectTypeStorage(rel, src);
+            return;
+        }
+
+        if (rel.Ends.Any(e => !_placements.ContainsKey(e.OneEntity.Id)))
             return;
         var m = _run.MappingOf(_db.Id, rel.Id);
         if (m is { Ignore: true })
@@ -201,6 +317,36 @@ internal sealed partial class DatabaseRun
         return cached;
     }
 
+    /// <summary>
+    /// The one link of a one-type relation whose designed link table's mapping writes constants or attribute columns (several-types-design.md
+    /// section 19.8 and answer 9), once keys are resolved: each end's key from this relation's own entries. Several relations can share such a
+    /// table and its keys, and a key's <see cref="RForeignKey.End"/> names the end of only one of them, so a reader that writes this relation's
+    /// links (its seed rows) takes the keys from here. Left empty when an end has no resolved key (MQ4009 or MQ4011 reports it).
+    /// </summary>
+    private void FinishLinkTableLinks()
+    {
+        foreach (var (rel, phys) in _linkTableLinks)
+        {
+            if (phys.Mapping is not { JunctionTable: { } table } mapping)
+                continue;
+            var ends = new List<RRelationLinkEnd>(rel.Ends.Count);
+            foreach (var end in rel.Ends)
+            {
+                if (!phys.EndKeys.TryGetValue(end.Id, out var spec) || !spec.Resolved || end.Entity is not { } entity)
+                    break;
+                var key = spec.Result;
+                ends.Add(new RRelationLinkEnd
+                {
+                    End = end, Type = entity, Columns = key.Columns, ReferencedTable = key.ReferencedTable, ReferencedColumns = key.ReferencedColumns,
+                    ForeignKey = key,
+                });
+            }
+
+            if (ends.Count == rel.Ends.Count)
+                mapping.Links = [new RRelationLink { Table = table, Ends = ends }];
+        }
+    }
+
     private static AttributeMapping? RelationAttributeMapping(Mapping? m, RAttribute a) =>
         m?.Attributes.FirstOrDefault(x => string.Equals(x.Attribute, a.Id, StringComparison.Ordinal));
 
@@ -212,11 +358,12 @@ internal sealed partial class DatabaseRun
 
         if (!promote && m?.JunctionTable is { } junctionId && _tables.TryGetValue(junctionId, out var designed) && designed.IsDesigned)
         {
-            // A designed junction binds each end through Mapping.Ends (section 7.4).
+            // A designed junction binds each end through Mapping.Ends (section 7.4). An entry with no foreignKey is skipped: MQ4009 reports it
+            // (several-types-design.md decision 38). Its constants and attribute columns are finished with the storage run (answer 9).
             foreach (var endMapping in m.Ends)
             {
                 var end = rel.Ends.FirstOrDefault(e => string.Equals(e.Id, endMapping.End, StringComparison.Ordinal));
-                if (end is null || !_foreignKeysById.TryGetValue(endMapping.ForeignKey, out var spec))
+                if (end is null || endMapping.ForeignKey is not { } foreignKeyId || !_foreignKeysById.TryGetValue(foreignKeyId, out var spec))
                     continue;
                 spec.Result.Relation = rel;
                 spec.Result.End = end;
@@ -227,7 +374,11 @@ internal sealed partial class DatabaseRun
             designed.Table.IsJunction = true;
             designed.Deps.AddRange(relationDeps);
             phys.Junction = designed;
-            _run.SetRelationMapping(rel, _db.Name, new RRelationMapping { Shape = "junction", JunctionTable = designed.Table });
+            phys.Mapping = new RRelationMapping { Shape = "junction", JunctionTable = designed.Table };
+            _run.SetRelationMapping(rel, _db.Name, phys.Mapping);
+            CollectLinkTableExtras(rel, m, designed, phys.Mapping);
+            if (m.Constants.Count > 0 || m.Attributes.Any(a => a.Column is not null))
+                _linkTableLinks.Add((rel, phys));
             return;
         }
 

@@ -1,0 +1,19 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01KST2ENT00000000000000002",
+  "name": "Assembly",
+  "package": "01KST2PKG00000000000000001",
+  "key": {
+    "attributes": [
+      "01KST2ATT00000000000000002"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01KST2ATT00000000000000002",
+      "name": "id",
+      "type": "uuid"
+    }
+  ]
+}

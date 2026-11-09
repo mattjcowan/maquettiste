@@ -1,0 +1,284 @@
+{
+  "about": "The engine's findings for the rules below on the project in .maquettiste, sorted by rule, element id, pointer and message. Written by SeveralTypesStorageParityTests with MAQUETTISTE_RECORD=1; the editor's mock must give the same.",
+  "rules": [
+    "MQ4051",
+    "MQ4117",
+    "MQ4118",
+    "MQ4120"
+  ],
+  "diagnostics": [
+    {
+      "rule": "MQ4051",
+      "elementId": "01KST2MAP00000000000000015",
+      "pointer": "/constants/0/value",
+      "message": "The constant for column 'relation_code' of the mapping of relation 'Noted' to database 'main' is 14 characters long, over the column's 10 (the column is string).",
+      "severity": "warning"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000020",
+      "pointer": "/ends/0",
+      "message": "Foreign key 'fk_assembly' of table 'comments' is named for type 'Part' of end 'x', but it refers to table 'assemblies', which doesn't hold Part rows.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000020",
+      "pointer": "/ends/0",
+      "message": "Foreign key 'fk_part' of table 'comments' is named for type 'Assembly' of end 'x', but it refers to table 'parts', which doesn't hold Assembly rows.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000021",
+      "pointer": "/ends/0/idColumn",
+      "message": "Column 'target_id' named by end 'x' isn't in table 'comments', which holds the links of 'Assembly'.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000021",
+      "pointer": "/ends/0/idColumn",
+      "message": "Column 'target_id' named by end 'x' isn't in table 'comments', which holds the links of 'Part'.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000022",
+      "pointer": "/ends/0/foreignKeys/1",
+      "message": "Foreign keys 'fk_parts_folder' and 'fk_parts_folder2' of end 'folder' both belong to table 'parts'; name one key per table that holds links.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000023",
+      "pointer": "/ends",
+      "message": "Every end of relation 'NoHolder' has an entry and there is no 'junctionTable', so no table holds its links in database 'main'; name a link table, or leave out the entry of the end whose rows hold the links.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000024",
+      "pointer": "/ends",
+      "message": "Both ends of relation 'BothTyped' have a key per type and there is no 'junctionTable'; a link table per pair of types waits. Name one link table.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000025",
+      "pointer": "/ends/0",
+      "message": "The targets of end 'items' live in tables 'parts', 'assemblies', but end 'folder' is pointed at by one column; name a key per table with 'foreignKeys', or keep the links in a link table. Column pointers spread over several tables wait.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000026",
+      "pointer": "/ends/0",
+      "message": "The rows of end 'comment' would hold the links of relation 'ToMany' in database 'main', but a row holds one link and end 'x' is to-many; keep the links in a link table ('junctionTable').",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000027",
+      "pointer": "/ends/0",
+      "message": "Column 'ref_uid' of table 'comments' refers to column 'folder_id' of table 'parts', which is neither its primary key nor a unique key.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000028",
+      "pointer": "/ends/0/referencesColumn",
+      "message": "End 'x' names one 'referencesColumn', but its targets live in tables 'parts', 'assemblies'; name the column per type in 'types' items.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000029",
+      "pointer": "/ends/0/idColumn",
+      "message": "Column 'attached_type' of table 'comments' is string(20), but it refers to column 'id' of table 'assemblies', which is uuid; make the types match.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000029",
+      "pointer": "/ends/0/idColumn",
+      "message": "Column 'attached_type' of table 'comments' is string(20), but it refers to column 'id' of table 'parts', which is uuid; make the types match.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000030",
+      "pointer": "/ends/0/typeColumn",
+      "message": "Types 'Widget' and 'Gadget' both have code 'Widget' in database 'main', so column 'gizmo_type' can't tell them apart; set discriminatorValue on one.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000031",
+      "pointer": "/ends/0/typeColumn",
+      "message": "Column 'kind_no' of table 'comments' holds the type codes of end 'x', but code 'Assembly' isn't an integer; set an integer discriminatorValue.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000031",
+      "pointer": "/ends/0/typeColumn",
+      "message": "Column 'kind_no' of table 'comments' holds the type codes of end 'x', but code 'Part' isn't an integer; set an integer discriminatorValue.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000032",
+      "pointer": "/ends/0/types",
+      "message": "End 'x' is any entity, so it can't have a key per type: every new entity would need a column. Use a type and an id, or an id alone.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000033",
+      "pointer": "/constants",
+      "message": "Relations 'Linked' and 'Linked2' both keep their links in table 'links' of database 'main' with the same constants, so each would read the other's links; give each its own 'constants'.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000034",
+      "pointer": "/attributes/0/column",
+      "message": "Column 'note' for attribute 'remark' isn't in table 'comments', which holds the links of relation 'AttrOutside'.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4117",
+      "elementId": "01KST2MAP00000000000000035",
+      "pointer": "/attributes/0/column",
+      "message": "The links of relation 'AttrSpread' live in tables 'parts', 'assemblies', so one column can't hold attribute 'remark'; a column per table waits.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000008",
+      "pointer": "/ends/0",
+      "message": "Database 'main' holds end 'attachedTo' of relation 'AttachedTo' as a type and an id in table 'comments', so it can't refuse a link to a missing 'Part' or 'Assembly'; and it finds no check that names column 'attached_type' of table 'comments'. To check the codes, add: CONSTRAINT ck_comments_attached_to CHECK (attached_type IN ('Assembly', 'Part'))",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000010",
+      "pointer": "/ends/0",
+      "message": "Database 'main' holds end 'pinnedTo' of relation 'PinnedTo' as a key per type in table 'comments', so it finds no check on how many of columns 'part_id', 'assembly_id' of table 'comments' are set. To check how many are set, add: CONSTRAINT ck_comments_pinned_to CHECK ((CASE WHEN part_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN assembly_id IS NOT NULL THEN 1 ELSE 0 END) <= 1)",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000011",
+      "pointer": "/ends/0",
+      "message": "Database 'main' holds end 'refersTo' of relation 'Refers' as an id in table 'comments', so it can't refuse a link to a missing 'Part' or 'Assembly'; and it can't check the type an id points at.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000012",
+      "pointer": "/ends/0",
+      "message": "Database 'main' holds end 'gizmo' of relation 'OnGizmo' as a key in table 'comments', so it can't refuse a key to a row of table 'gizmos' whose type end 'gizmo' doesn't cover; and nothing tells the rows of 'Widget' apart from the other rows of table 'gizmos'; and nothing tells the rows of 'Gadget' apart from the other rows of table 'gizmos'.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000013",
+      "pointer": "/ends/1",
+      "message": "Database 'main' holds end 'target' of relation 'Linked' as a type and an id in table 'links', so it can't refuse a link to a missing 'Part' or 'Assembly'; and it finds no check that names column 'target_type' of table 'links'; and it finds no unique over columns 'comment_id', 'target_type', 'target_id', 'relation_code' of table 'links', so it can't refuse a duplicate link. To check the codes, add: CONSTRAINT ck_links_target CHECK (target_type IN ('Assembly', 'Part')) To refuse duplicate links, add: CONSTRAINT uq_links_comment_id_target_type_target_id_relation_code UNIQUE (comment_id, target_type, target_id, relation_code)",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000014",
+      "pointer": "/ends/1",
+      "message": "Database 'main' holds end 'item' of relation 'PerType' as a key per type in tables 'comment_parts', 'comment_assemblies', so it finds no unique over columns 'comment_id', 'part_id' of table 'comment_parts', so it can't refuse a duplicate link; and it finds no unique over columns 'comment_id', 'assembly_id' of table 'comment_assemblies', so it can't refuse a duplicate link. To refuse duplicate links, add: CONSTRAINT uq_comment_parts_comment_id_part_id UNIQUE (comment_id, part_id) To refuse duplicate links, add: CONSTRAINT uq_comment_assemblies_comment_id_assembly_id UNIQUE (comment_id, assembly_id)",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000016",
+      "pointer": "/ends/0",
+      "message": "Database 'main' holds end 'source' of relation 'Bridges' as a type and an id in table 'bridges', so it can't refuse a link to a missing 'Comment' or 'Note'; and it finds no check that names column 'from_type' of table 'bridges'; and it finds no unique over columns 'from_type', 'from_id', 'to_type', 'to_id' of table 'bridges', so it can't refuse a duplicate link. To check the codes, add: CONSTRAINT ck_bridges_source CHECK (from_type IN ('Comment', 'Note')) To refuse duplicate links, add: CONSTRAINT uq_bridges_from_type_from_id_to_type_to_id UNIQUE (from_type, from_id, to_type, to_id)",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000016",
+      "pointer": "/ends/1",
+      "message": "Database 'main' holds end 'target' of relation 'Bridges' as a type and an id in table 'bridges', so it can't refuse a link to a missing 'Part' or 'Assembly'; and it finds no check that names column 'to_type' of table 'bridges'. To check the codes, add: CONSTRAINT ck_bridges_target CHECK (to_type IN ('Assembly', 'Part'))",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000017",
+      "pointer": "/ends/0",
+      "message": "Database 'main' holds end 'source' of relation 'Pairs' as an id in table 'pairs', so it can't refuse a link to a missing 'Comment' or 'Note'; and it can't check the type an id points at; and it finds no unique over columns 'from_id', 'to_id' of table 'pairs', so it can't refuse a duplicate link. To refuse duplicate links, add: CONSTRAINT uq_pairs_from_id_to_id UNIQUE (from_id, to_id)",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000017",
+      "pointer": "/ends/1",
+      "message": "Database 'main' holds end 'target' of relation 'Pairs' as an id in table 'pairs', so it can't refuse a link to a missing 'Part' or 'Assembly'; and it can't check the type an id points at.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000018",
+      "pointer": "/ends/0",
+      "message": "Database 'main' holds end 'cover' of relation 'Cover' as a type and an id in table 'comments', so it can't refuse a link to a missing 'Part' or 'Assembly'; and it finds no check that names column 'cover_type' of table 'comments'; and it finds no unique on 'cover_type', 'cover_id' of table 'comments', so two rows can link to one object. To check the codes, add: CONSTRAINT ck_comments_cover CHECK (cover_type IN ('Assembly', 'Part')) To keep the links one to one, add: CONSTRAINT uq_comments_cover_type_cover_id UNIQUE (cover_type, cover_id)",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000019",
+      "pointer": "/ends/1",
+      "message": "Database 'main' holds end 'bundled' of relation 'Bundled' as a key per type in table 'bundles', so it finds no check on how many of columns 'part_id', 'assembly_id' of table 'bundles' are set; and it can't refuse duplicate links in table 'bundles', since a unique over nullable key columns doesn't stop them in most databases. To check how many are set, add: CONSTRAINT ck_bundles_bundled CHECK ((CASE WHEN part_id IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN assembly_id IS NOT NULL THEN 1 ELSE 0 END) <= 1)",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000027",
+      "pointer": "/ends/0",
+      "message": "Database 'main' holds end 'x' of relation 'NotUnique' as an id in table 'comments', so it can't refuse a link to a missing 'Assembly'; and it can't check the type an id points at.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000030",
+      "pointer": "/ends/0",
+      "message": "Database 'main' holds end 'x' of relation 'Coded' as a type and an id in table 'comments', so it can't refuse a link to a missing 'Widget' or 'Gadget'; and it finds no check that names column 'gizmo_type' of table 'comments'; and nothing tells the rows of 'Widget' apart from the other rows of table 'gizmos'; and nothing tells the rows of 'Gadget' apart from the other rows of table 'gizmos'. To check the codes, add: CONSTRAINT ck_comments_x CHECK (gizmo_type IN ('Widget'))",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000031",
+      "pointer": "/ends/0",
+      "message": "Database 'main' holds end 'x' of relation 'IntCodes' as a type and an id in table 'comments', so it can't refuse a link to a missing 'Part' or 'Assembly'; and it finds no check that names column 'kind_no' of table 'comments'. To check the codes, add: CONSTRAINT ck_comments_x CHECK (kind_no IN ('Assembly', 'Part'))",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000033",
+      "pointer": "/ends/1",
+      "message": "Database 'main' holds end 'target' of relation 'Linked2' as a type and an id in table 'links', so it can't refuse a link to a missing 'Part' or 'Assembly'; and it finds no check that names column 'target_type' of table 'links'; and it finds no unique over columns 'comment_id', 'target_type', 'target_id', 'relation_code' of table 'links', so it can't refuse a duplicate link. To check the codes, add: CONSTRAINT ck_links_target CHECK (target_type IN ('Assembly', 'Part')) To refuse duplicate links, add: CONSTRAINT uq_links_comment_id_target_type_target_id_relation_code UNIQUE (comment_id, target_type, target_id, relation_code)",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4118",
+      "elementId": "01KST2MAP00000000000000034",
+      "pointer": "/ends/0",
+      "message": "Database 'main' holds end 'x' of relation 'AttrOutside' as a type and an id in table 'comments', so it can't refuse a link to a missing 'Part' or 'Assembly'; and it finds no check that names column 'attached_type' of table 'comments'. To check the codes, add: CONSTRAINT ck_comments_x CHECK (attached_type IN ('Assembly', 'Part'))",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4120",
+      "elementId": "01KST2MAP00000000000000010",
+      "pointer": "/ends/0",
+      "message": "Relation 'PinnedTo' covers entity 'Note' in database 'main', but its mapping names nothing that points at it there, so links to Note objects aren't stored.",
+      "severity": "warning"
+    }
+  ]
+}

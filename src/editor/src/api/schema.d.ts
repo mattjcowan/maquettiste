@@ -4043,16 +4043,81 @@ export interface components {
             ordered: boolean;
             opposite: string | null;
         };
-        /** @description A relation's mapping to one database. */
+        /**
+         * @description A relation's mapping to one database. The storage members (`links` to `typeCodes`, several-types-design.md section 19.8) are
+         *     set for a relation with an end of several types, and for a mapping with constants or attribute columns; each is left out when
+         *     empty, so a relation that uses none of them keeps today's record.
+         */
         RelationMappingRecord: {
             database: string;
-            /** @description `foreign-key`, `junction` or `promoted`. */
+            /** @description `foreign-key`, `junction` or `promoted`. For a relation with an end of several types, `junction` when its links live in link tables, else `foreign-key`. */
             shape: string;
-            /** @description The foreign key name. */
+            /** @description The foreign key name; null for a relation with an end of several types. */
             foreignKey: string | null;
-            /** @description The junction table key. */
+            /** @description The junction table key; for a relation with an end of several types, the one link table that holds every link, and null for a table per type. */
             junctionTable: string | null;
             promotedEntity: string | null;
+            /** @description One entry per pair of targets, one per end, in target order (decision 39). */
+            links?: components["schemas"]["RelationLinkRecord"][];
+            /** @description The link table's columns with a fixed value (decision 44). */
+            constants?: components["schemas"]["RelationConstantRecord"][];
+            /** @description The relation attributes' columns in the table that holds every link (decision 45). */
+            attributes?: components["schemas"]["RelationAttributeColumnRecord"][];
+            /** @description Covered entities not placed in the database, by end in file order, then qualified name, then id. No finding. */
+            leftOut?: components["schemas"]["RelationEndEntityRecord"][];
+            /** @description Placed targets no pointer reaches (MQ4120), in the same order. */
+            notStored?: components["schemas"]["RelationEndEntityRecord"][];
+            /** @description The code of every entity a type column holds, by qualified name, then id (decision 42). */
+            typeCodes?: components["schemas"]["TypeCodeRecord"][];
+        };
+        /** @description Where one pair of targets of a relation mapping is linked (several-types-design.md section 19.8). */
+        RelationLinkRecord: {
+            /** @description The key of the table that holds the link. */
+            table: string;
+            /** @description One per relation end, in file order. */
+            ends: components["schemas"]["RelationLinkEndRecord"][];
+        };
+        /** @description How the table that holds a link points at one end's target. */
+        RelationLinkEndRecord: {
+            end: components["schemas"]["Ulid"];
+            type: components["schemas"]["Ulid"];
+            /** @description Whether this end's rows hold the link. */
+            isHolder: boolean;
+            /** @description The keys of the pointer's columns in the holding table. */
+            columns: string[];
+            /** @description The key of the table the pointer refers to. */
+            referencedTable: string | null;
+            /** @description The keys of the columns the pointer refers to. */
+            referencedColumns: string[];
+            /** @description The foreign key's name, when the pointer is a key. */
+            foreignKey: string | null;
+            /** @description The key of the column that holds the type code, when there is one. */
+            typeColumn: string | null;
+            /** @description The codes the type column holds for this target, when there is a type column. */
+            codes: (string | number)[] | null;
+        };
+        /** @description A link table's column with a fixed value (several-types-design.md decision 44). */
+        RelationConstantRecord: {
+            /** @description The column's key. */
+            column: string;
+            /** @description The values the column holds; null is SQL NULL. */
+            values: (string | number | boolean | null)[];
+        };
+        /** @description A relation attribute's column in the table that holds every link (several-types-design.md decision 45). */
+        RelationAttributeColumnRecord: {
+            attribute: components["schemas"]["Ulid"];
+            /** @description The column's key. */
+            column: string;
+        };
+        /** @description A covered entity at one end of a relation mapping. */
+        RelationEndEntityRecord: {
+            end: components["schemas"]["Ulid"];
+            entity: components["schemas"]["Ulid"];
+        };
+        /** @description An entity's type code in a database (several-types-design.md decision 42). */
+        TypeCodeRecord: {
+            entity: components["schemas"]["Ulid"];
+            code: string | number;
         };
         /** @description A resolved enum. */
         EnumRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -5249,6 +5314,36 @@ export interface components {
             generation: {
                 [key: string]: components["schemas"]["GenerationHintsView"];
             };
+            /** @description One item per relation with an end of several types placed in the database (several-types-design.md section 19.8); left out when empty. */
+            relationStorage?: components["schemas"]["RelationStorageView"][];
+        };
+        /** @description How a database stores a relation with an end of several types, and what it can't enforce (MQ4118). */
+        RelationStorageView: {
+            relationId: components["schemas"]["Ulid"];
+            relationName: string;
+            /** @description The relation's mapping in the database; null when there is none. */
+            mappingId: components["schemas"]["Ulid"] | null;
+            /** @description The keys of the tables that hold the links. */
+            tables: string[];
+            /** @description Covered entities not placed in the database. */
+            leftOut: components["schemas"]["RelationStorageEntityView"][];
+            /** @description Placed targets no pointer reaches (MQ4120). */
+            notStored: components["schemas"]["RelationStorageEntityView"][];
+            /** @description What the database can't enforce, per end (MQ4118, decision 47). */
+            gaps: components["schemas"]["RelationStorageGapView"][];
+        };
+        /** @description A covered entity at one end of a relation stored in a database. */
+        RelationStorageEntityView: {
+            endId: components["schemas"]["Ulid"];
+            entityId: components["schemas"]["Ulid"];
+        };
+        /** @description One thing a database can't enforce for a relation end with several types (MQ4118, decision 47). */
+        RelationStorageGapView: {
+            endId: components["schemas"]["Ulid"];
+            /** @enum {string} */
+            kind: "no-foreign-key" | "shared-table" | "id-only" | "type-check" | "count-check" | "one-to-one-unique" | "link-unique" | "per-type-duplicates" | "rows-not-told-apart";
+            /** @description The check or unique to copy, in the database's dialect and quoting; left out when there is none. */
+            text?: string;
         };
         /** @description One schema of a resolved database, with the annotations of its entry in the database file; a schema the file does not declare has none. */
         SchemaView: {
@@ -5817,6 +5912,8 @@ export interface components {
             fields: components["schemas"]["BindingFieldRecord"][];
             columns: components["schemas"]["BindingColumnRecord"][];
             writeColumns: components["schemas"]["BindingColumnRecord"][];
+            /** @description The entity's type code the binding sets (several-types-design.md decision 42); left out when unset. */
+            discriminatorValue?: string | number;
         };
         BindingFieldRecord: {
             name: string;
@@ -5833,6 +5930,13 @@ export interface components {
             isGenerated: boolean;
             inInsert: boolean;
             inUpdate: boolean;
+            /**
+             * @description On a relation end with several types (several-types-design.md decision 46), what the field's column holds; left out on today's fields.
+             * @enum {string}
+             */
+            holds?: "id" | "type" | "key";
+            /** @description The entity of an `endId.entityId` field (`holds` is `key`); left out otherwise. */
+            keyOf?: string;
         };
         BindingColumnRecord: {
             name: string;
@@ -8756,11 +8860,11 @@ export interface components {
                     value?: string | number | boolean | null;
                 }[];
                 /**
-                 * @description The field map: an attribute of the entity (attributeId.memberId for a value object member, a relation end id for a to-one navigation's key) and the source column it reads.
+                 * @description The field map: an attribute of the entity (attributeId.memberId for a value object member, a relation end id for a to-one navigation's key or, on an end with several types, its id; endId.type for that end's type code and endId.entityId for its key per type) and the source column it reads.
                  * @default []
                  */
                 fields?: {
-                    /** @description An attribute id of the entity, attributeId.memberId, or the id of the relation end a to-one navigation leads to. */
+                    /** @description An attribute id of the entity, attributeId.memberId, or the id of a relation end the entity holds, which a to-one navigation leads to: endId maps its key column, or on an end with several types its id column; endId.type maps the column that holds the linked object's type code, and endId.entityId the column that points at a linked object of that entity (a column per type). */
                     attribute: string;
                     /** @description A column of the source: its key or physical name. */
                     column: string;
@@ -8789,6 +8893,8 @@ export interface components {
                         value?: string | number | boolean | null;
                     };
                 };
+                /** @description The entity's type code in this database, where a type column holds it: a column of a relation end with several types, or the discriminator of an inheritance hierarchy. Absent: the discriminatorValue of the entity's mapping there, else the entity's name. An entity outside a hierarchy takes one only when an end with several types covers it (MQ4009). */
+                discriminatorValue?: string | number;
                 /**
                  * Binding provenance
                  * @description The columns of a table-file source as the last by-name operation (materialize, map-by-name, resync-binding) recorded them, for the drift report and MQ4087. Written by the engine only; a save leaves it as it is, and removing it stops drift reports for the binding. Its keys are records, not references: a column delete never sees them.
@@ -9004,7 +9110,7 @@ export interface components {
                 id: components["schemas"]["id"];
                 /** @description The entity at this end; it covers the entity and every entity derived from it. Not written together with types or anyEntity. */
                 entity?: components["schemas"]["id"];
-                /** @description The types this end may be, at least one: an entity, with the entities derived from it, or a stereotype, standing for every entity that carries it and the entities derived from them. The end's types are the covered entities with no covered base, in the order the entries first reach them. A list that holds one entity means the same as entity (MQ3042); an entry another entry covers is MQ3043. Not written together with entity or anyEntity. */
+                /** @description The types this end may be, at least one: an entity, with the entities derived from it, or a stereotype, standing for every entity that carries it and the entities derived from them. The end's types are the covered entities with no covered base, in the order the entries first reach them. A list that holds one entity means the same as entity (MQ3042); an entry another entry covers is MQ3043. Several types fit either end of a two-ended relation, or both, and no end of an n-ary relation (MQ3041). Not written together with entity or anyEntity. */
                 types?: ({
                     /** @description The entity. Not written together with stereotype. */
                     entity?: components["schemas"]["id"];
@@ -9012,7 +9118,7 @@ export interface components {
                     stereotype?: string;
                 } & (unknown | unknown))[];
                 /**
-                 * @description The end may be any entity of the model. Not written together with entity or types; never on a composition's child end (MQ3041).
+                 * @description The end may be any entity of the model, at either end of a two-ended relation or both. Not written together with entity or types; never on a composition's child end or an end of an n-ary relation (MQ3041).
                  * @constant
                  */
                 anyEntity?: true;
@@ -10286,6 +10392,7 @@ export interface components {
             /** @default [] */
             attributes?: {
                 attribute: components["schemas"]["id"];
+                /** @description The id of the attribute's column. On an entity mapping: a column of the bound designed or imported table. On a relation mapping with a designed junctionTable: a column of the table that holds every link, the link table or the other end's table, for a relation attribute of one plain value (MQ4009, MQ4117). */
                 column?: components["schemas"]["id"];
                 /** @enum {unknown} */
                 storage?: "int" | "string" | "embedded" | "table" | "json";
@@ -10300,12 +10407,46 @@ export interface components {
             foreignKey?: components["schemas"]["id"];
             junctionTable?: components["schemas"]["id"];
             /**
-             * @description For a designed junction table: the foreign key that realizes each relation end.
+             * @description How the database's tables point at each relation end, one entry per end. For a designed junctionTable of a relation whose ends each have one type: the foreign key that realizes each end. For a relation with an end of several types: how the pointer points at the end, in exactly one way, foreignKey, foreignKeys, types with foreignKey items or idColumn (MQ4009). Without junctionTable, an end with no entry holds the link in its own rows.
              * @default []
              */
             ends?: {
                 end: components["schemas"]["id"];
-                foreignKey: components["schemas"]["id"];
+                /** @description The id of one existing foreign key that points at the end: in a designed junction table, the key that references the end's table; on an end with several types, a key to a table that holds the rows of every placed type. */
+                foreignKey?: components["schemas"]["id"];
+                /**
+                 * @description The ids of several existing foreign keys that point at the end, one per table that holds links: each type's table of the other end, or a link table per type. Only on a relation with an end of several types.
+                 * @default []
+                 */
+                foreignKeys?: components["schemas"]["id"][];
+                /**
+                 * @description Per type of an end with several types: the foreign key that points at objects of that type (a key per type), or, beside idColumn, the unique column of the type's table the id refers to. Each entity is one the end covers, listed once, and every item is of one kind (MQ4009).
+                 * @default []
+                 */
+                types?: ({
+                    /** @description The id of an entity the end covers. */
+                    entity: components["schemas"]["id"];
+                    /** @description The id of the existing foreign key that points at objects of this type. Not written together with referencesColumn. */
+                    foreignKey?: components["schemas"]["id"];
+                    /** @description Beside the entry's idColumn: the column of this type's table the id refers to, unique in that table; a column id, or the key of a column of a table the engine makes. Not written together with foreignKey. */
+                    referencesColumn?: string;
+                } & (unknown | unknown))[];
+                /** @description The id of the column that holds the linked object's id, in the table that holds the link. It refers to referencesColumn, else to the primary key of each type's table when that key has one column. Only on a relation with an end of several types. */
+                idColumn?: components["schemas"]["id"];
+                /** @description Beside idColumn: the id of the column that holds the linked object's type code, the discriminatorValue of the type's binding or mapping in the database, else the entity's name. Needs idColumn (MQ4009). */
+                typeColumn?: components["schemas"]["id"];
+                /** @description Beside idColumn, when one table holds the rows of every placed type: the column of that table the id refers to, unique in it, instead of its primary key; a column id, or the key of a column of a table the engine makes. Needs idColumn (MQ4009). */
+                referencesColumn?: string;
+            }[];
+            /**
+             * @description For a relation mapping with a designed junctionTable: columns of that table with a fixed value, a filter on the links it reads and a value on every link it inserts, such as a relation code in a table that holds several relations (MQ4009).
+             * @default []
+             */
+            constants?: {
+                /** @description The id of a column of the junction table. */
+                column: components["schemas"]["id"];
+                /** @description The value; absent or null is SQL NULL. */
+                value?: string | number | boolean | null;
             }[];
             promotedName?: components["schemas"]["identifier"];
             /** @default {} */

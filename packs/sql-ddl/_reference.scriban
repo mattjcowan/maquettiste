@@ -771,7 +771,9 @@ end
 # The inserts of one entity or relation seed in a database (null when the target is not mapped there, or is a relation stored as
 # a foreign key, whose values the referencing table's rows carry): the target's table, then the junction rows of its reference
 # collections. Value-object cells are left to hand-written seed data. The script speaks of tables and rows only: the seed's and
-# its target's names are the model's, not the database's.
+# its target's names are the model's, not the database's. A relation's rows also set its mapping's constants, and when the mapping
+# has its link (a designed link table with constants or attribute columns), each end's key comes from it: a link table several
+# relations share has one key per end for all of them, whose end names only one relation's end.
 func seed_sql(seed, db)
   $target = seed.target
   if !$target || (seed.target.kind != "entity" && seed.target.kind != "relation")
@@ -789,7 +791,8 @@ func seed_sql(seed, db)
   else
     $t = $m.table
   end
-  # Columns: [column, seed column, foreign key column index or -1].
+  # Columns, and per column [seed column, foreign key or link end, its column index; or -1 an attribute, -2 the discriminator,
+  # -3 a native collection, -4 a constant (then the constant in place of the seed column)].
   $cols = []
   $plan = []
   $collections = []
@@ -809,12 +812,23 @@ func seed_sql(seed, db)
         end
       end
     else if sc.kind == "end"
-      # The foreign key of the end: on a junction table it carries the end; on an entity's table it carries the opposite end.
+      # The foreign key of the end: the mapping's link names this relation's own; on a junction table it carries the end; on an
+      # entity's table it carries the opposite end.
       $fk = null
-      for f in $t.foreign_keys
-        if f.end && f.end.id == sc.end.id
-          $fk = f
-          break
+      if $target.kind == "relation" && $m.links.size == 1 && $m.links[0].table.id == $t.id
+        for le in $m.links[0].ends
+          if le.end.id == sc.end.id
+            $fk = le
+            break
+          end
+        end
+      end
+      if !$fk
+        for f in $t.foreign_keys
+          if f.end && f.end.id == sc.end.id
+            $fk = f
+            break
+          end
         end
       end
       if !$fk
@@ -850,6 +864,13 @@ func seed_sql(seed, db)
   if $cols.size == 0
     ret null
   end
+  # A relation's constants: the values that make each row one of its links.
+  if $target.kind == "relation"
+    for k in $m.constants
+      $cols[$cols.size] = k.column
+      $plan[$plan.size] = [k, null, -4]
+    end
+  end
   $rows = []
   for r in seed.ordered_rows
     $v = ""
@@ -857,6 +878,8 @@ func seed_sql(seed, db)
       $sc = p[0]
       if p[2] == -2
         $cell = lit($m.discriminator_value, db)
+      else if p[2] == -4
+        $cell = column_cell_sql($sc.values[0], $cols[for.index], db)
       else if p[2] == -3
         $codes = r.values[$sc.name] ?? []
         $items = ""
@@ -890,7 +913,8 @@ func seed_sql(seed, db)
         $cell = null
         for c in $cols
           if c.name == pk.name
-            $cell = column_cell_sql(r.values[$plan[for.index][0].name], c, db)
+            $p = $plan[for.index]
+            $cell = column_cell_sql($p[2] == -4 ? $p[0].values[0] : r.values[$p[0].name], c, db)
           end
         end
         if $cell == null

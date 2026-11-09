@@ -172,6 +172,7 @@
           "columns",
           "write",
           "delete",
+          "discriminatorValue",
           "provenance",
           "checks",
           "description",
@@ -215,7 +216,7 @@
             "default": []
           },
           "fields": {
-            "description": "The field map: an attribute of the entity (attributeId.memberId for a value object member, a relation end id for a to-one navigation's key) and the source column it reads.",
+            "description": "The field map: an attribute of the entity (attributeId.memberId for a value object member, a relation end id for a to-one navigation's key or, on an end with several types, its id; endId.type for that end's type code and endId.entityId for its key per type) and the source column it reads.",
             "type": "array",
             "items": {
               "title": "Binding field",
@@ -223,7 +224,7 @@
               "x-order": ["attribute", "column"],
               "properties": {
                 "attribute": {
-                  "description": "An attribute id of the entity, attributeId.memberId, or the id of the relation end a to-one navigation leads to.",
+                  "description": "An attribute id of the entity, attributeId.memberId, or the id of a relation end the entity holds, which a to-one navigation leads to: endId maps its key column, or on an end with several types its id column; endId.type maps the column that holds the linked object's type code, and endId.entityId the column that points at a linked object of that entity (a column per type).",
                   "type": "string",
                   "minLength": 1
                 },
@@ -315,6 +316,10 @@
                 "additionalProperties": false
               }
             ]
+          },
+          "discriminatorValue": {
+            "description": "The entity's type code in this database, where a type column holds it: a column of a relation end with several types, or the discriminator of an inheritance hierarchy. Absent: the discriminatorValue of the entity's mapping there, else the entity's name. An entity outside a hierarchy takes one only when an end with several types covers it (MQ4009).",
+            "type": ["string", "integer"]
           },
           "provenance": {
             "title": "Binding provenance",

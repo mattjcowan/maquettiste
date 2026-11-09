@@ -1767,7 +1767,8 @@ key you pick is written to the relationship's mapping in that database; the pick
 are read, so a pick never makes a second mapping. A many-to-many names its **Junction table** and, for each end, the junction
 table's foreign key for it. Two bound ends with nothing named is MQ4011, shown in the section. While the ends are not both
 bound, the section says "Bind both ends to a table to name the foreign key"; a shape an older mapping names (Foreign key,
-Junction table, Promoted to an entity) shows there read only, and no mapping of that older format is made from here.
+Junction table, Promoted to an entity) shows there read only, and no mapping of that older format is made from here. For a
+relationship with an end of several types, see [Storing a relationship with several types](#storing-a-relationship-with-several-types).
 
 ### Relationships with several types at an end
 
@@ -1789,7 +1790,9 @@ of 1. The navigation the end names appears on the other end's entity as usual. T
 
 **Limits.**
 
-- Only one end of a two-ended relationship may have several types. Give the other end One entity.
+- **Both ends** of a two-ended relationship may have several types or be any entity, in every combination, up to any entity at
+  both ends. Cardinality stays a minimum and a maximum per end. The model, the rules, the Storage tab and the mapping all accept
+  this, and so does the relationship's form: each end has its own **Type** choice.
 - An n-ary relationship keeps One entity at every end.
 - A composition's owner end may have several types. Its part end may list types, but can't be **Any entity**: that would make
   every entity a part of one owner. The form says so in a tooltip.
@@ -1819,6 +1822,10 @@ object of an entity the end covers (MQ9305). Rights, trigger points and freezing
 - **Three or more:** a junction node. One line runs to the node, and one from the node to each type.
 - **A stereotype or Any entity:** one line to a box. A stereotype's box says how many entities it covers, as "3 entities".
 
+**Several types at both ends:** one node, with a line from it to each type card or box of either end. Each line shows its end's
+role and cardinality, and a stereotype or Any entity box sits on its end's side of the node. **Collapse lines** turns it into one
+box that lists each end's entries under its role, with no lines; **Expand lines** brings the node back.
+
 Each line shows its end's role and cardinality. A type that isn't on the diagram gets no line, and the node or box says
 "+N not shown" (point at it for the names). Drag the node or box to move it; Auto-layout places it again.
 
@@ -1829,15 +1836,126 @@ saved in the diagram with positions and zoom.
 In an entity's editor, the Relationships tab says "through stereotype approvable" for a relationship it reaches through a
 stereotype, and "any entity" for one that reaches it as any entity.
 
-**Nothing is stored yet.** No database stores such a relationship: no table, column or foreign key. MQ4115 (info) says so for each
-database. Code generation sees the types of each end, but a pack can't read tables for it. Storage comes in a later release, on your
-designed tables with explicit mappings. Until then these are refused:
+**Still refused.** Part of the model reads through a single table, so these stay errors:
 
 - an entity seed's column for such an end, and a seed of such a relationship (MQ7105);
-- a binding field, a query field or a query collection that names such an end, or a navigation to one (MQ4116); also one that names the
-  other end, as a query on Part with the collection `comments` does (MQ4116).
+- a query field or a query collection that names such an end, a navigation to one, or the other end (MQ4116). A binding field may
+  now name such an end (see below).
 
-The Storage tab says "No database stores a relation with an end of several types."
+**Storage is optional.** A relationship with several types stores nothing until a mapping says how. Your entities and your tables may
+stay separate models. A code generation pack can read the relationship and the tables on their own and join them its own way. The
+sections below cover what Maquettiste itself checks and shows when you do describe the tables.
+
+### Storing a relationship with several types
+
+Maquettiste is a modeling tool. It stores nothing itself. A mapping describes how **your database's tables** already hold each
+link, or will hold it. The engine never adds a table, a column or a check for this, and it never reads the entity's key attributes
+for a link: a link points at a unique column of each type's table, which may be a surrogate id no attribute maps.
+
+**Where the choices live.** Open the relationship's **Storage** tab. It has a card per database with two choices.
+
+- **Held in** says which table holds the link: **The other end's table**, **Each type's table**, **A link table**, **A table per
+  type** or **Not in this database**.
+- **Linked by** says how that table points at an end with several types: **A key**, **A column per type**, **A type and an id**,
+  **An id unique across types** or **A key to the shared base table**.
+
+A mapping that matches no pair of choices shows **As written**, with every end's entry open to edit. A many-to-many offers only **A
+link table**, **A table per type** and **Not in this database**. An end that is any entity never offers **A column per type**,
+because each new entity would need a new column. **A key**, **A column per type** and **A key to the shared base table** all name
+foreign keys that already exist on your tables. Pick them from the lists; the lists show only keys that lead to the right table.
+
+**The ten usual ways.** The examples are invented. A Comment attaches to a Part or an Assembly. Names in the mappings stand for the
+ids the file holds.
+
+1. **A key on each type's table.** The end with several types holds the key. A Folder holds Parts and Assemblies, and each of their
+   tables has a `folder_id`. Held in **Each type's table**. The mapping names one key per table:
+   `{ "end": folder, "foreignKeys": [parts.fk_folder, assemblies.fk_folder] }`. The database enforces each key.
+2. **A column per type.** The Comment's table has `part_id` and `assembly_id`. Held in **The other end's table**, Linked by **A
+   column per type**:
+   `{ "end": attachedTo, "types": [{ "entity": Part, "foreignKey": comments.fk_part }, { "entity": Assembly, "foreignKey": comments.fk_assembly }] }`.
+   The database enforces each key. A check that only one is set is yours to add.
+3. **A type and an id.** The Comment's table has `attached_type` and `attached_id`. Linked by **A type and an id**:
+   `{ "end": attachedTo, "typeColumn": comments.attached_type, "idColumn": comments.attached_id }`.
+4. **An id unique across types.** Only `attached_id`, and no id repeats between Parts and Assemblies. Linked by **An id unique
+   across types**: `{ "end": attachedTo, "idColumn": comments.attached_id }`.
+5. **A key to a shared base table.** The Comment's table has `item_id`, a key to an `items` table that holds every Part and
+   Assembly. Linked by **A key to the shared base table**: `{ "end": attachedTo, "foreignKey": comments.fk_item }`. The database
+   checks the key, not the type.
+6. **A link table with attribute columns.** `comment_links (comment_id, target_type, target_id, note)`. Held in **A link table**.
+   The mapping names the table, a key for the Comment end, a type and an id for the other end, and a column for the relationship's
+   attribute:
+   `"junctionTable": comment_links`, `{ "end": comment, "foreignKey": comment_links.fk_comment }`,
+   `{ "end": attachedTo, "typeColumn": comment_links.target_type, "idColumn": comment_links.target_id }`,
+   `"attributes": [{ "attribute": note, "column": comment_links.note }]`.
+7. **A table per type.** `comment_parts` and `comment_assemblies`. Held in **A table per type**. Each table has a key to the
+   Comment and a key to its type:
+   `{ "end": comment, "foreignKeys": [comment_parts.fk_comment, comment_assemblies.fk_comment] }` and
+   `{ "end": attachedTo, "types": [{ "entity": Part, "foreignKey": comment_parts.fk_part }, { "entity": Assembly, "foreignKey": comment_assemblies.fk_assembly }] }`.
+8. **One link table for several relationships.** Any way that uses a link table, plus fixed values (see below) that pick this
+   relationship's rows.
+9. **Both ends: a type and an id at each side.** A Link from a Comment or a Note to a Part or an Assembly, in
+   `links (from_type, from_id, to_type, to_id, note)`. Held in **A link table**, and each end is Linked by **A type and an id**:
+   `"junctionTable": links`, `{ "end": source, "typeColumn": links.from_type, "idColumn": links.from_id }`,
+   `{ "end": target, "typeColumn": links.to_type, "idColumn": links.to_id }`.
+10. **Both ends: an id unique across types at each side.** `links (from_id, to_id)`. Held in **A link table**, and each end
+    names only an `idColumn`.
+
+When both ends have several types, **A link table** is the only way to hold them (besides **Not in this database**). In a link
+table you may mix ways: a key at one end and a type and an id at the other.
+
+**What an id refers to.** An id column refers to the primary key of each type's table when that key is one column. When it
+isn't, or when you want another unique column, pick **Refers to** for the type. It names a column that is unique in that table. A
+column that is neither the primary key nor unique is MQ4117.
+
+**Fixed values: Rows of this relation.** When one link table holds the links of several relationships, add a column with a fixed
+value for each of them, such as a `relation_code` column that holds `AttachedTo`. The Storage tab calls this **Rows of this
+relation**. The file key is `constants`: `{ "column": links.relation_code, "value": "AttachedTo" }`. The value is a filter on the
+links read and a value on every link written. It works for any relationship with a designed link table, one type or several. A
+**column** for a relationship's own attribute works the same way, on a link table, and for a many-to-one it may sit on the table
+that holds the links.
+
+**Type codes.** A type column holds a code for each type. The code is the `discriminatorValue` of the entity's binding in that
+database, else the `discriminatorValue` of its mapping, else the entity's name. Two types with one code are MQ4117; give one a
+`discriminatorValue`. A code its column can't hold is also MQ4117. If a code changes after the baseline you compare against,
+MQ4119 (warning) says links stored with the old code won't find their object. Its quick fix, **Keep the stored code**, writes the old
+code as the `discriminatorValue`.
+
+**Binding fields.** An entity bound to the table that holds a link can map the link's columns. For an end that has an entry in the
+mapping, a binding field's attribute may be:
+
+- `<endId>`: the id column;
+- `<endId>.type`: the type column;
+- `<endId>.<entityId>`: the key column for one type, with a column per type.
+
+Map by name finds them. The entity's field map and the drift report name them after the navigation, else the role: `attachedToType`,
+`attachedToId` and `attachedToPartId`.
+
+**What the database can't enforce.** A foreign key only works when each link has one target table. A type and an id, an id alone
+and a key to a shared table can't stop a link to a missing object. Several keys in a link table can't refuse a duplicate link. The
+Storage tab lists these under **What the database can't enforce**, each with the check or the unique constraint to copy into your
+table, and a **Copy** button. Maquettiste doesn't write them into your table for you. MQ4118 (info) carries the same text.
+
+**Left out and not stored.** The Storage tab lists two kinds of type that no link reaches:
+
+- **Left out (not in this database):** a type the end covers that has no table in this database. That is no finding. It includes an
+  entity whose binding is read-only, because it writes nothing (its write is `none`, or its source is a view or a query).
+- **Not stored:** a type that has a table here, with no key or column that points at it. That is MQ4120 (warning), and the quick
+  fix opens the Storage tab. It fires only when a mapping does state some storage.
+
+**The findings, in plain words.**
+
+- **"Nothing is stored in this database."** (MQ4115, info) The relationship has several types, and no mapping there stores it. This
+  is fine if you keep the model apart from your tables. A quick fix offers **Not in this database**.
+- **MQ4117**: what the mapping names doesn't fit together. A key leads to the wrong table, a referenced column isn't unique, two
+  types share a code, or an any-entity end has a key per type.
+- **MQ4118**: what the database can't enforce, with the check to copy.
+- **MQ4119**: a type code changed since the baseline.
+- **MQ4120**: a type with a table that no key or column points at.
+
+**What waits.** A link table for each pair of types, and one column that points into tables spread over several types, wait for a
+later release. So do a button that adds the check to your table for you, and queries, seeds and a binding for the links. A pack
+joins them, for now. Attribute values stored as rows, partitioned table sets and one table of documents for every entity are shapes
+a pack handles; Maquettiste doesn't describe them.
 
 ### Tables laid out by convention (older projects)
 

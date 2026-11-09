@@ -10135,7 +10135,10 @@ components:
           type: [string, 'null']
     RelationMappingRecord:
       x-engine-record: Maquettiste.Engine.RelationMappingRecord
-      description: A relation's mapping to one database.
+      description: |
+        A relation's mapping to one database. The storage members (`links` to `typeCodes`, several-types-design.md section 19.8) are
+        set for a relation with an end of several types, and for a mapping with constants or attribute columns; each is left out when
+        empty, so a relation that uses none of them keeps today's record.
       type: object
       required: [database, shape, foreignKey, junctionTable, promotedEntity]
       properties:
@@ -10143,15 +10146,143 @@ components:
           type: string
         shape:
           type: string
-          description: '`foreign-key`, `junction` or `promoted`.'
+          description: '`foreign-key`, `junction` or `promoted`. For a relation with an end of several types, `junction` when its links
+            live in link tables, else `foreign-key`.'
         foreignKey:
           type: [string, 'null']
-          description: The foreign key name.
+          description: The foreign key name; null for a relation with an end of several types.
         junctionTable:
           type: [string, 'null']
-          description: The junction table key.
+          description: The junction table key; for a relation with an end of several types, the one link table that holds every link,
+            and null for a table per type.
         promotedEntity:
           type: [string, 'null']
+        links:
+          type: array
+          description: One entry per pair of targets, one per end, in target order (decision 39).
+          items:
+            $ref: '#/components/schemas/RelationLinkRecord'
+        constants:
+          type: array
+          description: The link table's columns with a fixed value (decision 44).
+          items:
+            $ref: '#/components/schemas/RelationConstantRecord'
+        attributes:
+          type: array
+          description: The relation attributes' columns in the table that holds every link (decision 45).
+          items:
+            $ref: '#/components/schemas/RelationAttributeColumnRecord'
+        leftOut:
+          type: array
+          description: Covered entities not placed in the database, by end in file order, then qualified name, then id. No finding.
+          items:
+            $ref: '#/components/schemas/RelationEndEntityRecord'
+        notStored:
+          type: array
+          description: Placed targets no pointer reaches (MQ4120), in the same order.
+          items:
+            $ref: '#/components/schemas/RelationEndEntityRecord'
+        typeCodes:
+          type: array
+          description: The code of every entity a type column holds, by qualified name, then id (decision 42).
+          items:
+            $ref: '#/components/schemas/TypeCodeRecord'
+    RelationLinkRecord:
+      x-engine-record: Maquettiste.Engine.RelationLinkRecord
+      description: Where one pair of targets of a relation mapping is linked (several-types-design.md section 19.8).
+      type: object
+      required: [table, ends]
+      properties:
+        table:
+          type: string
+          description: The key of the table that holds the link.
+        ends:
+          type: array
+          description: One per relation end, in file order.
+          items:
+            $ref: '#/components/schemas/RelationLinkEndRecord'
+    RelationLinkEndRecord:
+      x-engine-record: Maquettiste.Engine.RelationLinkEndRecord
+      description: How the table that holds a link points at one end's target.
+      type: object
+      required: [end, type, isHolder, columns, referencedTable, referencedColumns, foreignKey, typeColumn, codes]
+      properties:
+        end:
+          $ref: '#/components/schemas/Ulid'
+        type:
+          $ref: '#/components/schemas/Ulid'
+        isHolder:
+          type: boolean
+          description: Whether this end's rows hold the link.
+        columns:
+          type: array
+          description: The keys of the pointer's columns in the holding table.
+          items:
+            type: string
+        referencedTable:
+          type: [string, 'null']
+          description: The key of the table the pointer refers to.
+        referencedColumns:
+          type: array
+          description: The keys of the columns the pointer refers to.
+          items:
+            type: string
+        foreignKey:
+          type: [string, 'null']
+          description: The foreign key's name, when the pointer is a key.
+        typeColumn:
+          type: [string, 'null']
+          description: The key of the column that holds the type code, when there is one.
+        codes:
+          type: [array, 'null']
+          description: The codes the type column holds for this target, when there is a type column.
+          items:
+            type: [string, integer]
+    RelationConstantRecord:
+      x-engine-record: Maquettiste.Engine.RelationConstantRecord
+      description: A link table's column with a fixed value (several-types-design.md decision 44).
+      type: object
+      required: [column, values]
+      properties:
+        column:
+          type: string
+          description: The column's key.
+        values:
+          type: array
+          description: The values the column holds; null is SQL NULL.
+          items:
+            type: [string, number, boolean, 'null']
+    RelationAttributeColumnRecord:
+      x-engine-record: Maquettiste.Engine.RelationAttributeColumnRecord
+      description: A relation attribute's column in the table that holds every link (several-types-design.md decision 45).
+      type: object
+      required: [attribute, column]
+      properties:
+        attribute:
+          $ref: '#/components/schemas/Ulid'
+        column:
+          type: string
+          description: The column's key.
+    RelationEndEntityRecord:
+      x-engine-record: Maquettiste.Engine.RelationEndEntityRecord
+      description: A covered entity at one end of a relation mapping.
+      type: object
+      required: [end, entity]
+      properties:
+        end:
+          $ref: '#/components/schemas/Ulid'
+        entity:
+          $ref: '#/components/schemas/Ulid'
+    TypeCodeRecord:
+      x-engine-record: Maquettiste.Engine.TypeCodeRecord
+      description: An entity's type code in a database (several-types-design.md decision 42).
+      type: object
+      required: [entity, code]
+      properties:
+        entity:
+          $ref: '#/components/schemas/Ulid'
+        code:
+          type: [string, integer]
     EnumRecord:
       x-engine-record: Maquettiste.Engine.EnumRecord
       description: A resolved enum.
@@ -12391,6 +12522,71 @@ components:
           description: The generation hints by pack name or `*`.
           additionalProperties:
             $ref: '#/components/schemas/GenerationHintsView'
+        relationStorage:
+          type: array
+          description: One item per relation with an end of several types placed in the database (several-types-design.md section 19.8);
+            left out when empty.
+          items:
+            $ref: '#/components/schemas/RelationStorageView'
+    RelationStorageView:
+      x-engine-record: Maquettiste.Engine.RelationStorageView
+      description: How a database stores a relation with an end of several types, and what it can't enforce (MQ4118).
+      type: object
+      required: [relationId, relationName, mappingId, tables, leftOut, notStored, gaps]
+      properties:
+        relationId:
+          $ref: '#/components/schemas/Ulid'
+        relationName:
+          type: string
+        mappingId:
+          oneOf:
+            - $ref: '#/components/schemas/Ulid'
+            - type: 'null'
+          description: The relation's mapping in the database; null when there is none.
+        tables:
+          type: array
+          description: The keys of the tables that hold the links.
+          items:
+            type: string
+        leftOut:
+          type: array
+          description: Covered entities not placed in the database.
+          items:
+            $ref: '#/components/schemas/RelationStorageEntityView'
+        notStored:
+          type: array
+          description: Placed targets no pointer reaches (MQ4120).
+          items:
+            $ref: '#/components/schemas/RelationStorageEntityView'
+        gaps:
+          type: array
+          description: What the database can't enforce, per end (MQ4118, decision 47).
+          items:
+            $ref: '#/components/schemas/RelationStorageGapView'
+    RelationStorageEntityView:
+      x-engine-record: Maquettiste.Engine.RelationStorageEntityView
+      description: A covered entity at one end of a relation stored in a database.
+      type: object
+      required: [endId, entityId]
+      properties:
+        endId:
+          $ref: '#/components/schemas/Ulid'
+        entityId:
+          $ref: '#/components/schemas/Ulid'
+    RelationStorageGapView:
+      x-engine-record: Maquettiste.Engine.RelationStorageGapView
+      description: One thing a database can't enforce for a relation end with several types (MQ4118, decision 47).
+      type: object
+      required: [endId, kind]
+      properties:
+        endId:
+          $ref: '#/components/schemas/Ulid'
+        kind:
+          type: string
+          enum: [no-foreign-key, shared-table, id-only, type-check, count-check, one-to-one-unique, link-unique, per-type-duplicates, rows-not-told-apart]
+        text:
+          type: string
+          description: The check or unique to copy, in the database's dialect and quoting; left out when there is none.
     SchemaView:
       x-engine-record: Maquettiste.Engine.SchemaView
       description: One schema of a resolved database, with the annotations of its entry in the database file; a schema the file does not declare has none.
@@ -13409,6 +13605,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/BindingColumnRecord'
+        discriminatorValue:
+          type: [string, integer]
+          description: The entity's type code the binding sets (several-types-design.md decision 42); left out when unset.
     BindingFieldRecord:
       x-engine-record: Maquettiste.Engine.BindingFieldRecord
       type: object
@@ -13442,6 +13641,14 @@ components:
           type: boolean
         inUpdate:
           type: boolean
+        holds:
+          type: string
+          enum: [id, type, key]
+          description: On a relation end with several types (several-types-design.md decision 46), what the field's column holds; left out
+            on today's fields.
+        keyOf:
+          type: string
+          description: The entity of an `endId.entityId` field (`holds` is `key`); left out otherwise.
     BindingColumnRecord:
       x-engine-record: Maquettiste.Engine.BindingColumnRecord
       type: object

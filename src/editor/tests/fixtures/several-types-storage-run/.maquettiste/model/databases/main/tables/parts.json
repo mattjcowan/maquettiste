@@ -1,0 +1,67 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01KST2TAB00000000000000004",
+  "name": "parts",
+  "database": "01KST2DBS00000000000000001",
+  "columns": [
+    {
+      "id": "01KST2CMN00000000000000004",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01KST2CMN00000000000000005",
+      "name": "folder_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000006",
+      "name": "folder2_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000007",
+      "name": "uid",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01KST2CMN00000000000000004"
+    ]
+  },
+  "uniques": [
+    {
+      "id": "01KST2KEY00000000000000001",
+      "columns": [
+        "01KST2CMN00000000000000007"
+      ]
+    }
+  ],
+  "foreignKeys": [
+    {
+      "id": "01KST2FKY00000000000000001",
+      "name": "fk_parts_folder",
+      "columns": [
+        "01KST2CMN00000000000000005"
+      ],
+      "referencesTable": "01KST2TAB00000000000000001",
+      "referencesColumns": [
+        "01KST2CMN00000000000000001"
+      ]
+    },
+    {
+      "id": "01KST2FKY00000000000000002",
+      "name": "fk_parts_folder2",
+      "columns": [
+        "01KST2CMN00000000000000006"
+      ],
+      "referencesTable": "01KST2TAB00000000000000001",
+      "referencesColumns": [
+        "01KST2CMN00000000000000001"
+      ]
+    }
+  ]
+}

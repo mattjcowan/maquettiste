@@ -382,6 +382,47 @@ internal sealed partial class ChangePlanner
             }
         }
 
+        // An ends entry of a relation mapping (several-types-design.md decision 38, section 19.6): the schema requires only its end, but an entry
+        // needs a way to point at it. What a delete takes goes alone while the entry keeps a way: a foreignKey or idColumn, an item of
+        // foreignKeys, and in either resolution the types item of an entity that goes. An entry left with no way, or losing its typeColumn or
+        // referencesColumn (what its id means), goes whole with delete-dependents, and remove-references refuses with the words it had while
+        // the schema required foreignKey; so a one-type mapping keeps today's plans. A types item's own key or column follows the generic rule.
+        if (referrer.Element is Mapping && EndsEntryPart(reference.JsonPointer) is { } endsPart)
+        {
+            var losesMeaning = endsPart.Item is null && endsPart.Member is "typeColumn" or "referencesColumn";
+            var part = endsPart.Item is null ? reference.JsonPointer : endsPart.ItemMember is null or "entity" || narrow ? endsPart.Item : null;
+            if (!losesMeaning && part is not null)
+            {
+                List<CascadeOp> next = [.. ops.Where(o => o.Pointer != part && !IsUnder(o.Pointer, part)), new CascadeOp(part, endsPart.Item is not null, reference, index)];
+                var list = endsPart.Entry + "/" + endsPart.Member;
+                if (endsPart.Item is not null && Remaining(referrer.Json, list, next) <= 0)
+                    next = [.. next.Where(o => o.Pointer != list && !IsUnder(o.Pointer, list)), new CascadeOp(list, true, reference, index)];
+                if (!EntryKeepsWay(referrer.Json, endsPart.Entry, next))
+                    losesMeaning = true;
+                else if (TryOps(referrer, next, narrow, out _) is null)
+                {
+                    Commit(referrerId, next);
+                    return;
+                }
+            }
+
+            if (losesMeaning)
+            {
+                if (mode != DeleteResolution.DeleteDependents)
+                {
+                    _cascadeRefused.Add((index, referrerId, reference, "the reference is required, so it cannot be cleared."));
+                    return;
+                }
+
+                List<CascadeOp> whole = [.. ops.Where(o => o.Pointer != endsPart.Entry && !IsUnder(o.Pointer, endsPart.Entry)), new CascadeOp(endsPart.Entry, true, reference, index)];
+                if (TryOps(referrer, whole, narrow, out _) is null)
+                {
+                    Commit(referrerId, whole);
+                    return;
+                }
+            }
+        }
+
         // The attribute an action's set writes (object-effects-design.md section 8): a set means nothing without it, so in either resolution
         // the set goes, and the action keeps its other sets.
         if ((referrer.Element is TriggerPoint ? NamedTriggerHolder(reference.JsonPointer, "attribute") : referrer.Element is Process ? SetOfAttribute(reference.JsonPointer) : null)
@@ -1004,6 +1045,44 @@ internal sealed partial class ChangePlanner
         if (segments.Length >= 4 && segments[2] is "fields" or "constants" or "columns")
             return JsonPointer.Build(segments[..4]);
         return JsonPointer.Build(segments[..2]);
+    }
+
+    /// <summary>
+    /// Where a pointer is in a relation mapping's <c>ends</c> entry (several-types-design.md decision 38): the entry (<c>/ends/0</c>), the entry's
+    /// member (<c>foreignKey</c>, <c>idColumn</c>, <c>typeColumn</c>, <c>referencesColumn</c>, <c>foreignKeys</c> or <c>types</c>), the list item
+    /// for the two lists (<c>/ends/0/types/1</c>), and a <c>types</c> item's member; <see langword="null"/> for any other pointer.
+    /// </summary>
+    private static (string Entry, string Member, string? Item, string? ItemMember)? EndsEntryPart(string pointer)
+    {
+        if (!pointer.StartsWith("/ends/", StringComparison.Ordinal) || !JsonPointer.TryParse(pointer, out var s) || s.Length < 3 || !JsonPointer.TryIndex(s[1], out _))
+            return null;
+        var entry = JsonPointer.Build(s[..2]);
+        return s[2] switch
+        {
+            "foreignKey" or "idColumn" or "typeColumn" or "referencesColumn" when s.Length == 3 => (entry, s[2], null, null),
+            "foreignKeys" when s.Length == 4 && JsonPointer.TryIndex(s[3], out _) => (entry, s[2], JsonPointer.Build(s[..4]), null),
+            "types" when s.Length == 5 && JsonPointer.TryIndex(s[3], out _) => (entry, s[2], JsonPointer.Build(s[..4]), s[4]),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// Whether a relation mapping's <c>ends</c> entry still names a way once the ops are applied (several-types-design.md decision 38): its
+    /// <c>foreignKey</c>, an item of <c>foreignKeys</c>, a <c>types</c> item with its <c>foreignKey</c>, or its <c>idColumn</c>.
+    /// </summary>
+    private static bool EntryKeepsWay(JsonElement json, string entry, IReadOnlyList<CascadeOp> ops)
+    {
+        if (!JsonPointer.TryGet(json, entry, out var e) || e.ValueKind != JsonValueKind.Object)
+            return false;
+        bool Kept(string pointer) => !ops.Any(o => o.Pointer == pointer || IsUnder(pointer, o.Pointer));
+        if (e.TryGetProperty("foreignKey", out _) && Kept(entry + "/foreignKey") || e.TryGetProperty("idColumn", out _) && Kept(entry + "/idColumn"))
+            return true;
+        if (e.TryGetProperty("foreignKeys", out var keys) && keys.ValueKind == JsonValueKind.Array
+            && Enumerable.Range(0, keys.GetArrayLength()).Any(k => Kept(entry + "/foreignKeys/" + k.ToString(System.Globalization.CultureInfo.InvariantCulture))))
+            return true;
+        return e.TryGetProperty("types", out var types) && types.ValueKind == JsonValueKind.Array
+            && types.EnumerateArray().Select((item, k) => (item, at: entry + "/types/" + k.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+                .Any(t => t.item.ValueKind == JsonValueKind.Object && t.item.TryGetProperty("foreignKey", out _) && Kept(t.at) && Kept(t.at + "/foreignKey"));
     }
 
     /// <summary>

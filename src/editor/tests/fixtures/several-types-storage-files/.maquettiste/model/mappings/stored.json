@@ -1,0 +1,15 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST3MAP00000000000000006",
+  "name": "Stored in main",
+  "database": "01KST3DBS00000000000000001",
+  "relation": "01KST3RXN00000000000000003",
+  "ends": [
+    {
+      "end": "01KST3END00000000000000006",
+      "typeColumn": "01KST3CMN00000000000000005",
+      "idColumn": "01KST3CMN00000000000000006"
+    }
+  ]
+}

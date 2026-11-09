@@ -53,7 +53,7 @@ can't be connected or disconnected, until a thaw.
 | --- | --- | --- |{{ if with_frozen }} --- |{{ end }}
 {{- for o in sc.objects }}
 {{- frozen = [] }}{{ if o.frozen }}{{ frozen[frozen.size] = "yes" }}{{ end }}
-{{- for l in o.links }}{{ if l.frozen }}{{ frozen[frozen.size] = "the link through " + (md_code l.end.name) + " to " + (md_code l.object.name) }}{{ end }}{{ end }}
+{{- for l in o.links }}{{ if l.frozen }}{{ frozen[frozen.size] = "the link through " + (md_code end_name(l.end)) + " to " + (md_code l.object.name) }}{{ end }}{{ end }}
 {{- if o.states.size > 0 || frozen.size > 0 }}
 {{- states = [] }}{{ for st in o.states }}{{ states[states.size] = md_code (st.path) }}{{ end }}
 | {{ md_code o.name }} | {{ md_code o.entity.name }} | {{ states | array.join ", " }} |{{ if with_frozen }} {{ frozen | array.join ", " }} |{{ end }}
@@ -94,7 +94,7 @@ One row per step: who acts{{ if cast }} and the actor they act as{{ end }}, the 
 {{- else if st.input == "time" }}{{ input = "time passes: " + (md_code st.after) }}
 {{- else if st.input == "invoke-done" }}{{ input = (st.invoke ? (md_code st.invoke.name) : "`?`") + " done" }}
 {{- else if st.input == "invoke-error" }}{{ input = (st.invoke ? (md_code st.invoke.name) : "`?`") + " fails" }}
-{{- else if st.input == "verb" }}{{ input = "does " + (st.verb ? (md_code st.verb.key) : "`?`") + (st.end ? " on the link through " + (md_code st.end.name) + (st.object ? " to " + (md_code st.object.name) : "") : "") }}{{ end }}
+{{- else if st.input == "verb" }}{{ input = "does " + (st.verb ? (md_code st.verb.key) : "`?`") + (st.end ? " on the link through " + (md_code end_name(st.end)) + (st.object ? " to " + (md_code st.object.name) : "") : "") }}{{ end }}
 | {{ st.index + 1 }} |{{ if cast }} {{ st.participant ? (md_code st.participant.name) : "" }} |{{ end }} {{ (cast ? st.acts_as : st.actor) ? actor_link(cast ? st.acts_as : st.actor, "../../") : "" }} | {{ input }} | {{ !st.expect ? "not checked" : (st.expect.accepted ? "accepted" : "**refused**") }} | {{ st.expect ? code_paths(st.expect.states) : "" }} | {{ notes | array.join "; " }}{{ if st.description }}{{ notes.size > 0 ? ". " : "" }}{{ md_inline(st.description) }}{{ end }} |
 {{- end }}
 

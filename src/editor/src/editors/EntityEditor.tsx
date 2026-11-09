@@ -513,7 +513,7 @@ function RelationshipsTab({ id, domain }: { id: string; domain: string | null })
             .join(" – ");
           const count = doc?.attributes?.length ?? 0;
           const attributes = doc ? ` · ${count} attribute${count === 1 ? "" : "s"}` : "";
-          // An entity reached through a stereotype an end names says so: "through stereotype approvable".
+          // An entity reached through a stereotype an end names says so: "through approvable (stereotype)".
           const reach = (r.ends ?? []).map((e) => endReach(e, id, (sid) => stereotypeKeys.get(sid))).find(Boolean);
           return (
             <li key={r.id}>

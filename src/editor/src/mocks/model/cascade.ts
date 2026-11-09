@@ -323,6 +323,12 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
           });
           continue;
         }
+        // A part with no id of its own (an entry of a relation mapping, a constant): delete-dependents removes the part.
+        if (ref.dependentItem !== undefined) {
+          if (!mine.some((o) => o.remove && o.pointer === ref.dependentItem)) mine.push({ pointer: ref.dependentItem, item: true, remove: true, ref });
+          ops.set(doc.id, mine);
+          continue;
+        }
         let holder = ref.fromId !== doc.id ? pointerOf(doc.json, ref.fromId) : null;
         // An approval's last signature takes the gate with it: a gate with stages needs one (signoff-design.md section 9).
         const lastSignature = holder ? /^(.*)\/stages\/\d+\/signatures\/\d+$/.exec(holder) : null;

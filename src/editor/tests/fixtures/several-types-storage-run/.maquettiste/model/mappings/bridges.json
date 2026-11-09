@@ -1,0 +1,21 @@
+{
+  "$schema": "../../.schema/v1/mapping.json",
+  "kind": "mapping",
+  "id": "01KST2MAP00000000000000016",
+  "name": "Bridges in main",
+  "database": "01KST2DBS00000000000000001",
+  "relation": "01KST2RXN00000000000000009",
+  "junctionTable": "01KST2TAB00000000000000010",
+  "ends": [
+    {
+      "end": "01KST2END00000000000000017",
+      "typeColumn": "01KST2CMN00000000000000038",
+      "idColumn": "01KST2CMN00000000000000039"
+    },
+    {
+      "end": "01KST2END00000000000000018",
+      "typeColumn": "01KST2CMN00000000000000040",
+      "idColumn": "01KST2CMN00000000000000041"
+    }
+  ]
+}

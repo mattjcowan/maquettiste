@@ -117,6 +117,9 @@ internal sealed class MemberCatalog
     /// <returns>The keys.</returns>
     public IReadOnlyList<string>? MembershipKeys(object list)
     {
+        // A list with keys of its own (several-types-design.md section 19.8) records them as an RList records its membership.
+        if (list is ITrackedValue tracked)
+            return tracked.Dependencies.Count > 0 ? tracked.Dependencies : null;
         var property = _membershipKeys.GetOrAdd(list.GetType(), static t =>
             t.IsGenericType && t.GetGenericTypeDefinition() == typeof(RList<>) ? t.GetProperty("MembershipKeys") : null);
         return property?.GetValue(list) as IReadOnlyList<string>;

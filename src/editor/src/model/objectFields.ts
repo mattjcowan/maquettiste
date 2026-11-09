@@ -123,8 +123,7 @@ export function objectFields(entity: string, src: FieldSources): ObjectField[] {
         : (docEndSingleEntity(self) ?? "") !== "" && mine.has(docEndSingleEntity(self)!);
       if (!selfCovers) continue;
       if (docEndHasSeveralTypes(other)) {
-        // Both ends with several types is refused (MQ3041); the end leads to every type it covers.
-        if (docEndHasSeveralTypes(self)) continue;
+        // The end leads to every type it covers, whether or not this entity's own end also has several types (19.12).
         seen.add(other.id);
         const name = other.navigation || other.role || other.id;
         const covered = [...new Set([...docEndEntities(other), ...(src.carriers?.(r, 1 - i) ?? [])])];

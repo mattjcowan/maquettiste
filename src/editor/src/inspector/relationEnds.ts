@@ -1,7 +1,7 @@
 // What the relation form offers for an end's Type (several-types-design.md section 11): One entity, Several types or Any
 // entity, the limits on each, and the edits that move an end between them. Pure, so the form's choices and limits are
 // unit tested without React. An end writes exactly one of `entity`, `types` or `anyEntity` (decision 1).
-import { docEndHasSeveralTypes, docEndSingleEntity, type EndDocLike } from "@/model/endTypes";
+import { docEndSingleEntity, type EndDocLike } from "@/model/endTypes";
 
 export type EndChoice = "one" | "several" | "any";
 
@@ -9,7 +9,6 @@ export const END_CHOICE_LABELS: Record<EndChoice, string> = { one: "One entity",
 
 /** The words of the limits (section 11). */
 export const END_LIMIT_TEXTS = {
-  oneEnd: "Only one end may have several types.",
   nary: "An n-ary relation's ends name one entity each.",
   child: "The part end of a composition can't be any entity; list the types it may be.",
   lastType: "An end needs at least one type. Choose One entity or Any entity instead.",
@@ -54,13 +53,9 @@ export function endChoiceLimits(relation: RelationForm, index: number): Partial<
   const own = end ? endChoiceOf(end) : "one";
   const out: Partial<Record<EndChoice, string>> = {};
   const nary = relation.relationKind === "n-ary" || relation.ends.length > 2;
-  const otherHasSeveral = relation.ends.some((e, i) => i !== index && docEndHasSeveralTypes(e));
   if (nary) {
     out.several = END_LIMIT_TEXTS.nary;
     out.any = END_LIMIT_TEXTS.nary;
-  } else if (otherHasSeveral) {
-    out.several = END_LIMIT_TEXTS.oneEnd;
-    out.any = END_LIMIT_TEXTS.oneEnd;
   } else if (compositionChildIndex(relation) === index) out.any = END_LIMIT_TEXTS.child;
   delete out[own];
   return out;

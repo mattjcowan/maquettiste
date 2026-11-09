@@ -1,0 +1,30 @@
+{
+  "$schema": "../../../../.schema/v1/table.json",
+  "kind": "table",
+  "id": "01KST2TAB00000000000000011",
+  "name": "pairs",
+  "database": "01KST2DBS00000000000000001",
+  "columns": [
+    {
+      "id": "01KST2CMN00000000000000042",
+      "name": "id",
+      "type": "uuid",
+      "nullable": false
+    },
+    {
+      "id": "01KST2CMN00000000000000043",
+      "name": "from_id",
+      "type": "uuid"
+    },
+    {
+      "id": "01KST2CMN00000000000000044",
+      "name": "to_id",
+      "type": "uuid"
+    }
+  ],
+  "primaryKey": {
+    "columns": [
+      "01KST2CMN00000000000000042"
+    ]
+  }
+}

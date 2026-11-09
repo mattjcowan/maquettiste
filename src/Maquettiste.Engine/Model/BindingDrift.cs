@@ -250,7 +250,8 @@ internal static class BindingDrift
 
     /// <summary>
     /// The name a field goes by, as the resolver names it: an attribute's name (own, a base's or a stereotype's), the owner's name plus
-    /// the member's for <c>attributeId.memberId</c>, a to-one navigation's name plus <c>Id</c> for a relation end; else the reference.
+    /// the member's for <c>attributeId.memberId</c>, a to-one navigation's name plus <c>Id</c> for a relation end, plus <c>Type</c> for
+    /// <c>endId.type</c> and plus the entity's name and <c>Id</c> for <c>endId.entityId</c>; else the reference.
     /// </summary>
     /// <param name="model">The snapshot.</param>
     /// <param name="entity">The entity.</param>
@@ -267,11 +268,27 @@ internal static class BindingDrift
         if (dot > 0 && AttributeOf(model, entity, reference[..dot]) is { Type.Ref: { } typeId } owner
             && model.Get<ValueObject>(typeId)?.Attributes.FirstOrDefault(m => string.Equals(m.Id, reference[(dot + 1)..], StringComparison.Ordinal)) is { } member)
             return owner.Name + Casing.Pascal(member.Name);
-        if (model.TryGetEntry(reference, out var entry) && model.Get<Relation>(entry.OwnerId) is { } relation
-            && relation.Ends.FirstOrDefault(e => string.Equals(e.Id, reference, StringComparison.Ordinal)) is { } end)
+        if (EndOf(model, reference) is { } end)
             return end.Navigation.Length > 0 ? end.Navigation + "Id" : Casing.Camel(end.Role + "Id");
+        // The field forms of a relation end (several-types-design.md decision 46): <endId>.type names the type column (attachedToType),
+        // <endId>.<entityId> a key column per type (attachedToPartId).
+        if (dot > 0 && EndOf(model, reference[..dot]) is { } typed)
+        {
+            var rest = reference[(dot + 1)..];
+            if (string.Equals(rest, "type", StringComparison.Ordinal))
+                return typed.Navigation.Length > 0 ? typed.Navigation + "Type" : Casing.Camel(typed.Role + "Type");
+            if (model.Get<Entity>(rest) is { } keyOf)
+                return typed.Navigation.Length > 0 ? typed.Navigation + Casing.Pascal(keyOf.Name) + "Id" : Casing.Camel(typed.Role + Casing.Pascal(keyOf.Name) + "Id");
+        }
+
         return reference;
     }
+
+    /// <summary>The relation end with an id, or <see langword="null"/>.</summary>
+    private static RelationEnd? EndOf(ModelSnapshot model, string id) =>
+        model.TryGetEntry(id, out var entry) && model.Get<Relation>(entry.OwnerId) is { } relation
+            ? relation.Ends.FirstOrDefault(e => string.Equals(e.Id, id, StringComparison.Ordinal))
+            : null;
 
     /// <summary>An attribute of the entity by id: its own, a base's, or one a stereotype of the entity or a base gives.</summary>
     private static ModelAttribute? AttributeOf(ModelSnapshot model, Entity entity, string id)

@@ -328,7 +328,58 @@ public sealed record EndRecord(string Id, string? Entity, string Role, string? N
 /// <param name="ForeignKey">The foreign key's name, for the <c>foreign-key</c> shape.</param>
 /// <param name="JunctionTable">The junction table's key, for the <c>junction</c> shape.</param>
 /// <param name="PromotedEntity">The promoted entity's id, for the <c>promoted</c> shape.</param>
-public sealed record RelationMappingRecord(string Database, string Shape, string? ForeignKey, string? JunctionTable, string? PromotedEntity);
+/// <param name="Links">For a relation with an end of several types: one entry per pair of targets (several-types-design.md section 19.8); for
+/// a one-type relation whose designed link table's mapping writes constants or attribute columns, its one link; left out when empty.</param>
+/// <param name="Constants">The link table's columns with a fixed value (decision 44); left out when empty.</param>
+/// <param name="Attributes">The relation attributes' columns in the table that holds every link (decision 45); left out when empty.</param>
+/// <param name="LeftOut">Covered entities not placed in the database; left out when empty.</param>
+/// <param name="NotStored">Placed targets no pointer reaches (MQ4120); left out when empty.</param>
+/// <param name="TypeCodes">The code of every entity a type column holds (decision 42); left out when empty.</param>
+public sealed record RelationMappingRecord(string Database, string Shape, string? ForeignKey, string? JunctionTable, string? PromotedEntity,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationLinkRecord>? Links = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationConstantRecord>? Constants = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationAttributeColumnRecord>? Attributes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationEndEntityRecord>? LeftOut = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<RelationEndEntityRecord>? NotStored = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<TypeCodeRecord>? TypeCodes = null);
+
+/// <summary>Where one pair of targets of a relation mapping is linked (several-types-design.md section 19.8).</summary>
+/// <param name="Table">The key of the table that holds the link.</param>
+/// <param name="Ends">One per relation end, in file order.</param>
+public sealed record RelationLinkRecord(string Table, IReadOnlyList<RelationLinkEndRecord> Ends);
+
+/// <summary>How the table that holds a link points at one end's target (several-types-design.md section 19.8).</summary>
+/// <param name="End">The end's id.</param>
+/// <param name="Type">The target entity's id at this end.</param>
+/// <param name="IsHolder">Whether this end's rows hold the link.</param>
+/// <param name="Columns">The keys of the pointer's columns in the holding table.</param>
+/// <param name="ReferencedTable">The key of the table the pointer refers to.</param>
+/// <param name="ReferencedColumns">The keys of the columns the pointer refers to.</param>
+/// <param name="ForeignKey">The foreign key's name, when the pointer is a key.</param>
+/// <param name="TypeColumn">The key of the column that holds the type code, when there is one.</param>
+/// <param name="Codes">The codes the type column holds for this target, when there is a type column (strings or integers).</param>
+public sealed record RelationLinkEndRecord(string End, string Type, bool IsHolder, IReadOnlyList<string> Columns, string? ReferencedTable,
+    IReadOnlyList<string> ReferencedColumns, string? ForeignKey, string? TypeColumn, IReadOnlyList<object>? Codes);
+
+/// <summary>A link table's column with a fixed value (several-types-design.md decision 44).</summary>
+/// <param name="Column">The column's key.</param>
+/// <param name="Values">The values the column holds; null is SQL NULL.</param>
+public sealed record RelationConstantRecord(string Column, IReadOnlyList<object?> Values);
+
+/// <summary>A relation attribute's column in the table that holds every link (several-types-design.md decision 45).</summary>
+/// <param name="Attribute">The attribute's id.</param>
+/// <param name="Column">The column's key.</param>
+public sealed record RelationAttributeColumnRecord(string Attribute, string Column);
+
+/// <summary>A covered entity at one end of a relation mapping (several-types-design.md section 19.8).</summary>
+/// <param name="End">The end's id.</param>
+/// <param name="Entity">The entity's id.</param>
+public sealed record RelationEndEntityRecord(string End, string Entity);
+
+/// <summary>An entity's type code in a database (several-types-design.md decision 42).</summary>
+/// <param name="Entity">The entity's id.</param>
+/// <param name="Code">The code, a string or an integer.</param>
+public sealed record TypeCodeRecord(string Entity, object Code);
 
 /// <summary>A resolved enum.</summary>
 /// <param name="Id">The enum id.</param>
@@ -1731,9 +1782,28 @@ public static class ResolvedRecords
         public RelationRecord Relation(RRelation r) => new(r.Id, "relation", r.Name, r.Package?.Id, r.InverseName, r.RelationKind, r.Cardinality, r.AllowDuplicates,
             [.. r.Ends.Select(End)],
             [.. r.Attributes.Select(a => Attribute(a))],
-            [.. r.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => new RelationMappingRecord(DatabaseId(m.Key), m.Value.Shape, m.Value.ForeignKey?.Name,
-                m.Value.JunctionTable?.Key, m.Value.PromotedEntity?.Id))],
+            [.. r.Mappings.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => RelationMapping(DatabaseId(m.Key), m.Value))],
             Ids(r.Seeds), r.DisplayName!, r.PluralName!, r.Description, r.Tags, r.Category?.Id, Keys(r.Stereotypes), Plain(r.Properties), r.Generation);
+
+        /// <summary>
+        /// A relation mapping's record; the storage members of several-types-design.md section 19.8 are left out when empty, so a mapping of a
+        /// relation whose ends each have one type, with no constants or attribute columns, keeps today's record.
+        /// </summary>
+        internal static RelationMappingRecord RelationMapping(string database, RRelationMapping m) => new(database, m.Shape, m.ForeignKey?.Name,
+            m.JunctionTable?.Key, m.PromotedEntity?.Id,
+            NullIfEmpty(m.Links, l => new RelationLinkRecord(l.Table.Key, [.. l.Ends.Select(LinkEnd)])),
+            NullIfEmpty(m.Constants, c => new RelationConstantRecord(c.Column.Key, [.. c.Values])),
+            NullIfEmpty(m.Attributes, a => new RelationAttributeColumnRecord(a.Attribute.Id, a.Column.Key)),
+            NullIfEmpty(m.LeftOut, e => new RelationEndEntityRecord(e.End.Id, e.Entity.Id)),
+            NullIfEmpty(m.NotStored, e => new RelationEndEntityRecord(e.End.Id, e.Entity.Id)),
+            NullIfEmpty(m.TypeCodes, c => new TypeCodeRecord(c.Entity.Id, c.Code)));
+
+        private static RelationLinkEndRecord LinkEnd(RRelationLinkEnd e) => new(e.End.Id, e.Type.Id, e.IsHolder, [.. e.Columns.Select(c => c.Key)],
+            e.ReferencedTable?.Key, [.. e.ReferencedColumns.Select(c => c.Key)], e.ForeignKey?.Name, e.TypeColumn?.Key,
+            e.TypeColumn is null ? null : [.. e.Codes]);
+
+        private static IReadOnlyList<TRecord>? NullIfEmpty<TItem, TRecord>(IReadOnlyList<TItem> items, Func<TItem, TRecord> project) =>
+            items.Count == 0 ? null : [.. items.Select(project)];
 
         public EnumRecord Enum(REnum e) => new(e.Id, "enum", e.Name, e.Package?.Id, e.Flags,
             [.. e.Members.Select(m => new EnumMemberRecord(m.Id, m.Name, m.DisplayName, m.Description, m.Value, m.Code, Plain(m.Properties)))],

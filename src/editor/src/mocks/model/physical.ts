@@ -22,6 +22,7 @@ import type {
 import { BUILTIN_TYPES } from "@/model/model";
 import { docEndSingleEntity, type EndDocLike } from "@/model/endTypes";
 import { resolveQueries } from "./queries";
+import { typeStorageRun } from "./typeStorage";
 
 type Json = Record<string, unknown>;
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -1035,7 +1036,17 @@ export function resolveDatabase(input: PhysicalInput, databaseId: string): Datab
   };
   // The queries over its tables and views (queries.ts), bound against the view just built.
   view.queries = resolveQueries(view, input.docs).queries;
+  // The storage of relations with an end of several types: the view's relationStorage, and the run's findings kept for the resolver findings.
+  const run = typeStorageRun(input.docs, view, conventions);
+  if (run.storage.length) view.relationStorage = run.storage;
+  runDiagnostics.set(view, run.diagnostics);
   return view;
+}
+
+const runDiagnostics = new WeakMap<DatabaseView, Diagnostic[]>();
+/** The storage run's findings for relations with an end of several types (typeStorage.ts), for a view `resolveDatabase` built. */
+export function typeStorageDiagnostics(view: DatabaseView): Diagnostic[] {
+  return runDiagnostics.get(view) ?? [];
 }
 
 const qualifiedName = (schema: string | null, name: string) => (schema ? `${schema}.${name}` : name);

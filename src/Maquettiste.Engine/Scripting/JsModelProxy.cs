@@ -133,6 +133,8 @@ internal sealed class JsModelProxy : ObjectInstance
     {
         if (Target is IResolvedObject resolved)
             _values.State.Record(resolved.Dependencies);
+        else if (Target is ITrackedValue { Dependencies.Count: > 0 } tracked)
+            _values.State.Record(tracked.Dependencies);
     }
 
     private JsValue Read(int index)

@@ -1,0 +1,228 @@
+{
+  "about": "The engine's findings for the rules below on the project in .maquettiste, sorted by rule, element id, pointer and message. Written by SeveralTypesStorageParityTests with MAQUETTISTE_RECORD=1; the editor's mock must give the same.",
+  "rules": [
+    "MQ4009",
+    "MQ4011",
+    "MQ4115",
+    "MQ4116"
+  ],
+  "diagnostics": [
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000007",
+      "pointer": "/attributes/0/prefix",
+      "message": "Relation 'EngineKeys' has an end with several types, so 'prefix' of attribute 0 can't shape engine-made columns; remove it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000007",
+      "pointer": "/attributes/0/storage",
+      "message": "Relation 'EngineKeys' has an end with several types, so 'storage' of attribute 0 can't shape engine-made columns; remove it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000007",
+      "pointer": "/foreignKey",
+      "message": "Relation 'EngineKeys' has an end with several types, so a mapping of it doesn't take 'foreignKey'; its 'ends' entries say how it is stored. Remove it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000007",
+      "pointer": "/foreignKeyEnd",
+      "message": "Relation 'EngineKeys' has an end with several types, so a mapping of it doesn't take 'foreignKeyEnd'; its 'ends' entries say how it is stored. Remove it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000007",
+      "pointer": "/promotedName",
+      "message": "Relation 'EngineKeys' has an end with several types, so a mapping of it doesn't take 'promotedName'; its 'ends' entries say how it is stored. Remove it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000007",
+      "pointer": "/shape",
+      "message": "Relation 'EngineKeys' has an end with several types, so a mapping of it doesn't take 'shape'; its 'ends' entries say how it is stored. Remove it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000008",
+      "pointer": "/shape",
+      "message": "Relation 'ShapeOff' keeps its links in the tables of its ends, so shape 'junction' disagrees with its entries; remove 'shape'.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000009",
+      "pointer": "/ends/0",
+      "message": "End entry 0 of relation 'Entries' names more than one way to point at end 'target' (foreignKey, idColumn); keep one.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000009",
+      "pointer": "/ends/1/end",
+      "message": "End 'target' of relation 'Entries' has two entries; keep one.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000009",
+      "pointer": "/ends/1/typeColumn",
+      "message": "End entry 1 of relation 'Entries' uses one column for 'typeColumn' and 'idColumn'.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000009",
+      "pointer": "/ends/2",
+      "message": "End entry 2 of relation 'Entries' names no way to point at end 'comment'; give it a foreignKey, foreignKeys, types with foreignKey items or an idColumn.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000009",
+      "pointer": "/ends/3",
+      "message": "End entry 3 of relation 'Entries' names no way to point at end 'comment'; give it a foreignKey, foreignKeys, types with foreignKey items or an idColumn.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000009",
+      "pointer": "/ends/3/end",
+      "message": "End 'comment' of relation 'Entries' has two entries; keep one.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000009",
+      "pointer": "/ends/3/referencesColumn",
+      "message": "End entry 3 of relation 'Entries' sets 'referencesColumn' on the entry and in types items; keep one.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000009",
+      "pointer": "/ends/3/referencesColumn",
+      "message": "End entry 3 of relation 'Entries' sets 'referencesColumn' with no 'idColumn'; it describes the id column.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000009",
+      "pointer": "/ends/3/types",
+      "message": "End entry 3 of relation 'Entries' has types items with referencesColumn but no 'idColumn'.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000010",
+      "pointer": "/ends/0",
+      "message": "End entry 0 of relation 'Kinds' names more than one way to point at end 'target' (types, idColumn); keep one.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000010",
+      "pointer": "/ends/0/types",
+      "message": "End entry 0 of relation 'Kinds' has types items with foreignKey beside 'idColumn'; use one way.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000011",
+      "pointer": "/ends/0",
+      "message": "End entry 0 of relation 'Mixed' names more than one way to point at end 'target' (types, idColumn); keep one.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000011",
+      "pointer": "/ends/0/types",
+      "message": "End entry 0 of relation 'Mixed' mixes types items with foreignKey and with referencesColumn; use one kind.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000012",
+      "pointer": "/ends/0/types",
+      "message": "End entry 0 of relation 'NoId' has types items with referencesColumn but no 'idColumn'.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000013",
+      "pointer": "/constants/0/column",
+      "message": "Constant 0 names a column that an end entry already uses as a pointer; a constant needs a column of its own.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000013",
+      "pointer": "/constants/1/column",
+      "message": "'01KST3CMN00000000000000004' is not a column of link table 'links'.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000013",
+      "pointer": "/ends/0/foreignKeys",
+      "message": "End entry 0 of relation 'LinkKeys' sets 'foreignKeys' beside 'junctionTable'; in a link table an end is pointed at by one key, a key per type or an id.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000015",
+      "pointer": "/constants/0",
+      "message": "Constant 0 needs a designed 'junctionTable' that holds its column.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000016",
+      "pointer": "/attributes/0/column",
+      "message": "'01KST3CMN00000000000000005' is not a column of link table 'links'.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000016",
+      "pointer": "/ends/0/idColumn",
+      "message": "End entry 0 of relation 'OneType' sets 'idColumn', which needs a relation with an end of several types.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4009",
+      "elementId": "01KST3MAP00000000000000016",
+      "pointer": "/ends/1",
+      "message": "End entry 1 names no 'foreignKey'; junction table 'links' is designed, so the entry needs the foreign key that references its end's table.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4011",
+      "elementId": "01KST3MAP00000000000000014",
+      "pointer": "/junctionTable",
+      "message": "Link table 'links' holds relation 'NoEntry', so end 'comment' needs an 'ends' entry that says how the table points at it.",
+      "severity": "error"
+    },
+    {
+      "rule": "MQ4115",
+      "elementId": "01KST3END00000000000000001",
+      "pointer": "/ends/0",
+      "message": "Relation 'Unmapped' has an end with several types, so database 'main' stores nothing for it.",
+      "severity": "info"
+    },
+    {
+      "rule": "MQ4116",
+      "elementId": "01KST3QRY00000000000000001",
+      "pointer": "/select/1/attribute",
+      "message": "Field 1 of query 'Comments' names end 'target', which leads to several types; a field can't map it.",
+      "severity": "error"
+    }
+  ]
+}
