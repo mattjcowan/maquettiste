@@ -100,7 +100,9 @@ const endEntities = (end: Json): string[] =>
 
 /**
  * Moves a mapping's top-level `foreignKey` to the entry of the end whose table the key refers to (the key points at that end). Null when done,
- * else the reason: when no end's table is the one the key refers to, nothing moves.
+ * else the reason. On an end with several types, a key to the table of every listed type stays the entry's `foreignKey`; a key to one type's
+ * table becomes that type's `types` item (a key per type), so it never names a table that holds only some of the end's types. When no end's
+ * table is the one the key refers to, or it is the table of some but not one or all of an end's types, nothing moves.
  */
 async function moveKey(
   fix: Extract<StorageFix, { action: "move-key" }>,
@@ -124,8 +126,11 @@ async function moveKey(
   const entries = (mapping.ends as Json[] | undefined) ?? [];
   const ends = (relation.ends as Json[] | undefined) ?? [];
   let target: string | null = null;
+  let entry: Json | null = null;
   for (const end of ends) {
-    for (const entity of endEntities(end)) {
+    const listed = endEntities(end);
+    const matching: string[] = [];
+    for (const entity of listed) {
       const doc = (await endpoints.getElement(entity)).json as unknown as Json;
       let table = boundTableOf(doc, database);
       if (!table)
@@ -133,14 +138,21 @@ async function moveKey(
           const file = (await endpoints.getElement(row.id)).json as unknown as Json;
           if (file.ignore !== true && typeof file.table === "string") table = file.table;
         }
-      if (table === referenced) target = String(end.id);
+      if (table === referenced) matching.push(entity);
     }
-    if (target) break;
+    if (matching.length === 0) continue;
+    target = String(end.id);
+    const several = typeof end.entity !== "string";
+    if (!several || (matching.length === listed.length && end.anyEntity !== true)) entry = { end: target, foreignKey: fix.key };
+    else if (matching.length === 1) entry = { end: target, types: [{ entity: matching[0], foreignKey: fix.key }] };
+    break;
   }
   if (!target) return "The key does not refer to the table of either end; remove it instead.";
+  if (!entry) return "The key refers to a table that holds some of the end's types; remove it and choose how the end is stored instead.";
   if (entries.some((e) => e.end === target)) return "That end already has an entry; remove the key instead.";
+  const moved = entry;
   await edits.update(fix.mapping, (j) => {
-    j.ends = [...((j.ends as Json[] | undefined) ?? []), { end: target, foreignKey: fix.key }];
+    j.ends = [...((j.ends as Json[] | undefined) ?? []), moved];
     delete j.foreignKey;
     delete j.foreignKeyEnd;
   });
