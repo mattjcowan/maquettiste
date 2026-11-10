@@ -285,7 +285,7 @@ export interface paths {
          *     (MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer
          *     the same.
          *
-         *     Every page states the contract it follows in `contract` (until version 1, the release that answered, such as `0.24.0`; the
+         *     Every page states the contract it follows in `contract` (until version 1, the release that answered, as its version number; the
          *     contract may change in any release) and names its JSON Schema in `schema` (`resolved-model.json`), which
          *     `getResolvedModelSchema` returns and every project holds in `.maquettiste/.schema/v1/`, next to its reference
          *     `resolved-model.md`.
@@ -309,8 +309,8 @@ export interface paths {
         /**
          * The JSON Schema of the resolved model's pages
          * @description The contract of `getResolvedModel`, `resolved-model.json` (JSON Schema draft 2020-12): the page, every record by its `kind`,
-         *     and a plain description of every field, with when it is null. Until version 1 the contract is the release (`x-contract`),
-         *     such as `0.24.0`, and may change in any release. `x-scopes` names each scope's record. With `scope`, the schema of that
+         *     and a plain description of every field, with when it is null. Until version 1 the contract is the release's version number
+         *     (`x-contract`), and may change in any release. `x-scopes` names each scope's record. With `scope`, the schema of that
          *     scope's pages: `items` holds the scope's record, and `$defs` only what that record reaches (`x-scope` names the scope).
          *     Every project holds the whole schema in `.maquettiste/.schema/v1/resolved-model.json`, with the readable reference
          *     `resolved-model.md`; the MCP tool `get_schema` returns it as `resolved-model` or `resolved-model:<scope>`.
@@ -3717,7 +3717,7 @@ export interface components {
         };
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
-            /** @description The contract version the page follows: until version 1, the Maquettiste release that answered, such as `0.24.0`. The contract may change in any release. */
+            /** @description The contract version the page follows: until version 1, the version number of the Maquettiste release that answered. The contract may change in any release. */
             contract: string;
             /**
              * @description The file name of the page's JSON Schema (`getResolvedModelSchema`, and `.maquettiste/.schema/v1/` in a project).

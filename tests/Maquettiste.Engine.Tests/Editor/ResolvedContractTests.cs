@@ -168,6 +168,19 @@ public sealed partial class ResolvedContractTests
         Assert.NotEmpty(produced);
     }
 
+    /// <summary>Every test <see cref="ContractCheck.Credited"/> names exists, so renaming or deleting one cannot drop a record silently.</summary>
+    [Fact]
+    public void Every_credited_test_exists()
+    {
+        var tests = typeof(ResolvedContractTests).Assembly.GetTypes()
+            .SelectMany(t => t.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly)
+                .Where(m => m.IsDefined(typeof(FactAttribute), inherit: true))
+                .Select(m => t.Name + "." + m.Name))
+            .ToHashSet(StringComparer.Ordinal);
+        var missing = ContractCheck.Credited.Where(c => !tests.Contains(c.Value)).Select(c => $"{c.Key}: {c.Value}").ToList();
+        Assert.True(missing.Count == 0, "ContractCheck.Credited names tests that do not exist: " + string.Join(", ", missing));
+    }
+
     [Fact]
     public async Task Every_record_is_produced_by_some_model()
     {

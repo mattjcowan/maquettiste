@@ -21,7 +21,8 @@ internal static class ContractCheck
         "FullyQualifiedName~ResolvedContractTests.The_checked_in_schema_and_reference_match_the_record_types";
 
     /// <summary>
-    /// The record definitions only a feature test's model produces, with that test. The test names them in
+    /// The record definitions only a feature test's model produces, with that test as <c>Class.Method</c> (a test method of this
+    /// assembly; <c>ResolvedContractTests</c> checks that each one exists). The test names them in
     /// <see cref="Validate(ResolvedModel, string[])"/>, which fails unless its model produces each one.
     /// </summary>
     public static IReadOnlyDictionary<string, string> Credited { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -32,7 +33,7 @@ internal static class ContractCheck
         ["formerCodeRecord"] = "ReferenceDataResolutionTests.Former_codes_resolve_to_the_replacing_rows",
         ["holdingRecord"] = "ParticipantTests.Each_satisfaction_case_and_the_actor_each_step_acts_as",
         ["scenarioLinkRecord"] = "ScenarioObjectTests.Objects_resolve_and_records_carry_them_only_where_a_scenario_has_them",
-        ["memberOriginView"] = "StereotypeMembersTests (every test, through MainAsync)",
+        ["memberOriginView"] = "StereotypeMembersTests.Audited_columns_reach_every_table_of_schema_billing_from_one_line",
         ["namedTriggerPointRecord"] = "NamedTriggerPointTests.Named_points_resolve_index_and_key_and_the_last_subject_takes_its_point_on_delete",
         ["triggerPointSubjectRecord"] = "NamedTriggerPointTests.Named_points_resolve_index_and_key_and_the_last_subject_takes_its_point_on_delete",
         ["operationGuardRecord"] = "OperationGuardTests.The_operation_record_lists_its_guards",
@@ -44,7 +45,7 @@ internal static class ContractCheck
         ["relationAttributeColumnRecord"] = "RelationTypeStorageTests.A_link_table_with_constants_and_an_attribute_column",
         ["relationEndEntityRecord"] = "RelationTypeStorageTests.Each_row_of_the_binding_field_table",
         ["typeCodeRecord"] = "RelationTypeStorageTests.A_link_table_with_constants_and_an_attribute_column",
-        ["stereotypeSubjectRecord"] = "StereotypeSubjectResolutionTests (the tests that read the Approval record)",
+        ["stereotypeSubjectRecord"] = "StereotypeSubjectResolutionTests.Zero_carriers_give_no_subject_and_the_entry_as_written",
     };
 
     /// <summary>

@@ -233,6 +233,37 @@ public sealed class BulkReadTests
         Recorder.Json("getResolvedModel.json", all);
     }
 
+    /// <summary>
+    /// The examples the contract gives for <c>getResolvedModel</c> are real pages of this release: each one fits resolved-model.json,
+    /// whose <c>contract</c> is the version this build ships.
+    /// </summary>
+    [Fact]
+    public void The_resolved_page_examples_fit_the_resolved_model_schema()
+    {
+        var examples = Contract.OpenApi["paths"]!["/api/model/resolved"]!["get"]!["responses"]!["200"]!["content"]!["application/json"]!["examples"]!.AsObject();
+        Assert.NotEmpty(examples);
+        var schema = global::Json.Schema.JsonSchema.FromText(Engine.ResolvedContract.SchemaText(null));
+        var whole = Engine.ResolvedContract.Schema(null);
+        foreach (var (name, example) in examples)
+        {
+            // Each record against its own kind's definition first, so a failure names what is wrong with it.
+            foreach (var item in example!["value"]!["items"]!.AsArray())
+            {
+                var definition = whole["x-kinds"]![item!["kind"]!.GetValue<string>()]!.GetValue<string>();
+                var one = new JsonObject { ["$schema"] = whole["$schema"]!.DeepClone(), ["$ref"] = "#/$defs/" + definition, ["$defs"] = whole["$defs"]!.DeepClone() };
+                var check = global::Json.Schema.JsonSchema.FromText(one.ToJsonString()).Evaluate(System.Text.Json.JsonDocument.Parse(item.ToJsonString()).RootElement,
+                    new global::Json.Schema.EvaluationOptions { OutputFormat = global::Json.Schema.OutputFormat.List });
+                Assert.True(check.IsValid, $"The example {name}'s {item["name"]} does not fit {definition}: " + string.Join("; ", (check.Details ?? [])
+                    .Where(d => d.Errors is not null).SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation}: {e.Value}")).Take(10)));
+            }
+
+            var value = System.Text.Json.JsonDocument.Parse(example!["value"]!.ToJsonString()).RootElement;
+            var result = schema.Evaluate(value, new global::Json.Schema.EvaluationOptions { OutputFormat = global::Json.Schema.OutputFormat.List });
+            Assert.True(result.IsValid, $"The example {name} does not fit resolved-model.json: " + string.Join("; ", (result.Details ?? [])
+                .Where(d => d.Errors is not null).SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation}: {e.Value}")).Take(10)));
+        }
+    }
+
     /// <summary>The contract of the resolved pages: the whole schema, one scope's part, and every page names the release it follows.</summary>
     [Fact]
     public async Task The_resolved_model_schema_is_served_whole_or_by_scope_and_every_page_fits_it()

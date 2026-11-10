@@ -46,7 +46,9 @@ internal static class ResolvedContractReference
             - Over HTTP: `GET /api/model/resolved/schema`, or `?scope=entities` for one scope's records.
             - Over MCP: `get_schema` with kind `resolved-model`, or `resolved-model:entities` for one scope's records.
 
-            Readers should ignore fields they do not know: a later release may add some.
+            A reader you write by hand should ignore fields it does not know, since a later release may add some. A check against the
+            schema is exact for one release: an extra field, or an answer from another release, fails it. So validate an answer with the
+            schema of the release its `contract` names.
 
             ## Answers
 

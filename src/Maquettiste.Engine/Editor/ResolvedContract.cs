@@ -34,8 +34,8 @@ public static class ResolvedContract
 
     /// <summary>
     /// The contract version every answer states in <c>contract</c>: the <c>x-contract</c> of the schema this build embeds, so an answer
-    /// always names the version of the schema shipped beside it. Until version 1 it is the release the files were generated for, such
-    /// as <c>0.24.0</c> (the engine tests keep it equal to the repository's release).
+    /// always names the version of the schema shipped beside it. Until version 1 it is the version number of the release the files were
+    /// generated for (the engine tests keep it equal to the repository's release).
     /// </summary>
     public static string Version => ContractVersion.Value;
 
