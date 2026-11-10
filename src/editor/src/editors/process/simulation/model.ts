@@ -526,6 +526,7 @@ export interface LastStepLine {
     | "sets"
     | "values"
     | "note"
+    | "revision"
     | "context"
     | "audit"
     | "notice"
@@ -657,6 +658,7 @@ export function lastStepLines(
   if (Object.keys(entry.changed).length) lines.push({ kind: "context", text: L.changedLine(changesText(entry.changed, names)), tone: "neutral" });
   if (entry.valuesChanged && Object.keys(entry.valuesChanged).length)
     lines.push({ kind: "values", text: L.valuesLine(subjectText(entry.valuesChanged)), tone: "neutral" });
+  if (entry.revision) lines.push({ kind: "revision", text: L.revisionLine(entry.revision.from, entry.revision.to, entry.revision.level), tone: "success" });
   for (const note of new Set(entry.notes ?? [])) lines.push({ kind: "note", text: L.noteLine(note), tone: "neutral" });
   // A refused attempt on a named signature is the step's refusal line above; its audit record would say it a second time.
   for (const r of entry.audit.filter((a) => !(a.outcome === "refused" && a.signature && entry.refusal)))

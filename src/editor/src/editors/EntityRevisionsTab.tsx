@@ -1,6 +1,6 @@
 // The Revisions tab of the entity editor (revisions-design.md section 12), part one: the Levels table, the separator, the attribute
-// that holds the revision, and a live preview. The "When revised" tables (what a revise does to lifecycles, attributes and links)
-// are part two and go where WhenRevised is. The entity's own block is what is written; levels from a base show "from <Base>" and
+// that holds the revision, and a live preview; "When revised" (what a revise does to lifecycles, attributes and links) is
+// WhenRevisedSection.tsx. The entity's own block is what is written; levels from a base show "from <Base>" and
 // are replaced as a whole the first time one is changed.
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
@@ -8,13 +8,17 @@ import { useElements, useIndex } from "@/api/queries";
 import type { AttributeDoc, EntityDoc } from "@/api/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, Input, Select } from "@/components/ui/input";
+import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { SectionTitle } from "@/components/ui/misc";
 import { indexLookup } from "@/model/index";
 import { subjectsOf } from "@/model/process";
 import { governingLifecycles, resolveRevisions, type EntityWithRevisions, type RevisionsBlock } from "@/model/revisionSequence";
 import { domIdOf, type EditorContext } from "./EditorFrame";
-import { baseChain } from "./related";
+import { baseChain, relatedOf } from "./related";
+import { WhenRevisedSection } from "./WhenRevisedSection";
+import { reachedEnds } from "./whenRevised";
+import { endCoversEntity } from "@/model/endTypes";
+import type { ProcessDoc } from "@/model/process";
 import {
   addRevisions,
   heldInChoices,
@@ -47,6 +51,12 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
   const governing = useMemo(() => governingLifecycles(index.data ?? [], chain), [index.data, chain.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   const lifecycleDocs = useElements(governing);
   const scalarDocs = useElements(lookup.ofKind("scalar-type").map((s) => s.id));
+  // The relations that reach the entity or a base: their ends are the ones a revise may say something about.
+  const relationRows = useMemo(
+    () => [...new Map(chain.flatMap((c) => relatedOf(index.data, c).relations).map((r) => [r.id, r])).values()],
+    [index.data, chain.join(",")], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const relationDocs = useElements(relationRows.map((r) => r.id));
 
   const docOf = (at: string): EntityWithRevisions => (at === id ? entity : (baseDocs.byId.get(at)?.json as EntityWithRevisions));
   const merged = resolveRevisions(id, lookup.byId, docOf, governing);
@@ -149,12 +159,12 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
                   </td>
                   {row.kind === "list" ? (
                     <td className="p-0.5" colSpan={3}>
-                      <CommitInput
+                      <CommitTextarea
                         label={`Level ${i + 1} list values`}
                         value={row.values}
                         onCommit={(v) => setRow(i, { values: v })}
-                        placeholder="Prototype, Pilot run, Production"
-                        title="The values in order, separated by commas. The level ends at the last one."
+                        placeholder={"One value per line, in order:\nPrototype\nPilot run"}
+                        title="The values in order, one per line. The level ends at the last one."
                       />
                     </td>
                   ) : (
@@ -297,7 +307,25 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
         </ul>
       ) : null}
 
-      <WhenRevised />
+      <WhenRevisedSection
+        entityId={id}
+        merged={merged}
+        own={own}
+        commit={commit}
+        nameOf={nameOf}
+        lifecycleNames={new Map(governing.map((l) => [l, nameOf(l)]))}
+        lifecycleDocs={governing.flatMap((l) => (lifecycleDocs.byId.get(l)?.json ? [lifecycleDocs.byId.get(l)!.json as unknown as ProcessDoc] : []))}
+        attributes={attributes}
+        keyIds={chain.flatMap((at) => (docOf(at) as EntityDoc | undefined)?.key?.attributes ?? [])}
+        lifecycleBound={lifecycleBound}
+        ends={reachedEnds(
+          relationRows.flatMap((r) => {
+            const doc = relationDocs.byId.get(r.id)?.json as { ends?: { id: string; role: string }[] } | undefined;
+            if (!doc?.ends || !r.ends) return [];
+            return [{ name: r.name, ends: doc.ends, covers: r.ends.map((e) => chain.some((c) => endCoversEntity(e, c, (x) => lookup.byId.get(x)?.base))) }];
+          }),
+        )}
+      />
     </div>
   );
 }
@@ -313,9 +341,26 @@ function PreviewLine({ label, text, level }: { label: string; text: string; leve
   );
 }
 
-/** Part two: the "When revised" tables (a row per lifecycle that governs the entity, and the Attributes and Links tables) go here. */
-function WhenRevised() {
-  return null;
+/** A text area that writes when it loses focus (Enter adds a line), and follows the file when it changes elsewhere. */
+function CommitTextarea({
+  label,
+  value,
+  onCommit,
+  ...props
+}: { label: string; value: string; onCommit: (value: string) => void } & Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange">) {
+  const [text, setText] = useState(value);
+  useEffect(() => setText(value), [value]);
+  return (
+    <Textarea
+      {...props}
+      rows={Math.min(Math.max(text.split("\n").length, 1), 5)}
+      className="min-h-7 py-1"
+      aria-label={label}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => text !== value && onCommit(text)}
+    />
+  );
 }
 
 /** A text field that writes when it loses focus or Enter is pressed, and follows the file when it changes elsewhere. */

@@ -70,6 +70,10 @@ const EDITOR_FIXES = new Set([
   "MQ8202",
   "MQ8203",
   "MQ8204",
+  "MQ8303",
+  "MQ8306",
+  "MQ8308",
+  "MQ8312",
   "MQ3116",
   "MQ3042",
   "MQ3043",
@@ -248,6 +252,52 @@ function rightFix(rule: string, element: ModelJson, pointer: string): { json: Mo
     default:
       return null;
   }
+}
+
+/**
+ * The quick fixes of the revision rules (revisions-design.md sections 7 and 12): MQ8303 gives the block the separator ".", MQ8306 makes
+ * the move name level 1, MQ8308 makes the entry `move`, MQ8312 removes the entry. Every one is a plain update of the element the
+ * finding sits on (the entity for the block's rules, the lifecycle for a transition's).
+ */
+export function revisionFix(rule: string, element: ModelJson, pointer: string): { json: ModelJson; label: string } | null {
+  if (rule === "MQ8303") {
+    if (element.kind !== "entity" || !element.revisions || typeof element.revisions !== "object") return null;
+    const next = clone(element);
+    (next.revisions as Json).separator = ".";
+    return { json: next, label: 'Use "." as the separator' };
+  }
+  if (rule === "MQ8306") {
+    const at = /^(\/transitions\/\d+)(\/|$)/.exec(pointer)?.[1];
+    if (element.kind !== "process" || !at) return null;
+    const next = clone(element);
+    const t = atPointer(next, at) as Json | undefined;
+    if (!t) return null;
+    t.nextRevision = 1;
+    return { json: next, label: "Revise at level 1" };
+  }
+  if (rule === "MQ8308") {
+    const at = /^(\/revisions\/links\/\d+)(\/|$)/.exec(pointer)?.[1];
+    if (element.kind !== "entity" || !at) return null;
+    const next = clone(element);
+    const entry = atPointer(next, at) as Json | undefined;
+    if (!entry) return null;
+    entry.onRevise = "move";
+    return { json: next, label: "Move the links with the new revision" };
+  }
+  if (rule === "MQ8312") {
+    const at = /^(\/revisions\/(lifecycles|attributes|links))\/(\d+)(\/|$)/.exec(pointer);
+    if (element.kind !== "entity" || !at) return null;
+    const next = clone(element);
+    const list = atPointer(next, at[1]) as unknown[] | undefined;
+    if (!Array.isArray(list)) return null;
+    list.splice(Number(at[3]), 1);
+    const block = next.revisions as Json;
+    if (list.length === 0) delete block[at[2]];
+    // A block with no key left is removed (entity.json: at least one key).
+    if (Object.keys(block).length === 0) delete next.revisions;
+    return { json: next, label: "Remove the entry" };
+  }
+  return null;
 }
 
 /**
@@ -601,6 +651,13 @@ export function deriveQuickFix(d: Diagnostic, catalogFix: string | null | undefi
     case "MQ8107": {
       if (element.kind !== "process" && element.kind !== "trigger-point") return null;
       const fix = triggerPointFix(d.rule, element, pointer);
+      return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;
+    }
+    case "MQ8303":
+    case "MQ8306":
+    case "MQ8308":
+    case "MQ8312": {
+      const fix = revisionFix(d.rule, element, pointer);
       return fix ? { kind: "update", id, json: fix.json, label: fix.label } : null;
     }
     case "MQ8201":

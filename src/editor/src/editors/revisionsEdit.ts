@@ -24,7 +24,7 @@ export interface LevelRow {
   skip: string;
   width: string;
   startEmpty: boolean;
-  /** A list's values, separated by commas. */
+  /** A list's values, one per line (so a value may hold a comma). */
   values: string;
 }
 
@@ -39,7 +39,7 @@ export function levelToRow(level: SequenceLevel): LevelRow {
     skip: (level.skip ?? []).join(", "),
     width: level.width === undefined ? "" : String(level.width),
     startEmpty: level.startEmpty === true,
-    values: (level.values ?? []).join(", "),
+    values: (level.values ?? []).join("\n"),
   };
 }
 
@@ -48,9 +48,9 @@ export function parseSkip(text: string): string[] {
   return [...new Set(text.toUpperCase().match(/[A-Z]/g) ?? [])];
 }
 
-/** The values of a list in a text: separated by commas, each trimmed, empty ones and repeats dropped. */
+/** The values of a list in a text: one per line, each trimmed, empty ones and repeats dropped. */
 export function parseListValues(text: string): string[] {
-  return [...new Set(text.split(",").map((v) => v.trim()).filter((v) => v !== ""))];
+  return [...new Set(text.split(/\r?\n/).map((v) => v.trim()).filter((v) => v !== ""))];
 }
 
 /** A row written as a level; fields that don't belong to its kind, and empty fields, are left out. */

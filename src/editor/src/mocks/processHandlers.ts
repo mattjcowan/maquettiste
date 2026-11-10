@@ -13,7 +13,7 @@ import { mentions, replayable, type Recording } from "./recorded";
 
 const kebab = (name: string) => name.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 import { MOCK_FAILURES } from "./model/processSeed";
-import { normalizeInput, PARTICIPANT_TEXTS, readAt, replay, signatureCounts, simulate, unsatisfiedLists } from "./model/stepper";
+import { normalizeInput, PARTICIPANT_TEXTS, readAt, replay, revisionAfter, signatureCounts, simulate, unsatisfiedLists } from "./model/stepper";
 import { enumDrift, schemaDiagnostics } from "./model/validate";
 import { syncCodesOf } from "./model/syncCodes";
 import { report } from "./model/store";
@@ -25,6 +25,7 @@ import { entitySequenceOf, resolveCheckNames, sequenceOf } from "./model/trigger
 import { entityChain } from "@/model/objectFields";
 import { severalEnds } from "./model/endCover";
 import { builtInVerbs } from "@/model/verbs";
+import { resolveRevisions, type EntityWithRevisions } from "@/model/revisionSequence";
 
 type Json = Record<string, unknown>;
 type StateDoc = { id: string; name: string; type?: string; initial?: string; states?: StateDoc[] };
@@ -304,6 +305,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         id: String(a.id),
         name: String(a.name ?? ""),
         default: a.default,
+        defaultExpression: a.defaultExpression,
       })),
     namedRights: new Map([...model.entries.values()].filter((e) => e.json.kind === "right").map((e) => [e.id, e.json] as [string, Json])),
     subjectEntity: subjectsOf(doc).find((e) => e.entity)?.entity,
@@ -312,6 +314,18 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
     governs: (lifecycle: Json, entity: string) => {
       const governed = new Set(governedBy(lifecycle));
       return entityChain(entity, (id) => model.entries.get(id)?.json).some((d) => governed.has(String(d.id)));
+    },
+    // The subject type's revisions block, merged through its bases, with every lifecycle that governs it (revisions-design.md section 8).
+    revisionsOf: (entity: string) => {
+      const governing = [...model.entries.values()]
+        .map((e) => e.json)
+        .filter((j) => j.kind === "process" && j.use === "lifecycle")
+        .filter((l) => {
+          const governed = new Set(governedBy(l));
+          return entityChain(entity, (id) => model.entries.get(id)?.json).some((d) => governed.has(String(d.id)));
+        })
+        .map((l) => String(l.id));
+      return resolveRevisions(entity, new Map(), (id) => model.entries.get(id)?.json as EntityWithRevisions, governing);
     },
     // Ends with several types: a connect step through one checks the connected object's entity (decision 18).
     severalEnds: severalEnds(model.entries.values()),
@@ -334,6 +348,8 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         expect?.refusedBy !== undefined ||
         expect?.checkWarnings !== undefined ||
         expect?.triggerPoints !== undefined ||
+        expect?.revision !== undefined ||
+        st.revision !== undefined ||
         Object.values((st.assume as Json | undefined) ?? {}).some((v) => typeof v === "string")
       );
     });
@@ -464,6 +480,21 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
         message: `Step ${t.index + 1}: the notices due at the step differ from expect.notices; fix the step or update the expectations from a replay.`,
         expected: { notices: expected },
         actual: { notices: actual },
+      };
+    }
+    // MQ9312: the subject's revision after a step, against expect.revision (revisions-design.md section 7).
+    for (const t of result.trace) {
+      if (t.index < 0) continue;
+      const expected = (steps[t.index].expect as Json | undefined)?.revision;
+      if (typeof expected !== "string") continue;
+      const actual = revisionAfter.get(t);
+      if (actual === undefined || actual === expected) continue;
+      return {
+        step: t.index,
+        rule: "MQ9312",
+        message: `Step ${t.index + 1}: the subject's revision after the step is '${actual}', and expect.revision is '${expected}'; fix the step or update the expectations from a replay.`,
+        expected,
+        actual,
       };
     }
     // MQ9307: the values a step set against its expect.values (exactly the attributes the step changed).

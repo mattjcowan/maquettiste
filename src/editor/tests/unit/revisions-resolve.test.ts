@@ -197,13 +197,13 @@ describe("the Revisions tab's conversions", () => {
       width: 2,
       startEmpty: true,
     });
-    expect(rowToLevel({ name: "stage", kind: "list", first: "A", skip: "", width: "", startEmpty: false, values: "Prototype, Pilot run,, Production" })).toEqual({
+    expect(rowToLevel({ name: "stage", kind: "list", first: "A", skip: "", width: "", startEmpty: false, values: "Prototype\nPilot run, phase 1\n\nProduction" })).toEqual({
       name: "stage",
-      values: ["Prototype", "Pilot run", "Production"],
+      values: ["Prototype", "Pilot run, phase 1", "Production"],
     });
     expect(levelToRow({ format: "letters", skip: ["I", "O"], first: "C" })).toMatchObject({ kind: "letters", first: "C", skip: "I, O" });
     expect(parseSkip("i, o, I")).toEqual(["I", "O"]);
-    expect(parseListValues("a, b ,a")).toEqual(["a", "b"]);
+    expect(parseListValues("a, b\nb\n a ")).toEqual(["a, b", "b", "a"]);
   });
 
   it("moves levels up and down, and not past the ends", () => {

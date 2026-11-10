@@ -24,6 +24,8 @@ import {
 } from "./triggerRun";
 import { subjectsOf } from "@/model/process";
 import { builtInVerbs } from "@/model/verbs";
+import type { MergedRevisions } from "@/model/revisionSequence";
+import { moveRevision, reviseValues, startRevision } from "./revisionRun";
 
 type Json = Record<string, unknown>;
 
@@ -88,6 +90,8 @@ interface Edge {
   displayName: string | null;
   /** The verb of the move: the transition's own, else its event's (trigger-points-design.md decision 4); null runs no trigger points. */
   verb: string | null;
+  /** The revision level the move gives the object (revisions-design.md decision 19), or null. A `revise` move without one revises at level 1. */
+  nextRevision: number | null;
 }
 
 class Chart {
@@ -146,6 +150,7 @@ class Chart {
         delay: trigger === "after" ? durationMs(str(t.after)) : null,
         displayName: str(t.displayName),
         verb: str(t.verb) ?? (trigger === "event" ? str(this.events.get(key)?.verb) : null),
+        nextRevision: typeof t.nextRevision === "number" ? t.nextRevision : null,
       };
       this.transitions.push(edge);
       source.transitions.push(edge);
@@ -282,6 +287,8 @@ export interface SimInputJson {
   /** With `delegate`, the participant the signature goes to; and the participant who delegated it to the person answering (decision 34). */
   delegateTo?: string;
   onBehalfOf?: string;
+  /** A revise or labelling step (revisions-design.md decision 40): a chosen name (text), or the level that moves (an integer). */
+  revision?: string | number;
 }
 
 export type Response = "sign" | "reject" | "ignore" | "withdraw" | "delegate";
@@ -338,7 +345,12 @@ export interface StepTraceJson {
   checkWarnings?: string[];
   /** The reminders and escalations that fell due during a time step (decision 35); left out when none did. */
   notices?: { signature: string; kind: "remind" | "escalate"; recipients: string[] }[];
+  /** How the step moved the subject's revision (revisions-design.md decision 40); left out on a step that did not. */
+  revision?: { from: string; to: string; level: number | null };
 }
+
+/** The subject's revision after each step of a run whose subject has revisions (kept off the answer, as the signature counts are). */
+export const revisionAfter = new WeakMap<object, string>();
 
 /** A trigger point that ran in a step, and what it did. */
 export interface TriggerRunJson {
@@ -431,6 +443,8 @@ export interface StepperOptions {
   entityNames?: (id: string) => string;
   /** Replay also records each step's `expect.triggerPoints` (the record operation's `triggerPoints: true`). */
   recordTriggerPoints?: boolean;
+  /** The merged `revisions` block of an entity (null for one with none): the run keeps the subject's revision when it has one. */
+  revisionsOf?: (entity: string) => MergedRevisions | null;
 }
 
 /** The texts of the participant cases of MQ9301 and MQ9305, as RuleCatalog words them (the engine's rule list). */
@@ -500,6 +514,7 @@ export function normalizeInput(step: Json, index: number, chart: { doc: Json }, 
     ...(str(step.delegateTo) ? { delegateTo: str(step.delegateTo)! } : {}),
     ...(str(step.onBehalfOf) ? { onBehalfOf: str(step.onBehalfOf)! } : {}),
     ...(str(step.signature) ? { signature: byName(signatureList(doc), str(step.signature)) ?? undefined } : {}),
+    ...(typeof step.revision === "string" || typeof step.revision === "number" ? { revision: step.revision } : {}),
   };
 }
 
@@ -600,6 +615,8 @@ interface Scope {
   answered?: Edge;
   /** The reminders and escalations that fell due in a time step (decision 35). */
   notices: { signature: string; kind: "remind" | "escalate"; recipients: string[] }[];
+  /** How the step moved the subject's revision: from where the step began, to where it ended. */
+  revisionChange?: { from: string; to: string; level: number | null };
 }
 
 /** The signatures counted after each accepted step that answered an approval, by named signature id (kept off the answer: not in the trace's contract). */
@@ -692,7 +709,13 @@ class Interpreter {
   severalEnds: NonNullable<StepperOptions["severalEnds"]> = new Map();
   entityNames: (id: string) => string = (id) => id;
   entityChain: (entity: string) => string[] = (e) => [e];
-  private prep = new Map<Edge, { sign: Prepared | null; move: Prepared | null }>();
+  /** The merged revisions block of the subject's type, and the subject's current revision (revisions-design.md section 9); none without a subject. */
+  revisionsOf: (entity: string) => MergedRevisions | null = () => null;
+  revisions: MergedRevisions | null = null;
+  revision = "";
+  /** The start values the run was given: a revise that starts the chart over takes its context back to them. */
+  private startContext: Json | undefined;
+  private prep =new Map<Edge, { sign: Prepared | null; move: Prepared | null }>();
   private auditSeq = 0;
   private timerSeq = 0;
   private index = -1;
@@ -711,6 +734,7 @@ class Interpreter {
 
   start(context: Json | undefined, at: number | null): StepTraceJson {
     if (at !== null) this.clock = at;
+    this.startContext = context;
     for (const a of this.chart.attributes) this.context[String(a.id)] = a.default ?? null;
     for (const [id, v] of Object.entries(context ?? {})) if (this.chart.attributes.some((a) => a.id === id)) this.context[id] = v;
     this.scope = newScope(null);
@@ -731,6 +755,12 @@ class Interpreter {
     const object = this.subjectObject();
     for (const a of this.attributesOf(str(object?.entity) ?? this.subjectEntity ?? "")) this.row[a.id] = a.default ?? null;
     for (const [k, v] of Object.entries((object?.values as Json | undefined) ?? {})) this.row[k] = v;
+    // The subject's revision: only when there is a subject type (decision 38), held in the bound attribute when it has one.
+    this.revisions = this.revisionsOf(str(object?.entity) ?? this.subjectEntity ?? "");
+    if (this.revisions) {
+      this.revision = startRevision(this.revisions, object?.revision, this.row);
+      if (this.revisions.boundAttribute) this.row[this.revisions.boundAttribute] = this.revision;
+    }
     this.frozenObject = object?.frozen === true;
     for (const l of arr(object?.links)) if (l.frozen === true) this.frozenLinks.add(`${String(l.end)}|${String(l.object)}`);
   }
@@ -1211,7 +1241,9 @@ class Interpreter {
 
   /** A verb step (decision 25): rights first, then what the run does with it. */
   private handleVerb(input: SimInputJson) {
-    if (this.done || this.deleted) return this.refuse("no-transition");
+    // A revise of a subject with revisions is accepted after the lifecycle ended: it starts the chart again (revisions-design.md section 9, step 1).
+    const reviseAfterEnd = input.verb === "revise" && !!this.revisions && this.chart.doc.use === "lifecycle" && this.revisions.lifecycles.some((l) => l.lifecycle === this.chart.doc.id);
+    if ((this.done && !reviseAfterEnd) || this.deleted) return this.refuse("no-transition");
     const verb = input.verb ?? null;
     const group = builtInVerbs.find((v) => v.key === verb)?.group;
     if (!verb || group === "move" || group === "signature" || group === "task") {
@@ -1242,6 +1274,18 @@ class Interpreter {
     const toId = (k: string) => known.find((a) => a.id === k)?.id ?? known.find((a) => a.name === k)?.id ?? k;
     const named = verb === "read" ? (input.attributes ?? []) : verb === "modify" && !input.end ? Object.keys(input.values ?? {}) : [];
     if (this.checkRights(verb, [], input.end ?? null, verb === "create", named.length ? named.map(toId) : null, input.object ?? null)) return;
+    // Row 7b: the sequence gives the next revision, or the step is refused with `revision` and nothing else runs.
+    let revise: { to: string; level: number | null; resets: Json; expressions: string[] } | null = null;
+    if (verb === "revise" && this.revisions && !input.end) {
+      const next = moveRevision(
+        this.revisions,
+        this.revision,
+        typeof input.revision === "number" ? input.revision : 1,
+        typeof input.revision === "string" ? input.revision : null,
+      );
+      if (!next) return this.refuse("revision");
+      revise = { ...next, ...(({ values, expressions }) => ({ resets: values, expressions }))(reviseValues(this.revisions, this.attributesOf(entity))) };
+    }
     // The values a modify (or a create, decision 27) step gives, by attribute id.
     const values: Json = {};
     if ((verb === "modify" && !input.end) || verb === "create") {
@@ -1260,7 +1304,13 @@ class Interpreter {
       ? this.prepare(
           verb,
           this.placeFor(verb, { attributes: named.length ? named.map(toId) : null, end: input.end ?? null, create: verb === "create" }),
-          { ...this.row, ...values },
+          // A revise's scratch copy is the new revision: the type's reset and cleared values, and the bound attribute at the next value.
+          {
+            ...this.row,
+            ...(revise?.resets ?? {}),
+            ...(revise && this.revisions?.boundAttribute ? { [this.revisions.boundAttribute]: revise.to } : {}),
+            ...values,
+          },
           verb === "create" ? null : { ...this.row },
           true,
         )
@@ -1273,8 +1323,13 @@ class Interpreter {
     if (prepared) {
       this.list(prepared, seen);
       // The proposed values are written before the effect once the step is accepted; copy and revise make a new object the run does not hold.
-      if (verb !== "copy" && verb !== "revise") this.write(prepared, new Set(), values);
-    } else Object.assign(this.row, values);
+      // With revisions, a revise writes the type's reset values and then what the before actions set, which wins (it counts as a thaw).
+      if (revise) {
+        this.thawing = true;
+        this.write(prepared, new Set(), { ...revise.resets, ...values });
+        this.thawing = false;
+      } else if (verb !== "copy" && verb !== "revise") this.write(prepared, new Set(), values);
+    } else Object.assign(this.row, revise ? { ...revise.resets, ...values } : values);
     // A replace stands in for the effect of a verb step only (decision 16); an event that names the verb keeps its move.
     const replaced = prepared ? this.replaceEffect(prepared, verb, !!input.end) : false;
     if (replaced) {
@@ -1285,12 +1340,168 @@ class Interpreter {
     } else if (verb === "delete" && !input.end) {
       this.deleted = true;
       this.scope.notes.push("The object was deleted, so the run stopped; the outcome is read from the chart as it stood.");
+    } else if (revise) {
+      // Done below, in one macrostep.
     } else if (!(verb === "create" && (prepared || Object.keys(values).length))) this.scope.notes.push(`The run checked ${verb} but did not apply it.`);
+    if (revise) {
+      this.macrostep(() => {
+        this.reviseNow(revise!);
+        if (prepared) {
+          this.runLater(prepared, "with-change", seen, { gone: false });
+          this.runLater(prepared, "after-commit", seen);
+        }
+        // The person who revised acted in the new revision (recorded after any clearing).
+        this.act(verb, null);
+        this.runToCompletion();
+      });
+      return;
+    }
     if (prepared) {
       this.runLater(prepared, "with-change", seen, { gone: this.deleted && !replaced });
       this.runLater(prepared, "after-commit", seen);
     }
     this.act(verb, null);
+  }
+
+  // ---- revisions (revisions-design.md section 9) ----
+
+  /** Whether a move gives the subject its next revision: it names a level, or its verb is `revise` (which revises at level 1 when none is named). */
+  private givesRevision(t: Edge): boolean {
+    return !!this.revisions && (t.nextRevision !== null || t.verb === "revise");
+  }
+
+  /** The revision a move gives (row 7b): a chosen name only on the event step's own move; null when the sequence cannot give it. */
+  private moveFor(t: Edge): { to: string; level: number | null } | null {
+    if (!this.revisions) return null;
+    const input = this.scope.input;
+    const chosen = input?.input === "event" && t.trigger === "event" && t.key === input.event && typeof input.revision === "string" ? input.revision : null;
+    return moveRevision(this.revisions, this.revision, t.nextRevision ?? 1, chosen);
+  }
+
+  /** The run's revision becomes `to`; a bound attribute takes it in the row directly (not as a set, so the trace's values leave it out). */
+  private setRevision(to: string, level: number | null) {
+    const from = this.scope.revisionChange?.from ?? this.revision;
+    this.revision = to;
+    if (this.revisions?.boundAttribute) this.row[this.revisions.boundAttribute] = to;
+    this.scope.revisionChange = { from, to, level };
+  }
+
+  /** What each lifecycle did at a revise, as one note, with the revisions it moved between. */
+  private reviseNote(from: string, to: string, parts: string[]) {
+    const links = this.revisions?.links.length ? ` The type's rules for links (${this.revisions.links.length}) are not applied in a run: the links stay as they are.` : "";
+    this.scope.notes.push(`Revised ${from || "none"} to ${to}${parts.length ? `: ${parts.join("; ")}` : ""}.${links}`);
+  }
+
+  /** The lifecycle's name, for a note. */
+  private lifecycleName(id: string): string {
+    return String((id === this.chart.doc.id ? this.chart.doc : this.lifecycles.find((p) => p.id === id))?.name ?? id);
+  }
+
+  /** A state's name in a lifecycle, for a note. */
+  private stateNameIn(lifecycle: string, state: string): string {
+    const doc = lifecycle === this.chart.doc.id ? this.chart.doc : this.lifecycles.find((p) => p.id === lifecycle);
+    const find = (list: unknown): string | null => {
+      for (const s of arr(list)) {
+        if (s.id === state) return String(s.name);
+        const inner = find(s.states);
+        if (inner) return inner;
+      }
+      return null;
+    };
+    return find(doc?.states) ?? state;
+  }
+
+  /** Another lifecycle's outcome at a revise: the subject object's states in it start over or go to the named state; `keep` leaves them. */
+  private setOtherStates(lifecycle: string, rule: string): string {
+    const name = this.lifecycleName(lifecycle);
+    if (rule === "keep") return `${name} kept its states`;
+    const proc = this.lifecycles.find((p) => p.id === lifecycle);
+    const object = this.subjectObject();
+    if (proc && object) {
+      const others = ids(object.states).filter((x) => !stateIds(proc.states).has(x));
+      const next = rule === "restart" ? others : [...others, rule];
+      if (next.length) object.states = next;
+      else delete object.states;
+    }
+    return rule === "restart" ? `${name} started over` : `${name} went to ${this.stateNameIn(lifecycle, rule)}`;
+  }
+
+  /** Steps 10 to 13 of a revise: leave every state without exit actions, clear what the run holds, take the context back to the start, enter again. */
+  private restartChart(target: string | null) {
+    const left = [...this.config].filter((s) => !s.isRoot).sort((a, b) => b.order - a.order);
+    for (const s of left) {
+      this.cancel(s);
+      this.config.delete(s);
+    }
+    this.history.clear();
+    this.timers = [];
+    this.pending = [];
+    this.signatures.clear();
+    this.approvals.clear();
+    this.acts = [];
+    this.enteredAt.clear();
+    this.queue = [];
+    this.done = false;
+    this.context = {};
+    for (const a of this.chart.attributes) this.context[String(a.id)] = a.default ?? null;
+    for (const [id, v] of Object.entries(this.startContext ?? {})) if (this.chart.attributes.some((a) => a.id === id)) this.context[id] = v;
+    this.config.add(this.chart.root);
+    const entering = (target ? this.chart.byId.get(target) : null) ?? this.chart.root.initialChild;
+    if (entering) this.microstep([], entering);
+    const made = this.scope.microsteps[this.scope.microsteps.length - 1];
+    if (made) made.exited = left.map((s) => s.id);
+  }
+
+  /**
+   * A revise verb step, once accepted (steps 7 to 15): the revision moves, the subject thaws, the running lifecycle and the others take their
+   * outcomes, and a note says what each did.
+   */
+  private reviseNow(r: { to: string; level: number | null; resets: Json; expressions: string[] }) {
+    const merged = this.revisions!;
+    const from = this.revision;
+    this.setRevision(r.to, r.level);
+    this.frozenObject = false;
+    const parts: string[] = [];
+    for (const id of r.expressions) parts.push(`${id} resets to a default expression, which your own system fills, so it is empty here`);
+    for (const l of merged.lifecycles) {
+      if (l.lifecycle === this.chart.doc.id) {
+        if (l.onRevise === "keep") parts.push(`${this.lifecycleName(l.lifecycle)} kept its states`);
+        else {
+          this.restartChart(l.onRevise === "restart" ? null : l.onRevise);
+          parts.push(
+            l.onRevise === "restart"
+              ? `${this.lifecycleName(l.lifecycle)} started over`
+              : `${this.lifecycleName(l.lifecycle)} went to ${this.stateNameIn(l.lifecycle, l.onRevise)}`,
+          );
+        }
+      } else parts.push(this.setOtherStates(l.lifecycle, l.onRevise));
+    }
+    this.reviseNote(from, r.to, parts);
+  }
+
+  /**
+   * A move that gives the next revision, after its exit actions (step 7 and, for a revise move, 8, 14 and 15): the revision moves; a revise move
+   * also resets the type's values (except ones a before action set), thaws, and moves the other lifecycles. The lifecycle that made the move goes
+   * where the move goes. Two parallel moves move the revision once.
+   */
+  private applyMove(transitions: Edge[]) {
+    const t = transitions.find((x) => this.givesRevision(x));
+    if (!t || !this.revisions) return;
+    const next = this.moveFor(t);
+    if (!next) return;
+    const from = this.revision;
+    this.setRevision(next.to, next.level);
+    if (t.verb !== "revise") return;
+    const set = new Set(transitions.flatMap((x) => (this.prep.get(x)?.move?.fills ?? []).flatMap((f) => Object.keys(f.sets))));
+    const { values, expressions } = reviseValues(this.revisions, this.attributesOf(str(this.subjectObject()?.entity) ?? this.subjectEntity ?? ""));
+    for (const [k, v] of Object.entries(values)) if (!set.has(k)) this.row[k] = v;
+    this.frozenObject = false;
+    const parts = expressions.map((id) => `${id} resets to a default expression, which your own system fills, so it is empty here`);
+    for (const l of this.revisions.lifecycles) {
+      if (l.lifecycle === this.chart.doc.id) parts.push(`${this.lifecycleName(l.lifecycle)} went where the move goes`);
+      else parts.push(this.setOtherStates(l.lifecycle, l.onRevise));
+    }
+    this.reviseNote(from, next.to, parts);
   }
 
   // ---- trigger points (trigger-points-design.md decisions 10 to 28) ----
@@ -1775,10 +1986,15 @@ class Interpreter {
               continue;
             }
           }
-          // Rows 8 and 9 (decision 18): a check that refuses leaves the candidate out, as a false guard does; a check outranks a gate.
+          // Row 7b (revisions-design.md section 9): a move that gives the next revision needs the sequence to give it; it ranks between a gate and a check.
+          if (this.givesRevision(t) && !this.moveFor(t)) {
+            fail("revision", 3, undefined);
+            continue;
+          }
+          // Rows 8 and 9 (decision 18): a check that refuses leaves the candidate out, as a false guard does; a check outranks a gate and row 7b.
           const refusing = this.triggerRefusal(t, external);
           if (refusing) {
-            fail("check", 3, refusing.run.triggerPoint, refusing.run);
+            fail("check", 4, refusing.run.triggerPoint, refusing.run);
             if (!external) this.leftOut(refusing);
             continue;
           }
@@ -2492,6 +2708,9 @@ class Interpreter {
       exited.push(s.id);
     }
 
+    // A move that gives the next revision moves it after the exit actions and before the transition actions (revisions-design.md section 9).
+    this.applyMove(transitions);
+
     // Transition actions, in transition order.
     for (const t of transitions) for (const action of t.actions) actions.push(this.runAction(action));
 
@@ -2666,7 +2885,9 @@ class Interpreter {
   private finish(before: Json, rowBefore: Json): StepTraceJson {
     const changed: Json = {};
     const valuesChanged: Json = {};
-    for (const [id, v] of Object.entries(this.row)) if (!(id in rowBefore) || !same(rowBefore[id], v)) valuesChanged[id] = v;
+    // The bound revision attribute is written directly, not as a set: the trace's revision says it, not the values.
+    const bound = this.revisions?.boundAttribute;
+    for (const [id, v] of Object.entries(this.row)) if (id !== bound && (!(id in rowBefore) || !same(rowBefore[id], v))) valuesChanged[id] = v;
     for (const [id, v] of Object.entries(this.context)) if (!(id in before) || !same(before[id], v)) changed[id] = v;
     const seen = new Set<string>();
     const diagnostics = this.scope.diagnostics.filter((d) => {
@@ -2701,7 +2922,9 @@ class Interpreter {
       ...(this.scope.triggerRuns.length || this.scope.queued.length ? { triggerPoints: [...this.scope.triggerRuns, ...this.scope.queued] } : {}),
       ...(this.scope.checkWarnings.length ? { checkWarnings: [...this.scope.checkWarnings] } : {}),
       ...(this.scope.notices.length ? { notices: [...this.scope.notices].sort(byNoticeOrder) } : {}),
+      ...(this.scope.revisionChange && this.scope.refusal === null ? { revision: this.scope.revisionChange } : {}),
     };
+    if (this.revisions) revisionAfter.set(trace, this.revision);
     if (this.scope.list) unsatisfiedLists.set(trace, this.scope.list);
     const answered = this.scope.answered;
     if (answered && this.scope.refusal === null) {
@@ -2789,7 +3012,9 @@ export function readAt(at: unknown): number | null | "invalid" {
 export function simulate(doc: Json, start: { context?: Json; at?: string } | null | undefined, steps: Json[], options: StepperOptions = {}): SimulationJson {
   const chart = new Chart(doc);
   const run = new Interpreter(chart, options.actorName, options.membership);
-  run.cast = { objects: options.objects ?? [], subject: options.subject ?? null };
+  // The run may move the subject's states in other lifecycles at a revise: it works on its own copies of the objects.
+  run.cast = { objects: (options.objects ?? []).map((o) => ({ ...o })), subject: options.subject ?? null };
+  run.revisionsOf = options.revisionsOf ?? (() => null);
   run.participants = options.participants ?? [];
   run.ownerActors = options.ownerActors ?? new Set();
   run.membersActors = options.membersActors ?? new Map();
@@ -3050,6 +3275,8 @@ export function replay(doc: Json, start: { context?: Json; at?: string } | null 
     // The reminders and escalations due at the step, each pair once, only where some fell due (decision 35), as the engine records them.
     const notices = [...new Map((t.notices ?? []).map((n) => [`${n.signature} ${n.kind}`, { signature: n.signature, kind: n.kind }])).values()];
     if (notices.length) expect.notices = notices;
+    // A step that moved the subject's revision records where it is now (decision 40).
+    if (t.revision) expect.revision = t.revision.to;
     // Written only when some ran: a step that expected points and now has none drops the key (as the engine's Observed does).
     const ran = (t.triggerPoints ?? []).filter((r) => r.outcome !== "skipped").map((r) => r.triggerPoint);
     const expected = (steps[t.index]?.expect as Json | undefined)?.triggerPoints !== undefined;

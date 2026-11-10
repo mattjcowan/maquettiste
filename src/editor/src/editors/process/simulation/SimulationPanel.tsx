@@ -793,7 +793,11 @@ function CastSection({
     <ul title={L.objectsHint} data-testid="start-objects">
       {objects.map((o) => {
         const states = objectStatesText(o.states, stateGroups.get(o.entity) ?? []);
-        const values = [castValues(o.values, labels.get(o.entity) ?? new Map(), compactValue), states ? `${L.objectStates} ${states}` : ""]
+        const values = [
+          castValues(o.values, labels.get(o.entity) ?? new Map(), compactValue),
+          o.revision ? `${L.objectRevision} ${o.revision}` : "",
+          states ? `${L.objectStates} ${states}` : "",
+        ]
           .filter(Boolean)
           .join("; ");
         return (

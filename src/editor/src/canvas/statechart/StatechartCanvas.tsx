@@ -19,6 +19,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { EmptyState, Toolbar } from "@/components/ui/misc";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { useBinding } from "@/editors/process/ProcessControls";
+import { useRevisionLevelLabels } from "@/editors/process/revisionLevels";
 import { selectProcessNode, useProcessSelection } from "@/editors/process/selection";
 import type { ProcessContext } from "@/editors/process/shared";
 import { useSimulationView } from "@/editors/process/simulation/view";
@@ -100,9 +101,17 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
   // The member names by value: the binding reads them into a new list on every render.
   const membersKey = binding ? JSON.stringify(binding) : null;
   const members = useMemo(() => (membersKey === null ? null : (JSON.parse(membersKey) as string[])), [membersKey]);
+  const revisionLevels = useRevisionLevelLabels(processId);
   const chart = useMemo(
-    () => buildChart(process, { members, problems: pc.problems, actorNames: pc.actorNames }),
-    [process, members, pc.problems, pc.actorNames],
+    () =>
+      buildChart(process, {
+        members,
+        problems: pc.problems,
+        actorNames: pc.actorNames,
+        revisionLevels,
+        eventVerbs: new Map((process.events ?? []).map((e) => [e.id, e.verb])),
+      }),
+    [process, members, pc.problems, pc.actorNames, revisionLevels],
   );
   const stateIds = useMemo(() => new Set(chart.order), [chart]);
   const mountedAt = useRef(performance.now());
@@ -504,6 +513,7 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
           transition: e.transition,
           label: e.label,
           gate: e.gate,
+          revision: e.revision,
           badges: e.badges,
           detour: lifted.get(e.id) ?? null,
           onSelect: selectTransition,

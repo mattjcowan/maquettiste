@@ -533,6 +533,7 @@ export const SIMULATION_LABELS = {
   cast: "Cast",
   objectSubject: "subject",
   objectStates: "states",
+  objectRevision: "revision",
   objectsHint: "The scenario's objects; edit them in the JSON view of the scenario.",
   // Enabled
   raise: "Raise",
@@ -595,6 +596,7 @@ export const SIMULATION_LABELS = {
     default: "nothing allows it, and the lifecycle denies by default",
     frozen: "it is frozen, and freezing refuses changes until a thaw",
     check: "a check of a trigger point refuses it",
+    revision: "the revision sequence cannot give that revision (a list at its end, or a name that is not later)",
   } as Record<string, string>,
   verbInput: (verb: string) => `do ${verb}`,
   didVerb: (verb: string, actor: string) => `Did ${verb}${actor ? ` as ${actor}` : ""}`,
@@ -606,6 +608,8 @@ export const SIMULATION_LABELS = {
   actionSources: { expression: "expression", sets: "sets", stub: "stub, changes nothing" } as Record<string, string>,
   setsLine: (sets: string) => `Sets: ${sets}`,
   valuesLine: (values: string) => `Values: ${values}`,
+  revisionLine: (from: string, to: string, level: number | null) =>
+    `Revision ${from || "none"} to ${to || "none"}${level === null ? " (a chosen name)" : ` (level ${level})`}`,
   noteLine: (note: string) => `Note: ${note}`,
   unknownAttributesRefused: (attributes: string) =>
     `No attribute was picked, and unknown attributes are refused because the right names attribute ${attributes}. Pick an attribute under Do.`,

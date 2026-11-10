@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Play, Plus } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useElement, useElements, useIndex } from "@/api/queries";
+import { setStepRevision, stepRevisionLevel, stepRevisionName, stepTakesLevel, stepTakesName, subjectLevelLabels, useMergedRevisions } from "./revisionFields";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
@@ -204,6 +205,10 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
     }
   }
   const rows = stepRows(scenario, processDoc, actorNames, valueNames, more);
+  // Revisions (revisions-design.md section 12): shown when the subject's type has a sequence, or a step already says something about one.
+  const subjectRevisions = useMergedRevisions(starts).get(starts[0] ?? "");
+  const revisionLevels = subjectLevelLabels(subjectRevisions);
+  const revisionsShown = revisionLevels.length > 0 || scenario.steps.some((s) => s.revision !== undefined || s.expect?.revision !== undefined);
   const verbOptions: GridOption[] = verbGroups("right", verbs.own, verbs.hidden)
     .filter((g) => g.id !== "move" && g.id !== "signature" && g.id !== "task")
     .flatMap((g) => g.options.map((o) => ({ value: o.key, label: o.label })));
@@ -472,6 +477,43 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       mono: true,
       value: (r) => r.values,
     },
+    ...(revisionsShown
+      ? [
+          {
+            key: "revisionLevel",
+            label: "Revise at",
+            tooltip: "The level a revise step moves; leave empty for level 1, or choose a name instead",
+            kind: "select" as const,
+            width: "min-w-24",
+            value: (r: StepRow) => {
+              const n = stepRevisionLevel(step(r));
+              return n === undefined ? "" : (revisionLevels.find((l) => l.number === n)?.label ?? `Level ${n}`);
+            },
+            editValue: (r: StepRow) => String(stepRevisionLevel(step(r)) ?? ""),
+            options: () => [none, ...revisionLevels.map((l) => ({ value: String(l.number), label: l.label }))],
+            locked: (r: StepRow) => !stepTakesLevel(step(r)),
+          },
+          {
+            key: "revisionName",
+            label: "Revision",
+            tooltip: "A chosen name for the new revision: a later value of the sequence",
+            kind: "text" as const,
+            width: "min-w-20",
+            mono: true,
+            value: (r: StepRow) => stepRevisionName(step(r)),
+            locked: (r: StepRow) => !stepTakesName(step(r), processDoc),
+          },
+          {
+            key: "expectRevision",
+            label: "Expect revision",
+            tooltip: "The subject's revision after the step",
+            kind: "text" as const,
+            width: "min-w-20",
+            mono: true,
+            value: (r: StepRow) => step(r)?.expect?.revision ?? "",
+          },
+        ]
+      : []),
     ...(hasApproval(processDoc)
       ? [
           {
@@ -605,6 +647,12 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
         const ids = v.split(",").filter(Boolean);
         if (ids.length) expect.checkWarnings = ids;
         else delete expect.checkWarnings;
+        setOpt(s, "expect", expect);
+      } else if (key === "revisionLevel" || key === "revisionName") setStepRevision(s, key === "revisionLevel" ? "level" : "name", v);
+      else if (key === "expectRevision") {
+        const expect = { ...(s.expect ?? {}) } as NonNullable<StepDoc["expect"]>;
+        if (v.trim()) expect.revision = v.trim();
+        else delete expect.revision;
         setOpt(s, "expect", expect);
       } else if (key === "states" || key === "context") {
         const expect = { ...(s.expect ?? {}) };

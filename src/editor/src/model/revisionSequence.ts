@@ -219,14 +219,17 @@ export type EntityWithRevisions = { base?: string; revisions?: RevisionsBlock } 
 
 /**
  * The lifecycles that govern an entity: those that name it, or a base of it (`chain`: the entity then its bases), as a subject or in
- * the types they cover. Reads the index only, as the scenario editor does. A lifecycle on a stereotype is not found here.
+ * the types they cover, or a stereotype the entity (or a base) carries. Reads the index only, as the scenario editor does.
  */
 export function governingLifecycles(rows: readonly ElementSummary[], chain: readonly string[]): string[] {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  // The stereotypes the entity or a base carries, by key: a lifecycle with a stereotype entry governs every carrier.
+  const carried = new Set(chain.flatMap((c) => byId.get(c)?.stereotypes ?? []));
   return rows
     .filter((p) => p.kind === "process" && p.use === "lifecycle")
     .filter((p) => {
       const subjects = [...(p.subject ? [p.subject] : []), ...(p.subjects ?? []), ...(p.covers ?? [])];
-      return chain.some((c) => subjects.includes(c));
+      return chain.some((c) => subjects.includes(c)) || (p.subjectStereotypes ?? []).some((s) => carried.has(byId.get(s)?.name ?? ""));
     })
     .map((p) => p.id);
 }
