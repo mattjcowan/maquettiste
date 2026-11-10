@@ -5,7 +5,7 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
-## 0.23.0
+## 0.23.0 (2026-11-10)
 
 - **Revisions.** An entity may carry one optional `revisions` block. It says what revisions of that type look like and what a revise
   carries over. Until a type has the block, `revise` is only a word that rights and trigger points can name. The model does not say
