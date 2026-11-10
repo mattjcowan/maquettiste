@@ -22,7 +22,10 @@
     "dashed": { "levels": [ { "format": "letters" }, { "format": "numbers", "startEmpty": true } ], "separator": "-" },
     "joined": { "levels": [ { "format": "letters" }, { "format": "numbers" } ], "separator": "" },
     "joinedThree": { "levels": [ { "format": "letters" }, { "format": "numbers" }, { "format": "letters" } ], "separator": "" },
-    "stagesWithBuilds": { "levels": [ { "values": ["Prototype", "Pilot run", "Production"] }, { "format": "numbers", "startEmpty": true } ], "separator": "." }
+    "stagesWithBuilds": { "levels": [ { "values": ["Prototype", "Pilot run", "Production"] }, { "format": "numbers", "startEmpty": true } ], "separator": "." },
+    "singleListJoined": { "levels": [ { "values": ["V1", "V2", "Pilot run", "Rev 10b"] } ], "separator": "" },
+    "lettersJoined": { "levels": [ { "format": "letters" } ], "separator": "" },
+    "numbersJoined": { "levels": [ { "format": "numbers", "width": 2 } ], "separator": "" }
   },
   "start": [
     { "sequence": "letters", "expected": "A" },
@@ -39,7 +42,10 @@
     { "sequence": "dashed", "expected": "A" },
     { "sequence": "joined", "expected": "A1" },
     { "sequence": "joinedThree", "expected": "A1A" },
-    { "sequence": "stagesWithBuilds", "expected": "Prototype" }
+    { "sequence": "stagesWithBuilds", "expected": "Prototype" },
+    { "sequence": "singleListJoined", "expected": "V1" },
+    { "sequence": "lettersJoined", "expected": "A" },
+    { "sequence": "numbersJoined", "expected": "01" }
   ],
   "isValue": [
     { "sequence": "letters", "text": "A", "expected": true, "parts": ["A"] },
@@ -127,7 +133,18 @@
     { "sequence": "joinedThree", "text": "A12B3", "expected": false, "note": "more parts than levels" },
     { "sequence": "stagesWithBuilds", "text": "Production", "expected": true, "parts": ["Production"] },
     { "sequence": "stagesWithBuilds", "text": "Production.1", "expected": true, "parts": ["Production", "1"] },
-    { "sequence": "stagesWithBuilds", "text": "Production.0", "expected": false, "note": "before first, 1 by default" }
+    { "sequence": "stagesWithBuilds", "text": "Production.0", "expected": false, "note": "before first, 1 by default" },
+    { "sequence": "singleListJoined", "text": "V1", "expected": true, "parts": ["V1"], "note": "one level is never split, so a list value with letters and digits reads back whole" },
+    { "sequence": "singleListJoined", "text": "Pilot run", "expected": true, "parts": ["Pilot run"], "note": "nor split where the case or a space changes" },
+    { "sequence": "singleListJoined", "text": "Rev 10b", "expected": true, "parts": ["Rev 10b"] },
+    { "sequence": "singleListJoined", "text": "V", "expected": false, "note": "not in the list" },
+    { "sequence": "singleListJoined", "text": "V3", "expected": false, "note": "not in the list" },
+    { "sequence": "lettersJoined", "text": "AB", "expected": true, "parts": ["AB"] },
+    { "sequence": "lettersJoined", "text": "A1", "expected": false, "note": "a digit is not a letter" },
+    { "sequence": "lettersJoined", "text": "Ab", "expected": false, "note": "case counts" },
+    { "sequence": "numbersJoined", "text": "07", "expected": true, "parts": ["07"] },
+    { "sequence": "numbersJoined", "text": "7", "expected": false, "note": "only the padded form is a value" },
+    { "sequence": "numbersJoined", "text": "07A", "expected": false, "note": "a letter is not a digit" }
   ],
   "write": [
     { "sequence": "drawing", "parts": ["A"], "expected": "A", "note": "the separator only between two levels that both hold a value" },
@@ -137,7 +154,8 @@
     { "sequence": "dashed", "parts": ["B", "2"], "expected": "B-2" },
     { "sequence": "joined", "parts": ["A", "1"], "expected": "A1" },
     { "sequence": "joinedThree", "parts": ["A", "12", "B"], "expected": "A12B" },
-    { "sequence": "stagesWithBuilds", "parts": ["Pilot run", "3"], "expected": "Pilot run.3" }
+    { "sequence": "stagesWithBuilds", "parts": ["Pilot run", "3"], "expected": "Pilot run.3" },
+    { "sequence": "singleListJoined", "parts": ["Rev 10b"], "expected": "Rev 10b" }
   ],
   "next": [
     { "sequence": "letters", "from": "A", "level": 1, "expected": "B" },
@@ -202,7 +220,12 @@
     { "sequence": "stagesWithBuilds", "from": "Pilot run.2", "level": 1, "expected": "Production" },
     { "sequence": "stagesWithBuilds", "from": "Production", "level": 2, "expected": "Production.1", "note": "a list at its end still lets a lower level move" },
     { "sequence": "stagesWithBuilds", "from": "Production.4", "level": 2, "expected": "Production.5" },
-    { "sequence": "stagesWithBuilds", "from": "Production.4", "level": 1, "refused": true, "note": "a list at its last value can't move" }
+    { "sequence": "stagesWithBuilds", "from": "Production.4", "level": 1, "refused": true, "note": "a list at its last value can't move" },
+    { "sequence": "singleListJoined", "from": "V1", "level": 1, "expected": "V2" },
+    { "sequence": "singleListJoined", "from": "V2", "level": 1, "expected": "Pilot run" },
+    { "sequence": "singleListJoined", "from": "Rev 10b", "level": 1, "refused": true, "note": "a list at its last value can't move" },
+    { "sequence": "lettersJoined", "from": "Z", "level": 1, "expected": "AA" },
+    { "sequence": "numbersJoined", "from": "09", "level": 1, "expected": "10" }
   ],
   "chosen": [
     { "sequence": "drawing", "latest": "A.2", "name": "B", "ok": true, "note": "the next value itself" },
@@ -220,7 +243,9 @@
     { "sequence": "stages", "latest": "Prototype", "name": "Production", "ok": true, "note": "skipping ahead" },
     { "sequence": "stages", "latest": "Pilot run", "name": "Prototype", "ok": false, "why": "not-later", "note": "earlier by position" },
     { "sequence": "stages", "latest": "Production", "name": "Production", "ok": false, "why": "not-later", "note": "equal" },
-    { "sequence": "stages", "latest": "Prototype", "name": "Released", "ok": false, "why": "not-a-value" }
+    { "sequence": "stages", "latest": "Prototype", "name": "Released", "ok": false, "why": "not-a-value" },
+    { "sequence": "singleListJoined", "latest": "V1", "name": "Rev 10b", "ok": true, "note": "skipping ahead" },
+    { "sequence": "singleListJoined", "latest": "Pilot run", "name": "V2", "ok": false, "why": "not-later", "note": "earlier by position" }
   ],
   "compare": [
     { "sequence": "letters", "a": "Z", "b": "AA", "expected": -1, "note": "letters by length, then alphabetically" },
@@ -236,6 +261,8 @@
     { "sequence": "stages", "a": "Prototype", "b": "Pilot run", "expected": -1, "note": "a list by position, not alphabetically" },
     { "sequence": "stages", "a": "Prototype", "b": "Production", "expected": -1, "note": "a list by position, not alphabetically" },
     { "sequence": "stages", "a": "Production", "b": "Pilot run", "expected": 1 },
+    { "sequence": "singleListJoined", "a": "V2", "b": "Pilot run", "expected": -1, "note": "a list by position" },
+    { "sequence": "singleListJoined", "a": "Rev 10b", "b": "V1", "expected": 1 },
     { "sequence": "drawing", "a": "A", "b": "A.1", "expected": -1, "note": "an empty level comes before any value" },
     { "sequence": "drawing", "a": "A.9", "b": "A.10", "expected": -1 },
     { "sequence": "drawing", "a": "A.3", "b": "B", "expected": -1, "note": "level by level from level 1" },
@@ -260,6 +287,7 @@
     { "sequence": "numbersWidth2", "level": 1, "expected": ["01", "02", "03", "04", "05"] },
     { "sequence": "numbersFrom98Width2", "level": 1, "expected": ["98", "99", "100", "101", "102"] },
     { "sequence": "stages", "level": 1, "expected": ["Prototype", "Pilot run", "Production"], "note": "all of a list shorter than five" },
+    { "sequence": "singleListJoined", "level": 1, "expected": ["V1", "V2", "Pilot run", "Rev 10b"], "note": "all of a list shorter than five" },
     { "sequence": "longList", "level": 1, "expected": ["alpha", "beta", "gamma", "delta", "epsilon"] },
     { "sequence": "drawing", "level": 1, "expected": ["A", "B", "C", "D", "E"] },
     { "sequence": "drawing", "level": 2, "expected": ["1", "2", "3", "4", "5"], "note": "startEmpty does not change a level's own values" },

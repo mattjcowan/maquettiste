@@ -22,6 +22,8 @@ internal sealed class RunRevisions
     private readonly Entity? _entity;
     // The states each other lifecycle reads from the latest revise on, by lifecycle id; only those a revise changed.
     private readonly Dictionary<string, IReadOnlyList<string>> _revised = new(StringComparer.Ordinal);
+    // Whether the running process is a lifecycle that governs a type with revisions, worked out for the first no-object note.
+    private bool? _governsRevisions;
 
     private RunRevisions(ModelSnapshot model, Process process, ScenarioObject? obj, Entity? entity, MergedRevisions? merged, RevisionSequence? sequence)
     {
@@ -86,6 +88,22 @@ internal sealed class RunRevisions
 
     /// <summary>The notes the reset values bring: a default expression the team's system fills, and an emptied required value.</summary>
     public IReadOnlyList<string> ResetNotes { get; } = [];
+
+    /// <summary>
+    /// The note a revise, or a move that revises or labels, gives in a run with no subject object (decision 38), which moves no revision. The
+    /// reason depends on the process: a lifecycle that governs a type with revisions may govern several, and the run can't know which apply;
+    /// an orchestration, a library, or a lifecycle that governs none has no revision to move.
+    /// </summary>
+    /// <param name="what">What moved no revision, such as "the move gave".</param>
+    /// <returns>The note.</returns>
+    public string NoObjectNote(string what)
+    {
+        _governsRevisions ??= _process.Use == ProcessUse.Lifecycle
+            && _model.All<Entity>().Any(e => RevisionCoverage.Of(_model).For(e) is not null && SubjectCoverage.Governs(_model, _process, e));
+        return _governsRevisions.Value
+            ? $"The run has no object, so {what} no revision: one lifecycle may govern types with different revisions, and the run can't know which apply."
+            : $"The run has no object, so {what} no revision: only an object whose type has revisions has one.";
+    }
 
     /// <summary>The entity whose block holds the sequence, which a refusal <c>revision</c> names (decision 22).</summary>
     public string RefusedBy => (Merged!.LevelsFrom ?? Merged.Entity).Id;

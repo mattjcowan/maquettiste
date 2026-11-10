@@ -96,7 +96,7 @@ public sealed class RevisionSequence
 
     /// <summary>
     /// Reads a revision into its filled levels (section 6, rule 4): split on the separator, or with an empty separator where a digit meets
-    /// anything else. A text is a value when it has no more parts than levels, at least as many as the levels that are never empty (those
+    /// anything else; a sequence of one level is not split. A text is a value when it has no more parts than levels, at least as many as the levels that are never empty (those
     /// above the first level that starts empty), and each part is a value of its level. <c>""</c> has no parts.
     /// </summary>
     /// <param name="text">The text.</param>
@@ -233,6 +233,11 @@ public sealed class RevisionSequence
     {
         if (text.Length == 0)
             return [];
+
+        // A separator only stands between two levels, so a sequence of one level reads the whole text as its value: a list value such
+        // as "V1" with an empty separator reads back whole (section 6, rules 3 and 4).
+        if (_levels.Length == 1)
+            return [text];
         if (Separator.Length > 0)
             return [.. text.Split(Separator)];
         var parts = new List<string>();

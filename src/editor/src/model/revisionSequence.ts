@@ -134,8 +134,10 @@ export function readRevision(seq: RevisionSequence, text: string): string[] | nu
   const levels = seq.levels;
   if (!levels.length) return null;
   if (text === "") return levels[0].startEmpty === true ? [] : null;
+  // As the engine: a separator only stands between two levels, so one level reads the whole text; with "", split where a digit
+  // meets anything else.
   const separator = separatorOf(seq);
-  const parts = separator === "" ? (text.match(/[A-Z]+|[a-z]+|[0-9]+|[^A-Za-z0-9]+/g) ?? []) : text.split(separator);
+  const parts = levels.length === 1 ? [text] : separator === "" ? (text.match(/[0-9]+|[^0-9]+/g) ?? []) : text.split(separator);
   if (parts.length > levels.length || parts.length < requiredLevels(seq)) return null;
   return parts.every((p, i) => levelIsValue(levels[i], p)) ? parts : null;
 }

@@ -283,12 +283,14 @@ public sealed partial class StatechartInterpreter
             }
         }
 
-        // With a block, a revise counts as thawing for the frozen notes (revisions-design.md section 9): the new revision starts thawed.
-        _scope.Thaws = root && (string.Equals(ev.Verb, "thaw", StringComparison.Ordinal) || (ev.Verb == "revise" && _revisions is { Active: true }));
+        // A thaw's own move runs thawed; a revise move counts as thawing in its own microstep (Microstep), whatever the event's verb.
+        _scope.Thaws = root && string.Equals(ev.Verb, "thaw", StringComparison.Ordinal);
         _scope.Event = EventObject(ev.Name, input.Actor, ev.Payload, input.Payload);
+        var moved = false;
         Macrostep(() =>
         {
             var selection = Select(target, TransitionTrigger.Event, ev.Id, external: true);
+            moved = selection.Transitions.Count > 0;
             if (selection.Transitions.Count == 0 && !selection.Consumed)
             {
                 RefuseSelection(selection);
@@ -314,8 +316,9 @@ public sealed partial class StatechartInterpreter
             return true;
         });
 
-        // An event step's chosen name applies to a move that revises or labels (revisions-design.md decision 40); otherwise it is ignored.
-        if (input.Revision is { } choice && _scope.Refusal is null && !_scope.ChoiceUsed && _revisions is { Active: true })
+        // An event step's chosen name applies to a move that revises or labels (revisions-design.md decision 40); otherwise it is ignored. A
+        // signature that leaves a gate waiting takes no move, so there is nothing to say.
+        if (input.Revision is { } choice && moved && _scope.Refusal is null && !_scope.ChoiceUsed && _revisions is { Active: true })
             Note($"The move taken neither revises nor gives the next revision, so the step's revision '{choice.Name ?? choice.Level?.ToString(CultureInfo.InvariantCulture)}' was ignored.");
 
         // An accepted event that names freeze or thaw freezes or thaws the subject (decision 16), after its move.
@@ -511,7 +514,7 @@ public sealed partial class StatechartInterpreter
         }
         else if (verb == "revise" && input.End is null && _revisions is { Active: false })
         {
-            Note("The run has no object, so the revise moved no revision: one lifecycle may govern types with different revisions, and the run can't know which apply.");
+            Note(_revisions.NoObjectNote("the revise moved"));
         }
 
         // The values a modify step on the subject, or a create step, gives (trigger-points-design.md decision 27), by attribute id with its name;
@@ -1377,6 +1380,11 @@ public sealed partial class StatechartInterpreter
         // leaves, which the earlier revision stays in.
         var moving = _revisions is not null && initial is null && inst.Parent is null ? RevisionMove(transitions) : null;
         var leaving = moving is { Revise: true } ? LiveStates() : null;
+        // With a block, a revise move counts as thawing for the frozen notes (section 9), the move's verb deciding, not its event's: its
+        // before actions' sets are the new revision's, and it starts thawed.
+        var thaws = _scope.Thaws;
+        if (moving is { Revise: true } && _revisions is { Active: true })
+            _scope.Thaws = true;
         var entered = new List<string>();
         var actions = new List<ActionRun>();
         // The points of the moves taken (trigger-points-design.md decision 18): listed once per microstep, and their proposed values written
@@ -1423,6 +1431,7 @@ public sealed partial class StatechartInterpreter
         // The revision moves after the exit actions and before the transition actions (decision 19).
         if (moving is { } revisionMove)
             MoveRevision(revisionMove, taken, leaving);
+        _scope.Thaws = thaws;
 
         // Transition actions, in transition order.
         foreach (var t in transitions)

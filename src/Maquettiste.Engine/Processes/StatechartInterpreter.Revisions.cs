@@ -180,7 +180,7 @@ public sealed partial class StatechartInterpreter
         var revisions = _revisions!;
         if (!revisions.Active)
         {
-            Note("The run has no object, so the move gave no revision: one lifecycle may govern types with different revisions, and the run can't know which apply.");
+            Note(revisions.NoObjectNote("the move gave"));
             return;
         }
 
@@ -205,10 +205,7 @@ public sealed partial class StatechartInterpreter
                 resets[id] = (name, value);
         }
 
-        var thaws = _scope.Thaws;
-        _scope.Thaws = true;
-        Apply(resets);
-        _scope.Thaws = thaws;
+        Apply(resets); // thawed: Microstep counts a revise move as thawing
         ReviseSubject(next, chosen is null ? step.Level : null, move: true, leaving);
     }
 

@@ -159,6 +159,29 @@ public sealed class RevisionRunPathTests
         "transitions":[{"id":"01JRWT00000000000000000031","source":"01JRWS00000000000000000031","event":"01JRWX00000000000000000031","targets":["01JRWS00000000000000000032"]}]
         """, use: "");
 
+    // F0 moves to itself on go (no verb), whose transition revises, and on back (verb revise), whose transition promotes; a before action stamps
+    // the trail on both verbs.
+    private const string Frost = "01JRWP00000000000000000009";
+    private static readonly string FrostLife = Process(Frost, "Frost", "01JRWB00000000000000000009", $$"""
+        "events":[{"id":"01JRWX00000000000000000071","name":"go"},{"id":"01JRWX00000000000000000072","name":"back","verb":"revise"}],
+        "states":[{"id":"01JRWS00000000000000000071","name":"F0"}],"initial":"01JRWS00000000000000000071",
+        "transitions":[
+          {"id":"01JRWT00000000000000000071","source":"01JRWS00000000000000000071","event":"01JRWX00000000000000000071","verb":"revise","targets":["01JRWS00000000000000000071"]},
+          {"id":"01JRWT00000000000000000072","source":"01JRWS00000000000000000071","event":"01JRWX00000000000000000072","verb":"promote","targets":["01JRWS00000000000000000071"]}],
+        "triggerPoints":[{"id":"01JRWQ00000000000000000071","name":"Stamp","type":"action","timing":"before","verbs":["revise","promote"],
+          "sets":[{"id":"01JRWV00000000000000000071","attribute":"{{Trail}}","value":{{T("'x'")}} }]}]
+        """);
+
+    // A revise move behind a gate that needs two signatures.
+    private const string Gated = "01JRWP00000000000000000010";
+    private static readonly string GatedLife = Process(Gated, "Gated", "01JRWB00000000000000000010", $$"""
+        "events":[{"id":"01JRWX00000000000000000081","name":"approve"}],
+        "states":[{"id":"01JRWS00000000000000000081","name":"G0"},{"id":"01JRWS00000000000000000082","name":"G1"}],"initial":"01JRWS00000000000000000081",
+        "transitions":[{"id":"01JRWT00000000000000000081","source":"01JRWS00000000000000000081","event":"01JRWX00000000000000000081","verb":"revise",
+          "targets":["01JRWS00000000000000000082"],"gate":{"id":"01JRWK00000000000000000081","name":"sign","required":2,"signers":["{{Approver}}"],
+          "meanings":[{"id":"01JRWK00000000000000000082","name":"approved"}]} }]
+        """);
+
     private static string Attribute(string id, string name, string extra = "") => $$"""{"id":"{{id}}","name":"{{name}}","type":"string","length":40{{extra}}}""";
 
     private static async Task<(LoaderHarness Harness, ModelStore Store)> OpenAsync(string? block, params string[] processes)
@@ -402,6 +425,70 @@ public sealed class RevisionRunPathTests
         Assert.DoesNotContain("Required attribute 'status'", notes, StringComparison.Ordinal);
         Assert.Null(Value(t[1], Owner));
         Assert.Equal("draft", Value(t[1], Status));
+    }
+
+    // Section 9: a revise move counts as thawing for the frozen notes by the move's verb, not its event's. A move whose transition revises under
+    // an event with no verb applies its before sets with no frozen note; a move whose transition promotes under an event that names revise notes
+    // that the frozen object's sets applied.
+    [Fact]
+    public async Task The_frozen_note_follows_the_verb_of_the_move_not_of_its_event()
+    {
+        var (h, store) = await OpenAsync(Block(), FrostLife);
+        using var _ = h;
+        await using var __ = store;
+        const string Frozen = "The object is frozen, but a trigger point's sets applied";
+        var revised = await SimulateAsync(store, Frost, [Event("01JRWX00000000000000000071")], Objects(",\"frozen\":true"));
+        Assert.Equal(("A", "B", 1), Moved(revised[1]));
+        Assert.Equal("x", Value(revised[1], Trail));
+        Assert.DoesNotContain(Frozen, Notes(revised[1]), StringComparison.Ordinal);
+
+        var promoted = await SimulateAsync(store, Frost, [Event("01JRWX00000000000000000072")], Objects(",\"frozen\":true"));
+        Assert.True(promoted[1].Accepted);
+        Assert.Null(promoted[1].Revision);
+        Assert.Equal("x", Value(promoted[1], Trail));
+        Assert.Contains(Frozen, Notes(promoted[1]), StringComparison.Ordinal);
+    }
+
+    // Decision 40: a signature that leaves a gated revise move waiting takes no move, so the step's chosen name is not said to be ignored; the
+    // signature that completes the gate gives it.
+    [Fact]
+    public async Task A_signature_that_leaves_a_gated_revise_waiting_does_not_say_the_chosen_name_was_ignored()
+    {
+        var (h, store) = await OpenAsync(Block(), GatedLife);
+        using var _ = h;
+        await using var __ = store;
+        var t = await SimulateAsync(store, Gated,
+        [
+            Event("01JRWX00000000000000000081", $$""","actor":"{{Approver}}","signer":"kim","revision":"C" """),
+            Event("01JRWX00000000000000000081", $$""","actor":"{{Approver}}","signer":"lee","revision":"C" """),
+        ]);
+        Assert.True(t[1].Accepted);
+        Assert.Null(t[1].Revision);
+        Assert.DoesNotContain("was ignored", Notes(t[1]), StringComparison.Ordinal);
+        Assert.Equal(("A", "C", null), Moved(t[2]));
+        Assert.DoesNotContain("was ignored", Notes(t[2]), StringComparison.Ordinal);
+    }
+
+    // Decision 38: with no subject object a revise moves no revision; the note's reason fits the process: a lifecycle that governs a type with
+    // revisions can't know which type's apply, and an orchestration has none.
+    [Fact]
+    public async Task The_no_object_note_gives_a_reason_that_fits_the_process()
+    {
+        var (h, store) = await OpenAsync(Block(), MainLife(), ChildProcess);
+        using var _ = h;
+        await using var __ = store;
+        async Task<string> NoteOf(string process, string ev)
+        {
+            var call = await store.SimulateProcessAsync(process, new SimulateRequest { Steps = [Event(ev)] }, Ct);
+            Assert.True(call.Status == ProcessCallStatus.Ok, call.Detail);
+            Assert.Null(call.Value!.Trace[1].Revision);
+            return Notes(call.Value.Trace[1]);
+        }
+
+        Assert.Contains("the move gave no revision: one lifecycle may govern types with different revisions", await NoteOf(Main, ReviseEvent), StringComparison.Ordinal);
+        var orchestration = await NoteOf(Child, "01JRWX00000000000000000031");
+        Assert.Contains("the move gave no revision: only an object whose type has revisions has one.", orchestration, StringComparison.Ordinal);
+        Assert.DoesNotContain("one lifecycle may govern", orchestration, StringComparison.Ordinal);
     }
 
     private static Scenario Scenario(string step) => JsonSerializer.Deserialize<Scenario>($$"""
