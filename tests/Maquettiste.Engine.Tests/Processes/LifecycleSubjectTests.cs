@@ -86,8 +86,12 @@ public sealed class LifecycleSubjectTests
 
     private static JsonElement Json(string text) => JsonDocument.Parse(text).RootElement.Clone();
 
-    private static JsonObject Record(ResolvedModel model, string id) =>
-        JsonSerializer.SerializeToNode(ResolvedRecords.Entries(model, "all", null).Single(e => e.Id == id).Project(), Web)!.AsObject();
+    private static JsonObject Record(ResolvedModel model, string id)
+    {
+        // Every record of the model fits the resolved-model schema.
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model);
+        return JsonSerializer.SerializeToNode(ResolvedRecords.Entries(model, "all", null).Single(e => e.Id == id).Project(), Web)!.AsObject();
+    }
 
     // ---- one list ----
 

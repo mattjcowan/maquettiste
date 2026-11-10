@@ -205,6 +205,7 @@ public sealed class ValidateTests
     {
         foreach (var name in TestServices.Schemas.FileNames)
             repo.Temp.WriteBytes(SchemaFolder + "/" + name, TestServices.Schemas.GetFileBytes(name).ToArray());
+        repo.Temp.WriteBytes(SchemaFolder + "/" + Engine.ResolvedContract.ReferenceFile, Engine.ResolvedContract.ReferenceBytes.ToArray());
     }
 
     private static List<JsonElement> Mq1008(string json)
@@ -267,7 +268,7 @@ public sealed class ValidateTests
         var result = await repo.RunAsync("validate", "--format", "json");
         var warning = Assert.Single(Mq1008(result.Out));
         Assert.Contains("actor.json (missing), batch.json (missing)", warning.GetProperty("message").GetString(), StringComparison.Ordinal);
-        Assert.Contains($", and {TestServices.Schemas.FileNames.Count - 5} more.", warning.GetProperty("message").GetString(), StringComparison.Ordinal);
+        Assert.Contains($", and {TestServices.Schemas.FileNames.Count + 1 - 5} more.", warning.GetProperty("message").GetString(), StringComparison.Ordinal);
         Assert.False(Directory.Exists(repo.PathOf(SchemaFolder)));
     }
 

@@ -190,6 +190,7 @@ public sealed class OperationGuardTests
         var store = new ModelStore(repo.Options);
         var model = await new ModelResolver(repo.Options).ResolveAsync(await store.GetSnapshotAsync(Ct), null, Ct);
 
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model, "operationGuardRecord");
         var record = (OperationRecord)ResolvedRecords.Entries(model, "operations", null).Single(e => e.Id == Reprice).Project();
         Assert.Equal([("positive", "newPrice > 0", TooLow), ("changed", "newPrice <> subject.price", Reprice + "." + Stale)],
             record.Guards!.Select(g => (g.Name, g.Condition!.Text, g.Error)));

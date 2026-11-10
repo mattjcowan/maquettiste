@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Checks that the committed model is exactly what build-model.mjs produces from domain/*.yaml, and that the committed
-// schemas and packs are copies of schemas/v1 and packs/. Builds twice to prove determinism. Exit 0 when equal, 1 otherwise.
+// schemas and packs are copies of schemas/v1 (with docs/resolved-model.md) and packs/. Builds twice to prove determinism. Exit 0 when equal, 1 otherwise.
 // Usage: node check-model.mjs            (npm test runs it)
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { buildModel, PACKS, repoRoot, sampleRoot } from "./build-model.mjs";
+import { buildModel, PACKS, REFERENCE, repoRoot, sampleRoot } from "./build-model.mjs";
 
 const problems = [];
 const first = buildModel();
@@ -40,9 +40,9 @@ for (const extra of onDisk) problems.push(`not built by build-model.mjs: ${extra
 // Copies: .schema/v1 from schemas/v1, templates/<pack> from packs/<pack> without the pack's tests/
 // (5.4: the copies carry no tests).
 const outsideTests = (f) => f.split(/[\\/]/)[0] !== "tests";
-function compareTrees(source, copy, label, keep = () => true) {
+function compareTrees(source, copy, label, keep = () => true, besides = []) {
   const a = listFiles(source).map((p) => relative(source, p)).filter(keep);
-  const b = new Set(listFiles(copy).map((p) => relative(copy, p)));
+  const b = new Set(listFiles(copy).map((p) => relative(copy, p)).filter((f) => !besides.includes(f)));
   for (const f of a) {
     if (!b.has(f)) problems.push(`${label}: missing ${f}`);
     else if (!readFileSync(join(source, f)).equals(readFileSync(join(copy, f)))) problems.push(`${label}: differs ${f}`);
@@ -50,7 +50,11 @@ function compareTrees(source, copy, label, keep = () => true) {
   }
   for (const f of b) problems.push(`${label}: extra ${f}`);
 }
-compareTrees(join(repoRoot, "schemas", "v1"), join(mq, ".schema", "v1"), ".schema/v1");
+compareTrees(join(repoRoot, "schemas", "v1"), join(mq, ".schema", "v1"), ".schema/v1", () => true, [REFERENCE]);
+// The resolved-model reference beside the schemas, as the engine writes it (docs/resolved-model.md holds the same bytes).
+const reference = join(mq, ".schema", "v1", REFERENCE);
+if (!existsSync(reference)) problems.push(`.schema/v1: missing ${REFERENCE}`);
+else if (!readFileSync(join(repoRoot, "docs", REFERENCE)).equals(readFileSync(reference))) problems.push(`.schema/v1: differs ${REFERENCE}`);
 for (const p of PACKS)
   compareTrees(join(repoRoot, "packs", p), join(mq, "templates", p), `templates/${p}`, outsideTests);
 

@@ -87,8 +87,9 @@ public sealed record KindInfo(ElementKind Kind, string Name, Type ClrType, strin
     /// <summary>
     /// The non-element document schemas: project settings, pack manifests, extension schemas, manifests, snapshots, batches
     /// the <c>validate --format json</c> output, locale shards, a migration ledger's rows (<c>ledger.json</c>) and custom kind files
-    /// (<c>custom-kind.json</c>), a pack test case (<c>pack-case.json</c>), plus the shared definitions.
+    /// (<c>custom-kind.json</c>), a pack test case (<c>pack-case.json</c>), the resolved model's pages (<c>resolved-model.json</c>, the
+    /// contract of <see cref="ResolvedContract"/>), plus the shared definitions.
     /// </summary>
     public static IReadOnlyList<string> DocumentSchemaFiles { get; } =
-        ["common.json", "maquettiste.json", "pack.json", "extension.json", "manifest.json", "snapshot.json", "batch.json", "diagnostics.json", "locale.json", "ledger.json", "custom-kind.json", "pack-case.json", "declared-rules.json"];
+        ["common.json", "maquettiste.json", "pack.json", "extension.json", "manifest.json", "snapshot.json", "batch.json", "diagnostics.json", "locale.json", "ledger.json", "custom-kind.json", "pack-case.json", "declared-rules.json", ResolvedContract.SchemaFile];
 }

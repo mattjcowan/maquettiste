@@ -90,7 +90,7 @@ public sealed class BulkReadTests
             "/api/model/elements?limit=0", "/api/model/elements?limit=1001", "/api/model/elements?limit=ten", "/api/model/elements?cursor=not-a-cursor",
             "/api/model/elements?cursor=" + Convert.ToBase64String("hello"u8.ToArray()).TrimEnd('='), "/api/model/elements?ids=invoice", "/api/model/elements?ids=" + tooMany,
             "/api/model/index?limit=0", "/api/model/index?cursor=***", "/api/model/kinds?by=tag", "/api/model/resolved?scope=widgets",
-            "/api/model/resolved?limit=5000", "/api/model/resolved?cursor=nope",
+            "/api/model/resolved?limit=5000", "/api/model/resolved?cursor=nope", "/api/model/resolved/schema?scope=widgets",
         })
         {
             var response = await host.GetAsync(path);
@@ -231,6 +231,60 @@ public sealed class BulkReadTests
         var all = await host.GetAsync("/api/model/resolved?limit=1000");
         Contract.AssertResponse(all, "/api/model/resolved");
         Recorder.Json("getResolvedModel.json", all);
+    }
+
+    /// <summary>
+    /// The examples the contract gives for <c>getResolvedModel</c> are real pages of this release: each one fits resolved-model.json,
+    /// whose <c>contract</c> is the version this build ships.
+    /// </summary>
+    [Fact]
+    public void The_resolved_page_examples_fit_the_resolved_model_schema()
+    {
+        var examples = Contract.OpenApi["paths"]!["/api/model/resolved"]!["get"]!["responses"]!["200"]!["content"]!["application/json"]!["examples"]!.AsObject();
+        Assert.NotEmpty(examples);
+        var schema = global::Json.Schema.JsonSchema.FromText(Engine.ResolvedContract.SchemaText(null));
+        var whole = Engine.ResolvedContract.Schema(null);
+        foreach (var (name, example) in examples)
+        {
+            // Each record against its own kind's definition first, so a failure names what is wrong with it.
+            foreach (var item in example!["value"]!["items"]!.AsArray())
+            {
+                var definition = whole["x-kinds"]![item!["kind"]!.GetValue<string>()]!.GetValue<string>();
+                var one = new JsonObject { ["$schema"] = whole["$schema"]!.DeepClone(), ["$ref"] = "#/$defs/" + definition, ["$defs"] = whole["$defs"]!.DeepClone() };
+                var check = global::Json.Schema.JsonSchema.FromText(one.ToJsonString()).Evaluate(System.Text.Json.JsonDocument.Parse(item.ToJsonString()).RootElement,
+                    new global::Json.Schema.EvaluationOptions { OutputFormat = global::Json.Schema.OutputFormat.List });
+                Assert.True(check.IsValid, $"The example {name}'s {item["name"]} does not fit {definition}: " + string.Join("; ", (check.Details ?? [])
+                    .Where(d => d.Errors is not null).SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation}: {e.Value}")).Take(10)));
+            }
+
+            var value = System.Text.Json.JsonDocument.Parse(example!["value"]!.ToJsonString()).RootElement;
+            var result = schema.Evaluate(value, new global::Json.Schema.EvaluationOptions { OutputFormat = global::Json.Schema.OutputFormat.List });
+            Assert.True(result.IsValid, $"The example {name} does not fit resolved-model.json: " + string.Join("; ", (result.Details ?? [])
+                .Where(d => d.Errors is not null).SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation}: {e.Value}")).Take(10)));
+        }
+    }
+
+    /// <summary>The contract of the resolved pages: the whole schema, one scope's part, and every page names the release it follows.</summary>
+    [Fact]
+    public async Task The_resolved_model_schema_is_served_whole_or_by_scope_and_every_page_fits_it()
+    {
+        await using var host = EditorHost.Create();
+
+        var whole = await host.GetAsync("/api/model/resolved/schema");
+        Assert.Equal(200, whole.Status);
+        Contract.AssertResponse(whole, "/api/model/resolved/schema");
+        Assert.Equal(Engine.EngineVersion.Product, whole.Json["x-contract"]!.GetValue<string>());
+        var entities = await host.GetAsync("/api/model/resolved/schema?scope=entities");
+        Assert.Equal(200, entities.Status);
+        Assert.Equal("entities", entities.Json["x-scope"]!.GetValue<string>());
+        Assert.Equal("#/$defs/entityRecord", entities.Json["properties"]!["items"]!["items"]!["$ref"]!.GetValue<string>());
+
+        var page = await host.GetAsync("/api/model/resolved?limit=1000");
+        Assert.Equal((Engine.EngineVersion.Product, "resolved-model.json"), (page.Json["contract"]!.GetValue<string>(), page.Json["schema"]!.GetValue<string>()));
+        var schema = global::Json.Schema.JsonSchema.FromText(whole.Json.ToJsonString());
+        Assert.True(schema.Evaluate(System.Text.Json.JsonDocument.Parse(page.Json.ToJsonString()).RootElement).IsValid);
+        var scoped = await host.GetAsync("/api/model/resolved?scope=entities&limit=1000");
+        Assert.True(global::Json.Schema.JsonSchema.FromText(entities.Json.ToJsonString()).Evaluate(System.Text.Json.JsonDocument.Parse(scoped.Json.ToJsonString()).RootElement).IsValid);
     }
 
     /// <summary>

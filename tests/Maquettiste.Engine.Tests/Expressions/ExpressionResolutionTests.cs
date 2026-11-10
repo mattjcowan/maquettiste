@@ -190,6 +190,7 @@ public sealed class ExpressionResolutionTests
         EntityCheck(repo, listed: true);
         Assert.DoesNotContain(await ValidateAsync(repo), d => d.Rule.StartsWith("MQ31", StringComparison.Ordinal));
         var model = await ResolveAsync(repo);
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model, "entityCheckRecord");
 
         var products = Products(model);
         var check = Assert.Single(products.Checks);
@@ -288,6 +289,7 @@ public sealed class ExpressionResolutionTests
         PositiveAmount(repo);
         TableCheck(repo, $$"""{ "satisfies": "{{ConstraintId}}", "with": [{ "parameter": "{{ParameterId}}", "value": {{Price}} }] }""");
         var model = await ResolveAsync(repo);
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model, "constraintRecord", "constraintParameterRecord");
 
         var products = Products(model);
         var check = Assert.Single(products.Checks);

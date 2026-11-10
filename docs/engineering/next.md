@@ -286,6 +286,12 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 | --- | --- | --- | --- |
 | `init --agents <names>` or `all`: set up AI tools other than Claude Code | yes (the owner) | Built, unreleased | For each tool named, init writes the file the tool reads to find the server and a copy of the modeling skill. Nine tools: Claude Code, Codex, GitHub Copilot, Cursor, Grok Build, Kiro, Junie, Devin and Amp. Nothing is written for a tool that is not named. `init --skill` refreshes, and `--skill --check` checks, every copy of the skill Maquettiste owns; a copy without its header is the team's own and is left alone. A JSON file with comments is never rewritten, and every path is checked before the first write. |
 
+### The resolved model's contract
+
+| Item | Requested | Status | Notes |
+| --- | --- | --- | --- |
+| A versioned contract for the resolved model: a JSON Schema and a readable reference, made from the engine's own record types, copied into every project, with the version in every answer | yes (the owner) | Built, unreleased | [The design](resolved-contract-design.md). Not frozen before version 1: the version is the release, and any release may change it. Checks between versions come with version 1. Left out for now: completion in the pack editor, typed reader packages and a guide for process runtimes. |
+
 ### Smaller items
 
 - **The store rescans every file per request.** Reading the model snapshot stats every model file each time (about

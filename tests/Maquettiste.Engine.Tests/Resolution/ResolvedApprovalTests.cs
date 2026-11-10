@@ -83,7 +83,7 @@ public sealed class ResolvedApprovalTests
         }
         : new ProcessGate { Id = Release, Name = "Release", Meanings = Meanings("01JRAM00000000000000000001"), Signers = [Engineer], Required = 2 };
 
-    private static ModelSnapshot Model(bool approval = true, bool policyStages = true, bool policyUsed = false, Func<Element, Element>? edit = null)
+    internal static ModelSnapshot Model(bool approval = true, bool policyStages = true, bool policyUsed = false, Func<Element, Element>? edit = null)
     {
         var documents = new Process
         {

@@ -40,6 +40,7 @@ public sealed partial class RelationTypeStorageTests
             h.Write("model/mappings/filed.json", RelationMapping(Filed, $$""","ends":[{"end":"{{FolderEnd}}","foreignKeys":["{{Fk(Parts, 1)}}"]}]""")
                 .Replace(N(P, 990), N(P, 992), StringComparison.Ordinal));
         });
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model, "relationEndEntityRecord");
 
         // <endId>.<entityId> resolves to a key (a target's, as the mapping names it, or one that isn't a target: MQ4117); an entity the end
         // doesn't cover, and an end the entity doesn't hold, are MQ4045.

@@ -445,7 +445,7 @@ public sealed record SqlObjectView(
 /// <param name="Precision">The effective precision.</param>
 /// <param name="Scale">The effective scale.</param>
 /// <param name="Nullable">Whether the column is nullable.</param>
-/// <param name="DefaultSql">The default SQL expression for the dialect.</param>
+/// <param name="DefaultSql">The default SQL expression for the dialect, or <see langword="null"/> when the column has no default.</param>
 /// <param name="Identity">Whether the column is an identity column.</param>
 /// <param name="Computed">The computed expression.</param>
 /// <param name="AttributeId">The id of the attribute the column stores, if any.</param>

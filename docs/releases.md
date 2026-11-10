@@ -7,6 +7,24 @@ one.
 
 ## Unreleased
 
+- **A reference for the resolved model.** The resolved model is what code generation sees, and what
+  `model export --resolved`, `GET /api/model/resolved` and the MCP tool `get_resolved_model` return. It now has a contract: a
+  JSON Schema, `resolved-model.json`, and a page that explains every record and field, [The resolved model](resolved-model.md).
+  Both are made from the engine's own types and checked against real answers, so they match the release you run.
+  - Every project gets both in `.maquettiste/.schema/v1/`, beside the other schemas. The editor, `maquettiste mcp` and
+    `maquettiste init` bring them up to date, so after an update your copy matches your version. Until then, `validate`
+    and `generate` warn (MQ1008).
+  - Both files hold the version, so they change at every release, even one that changes nothing else. If people or CI run
+    different releases in one repository, the files change back and forth and the other side sees MQ1008. Keep one
+    Maquettiste version per repository: the local tool manifest (`dotnet tool install --local`) pins it.
+  - Every answer says which version it follows. `contract` holds the version, which until version 1 is the release (such as
+    `0.24.0`); `schema` names the schema file. Before version 1 the contract is not frozen: any release may change it.
+  - To get the schema: `GET /api/model/resolved/schema` (new; add `?scope=entities` for one scope's records), or the MCP
+    tool `get_schema` with `resolved-model` or `resolved-model:<scope>`.
+- **Changed: the resolved export file.** `model export --resolved` now writes the version too. With `--format json` the file
+  is one object, `{ "contract", "schema", "items" }`, not a bare array: read the records from `items`. With
+  `--format ndjson` the first line holds the version (`{"contract": ..., "schema": ...}`): skip it, and read one record per
+  line after it. The plain `model export` (documents, not `--resolved`) has not changed.
 - **Set up other AI tools.** `maquettiste init --agents <names>` sets up AI tools other than Claude Code. Give it names separated
   by commas, or `all`: `claude`, `codex`, `copilot`, `cursor`, `grok`, `kiro`, `junie`, `devin` and `amp`. For each tool named,
   init writes the file the tool reads to find the Maquettiste server, and a copy of the modeling skill in the folder the tool reads

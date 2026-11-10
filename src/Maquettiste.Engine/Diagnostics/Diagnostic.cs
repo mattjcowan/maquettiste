@@ -18,9 +18,11 @@ public enum DiagnosticSeverity
 }
 
 /// <summary>
-/// One finding, as a plain record. The same records feed the API, <c>validate --format json</c> and SARIF (host-contracts requirement 21).
+/// One finding, as a plain record. The same records feed the API, <c>validate --format json</c> and SARIF.
 /// </summary>
-/// <param name="Rule">The rule id: <c>MQ1001</c>…<c>MQ6018</c> (see <see cref="RuleCatalog"/>) or <c>x/&lt;id&gt;</c> for JavaScript rules.</param>
+/// <remarks>host-contracts requirement 21.</remarks>
+/// <param name="Rule">The rule id: <c>MQ</c> and four digits (the user guide lists them) or <c>x/&lt;id&gt;</c> for the project's script
+/// rules.</param>
 /// <param name="Severity">The effective severity.</param>
 /// <param name="Message">A one-sentence message.</param>
 /// <param name="ElementId">The id of the element (or sub-element) concerned, when known.</param>

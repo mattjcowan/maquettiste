@@ -159,6 +159,7 @@ public sealed class ParticipantTests
         Assert.Equal(new string?[] { R.Owner, null, R.ProjectReviewer }, r.Steps.Select(s => s.ActsAs?.Id));
         Assert.Equal(new[] { PBea, PCarl, PAnn }, r.Steps.Select(s => s.Participant!.Id));
         Assert.All(r.Steps, s => Assert.Contains("k:actor", s.Dependencies));
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(resolved, "holdingRecord");
         var record = R.Record(resolved, Scn);
         var steps = record["steps"]!.AsArray();
         Assert.Equal(R.Owner, (string?)steps[0]!["actsAs"]);

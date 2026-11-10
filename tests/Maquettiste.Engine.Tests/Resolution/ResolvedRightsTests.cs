@@ -54,7 +54,7 @@ public sealed class ResolvedRightsTests
         Op = "eq", Args = [new Expr { Path = [Classification] }, new Expr { Value = JsonSerializer.SerializeToElement("secret") }],
     };
 
-    private static ModelSnapshot Model(bool rights = true, Func<Element, Element>? edit = null)
+    internal static ModelSnapshot Model(bool rights = true, Func<Element, Element>? edit = null)
     {
         var documents = Lifecycle(Documents, "Documents", Document, [new ProcessState { Id = Draft, Name = "Draft" }, new ProcessState { Id = Released, Name = "Released" }]);
         var hr = Lifecycle(Hr, "HR", Employee, [new ProcessState { Id = "01JRRS00000000000000000011", Name = "Active" }]);

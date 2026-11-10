@@ -1230,7 +1230,7 @@
         ],
         "operationId": "getResolvedModel",
         "summary": "The resolved model as flat records, in pages",
-        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations; `revisions`, merged through the bases, when the entity or a base has a\n  revisions block.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards\n  (a guard written in the expression language with its `condition`), actions, gates and invokes, actors by id, and a\n  lifecycle's `rightsDefault`, `rights` and `triggerPoints` when it has them. Named rights (`RightRecord`) and named trigger\n  points (`NamedTriggerPointRecord`, kind `trigger-point`) come with `all`, as verbs do.\n- `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,\n  `completes`, `returns`), the errors (`code`, `input`), `fires` and `requires` by id, and the `guards` in the order\n  they are checked, each with its `condition` and the `error` it reports.\n- `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and\n  its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.\n- `constraints`: `ConstraintRecord`, one named constraint per record with its typed `parameters`, its `condition` and its\n  `message`. An entity's `checks`, a derived attribute's `value` and a process or operation guard's `condition` are\n  written in the same expression language: each `ExpressionRecord` has the `text` printed from current names, its `type`,\n  whether it is `nullable` and the `tree` of ids the file holds; a model without expressions has none of these keys.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n",
+        "description": "What templates read (the resolved model of SPEC Section 10), as data for external systems. Resolved objects reference each\nother, so they are projected into flat records (`x-engine-record`) where other objects appear by id; each record has `id`,\n`kind` and `name`. Choose what to read with `scope`, which follows the template scopes (`get_template_context`):\n\n- `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it\n  names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),\n  the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the\n  column of each attribute path) and the annotations; `revisions`, merged through the bases, when the entity or a base has a\n  revisions block.\n- `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,\n  `scenarios`: the matching record.\n- `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards\n  (a guard written in the expression language with its `condition`), actions, gates and invokes, actors by id, and a\n  lifecycle's `rightsDefault`, `rights` and `triggerPoints` when it has them. Named rights (`RightRecord`) and named trigger\n  points (`NamedTriggerPointRecord`, kind `trigger-point`) come with `all`, as verbs do.\n- `operations`: `OperationRecord`, the subject, level and effect, the input members, the outcomes (`isDefault`,\n  `completes`, `returns`), the errors (`code`, `input`), `fires` and `requires` by id, and the `guards` in the order\n  they are checked, each with its `condition` and the `error` it reports.\n- `custom-elements`: `CustomRecord`, one custom element per record with its `type`, `package`, `content` as written and\n  its `members` (`MemberRecord`: `id`, `name`, `array`, `parent`, `pointer`), every member at any depth in walk order.\n- `constraints`: `ConstraintRecord`, one named constraint per record with its typed `parameters`, its `condition` and its\n  `message`. An entity's `checks`, a derived attribute's `value` and a process or operation guard's `condition` are\n  written in the same expression language: each `ExpressionRecord` has the `text` printed from current names, its `type`,\n  whether it is `nullable` and the `tree` of ids the file holds; a model without expressions has none of these keys.\n- `databases`: `DatabaseRecord`, the database view of `getDatabaseView` (tables with columns, keys, foreign keys and\n  indexes, views, sequences, routines, database types, SQL objects and queries); `tables`: one `TableRecord` per table,\n  for databases too large for one record; `routines`, `database-types`, `sql-objects`, `queries`: one `RoutineRecord`,\n  `DatabaseTypeRecord`, `SqlObjectRecord` or `QueryRecord` per object.\n- `migrations`: `MigrationRecord`, one open migration fact per record, by database name then applied order, with its\n  state, the intent it lacks, its `after` links, object, current key, `from`, `to` and content hash.\n- `all` (the default): every scope but `tables`, `routines`, `database-types`, `sql-objects` and `queries`, which\n  `databases` holds.\n\n`database` narrows entities and relations to the ones mapped (not ignored) in that database, and databases, tables and\nmigration facts to it; the other kinds are not narrowed. Records come ordered by kind, name and id (ordinal); pass `next` as `cursor` until it\nis null. The model is validated and resolved once per model version, so paging through it costs one resolution; a change\nbetween pages is tolerated (the next page starts after the last record read, in the changed model). A model with errors\nreturns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent\n(MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer\nthe same.\n\nEvery page states the contract it follows in `contract` (until version 1, the release that answered, as its version number; the\ncontract may change in any release) and names its JSON Schema in `schema` (`resolved-model.json`), which\n`getResolvedModelSchema` returns and every project holds in `.maquettiste/.schema/v1/`, next to its reference\n`resolved-model.md`.\n",
         "x-maquettiste-role": "viewer",
         "x-maquettiste-engine": "GenerationService.GetResolvedAsync(query)",
         "parameters": [
@@ -1297,6 +1297,8 @@
                   "enums": {
                     "summary": "GET /api/model/resolved?scope=enums on the billing fixture",
                     "value": {
+                      "contract": "0.23.0",
+                      "schema": "resolved-model.json",
                       "items": [
                         {
                           "id": "01J92P0V05WQDH2GZG539D9VG1",
@@ -1353,12 +1355,15 @@
                         }
                       ],
                       "next": null,
-                      "diagnostics": []
+                      "diagnostics": [],
+                      "calculated": {}
                     }
                   },
                   "entity": {
                     "summary": "GET /api/model/resolved?scope=entities&limit=1&cursor=... (Product, two of its five attributes shown)",
                     "value": {
+                      "contract": "0.23.0",
+                      "schema": "resolved-model.json",
                       "items": [
                         {
                           "id": "01J92P0V0JR8BE8253SKT29ZG7",
@@ -1403,6 +1408,7 @@
                               "isVirtual": false,
                               "fromStereotype": null,
                               "reference": null,
+                              "descriptionColumn": null,
                               "displayName": "id",
                               "pluralName": "ids",
                               "description": null,
@@ -1446,6 +1452,7 @@
                               "isVirtual": false,
                               "fromStereotype": null,
                               "reference": null,
+                              "descriptionColumn": null,
                               "displayName": "listPrice",
                               "pluralName": "listPrices",
                               "description": null,
@@ -1508,11 +1515,13 @@
                             "soft-delete"
                           ],
                           "properties": {},
-                          "generation": {}
+                          "generation": {},
+                          "bindings": []
                         }
                       ],
                       "next": "cDEAZW50aXR5AFByb2R1Y3QAMDFKOTJQMFYwSlI4QkU4MjUzU0tUMjlaRzc",
-                      "diagnostics": []
+                      "diagnostics": [],
+                      "calculated": {}
                     }
                   }
                 }
@@ -1530,6 +1539,80 @@
           },
           "503": {
             "$ref": "#/components/responses/ModelUnavailable"
+          }
+        }
+      }
+    },
+    "/api/model/resolved/schema": {
+      "get": {
+        "tags": [
+          "model"
+        ],
+        "operationId": "getResolvedModelSchema",
+        "summary": "The JSON Schema of the resolved model's pages",
+        "description": "The contract of `getResolvedModel`, `resolved-model.json` (JSON Schema draft 2020-12): the page, every record by its `kind`,\nand a plain description of every field, with when it is null. Until version 1 the contract is the release's version number\n(`x-contract`), and may change in any release. `x-scopes` names each scope's record. With `scope`, the schema of that\nscope's pages: `items` holds the scope's record, and `$defs` only what that record reaches (`x-scope` names the scope).\nEvery project holds the whole schema in `.maquettiste/.schema/v1/resolved-model.json`, with the readable reference\n`resolved-model.md`; the MCP tool `get_schema` returns it as `resolved-model` or `resolved-model:<scope>`.\n",
+        "x-maquettiste-role": "viewer",
+        "x-maquettiste-engine": "ResolvedContract.Schema(scope)",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "description": "A scope of `getResolvedModel`; `all` (the default) is the whole schema.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "packages",
+                "entities",
+                "relations",
+                "enums",
+                "value-objects",
+                "scalar-types",
+                "reference-types",
+                "seeds",
+                "processes",
+                "actors",
+                "scenarios",
+                "operations",
+                "custom-elements",
+                "constraints",
+                "databases",
+                "tables",
+                "routines",
+                "database-types",
+                "sql-objects",
+                "queries",
+                "migrations"
+              ],
+              "default": "all"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "description": "A JSON Schema (draft 2020-12) with `x-contract`, the version it describes.",
+                  "required": [
+                    "$schema",
+                    "title",
+                    "x-contract",
+                    "properties",
+                    "$defs"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
           }
         }
       }
@@ -14103,12 +14186,23 @@
         "description": "One page of the resolved model (`getResolvedModel`).",
         "type": "object",
         "required": [
+          "contract",
+          "schema",
           "items",
           "next",
           "diagnostics",
           "calculated"
         ],
         "properties": {
+          "contract": {
+            "type": "string",
+            "description": "The contract version the page follows: until version 1, the version number of the Maquettiste release that answered. The contract may change in any release."
+          },
+          "schema": {
+            "type": "string",
+            "const": "resolved-model.json",
+            "description": "The file name of the page's JSON Schema (`getResolvedModelSchema`, and `.maquettiste/.schema/v1/` in a project)."
+          },
           "items": {
             "type": "array",
             "description": "The records, by kind, name and id (ordinal).",

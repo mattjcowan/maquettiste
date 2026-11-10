@@ -162,6 +162,7 @@ public sealed class RelationTypesResolverTests
         using var _ = h;
         await using var __ = store;
         var model = ResolutionKit.Resolve(store.Current!);
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model);
         RelationRecord Record(string id) => (RelationRecord)Engine.ResolvedRecords.Entries(model, "relations", null).Single(e => e.Id == id).Project();
 
         var attached = JsonSerializer.Serialize(Record(AttachedTo).Ends[1], Web);

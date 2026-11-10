@@ -284,8 +284,38 @@ export interface paths {
          *     returns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent
          *     (MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer
          *     the same.
+         *
+         *     Every page states the contract it follows in `contract` (until version 1, the release that answered, as its version number; the
+         *     contract may change in any release) and names its JSON Schema in `schema` (`resolved-model.json`), which
+         *     `getResolvedModelSchema` returns and every project holds in `.maquettiste/.schema/v1/`, next to its reference
+         *     `resolved-model.md`.
          */
         get: operations["getResolvedModel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/model/resolved/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The JSON Schema of the resolved model's pages
+         * @description The contract of `getResolvedModel`, `resolved-model.json` (JSON Schema draft 2020-12): the page, every record by its `kind`,
+         *     and a plain description of every field, with when it is null. Until version 1 the contract is the release's version number
+         *     (`x-contract`), and may change in any release. `x-scopes` names each scope's record. With `scope`, the schema of that
+         *     scope's pages: `items` holds the scope's record, and `$defs` only what that record reaches (`x-scope` names the scope).
+         *     Every project holds the whole schema in `.maquettiste/.schema/v1/resolved-model.json`, with the readable reference
+         *     `resolved-model.md`; the MCP tool `get_schema` returns it as `resolved-model` or `resolved-model:<scope>`.
+         */
+        get: operations["getResolvedModelSchema"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3687,6 +3717,13 @@ export interface components {
         };
         /** @description One page of the resolved model (`getResolvedModel`). */
         ResolvedPage: {
+            /** @description The contract version the page follows: until version 1, the version number of the Maquettiste release that answered. The contract may change in any release. */
+            contract: string;
+            /**
+             * @description The file name of the page's JSON Schema (`getResolvedModelSchema`, and `.maquettiste/.schema/v1/` in a project).
+             * @constant
+             */
+            schema: "resolved-model.json";
             /** @description The records, by kind, name and id (ordinal). */
             items: (components["schemas"]["PackageRecord"] | components["schemas"]["EntityRecord"] | components["schemas"]["RelationRecord"] | components["schemas"]["EnumRecord"] | components["schemas"]["ValueObjectRecord"] | components["schemas"]["ScalarTypeRecord"] | components["schemas"]["ReferenceTypeRecord"] | components["schemas"]["SeedRecord"] | components["schemas"]["ProcessRecord"] | components["schemas"]["ActorRecord"] | components["schemas"]["ScenarioRecord"] | components["schemas"]["OperationRecord"] | components["schemas"]["CustomRecord"] | components["schemas"]["ConstraintRecord"] | components["schemas"]["DatabaseRecord"] | components["schemas"]["TableRecord"] | components["schemas"]["RoutineRecord"] | components["schemas"]["DatabaseTypeRecord"] | components["schemas"]["SqlObjectRecord"] | components["schemas"]["QueryRecord"] | components["schemas"]["MigrationRecord"] | components["schemas"]["VerbRecord"] | components["schemas"]["RightRecord"] | components["schemas"]["NamedTriggerPointRecord"])[];
             /** @description The cursor of the next page; null on the last one. */
@@ -14727,6 +14764,33 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["ModelUnavailable"];
+        };
+    };
+    getResolvedModelSchema: {
+        parameters: {
+            query?: {
+                /** @description A scope of `getResolvedModel`; `all` (the default) is the whole schema. */
+                scope?: "all" | "packages" | "entities" | "relations" | "enums" | "value-objects" | "scalar-types" | "reference-types" | "seeds" | "processes" | "actors" | "scenarios" | "operations" | "custom-elements" | "constraints" | "databases" | "tables" | "routines" | "database-types" | "sql-objects" | "queries" | "migrations";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The schema. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
         };
     };
     getElements: {

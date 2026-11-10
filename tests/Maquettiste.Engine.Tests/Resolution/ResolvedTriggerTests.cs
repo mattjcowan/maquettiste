@@ -57,7 +57,7 @@ public sealed class ResolvedTriggerTests
 
     private static Expr Text(string text) => new() { Text = text };
 
-    private static ModelSnapshot Model(bool points = true, Func<Element, Element>? edit = null)
+    internal static ModelSnapshot Model(bool points = true, Func<Element, Element>? edit = null)
     {
         var documents = Lifecycle(Documents, "Documents", Document, [new ProcessState { Id = Draft, Name = "Draft" }, new ProcessState { Id = Review, Name = "Review" }]) with
         {

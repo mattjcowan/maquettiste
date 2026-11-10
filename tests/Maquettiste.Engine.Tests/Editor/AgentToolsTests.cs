@@ -383,6 +383,53 @@ public sealed partial class AgentToolsTests
     }
 
     [Fact]
+    public async Task Get_schema_returns_the_resolved_model_contract_whole_or_by_scope()
+    {
+        await using var r = EditorRepo.Create(packs: false);
+        var catalog = Catalog(r);
+        async Task<AgentToolResult> Schema(string kind) => await catalog.CallAsync("get_schema", JsonSerializer.SerializeToElement(new { kind }), Ct);
+
+        var whole = JsonNode.Parse((await Schema("resolved-model")).Text)!;
+        Assert.Equal(("resolved-model.json", EngineVersion.Product), ((string?)whole["file"], (string?)whole["contract"]));
+        Assert.Equal(ResolvedContract.Schema(null).ToJsonString(), whole["schema"]!.ToJsonString());
+        var entities = JsonNode.Parse((await Schema("resolved-model:entities")).Text)!;
+        Assert.Equal("entities", (string?)entities["schema"]!["x-scope"]);
+        Assert.Equal("#/$defs/entityRecord", (string?)entities["schema"]!["properties"]!["items"]!["items"]!["$ref"]);
+        Assert.Null(entities["schema"]!["$defs"]!["processRecord"]);
+        var unknown = await Schema("resolved-model:widgets");
+        Assert.True(unknown.IsError);
+        Assert.Equal("bad-request", (string?)JsonNode.Parse(unknown.Text)!["code"]);
+        var file = JsonNode.Parse((await Schema("resolved-model.json")).Text)!;
+        Assert.Equal(ResolvedContract.Version, (string?)file["contract"]);
+
+        // Every page names the contract it follows and its schema, and fits it: every scope in small pages, whole and for one database.
+        var page = JsonNode.Parse((await catalog.CallAsync("get_resolved_model", JsonSerializer.SerializeToElement(new { scope = "enums" }), Ct)).Text)!;
+        Assert.Equal((ResolvedContract.Version, "resolved-model.json"), ((string?)page["contract"], (string?)page["schema"]));
+        var schema = global::Json.Schema.JsonSchema.FromText(ResolvedContract.SchemaText(null));
+        var database = (await r.Store.GetIndexAsync(Ct)).First(s => s.Kind == "database").Id;
+        var pages = 0;
+        foreach (var scope in ResolvedRecords.ScopeNames)
+        {
+            foreach (var narrowed in new[] { null, database })
+            {
+                string? cursor = null;
+                do
+                {
+                    var answer = await catalog.CallAsync("get_resolved_model", JsonSerializer.SerializeToElement(new { scope, database = narrowed, cursor, limit = 7 }), Ct);
+                    Assert.False(answer.IsError, answer.Text);
+                    using var document = JsonDocument.Parse(answer.Text);
+                    Assert.True(schema.Evaluate(document.RootElement).IsValid, $"{scope} {narrowed} {cursor}");
+                    cursor = document.RootElement.GetProperty("next").GetString();
+                    pages++;
+                }
+                while (cursor is not null);
+            }
+        }
+
+        Assert.True(pages > ResolvedRecords.ScopeNames.Count * 2);
+    }
+
+    [Fact]
     public async Task Get_schema_lists_stereotype_parameters()
     {
         await using var r = EditorRepo.Create(packs: false);

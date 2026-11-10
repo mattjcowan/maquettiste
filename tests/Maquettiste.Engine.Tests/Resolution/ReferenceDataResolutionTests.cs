@@ -73,6 +73,7 @@ public sealed class ReferenceDataResolutionTests
                 new JsonObject { ["code"] = "gram", ["replacedBy"] = "01JBQY77ZXYYK596NGYA1DQ91K" },
                 new JsonObject { ["code"] = "lost", ["replacedBy"] = "01JRDA00000000000000000011" })));
         var unit = Type(model, UnitOfMeasure);
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model, "formerCodeRecord");
 
         Assert.Equal(["gram", "kilo"], unit.FormerCodes.Select(f => f.Code));
         var kilo = unit.FormerCodes[1];

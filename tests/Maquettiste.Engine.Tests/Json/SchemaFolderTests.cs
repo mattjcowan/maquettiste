@@ -11,18 +11,22 @@ public sealed class SchemaFolderTests
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static IReadOnlyList<string> Names => TestServices.Schemas.FileNames;
+    /// <summary>What the folder holds: every embedded schema and the resolved-model reference, ordinal.</summary>
+    private static IReadOnlyList<string> Names => [.. TestServices.Schemas.FileNames.Append(ResolvedContract.ReferenceFile).Order(StringComparer.Ordinal)];
+
+    private static byte[] Bytes(string name) =>
+        name == ResolvedContract.ReferenceFile ? ResolvedContract.ReferenceBytes.ToArray() : TestServices.Schemas.GetFileBytes(name).ToArray();
 
     private static void WriteCurrent(TempRepo repo)
     {
         foreach (var name in Names)
-            repo.WriteBytes(Folder + "/" + name, TestServices.Schemas.GetFileBytes(name).ToArray());
+            repo.WriteBytes(Folder + "/" + name, Bytes(name));
     }
 
     private static void AssertCurrentOnDisk(TempRepo repo)
     {
         foreach (var name in Names)
-            Assert.Equal(TestServices.Schemas.GetFileBytes(name).ToArray(), File.ReadAllBytes(repo.PathOf(Folder + "/" + name)));
+            Assert.Equal(Bytes(name), File.ReadAllBytes(repo.PathOf(Folder + "/" + name)));
         Assert.Equal(Names.Count, Directory.GetFiles(repo.PathOf(Folder)).Length);
     }
 
@@ -92,7 +96,7 @@ public sealed class SchemaFolderTests
         Assert.False(repo.Exists(Folder + "/retired.json"));
         Assert.Equal("kept\n", repo.ReadFile(Folder + "/notes.txt"));
         foreach (var name in Names)
-            Assert.Equal(TestServices.Schemas.GetFileBytes(name).ToArray(), File.ReadAllBytes(repo.PathOf(Folder + "/" + name)));
+            Assert.Equal(Bytes(name), File.ReadAllBytes(repo.PathOf(Folder + "/" + name)));
         Assert.True(SchemaFolder.Status(repo.Options).IsCurrent);
         Assert.Empty(Directory.GetFiles(repo.PathOf(Folder), "*.tmp"));
     }
@@ -133,6 +137,22 @@ public sealed class SchemaFolderTests
             "The schema copies in .maquettiste/.schema/v1/ differ from the ones this version ships: entity.json (out of date), enum.json (missing), " +
             "relation.json (missing), seed.json (missing), table.json (missing), and 2 more. Run 'maquettiste init', or start the editor, to refresh " +
             "them; IDEs check model files against these copies.", finding.Message);
+    }
+
+    [Fact]
+    public void When_only_the_resolved_model_copies_differ_MQ1008_says_what_they_are()
+    {
+        using var repo = new TempRepo();
+        repo.WriteFile(".maquettiste/maquettiste.json", "{\n  \"formatVersion\": 1,\n  \"name\": \"t\"\n}\n");
+        WriteCurrent(repo);
+        repo.WriteFile(Folder + "/resolved-model.json", "{}\n");
+        File.Delete(repo.PathOf(Folder + "/resolved-model.md"));
+
+        var finding = Assert.Single(SchemaFolder.Findings(repo.Options, null));
+        Assert.Equal(
+            "The schema copies in .maquettiste/.schema/v1/ differ from the ones this version ships: resolved-model.json (out of date), " +
+            "resolved-model.md (missing). Run 'maquettiste init', or start the editor, to refresh them; they describe the resolved model " +
+            "this version answers.", finding.Message);
     }
 
     [Fact]

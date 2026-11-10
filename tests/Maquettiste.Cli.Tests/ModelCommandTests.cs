@@ -1,4 +1,6 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using Maquettiste.Engine;
 
 namespace Maquettiste.Cli.Tests;
 
@@ -88,14 +90,22 @@ public sealed class ModelCommandTests
 
         var entities = await repo.RunAsync("model", "export", "--resolved", "--scope", "entities", "--format", "ndjson");
         Assert.True(entities.ExitCode == 0, entities.Error);
-        var records = Text.Lines(entities.Out).Select(l => JsonNode.Parse(l)!).ToList();
+        // A first line with the contract version and the schema, then one record per line.
+        var lines = Text.Lines(entities.Out).ToList();
+        Assert.True(ExportFits("exportHeader", lines[0]));
+        Assert.Equal($$"""{"contract":"{{EngineVersion.Product}}","schema":"resolved-model.json"}""", lines[0]);
+        var records = lines.Skip(1).Select(l => JsonNode.Parse(l)!).ToList();
         Assert.Equal(8, records.Count);
         Assert.All(records, r => Assert.Equal("entity", (string)r["kind"]!));
         Assert.Contains(records[0]["attributes"]!.AsArray(), a => (bool)a!["isKey"]!);
 
         var databases = await repo.RunAsync("model", "export", "--resolved", "--scope", "databases", "--database", "main");
         Assert.True(databases.ExitCode == 0, databases.Error);
-        var database = Assert.Single(JsonNode.Parse(databases.Out)!.AsArray())!;
+        // One object: the contract version, the schema and the records.
+        Assert.True(ExportFits("exportFile", databases.Out));
+        var file = JsonNode.Parse(databases.Out)!;
+        Assert.Equal((EngineVersion.Product, "resolved-model.json"), ((string)file["contract"]!, (string)file["schema"]!));
+        var database = Assert.Single(file["items"]!.AsArray())!;
         Assert.Equal("main", (string)database["name"]!);
         Assert.NotEmpty(database["tables"]!.AsArray());
 
@@ -103,6 +113,14 @@ public sealed class ModelCommandTests
         Assert.Equal(4, (await repo.RunAsync("model", "export", "--resolved", "--kind", "entity")).ExitCode);
         Assert.Equal(4, (await repo.RunAsync("model", "export", "--scope", "entities")).ExitCode);
         Assert.Equal(4, (await repo.RunAsync("model", "export", "--resolved", "--database", "nowhere")).ExitCode);
+    }
+
+    /// <summary>Whether an export validates against one of resolved-model.json's export definitions.</summary>
+    private static bool ExportFits(string definition, string text)
+    {
+        var whole = ResolvedContract.Schema(null);
+        var schema = new JsonObject { ["$schema"] = whole["$schema"]!.DeepClone(), ["$ref"] = "#/$defs/" + definition, ["$defs"] = whole["$defs"]!.DeepClone() };
+        return global::Json.Schema.JsonSchema.FromText(schema.ToJsonString()).Evaluate(JsonDocument.Parse(text).RootElement).IsValid;
     }
 
     [Fact]
@@ -248,7 +266,7 @@ public sealed class ModelCommandTests
         // The resolved scope operations gives one record per operation, ordered by name; all holds them too.
         var resolved = await repo.RunAsync("model", "export", "--resolved", "--scope", "operations", "--format", "ndjson");
         Assert.True(resolved.ExitCode == 0, resolved.Error);
-        var records = Text.Lines(resolved.Out).Select(l => JsonNode.Parse(l)!).ToList();
+        var records = Text.Lines(resolved.Out).Skip(1).Select(l => JsonNode.Parse(l)!).ToList();
         Assert.Equal([("ping", null, "pong"), ("send", invoice, "applied")],
             records.Select(r => ((string)r["name"]!, (string?)r["subject"], (string)r["outcomes"]![0]!["name"]!)));
         var everything = await repo.RunAsync("model", "export", "--resolved", "--format", "ndjson");

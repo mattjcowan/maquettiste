@@ -359,7 +359,9 @@ export function statefulHandlers(backend: MockBackend, baseUrl = "", recorded: R
             );
       const result = page(selected, (r) => [r.kind, r.name, r.id ?? ""], q.get("cursor"), limit);
       if (!result) return problem(400, "bad-request", "The request is not valid.", BAD_CURSOR);
-      return HttpResponse.json({ items: result.items, next: result.next, diagnostics: [], calculated: {} });
+      // The contract the recording states (the release it was recorded with).
+      const contract = (rec?.body as { contract?: string } | undefined)?.contract ?? "0.0.0";
+      return HttpResponse.json({ contract, schema: "resolved-model.json", items: result.items, next: result.next, diagnostics: [], calculated: {} });
     }),
     http.get("/api/localization", () => HttpResponse.json(l10n.status() as never)),
     http.get("/api/localization/{locale}/entries", ({ params, request }) => {

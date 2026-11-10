@@ -23,12 +23,14 @@ COPY schemas/v1 schemas/v1
 COPY src/Maquettiste.Engine src/Maquettiste.Engine
 # The modeling skill is embedded in the engine (the MCP conventions resource and the assistant's system prompt share it).
 COPY skills/maquettiste-modeling/SKILL.md skills/maquettiste-modeling/SKILL.md
+# The resolved-model reference is embedded too (written into each project's .schema/v1/ beside resolved-model.json).
+COPY docs/resolved-model.md docs/resolved-model.md
 COPY docker/closure docker/closure
 # PD24: one package version per engine build, <Directory.Build.props version> plus b<12 hex of the engine's inputs> (as a further
 # prerelease segment, or as the prerelease label when the version has none), so an upgraded image
 # never compiles the functions against an engine the persistent NuGet cache (/data/nuget) already holds under the same version.
 RUN base=$(dotnet msbuild src/Maquettiste.Engine -getProperty:PackageVersion) \
- && sum=$(find src/Maquettiste.Engine schemas/v1 skills/maquettiste-modeling/SKILL.md Directory.Build.props Directory.Packages.props -type f \
+ && sum=$(find src/Maquettiste.Engine schemas/v1 skills/maquettiste-modeling/SKILL.md docs/resolved-model.md Directory.Build.props Directory.Packages.props -type f \
           -not -path '*/bin/*' -not -path '*/obj/*' | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-12) \
  && case "$base" in *-*) echo "$base.b$sum" ;; *) echo "$base-b$sum" ;; esac > /engine.version \
  && dotnet pack src/Maquettiste.Engine -c Release -o /feed -p:Version="$(cat /engine.version)" \

@@ -75,6 +75,7 @@ nav:
       - Agents and MCP: mcp.md
       - HTTP API: api.md
       - The migration ledger: ledger.md
+      - The resolved model: resolved-model.md
   - Packs:
       - Writing a pack: packs/index.md
       - sql-ddl: packs/sql-ddl.md

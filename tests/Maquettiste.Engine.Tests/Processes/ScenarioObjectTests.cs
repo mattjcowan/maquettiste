@@ -75,8 +75,12 @@ public sealed class ScenarioObjectTests
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    private static JsonObject Record(Maquettiste.Engine.Resolution.ResolvedModel model, string id) =>
-        JsonSerializer.SerializeToNode(ResolvedRecords.Entries(model, "all", null).Single(e => e.Id == id).Project(), Web)!.AsObject();
+    private static JsonObject Record(Maquettiste.Engine.Resolution.ResolvedModel model, string id)
+    {
+        // Every record of the model fits the resolved-model schema.
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model);
+        return JsonSerializer.SerializeToNode(ResolvedRecords.Entries(model, "all", null).Single(e => e.Id == id).Project(), Web)!.AsObject();
+    }
 
     private static IReadOnlyList<NameEntry> Find(ModelSnapshot model, string text)
     {
@@ -215,6 +219,7 @@ public sealed class ScenarioObjectTests
         Assert.Empty(happy.Objects);
         Assert.Null(happy.Subject);
 
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(resolved, "scenarioLinkRecord");
         var record = Record(resolved, Sc);
         Assert.Equal(OrderObject, record["subject"]!.GetValue<string>());
         var objects = record["objects"]!.AsArray();

@@ -84,7 +84,7 @@ public sealed class ResolvedApprovalPart2Tests
             : [new GateStage { Id = ReviewStage, Name = "Review", When = stageWhen ? new Expr { Text = "subject.cost > 0" } : null, Signatures = [Engineers, FinanceSignature(part2)] }],
     };
 
-    private static ModelSnapshot Model(bool rounds = true, bool part2 = true, ProcessGate? policy = null, bool stageWhen = false)
+    internal static ModelSnapshot Model(bool rounds = true, bool part2 = true, ProcessGate? policy = null, bool stageWhen = false)
     {
         var documents = new Process
         {
