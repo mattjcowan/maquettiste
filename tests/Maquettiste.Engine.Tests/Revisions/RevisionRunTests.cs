@@ -87,14 +87,14 @@ public sealed class RevisionRunTests
         return (h, store);
     }
 
-    private static JsonElement Json(string text) => JsonDocument.Parse(text).RootElement.Clone();
+    internal static JsonElement Json(string text) => JsonDocument.Parse(text).RootElement.Clone();
 
     private static JsonElement[] Objects(string extra = "") =>
         [Json($$"""{"id":"d1","name":"drawing","entity":"{{Drawing}}","values":{"{{ApprovedBy}}":"kim","{{Trail}}":"-"}{{extra}}}""")];
 
-    private static JsonElement Event(string ev, string extra = "") => Json($$"""{"event":"{{ev}}"{{extra}}}""");
+    internal static JsonElement Event(string ev, string extra = "") => Json($$"""{"event":"{{ev}}"{{extra}}}""");
 
-    private static JsonElement Verb(string verb, string extra = "") => Json($$"""{"input":"verb","verb":"{{verb}}"{{extra}}}""");
+    internal static JsonElement Verb(string verb, string extra = "") => Json($$"""{"input":"verb","verb":"{{verb}}"{{extra}}}""");
 
     private static async Task<IReadOnlyList<StepTrace>> SimulateAsync(ModelStore store, JsonElement[] steps, JsonElement[]? objects = null)
     {
@@ -103,9 +103,9 @@ public sealed class RevisionRunTests
         return call.Value!.Trace;
     }
 
-    private static string Notes(StepTrace trace) => string.Join(" ", trace.Notes ?? []);
+    internal static string Notes(StepTrace trace) => string.Join(" ", trace.Notes ?? []);
 
-    private static (string From, string To, int? Level)? Moved(StepTrace trace) => trace.Revision is { } r ? (r.From, r.To, r.Level) : null;
+    internal static (string From, string To, int? Level)? Moved(StepTrace trace) => trace.Revision is { } r ? (r.From, r.To, r.Level) : null;
 
     [Fact]
     public async Task The_drawing_model_validates_without_errors()

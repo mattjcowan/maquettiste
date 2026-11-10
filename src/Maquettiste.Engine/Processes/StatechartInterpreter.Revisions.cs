@@ -67,6 +67,9 @@ public sealed partial class StatechartInterpreter
             if (prepared is not null)
             {
                 Write(prepared, []);
+                // A replace is a revise site after the before actions, so it reads the new revision's values (decision 38): the bound revision
+                // attribute at the next value.
+                BindRevision(next);
                 Replace(prepared);
             }
 
@@ -128,7 +131,13 @@ public sealed partial class StatechartInterpreter
         var revisions = _revisions!;
         _scope.Revision = new RevisionChange(_scope.Revision?.From ?? revisions.Revision, next, level);
         revisions.Revision = next;
-        if (revisions.Bound is not { } bound)
+        BindRevision(next);
+    }
+
+    // A bound revision attribute takes the revision in the row and the run's values, written directly rather than as a set.
+    private void BindRevision(string next)
+    {
+        if (_revisions!.Bound is not { } bound)
             return;
         var value = JsonSerializer.SerializeToElement(next);
         var row = new SortedDictionary<string, JsonElement>(StringComparer.Ordinal);

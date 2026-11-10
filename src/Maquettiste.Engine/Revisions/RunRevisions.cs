@@ -253,7 +253,8 @@ internal sealed class RunRevisions
     {
         if (!_model.TryGetEntry(endId, out var entry) || _model.Get<Relation>(entry.OwnerId) is not { } relation)
             return endId;
+        // An end's navigation is empty when not written (never null), so its role names it then.
         var end = relation.Ends.FirstOrDefault(e => string.Equals(e.Id, endId, StringComparison.Ordinal));
-        return end?.Navigation ?? (string.IsNullOrEmpty(end?.Role) ? relation.Name : end.Role);
+        return end is null ? endId : end.Navigation.Length > 0 ? end.Navigation : !string.IsNullOrEmpty(end.Role) ? end.Role : relation.Name;
     }
 }
