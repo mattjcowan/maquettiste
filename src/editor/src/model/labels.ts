@@ -255,6 +255,7 @@ export const EDITOR_TAB_LABELS = {
   mappings: GROUP_LABELS.mappings,
   storage: GROUP_LABELS.storage,
   inheritance: "Inheritance",
+  revisions: "Revisions",
   seedData: "Seed data",
   codeGeneration: "Code generation",
   references: "References",
