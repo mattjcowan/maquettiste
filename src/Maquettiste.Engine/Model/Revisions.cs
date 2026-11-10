@@ -25,6 +25,7 @@ public sealed record EntityRevisions
     /// The id of the attribute that holds the current revision (decisions 10 and 11), which only revising moves; <see langword="null"/> takes
     /// a base's, else the team's system holds it.
     /// </summary>
+    [ElementRef(IndexKinds = ["attribute"])]
     public string? BoundAttribute { get; init; }
 
     /// <summary>What a revise does to each listed lifecycle that governs the type (decision 33); a lifecycle not listed starts over.</summary>
@@ -105,12 +106,14 @@ public sealed record RevisionLifecycleEntry
     public const string Keep = "keep";
 
     /// <summary>The id of a lifecycle that governs the entity or a derived entity (MQ8312).</summary>
+    [ElementRef(ElementKind.Process)]
     public required string Lifecycle { get; init; }
 
     /// <summary>
     /// <see cref="Restart"/>, <see cref="Keep"/>, or the id of a state of the lifecycle, entered as a restart enters the initial one. State
-    /// ids are upper-case ULIDs, so they never clash with the two words.
+    /// ids are upper-case ULIDs, so they never clash with the two words. A state id is a reference; the two words are none.
     /// </summary>
+    [ElementRef(IndexKinds = ["state"], Words = [Restart, Keep])]
     public required string OnRevise { get; init; }
 }
 
@@ -118,6 +121,7 @@ public sealed record RevisionLifecycleEntry
 public sealed record RevisionAttributeEntry
 {
     /// <summary>The id of an attribute the entity holds: its own, an inherited one, or one from a stereotype it carries (MQ8312).</summary>
+    [ElementRef(IndexKinds = ["attribute"])]
     public required string Attribute { get; init; }
 
     /// <summary>What the new revision's value is.</summary>
@@ -142,6 +146,7 @@ public enum AttributeOnRevise
 public sealed record RevisionLinkEntry
 {
     /// <summary>The id of a relation end the entity navigates to (MQ8312).</summary>
+    [ElementRef(IndexKinds = ["end"])]
     public required string End { get; init; }
 
     /// <summary>What happens to the links through it.</summary>

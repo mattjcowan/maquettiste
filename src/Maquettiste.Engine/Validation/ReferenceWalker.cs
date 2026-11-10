@@ -98,7 +98,8 @@ internal sealed class ReferenceWalker
             switch (property.Role)
             {
                 case Role.Reference when child is string id:
-                    sites.Add(new ReferenceSite(childPointer, fromId, property.Reference!, property.DeclaringType, property.ClrName, id));
+                    if (!IsWord(property.Reference!, id))
+                        sites.Add(new ReferenceSite(childPointer, fromId, property.Reference!, property.DeclaringType, property.ClrName, id));
                     break;
                 case Role.Reference when child is IReadOnlyDictionary<string, StepAssumption> assume:
                     foreach (var (key, entry) in assume.OrderBy(p => p.Key, StringComparer.Ordinal))
@@ -113,7 +114,12 @@ internal sealed class ReferenceWalker
                 case Role.Reference when child is IEnumerable<string> ids:
                     var i = 0;
                     foreach (var item in ids)
-                        sites.Add(new ReferenceSite(Ptr.At(childPointer, i++), fromId, property.Reference!, property.DeclaringType, property.ClrName, item));
+                    {
+                        if (!IsWord(property.Reference!, item))
+                            sites.Add(new ReferenceSite(Ptr.At(childPointer, i), fromId, property.Reference!, property.DeclaringType, property.ClrName, item));
+                        i++;
+                    }
+
                     break;
                 case Role.TypeRef when child is TypeRef { Ref: { } typeId }:
                     sites.Add(new ReferenceSite(childPointer + "/ref", fromId, TypeRefTarget, typeof(TypeRef), nameof(TypeRef.Ref), typeId));
@@ -134,6 +140,9 @@ internal sealed class ReferenceWalker
             }
         }
     }
+
+    // A word the property may hold instead of an id (ElementRefAttribute.Words) is no reference.
+    private static bool IsWord(ElementRefAttribute reference, string value) => reference.Words.Length > 0 && Array.IndexOf(reference.Words, value) >= 0;
 
     private static string? IdOf(object value) => value switch
     {

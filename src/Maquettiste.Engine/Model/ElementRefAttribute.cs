@@ -29,6 +29,12 @@ public sealed class ElementRefAttribute(params ElementKind[] targets) : Attribut
     /// <summary>Whether the reference is owning: the holder belongs to the target and is deleted with it (a seed's target).</summary>
     public bool Owning { get; set; }
 
+    /// <summary>
+    /// Words the property may hold instead of an id (a revision lifecycle entry's <c>restart</c> and <c>keep</c>, revisions-design.md
+    /// decision 33): a value that is one of them is no reference. Ids are upper-case ULIDs, so a word never clashes with one.
+    /// </summary>
+    public string[] Words { get; set; } = [];
+
     /// <summary>Whether the reference may point at any element (no targets and no index kinds).</summary>
     public bool IsAny => Targets.Count == 0 && IndexKinds.Length == 0;
 }
