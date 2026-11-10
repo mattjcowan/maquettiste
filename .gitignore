@@ -8,6 +8,12 @@ artifacts/
 *.nupkg
 *.snupkg
 
+# JavaScript dependencies, tool caches and build output, wherever npm or Vite runs
+node_modules/
+.vite/
+dist/
+dist-mock/
+
 # IDEs
 .vs/
 .vscode/
@@ -18,6 +24,9 @@ artifacts/
 
 # Test output
 TestResults/
+test-results/
+playwright-report/
+blob-report/
 *.trx
 coverage*.xml
 coverage*.json

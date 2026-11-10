@@ -1,0 +1,25 @@
+{
+  "name": "maquettiste",
+  "version": "1.0.0",
+  "description": "Maquettiste is a visual designer for entities, relations, processes and databases that generates code through template packs. The editor, command line and agent server all work over one model, kept as JSON files in your repository.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "dev": "cd src/editor && npm run dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mattjcowan/maquettiste.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/mattjcowan/maquettiste/issues"
+  },
+  "homepage": "https://github.com/mattjcowan/maquettiste#readme"
+}
