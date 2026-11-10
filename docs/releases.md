@@ -5,6 +5,25 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## Unreleased
+
+- **Set up other AI tools.** `maquettiste init --agents <names>` sets up AI tools other than Claude Code. Give it names separated
+  by commas, or `all`: `claude`, `codex`, `copilot`, `cursor`, `grok`, `kiro`, `junie`, `devin` and `amp`. For each tool named,
+  init writes the file the tool reads to find the Maquettiste server, and a copy of the modeling skill in the folder the tool reads
+  skills from. It writes nothing for a tool you do not name, and `--agents claude` writes the same files as `--agent-setup`.
+  - Files that exist are merged the way `.mcp.json` is: other entries stay, and a `maquettiste` entry you wrote is kept. Codex's
+    `.codex/config.toml` only gets a table added at the end, and only when nothing in it could clash.
+  - `--docker <image>` works with it: every file then runs the server in the image.
+  - The skill copies are the same file Maquettiste owns. `init --skill` now refreshes the copies under `.agents/skills/` and
+    `.kiro/skills/` that carry Maquettiste's header, and `init --skill --check` checks them; a copy there without the header is
+    your own, and init leaves it alone. `init --skill` creates the `.claude/skills/` copy only when there is no copy yet.
+- **Files with comments are kept.** `init --mcp` (and `--agents`) no longer rewrites a JSON file that has comments or trailing
+  commas, which a rewrite would lose: it leaves the file alone and prints the entry to add by hand. A merged file keeps its line
+  endings and indent.
+- **Nothing half written.** init checks every agent setup path before it writes anything. A refused path (for example a folder
+  that is a link out of the repository) stops it with exit 4 and nothing written.
+  - [Maquettiste over MCP](mcp.md#other-ai-tools-agents) lists the files for each tool.
+
 ## 0.23.0 (2026-11-10)
 
 - **Revisions.** An entity may carry one optional `revisions` block. It says what revisions of that type look like and what a revise

@@ -6,16 +6,18 @@ using System.Text.Json.Nodes;
 using Maquettiste.Cli.Mcp;
 using Maquettiste.Engine;
 using Maquettiste.Engine.Pipeline;
+using Maquettiste.Engine.Writing;
 
 namespace Maquettiste.Cli.Commands;
 
 /// <summary>
-/// The agent setup of <c>maquettiste init --mcp / --skill / --agent-setup</c> (docs/mcp.md): registers the <c>maquettiste mcp</c>
-/// server in the repository's <c>.mcp.json</c> (the project-scoped MCP configuration that MCP clients read) and installs
-/// the modeling skill as <c>.claude/skills/maquettiste-modeling/SKILL.md</c>, a file the engine owns: it carries a header with the
-/// release and a hash, is rewritten only while nobody edited it, and leaves the repository's own conventions to
-/// <c>CONVENTIONS.md</c> beside it, which init never writes. Every write, and the removal of an earlier version's
-/// <c>mcp.sh</c>, goes through the path policy as a setup write.
+/// The agent setup of <c>maquettiste init --mcp / --skill / --agent-setup / --agents</c> (docs/mcp.md): registers the
+/// <c>maquettiste mcp</c> server in the repository's <c>.mcp.json</c> (the project-scoped MCP configuration that MCP clients read),
+/// and with <c>--agents</c> in the project file of each AI tool named (<see cref="Tools"/>), and installs the modeling skill as
+/// <c>.claude/skills/maquettiste-modeling/SKILL.md</c> (and, for the tools that read them, in <c>.agents/skills/</c> or
+/// <c>.kiro/skills/</c>), a file the engine owns: it carries a header with the release and a hash, is rewritten only while nobody
+/// edited it, and leaves the repository's own conventions to <c>CONVENTIONS.md</c> beside it, which init never writes. Every write,
+/// and the removal of an earlier version's <c>mcp.sh</c>, goes through the path policy as a setup write.
 /// </summary>
 internal static class AgentSetup
 {
@@ -23,7 +25,77 @@ internal static class AgentSetup
     public const string ServerName = "maquettiste";
 
     /// <summary>The repo-relative path of the installed skill.</summary>
-    public const string SkillPath = ".claude/skills/maquettiste-modeling/SKILL.md";
+    public const string SkillPath = ClaudeSkills + "/" + SkillFolderName + "/SKILL.md";
+
+    /// <summary>The name of the skill's folder in every skills folder.</summary>
+    public const string SkillFolderName = "maquettiste-modeling";
+
+    /// <summary>The skills folder Claude Code reads (and Grok Build, which reads Claude Code's skills).</summary>
+    public const string ClaudeSkills = ".claude/skills";
+
+    /// <summary>The shared skills folder that Codex, Cursor, GitHub Copilot, Devin and Amp read.</summary>
+    public const string SharedSkills = ".agents/skills";
+
+    /// <summary>The skills folder Kiro reads.</summary>
+    public const string KiroSkills = ".kiro/skills";
+
+    /// <summary>Every skills folder init may write a copy of the skill to, in the order it reports them.</summary>
+    public static readonly IReadOnlyList<string> SkillFolders = [ClaudeSkills, SharedSkills, KiroSkills];
+
+    /// <summary>The repo-relative path of the skill in a skills folder.</summary>
+    /// <param name="folder">The skills folder, such as <c>.agents/skills</c>.</param>
+    /// <returns>The path.</returns>
+    public static string SkillPathIn(string folder) => folder + "/" + SkillFolderName + "/SKILL.md";
+
+    /// <summary>The word <c>--agents</c> takes for every tool.</summary>
+    public const string AllAgents = "all";
+
+    /// <summary>
+    /// The AI tools <c>--agents</c> names, in the order init writes their files. Each lists the project files it reads to find MCP
+    /// servers and the skills folder it reads (none for Junie). The formats come from each tool's documentation (docs/guides/ai-tools.md).
+    /// </summary>
+    public static readonly IReadOnlyList<AgentTool> Tools =
+    [
+        new("claude", [new(".mcp.json", McpFileFormat.Json, "mcpServers")], ClaudeSkills),
+        new("codex", [new(".codex/config.toml", McpFileFormat.Toml, "mcp_servers", Note: "Codex reads it only in projects you trust")], SharedSkills),
+        new("copilot",
+        [
+            new(".vscode/mcp.json", McpFileFormat.Json, "servers"),
+            new(".github/mcp.json", McpFileFormat.Json, "mcpServers", AllTools: true),
+        ], SharedSkills),
+        new("cursor", [new(".cursor/mcp.json", McpFileFormat.Json, "mcpServers")], SharedSkills),
+        new("grok", [new(".mcp.json", McpFileFormat.Json, "mcpServers")], ClaudeSkills),
+        new("kiro", [new(".kiro/settings/mcp.json", McpFileFormat.Json, "mcpServers")], KiroSkills),
+        new("junie", [new(".junie/mcp/mcp.json", McpFileFormat.Json, "mcpServers")], null),
+        new("devin", [new(".devin/mcp_config.json", McpFileFormat.Json, "mcpServers")], SharedSkills),
+        new("amp", [new(".amp/settings.json", McpFileFormat.Json, "amp.mcpServers", Note: "approve it once with amp mcp approve " + ServerName)], SharedSkills),
+    ];
+
+    /// <summary>The <c>.mcp.json</c> file that <c>--mcp</c> writes.</summary>
+    public static McpFile ProjectMcpFile => Tools[0].McpFiles[0];
+
+    /// <summary>
+    /// Reads the value of <c>--agents</c>: names separated by commas (spaces and case ignored), or <c>all</c>. Returns the tools in the
+    /// order of <see cref="Tools"/>, each once.
+    /// </summary>
+    /// <param name="value">The option's value.</param>
+    /// <returns>The tools.</returns>
+    /// <exception cref="UsageException">An empty list or a name that is not a tool.</exception>
+    public static IReadOnlyList<AgentTool> ParseAgents(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        var valid = string.Join(", ", Tools.Select(t => t.Name)) + ", or " + AllAgents;
+        var names = value.Split(',').Select(n => n.Trim().ToLowerInvariant()).ToList();
+        if (names.Count == 0 || names.Any(n => n.Length == 0))
+            throw new UsageException("--agents needs AI tool names separated by commas, such as claude,codex. Valid names: " + valid + ".");
+        foreach (var name in names)
+        {
+            if (name != AllAgents && !Tools.Any(t => t.Name == name))
+                throw new UsageException($"--agents: '{name}' is not an AI tool init knows. Valid names: {valid}.");
+        }
+
+        return names.Contains(AllAgents) ? Tools : [.. Tools.Where(t => names.Contains(t.Name))];
+    }
 
     private static readonly JsonSerializerOptions WriteOptions = new()
     {
@@ -134,18 +206,23 @@ internal static class AgentSetup
     }
 
     /// <summary>
-    /// Adds the <c>maquettiste</c> server to an existing <c>.mcp.json</c> text, keeping every other entry and member in order. An
-    /// existing <c>maquettiste</c> entry is kept as is, unless <paramref name="replace"/> asks for it to be replaced in place.
+    /// Adds the <c>maquettiste</c> server to an existing <c>.mcp.json</c> text (or another tool's JSON file), keeping every other entry
+    /// and member in order, and the file's line endings, indent unit and final newline. An existing <c>maquettiste</c> entry is kept
+    /// as is, unless <paramref name="replace"/> asks for it to be replaced in place (an entry that is <c>null</c> counts as none). A file
+    /// with comments or trailing commas is never rewritten, since writing it again would drop them. An empty file counts as none.
     /// </summary>
     /// <param name="existing">The current file, or <see langword="null"/> when there is none.</param>
     /// <param name="entry">The server entry.</param>
     /// <param name="replace">Whether an existing <c>maquettiste</c> entry that differs from <paramref name="entry"/> is replaced.</param>
-    /// <param name="updated">The new text (LF, two-space indent, trailing newline); <see langword="null"/> when nothing changes.</param>
+    /// <param name="updated">The new text; <see langword="null"/> when nothing changes. A new file is LF, two-space indent, trailing newline.</param>
+    /// <param name="key">The root member that holds the servers: <c>mcpServers</c>, <c>servers</c> or <c>amp.mcpServers</c>.</param>
     /// <returns><see langword="null"/> on success, else why the file was left alone.</returns>
-    public static string? WithServer(string? existing, JsonObject entry, bool replace, out string? updated)
+    public static string? WithServer(string? existing, JsonObject entry, bool replace, out string? updated, string key = "mcpServers")
     {
         ArgumentNullException.ThrowIfNull(entry);
         updated = null;
+        if (string.IsNullOrWhiteSpace(existing))
+            existing = null;
         JsonObject root;
         JsonObject servers;
         try
@@ -163,23 +240,23 @@ internal static class AgentSetup
                 return "it is not a JSON object";
             }
 
-            if (root["mcpServers"] is null)
+            if (root[key] is null)
             {
-                if (root.ContainsKey("mcpServers"))
-                    root.Remove("mcpServers");
+                if (root.ContainsKey(key))
+                    root.Remove(key);
                 servers = [];
-                root["mcpServers"] = servers;
+                root[key] = servers;
             }
-            else if (root["mcpServers"] is JsonObject found)
+            else if (root[key] is JsonObject found)
             {
                 servers = found;
             }
             else
             {
-                return "its mcpServers member is not an object";
+                return $"its {key} member is not an object";
             }
 
-            if (servers.ContainsKey(ServerName) && (!replace || JsonNode.DeepEquals(servers[ServerName], entry)))
+            if (servers[ServerName] is not null && (!replace || JsonNode.DeepEquals(servers[ServerName], entry)))
                 return null;
         }
         catch (JsonException e)
@@ -192,10 +269,51 @@ internal static class AgentSetup
             return "it has duplicate keys (" + e.Message + ")";
         }
 
+        if (existing is not null && !IsPlainJson(existing))
+            return "it has comments or trailing commas, which init does not rewrite";
+
         servers[ServerName] = entry.DeepClone();
-        updated = root.ToJsonString(WriteOptions) + "\n";
+        updated = existing is null ? root.ToJsonString(WriteOptions) + "\n" : Reserialize(root, existing);
         return null;
     }
+
+    /// <summary>Whether a text that parses leniently also parses with no comments and no trailing commas.</summary>
+    private static bool IsPlainJson(string text)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(text, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Disallow, AllowTrailingCommas = false });
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Writes a merged file in the style of the one it replaces: its line endings, indent unit and final newline.</summary>
+    private static string Reserialize(JsonObject root, string existing)
+    {
+        var newline = existing.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        char indentCharacter = ' ';
+        var indentSize = 2;
+        foreach (var line in existing.Split('\n').Skip(1))
+        {
+            var width = line.Length - line.TrimStart(' ', '\t').Length;
+            if (width == 0 || width == line.TrimEnd('\r').Length)
+                continue;
+            indentCharacter = line[0];
+            indentSize = Math.Min(127, line.Length - line.TrimStart(indentCharacter).Length);
+            break;
+        }
+
+        var options = new JsonSerializerOptions(WriteOptions) { IndentCharacter = indentCharacter, IndentSize = indentSize, NewLine = newline };
+        var text = root.ToJsonString(options);
+        return existing.EndsWith('\n') ? text + newline : text;
+    }
+
+    /// <summary>The entry as the by-hand hints print it: one line, quotes and non-ASCII letters as they are.</summary>
+    private static string HintJson(JsonNode entry) => entry.ToJsonString(new JsonSerializerOptions(WriteOptions) { WriteIndented = false });
 
     /// <summary>Returns the embedded <c>skills/maquettiste-modeling/SKILL.md</c>, front matter included, with LF line endings.</summary>
     /// <returns>The text.</returns>
@@ -236,9 +354,9 @@ internal static class AgentSetup
         body = body.StartsWith('\n') ? body : "\n" + body;
         var paragraph =
             $"This file is generated by maquettiste {version} and rewritten by `maquettiste init --skill`. Do not edit it: put this\n"
-            + "repository's own modeling conventions in `CONVENTIONS.md` next to this file; `init --skill` never touches that file,\n"
-            + "and agents read it after this one. A copy edited by hand is left alone: `init --skill` then writes the new version to\n"
-            + "`SKILL.md.new` (`--force` overwrites), and `init --skill --check` exits 2 when this file is missing, stale or edited.\n";
+            + "repository's own modeling conventions in `.claude/skills/maquettiste-modeling/CONVENTIONS.md`, whichever copy of\n"
+            + "this skill you read; `init` never touches that file, and agents read it after this one. A copy edited by hand is left\n"
+            + "alone: `init --skill` then writes the new version to `SKILL.md.new` (`--force` overwrites), and `--check` exits 2.\n";
         var hash = Sha256(head + paragraph + body);
         return head + HeaderPrefix + "version=" + version + "; sha256=" + hash + " -->\n" + paragraph + body;
     }
@@ -334,44 +452,208 @@ internal static class AgentSetup
     private static string Sha256(string text) => Convert.ToHexStringLower(SHA256.HashData(new UTF8Encoding(false).GetBytes(text)));
 
     /// <summary>
-    /// Registers the server in <c>.mcp.json</c>. The installed-tool form keeps an entry named <c>maquettiste</c> that is already there as
-    /// is; the container form replaces it, so a re-run with another tag or runtime takes effect, and then removes the <c>mcp.sh</c>
-    /// wrapper an earlier version wrote (only when it carries the marker; any other <c>mcp.sh</c> is left alone).
+    /// Registers the server in <c>.mcp.json</c> and in the other files given (<c>--agents</c>). The installed-tool form keeps an entry
+    /// named <c>maquettiste</c> that is already there as is; the container form replaces it in a JSON file, so a re-run with another
+    /// tag or runtime takes effect, and then removes the <c>mcp.sh</c> wrapper an earlier version wrote (only when it carries the
+    /// marker; any other <c>mcp.sh</c> is left alone). A TOML file is never rewritten: the table is appended when the file has none.
     /// </summary>
     /// <param name="files">The guarded writer.</param>
     /// <param name="repo">The repository root.</param>
+    /// <param name="targets">The files to write, each once, in order.</param>
     /// <param name="dockerImage">The image of the container form (<c>--docker</c>), or <see langword="null"/> for the installed tool.</param>
     /// <param name="runtime">The container command of the container form (<c>--runtime</c>, default <c>docker</c>).</param>
     /// <param name="report">The report lines.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>
-    public static async Task WriteMcpConfigAsync(GuardedFiles files, string repo, string? dockerImage, string runtime, List<string> report, CancellationToken ct)
+    public static async Task WriteMcpFilesAsync(GuardedFiles files, string repo, IReadOnlyList<McpFile> targets, string? dockerImage, string runtime,
+        List<string> report, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(files);
+        ArgumentNullException.ThrowIfNull(targets);
         ArgumentNullException.ThrowIfNull(report);
-        var path = Path.Combine(repo, ".mcp.json");
-        var existing = File.Exists(path) ? await File.ReadAllTextAsync(path, ct).ConfigureAwait(false) : null;
+        if (targets.Count == 0)
+            return;
         var container = dockerImage is not null;
         var entry = container ? ContainerServerEntry(runtime, dockerImage!) : ServerEntry(await UsesLocalToolAsync(repo, ct).ConfigureAwait(false));
-        var problem = WithServer(existing, entry, replace: container, out var updated);
+        foreach (var target in targets)
+        {
+            if (target.Format == McpFileFormat.Toml)
+                await WriteTomlAsync(files, repo, target, entry, container, report, ct).ConfigureAwait(false);
+            else
+                await WriteJsonAsync(files, repo, target, target.AllTools ? WithAllTools(entry) : entry, container, report, ct).ConfigureAwait(false);
+        }
+
+        if (container && targets.Contains(ProjectMcpFile))
+            await RemoveLegacyWrapperAsync(files, repo, report, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>The entry with <c>"tools": ["*"]</c>, which GitHub Copilot's own files list for a local server.</summary>
+    private static JsonObject WithAllTools(JsonObject entry)
+    {
+        var copy = entry.DeepClone().AsObject();
+        copy["tools"] = new JsonArray("*");
+        return copy;
+    }
+
+    private static string CommandLine(JsonObject entry) =>
+        string.Join(' ', entry["args"]!.AsArray().Select(a => a!.GetValue<string>()).Prepend((string)entry["command"]!));
+
+    private static string WithNote(McpFile target, string text) => target.Note is null ? text + ")" : text + "; " + target.Note + ")";
+
+    private static async Task WriteJsonAsync(GuardedFiles files, string repo, McpFile target, JsonObject entry, bool container, List<string> report, CancellationToken ct)
+    {
+        var path = Path.Combine(repo, target.Path.Replace('/', Path.DirectorySeparatorChar));
+        var existing = File.Exists(path) ? await File.ReadAllTextAsync(path, ct).ConfigureAwait(false) : null;
+        var problem = WithServer(existing, entry, replace: container, out var updated, target.Key);
         if (problem is not null)
         {
-            report.Add($"kept .mcp.json: {problem}; add \"{ServerName}\": {entry.ToJsonString()} under mcpServers by hand");
+            report.Add($"kept {target.Path}: {problem}; add \"{ServerName}\": {HintJson(entry)} under {target.Key} by hand");
             return;
         }
 
         if (updated is null)
         {
-            report.Add($"kept .mcp.json (it already registers the {ServerName} server)");
-        }
-        else
-        {
-            var outcome = await files.WriteAsync(WriteTarget.Setup, path, new UTF8Encoding(false).GetBytes(updated), overwrite: true, ct).ConfigureAwait(false);
-            report.Add((outcome == WriteOutcome.Created ? "created" : "updated") + $" .mcp.json (server {ServerName}: " + string.Join(' ', entry["args"]!.AsArray().Select(a => a!.GetValue<string>()).Prepend((string)entry["command"]!)) + ")");
+            report.Add(WithNote(target, $"kept {target.Path} (it already registers the {ServerName} server"));
+            return;
         }
 
-        if (container)
-            await RemoveLegacyWrapperAsync(files, repo, report, ct).ConfigureAwait(false);
+        var outcome = await files.WriteAsync(WriteTarget.Setup, path, new UTF8Encoding(false).GetBytes(updated), overwrite: true, ct).ConfigureAwait(false);
+        report.Add(WithNote(target, (outcome == WriteOutcome.Created ? "created" : "updated") + $" {target.Path} (server {ServerName}: " + CommandLine(entry)));
+    }
+
+    private static async Task WriteTomlAsync(GuardedFiles files, string repo, McpFile target, JsonObject entry, bool container, List<string> report, CancellationToken ct)
+    {
+        var path = Path.Combine(repo, target.Path.Replace('/', Path.DirectorySeparatorChar));
+        var existing = File.Exists(path) ? await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false) : null;
+        var problem = WithTomlServer(existing, entry, out var updated);
+        if (problem is not null)
+        {
+            report.Add($"kept {target.Path}: {problem}; add this table by hand:\n" + TomlTable(entry, "\n").TrimEnd('\n'));
+            return;
+        }
+
+        if (updated is null)
+        {
+            report.Add(container
+                ? $"kept {target.Path} (it already has a [{target.Key}.{ServerName}] table; init never rewrites this file: change the table by hand to run the container)"
+                : WithNote(target, $"kept {target.Path} (it already registers the {ServerName} server"));
+            return;
+        }
+
+        var outcome = await files.WriteAsync(WriteTarget.Setup, path, updated, overwrite: true, ct).ConfigureAwait(false);
+        report.Add(WithNote(target, (outcome == WriteOutcome.Created ? "created" : "updated") + $" {target.Path} (server {ServerName}: " + CommandLine(entry)));
+    }
+
+    /// <summary>
+    /// Adds the <c>[mcp_servers.maquettiste]</c> table to the end of a Codex <c>config.toml</c>, conservatively: the file's own text is
+    /// never changed, only appended to, and only when nothing in it could clash with the new table. A file whose lines hold the exact
+    /// header <c>[mcp_servers.maquettiste]</c> already registers the server. A file that mentions <c>maquettiste</c> anywhere else, declares
+    /// the <c>[mcp_servers]</c> table itself or an inline <c>mcp_servers = ...</c>, or is not UTF-8 text, is left alone.
+    /// </summary>
+    /// <param name="existing">The file's bytes, or <see langword="null"/> when there is none.</param>
+    /// <param name="entry">The server entry (its <c>command</c> and <c>args</c>).</param>
+    /// <param name="updated">The new bytes; <see langword="null"/> when the file already registers the server.</param>
+    /// <returns><see langword="null"/> on success, else why the file was left alone.</returns>
+    internal static string? WithTomlServer(byte[]? existing, JsonObject entry, out byte[]? updated)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        updated = null;
+        string text;
+        try
+        {
+            text = existing is null ? "" : new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(existing);
+        }
+        catch (DecoderFallbackException)
+        {
+            return "it is not UTF-8 text";
+        }
+
+        var lines = text.Split('\n').Select(l => TomlBare(WithoutComment(l.TrimStart('\uFEFF')))).ToList();
+        var header = "[mcp_servers." + ServerName + "]";
+        if (lines.Contains(header))
+            return null;
+        if (text.Contains(ServerName, StringComparison.OrdinalIgnoreCase))
+            return $"it mentions {ServerName} but has no exact {header} header";
+        if (lines.Any(l => l == "[mcp_servers]" || l.StartsWith("mcp_servers=", StringComparison.Ordinal)))
+            return "it declares the mcp_servers table itself";
+
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var prefix = text.Length == 0 ? "" : text.EndsWith('\n') ? newline : newline + newline;
+        updated = new UTF8Encoding(false).GetBytes(text + prefix + TomlTable(entry, newline));
+        return null;
+    }
+
+    /// <summary>A TOML line without a <c>#</c> comment that starts outside quotes.</summary>
+    private static string WithoutComment(string line)
+    {
+        char? quote = null;
+        for (var i = 0; i < line.Length; i++)
+        {
+            var c = line[i];
+            if (quote is null && c == '#')
+                return line[..i];
+            if (c is '"' or '\'')
+                quote = quote is null ? c : quote == c ? null : quote;
+            else if (c == '\\' && quote == '"')
+                i++;
+        }
+
+        return line;
+    }
+
+    /// <summary>A TOML line without spaces, enough to compare a table header or a key's start.</summary>
+    private static string TomlBare(string line)
+    {
+        var builder = new StringBuilder(line.Length);
+        foreach (var c in line)
+        {
+            if (c is not (' ' or '\t' or '\r'))
+                builder.Append(c);
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>The table init appends: <c>command</c> and <c>args</c> as TOML basic strings.</summary>
+    internal static string TomlTable(JsonObject entry, string newline)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        var args = string.Join(", ", entry["args"]!.AsArray().Select(a => TomlString(a!.GetValue<string>())));
+        return $"[mcp_servers.{ServerName}]{newline}command = {TomlString((string)entry["command"]!)}{newline}args = [{args}]{newline}";
+    }
+
+    private static string TomlString(string value)
+    {
+        var builder = new StringBuilder(value.Length + 2).Append('"');
+        foreach (var c in value)
+        {
+            switch (c)
+            {
+                case '"':
+                    builder.Append("\\\"");
+                    break;
+                case '\\':
+                    builder.Append("\\\\");
+                    break;
+                case '\n':
+                    builder.Append("\\n");
+                    break;
+                case '\r':
+                    builder.Append("\\r");
+                    break;
+                case '\t':
+                    builder.Append("\\t");
+                    break;
+                default:
+                    if (c < 0x20 || c == 0x7F)
+                        builder.Append("\\u").Append(((int)c).ToString("X4", System.Globalization.CultureInfo.InvariantCulture));
+                    else
+                        builder.Append(c);
+                    break;
+            }
+        }
+
+        return builder.Append('"').ToString();
     }
 
     private static async Task RemoveLegacyWrapperAsync(GuardedFiles files, string repo, List<string> report, CancellationToken ct)
@@ -384,29 +666,112 @@ internal static class AgentSetup
     }
 
     /// <summary>
-    /// Installs or refreshes the modeling skill. A missing file is written; a copy that this release or an earlier one wrote and nobody
-    /// changed is rewritten; a copy edited by hand is left alone, the new version goes to <c>SKILL.md.new</c> beside it, and the report
-    /// says why (<paramref name="force"/> overwrites it instead). <c>CONVENTIONS.md</c> in the same folder is never written. A leftover
-    /// <c>SKILL.md.new</c> is removed once the skill is current, unless it was edited too.
+    /// Which copies of the modeling skill an init run writes, in the order of <see cref="SkillFolders"/>: the copy in each folder of
+    /// <paramref name="create"/> (written when missing), and, when <paramref name="refreshExisting"/>, every other copy that exists
+    /// (never created there). A copy in <c>.agents/skills</c> or <c>.kiro/skills</c> without the engine's header is the team's own: it
+    /// is listed with <c>Own</c> set and never written. Two folders that are one folder through a link give one copy.
     /// </summary>
+    /// <param name="repo">The repository root.</param>
+    /// <param name="create">The skills folders that get a copy.</param>
+    /// <param name="refreshExisting">Whether copies in the other folders are refreshed too (<c>--skill</c>).</param>
+    /// <returns>The copies' repo-relative paths, and whether each is the team's own.</returns>
+    public static IReadOnlyList<(string Path, bool Own)> SkillCopies(string repo, IReadOnlyCollection<string> create, bool refreshExisting)
+    {
+        ArgumentNullException.ThrowIfNull(create);
+        var seen = new HashSet<string>(StringComparer.FromComparison(FileSystemPaths.Comparison));
+        var copies = new List<(string, bool)>();
+        foreach (var folder in SkillFolders)
+        {
+            var relative = SkillPathIn(folder);
+            var full = FullPath(repo, relative);
+            var exists = File.Exists(full);
+            if (!create.Contains(folder) && !(refreshExisting && exists))
+                continue;
+            if (!seen.Add(RealPathOrSelf(full)))
+                continue;
+            copies.Add((relative, exists && folder != ClaudeSkills && !IsEngineCopy(File.ReadAllBytes(full))));
+        }
+
+        return copies;
+    }
+
+    /// <summary>Whether a copy of the skill that init may own exists: the <c>.claude/skills</c> copy, or a copy elsewhere with the header.</summary>
+    /// <param name="repo">The repository root.</param>
+    /// <returns><see langword="true"/> when one exists.</returns>
+    public static bool AnyEngineCopy(string repo) =>
+        SkillCopies(repo, [], refreshExisting: true).Any(c => !c.Own);
+
+    /// <summary>Whether a file carries the engine's header line (whatever its hash says), so the engine owns it.</summary>
+    /// <param name="bytes">The file's bytes.</param>
+    /// <returns><see langword="true"/> when it does.</returns>
+    internal static bool IsEngineCopy(byte[] bytes)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        var text = new UTF8Encoding(false).GetString(bytes).TrimStart('\uFEFF');
+        return text.StartsWith(HeaderPrefix, StringComparison.Ordinal) || text.Contains("\n" + HeaderPrefix, StringComparison.Ordinal);
+    }
+
+    private static string RealPathOrSelf(string full)
+    {
+        try
+        {
+            return FileSystemPaths.RealPath(full);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return full;
+        }
+    }
+
+    /// <summary>Installs or refreshes the copies <see cref="SkillCopies"/> lists; a copy of the team's own gets a line and is left alone.</summary>
     /// <param name="files">The guarded writer.</param>
     /// <param name="repo">The repository root.</param>
+    /// <param name="copies">The copies.</param>
     /// <param name="force">Whether a copy edited by hand is overwritten (<c>--force</c>).</param>
     /// <param name="report">The report lines.</param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>A task.</returns>
-    public static async Task WriteSkillAsync(GuardedFiles files, string repo, bool force, List<string> report, CancellationToken ct)
+    public static async Task WriteSkillsAsync(GuardedFiles files, string repo, IReadOnlyList<(string Path, bool Own)> copies, bool force,
+        List<string> report, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(copies);
+        ArgumentNullException.ThrowIfNull(report);
+        foreach (var (relative, own) in copies)
+        {
+            if (own)
+                report.Add($"kept {relative} (it has no maquettiste header, so it is your own copy; init leaves it alone)");
+            else
+                await WriteSkillAsync(files, repo, relative, force, report, ct).ConfigureAwait(false);
+        }
+    }
+
+    private static string FullPath(string repo, string relative) => Path.Combine(repo, relative.Replace('/', Path.DirectorySeparatorChar));
+
+    /// <summary>
+    /// Installs or refreshes one copy of the modeling skill. A missing file is written; a copy that this release or an earlier one wrote
+    /// and nobody changed is rewritten; a copy edited by hand is left alone, the new version goes to <c>SKILL.md.new</c> beside it, and
+    /// the report says why (<paramref name="force"/> overwrites it instead). <c>CONVENTIONS.md</c> in the same folder is never written.
+    /// A leftover <c>SKILL.md.new</c> is removed once the skill is current, unless it was edited too.
+    /// </summary>
+    /// <param name="files">The guarded writer.</param>
+    /// <param name="repo">The repository root.</param>
+    /// <param name="relative">The copy's repo-relative path, such as <see cref="SkillPath"/>.</param>
+    /// <param name="force">Whether a copy edited by hand is overwritten (<c>--force</c>).</param>
+    /// <param name="report">The report lines.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>A task.</returns>
+    public static async Task WriteSkillAsync(GuardedFiles files, string repo, string relative, bool force, List<string> report, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(files);
         ArgumentNullException.ThrowIfNull(report);
-        var path = Path.Combine(repo, SkillPath.Replace('/', Path.DirectorySeparatorChar));
+        var path = FullPath(repo, relative);
         var newPath = path + ".new";
         var current = SkillBytes();
         var state = Classify(File.Exists(path) ? await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false) : null, current, out var version);
         if (state == SkillState.Edited && !force)
         {
             await files.WriteAsync(WriteTarget.Setup, newPath, current, overwrite: true, ct).ConfigureAwait(false);
-            report.Add(EditedMessage);
+            report.Add(EditedMessage(relative));
             return;
         }
 
@@ -414,33 +779,36 @@ internal static class AgentSetup
             await files.WriteAsync(WriteTarget.Setup, path, current, overwrite: true, ct).ConfigureAwait(false);
         report.Add(state switch
         {
-            SkillState.Missing => "created " + SkillPath,
-            SkillState.Shipped => $"updated {SkillPath} (from the {version} version to {EngineVersion.Product})",
-            SkillState.Edited => $"replaced {SkillPath}, which was edited by hand (--force)",
-            _ => "kept " + SkillPath + " (current)",
+            SkillState.Missing => "created " + relative,
+            SkillState.Shipped => $"updated {relative} (from the {version} version to {EngineVersion.Product})",
+            SkillState.Edited => $"replaced {relative}, which was edited by hand (--force)",
+            _ => "kept " + relative + " (current)",
         });
 
         if (File.Exists(newPath))
         {
             if (Classify(await File.ReadAllBytesAsync(newPath, ct).ConfigureAwait(false), current, out _) == SkillState.Edited)
             {
-                report.Add($"kept {SkillPath}.new: it was edited; remove it when you no longer need it");
+                report.Add($"kept {relative}.new: it was edited; remove it when you no longer need it");
             }
             else
             {
                 files.Delete(WriteTarget.Setup, newPath);
-                report.Add($"removed {SkillPath}.new");
+                report.Add($"removed {relative}.new");
             }
         }
     }
 
     /// <summary>The line <c>init --skill</c> reports when it leaves a copy edited by hand alone.</summary>
-    public const string EditedMessage = "skill not updated: " + SkillPath + " was edited by hand; the new version is in SKILL.md.new "
+    /// <param name="relative">The copy's repo-relative path.</param>
+    /// <returns>The line.</returns>
+    public static string EditedMessage(string relative) => "skill not updated: " + relative + " was edited by hand; the new version is in SKILL.md.new "
         + "(diff them, move your additions to CONVENTIONS.md, then run init --skill --force)";
 
     /// <summary>
-    /// <c>init --skill --check</c>: compares the installed skill with the one this release writes and writes nothing. Prints one line on
-    /// stdout and returns 0 when it is current, 2 (drift, as <c>generate --check</c>) when it is missing, stale or edited by hand.
+    /// <c>init --skill --check</c>: compares every copy of the skill the engine owns (<see cref="SkillCopies"/>; a copy of the team's own
+    /// in <c>.agents/skills</c> or <c>.kiro/skills</c> is not checked) with the one this release writes and writes nothing. Prints one line per copy on stdout (<c>skill missing</c> for <see cref="SkillPath"/> when there is no
+    /// copy at all) and returns 0 when every copy is current, 2 (drift, as <c>generate --check</c>) when one is missing, stale or edited.
     /// </summary>
     /// <param name="output">Standard output.</param>
     /// <param name="repo">The repository root.</param>
@@ -449,16 +817,27 @@ internal static class AgentSetup
     public static async Task<int> CheckSkillAsync(TextWriter output, string repo, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(output);
-        var path = Path.Combine(repo, SkillPath.Replace('/', Path.DirectorySeparatorChar));
-        var state = Classify(File.Exists(path) ? await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false) : null, SkillBytes(), out var version);
-        await output.WriteLineAsync(state switch
+        var copies = SkillCopies(repo, [], refreshExisting: true).Where(c => !c.Own).Select(c => c.Path).ToList();
+        if (copies.Count == 0)
+            copies.Add(SkillPath);
+        var current = SkillBytes();
+        var exit = Program.ExitCodes.Success;
+        foreach (var relative in copies)
         {
-            SkillState.Current => $"skill current: {SkillPath} (maquettiste {EngineVersion.Product})",
-            SkillState.Missing => $"skill missing: {SkillPath} (run maquettiste init --skill)",
-            SkillState.Shipped => $"skill stale: {SkillPath} is the {version} version, not {EngineVersion.Product} (run maquettiste init --skill)",
-            _ => $"skill edited: {SkillPath} was edited by hand (move your additions to CONVENTIONS.md, then run maquettiste init --skill --force)",
-        }).ConfigureAwait(false);
-        return state == SkillState.Current ? Program.ExitCodes.Success : Program.ExitCodes.Drift;
+            var path = FullPath(repo, relative);
+            var state = Classify(File.Exists(path) ? await File.ReadAllBytesAsync(path, ct).ConfigureAwait(false) : null, current, out var version);
+            await output.WriteLineAsync(state switch
+            {
+                SkillState.Current => $"skill current: {relative} (maquettiste {EngineVersion.Product})",
+                SkillState.Missing => $"skill missing: {relative} (run maquettiste init --skill)",
+                SkillState.Shipped => $"skill stale: {relative} is the {version} version, not {EngineVersion.Product} (run maquettiste init --skill)",
+                _ => $"skill edited: {relative} was edited by hand (move your additions to CONVENTIONS.md, then run maquettiste init --skill --force)",
+            }).ConfigureAwait(false);
+            if (state != SkillState.Current)
+                exit = Program.ExitCodes.Drift;
+        }
+
+        return exit;
     }
 
     private static async Task<bool> UsesLocalToolAsync(string repo, CancellationToken ct)
@@ -491,3 +870,27 @@ internal static class AgentSetup
         return false;
     }
 }
+
+/// <summary>The format of an AI tool's MCP file.</summary>
+internal enum McpFileFormat
+{
+    /// <summary>A JSON object whose member <see cref="McpFile.Key"/> holds the servers by name.</summary>
+    Json,
+
+    /// <summary>A TOML file with one <c>[mcp_servers.&lt;name&gt;]</c> table per server (Codex).</summary>
+    Toml,
+}
+
+/// <summary>A project file an AI tool reads to find MCP servers.</summary>
+/// <param name="Path">The repo-relative path.</param>
+/// <param name="Format">The file's format.</param>
+/// <param name="Key">The member (JSON) or table (TOML) that holds the servers.</param>
+/// <param name="AllTools">Whether the entry lists <c>"tools": ["*"]</c> (GitHub Copilot's own files).</param>
+/// <param name="Note">A short note the report line ends with, such as a trust or approval step.</param>
+internal sealed record McpFile(string Path, McpFileFormat Format, string Key, bool AllTools = false, string? Note = null);
+
+/// <summary>An AI tool that <c>init --agents</c> sets up.</summary>
+/// <param name="Name">The name <c>--agents</c> takes.</param>
+/// <param name="McpFiles">The project files it reads to find MCP servers.</param>
+/// <param name="SkillFolder">The skills folder it reads, or <see langword="null"/> when it has none.</param>
+internal sealed record AgentTool(string Name, IReadOnlyList<McpFile> McpFiles, string? SkillFolder);

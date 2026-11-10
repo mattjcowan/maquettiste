@@ -51,9 +51,23 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
             Path.Combine(_repoRoot, ".mcp.json"),
             // Only removed: init deletes the wrapper script that earlier versions wrote here.
             Path.Combine(_repoRoot, "mcp.sh"),
+            // The project MCP files of the AI tools that init --agents names (the CLI's AgentSetup.Tools).
+            Path.Combine(_repoRoot, ".codex", "config.toml"),
+            Path.Combine(_repoRoot, ".vscode", "mcp.json"),
+            Path.Combine(_repoRoot, ".github", "mcp.json"),
+            Path.Combine(_repoRoot, ".cursor", "mcp.json"),
+            Path.Combine(_repoRoot, ".kiro", "settings", "mcp.json"),
+            Path.Combine(_repoRoot, ".junie", "mcp", "mcp.json"),
+            Path.Combine(_repoRoot, ".devin", "mcp_config.json"),
+            Path.Combine(_repoRoot, ".amp", "settings.json"),
+            // The modeling skill in each skills folder, and the new version of a copy edited by hand beside it; CONVENTIONS.md in the
+            // same folder is never written.
             Path.Combine(_repoRoot, ".claude", "skills", "maquettiste-modeling", "SKILL.md"),
-            // The new version of a skill edited by hand, beside it; CONVENTIONS.md in the same folder is never written.
             Path.Combine(_repoRoot, ".claude", "skills", "maquettiste-modeling", "SKILL.md.new"),
+            Path.Combine(_repoRoot, ".agents", "skills", "maquettiste-modeling", "SKILL.md"),
+            Path.Combine(_repoRoot, ".agents", "skills", "maquettiste-modeling", "SKILL.md.new"),
+            Path.Combine(_repoRoot, ".kiro", "skills", "maquettiste-modeling", "SKILL.md"),
+            Path.Combine(_repoRoot, ".kiro", "skills", "maquettiste-modeling", "SKILL.md.new"),
         ];
         _hasSettings = settings is not null;
         var roots = new List<(string, bool, OutputRootInfo)>();
@@ -157,7 +171,7 @@ internal sealed class OutputPathPolicy : IOutputPathPolicy
             case WriteTarget.Setup:
             {
                 if (!_setupPaths.Any(p => string.Equals(p, full, FileSystemPaths.Comparison)))
-                    return Refuse(full, null, "setup writes are limited to the post-checkout and post-merge hooks, .mcp.json, mcp.sh and .claude/skills/maquettiste-modeling/SKILL.md (and SKILL.md.new)");
+                    return Refuse(full, null, "setup writes are limited to the post-checkout and post-merge hooks, .mcp.json, mcp.sh, the MCP files of the AI tools init --agents names and maquettiste-modeling/SKILL.md (and SKILL.md.new) in .claude/skills, .agents/skills and .kiro/skills");
                 try
                 {
                     var realRepo = FileSystemPaths.RealPath(_repoRoot);
