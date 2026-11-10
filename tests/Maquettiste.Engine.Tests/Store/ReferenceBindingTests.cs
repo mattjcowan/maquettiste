@@ -104,6 +104,7 @@ public sealed class ReferenceBindingTests
     {
         await using var r = await RepoAsync();
         var model = await ResolvedAsync(r);
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model, "referenceBindingView", "referenceBindingFieldView");
         var type = model.ReferenceTypes.Single(t => t.Name == "PaymentTerm");
         var binding = type.Bindings["main"];
         Assert.Equal(("payment_terms", "code"), (binding.Table.Name, binding.CodeColumn!.Name));

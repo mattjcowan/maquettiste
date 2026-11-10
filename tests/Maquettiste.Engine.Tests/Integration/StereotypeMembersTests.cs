@@ -123,6 +123,7 @@ public sealed class StereotypeMembersTests
     {
         var snapshot = await repo.Store.GetSnapshotAsync(Ct);
         var model = await repo.Store.Services.Resolver.ResolveAsync(snapshot, null, Ct);
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model, "memberOriginView");
         return model.Databases.Single(d => d.Id == Main);
     }
 

@@ -83,7 +83,7 @@ public sealed class ResolvedRevisionTests
         Id = id, Name = name, Use = ProcessUse.Lifecycle, SubjectList = [new ProcessSubject { Id = "01JRVB" + id[6..], Entity = entity }], States = states,
     };
 
-    private static ModelSnapshot Model(bool blocks = true, Func<Element, Element>? edit = null, IEnumerable<Element>? extra = null)
+    internal static ModelSnapshot Model(bool blocks = true, Func<Element, Element>? edit = null, IEnumerable<Element>? extra = null)
     {
         var drawings = Lifecycle(DrawingLifecycle, "DrawingLifecycle", Drawing,
             [new ProcessState { Id = InWork, Name = "InWork" }, new ProcessState { Id = Approved, Name = "Approved" }, new ProcessState { Id = Released, Name = "Released" }]) with

@@ -244,7 +244,7 @@ public sealed class ResolvedNullContractTests
     /// and no native name), a routine that returns a table, routine settings, a partitioned table with an exclusion constraint and
     /// storage parameters, a derived attribute, a view's generation hints and an operation with members, outcomes and an error.
     /// </summary>
-    private static ModelSnapshot Uncovered()
+    internal static ModelSnapshot Uncovered()
     {
         var b = new ModelBuilder(seed: 557);
         var invoice = b.Entity("Invoice").Key("id", "uuid").Attr("total", "decimal").Attr("doubled", "decimal", a => a.Derived("total * 2"));
@@ -405,7 +405,7 @@ public sealed class ResolvedNullContractTests
         }
     }
 
-    private static async Task<ResolvedModel> ResolveAsync(string root)
+    internal static async Task<ResolvedModel> ResolveAsync(string root)
     {
         var cache = Path.Combine(Path.GetTempPath(), "maquettiste-tests", "null-contract-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(cache);

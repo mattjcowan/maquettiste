@@ -38,6 +38,7 @@ public sealed class EventTests
             File.WriteAllBytes(host.PathOf(folder + "/" + name), schemas.GetFileBytes(name).ToArray());
         }
 
+        File.WriteAllBytes(host.PathOf(folder + "/" + Engine.ResolvedContract.ReferenceFile), Engine.ResolvedContract.ReferenceBytes.ToArray());
         File.WriteAllText(host.PathOf(folder + "/entity.json"), "{}\n");
         File.WriteAllText(host.PathOf(folder + "/retired.json"), "{}\n");
 

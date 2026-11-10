@@ -43,7 +43,7 @@ public sealed class InitTests
         Assert.Equal(
         [
             "created .maquettiste/maquettiste.json",
-            $"wrote .maquettiste/.schema/v1/ ({TestServices.Schemas.FileNames.Count} schemas)",
+            $"wrote .maquettiste/.schema/v1/ ({TestServices.Schemas.FileNames.Count} schemas and the resolved-model reference)",
             $"wrote .maquettiste/templates/sql-ddl/ ({StarterPacks.Files("sql-ddl", out var embedded).Count} files{(embedded ? "" : ", built-in starter")})",
             $"Initialized maquettiste in {repo.RepoRoot}.",
             "Keep formatters and linters off .maquettiste/ (see the guide).",
@@ -79,7 +79,9 @@ public sealed class InitTests
         // Every embedded schema, byte for byte.
         foreach (var name in TestServices.Schemas.FileNames)
             Assert.Equal(TestServices.Schemas.GetFileBytes(name).ToArray(), File.ReadAllBytes(repo.PathOf(".maquettiste/.schema/v1/" + name)));
-        Assert.Equal(TestServices.Schemas.FileNames.Count, Directory.GetFiles(repo.PathOf(".maquettiste/.schema/v1")).Length);
+        // And the resolved-model reference, rendered from the embedded resolved-model schema.
+        Assert.Equal(Maquettiste.Engine.ResolvedContract.ReferenceBytes.ToArray(), File.ReadAllBytes(repo.PathOf(".maquettiste/.schema/v1/resolved-model.md")));
+        Assert.Equal(TestServices.Schemas.FileNames.Count + 1, Directory.GetFiles(repo.PathOf(".maquettiste/.schema/v1")).Length);
 
         Assert.True(File.Exists(repo.PathOf(".maquettiste/templates/sql-ddl/pack.json")));
         Assert.False(File.Exists(repo.PathOf(".maquettiste/templates/.gitkeep")));

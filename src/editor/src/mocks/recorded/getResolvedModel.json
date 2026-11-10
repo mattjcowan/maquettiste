@@ -1,4 +1,6 @@
 {
+  "contract": "0.23.0",
+  "schema": "resolved-model.json",
   "items": [
     {
       "id": "01J92P0V1QRN2181XM2ZWE02W4",

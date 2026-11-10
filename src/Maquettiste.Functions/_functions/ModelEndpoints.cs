@@ -202,6 +202,22 @@ public static class ModelEndpoints
         }
     });
 
+    /// <summary>
+    /// The JSON Schema of the resolved model's pages (<c>resolved-model.json</c>, the contract every page names in <c>contract</c> and
+    /// <c>schema</c>), or with <c>scope</c> the schema of that scope's pages: its record and only what the record reaches.
+    /// </summary>
+    /// <param name="scope"><c>all</c> (the default: the whole schema), or a scope of <c>getResolvedModel</c>.</param>
+    /// <param name="context">The request.</param>
+    /// <returns>200 with the schema, or 400 for an unknown scope.</returns>
+    [HttpGet("/api/model/resolved/schema")]
+    public static IResult ResolvedSchema(string? scope, HttpContext context) => Api.Guard(context, () =>
+    {
+        var name = string.IsNullOrEmpty(scope) ? "all" : scope;
+        if (!ResolvedRecords.ScopeNames.Contains(name, StringComparer.Ordinal))
+            return Api.BadRequest($"scope must be one of {string.Join(", ", ResolvedRecords.ScopeNames)}, not '{scope}'.");
+        return Results.Text(ResolvedContract.SchemaText(name), "application/json", System.Text.Encoding.UTF8);
+    });
+
     /// <summary>The request's URL with <c>cursor</c> set to the next page's.</summary>
     private static string NextUrl(HttpRequest request, string next)
     {

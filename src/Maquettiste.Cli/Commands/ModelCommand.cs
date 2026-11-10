@@ -8,7 +8,8 @@ namespace Maquettiste.Cli.Commands;
 
 /// <summary>
 /// <c>maquettiste model export|stats|delete|materialize|apply|calculated|diff</c>: the whole model, or a filtered part of it, as data for another system. <c>export</c> writes the
-/// canonical documents (or, with <c>--resolved</c>, the resolved model's flat records) as one JSON array or as one JSON value per line;
+/// canonical documents as one JSON array or as one JSON value per line (with <c>--resolved</c>, the resolved model's flat records as one
+/// object with the contract version, the schema's file name and <c>items</c>, or a header line then one record per line);
 /// <c>stats</c> counts the kinds present, per package with <c>--by package</c>. Both take <c>--kind</c>, where <c>custom</c> means every custom
 /// element and <c>custom:&lt;type&gt;</c> one custom kind (next-phase-2-design.md section 4.2). Both read the same pages the editor API and the MCP
 /// server serve (<c>GET /api/model/elements</c>, <c>/api/model/resolved</c>, <c>/api/model/kinds</c>). <c>delete</c> deletes one element
@@ -173,8 +174,8 @@ internal static class ModelCommand
         }
         while (cursor is not null);
 
-        await CliFiles.EmitAsync(context, Join(values, ndjson), ct).ConfigureAwait(false);
-        context.Info(string.Create(CultureInfo.InvariantCulture, $"Exported {values.Count} resolved {(values.Count == 1 ? "record" : "records")} ({scope})."));
+        await CliFiles.EmitAsync(context, Resolved(values, ndjson), ct).ConfigureAwait(false);
+        context.Info(string.Create(CultureInfo.InvariantCulture, $"Exported {values.Count} resolved {(values.Count == 1 ? "record" : "records")} ({scope}), contract {ResolvedContract.Version}."));
         return Program.ExitCodes.Success;
     }
 
@@ -609,6 +610,20 @@ internal static class ModelCommand
     {
         foreach (var kind in kinds)
             text.Append(indent).Append(CultureInfo.InvariantCulture, $"{kind.Kind,-24} {kind.Count,7}\n");
+    }
+
+    /// <summary>
+    /// The resolved export (resolved-model.json, <c>exportFile</c> and <c>exportHeader</c>): JSON is one object with the contract
+    /// version, the schema's file name and the records; NDJSON is a first line with the version and the schema, then one record per line.
+    /// </summary>
+    private static string Resolved(List<string> values, bool ndjson)
+    {
+        var contract = JsonSerializer.Serialize(ResolvedContract.Version, Options);
+        var schema = JsonSerializer.Serialize(ResolvedContract.SchemaFile, Options);
+        if (ndjson)
+            return $"{{\"contract\":{contract},\"schema\":{schema}}}\n" + Join(values, ndjson: true);
+        var items = values.Count == 0 ? "[]" : "[\n    " + string.Join(",\n    ", values) + "\n  ]";
+        return $"{{\n  \"contract\": {contract},\n  \"schema\": {schema},\n  \"items\": {items}\n}}\n";
     }
 
     /// <summary>A JSON array with one value per line, or one value per line (NDJSON); either ends with a line feed.</summary>

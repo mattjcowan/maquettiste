@@ -900,6 +900,11 @@ paths:
         returns no records and the errors in `diagnostics`, unless its only errors are migration facts that wait for their intent
         (MQ4101): those still return records. The MCP tool `get_resolved_model` and `maquettiste model export --resolved` answer
         the same.
+
+        Every page states the contract it follows in `contract` (until version 1, the release that answered, such as `0.24.0`; the
+        contract may change in any release) and names its JSON Schema in `schema` (`resolved-model.json`), which
+        `getResolvedModelSchema` returns and every project holds in `.maquettiste/.schema/v1/`, next to its reference
+        `resolved-model.md`.
       x-maquettiste-role: viewer
       x-maquettiste-engine: GenerationService.GetResolvedAsync(query)
       parameters:
@@ -929,6 +934,8 @@ paths:
                 enums:
                   summary: GET /api/model/resolved?scope=enums on the billing fixture
                   value:
+                    contract: 0.24.0
+                    schema: resolved-model.json
                     items:
                       - id: 01J92P0V05WQDH2GZG539D9VG1
                         kind: enum
@@ -953,6 +960,8 @@ paths:
                 entity:
                   summary: GET /api/model/resolved?scope=entities&limit=1&cursor=... (Product, two of its five attributes shown)
                   value:
+                    contract: 0.24.0
+                    schema: resolved-model.json
                     items:
                       - id: 01J92P0V0JR8BE8253SKT29ZG7
                         kind: entity
@@ -1065,6 +1074,43 @@ paths:
           $ref: '#/components/responses/NotFound'
         '503':
           $ref: '#/components/responses/ModelUnavailable'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+
+  /api/model/resolved/schema:
+    get:
+      tags: [model]
+      operationId: getResolvedModelSchema
+      summary: The JSON Schema of the resolved model's pages
+      description: |
+        The contract of `getResolvedModel`, `resolved-model.json` (JSON Schema draft 2020-12): the page, every record by its `kind`,
+        and a plain description of every field, with when it is null. Until version 1 the contract is the release (`x-contract`),
+        such as `0.24.0`, and may change in any release. `x-scopes` names each scope's record. With `scope`, the schema of that
+        scope's pages: `items` holds the scope's record, and `$defs` only what that record reaches (`x-scope` names the scope).
+        Every project holds the whole schema in `.maquettiste/.schema/v1/resolved-model.json`, with the readable reference
+        `resolved-model.md`; the MCP tool `get_schema` returns it as `resolved-model` or `resolved-model:<scope>`.
+      x-maquettiste-role: viewer
+      x-maquettiste-engine: ResolvedContract.Schema(scope)
+      parameters:
+        - name: scope
+          in: query
+          description: A scope of `getResolvedModel`; `all` (the default) is the whole schema.
+          schema:
+            type: string
+            enum: [all, packages, entities, relations, enums, value-objects, scalar-types, reference-types, seeds, processes, actors, scenarios, operations, custom-elements, constraints, databases, tables, routines, database-types, sql-objects, queries, migrations]
+            default: all
+      responses:
+        '200':
+          description: The schema.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: A JSON Schema (draft 2020-12) with `x-contract`, the version it describes.
+                required: [$schema, title, x-contract, properties, $defs]
+                additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
 
@@ -9407,8 +9453,17 @@ components:
       x-engine-record: Maquettiste.Engine.ResolvedPage
       description: One page of the resolved model (`getResolvedModel`).
       type: object
-      required: [items, next, diagnostics, calculated]
+      required: [contract, schema, items, next, diagnostics, calculated]
       properties:
+        contract:
+          type: string
+          description: >-
+            The contract version the page follows: until version 1, the Maquettiste release that answered, such as `0.24.0`. The
+            contract may change in any release.
+        schema:
+          type: string
+          const: resolved-model.json
+          description: The file name of the page's JSON Schema (`getResolvedModelSchema`, and `.maquettiste/.schema/v1/` in a project).
         items:
           type: array
           description: The records, by kind, name and id (ordinal).

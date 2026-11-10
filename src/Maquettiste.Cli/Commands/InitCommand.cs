@@ -136,7 +136,7 @@ internal static class InitCommand
 
         // Schemas: refreshed on every run; files the engine no longer ships are removed (SchemaFolder, shared with the editor's start).
         var schemaStatus = await SchemaFolder.RefreshAsync(options, ct).ConfigureAwait(false);
-        report.Add($"{(schemaStatus.IsCurrent ? "kept" : "wrote")} .maquettiste/.schema/v1/ ({schemas.FileNames.Count} schemas{(schemaStatus.IsCurrent ? ", current" : "")})");
+        report.Add($"{(schemaStatus.IsCurrent ? "kept" : "wrote")} .maquettiste/.schema/v1/ ({schemas.FileNames.Count} schemas and the resolved-model reference{(schemaStatus.IsCurrent ? ", current" : "")})");
 
         // Starter pack.
         if (pack != "none")

@@ -100,8 +100,12 @@ public sealed class RelativeActorTests
     private static IEnumerable<string> Hits(IEnumerable<Diagnostic> diagnostics, string rule) =>
         diagnostics.Where(d => d.Rule == rule).Select(d => Path.GetFileName(d.FilePath) + ":" + d.JsonPointer).Order(StringComparer.Ordinal);
 
-    internal static JsonObject Record(Maquettiste.Engine.Resolution.ResolvedModel model, string id) =>
-        JsonSerializer.SerializeToNode(ResolvedRecords.Entries(model, "all", null).Single(e => e.Id == id).Project(), new JsonSerializerOptions(JsonSerializerDefaults.Web))!.AsObject();
+    internal static JsonObject Record(Maquettiste.Engine.Resolution.ResolvedModel model, string id)
+    {
+        // Every record of the model fits the resolved-model schema.
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model);
+        return JsonSerializer.SerializeToNode(ResolvedRecords.Entries(model, "all", null).Single(e => e.Id == id).Project(), new JsonSerializerOptions(JsonSerializerDefaults.Web))!.AsObject();
+    }
 
     // ---- no change ----
 

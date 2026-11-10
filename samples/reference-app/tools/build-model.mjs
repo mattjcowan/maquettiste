@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Builds the committed Northwind Operations model from domain/*.yaml:
 //   .maquettiste/maquettiste.json, .maquettiste/model/** (replaced wholesale), .maquettiste/.schema/v1/** (copied from
-//   schemas/v1) and .maquettiste/templates/{sql-ddl,csharp-dapper}/** (copied from packs/).
+//   schemas/v1, plus the resolved-model reference from docs/resolved-model.md, as init writes them) and
+//   .maquettiste/templates/{sql-ddl,csharp-dapper}/** (copied from packs/).
 // Deterministic: ids come from domain keys (lib/ids.mjs), files are canonical JSON (lib/canonical.mjs), and nothing depends on
 // the clock or the machine. Usage: node build-model.mjs [--out <sample root>] [--quiet]
 import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -14,6 +15,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const sampleRoot = resolve(here, "..");
 export const repoRoot = resolve(sampleRoot, "../..");
 export const PACKS = ["sql-ddl", "csharp-dapper"];
+/** The resolved-model reference the engine writes beside the schemas (docs/resolved-model.md). */
+export const REFERENCE = "resolved-model.md";
 
 /** The model as documents, plus canonical file text keyed by path relative to the sample root. */
 export function buildModel() {
@@ -37,6 +40,7 @@ export function writeModel(outRoot, files) {
     writeFileSync(full, text);
   }
   cpSync(join(repoRoot, "schemas", "v1"), join(mq, ".schema", "v1"), { recursive: true });
+  cpSync(join(repoRoot, "docs", REFERENCE), join(mq, ".schema", "v1", REFERENCE));
   // The pack copies leave the pack's tests/ out (5.4).
   for (const p of PACKS) {
     const source = join(repoRoot, "packs", p);

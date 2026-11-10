@@ -78,8 +78,12 @@ public sealed class StereotypeSubjectResolutionTests
         return (harness, store);
     }
 
-    private static JsonObject Record(ResolvedModel model, string id) =>
-        JsonSerializer.SerializeToNode(ResolvedRecords.Entries(model, "all", null).Single(e => e.Id == id).Project(), Web)!.AsObject();
+    private static JsonObject Record(ResolvedModel model, string id)
+    {
+        // Every record of the model fits the resolved-model schema.
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model);
+        return JsonSerializer.SerializeToNode(ResolvedRecords.Entries(model, "all", null).Single(e => e.Id == id).Project(), Web)!.AsObject();
+    }
 
     [Fact]
     public async Task Zero_carriers_give_no_subject_and_the_entry_as_written()
@@ -106,6 +110,7 @@ public sealed class StereotypeSubjectResolutionTests
         Assert.DoesNotContain("k:entity", p.Subjects.MembershipKeys);
         Assert.DoesNotContain("e:" + Package, p.Subjects.MembershipKeys);
 
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(resolved, "stereotypeSubjectRecord");
         var record = Record(resolved, Approval);
         Assert.Empty(record["subjects"]!.AsArray());
         var written = Assert.Single(record["stereotypeSubjects"]!.AsArray())!.AsObject();

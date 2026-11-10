@@ -12,7 +12,9 @@ namespace Maquettiste.Engine.Json;
 /// <summary>
 /// The copies of the embedded JSON schemas in <c>&lt;ModelRoot&gt;/.schema/v1/</c>, which every model file names through
 /// <c>$schema</c> so an IDE validates and completes it (engine-design.md section 3). <c>init</c> and the editor's startup refresh them;
-/// <c>validate</c> and <c>generate</c> warn MQ1008 when they differ from the embedded schemas.
+/// <c>validate</c> and <c>generate</c> warn MQ1008 when they differ from the embedded schemas. The folder also holds the resolved-model
+/// reference (<see cref="ResolvedContract.ReferenceFile"/>), rendered from the embedded resolved-model schema, so a project's copy of
+/// the contract follows the release the same way.
 /// </summary>
 public static class SchemaFolder
 {
@@ -27,6 +29,13 @@ public static class SchemaFolder
 
     private static readonly SchemaRegistry Embedded = new();
 
+    /// <summary>Every file the folder holds: the embedded schemas, then the resolved-model reference.</summary>
+    private static IEnumerable<string> Shipped => Embedded.FileNames.Append(ResolvedContract.ReferenceFile);
+
+    /// <summary>A shipped file's bytes.</summary>
+    private static ReadOnlyMemory<byte> BytesOf(string name) =>
+        name == ResolvedContract.ReferenceFile ? ResolvedContract.ReferenceBytes : Embedded.GetFileBytes(name);
+
     /// <summary>Compares the folder with the embedded schemas, byte for byte. Reads only; never throws for the folder's content.</summary>
     /// <param name="options">The engine options (the model root).</param>
     /// <returns>The missing, stale and extra file names.</returns>
@@ -36,9 +45,9 @@ public static class SchemaFolder
         var folder = FolderOf(options);
         var missing = new List<string>();
         var stale = new List<string>();
-        foreach (var name in Embedded.FileNames)
+        foreach (var name in Shipped)
         {
-            switch (Compare(Path.Combine(folder, name), Embedded.GetFileBytes(name)))
+            switch (Compare(Path.Combine(folder, name), BytesOf(name)))
             {
                 case false:
                     stale.Add(name);
@@ -49,6 +58,8 @@ public static class SchemaFolder
             }
         }
 
+        missing.Sort(StringComparer.Ordinal);
+        stale.Sort(StringComparer.Ordinal);
         return new SchemaFolderStatus(missing, stale, Extras(folder));
     }
 
@@ -89,7 +100,7 @@ public static class SchemaFolder
         {
             var full = Path.Combine(folder, name);
             Guard(guard, AtomicFile.TempPath(full, tag));
-            await AtomicFile.WriteAsync(full, Embedded.GetFileBytes(name), tag, ct).ConfigureAwait(false);
+            await AtomicFile.WriteAsync(full, BytesOf(name), tag, ct).ConfigureAwait(false);
         }
 
         return status;
@@ -138,8 +149,12 @@ public static class SchemaFolder
         var differing = status.Differing;
         var named = differing.Take(NamedFiles).Select(n => n + (missing.Contains(n) ? " (missing)" : stale.Contains(n) ? " (out of date)" : " (no longer shipped)"));
         var more = differing.Count > NamedFiles ? string.Create(CultureInfo.InvariantCulture, $", and {differing.Count - NamedFiles} more") : "";
+        // The resolved-model files describe what generation answers, not model files: say so when only they differ.
+        var contractOnly = differing.All(n => n.StartsWith(ResolvedContract.SchemaName + ".", StringComparison.Ordinal));
         return $"The schema copies in {folder}/ differ from the ones this version ships: {string.Join(", ", named)}{more}. " +
-            "Run 'maquettiste init', or start the editor, to refresh them; IDEs check model files against these copies.";
+            (contractOnly
+                ? "Run 'maquettiste init', or start the editor, to refresh them; they describe the resolved model this version answers."
+                : "Run 'maquettiste init', or start the editor, to refresh them; IDEs check model files against these copies.");
     }
 
     private static string FolderOf(EngineOptions options) =>
@@ -192,7 +207,8 @@ public static class SchemaFolder
 }
 
 /// <summary>How <c>.schema/v1/</c> differs from the embedded schemas (<see cref="SchemaFolder"/>). Each list is ordinal.</summary>
-/// <param name="Missing">Embedded schemas with no file in the folder (all of them when the folder does not exist).</param>
+/// <param name="Missing">Shipped files (the embedded schemas and the resolved-model reference) with no file in the folder (all of them when
+/// the folder does not exist).</param>
 /// <param name="Stale">Files whose bytes differ from the embedded schema of the same name.</param>
 /// <param name="Extra"><c>*.json</c> files the engine does not ship.</param>
 public sealed record SchemaFolderStatus(IReadOnlyList<string> Missing, IReadOnlyList<string> Stale, IReadOnlyList<string> Extra)

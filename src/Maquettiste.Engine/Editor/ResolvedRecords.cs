@@ -18,19 +18,29 @@ namespace Maquettiste.Engine;
 public sealed record ResolvedQuery(string Scope = "all", string? Database = null, string? Cursor = null, int Limit = ModelPages.DefaultLimit);
 
 /// <summary>One page of the resolved model as flat records (resolved objects reference each other, so other objects appear by id).</summary>
-/// <param name="Items">The records, by (kind, name, id): <see cref="PackageRecord"/>, <see cref="EntityRecord"/>, <see cref="RelationRecord"/>,
-/// <see cref="EnumRecord"/>, <see cref="ValueObjectRecord"/>, <see cref="ScalarTypeRecord"/>, <see cref="ReferenceTypeRecord"/>,
-/// <see cref="SeedRecord"/>, <see cref="ProcessRecord"/>, <see cref="ActorRecord"/>, <see cref="ScenarioRecord"/>, <see cref="OperationRecord"/>, <see cref="CustomRecord"/>,
-/// <see cref="ConstraintRecord"/>,
-/// <see cref="DatabaseRecord"/>, <see cref="TableRecord"/>, <see cref="RoutineRecord"/>, <see cref="DatabaseTypeRecord"/> or
-/// <see cref="SqlObjectRecord"/>, <see cref="QueryRecord"/> or <see cref="MigrationRecord"/> (by database name, then applied order); each
-/// has <c>id</c>, <c>kind</c> and <c>name</c>.</param>
+/// <param name="Items">The records of the page, ordered by kind, then name, then id (ordinal); migration facts by database name, then
+/// applied order. Each record has <c>id</c>, <c>kind</c> and <c>name</c>, and <c>kind</c> says which record it is.</param>
 /// <param name="Next">The cursor of the next page, or <see langword="null"/> on the last one.</param>
 /// <param name="Diagnostics">When the model has errors, the errors that prevented resolution (and <paramref name="Items"/> is empty);
-/// otherwise the failures of the calculated values the page reads (MQ5010, MQ5011, MQ5013), and nothing else (validate reports the
-/// warnings).</param>
+/// otherwise the failures of the calculated values the page reads (MQ5010, MQ5011, MQ5013), and nothing else: validate reports the
+/// warnings.</param>
 public sealed record ResolvedPage(IReadOnlyList<object> Items, string? Next, IReadOnlyList<Diagnostic> Diagnostics)
 {
+    /// <summary>
+    /// The contract version the page follows: the version inside <c>resolved-model.json</c> of the same release. Until version 1 it is
+    /// the Maquettiste release, and the contract may change in any release.
+    /// </summary>
+    [JsonPropertyOrder(-2)]
+    public string Contract { get; init; } = ResolvedContract.Version;
+
+    /// <summary>
+    /// The file name of the JSON Schema that describes the page: <c>resolved-model.json</c>. A project holds it in
+    /// <c>.maquettiste/.schema/v1/</c>; <c>GET /api/model/resolved/schema</c> and the MCP tool <c>get_schema</c> (<c>resolved-model</c>)
+    /// return it.
+    /// </summary>
+    [JsonPropertyOrder(-1)]
+    public string Schema { get; init; } = ResolvedContract.SchemaFile;
+
     /// <summary>
     /// The calculated values (next-phase-2-design.md section 5.5) of the objects on the page and the sub-objects their records list, by
     /// site (the object's id, or <c>&lt;holder id&gt;/&lt;attribute id&gt;</c> for an attribute its holder does not own), then by name,
@@ -775,7 +785,7 @@ public sealed record ProcessRightRecord(string Id, string Right, bool Named, IRe
 /// <param name="Except">The ids of the actors it does not apply to.</param>
 /// <param name="Verbs">Its verb keys, in file order.</param>
 /// <param name="Ends">The ids of the relation ends whose links it speaks of.</param>
-/// <param name="ConditionText">Its condition's text, printed from current names, or as stored for a right no lifecycle uses.</param>
+/// <param name="ConditionText">Its condition's text, printed from current names, or as stored for a right no lifecycle uses; <see langword="null"/> for a right without a condition.</param>
 /// <param name="Processes">The ids of the lifecycles that use it.</param>
 /// <param name="DisplayName">The display name.</param>
 /// <param name="PluralName">The plural name.</param>

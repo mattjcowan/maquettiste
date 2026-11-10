@@ -196,6 +196,7 @@ public sealed class NamedTriggerPointTests
 
         // The resolved model.
         var resolved = ResolutionKit.Resolve(snapshot);
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(resolved, "namedTriggerPointRecord", "triggerPointSubjectRecord");
         Assert.Equal(["AZero", "ApprovableStamp", "CustomerNumber", "OrderModify", "PartyAudit"], resolved.TriggerPoints.Select(p => p.Name));
         var number = Assert.IsType<RTriggerPoint>(resolved.Find(CustomerNumber));
         Assert.Equal(("trigger-point", true, (RProcess?)null, Package), (number.Kind, number.NoBypass, number.Process, number.Package!.Id));

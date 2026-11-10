@@ -40,5 +40,11 @@ disagree with the spec, the design wins and docs/engineering/spec-errata.md reco
   refreshes only untouched copies. At each release, after tagging: `git fetch --tags && sh skills/shipped-skills.sh` regenerates
   `src/Maquettiste.Cli/Commands/ShippedSkills.cs` (the hash of the skill at every v* tag); commit it with the next change. Copies
   written with the header carry their own hash, so a missing row never turns an untouched copy into an "edited" one.
+- The resolved-model contract (`schemas/v1/resolved-model.json`, `docs/resolved-model.md`, and their copies in
+  `samples/reference-app/.maquettiste/.schema/v1/`) is generated from the record types in `src/Maquettiste.Engine/Editor/` and their
+  XML docs, and states the release. After changing a record, and in every "Version X" commit after the version bump, run this one
+  command, which builds and writes all four files for the new version, then commit them (the next build embeds them):
+  `MAQUETTISTE_UPDATE_GOLDEN=1 dotnet test tests/Maquettiste.Engine.Tests -c Release --filter FullyQualifiedName~ResolvedContractTests.The_checked_in_schema_and_reference_match_the_record_types`.
+  `ResolvedContractTests` and gate 2's sample check fail until they match.
 - Commits: the owner runs name-sorted scripts under tmp/ (gitignored); write `tmp/NN-<slug>.sh` and never commit
   or push without being asked. No Co-Authored-By or signature lines.

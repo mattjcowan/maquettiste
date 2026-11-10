@@ -99,7 +99,9 @@ public sealed partial class RelationTypeStorageTests
         var (h, store) = await OpenAsync(prepare, bindComment, attachedAttributes, assemblyMapping);
         using var _ = h;
         await using var __ = store;
-        return (ResolutionKit.Resolve(store.Current!), await ActorKit.ValidateAsync(h, store.Current!));
+        var model = ResolutionKit.Resolve(store.Current!);
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model);
+        return (model, await ActorKit.ValidateAsync(h, store.Current!));
     }
 
     private static List<string> Messages(ResolvedModel model, string rule) => [.. model.Diagnostics.Where(d => d.Rule == rule).Select(d => d.Message)];
@@ -187,6 +189,7 @@ public sealed partial class RelationTypeStorageTests
         var body = $$""","junctionTable":"{{Links}}","ends":[{"end":"{{CommentEnd}}","foreignKey":"{{Fk(Links, 1)}}"},{"end":"{{AttachedToEnd}}","typeColumn":"{{Col(Links, 3)}}","idColumn":"{{Col(Links, 4)}}"}],"""
             + $$""" "attributes":[{"attribute":"{{NoteAttribute}}","column":"{{Col(Links, 5)}}"}],"constants":[{"column":"{{Col(Links, 6)}}","value":"AT"}]""";
         var (model, validation) = await ResolveAsync(h => h.Write("model/mappings/attached.json", RelationMapping(Attached, body)), attachedAttributes: attributes);
+        Maquettiste.Engine.Tests.Editor.ContractCheck.Validate(model, "relationLinkRecord", "relationLinkEndRecord", "relationConstantRecord", "relationAttributeColumnRecord", "typeCodeRecord");
         Assert.DoesNotContain(validation, d => d.Severity == DiagnosticSeverity.Error);
         var mapping = MappingOf(model, Attached);
         Assert.Equal(("junction", "links"), (mapping.Shape, mapping.JunctionTable!.Name));

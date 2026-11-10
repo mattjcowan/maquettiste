@@ -61,6 +61,8 @@ clobber a concurrent edit or leave a dangling id.
    Reading many elements: `get_model_kinds` (`by: "package"`) says what there is, `get_elements` returns documents in pages
    (`fields` keeps only the members you need), `get_resolved_model` returns what generation sees (resolved attributes, tables,
    processes) as flat records; pass each page's `next` as `cursor` until it is null, and never loop `get_element` over thousands of ids.
+   What each record and field means, and when it is null: `.maquettiste/.schema/v1/resolved-model.md` (the JSON Schema beside it,
+   or `get_schema` `resolved-model:<scope>`). Each page's `contract` is the version it follows; the copy matches the release.
 3. Change: `save_element` (the whole edited document plus `expectedHash` = the hash you read), `create_element`,
    `delete_element`, or `apply_batch` for several changes that must land together (all or nothing).
    - To change part of a large element, `patch_element` takes its `id` (an id, never a name), an RFC 6902 `patch` over

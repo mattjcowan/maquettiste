@@ -302,6 +302,22 @@ public sealed partial class AgentTools
         var kind = args.String("kind");
         if (string.IsNullOrEmpty(kind))
             return BadRequest("kind is required.");
+        if (kind is ResolvedContract.SchemaName or ResolvedContract.SchemaFile || kind.StartsWith(ResolvedContract.ScopePrefix, StringComparison.Ordinal))
+        {
+            // The resolved-model contract: the whole schema, or one scope's slice (its record and what that reaches). An unknown scope is
+            // bad-request, as get_resolved_model and GET /api/model/resolved/schema answer it.
+            var scope = kind.StartsWith(ResolvedContract.ScopePrefix, StringComparison.Ordinal) ? kind[ResolvedContract.ScopePrefix.Length..] : null;
+            if (scope is not null && scope != "all" && !ResolvedRecords.Scopes.ContainsKey(scope))
+                return BadRequest($"scope must be one of {string.Join(", ", ResolvedRecords.ScopeNames)}, not '{scope}'.");
+
+            var answer = new JsonObject
+            {
+                ["name"] = kind, ["file"] = ResolvedContract.SchemaFile, ["contract"] = ResolvedContract.Version,
+                ["schema"] = ResolvedContract.Schema(scope), ["references"] = new JsonObject(),
+            };
+            return Text(answer.ToJsonString(JsonOptions), isError: false);
+        }
+
         PropertySchemaSource? content = null;
         if (kind.StartsWith(ModelPages.CustomKindPrefix, StringComparison.Ordinal))
         {
