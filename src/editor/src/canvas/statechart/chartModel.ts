@@ -4,6 +4,7 @@
 // `always`), the gate badge ("2 of 3" with the signers' names), and what a collapsed container hides.
 import type { Diagnostic } from "@/api/types";
 import { CHART_LABELS } from "@/model/labels";
+import { transitionRevisionText, type LevelLabel } from "@/model/revisionLabels";
 import { boundStates, initialOf, stateIndex, type ProcessDoc, type StateType, type TransitionDoc, type Trigger } from "@/model/process";
 
 /** The rules whose findings the canvas marks on states and edges (the others are listed by the Problems panel). */
@@ -65,6 +66,8 @@ export interface ChartEdge {
   label: string;
   trigger: Trigger;
   gate: GateBadge | null;
+  /** "next major" or "revise: minor" for a move that gives the next revision; "" for the others. */
+  revision: string;
   badges: ChartBadge[];
 }
 
@@ -86,6 +89,10 @@ export interface ChartInput {
   problems?: readonly Diagnostic[];
   /** Actor names by id, for the gate badge's tooltip. */
   actorNames?: ReadonlyMap<string, string>;
+  /** The levels of the types the lifecycle governs, for the small "next major" / "revise: minor" text on a move that gives a revision. */
+  revisionLevels?: readonly LevelLabel[];
+  /** The verb an event names, by event id: a revise move reads differently from a labelling one. */
+  eventVerbs?: ReadonlyMap<string, string | undefined>;
 }
 
 const SHORT_UNITS: Record<string, string> = { Y: "y", M: "mo", W: "w", D: "d", H: "h", TM: "m", S: "s" };
@@ -223,8 +230,10 @@ export function buildChart(process: ProcessDoc, input: ChartInput = {}): Chart {
       return;
     }
     const gate = gateBadge(t, input.actorNames);
+    const verb = (t.trigger ?? "event") === "event" ? input.eventVerbs?.get(t.event ?? "") : t.verb;
+    const revision = transitionRevisionText(t.nextRevision, verb, input.revisionLevels ?? []);
     targets.forEach((target, n) =>
-      edges.push({ id: n ? `${t.id}#${n}` : t.id, transition: t.id, source: t.source, target, label, trigger: t.trigger ?? "event", gate, badges }),
+      edges.push({ id: n ? `${t.id}#${n}` : t.id, transition: t.id, source: t.source, target, label, trigger: t.trigger ?? "event", gate, revision, badges }),
     );
   });
 

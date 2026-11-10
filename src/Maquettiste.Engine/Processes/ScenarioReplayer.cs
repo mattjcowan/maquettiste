@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Revisions;
 using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Processes;
@@ -155,8 +156,8 @@ public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOn
                 {
                     Accepted = t.Accepted, States = t.Configuration, Context = t.Changed,
                     Values = t.ValuesChanged ?? ImmutableDictionary<string, JsonElement>.Empty,
-                    Refusal = !t.Accepted && (UsesRights || expected?.Refusal is not null || t.Refusal == Refusals.Frozen) ? t.Refusal : null,
-                    RefusedBy = !t.Accepted && (UsesRights || expected?.RefusedBy is not null) ? t.RefusedBy : null,
+                    Refusal = !t.Accepted && (UsesRights || expected?.Refusal is not null || t.Refusal is Refusals.Frozen or Refusals.Revision) ? t.Refusal : null,
+                    RefusedBy = !t.Accepted && (UsesRights || expected?.RefusedBy is not null || t.Refusal == Refusals.Revision) ? t.RefusedBy : null,
                     // The checks that warned, which only a project with trigger points has; each written only when not empty.
                     CheckWarnings = t.CheckWarnings,
                     TriggerPoints = (triggerPoints || expected?.TriggerPoints is not null) && ran is { Count: > 0 } ? ran : null,
@@ -164,6 +165,8 @@ public sealed record ScenarioReplay(Scenario Scenario, StepTrace? Start, IReadOn
                     Signatures = t.AnsweredSignatures,
                     // The reminders and escalations due at the step, only where some fell due (decision 35).
                     Notices = t.Notices is { Count: > 0 } notices ? [.. notices.Select(n => new ExpectedNotice { Signature = n.Signature, Kind = n.Kind })] : null,
+                    // The subject's revision after a step that moved it, or that already expects it (revisions-design.md decision 40).
+                    Revision = t.Revision?.To ?? (expected?.Revision is not null ? t.RevisionAfter : null),
                 };
             })],
             Final ? ScenarioOutcome.Final : ScenarioOutcome.Active);
@@ -239,7 +242,7 @@ public static class ScenarioReplayer
                 break;
             }
 
-            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, Participants.Current(cast, interpreter.Values), step, out var choice);
+            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, Participants.Current(cast, interpreter.Values, interpreter.Revisions), step, out var choice);
             steps.Add(trace);
             choices.Add(choice);
             Report(trace, pointer);
@@ -354,6 +357,14 @@ public static class ScenarioReplayer
                 first ??= Fail("MQ9307", message, expect.Values, valuesChanged, pointer + "/expect/values");
             }
 
+            // The subject's revision after the step (revisions-design.md decision 40), only when the step expects it.
+            if (expect.Revision is { } wantedRevision && !string.Equals(wantedRevision, trace.RevisionAfter, StringComparison.Ordinal))
+            {
+                var actual = trace.RevisionAfter is { } after ? RunRevisions.Text(after) : "no revision";
+                var message = $"{At(i)}{Describe(c, step)} leaves the subject at revision {actual}, but expect.revision is {RunRevisions.Text(wantedRevision)}; fix the revise steps, the moves' nextRevision or the revision sequence, or update the expectations from a replay.";
+                first ??= Fail("MQ9312", message, wantedRevision, trace.RevisionAfter ?? "", pointer + "/expect/revision");
+            }
+
             // The signatures counted after the step (signoff-design.md decision 27): only the listed named signatures, each by its count.
             if (expect.Signatures is { Count: > 0 } wanted)
             {
@@ -422,10 +433,12 @@ public static class ScenarioReplayer
     internal static StatechartInterpreter Interpreter(Scenario scenario, StatechartModel chart, ProcessRuntime runtime)
     {
         var row = ScenarioObjects.Row(runtime.Model, chart.Process, scenario.Objects, scenario.Subject, out var notes);
+        var cast = ScenarioCast.Of(scenario);
+        var revisions = RunRevisions.For(runtime.Model, chart.Process, cast);
         return new(chart, runtime.Options(scenario.Id) with
         {
-            Subject = row, StateNotes = notes.Count > 0 ? notes : null, Rights = new RunRights(runtime, chart.Process, ScenarioCast.Of(scenario)),
-            Triggers = RunTriggers.For(runtime, chart.Process, ScenarioCast.Of(scenario)),
+            Subject = row, StateNotes = notes.Count > 0 ? notes : null, Rights = new RunRights(runtime, chart.Process, cast) { Revisions = revisions },
+            Triggers = RunTriggers.For(runtime, chart.Process, cast, revisions), Revisions = revisions,
         });
     }
 

@@ -1,4 +1,6 @@
+using System.Globalization;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Revisions;
 using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Processes;
@@ -19,7 +21,12 @@ internal static class VerbStepFields
     /// <param name="cast">The scenario's objects, subject and participants.</param>
     /// <param name="step">The step.</param>
     /// <returns>The message, without the step's number, and the field it points at.</returns>
-    public static (string Message, string Field)? Check(ProcessRuntime runtime, Process process, ScenarioCast cast, ScenarioStep step)
+    public static (string Message, string Field)? Check(ProcessRuntime runtime, Process process, ScenarioCast cast, ScenarioStep step) =>
+        Fields(runtime, process, cast, step)
+            ?? (step.Revision is not null || step.Expect?.Revision is not null || (step is { Input: StepInput.Verb, Verb: "revise", End: not null })
+                ? Revision(runtime.Model, process, cast, step) : null);
+
+    private static (string Message, string Field)? Fields(ProcessRuntime runtime, Process process, ScenarioCast cast, ScenarioStep step)
     {
         if (step.Expect is { Accepted: true } expect && (expect.Refusal is not null || expect.RefusedBy is not null))
         {
@@ -105,6 +112,60 @@ internal static class VerbStepFields
                 + "link it in the subject's links, or connect it first.", "/object");
         }
 
+        return null;
+    }
+
+    /// <summary>
+    /// MQ9305 on a step's revision fields (revisions-design.md decisions 38 and 40): a step's <c>revision</c> on a step that can't revise or
+    /// label, an integer on an event step, a level the sequence lacks or a name it can't form; a step's <c>revision</c> or an
+    /// <c>expect.revision</c> on a subject whose type has no revisions; and <c>revise</c> with <c>end</c> on a subject whose type has them.
+    /// Asked only of a step that gives a revision, expects one, or revises a link.
+    /// </summary>
+    private static (string Message, string Field)? Revision(ModelSnapshot model, Process process, ScenarioCast cast, ScenarioStep step)
+    {
+        var obj = cast.Subject is { } subject ? cast.Objects.FirstOrDefault(o => string.Equals(o.Id, subject, StringComparison.Ordinal)) : null;
+        var entity = obj is null ? null : model.Get<Entity>(obj.Entity);
+        var merged = entity is null ? null : RevisionCoverage.Of(model).For(entity);
+        if (merged is null)
+        {
+            var who = entity is null ? "the scenario has no subject object" : $"the subject's entity '{entity.Name}' has no revisions";
+            if (step.Revision is not null)
+                return ($"the step gives a revision, but {who}; remove it, or give the subject's entity a revisions block.", "/revision");
+            if (step.Expect?.Revision is not null)
+                return ($"expect gives a revision, but {who}; remove it, or give the subject's entity a revisions block.", "/expect/revision");
+            return null;
+        }
+
+        if (step is { Input: StepInput.Verb, Verb: "revise", End: not null })
+            return ($"revise acts on objects, and the subject's entity '{entity!.Name}' has revisions; remove end and object, or revise the subject.", "/end");
+        if (step.Revision is not { } choice || !RevisionSequence.TryCreate(merged.Levels, merged.Separator, out var sequence, out _))
+            return null;
+        switch (step.Input)
+        {
+            case StepInput.Verb when step.Verb != "revise":
+                return ($"the step gives a revision beside verb '{step.Verb}'; only a revise step or an event step that revises or gives the next revision takes one. Remove it.", "/revision");
+            case StepInput.Event when choice.Level is not null:
+                return ("an event step's revision is a chosen name, since the transition names the level; give a name, or remove it.", "/revision");
+            case StepInput.Event:
+                var ev = process.Events.FirstOrDefault(e => string.Equals(e.Id, step.Event, StringComparison.Ordinal));
+                if (ev is not null && !process.Transitions.Any(t => string.Equals(t.Event, ev.Id, StringComparison.Ordinal)
+                    && ((t.Verb ?? ev.Verb) == "revise" || t.NextRevision is not null)))
+                    return ($"event '{ev.Name}' takes no move that revises or gives the next revision, so the step's revision can't apply; remove it.", "/revision");
+                break;
+            case StepInput.Verb:
+                break;
+            default:
+                return ("only a revise step or an event step that revises or gives the next revision takes a revision; remove it.", "/revision");
+        }
+
+        if (choice.Level is { } level && (level < 1 || level > sequence.Levels.Count))
+        {
+            var count = sequence.Levels.Count;
+            return ($"the step names revision level {level.ToString(CultureInfo.InvariantCulture)}, but '{entity!.Name}' has {count.ToString(CultureInfo.InvariantCulture)} level{(count == 1 ? "" : "s")}; name level 1{(count == 1 ? "" : " to " + count.ToString(CultureInfo.InvariantCulture))}.", "/revision");
+        }
+
+        if (choice.Name is { } name && !sequence.IsValue(name))
+            return ($"the step names revision '{name}', which the revision sequence of '{entity!.Name}' can't form; give a value such as '{(sequence.Start.Length > 0 ? sequence.Start : sequence.Next(sequence.Start, 1))}'.", "/revision");
         return null;
     }
 

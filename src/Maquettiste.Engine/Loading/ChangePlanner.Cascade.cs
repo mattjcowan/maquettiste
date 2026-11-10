@@ -345,6 +345,19 @@ internal sealed partial class ChangePlanner
             }
         }
 
+        // An entity's revisions block (revisions-design.md section 10, "Deletes"), in either resolution: a bound attribute that goes clears
+        // boundAttribute, and a lifecycle, state, attribute or end an entry names takes the entry, so that item falls back (the type then says
+        // nothing about it). A list goes with its last entry, and the block with its last key, since an empty block is not valid.
+        if (referrer.Element is Entity && RevisionsPart(reference.JsonPointer) is { } revisionsPart)
+        {
+            var next = RevisionsOps(referrer.Json, revisionsPart, reference, index, ops);
+            if (TryOps(referrer, next, narrow, out _) is null)
+            {
+                Commit(referrerId, next);
+                return;
+            }
+        }
+
         // An entity or a stereotype a process lists in subjects (lifecycle-design.md decision 5, stereotype-sets-design.md decision 11): its
         // entry goes in either resolution, the way an entity's binding does, and a list left empty goes whole, so a lifecycle is left with no
         // subject (MQ9201), as when its one subject goes.
@@ -1095,6 +1108,61 @@ internal sealed partial class ChangePlanner
             ? (JsonPointer.Build(segments[..3]), JsonPointer.Build(segments[..4]))
             : null;
 
+    /// <summary>The pointer of an entity's revisions block.</summary>
+    private const string RevisionsBlock = "/revisions";
+
+    /// <summary>
+    /// Where a reference sits in an entity's revisions block (revisions-design.md section 10, "Deletes"): for an entry's <c>lifecycle</c>, state
+    /// (<c>onRevise</c>), <c>attribute</c> or <c>end</c>, its list (<c>/revisions/attributes</c>) and the entry (<c>/revisions/attributes/0</c>);
+    /// for <c>boundAttribute</c>, both <see langword="null"/>. <see langword="null"/> for any other pointer.
+    /// </summary>
+    private static (string? List, string? Entry)? RevisionsPart(string pointer)
+    {
+        if (!pointer.StartsWith(RevisionsBlock + "/", StringComparison.Ordinal) || !JsonPointer.TryParse(pointer, out var segments))
+            return null;
+        if (segments is ["revisions", "boundAttribute"])
+            return (null, null);
+        return segments is ["revisions", "lifecycles" or "attributes" or "links", var at, "lifecycle" or "onRevise" or "attribute" or "end"]
+            && JsonPointer.TryIndex(at, out _)
+            ? (JsonPointer.Build(segments[..2]), JsonPointer.Build(segments[..3]))
+            : null;
+    }
+
+    /// <summary>
+    /// The edits a reference's loss makes to a revisions block, on top of those planned: <c>boundAttribute</c> is cleared; an entry goes, or its
+    /// list with its last entry; and when no key of the block is left, the block goes instead.
+    /// </summary>
+    private static List<CascadeOp> RevisionsOps(JsonElement json, (string? List, string? Entry) part, ReferenceInfo reference, int index, List<CascadeOp> ops)
+    {
+        var (pointer, remove) = part is { List: { } list, Entry: { } entry }
+            ? (Remaining(json, list, ops) <= 1 ? list : entry, true)
+            : (reference.JsonPointer, false);
+        List<CascadeOp> next = [.. ops.Where(o => o.Pointer != pointer && !IsUnder(o.Pointer, pointer)), new CascadeOp(pointer, remove, reference, index)];
+        if (Remaining(json, RevisionsBlock, next) <= 0)
+            next = [.. next.Where(o => o.Pointer != RevisionsBlock && !IsUnder(o.Pointer, RevisionsBlock)), new CascadeOp(RevisionsBlock, true, reference, index)];
+        return next;
+    }
+
+    /// <summary>
+    /// How a delete plan words a removed part of an entity's revisions block: the block, a list, or an entry by what it names (the lifecycle,
+    /// attribute or end); <see langword="null"/> for any other pointer.
+    /// </summary>
+    private string? RevisionsWhat(JsonElement json, string pointer)
+    {
+        if (pointer == RevisionsBlock)
+            return "revisions block";
+        if (!pointer.StartsWith(RevisionsBlock + "/", StringComparison.Ordinal) || !JsonPointer.TryParse(pointer, out var segments))
+            return null;
+        var key = segments.Length > 1 ? segments[1] switch { "lifecycles" => "lifecycle", "attributes" => "attribute", "links" => "end", _ => null } : null;
+        if (key is null)
+            return null;
+        if (segments.Length == 2)
+            return "revisions " + segments[1];
+        return segments.Length == 3 && JsonPointer.TryGet(json, pointer + "/" + key, out var named) && named.ValueKind == JsonValueKind.String
+            ? $"revisions entry for {key} {ShortName(named.GetString()!)}"
+            : null;
+    }
+
     /// <summary>The <c>subjects</c> entry (<c>/subjects/2</c>) whose <c>entity</c> or <c>stereotype</c> (stereotype-sets-design.md decision 11) a
     /// pointer is; <see langword="null"/> for any other pointer.</summary>
     private static string? SubjectEntry(string pointer) =>
@@ -1534,9 +1602,14 @@ internal sealed partial class ChangePlanner
                         : TriggerPointPart(op.Reference.JsonPointer) is { } point && point.Entry == op.Pointer
                             // The last entry of a narrowing list takes its trigger point with it (trigger-points-design.md section 9).
                             ? "names no other " + Noun(point.List[(point.List.LastIndexOf('/') + 1)..]) + " than " + Label(op.Reference.ToId)
+                        // A revisions list or block left with nothing goes whole (revisions-design.md section 10, "Deletes").
+                        : document.Element.Kind == ElementKind.Entity && (op.Pointer == RevisionsBlock
+                            || (op.Pointer.StartsWith(RevisionsBlock + "/", StringComparison.Ordinal) && op.Pointer.Count(c => c == '/') == 2))
+                            ? "is left empty without " + Label(op.Reference.ToId)
                             : "needs " + Label(op.Reference.ToId);
+                    var what = document.Element.Kind == ElementKind.Entity ? RevisionsWhat(document.Json, op.Pointer) : null;
                     removes.Add(new DeletePlanRemove(referrerId, document.Element.KindName, NameOf(document.Element), op.Pointer,
-                        Part(document.Json, op.Pointer, subKind, ShortName(op.Reference.ToId)), sub, subKind, because));
+                        what ?? Part(document.Json, op.Pointer, subKind, ShortName(op.Reference.ToId)), sub, subKind, because));
                 }
                 else if (document.Element.Kind == ElementKind.Diagram && op.Reference.Field == "element")
                 {

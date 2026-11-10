@@ -97,6 +97,14 @@ function removeAt(json: Json, pointer: string, item: boolean): void {
     parent.splice(Number(last), 1);
     // An actor's memberOf is left out when empty, as the engine writes it.
     if (parts.length === 1 && parts[0] === "memberOf" && parent.length === 0) delete json.memberOf;
+    // An entity's revisions entries left empty are written without the key, and a block with no key left is removed (revisions-design.md section 10).
+    if (parts.length === 2 && parts[0] === "revisions" && parent.length === 0) {
+      const block = json.revisions as Json | undefined;
+      if (block) {
+        delete block[parts[1]];
+        if (Object.keys(block).length === 0) delete json.revisions;
+      }
+    }
     // A signature left with no one to delegate to is written without delegateTo; one left with no one to escalate to, without escalateTo and
     // its escalateAfter (an escalation that tells no one is MQ8204).
     if (parent.length === 0 && parts.length >= 1 && ["delegateTo", "escalateTo"].includes(parts[parts.length - 1])) {
@@ -277,6 +285,14 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
           ops.set(doc.id, mine);
           continue;
         }
+        // What an entity's revisions block names leaves the block under either choice: the entry goes (and the item falls back), a bound attribute is cleared.
+        if (ref.alwaysClears) {
+          const mine = ops.get(doc.id) ?? [];
+          const pointer = ref.removeItem ?? ref.pointer;
+          if (!mine.some((o) => o.pointer === pointer)) mine.push({ pointer, item: ref.removeItem !== undefined, remove: false, ref });
+          ops.set(doc.id, mine);
+          continue;
+        }
         plan.refused.push({
           id: doc.id,
           kind: String(doc.json.kind),
@@ -307,6 +323,8 @@ export function planDelete(docs: ReadonlyMap<string, CascadeDoc>, ids: string[],
           );
           continue;
         }
+        // An entry that names two deleted items (a lifecycle and its state) is removed once.
+        if (ref.alwaysClears && mine.some((o) => o.pointer === (ref.removeItem ?? ref.pointer))) continue;
         if (!ref.required || ref.drops) {
           mine.push({ pointer: ref.removeItem ?? ref.pointer, item: ref.removeItem !== undefined, remove: !!ref.drops, ref });
           ops.set(doc.id, mine);

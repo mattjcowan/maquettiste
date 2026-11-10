@@ -89,7 +89,15 @@ internal static class ModelIndexer
 
     internal enum PropertyRole { Reference, KeyedReference, StereotypeKeys, VerbKey, TypeRef, Record, RecordList }
 
-    internal sealed record PropertyMeta(string Name, Func<object, object?> Get, PropertyRole Role, bool Owning = false);
+    /// <summary>One walked property: its JSON name, getter and role; for a reference, whether it is owning and the words it may hold instead of
+    /// an id (<see cref="ElementRefAttribute.Words"/>; <see langword="null"/> when none, as for almost every reference).</summary>
+    internal sealed record PropertyMeta(string Name, Func<object, object?> Get, PropertyRole Role, bool Owning = false, string[]? Words = null)
+    {
+        /// <summary>Whether a value is one of the property's words, so no reference.</summary>
+        /// <param name="value">The value.</param>
+        /// <returns>Whether it is a word.</returns>
+        public bool IsWord(string value) => Words is { } words && Array.IndexOf(words, value) >= 0;
+    }
 
     /// <summary>Returns the index kind of a sub-element CLR type, or <see langword="null"/> when the type is not a sub-element.</summary>
     /// <param name="type">A model record type.</param>
@@ -1193,9 +1201,9 @@ internal static class ModelIndexer
                     if (property.Get is null)
                         continue;
                     var role = DocumentWalk.RoleOf(property);
-                    var owning = property.AttributeProvider is PropertyInfo pi && pi.GetCustomAttribute<ElementRefAttribute>(inherit: true) is { Owning: true };
+                    var reference = property.AttributeProvider is PropertyInfo pi ? pi.GetCustomAttribute<ElementRefAttribute>(inherit: true) : null;
                     if (role is not null)
-                        list.Add(new PropertyMeta(property.Name, property.Get, role.Value, owning));
+                        list.Add(new PropertyMeta(property.Name, property.Get, role.Value, reference is { Owning: true }, reference is { Words.Length: > 0 } ? reference.Words : null));
                 }
             }
 
@@ -1456,7 +1464,8 @@ internal static class ModelIndexer
                 switch (property.Role)
                 {
                     case PropertyRole.Reference when child is string id:
-                        References.Add(new ReferenceInfo(ownerId, fromId, childPointer, property.Name, id, property.Owning));
+                        if (!property.IsWord(id))
+                            References.Add(new ReferenceInfo(ownerId, fromId, childPointer, property.Name, id, property.Owning));
                         break;
                     case PropertyRole.Reference when child is IDictionary map:
                         // A map keyed by ids (a scenario's context and payload values, guard assumptions): each key is a reference.
@@ -1466,7 +1475,12 @@ internal static class ModelIndexer
                     case PropertyRole.Reference when child is IEnumerable<string> ids:
                         var i = 0;
                         foreach (var item in ids)
-                            References.Add(new ReferenceInfo(ownerId, fromId, childPointer + "/" + i++, property.Name, item));
+                        {
+                            if (!property.IsWord(item))
+                                References.Add(new ReferenceInfo(ownerId, fromId, childPointer + "/" + i, property.Name, item));
+                            i++;
+                        }
+
                         break;
                     case PropertyRole.KeyedReference when child is string key:
                         AddKeyed(ownerId, fromId, childPointer, property.Name, key);

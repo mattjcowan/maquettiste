@@ -1,0 +1,49 @@
+{
+  "$schema": "../../../.schema/v1/scenario.json",
+  "kind": "scenario",
+  "id": "01JRV000000000000000000C01",
+  "name": "ReleaseAndRevise",
+  "process": "01JRV000000000000000000Q01",
+  "objects": [
+    {
+      "id": "01JRV000000000000000000J01",
+      "name": "drawing",
+      "entity": "01JRV000000000000000000E01",
+      "values": {
+        "01JRV000000000000000000A02": "Bracket"
+      }
+    }
+  ],
+  "subject": "01JRV000000000000000000J01",
+  "description": "A drawing is approved, released and revised for a change.",
+  "steps": [
+    {
+      "id": "01JRV000000000000000000011",
+      "event": "01JRV000000000000000000V01",
+      "expect": {
+        "states": [
+          "01JRV000000000000000000S02"
+        ]
+      }
+    },
+    {
+      "id": "01JRV000000000000000000012",
+      "event": "01JRV000000000000000000V02",
+      "expect": {
+        "states": [
+          "01JRV000000000000000000S03"
+        ]
+      }
+    },
+    {
+      "id": "01JRV000000000000000000013",
+      "event": "01JRV000000000000000000V03",
+      "expect": {
+        "states": [
+          "01JRV000000000000000000S01"
+        ]
+      }
+    }
+  ],
+  "outcome": "active"
+}

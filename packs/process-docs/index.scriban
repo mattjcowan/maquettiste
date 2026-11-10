@@ -39,6 +39,13 @@ What events, automatic moves and operations do: see [the verbs](verbs.md).
 
 What runs for every object of some types, with or without a lifecycle: see [the trigger points](trigger-points.md).
 {{- end }}
+{{- revised = false }}{{ for e in model.entities # entity.revisions: null for a type with no revisions block on itself or a base }}{{ if e.revisions }}{{ revised = true }}{{ break }}{{ end }}{{ end }}
+{{- if revised }}
+
+## Revisions
+
+What revisions of each type look like and what a revise does: see [the revisions](revisions.md).
+{{- end }}
 {{ end -}}
 {{-
   file "index.md" content

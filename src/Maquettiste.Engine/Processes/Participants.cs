@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Revisions;
 using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Processes;
@@ -334,18 +335,23 @@ internal static class Participants
     /// </summary>
     /// <param name="cast">The run's cast.</param>
     /// <param name="values">The values the run set, by attribute id (<see cref="StatechartInterpreter.Values"/>).</param>
+    /// <param name="revisions">The run's revisions (<see cref="StatechartInterpreter.Revisions"/>): after a revise, the subject's given states in
+    /// each other lifecycle the revise moved are replaced (revisions-design.md section 9); <see langword="null"/> in a run without them.</param>
     /// <returns>The cast the next step reads.</returns>
-    public static ScenarioCast Current(ScenarioCast cast, IReadOnlyDictionary<string, JsonElement> values)
+    public static ScenarioCast Current(ScenarioCast cast, IReadOnlyDictionary<string, JsonElement> values, RunRevisions? revisions = null)
     {
         ArgumentNullException.ThrowIfNull(cast);
         ArgumentNullException.ThrowIfNull(values);
-        if (values.Count == 0 || cast.Subject is not { } subject || !cast.Objects.Any(o => string.Equals(o.Id, subject, StringComparison.Ordinal)))
+        var revised = revisions is { Changed: true };
+        if ((values.Count == 0 && !revised) || cast.Subject is not { } subject || !cast.Objects.Any(o => string.Equals(o.Id, subject, StringComparison.Ordinal)))
             return cast;
         return cast with
         {
             Objects = [.. cast.Objects.Select(o => !string.Equals(o.Id, subject, StringComparison.Ordinal) ? o
-                : o with { Values = o.Values.Concat(values).GroupBy(p => p.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last().Value, StringComparer.Ordinal) })],
+                : Revised(o with { Values = o.Values.Concat(values).GroupBy(p => p.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last().Value, StringComparer.Ordinal) }))],
         };
+
+        ScenarioObject Revised(ScenarioObject o) => revised ? revisions!.Apply(o) : o;
     }
 
     /// <summary>

@@ -297,6 +297,14 @@ public sealed record ProcessTransition : IProcessNode
     [ElementRef(IndexKinds = ["state"])]
     public IReadOnlyList<string> Targets { get; init; } = [];
 
+    /// <summary>
+    /// The revision level, 1 to 3, this move moves (revisions-design.md decision 19): on a move whose verb is <c>revise</c>, the level of
+    /// that revise; on any other move, the move gives the object its next revision at that level. <see langword="null"/>, and left out of
+    /// the JSON, when the move moves no revision (a revise move then moves level 1).
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? NextRevision { get; init; }
+
     /// <summary>The actions run on the transition, in list order.</summary>
     [ElementRef(IndexKinds = ["action"])]
     public IReadOnlyList<string> Actions { get; init; } = [];
@@ -912,6 +920,14 @@ public sealed record ScenarioObject : IProcessNode
     public IReadOnlyList<string> States { get; init; } = [];
 
     /// <summary>
+    /// The object's current revision, a value of its entity's revision sequence (revisions-design.md decision 40), for an entity with
+    /// revisions and no bound revision attribute. <see langword="null"/>, and left out of the JSON, when absent: the bound attribute's value
+    /// or default, else the sequence's start.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Revision { get; init; }
+
+    /// <summary>
     /// Whether the object starts frozen (rights-design.md decision 16): <c>modify</c> and <c>delete</c> are refused, and so are
     /// <c>connect</c> and <c>disconnect</c> on its links, until a <c>thaw</c>. Only the subject's is read. Left out of the JSON when false.
     /// </summary>
@@ -1136,6 +1152,13 @@ public sealed record ScenarioStep : IProcessNode
     public string? Object { get; init; }
 
     /// <summary>
+    /// The step's revision (revisions-design.md decisions 14 and 40): on a verb step that names <c>revise</c>, a chosen name or the level
+    /// that moves; on an event step, a chosen name only. <see langword="null"/>, and left out of a trace's echo, when absent.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RevisionChoice? Revision { get; init; }
+
+    /// <summary>
     /// Results for guards without an expression, by guard id, as booleans; and outcomes for checks the team writes, by trigger point id, as
     /// the words <c>pass</c>, <c>warning</c> and <c>error</c> (trigger-points-design.md decision 26).
     /// </summary>
@@ -1200,6 +1223,12 @@ public sealed record StepExpectation
     /// <summary>The object's attributes the step set, by attribute id (object-effects-design.md decision 4; MQ9307).</summary>
     [ElementRef(IndexKinds = ["attribute"])]
     public IReadOnlyDictionary<string, JsonElement> Values { get; init; } = ImmutableDictionary<string, JsonElement>.Empty;
+
+    /// <summary>
+    /// The subject's revision after the step (revisions-design.md decision 40; MQ9312); <see langword="null"/> checks nothing.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Revision { get; init; }
 
     /// <summary>
     /// The ids of exactly the checks that warned, each once (trigger-points-design.md decision 28; MQ9310); <see langword="null"/> checks nothing, and an

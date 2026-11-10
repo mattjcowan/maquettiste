@@ -361,6 +361,13 @@ public sealed class RTransition : RProcessNode
     /// <summary>The verb of the move (verbs-design.md decision 12): the transition's own, else its event's; <see langword="null"/> when
     /// neither names one or the key names no verb.</summary>
     public RVerb? Verb { get; internal set; }
+
+    /// <summary>
+    /// The revision level, 1 to 3, the move moves (revisions-design.md decision 19), from the process's file: on a move whose verb is
+    /// <c>revise</c>, the level of that revise; on any other move, the move gives the object its next revision at that level.
+    /// <see langword="null"/> when the transition names none. A template reads <c>verb.key</c> to tell the two apart.
+    /// </summary>
+    public int? NextRevision { get; internal set; }
 }
 
 /// <summary>A process-local event.</summary>

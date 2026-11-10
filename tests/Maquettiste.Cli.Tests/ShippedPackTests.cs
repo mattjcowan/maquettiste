@@ -21,11 +21,11 @@ public sealed class ShippedPackTests
 
     private static string PackFolder(string pack) => Path.Combine(Fixtures.RepoRoot, "packs", pack);
 
-    // The cases of a pack, by name: billing-small; actors, approvals (signoff-design.md section 10; approval-rounds for csharp-dapper and approvals-part-2 for process-docs, part 2), freezing, object-effects, rights, named-trigger-points, trigger-points and verbs for csharp-dapper and process-docs; lifecycle-codes and named-trigger-points-off for csharp-dapper.
+    // The cases of a pack, by name: billing-small; actors, approvals (signoff-design.md section 10; approval-rounds for csharp-dapper and approvals-part-2 for process-docs, part 2), freezing, object-effects, rights, named-trigger-points, trigger-points and verbs for csharp-dapper and process-docs; lifecycle-codes and named-trigger-points-off for csharp-dapper; revisions (revisions-design.md section 11: two types with revisions, both kinds of move, and for csharp-dapper a revising scenario's skipped test) and revise-no-block (an event that names revise and no block: the bytes of 0.22.0) for both.
     private static string[] CasesOf(string pack) => pack switch
     {
-        "csharp-dapper" => ["actors", "approval-rounds", "approvals", Case, "freezing", "lifecycle-codes", "named-trigger-points", "named-trigger-points-off", "object-effects", "rights", "trigger-points", "verbs"],
-        "process-docs" => ["actors", "approvals", "approvals-part-2", Case, "freezing", "named-trigger-points", "object-effects", "rights", "trigger-points", "verbs"],
+        "csharp-dapper" => ["actors", "approval-rounds", "approvals", Case, "freezing", "lifecycle-codes", "named-trigger-points", "named-trigger-points-off", "object-effects", "revise-no-block", "revisions", "rights", "trigger-points", "verbs"],
+        "process-docs" => ["actors", "approvals", "approvals-part-2", Case, "freezing", "named-trigger-points", "object-effects", "revise-no-block", "revisions", "rights", "trigger-points", "verbs"],
         _ => [Case],
     };
 

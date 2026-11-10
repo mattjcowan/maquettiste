@@ -17,6 +17,8 @@ export interface TransitionEdgeData extends Record<string, unknown> {
   transition: string;
   label: string;
   gate: GateBadge | null;
+  /** "next major" or "revise: minor"; "" when the move gives no revision. */
+  revision: string;
   badges: ChartBadge[];
   /** Lifted over the states its straight run would cross (routes.ts), else null. */
   detour: Detour | null;
@@ -95,6 +97,11 @@ function TransitionEdgeView({ id, source, target, data, selected }: EdgeProps<Tr
           data-selected={selected || undefined}
         >
           <span className="min-w-0 truncate">{data.label}</span>
+          {data.revision ? (
+            <span className="shrink-0 text-secondary" data-testid="revision-label">
+              {data.revision}
+            </span>
+          ) : null}
           {data.gate ? (
             <span
               className="inline-flex shrink-0 items-center gap-0.5 text-secondary"

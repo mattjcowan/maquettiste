@@ -54,15 +54,22 @@ public static class Refusals
     public const string Frozen = "frozen";
 
     /// <summary>
+    /// The revision sequence can't give the revise or the label (revisions-design.md decision 22): a list level at its last value, or a
+    /// chosen name that is not later than the latest revision. Row 7b: after the signatures, before the before actions. The entity whose
+    /// <c>revisions</c> block holds the sequence is <c>refusedBy</c>. When no move is left, a check outranks it, and it outranks a gate.
+    /// </summary>
+    public const string Revision = "revision";
+
+    /// <summary>
     /// A check of a trigger point refused (trigger-points-design.md decisions 6 and 18): after the guards and the signatures, before the
     /// effect. The trigger point is <c>refusedBy</c>. When no move is left, it outranks a gate, which outranks a guard.
     /// </summary>
     public const string Check = "check";
 
-    /// <summary>Every refusal value, in the order the checks run, then the gate's own, then a trigger point's check: what
-    /// <c>expect.refusal</c> may name.</summary>
+    /// <summary>Every refusal value, in the order the checks run, then the gate's own, then the revision sequence's (row 7b), then a
+    /// trigger point's check: what <c>expect.refusal</c> may name.</summary>
     public static IReadOnlyList<string> All { get; } =
-        [Frozen, Actor, Right, Default, NoTransition, Guard, GateSigner, GateExcluded, GateRepeat, GateNotSigned, GateReason, Check];
+        [Frozen, Actor, Right, Default, NoTransition, Guard, GateSigner, GateExcluded, GateRepeat, GateNotSigned, GateReason, Revision, Check];
 }
 
 /// <summary>What a trigger point did in a step (trigger-points-design.md decision 28).</summary>
@@ -242,6 +249,14 @@ public sealed record GateAuditRecord(
 /// <param name="Recipients">The actor ids it goes to: the signature's signers for a reminder, its <c>escalateTo</c> for an escalation.</param>
 public sealed record ApprovalNotice(string Signature, NoticeKind Kind, IReadOnlyList<string> Recipients);
 
+/// <summary>
+/// How a step moved the subject's revision (revisions-design.md decision 40): a revise, or a move that labels the revision.
+/// </summary>
+/// <param name="From">The revision before the step; <c>""</c> for no revision.</param>
+/// <param name="To">The revision after it.</param>
+/// <param name="Level">The level that moved, 1 to 3; <see langword="null"/>, and written as null, for a chosen name.</param>
+public sealed record RevisionChange(string From, string To, [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] int? Level);
+
 /// <summary>An action run in a microstep.</summary>
 /// <param name="Action">The action id.</param>
 /// <param name="Source">Whether its expression ran or it is a stub.</param>
@@ -361,6 +376,20 @@ public sealed record StepTrace(
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<ApprovalNotice>? Notices { get; init; }
+
+    /// <summary>
+    /// How the step moved the subject's revision (revisions-design.md decision 40), on a step that moved it. <see langword="null"/>, and
+    /// left out of the JSON, otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RevisionChange? Revision { get; init; }
+
+    /// <summary>
+    /// The subject's revision after the input, in a run whose subject's type has revisions: what <c>expect.revision</c> is compared with
+    /// (MQ9312). Not part of the trace's JSON.
+    /// </summary>
+    [JsonIgnore]
+    internal string? RevisionAfter { get; init; }
 
     /// <summary>
     /// Whether the subject is frozen after the input (rights-design.md section 7): <see langword="true"/> from an accepted <c>freeze</c>, or a

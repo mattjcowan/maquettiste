@@ -1726,6 +1726,7 @@ internal static class ExpressionRules
     private static void CheckNamedSets(ModelSnapshot model, TriggerPoint point, Report report)
     {
         var bound = BoundAttributes(model);
+        FrozenSet<string>? revisions = null;
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var members = ExprSites.NamedTriggerMembers(model, point).Attributes.ToDictionary(a => a.Id, StringComparer.Ordinal);
         for (var j = 0; j < point.Sets.Count; j++)
@@ -1738,6 +1739,9 @@ internal static class ExpressionRules
                 report.Add("MQ9802", $"The set's attribute '{attribute.Name}' is derived, worked out from others; remove the set.", at, set.Id);
             else if (attribute is not null && bound.Contains(attribute.Id))
                 report.Add("MQ9802", $"The set's attribute '{attribute.Name}' holds a lifecycle's state, which only its chart moves; remove the set.", at, set.Id);
+            else if (attribute is not null && Revisions.RevisionCoverage.Of(model).Any
+                && (revisions ??= RevisionBound(model, Processes.NamedTriggerPoints.Of(model).Covers(point))).Contains(attribute.Id))
+                report.Add("MQ9802", $"The set's attribute '{attribute.Name}' holds the revision, which only revising moves; remove the set.", at, set.Id);
         }
     }
 
@@ -1764,6 +1768,7 @@ internal static class ExpressionRules
         var hidden = process.Context.Any(a => string.Equals(a.Name, ExprSites.SubjectPrefix, StringComparison.Ordinal));
         var held = hidden || process.Subjects.Count == 0 ? null : ExprSites.HeldAttributes(model, process);
         var bound = BoundAttributes(model);
+        FrozenSet<string>? revisions = null;
         for (var i = 0; i < process.Actions.Count; i++)
         {
             var action = process.Actions[i];
@@ -1806,6 +1811,8 @@ internal static class ExpressionRules
                     report.Add("MQ9802", $"The set's attribute '{attribute.Name}' is derived, worked out from others; remove the set.", at, set.Id);
                 else if (bound.Contains(attribute.Id))
                     report.Add("MQ9802", $"The set's attribute '{attribute.Name}' holds a lifecycle's state, which only its chart moves; remove the set.", at, set.Id);
+                else if ((revisions ??= RevisionBound(model, process)).Contains(attribute.Id))
+                    report.Add("MQ9802", $"The set's attribute '{attribute.Name}' holds the revision, which only revising moves; remove the set.", at, set.Id);
             }
         }
 
@@ -1825,8 +1832,28 @@ internal static class ExpressionRules
                     report.Add("MQ9802", $"The set's attribute '{attribute.Name}' is derived, worked out from others; remove the set.", at, set.Id);
                 else if (attribute is not null && bound.Contains(attribute.Id))
                     report.Add("MQ9802", $"The set's attribute '{attribute.Name}' holds a lifecycle's state, which only its chart moves; remove the set.", at, set.Id);
+                else if (attribute is not null && (revisions ??= RevisionBound(model, process)).Contains(attribute.Id))
+                    report.Add("MQ9802", $"The set's attribute '{attribute.Name}' holds the revision, which only revising moves; remove the set.", at, set.Id);
             }
         }
+    }
+
+    /// <summary>
+    /// The attributes that hold the revision of an entity a process governs (revisions-design.md decision 11), which only revising moves
+    /// (MQ9802); empty without a revisions block.
+    /// </summary>
+    private static FrozenSet<string> RevisionBound(ModelSnapshot model, Process process)
+    {
+        var coverage = Revisions.RevisionCoverage.Of(model);
+        return coverage.Any ? RevisionBound(model, model.All<Entity>().Where(e => coverage.For(e) is { BoundAttribute: not null } && Processes.SubjectCoverage.Governs(model, process, e)))
+            : FrozenSet<string>.Empty;
+    }
+
+    /// <summary>The attributes that hold the revision of the entities, from their merged blocks (revisions-design.md decision 11).</summary>
+    private static FrozenSet<string> RevisionBound(ModelSnapshot model, IEnumerable<Entity> entities)
+    {
+        var coverage = Revisions.RevisionCoverage.Of(model);
+        return coverage.Any ? entities.Select(e => coverage.For(e)?.BoundAttribute).OfType<string>().ToFrozenSet(StringComparer.Ordinal) : FrozenSet<string>.Empty;
     }
 
     private static readonly ConditionalWeakTable<ModelSnapshot, FrozenSet<string>> Bound = new();

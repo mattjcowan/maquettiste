@@ -13,6 +13,7 @@ import { bindingDiagnostics } from "./lifecycleRules";
 import { verbDiagnostics, verbGlobalsOf, type VerbGlobals } from "./verbs";
 import { relativeUseDiagnostics } from "./relativeRules";
 import { approvalDiagnostics } from "./approvalRules";
+import { revisionDiagnostics } from "./revisionRules";
 import { rightDiagnostics, severalLinkDiagnostics } from "./rightRules";
 import { assumeKindDiagnostics, namedTriggerDiagnostics, triggerDiagnostics } from "./triggerRules";
 import { appliesToEntities, Coverage } from "./coverage";
@@ -396,6 +397,9 @@ export function entryDiagnostics(entry: ModelEntry, ctx: ValidationContext): Dia
   // MQ8201, MQ8202 and the MQ3001 cases of an approval's stages and signatures (approvalRules.ts)
   if (kind === "process")
     approvalDiagnostics(json, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
+  // MQ8301 to MQ8312 of an entity's revisions block, MQ8306 on a transition's nextRevision, and the revision cases of MQ9305 (revisionRules.ts)
+  if (ctx.all && (kind === "entity" || kind === "process" || kind === "scenario"))
+    revisionDiagnostics(entry, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));
   // MQ8101 to MQ8107 and the MQ3001 cases of a lifecycle's trigger points (triggerRules.ts)
   if (kind === "process" && ctx.all)
     triggerDiagnostics(json, ctx.all, (rule, severity, message, pointer, elementId) => out.push(diag(rule, severity, message, entry, pointer, elementId)));

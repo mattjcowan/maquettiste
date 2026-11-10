@@ -320,9 +320,10 @@ public sealed class ApprovalContractTests
         var responses = enabled with { Responses = [SignatureResponse.Sign, SignatureResponse.Reject, SignatureResponse.Ignore, SignatureResponse.Withdraw] };
         Assert.Equal("""["sign","reject","ignore","withdraw"]""", JsonNode.Parse(JsonSerializer.Serialize(responses, web))!["responses"]!.ToJsonString());
 
-        // The engine's refusals follow row 7's order, a trigger point's check still last, and the schema allows the new ones.
+        // The engine's refusals follow row 7's order, then the revision sequence's (row 7b, revisions-design.md decision 22), a trigger
+        // point's check still last, and the schema allows the new ones.
         Assert.Equal(
-            [Refusals.GateSigner, Refusals.GateExcluded, Refusals.GateRepeat, Refusals.GateNotSigned, Refusals.GateReason, Refusals.Check],
+            [Refusals.GateSigner, Refusals.GateExcluded, Refusals.GateRepeat, Refusals.GateNotSigned, Refusals.GateReason, Refusals.Revision, Refusals.Check],
             Refusals.All.SkipWhile(r => r != Refusals.GateSigner));
         Assert.Equal(("gate-excluded", "gate-not-signed"), (Refusals.GateExcluded, Refusals.GateNotSigned));
         var schema = JsonNode.Parse(TestServices.Schemas.GetFileBytes("scenario.json").Span)!["$defs"]!["step"]!["properties"]!["expect"]!["properties"]!["refusal"]!["enum"]!;

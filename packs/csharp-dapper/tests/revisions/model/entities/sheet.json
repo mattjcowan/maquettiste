@@ -1,0 +1,20 @@
+{
+  "$schema": "../../.schema/v1/entity.json",
+  "kind": "entity",
+  "id": "01JRV000000000000000000E02",
+  "name": "Sheet",
+  "package": "01JRV000000000000000000P01",
+  "key": {
+    "attributes": [
+      "01JRV000000000000000000A11"
+    ]
+  },
+  "attributes": [
+    {
+      "id": "01JRV000000000000000000A11",
+      "name": "id",
+      "type": "uuid",
+      "required": true
+    }
+  ]
+}

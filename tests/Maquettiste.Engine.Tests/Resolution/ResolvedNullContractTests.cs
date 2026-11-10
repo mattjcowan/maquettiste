@@ -62,6 +62,12 @@ public sealed class ResolvedNullContractTests
         ["RSubject.Entity"] = "the entry's entity, else the carrier a stereotype entry gives the subject for (stereotype-sets-design.md decision 12)",
         ["ROperationError.Code"] = "the file's code, else the error's name (next-phase-2-design.md section 4.1)",
 
+        // Revisions (revisions-design.md section 8): the block merged through the bases, with the fallbacks filled in.
+        ["RRevisions.Separator"] = "the nearest separator the entity and its bases write, else \".\"",
+        ["RRevisionLevel.Format"] = "the file's format, else list",
+        ["RRevisionLevel.First"] = "the file's first as text, else the format's default (the first letter not skipped, or 1 padded to the width), else a list's first value",
+        ["RRevisionLevel.StartEmpty"] = "the file's startEmpty, else false",
+
         // Verbs (verbs-design.md section 6).
         ["RVerb.DisplayName"] = "a built-in verb's fixed label, else the own verb's displayName, else its key with the first letter upper case and hyphens as spaces",
         ["RVerb.Description"] = "a built-in verb's fixed meaning, else the own verb's description, else empty",
@@ -157,6 +163,14 @@ public sealed class ResolvedNullContractTests
         ["RRelationAttributeColumn"] = "several types, part 2: the storage run's tests",
         ["REndEntity"] = "several types, part 2: the storage run's tests",
         ["RTypeCode"] = "several types, part 2: the storage run's tests",
+
+        // Revisions (revisions-design.md section 8): no fixture model holds a revisions block, so that their golden output stays as it was;
+        // ResolvedRevisionTests resolves them.
+        ["RRevisions"] = "revisions: ResolvedRevisionTests",
+        ["RRevisionLevel"] = "revisions: ResolvedRevisionTests",
+        ["RRevisionLifecycle"] = "revisions: ResolvedRevisionTests",
+        ["RRevisionAttribute"] = "revisions: ResolvedRevisionTests",
+        ["RRevisionLink"] = "revisions: ResolvedRevisionTests",
     };
 
     [Fact]

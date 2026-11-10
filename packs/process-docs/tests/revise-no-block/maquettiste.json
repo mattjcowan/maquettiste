@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "name": "revise-no-block",
+  "packs": {
+    "process-docs": {
+      "output": "out"
+    }
+  }
+}

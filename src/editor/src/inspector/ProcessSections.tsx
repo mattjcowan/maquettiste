@@ -11,6 +11,8 @@ import { Badge, SectionTitle } from "@/components/ui/misc";
 import { indexLookup } from "@/model/index";
 import { KIND_LABELS } from "@/model/model";
 import { describeVerb } from "@/model/verbList";
+import { levelChoices, nextRevisionFieldLabel } from "@/model/revisionLabels";
+import { useRevisionLevelLabels } from "@/editors/process/revisionLevels";
 import { useVerbs } from "@/verbs/useVerbs";
 import {
   initialOf,
@@ -240,6 +242,7 @@ function TransitionSection({ pc, transition: t }: { pc: ProcessContext; transiti
   const actions = (process.actions ?? []).map((a) => ({ value: a.id, label: a.name }));
   const trigger = t.trigger ?? "event";
   const event = process.events?.find((e) => e.id === t.event);
+  const verbKey = trigger === "event" ? event?.verb : t.verb;
   const { own: ownVerbs } = useVerbs();
   const edit = (update: (x: TransitionDoc, p: ProcessDoc) => void) =>
     change((p) => {
@@ -294,6 +297,7 @@ function TransitionSection({ pc, transition: t }: { pc: ProcessContext; transiti
           <span className="text-11 text-secondary">Set on event '{event.name}': change it on the Events tab.</span>
         </Field>
       ) : null}
+      {trigger !== "after" || t.verb ? <NextRevisionField dom={dom} processId={pc.id} transition={t} verb={verbKey} edit={edit} /> : null}
       <ChipsEditor
         label="Targets"
         values={t.targets ?? []}
@@ -340,6 +344,48 @@ function TransitionSection({ pc, transition: t }: { pc: ProcessContext; transiti
       </p>
       <p className="text-11 text-secondary">From the event {event?.name ?? ""}: edit them on the Events tab.</p>
     </section>
+  );
+}
+
+/** Next revision (Revise at on a revise move): None, or a level of the types the lifecycle governs (revisions-design.md section 12). */
+function NextRevisionField({
+  dom,
+  processId,
+  transition: t,
+  verb,
+  edit,
+}: {
+  dom: string;
+  processId: string;
+  transition: TransitionDoc;
+  verb: string | undefined;
+  edit: (update: (x: TransitionDoc, p: ProcessDoc) => void) => void;
+}) {
+  const labels = useRevisionLevelLabels(processId);
+  const choices = levelChoices(labels, t.nextRevision);
+  // Nothing to choose, and nothing chosen: a lifecycle of types without revisions says nothing about them.
+  if (labels.length === 0 && t.nextRevision === undefined) return null;
+  const label = nextRevisionFieldLabel(verb);
+  return (
+    <Field label={label} htmlFor={`${dom}-next-revision`}>
+      <Select
+        id={`${dom}-next-revision`}
+        data-testid="transition-next-revision"
+        value={t.nextRevision === undefined ? "" : String(t.nextRevision)}
+        onChange={(e) =>
+          edit((x) => {
+            if (e.target.value === "") delete x.nextRevision;
+            else x.nextRevision = Number(e.target.value);
+          })
+        }
+      >
+        {choices.map((c) => (
+          <option key={c.value} value={c.value}>
+            {c.label}
+          </option>
+        ))}
+      </Select>
+    </Field>
   );
 }
 

@@ -24,6 +24,8 @@ export interface Ref {
    * removes the item at this pointer, remove-references refuses (several-types-design.md 19.6).
    */
   dependentItem?: string;
+  /** What an entity's revisions block names (revisions-design.md section 10): a delete removes the entry, or clears the bound attribute, under either choice. */
+  alwaysClears?: boolean;
 }
 
 const arr = (v: unknown): Json[] => (Array.isArray(v) ? (v as Json[]) : []);
@@ -40,6 +42,29 @@ function attributeRefs(owner: string, base: string, attributes: unknown, out: Re
       out.push({ fromId: holder, pointer: `${base}/${i}/type/ref`, field: "ref", toId: type.ref as string, required: true });
     if (str(a.category)) out.push({ fromId: holder, pointer: `${base}/${i}/category`, field: "category", toId: a.category as string, required: false });
   });
+}
+
+/**
+ * What an entity's `revisions` block names (revisions-design.md section 6): the bound attribute, and per entry its lifecycle (and the state it
+ * goes to), attribute or relation end. Every one is cleared by a delete under either choice, so none is required. The entity's own attributes
+ * are listed too, so `get_references` shows the pointers.
+ */
+function revisionRefs(out: Ref[], id: string, block: unknown): void {
+  if (!block || typeof block !== "object") return;
+  const b = block as Json;
+  const add = (pointer: string, field: string, to: unknown, removeItem?: string) => {
+    const toId = str(to);
+    if (toId && toId !== id) out.push({ fromId: id, pointer, field, toId, required: false, alwaysClears: true, ...(removeItem ? { removeItem } : {}) });
+  };
+  add("/revisions/boundAttribute", "boundAttribute", b.boundAttribute);
+  arr(b.lifecycles).forEach((e, i) => {
+    const at = `/revisions/lifecycles/${i}`;
+    add(`${at}/lifecycle`, "lifecycle", e.lifecycle, at);
+    // A state id (`restart` and `keep` are words).
+    if (str(e.onRevise) && ULID.test(e.onRevise as string)) add(`${at}/onRevise`, "onRevise", e.onRevise, at);
+  });
+  arr(b.attributes).forEach((e, i) => add(`/revisions/attributes/${i}/attribute`, "attribute", e.attribute, `/revisions/attributes/${i}`));
+  arr(b.links).forEach((e, i) => add(`/revisions/links/${i}/end`, "end", e.end, `/revisions/links/${i}`));
 }
 
 /**
@@ -169,6 +194,7 @@ export function referencesOf(doc: Json, rows?: RowResolver): Ref[] {
     case "entity":
       push("/base", "base", doc.base, false);
       attributeRefs(id, "/attributes", doc.attributes, out);
+      revisionRefs(out, id, doc.revisions);
       // A binding's database, source and write table (erratum E43): removing what it names drops the binding, never the entity.
       arr(doc.bindings).forEach((b, i) => {
         const at = `/bindings/${i}`;

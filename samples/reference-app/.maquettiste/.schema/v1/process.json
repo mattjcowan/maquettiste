@@ -605,6 +605,7 @@
         "invoke",
         "guard",
         "targets",
+        "nextRevision",
         "actions",
         "external",
         "gate",
@@ -659,6 +660,12 @@
           "description": "None: targetless; several: one per orthogonal region.",
           "$ref": "common.json#/$defs/idList",
           "default": []
+        },
+        "nextRevision": {
+          "description": "The revision level, 1 to 3, this move moves (revisions-design.md decision 19). On a move whose verb is revise, the level of that revise (absent: level 1); on any other move, the move gives the object its next revision at that level, keeping its states, values, freezing and links. Only on a lifecycle that governs an entity with revisions, which has the level (MQ8306).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
         },
         "actions": {
           "description": "Actions run on the transition, in list order.",

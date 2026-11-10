@@ -28,6 +28,7 @@ import type { EditorContext } from "../EditorFrame";
 import { useObjectFields } from "../actor/useObjectFields";
 import { Grid, type GridColumn, type GridOption } from "../process/Grid";
 import { rowProblems, useActors, useProblems } from "../process/shared";
+import { useMergedRevisions } from "./revisionFields";
 
 /** The model's actors as the participant pickers read them. */
 export function useActorChoices(): ActorChoice[] {
@@ -340,6 +341,9 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
   const stateGroups = useLifecycleStates([...new Set((scenario.objects ?? []).map((o) => o.entity))], scenario.process);
   const objectFields = useObjectFields([...new Set((scenario.objects ?? []).map((o) => o.entity))]);
   const objectNames = new Map((scenario.objects ?? []).map((o) => [o.id, o.name]));
+  const revisions = useMergedRevisions([...new Set((scenario.objects ?? []).map((o) => o.entity))]);
+  const revisionsShown =
+    [...revisions.values()].some((m) => m !== null && m.boundAttribute === null) || (scenario.objects ?? []).some((o) => o.revision !== undefined);
   const linkLabel = (l: { end: string; object: string }) => `${objectFields.nameOf(l.end)}: ${objectNames.get(l.object) ?? "?"}`;
   const rows: ObjectRow[] = (scenario.objects ?? []).map((o, i) => ({
     id: o.id,
@@ -413,6 +417,25 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
       options: (r) => (scenario.objects?.[r.index]?.links ?? []).map((l) => ({ value: `${l.end}|${l.object}`, label: linkLabel(l) })),
       locked: (r) => r.id !== scenario.subject || !(scenario.objects?.[r.index]?.links ?? []).length,
     },
+    ...(revisionsShown
+      ? [
+          {
+            key: "revision",
+            label: "Revision",
+            tooltip:
+              "The object's current revision, a value of its type's revision sequence. Empty: the sequence's start. A type whose revision is held in an attribute sets it in Values.",
+            kind: "text" as const,
+            width: "min-w-20",
+            mono: true,
+            value: (r: ObjectRow) => scenario.objects?.[r.index]?.revision ?? "",
+            // Only a type with revisions and no attribute holding them takes one here.
+            locked: (r: ObjectRow) => {
+              const merged = revisions.get(scenario.objects?.[r.index]?.entity ?? "");
+              return !merged || merged.boundAttribute !== null;
+            },
+          },
+        ]
+      : []),
     {
       key: "values",
       label: EL.valuesColumn,
@@ -451,7 +474,7 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
         onAdd={() => setAdding(true)}
         problems={(r) => rowProblems(problems, r.pointer)}
         onCommit={(row, key, value) => {
-          if (key !== "owner" && key !== "states" && key !== "values" && key !== "frozen" && key !== "frozenLinks") return;
+          if (key !== "owner" && key !== "states" && key !== "values" && key !== "frozen" && key !== "frozenLinks" && key !== "revision") return;
           if (key === "values") {
             const entity = scenario.objects?.find((x) => x.id === row.id)?.entity ?? "";
             const parsed = parseValuesText(String(value), attributeNames.get(entity) ?? new Map());
@@ -468,6 +491,9 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
               const parsed = parseValuesText(String(value), attributeNames.get(o.entity) ?? new Map());
               if (Object.keys(parsed.values).length) o.values = parsed.values;
               else delete o.values;
+            } else if (key === "revision") {
+              if (String(value).trim()) o.revision = String(value).trim();
+              else delete o.revision;
             } else if (key === "frozen") {
               if (value === true) o.frozen = true;
               else delete o.frozen;

@@ -5,6 +5,62 @@ What each version added, newest first. Every version is a tag on the repository,
 [getting started](getting-started.md) page and the [update steps](getting-started.md#updating) say how to move to a new
 one.
 
+## 0.23.0 (2026-11-10)
+
+- **Revisions.** An entity may carry one optional `revisions` block. It says what revisions of that type look like and what a revise
+  carries over. Until a type has the block, `revise` is only a word that rights and trigger points can name. The model does not say
+  where the current revision is kept: the team's system holds it, or the block names an attribute (`boundAttribute`, **Held in**).
+  - **Levels.** One to three, from the most significant. A level is `letters` (`A` to `Z`, then `AA`), `numbers` or a list of `values`,
+    with optional `name`, `first`, `skip` (letters never used), `width` (zero padding) and `startEmpty`. A `separator` goes between
+    two levels that hold a value (`.` unless you say otherwise). Revisions read `A`, `A.1`, `A.2`, `B`.
+  - **What a revise does.** The object gets the next value at a level, or a chosen name later in the sequence. The earlier revision stays
+    as it was. The new one starts thawed. The block's three lists say what it carries over, each entry with `onRevise`: `lifecycles`
+    (`restart`, `keep` or a state), `attributes` (`copy`, `reset` or `clear`) and `links` (`stay`, `move` or `duplicate`). What a list
+    does not name takes the fallback: lifecycles start over, values are copied, links are not said. A derived type inherits the block and
+    overrides it item by item.
+  - **Moves.** A transition may say `nextRevision` (a level, 1 to 3). On a move whose verb is `revise`, it is the level of the revise.
+    On any other move, such as a release, it labels the next revision in place: the states, values, freezing and links stay. "May be
+    revised in this state" is a right on `revise` with `states`.
+  - **Scenarios.** An object may say its `revision`. A verb step that names `revise` may give `revision` as a level or a name; an
+    event step may give a name. A step may expect `expect.revision`. A revise the sequence can't give is refused with the new refusal
+    `revision`. A scenario follows the latest revision. A revise verb step on an object whose type has `revisions` is now accepted after
+    a lifecycle's chart has ended, and starts or keeps its lifecycles as the type says.
+- **New names.**
+  - In the files: on an entity, `revisions` with `levels` (`name`, `format`, `values`, `first`, `skip`, `width`, `startEmpty`),
+    `separator`, `boundAttribute`, `lifecycles` (`lifecycle`, `onRevise`), `attributes` (`attribute`, `onRevise`) and `links`
+    (`end`, `onRevise`); on a transition, `nextRevision`; in scenarios, the object key `revision`, the step key `revision`,
+    `expect.revision` and the refusal `revision`.
+  - Rules: MQ8301, MQ8303, MQ8305, MQ8306, MQ8308, MQ8312 (a new family, "Revisions") and MQ9312.
+  - Template members: `entity.revisions` with `levels` (`number`, `name`, `format`, `values`, `first`, `skip`, `width`, `start_empty`,
+    `examples`), `separator`, `first_revision`, `bound_attribute`, `lifecycles` (`lifecycle`, `on_revise`, `state`, `from`),
+    `attributes` (`attribute`, `on_revise`, `from`) and `links` (`end`, `on_revise`, `from`); `transition.next_revision`.
+  - API: `revisions` on the entity document and record, `nextRevision` on the transition document and record, and `revision` (`from`,
+    `to`, `level`) in a step's trace.
+  - Editor: Revisions, Levels, Values (Letters, Numbers, A list), First, Skip, Width, Starts empty, Separator, Held in, Preview, When
+    revised (Start over, Keep; Copied, Reset, Cleared; Stay, Move, Duplicated), Add revisions, Next revision, Revise at, Revision
+    (Level, Name) and Expect revision.
+  - Engine: `Revisions/RevisionSequence.cs` and `Revisions/RevisionCoverage.cs`; the refusal constant `Refusals.Revision`.
+- **Editor.** The entity editor has a **Revisions** tab, with a live **Preview** of the first values. A transition has **Next revision** (**Revise at** on
+  a revise move). A scenario object has **Revision**, a step has **Revision** and **Expect revision**, and quick fixes cover the new rules.
+- **Pages.** `process-docs` writes a `revisions.md` page, only when some type has a block, and its index links to it. It is the example of
+  reading `entity.revisions` and `transition.next_revision`. `csharp-dapper` writes no revision code. It skips its generated test of a
+  scenario that revises, since the generated code does not make revisions. Both packs change only when a block exists.
+- **A project that adds a block later.** Its existing revise steps start moving revisions and lifecycles, as naming `freeze` began to
+  freeze. `verify_scenarios` names the steps whose outcome changes.
+- **What changes for every project.** `list_validation_rules` (a new family and longer texts), `get_schema` for entities, processes and
+  scenarios, the `tools/list` descriptions, the conventions resource, `get_template_context` (its member lists come from reflection) and
+  the entity editor's new tab. Every unit renders again with the same bytes, since the engine version is part of each unit's key.
+  `process-docs`' index now reads every entity's revisions, so editing an entity renders it again, with the same bytes. A project with no
+  block keeps its files, generated bytes, findings, replays, keys and speed.
+- **Upgrading.** Update the schema copies and the `maquettiste-modeling` skill your repository holds (MQ1008 until the schema copies
+  refresh). An older engine refuses the new keys, so teams upgrade together. The file format version stays 1.
+- **A sequence in use should stay as it is.** Maquettiste does not warn when you change one, and values the team's system holds may
+  stop being values of the sequence. Levels are named by number, so reordering a type's levels changes what level 2 means for every
+  move that names it.
+- **What waits.** Readings in conditions (`is_latest`, `at_revision`), what a copy carries over (`onCopy`), an edit that revises by itself,
+  a limit to a letters or numbers level, links on a revise in a run, steps on an earlier revision, and saves (versions inside a revision).
+  Each is added later without changing a file.
+
 ## 0.22.0 (2026-11-09)
 
 - **Relations with several types at an end, part 2.** A relation mapping can now say, per end, how the team's own tables hold each

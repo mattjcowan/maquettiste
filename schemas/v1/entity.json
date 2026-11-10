@@ -27,6 +27,7 @@
     "alternateKeys",
     "checks",
     "attributes",
+    "revisions",
     "bindings",
     "properties",
     "generation",
@@ -155,6 +156,158 @@
         "$ref": "common.json#/$defs/attribute"
       },
       "default": []
+    },
+    "revisions": {
+      "title": "Revisions",
+      "description": "What revisions of this entity look like and what a revise does to an instance (revisions-design.md decisions 1 to 11 and 32 to 36): one to three levels and a separator, optionally the attribute that holds the current revision, and per lifecycle, attribute and relation end what a revise does. A derived entity inherits its bases' block and overrides it item by item: levels, separator and boundAttribute from the nearest statement, entries added to its bases' and replacing a base's entry for the same lifecycle, attribute or end.",
+      "type": "object",
+      "x-order": ["levels", "separator", "boundAttribute", "lifecycles", "attributes", "links"],
+      "properties": {
+        "levels": {
+          "description": "One to three levels, from the most significant. Absent: a base's levels (MQ8301 when the family names none).",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "title": "Revision level",
+            "description": "A run of letters (A to Z, then AA, AB and on), of whole numbers, or a list of values: exactly one of format and values (MQ8301).",
+            "type": "object",
+            "x-order": ["name", "format", "values", "first", "skip", "width", "startEmpty"],
+            "properties": {
+              "name": {
+                "description": "A label for templates, docs and the editor, unique among the levels (MQ8301); without one the level is level n. Lifecycles and steps name a level by its number.",
+                "$ref": "common.json#/$defs/identifier"
+              },
+              "format": {
+                "description": "letters: upper case A to Z, then AA, AB and on, never running out; numbers: whole numbers from first, with no end.",
+                "enum": ["letters", "numbers"]
+              },
+              "values": {
+                "description": "A list of values, used in order; the level ends at its last value, where it can't move.",
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "first": {
+                "description": "The level's first value: a letter run for letters (absent: the first letter not skipped), a whole number for numbers (absent: 1). Not beside values (MQ8301).",
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                ]
+              },
+              "skip": {
+                "description": "Letters never used, at any position, for a letters level only (MQ8301).",
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]$"
+                }
+              },
+              "width": {
+                "description": "For a numbers level only (MQ8301): numbers are padded with zeros to this width, and a value past it grows.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9
+              },
+              "startEmpty": {
+                "description": "true: the level holds nothing at first, and again whenever a higher level moves; it takes its first value when it or a lower level moves. Every level below one that starts empty starts empty too (MQ8301). Absent: false.",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "separator": {
+          "description": "Written between two levels that both hold a value. Absent: a base's, else \".\". It may be empty only between a letters level and a numbers level, and never holds a letter or a digit (MQ8303).",
+          "type": "string"
+        },
+        "boundAttribute": {
+          "description": "The id of the attribute that holds the current revision (decision 10): a single-valued, non-derived string or text attribute the entity holds, which only revising moves (MQ8305). Absent: a base's, else the team's system holds it.",
+          "$ref": "common.json#/$defs/id"
+        },
+        "lifecycles": {
+          "description": "What a revise does to each lifecycle that governs the entity. A lifecycle not listed starts over.",
+          "type": "array",
+          "items": {
+            "title": "Revision lifecycle entry",
+            "type": "object",
+            "x-order": ["lifecycle", "onRevise"],
+            "properties": {
+              "lifecycle": {
+                "description": "The id of a lifecycle that governs the entity or a derived entity (MQ8312).",
+                "$ref": "common.json#/$defs/id"
+              },
+              "onRevise": {
+                "description": "restart: back to the initial state; keep: the states stay as they are; or the id of a state of the lifecycle, entered as a restart enters the initial one.",
+                "anyOf": [
+                  {
+                    "enum": ["restart", "keep"]
+                  },
+                  {
+                    "$ref": "common.json#/$defs/id"
+                  }
+                ]
+              }
+            },
+            "required": ["lifecycle", "onRevise"],
+            "additionalProperties": false
+          }
+        },
+        "attributes": {
+          "description": "What a revise does to each listed attribute the entity holds. An attribute not listed is copied.",
+          "type": "array",
+          "items": {
+            "title": "Revision attribute entry",
+            "type": "object",
+            "x-order": ["attribute", "onRevise"],
+            "properties": {
+              "attribute": {
+                "description": "The id of an attribute the entity holds: its own, an inherited one or one from a stereotype it carries (MQ8312).",
+                "$ref": "common.json#/$defs/id"
+              },
+              "onRevise": {
+                "description": "reset: the attribute's default, else empty; clear: empty; copy: the earlier value, so a derived entity can undo a base's entry.",
+                "enum": ["copy", "reset", "clear"]
+              }
+            },
+            "required": ["attribute", "onRevise"],
+            "additionalProperties": false
+          }
+        },
+        "links": {
+          "description": "What a revise does to the links through each listed relation end the entity reaches. An end not listed is left to the team.",
+          "type": "array",
+          "items": {
+            "title": "Revision link entry",
+            "type": "object",
+            "x-order": ["end", "onRevise"],
+            "properties": {
+              "end": {
+                "description": "The id of a relation end the entity navigates to (MQ8312).",
+                "$ref": "common.json#/$defs/id"
+              },
+              "onRevise": {
+                "description": "stay: the earlier revision keeps the link; move: the link goes with the new revision; duplicate: the new revision gets a link of its own (MQ8308 where the entity's own end has max 1).",
+                "enum": ["stay", "move", "duplicate"]
+              }
+            },
+            "required": ["end", "onRevise"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
     },
     "bindings": {
       "description": "How the entity reads from and writes to databases, one binding per database (erratum E43). A binding wins over any projection of the entity into its database.",

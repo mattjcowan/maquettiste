@@ -121,6 +121,8 @@ export interface TransitionDoc {
   targets?: string[];
   actions?: string[];
   external?: boolean;
+  /** The revision level this move gives the object (revisions-design.md decision 19): on a `revise` move the level it revises at. */
+  nextRevision?: number;
   gate?: GateDoc;
   description?: unknown;
 }
@@ -283,6 +285,8 @@ export interface StepDoc {
   attributes?: string[];
   end?: string;
   object?: string;
+  /** A revise or labelling step: a chosen name (text), or the level that moves (an integer, 1 to 3). */
+  revision?: string | number;
   /** How the step answers an approval on its event (signoff-design.md decision 25); absent: a signature. */
   response?: ApprovalResponse;
   /** The named signature the step answers; absent: the engine picks one (decision 8). */
@@ -300,6 +304,8 @@ export interface StepDoc {
     states?: string[];
     context?: Json;
     values?: Json;
+    /** The subject's revision after the step. */
+    revision?: string;
     refusal?: string;
     refusedBy?: string;
     /** The checks that warned, and the trigger points that ran in order (decision 28). */
@@ -356,6 +362,8 @@ export interface ScenarioObjectDoc {
   frozen?: boolean;
   /** A participant id; only when the subject entry names no owner field (decision 16). */
   owner?: string;
+  /** The current revision, a value of the entity's revision sequence, when it has revisions and no attribute holds it (revisions-design.md decision 40). */
+  revision?: string;
 }
 
 // ------------------------------------------------------------------ the state tree

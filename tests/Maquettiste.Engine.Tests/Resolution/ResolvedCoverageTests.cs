@@ -71,6 +71,12 @@ public sealed class ResolvedCoverageTests
         new("enum member", "enum.json", "members/[]", typeof(REnumMember)),
         new("relation", "relation.json", "", typeof(RRelation)),
         new("relation end", "relation.json", "ends/[]", typeof(REnd)),
+        // Revisions (revisions-design.md section 8): the block merged through the bases, as entity.revisions.
+        new("revisions", "entity.json", "revisions", typeof(RRevisions)),
+        new("revision level", "entity.json", "revisions/levels/[]", typeof(RRevisionLevel)),
+        new("revision lifecycle", "entity.json", "revisions/lifecycles/[]", typeof(RRevisionLifecycle)),
+        new("revision attribute", "entity.json", "revisions/attributes/[]", typeof(RRevisionAttribute)),
+        new("revision link", "entity.json", "revisions/links/[]", typeof(RRevisionLink)),
 
         // Reference data.
         new("reference type", "reference-type.json", "", typeof(RReferenceType)),
@@ -278,6 +284,9 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
+
+        // Revisions (revisions-design.md section 8), resolved in a later wave of the same item: a scenario object's and a step's revision.
+        ("scenario object", "revision"), ("step", "revision"),
     ];
 
     /// <summary>

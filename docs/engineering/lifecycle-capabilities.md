@@ -80,8 +80,8 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | Fields required to enter or to leave a state | O | **No**: 4.4 |
 | What may be done with the object in this state (allowed and forbidden operations) | P | Part: an operation can `require` a state |
 | How relationships behave in this state (fixed or floating) | A | No |
-| Default revision scheme in this state | W | No |
-| May be revised, or versioned, in this state | E | **No** |
+| Default revision scheme in this state | W | No: waits. Each move names its level (`nextRevision`, 0.23.0) |
+| May be revised, or versioned, in this state | E | Part: "revised" is a right on `revise` with `states`; "versioned" (saves) is out (0.23.0) |
 | A planned date for each state, on each object | E | No |
 | Moves out of a state switched off for one object | E | No |
 | An approval routed to a named person or role (`route`) | E Own | Part: a gate's `signers` are actors, which can be roles |
@@ -109,7 +109,7 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 | A move back that is always there (`demote`) | E W | Part: each is declared |
 | The same person can't make two moves in a row | S | Part: a gate's `allowRepeatSigner` |
 | Actions, in order | S V | Yes |
-| Changing the revision on a move | S V | No |
+| Changing the revision on a move | S V | Yes: `nextRevision` on a transition (0.23.0) |
 | Comment allowed, required or prohibited on a move | O | Part: a gate's `reasonRequired` |
 | Moving many objects together | W | No: the system's job |
 
@@ -189,11 +189,11 @@ In the "Today" column, **Yes** means the model can say it, **Part** means some o
 
 | Capability | Seen in | Today |
 | --- | --- | --- |
-| A revision sequence, major and minor | E W S V | **No** |
-| Revising to a chosen name, and reading the previous, next, first and last revision | E | **No** |
-| What a relationship does when an end is revised or copied: nothing, follow, or duplicate | E A | **No** |
-| Release moves the revision on, and the next edit starts over | A | **No** |
-| Revising creates a new version | W | **No** |
+| A revision sequence, major and minor | E W S V | Yes: the `revisions` block on a type (0.23.0) |
+| Revising to a chosen name, and reading the previous, next, first and last revision | E | Part: a chosen name, yes; reading the previous, next, first and last revision in a condition waits (0.23.0) |
+| What a relationship does when an end is revised or copied: nothing, follow, or duplicate | E A | Part: the type says stay, move or duplicate on a revise; a run doesn't act on it, and a copy waits (0.23.0) |
+| Release moves the revision on, and the next edit starts over | A | Part: `nextRevision` on a move labels the next revision, and a `revise` move from Released starts over; an edit that revises by itself waits (0.23.0) |
+| Revising creates a new version | W | Yes, read as a new revision that keeps the earlier one; saves are out (0.23.0) |
 
 ## H. Where the state is held
 

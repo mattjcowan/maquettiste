@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Revisions;
 
 namespace Maquettiste.Engine.Processes;
 
@@ -694,12 +695,14 @@ public static class ProcessApi
         ArgumentNullException.ThrowIfNull(inputs);
         var row = ScenarioObjects.Row(runtime.Model, chart.Process, objects ?? [], subject, out var notes);
         var cast = new ScenarioCast(objects ?? [], subject, participants ?? []);
+        var revisions = RunRevisions.For(runtime.Model, chart.Process, cast);
         var interpreter = new StatechartInterpreter(chart, runtime.Options("simulation") with
         {
             Subject = row,
             StateNotes = notes.Count > 0 ? notes : null,
-            Rights = new RunRights(runtime, chart.Process, cast),
-            Triggers = RunTriggers.For(runtime, chart.Process, cast),
+            Rights = new RunRights(runtime, chart.Process, cast) { Revisions = revisions },
+            Triggers = RunTriggers.For(runtime, chart.Process, cast, revisions),
+            Revisions = revisions,
         });
         DateTimeOffset? at = null;
         if (start?.At is { } text && TryParseAt(text, out var parsed))
@@ -708,7 +711,7 @@ public static class ProcessApi
         var complete = !traces[0].Incomplete;
         for (var i = 0; complete && i < inputs.Count; i++)
         {
-            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, Participants.Current(cast, interpreter.Values), inputs[i], out _);
+            var trace = Participants.Run(runtime.Model, interpreter, chart.Process, Participants.Current(cast, interpreter.Values, revisions), inputs[i], out _);
             traces.Add(trace);
             complete = !trace.Incomplete;
         }
@@ -885,6 +888,10 @@ public static class ProcessApi
                 values[id] = JsonNode.Parse(value.GetRawText());
             node["values"] = values;
         }
+
+        // The subject's revision after the step (revisions-design.md decision 40), when the replay records it.
+        if (expect.Revision is { } revision)
+            node["revision"] = revision;
 
         // The signatures counted after a step that answered an approval (signoff-design.md decision 27).
         if (expect.Signatures is { Count: > 0 } signatures)

@@ -28,6 +28,8 @@ import {
   type TransitionRow,
   type Trigger,
 } from "@/model/process";
+import { levelChoices, transitionRevisionText } from "@/model/revisionLabels";
+import { useRevisionLevelLabels } from "./revisionLevels";
 import { Grid, type GridColumn } from "./Grid";
 import { SetsDialog, useSetContext } from "./SetsEditor";
 import { rowProblems, useGridTargets, type ProcessContext } from "./shared";
@@ -51,6 +53,12 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
   const rows = transitionRows(process);
   const go = useGridTargets(id);
   const verbs = useVerbs();
+  const levelLabelList = useRevisionLevelLabels(id);
+  /** The verb of a transition: its event's, or its own on an automatic move. */
+  const verbOf = (r: TransitionRow) => {
+    const t = find(process, r.id);
+    return r.trigger === "event" ? events.find((e) => e.id === t?.event)?.verb : t?.verb;
+  };
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const select = (t: string) => selectProcessNode({ process: id, kind: "transition", id: t });
   const invokesOf = (row: TransitionRow) => {
@@ -58,7 +66,7 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
     return (t ? (index.get(t.source)?.state.invoke ?? []) : []).map((i) => ({ value: i.id, label: i.name }));
   };
 
-  const columns: GridColumn<TransitionRow>[] = [
+  const allColumns: GridColumn<TransitionRow>[] = [
     {
       key: "source",
       label: "Source",
@@ -143,6 +151,22 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
       options: () => states.map((s) => ({ value: s.id, label: s.name })),
     },
     {
+      key: "revision",
+      label: "Revision",
+      tooltip: "The revision level a move gives the object: the next one, or on a revise move the level it revises at",
+      kind: "select",
+      width: "min-w-20",
+      value: (r) => {
+        const t = find(process, r.id);
+        return transitionRevisionText(t?.nextRevision, verbOf(r), levelLabelList);
+      },
+      editValue: (r) => {
+        const n = find(process, r.id)?.nextRevision;
+        return n === undefined ? "" : String(n);
+      },
+      options: (r) => levelChoices(levelLabelList, find(process, r.id)?.nextRevision),
+    },
+    {
       key: "actions",
       label: "Actions",
       kind: "multi",
@@ -167,6 +191,10 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
     },
   ];
 
+  // The Revision column shows only when a governed type has levels or a move already names one, so the other columns keep their room.
+  const showRevision = levelLabelList.length > 0 || (process.transitions ?? []).some((t) => t.nextRevision !== undefined);
+  const columns = allColumns.filter((c) => c.key !== "revision" || showRevision);
+
   const commit = (row: TransitionRow, key: string, value: string | boolean) =>
     change((p) => {
       const t = find(p, row.id);
@@ -183,6 +211,9 @@ export function TransitionsTab({ pc }: { pc: ProcessContext }) {
         if (row.trigger === "after") t.after = v.trim();
         else if (row.trigger === "event") t.event = v;
         else t.invoke = v;
+      } else if (key === "revision") {
+        if (v) t.nextRevision = Number(v);
+        else delete t.nextRevision;
       } else if (key === "guard") {
         if (v) t.guard = v;
         else delete t.guard;
