@@ -338,6 +338,8 @@ An event that names `modify` cannot say which attributes it changes. A deny that
 - [Verbs](../user-guide.md#verbs).
 - [Rights](../user-guide.md#rights): who may do which verbs in which states, named rights, and refusals in scenarios.
 - [Trigger points](../user-guide.md#trigger-points): checks, actions and replaces on any verb, in a fixed order, and what happens when.
+- [Revisions](../user-guide.md#revisions): a revision sequence on a type, what a revise carries over, and moves that revise or
+  label the next revision (**Next revision**), with `expect.revision` in scenarios.
 - [Actions that set the object's data](../user-guide.md#actions-that-set-the-objects-data).
 - [Actors: types, membership and the object](../user-guide.md#actors-types-membership-and-the-object).
 - [Sync enum and the quick fixes](../user-guide.md#sync-enum-and-the-quick-fixes) and
