@@ -62,9 +62,7 @@ export function WhenRevisedSection({
   const addable = attributeChoices(attributes, { key: keyIds, lifecycleBound, held: merged.boundAttribute, listed: attrRows.map((r) => r.id) });
   const addableEnds = ends.filter((e) => !links.some((l) => l.id === e.id));
 
-  const fromCell = (from: string | null) => (
-    <td className="px-1 text-12 text-secondary">{from && from !== entityId ? `from ${nameOf(from)}` : ""}</td>
-  );
+  const fromCell = (from: string | null) => <td className="px-1 text-12 text-secondary">{from && from !== entityId ? `from ${nameOf(from)}` : ""}</td>;
   const removeCell = (key: "lifecycles" | "attributes" | "links", id: string, what: string) => (
     <td className="w-8 px-1">
       {hasOwnEntry(own, key, id) ? (
@@ -107,18 +105,18 @@ export function WhenRevisedSection({
                     >
                       <option value="restart">{LIFECYCLE_RULE_LABELS.restart}</option>
                       <option value="keep">{LIFECYCLE_RULE_LABELS.keep}</option>
-                      <optgroup label="Go to state">
-                        {[...(stateChoices(lifecycleDocs.filter((d) => d.id === l.id)).flatMap((g) => g.states))].map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.label}
+                      {stateChoices(lifecycleDocs.filter((d) => d.id === l.id)).flatMap((g) =>
+                        g.states.map((st) => (
+                          <option key={st.id} value={st.id}>
+                            Go to {st.label.slice(g.lifecycle.length + 1)}
                           </option>
-                        ))}
-                      </optgroup>
+                        )),
+                      )}
                       {l.rule !== "restart" && l.rule !== "keep" && !states.has(l.rule) ? <option value={l.rule}>(a state that is gone)</option> : null}
                     </Select>
                   </td>
                   {fromCell(l.from)}
-                  {removeCell("lifecycles", l.id, "entry; the lifecycle starts over again")}
+                  {removeCell("lifecycles", l.id, "this row (starts over again)")}
                 </tr>
               ))}
             </tbody>
@@ -130,7 +128,7 @@ export function WhenRevisedSection({
 
       <EntryTable
         title="Attributes"
-        empty="Every attribute is copied to a new revision."
+        empty="Every attribute is copied to a new revision. Add one to reset or clear it."
         testId="revisions-attributes"
         rows={attrRows}
         labelOf={(id) => attributeNames.get(id) ?? "(an attribute that is gone)"}
@@ -147,7 +145,7 @@ export function WhenRevisedSection({
       />
       <EntryTable
         title="Links"
-        empty="A link is left to your own system."
+        empty="A link is left to your own system. Add one to say what happens to it."
         testId="revisions-links"
         rows={links}
         labelOf={(id) => endLabels.get(id) ?? "(an end that is gone)"}
@@ -202,7 +200,7 @@ function EntryTable<R extends string>({
   return (
     <div className="flex flex-col gap-1" data-testid={testId}>
       <div className="flex items-center gap-2">
-        <h4 className="text-12 font-medium text-secondary">{title}</h4>
+        <h4 className="text-11 font-semibold uppercase tracking-wide text-secondary">{title}</h4>
         <Select
           className="h-6 w-44 text-12"
           aria-label={addLabel}
@@ -260,4 +258,3 @@ function EntryTable<R extends string>({
     </div>
   );
 }
-

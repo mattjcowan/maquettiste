@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useElements, useIndex } from "@/api/queries";
 import { indexLookup } from "@/model/index";
 import { levelLabels, REVISE_VERB, type LevelLabel } from "@/model/revisionLabels";
-import { resolveRevisions, type EntityWithRevisions, type MergedRevisions } from "@/model/revisionSequence";
+import { firstRevision, resolveRevisions, type EntityWithRevisions, type MergedRevisions } from "@/model/revisionSequence";
 import type { ProcessDoc, StepDoc } from "@/model/process";
 
 /** The merged `revisions` block of each entity (null for one with none), through its bases. */
@@ -30,7 +30,7 @@ export const subjectLevelLabels = (merged: MergedRevisions | null | undefined): 
 export function eventTakesRevision(process: ProcessDoc | undefined, eventId: string | undefined): boolean {
   if (!process || !eventId) return false;
   const verb = process.events?.find((e) => e.id === eventId)?.verb;
-  return (process.transitions ?? []).some((t) => t.event === eventId && (t.nextRevision !== undefined || verb === REVISE_VERB));
+  return (process.transitions ?? []).some((t) => t.event === eventId && (t.nextRevision !== undefined || (t.verb ?? verb) === REVISE_VERB));
 }
 
 /** What a step's `revision` is: a level (an integer), a name (text), or nothing. */
@@ -47,4 +47,22 @@ export function setStepRevision(s: StepDoc, field: "level" | "name", value: stri
   const v = value.trim();
   if (!v) delete s.revision;
   else s.revision = field === "level" ? Number(v) : v;
+}
+
+/**
+ * The subject's revision before a step, as far as the scenario says: the last revision an earlier step expects, else the subject object's
+ * revision, else the sequence's start (the bound attribute's default is not read here).
+ */
+export function revisionBefore(
+  scenario: { steps: StepDoc[]; objects?: { id: string; revision?: string }[]; subject?: string },
+  index: number,
+  merged: MergedRevisions | null | undefined,
+): string {
+  for (let i = index - 1; i >= 0; i--) {
+    const r = scenario.steps[i]?.expect?.revision;
+    if (r !== undefined) return r;
+  }
+  const object = scenario.objects?.find((o) => o.id === scenario.subject);
+  if (object?.revision) return object.revision;
+  return merged ? firstRevision({ levels: merged.levels, separator: merged.separator }) : "";
 }

@@ -445,6 +445,8 @@ export interface StepperOptions {
   recordTriggerPoints?: boolean;
   /** The merged `revisions` block of an entity (null for one with none): the run keeps the subject's revision when it has one. */
   revisionsOf?: (entity: string) => MergedRevisions | null;
+  /** Whether any entity of the project has a `revisions` block: a run with no subject object then says it moved no revision. */
+  anyRevisions?: boolean;
 }
 
 /** The texts of the participant cases of MQ9301 and MQ9305, as RuleCatalog words them (the engine's rule list). */
@@ -712,6 +714,7 @@ class Interpreter {
   /** The merged revisions block of the subject's type, and the subject's current revision (revisions-design.md section 9); none without a subject. */
   revisionsOf: (entity: string) => MergedRevisions | null = () => null;
   revisions: MergedRevisions | null = null;
+  anyRevisions = false;
   revision = "";
   /** The start values the run was given: a revise that starts the chart over takes its context back to them. */
   private startContext: Json | undefined;
@@ -756,7 +759,8 @@ class Interpreter {
     for (const a of this.attributesOf(str(object?.entity) ?? this.subjectEntity ?? "")) this.row[a.id] = a.default ?? null;
     for (const [k, v] of Object.entries((object?.values as Json | undefined) ?? {})) this.row[k] = v;
     // The subject's revision: only when there is a subject type (decision 38), held in the bound attribute when it has one.
-    this.revisions = this.revisionsOf(str(object?.entity) ?? this.subjectEntity ?? "");
+    // With no subject object the run moves no revision (it only says so), since it cannot know which type's sequence applies.
+    this.revisions = object ? this.revisionsOf(str(object.entity) ?? "") : null;
     if (this.revisions) {
       this.revision = startRevision(this.revisions, object?.revision, this.row);
       if (this.revisions.boundAttribute) this.row[this.revisions.boundAttribute] = this.revision;
@@ -1283,8 +1287,10 @@ class Interpreter {
         typeof input.revision === "number" ? input.revision : 1,
         typeof input.revision === "string" ? input.revision : null,
       );
-      if (!next) return this.refuse("revision");
+      if (!next) return this.refuse("revision", this.revisions.levelsFrom);
       revise = { ...next, ...(({ values, expressions }) => ({ resets: values, expressions }))(reviseValues(this.revisions, this.attributesOf(entity))) };
+    } else if (verb === "revise" && !input.end && !object && this.anyRevisions) {
+      this.scope.notes.push("The run has no object, so the revise moved no revision: one lifecycle may govern types with different revisions, and the run can't know which apply.");
     }
     // The values a modify (or a create, decision 27) step gives, by attribute id.
     const values: Json = {};
@@ -1485,13 +1491,27 @@ class Interpreter {
    * where the move goes. Two parallel moves move the revision once.
    */
   private applyMove(transitions: Edge[]) {
-    const t = transitions.find((x) => this.givesRevision(x));
-    if (!t || !this.revisions) return;
-    const next = this.moveFor(t);
+    // The moves that revise or label: any named level or a revise verb. Together they move the revision once: a revise if any is one, else a
+    // label, at the most significant (lowest) level named, with a note when they named different levels.
+    const moves = transitions.filter((x) => x.nextRevision !== null || x.verb === "revise");
+    if (!moves.length) return;
+    if (!this.revisions) {
+      if (this.anyRevisions && !this.subjectObject())
+        this.scope.notes.push("The run has no object, so the move gave no revision: one lifecycle may govern types with different revisions, and the run can't know which apply.");
+      return;
+    }
+    const revise = moves.some((x) => x.verb === "revise");
+    const named = moves.map((x) => x.nextRevision ?? 1);
+    const level = Math.min(...named);
+    const input = this.scope.input;
+    const chosen =
+      input?.input === "event" && typeof input.revision === "string" && moves.some((x) => x.trigger === "event" && x.key === input.event) ? input.revision : null;
+    const next = moveRevision(this.revisions, this.revision, level, chosen);
     if (!next) return;
     const from = this.revision;
+    if (named.some((n) => n !== named[0])) this.scope.notes.push(`Transitions taken together named different revision levels, so the revision moved once, at level ${level}.`);
     this.setRevision(next.to, next.level);
-    if (t.verb !== "revise") return;
+    if (!revise) return;
     const set = new Set(transitions.flatMap((x) => (this.prep.get(x)?.move?.fills ?? []).flatMap((f) => Object.keys(f.sets))));
     const { values, expressions } = reviseValues(this.revisions, this.attributesOf(str(this.subjectObject()?.entity) ?? this.subjectEntity ?? ""));
     for (const [k, v] of Object.entries(values)) if (!set.has(k)) this.row[k] = v;
@@ -1988,7 +2008,7 @@ class Interpreter {
           }
           // Row 7b (revisions-design.md section 9): a move that gives the next revision needs the sequence to give it; it ranks between a gate and a check.
           if (this.givesRevision(t) && !this.moveFor(t)) {
-            fail("revision", 3, undefined);
+            fail("revision", 3, this.revisions?.levelsFrom);
             continue;
           }
           // Rows 8 and 9 (decision 18): a check that refuses leaves the candidate out, as a false guard does; a check outranks a gate and row 7b.
@@ -2916,7 +2936,7 @@ class Interpreter {
       ...(this.scope.actsAs ? { actsAs: this.scope.actsAs } : {}),
       ...(Object.keys(valuesChanged).length ? { valuesChanged: sorted(valuesChanged) } : {}),
       ...(this.scope.notes.length ? { notes: [...new Set(this.scope.notes)] } : {}),
-      ...(this.scope.refusal !== null && this.scope.refusedBy && this.rightsOn ? { refusedBy: this.scope.refusedBy } : {}),
+      ...(this.scope.refusal !== null && this.scope.refusedBy && (this.rightsOn || this.scope.refusal === "revision") ? { refusedBy: this.scope.refusedBy } : {}),
       ...(this.scope.rights.length ? { rights: uniqueHoldings(this.scope.rights) } : {}),
       ...(this.frozenObject ? { frozen: true as const } : {}),
       ...(this.scope.triggerRuns.length || this.scope.queued.length ? { triggerPoints: [...this.scope.triggerRuns, ...this.scope.queued] } : {}),
@@ -3015,6 +3035,7 @@ export function simulate(doc: Json, start: { context?: Json; at?: string } | nul
   // The run may move the subject's states in other lifecycles at a revise: it works on its own copies of the objects.
   run.cast = { objects: (options.objects ?? []).map((o) => ({ ...o })), subject: options.subject ?? null };
   run.revisionsOf = options.revisionsOf ?? (() => null);
+  run.anyRevisions = options.anyRevisions === true;
   run.participants = options.participants ?? [];
   run.ownerActors = options.ownerActors ?? new Set();
   run.membersActors = options.membersActors ?? new Map();

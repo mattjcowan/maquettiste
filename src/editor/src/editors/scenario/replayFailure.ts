@@ -40,7 +40,13 @@ function assumedRefusers(step: FailedStep | undefined, name: (id: string) => str
 }
 
 /** The failure as one sentence, with the step named once. */
-export function failureSentence(failure: ReplayFailure, step: FailedStep | undefined, name: (id: string) => string | null): string {
+export function failureSentence(
+  failure: ReplayFailure,
+  step: FailedStep | undefined,
+  name: (id: string) => string | null,
+  /** Set when the step revises or labels: the subject's revision before it, so a refusal can say why the sequence could not move. */
+  revising?: { current: string } | null,
+): string {
   const rest = failure.message.replace(/^Step \d+:?\s*/i, "");
   if (failure.step < 0) return `${RL.outcomeWord} (${failure.rule}): ${rest}`;
   const where = `Step ${failure.step + 1}`;
@@ -56,7 +62,8 @@ export function failureSentence(failure: ReplayFailure, step: FailedStep | undef
     if (!expectsRefusal && !failure.actual) {
       // The replay refused: when the step says a check of the team's refuses, that check is the one.
       const checks = assumedRefusers(step, name);
-      return checks.length ? RL.failedAcceptByCheck(where, checks.join(" or ")) : RL.failedAccept(where);
+      if (checks.length) return RL.failedAcceptByCheck(where, checks.join(" or "));
+      return revising ? `${RL.failedAccept(where)} ${RL.revisionWhy(revising.current)}` : RL.failedAccept(where);
     }
   }
   if (failure.rule === "MQ9311" && failure.expected && typeof failure.expected === "object" && "notices" in failure.expected) {

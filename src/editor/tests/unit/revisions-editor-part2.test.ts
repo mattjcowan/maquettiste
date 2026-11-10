@@ -163,6 +163,9 @@ describe("the scenario fields", () => {
     expect(eventTakesRevision(process, "e1")).toBe(true);
     expect(eventTakesRevision(process, "e2")).toBe(true);
     expect(eventTakesRevision(process, "e3")).toBe(false);
+    // A transition's own verb counts as well as its event's.
+    const own = { events: [{ id: "e4", name: "change", verb: "modify" }], transitions: [{ id: "t4", source: "a", event: "e4", verb: "revise" }] } as never;
+    expect(eventTakesRevision(own, "e4")).toBe(true);
     expect(stepTakesName({ id: "s", event: "e1" }, process)).toBe(true);
     expect(stepTakesLevel({ id: "s", event: "e1" })).toBe(false);
   });

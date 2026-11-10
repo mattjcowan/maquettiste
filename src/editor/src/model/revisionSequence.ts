@@ -237,13 +237,15 @@ export function governingLifecycles(rows: readonly ElementSummary[], chain: read
 /**
  * The block of an entity merged through its bases (decision 9): the nearest `levels`, `separator` and `boundAttribute`; entries added,
  * a nearer entry replacing a base's for the same lifecycle, attribute or end; `copy` undoes a base's attribute entry; the fallback
- * `restart` filled in for every lifecycle in `governing`. Null when neither the entity nor a base has a block.
+ * `restart` filled in for every lifecycle in `governing`; the first of two entries in one block counts; link entries only for the ends in
+ * `reachedEnds` when it is given. Null when neither the entity nor a base has a block.
  */
 export function resolveRevisions(
   entityId: string,
   byId: ReadonlyMap<string, ElementSummary>,
   docOf: (id: string) => EntityWithRevisions,
   governing: readonly string[] = [],
+  reachedEnds?: ReadonlySet<string>,
 ): MergedRevisions | null {
   const chain = [entityId];
   for (let next = docOf(entityId)?.base ?? byId.get(entityId)?.base; next && !chain.includes(next); next = docOf(next)?.base ?? byId.get(next)?.base)
@@ -282,10 +284,19 @@ export function resolveRevisions(
   const attributes = new Map<string, { onRevise: "reset" | "clear"; from: string } | null>();
   const links = new Map<string, { onRevise: "stay" | "move" | "duplicate"; from: string }>();
   for (const { id, block } of [...family].reverse()) {
-    for (const e of block.lifecycles ?? []) lifecycles.set(e.lifecycle, { onRevise: e.onRevise, from: id });
+    // Two entries for one lifecycle, attribute or end in one block: the first counts (MQ8312 flags the second).
+    const seen = new Set<string>();
+    const first = (kind: string, key: string) => {
+      const k = `${kind}|${key}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    };
+    for (const e of block.lifecycles ?? []) if (first("l", e.lifecycle)) lifecycles.set(e.lifecycle, { onRevise: e.onRevise, from: id });
     for (const e of block.attributes ?? [])
-      attributes.set(e.attribute, e.onRevise === "copy" ? null : { onRevise: e.onRevise as "reset" | "clear", from: id });
-    for (const e of block.links ?? []) links.set(e.end, { onRevise: e.onRevise as "stay" | "move" | "duplicate", from: id });
+      if (first("a", e.attribute)) attributes.set(e.attribute, e.onRevise === "copy" ? null : { onRevise: e.onRevise as "reset" | "clear", from: id });
+    for (const e of block.links ?? [])
+      if (first("e", e.end) && (!reachedEnds || reachedEnds.has(e.end))) links.set(e.end, { onRevise: e.onRevise as "stay" | "move" | "duplicate", from: id });
   }
   out.lifecycles = governing.map((lifecycle) => ({
     lifecycle,

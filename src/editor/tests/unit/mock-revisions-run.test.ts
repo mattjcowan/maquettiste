@@ -1,6 +1,8 @@
 // The mock's run of revisions (revisions-design.md section 9): a revise verb step at each level and with a chosen name, refusal `revision`,
 // the type's reset and cleared values, thawing, a lifecycle starting over, keeping its states or going to a state, a move that gives the next
 // revision (a labelling move and a revise move), the trace's `revision`, and a project with no block replaying as before.
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { simulate, revisionAfter } from "@/mocks/model/stepper";
 import { resolveRevisions } from "@/model/revisionSequence";
@@ -180,5 +182,80 @@ describe("a project with no block", () => {
   it("starts from the object's revision", () => {
     const trace = run(life(), [verb({ revision: 1 })], { levels: DRAWING.levels }, { revision: "H" });
     expect(trace[1].revision).toEqual({ from: "H", to: "J", level: 1 });
+  });
+});
+
+describe("a run with no subject object", () => {
+  const bare = (doc: Json, steps: Json[]) =>
+    simulate(doc, null, steps, {
+      lifecycles: [doc],
+      subjectEntity: "E",
+      attributesOf: () => attributes,
+      objects: [],
+      subject: null,
+      anyRevisions: true,
+      revisionsOf: () => resolveRevisions("E", new Map(), () => entity(DRAWING) as never, ["L"]),
+    } as never).trace;
+
+  it("moves no revision on a revise verb step or a labelling move, and says so", () => {
+    const trace = bare(life(), [verb({ revision: 2 }), { input: "event", event: "release" }, { input: "event", event: "release" }]);
+    expect(trace[1].revision).toBeUndefined();
+    expect(trace[1].notes?.join(" ")).toContain("The run has no object, so the revise moved no revision");
+    expect(trace[3].revision).toBeUndefined();
+    expect(trace[3].configuration).toEqual(["Released"]);
+    expect(trace[3].notes?.join(" ")).toContain("The run has no object, so the move gave no revision");
+  });
+
+  it("refuses with `revision` and names the entity that holds the sequence", () => {
+    const list = { levels: [{ values: ["Only"] }] };
+    const e = entity(list);
+    const trace = simulate(life(), null, [{ input: "event", event: "release" }, { input: "event", event: "release" }], {
+      lifecycles: [life()],
+      subjectEntity: "E",
+      attributesOf: () => attributes,
+      objects: [{ id: "o1", name: "o1", entity: "E" }],
+      subject: "o1",
+      revisionsOf: () => resolveRevisions("E", new Map(), () => e as never, ["L"]),
+    } as never).trace;
+    expect(trace[2]).toMatchObject({ accepted: false, refusal: "revision", refusedBy: "E" });
+  });
+});
+
+describe("the shared restart case", () => {
+  const file = path.resolve(__dirname, "../../../../tests/fixtures/revisions/restart-case.json");
+  const c = JSON.parse(fs.readFileSync(file, "utf8")) as {
+    entity: Json & { attributes: { id: string; name: string }[] };
+    process: Json;
+    scenario: { objects: Json[]; subject: string; steps: Json[] };
+    expected: Json[];
+  };
+
+  it("gives the engine's revision, states, values and notes that matter", () => {
+    const e = c.entity;
+    const result = simulate(c.process, null, c.scenario.steps, {
+      lifecycles: [c.process],
+      subjectEntity: String(e.id),
+      attributesOf: () => e.attributes.map((a) => ({ id: a.id, name: a.name })),
+      objects: c.scenario.objects,
+      subject: c.scenario.subject,
+      anyRevisions: true,
+      revisionsOf: () => resolveRevisions(String(e.id), new Map(), () => e as never, [String(c.process.id)]),
+    } as never);
+    const trace = result.trace as unknown as Json[];
+    expect(trace).toHaveLength(c.expected.length);
+    c.expected.forEach((want, i) => {
+      const got = trace[i];
+      for (const key of ["accepted", "configuration", "final", "revision"]) {
+        if (key in want) expect(got[key], `step ${want.index} ${key}`).toEqual(want[key]);
+      }
+      // The engine's `values` are the mock's `valuesChanged`; the bound attribute is in neither.
+      expect(got.valuesChanged, `step ${want.index} values`).toEqual(want.values);
+      // The mock describes an action by its source and values; the shared case names the action.
+      const steps = (got.microsteps as { actions: { action: string }[] }[]).map((m) => ({ ...m, actions: m.actions.map((a) => a.action) }));
+      expect(steps, `step ${want.index} microsteps`).toEqual(want.microsteps);
+    });
+    // The bound attribute follows the revision without showing in values, and the revise says what it did.
+    expect((trace[3].notes as string[]).join(" ")).toContain("Revised B to B.1");
+    expect(result.trace.every((t) => !("01JRVC00000000000000000003" in (t.valuesChanged ?? {})))).toBe(true);
   });
 });

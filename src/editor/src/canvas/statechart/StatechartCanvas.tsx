@@ -993,7 +993,7 @@ function ChartCanvas({ pc }: { pc: ProcessContext }) {
             {CHART_LABELS.notSaved}
           </span>
         ) : null}
-        <span className="ml-auto min-w-0 truncate text-11 text-secondary" data-testid="chart-hint">
+        <span className="ml-auto min-w-0 truncate text-11 text-secondary" data-testid="chart-hint" title={linking ? undefined : CHART_LABELS.hint}>
           {linking ? CHART_LABELS.linking(chart.states.get(linking.source)?.label ?? "") : CHART_LABELS.hint}
         </span>
       </Toolbar>

@@ -238,3 +238,33 @@ describe("the Revisions tab's conversions", () => {
     expect(separatorChoices("~").at(-1)).toEqual({ value: "~", label: '"~"' });
   });
 });
+
+describe("resolveRevisions with repeated entries and links the type does not reach", () => {
+  const block = {
+    levels: [{ format: "letters" }],
+    lifecycles: [
+      { lifecycle: "L", onRevise: "keep" },
+      { lifecycle: "L", onRevise: "restart" },
+    ],
+    attributes: [
+      { attribute: "a", onRevise: "clear" },
+      { attribute: "a", onRevise: "reset" },
+    ],
+    links: [
+      { end: "e1", onRevise: "move" },
+      { end: "e2", onRevise: "duplicate" },
+    ],
+  };
+  const docOf = (): EntityWithRevisions => ({ revisions: block as never });
+
+  it("takes the first of two entries for one lifecycle, attribute or end in one block", () => {
+    const merged = resolveRevisions("E", new Map(), docOf, ["L"])!;
+    expect(merged.lifecycles[0].onRevise).toBe("keep");
+    expect(merged.attributes).toMatchObject([{ attribute: "a", onRevise: "clear" }]);
+  });
+
+  it("keeps link entries only for the ends the type reaches, when they are given", () => {
+    expect(resolveRevisions("E", new Map(), docOf, [])!.links.map((l) => l.end)).toEqual(["e1", "e2"]);
+    expect(resolveRevisions("E", new Map(), docOf, [], new Set(["e2"]))!.links.map((l) => l.end)).toEqual(["e2"]);
+  });
+});

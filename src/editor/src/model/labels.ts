@@ -1091,6 +1091,8 @@ export const RIGHT_LABELS = {
     `${step} was expected to leave ${expected} signed, but in the replay it leaves ${actual}.`,
   failedNotices: (step: string, expected: string, actual: string) => `${step} was expected to have ${expected} due, but in the replay ${actual} is due.`,
   failedAccept: (step: string) => `${step} was expected to be accepted, but in the replay it is refused.`,
+  revisionWhy: (current: string) =>
+    `The subject is at ${current ? `revision ${current}` : "no revision"}, and the sequence cannot give what the step asks: a level the type lacks, a name that is not later, or the end of a list.`,
   updateExpectations: "Update expectations",
   updateExpectationsTip: "Rewrite the expectations of every step from what the replay does (Shift+R in the Scenarios tab)",
   refusalNone: "(none)",

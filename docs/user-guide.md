@@ -3265,6 +3265,9 @@ values (an empty one takes its first), level k takes its next value, and the lev
 level 1 gives `B`, and at level 2 gives `A.3`. A list at its last value can't move: the revise is refused. A scenario step may choose
 a name instead of a level, which must be a value of the sequence later than the latest revision.
 
+The editor names a level by its name when it has one ("Level 1 (major)", and "next major" on the chart), and by its number when it has
+none ("Level 2", "next level 2"). Name your levels if you want the chart to read in your words.
+
 **What a revise carries over.** The type says it, in three lists. Each entry says `onRevise`. Anything not listed takes the fallback.
 
 | List | Words | Fallback |

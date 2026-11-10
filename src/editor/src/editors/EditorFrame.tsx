@@ -45,6 +45,8 @@ export interface EditorSubTab {
   title?: string;
   /** The content fills the tab and scrolls itself (the Seed data grid): no padding, no outer scroll. */
   fill?: boolean;
+  /** The tab needs the room: the header fields and the top controls fold away while it is open (the Revisions tab). */
+  compact?: boolean;
 }
 
 /** The DOM id prefix of an editor's fields: distinct from the inspector's when both show one element. */
@@ -107,6 +109,9 @@ export function EditorLayout({
   // the inspector shows the same fields); the choice is kept per browser and kind. A process starts folded: its chart
   // is what it opens on, and the fields it hides are all in the inspector.
   const [details, setDetails] = useState(() => (local.get(`mq.editor.details.${kind}`) ?? (kind === "process" ? "hidden" : "shown")) !== "hidden");
+  // A compact tab (a long body of its own) folds the header and controls away without changing the choice kept for the other tabs.
+  const compact = list.find((t) => t.value === current)?.compact === true;
+  const shown = details && !compact;
   const toggleDetails = () => {
     local.set(`mq.editor.details.${kind}`, details ? "hidden" : "shown");
     setDetails(!details);
@@ -128,12 +133,13 @@ export function EditorLayout({
           <Button
             variant="ghost"
             size="icon-row"
-            label={details ? EDITOR_LABELS.hideDetails : EDITOR_LABELS.showDetails}
-            aria-expanded={details}
+            label={compact ? "The header fields are folded on this tab" : details ? EDITOR_LABELS.hideDetails : EDITOR_LABELS.showDetails}
+            disabled={compact}
+            aria-expanded={shown}
             data-testid="editor-details-toggle"
             onClick={toggleDetails}
           >
-            {details ? <ChevronUp /> : <ChevronDown />}
+            {shown ? <ChevronUp /> : <ChevronDown />}
           </Button>
         </div>
         {draft?.error ? (
@@ -143,15 +149,15 @@ export function EditorLayout({
         ) : null}
         {/* A rights finding (MQ99xx, or any finding on a rights row) shows inline and in Problems; the line here would count it again. */}
         <FindingsSummary diagnostics={diagnostics.filter((d) => !isRightsFinding(d))} element={id} />
-        {details ? <HeaderFields {...ctx} translations={translations} /> : null}
+        {shown ? <HeaderFields {...ctx} translations={translations} /> : null}
       </header>
-      {details ? (
+      {shown ? (
         <div className="border-b border-default px-2 py-1" data-testid="editor-controls">
           {controls}
         </div>
       ) : null}
       <Tabs value={current} onValueChange={(v) => store.getState().updateEditors((s) => setView(s, kind, v))} className="flex min-h-0 flex-1 flex-col">
-        <TabsList aria-label={`${KIND_LABELS[kind]} editor views`}>
+        <TabsList aria-label={`${KIND_LABELS[kind]} editor views`} className="h-[29px] shrink-0 overflow-x-auto overflow-y-hidden">
           {list.map((t) => (
             <TabsTrigger key={t.value} value={t.value} disabled={t.disabled} title={t.title}>
               {t.label}

@@ -24,6 +24,7 @@ import { namedCovered } from "./model/triggerRules";
 import { entitySequenceOf, resolveCheckNames, sequenceOf } from "./model/triggerRun";
 import { entityChain } from "@/model/objectFields";
 import { severalEnds } from "./model/endCover";
+import { endCoversEntity } from "@/model/endTypes";
 import { builtInVerbs } from "@/model/verbs";
 import { resolveRevisions, type EntityWithRevisions } from "@/model/revisionSequence";
 
@@ -316,6 +317,7 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       return entityChain(entity, (id) => model.entries.get(id)?.json).some((d) => governed.has(String(d.id)));
     },
     // The subject type's revisions block, merged through its bases, with every lifecycle that governs it (revisions-design.md section 8).
+    anyRevisions: [...model.entries.values()].some((e) => e.json.kind === "entity" && !!e.json.revisions),
     revisionsOf: (entity: string) => {
       const governing = [...model.entries.values()]
         .map((e) => e.json)
@@ -325,7 +327,14 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
           return entityChain(entity, (id) => model.entries.get(id)?.json).some((d) => governed.has(String(d.id)));
         })
         .map((l) => String(l.id));
-      return resolveRevisions(entity, new Map(), (id) => model.entries.get(id)?.json as EntityWithRevisions, governing);
+      // Link entries count only for the ends the type reaches: of a relation of two ends, the one whose other end covers the entity or a base.
+      const baseOf = (x: string) => model.entries.get(x)?.json.base as string | undefined;
+      const reached = new Set<string>();
+      for (const r of model.entries.values()) {
+        const ends = (r.json.kind === "relation" ? r.json.ends : undefined) as { id: string }[] | undefined;
+        if (ends?.length === 2) ends.forEach((e, i) => { if (endCoversEntity(ends[1 - i] as never, entity, baseOf)) reached.add(String(e.id)); });
+      }
+      return resolveRevisions(entity, new Map(), (id) => model.entries.get(id)?.json as EntityWithRevisions, governing, reached);
     },
     // Ends with several types: a connect step through one checks the connected object's entity (decision 18).
     severalEnds: severalEnds(model.entries.values()),

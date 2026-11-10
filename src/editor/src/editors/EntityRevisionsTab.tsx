@@ -59,7 +59,14 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
   const relationDocs = useElements(relationRows.map((r) => r.id));
 
   const docOf = (at: string): EntityWithRevisions => (at === id ? entity : (baseDocs.byId.get(at)?.json as EntityWithRevisions));
-  const merged = resolveRevisions(id, lookup.byId, docOf, governing);
+  const ends = reachedEnds(
+    relationRows.flatMap((r) => {
+      const doc = relationDocs.byId.get(r.id)?.json as { ends?: { id: string; role: string }[] } | undefined;
+      if (!doc?.ends || !r.ends) return [];
+      return [{ name: r.name, ends: doc.ends, covers: r.ends.map((e) => chain.some((c) => endCoversEntity(e, c, (x) => lookup.byId.get(x)?.base))) }];
+    }),
+  );
+  const merged = resolveRevisions(id, lookup.byId, docOf, governing, new Set(ends.map((e) => e.id)));
   const own = (entity.revisions ?? undefined) as RevisionsBlock | undefined;
   const nameOf = (at: string | null) => (at ? (lookup.byId.get(at)?.name ?? at) : "");
 
@@ -92,7 +99,9 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
   const attributes: AttributeDoc[] = chain.flatMap((at) => (docOf(at) as EntityDoc | undefined)?.attributes ?? []);
   const lifecycleBound = new Set(
     governing.flatMap((l) =>
-      subjectsOf(lifecycleDocs.byId.get(l)?.json as Rec | undefined).flatMap((s) => (s.entity && chain.includes(s.entity) && s.boundAttribute ? [s.boundAttribute] : [])),
+      subjectsOf(lifecycleDocs.byId.get(l)?.json as Rec | undefined).flatMap((s) =>
+        s.entity && chain.includes(s.entity) && s.boundAttribute ? [s.boundAttribute] : [],
+      ),
     ),
   );
   const scalarBase = (typeId: string) => (scalarDocs.byId.get(typeId)?.json as { base?: unknown } | undefined)?.base;
@@ -129,12 +138,12 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
               <tr className="text-left text-11 uppercase tracking-wide text-secondary">
                 <th className="w-6 px-1 font-semibold">#</th>
                 <th className="px-1 font-semibold">Name</th>
-                <th className="w-28 px-1 font-semibold">Values</th>
+                <th className="w-32 px-1 font-semibold">Values</th>
                 <th className="w-20 px-1 font-semibold">First</th>
                 <th className="w-24 px-1 font-semibold">Skip</th>
                 <th className="w-16 px-1 font-semibold">Width</th>
                 <th className="w-24 px-1 font-semibold">Starts empty</th>
-                <th className="w-20 px-1" />
+                <th className="w-28 px-1" />
               </tr>
             </thead>
             <tbody>
@@ -142,14 +151,10 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
                 <tr key={i} data-testid={`revisions-level-${i + 1}`}>
                   <td className="px-1 text-secondary">{i + 1}</td>
                   <td className="p-0.5">
-                    <CommitInput label={`Level ${i + 1} name`} value={row.name} onCommit={(v) => setRow(i, { name: v })} placeholder="major" />
+                    <CommitInput label={`Level ${i + 1} name`} value={row.name} onCommit={(v) => setRow(i, { name: v })} placeholder="optional" />
                   </td>
                   <td className="p-0.5">
-                    <Select
-                      aria-label={`Level ${i + 1} values`}
-                      value={row.kind}
-                      onChange={(e) => setRow(i, { kind: e.target.value as LevelKind })}
-                    >
+                    <Select aria-label={`Level ${i + 1} values`} value={row.kind} onChange={(e) => setRow(i, { kind: e.target.value as LevelKind })}>
                       {(Object.keys(LEVEL_KIND_LABELS) as LevelKind[]).map((k) => (
                         <option key={k} value={k}>
                           {LEVEL_KIND_LABELS[k]}
@@ -170,12 +175,7 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
                   ) : (
                     <>
                       <td className="p-0.5">
-                        <CommitInput
-                          label={`Level ${i + 1} first value`}
-                          value={row.first}
-                          onCommit={(v) => setRow(i, { first: v })}
-                          placeholder={row.kind === "numbers" ? "1" : "A"}
-                        />
+                        <CommitInput label={`Level ${i + 1} first value`} value={row.first} onCommit={(v) => setRow(i, { first: v })} placeholder="default" />
                       </td>
                       <td className="p-0.5">
                         <CommitInput
@@ -183,7 +183,7 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
                           value={row.skip}
                           onCommit={(v) => setRow(i, { skip: v })}
                           disabled={row.kind !== "letters"}
-                          placeholder={row.kind === "letters" ? "I, O" : ""}
+                          placeholder={row.kind === "letters" ? "none" : ""}
                           title="Letters never used, at any position"
                         />
                       </td>
@@ -193,7 +193,7 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
                           value={row.width}
                           onCommit={(v) => setRow(i, { width: v })}
                           disabled={row.kind !== "numbers"}
-                          placeholder={row.kind === "numbers" ? "2" : ""}
+                          placeholder={row.kind === "numbers" ? "none" : ""}
                           title="Numbers are padded with zeros to this width"
                         />
                       </td>
@@ -210,6 +210,11 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
                   </td>
                   <td className="px-1">
                     <span className="flex items-center gap-0.5">
+                      {inheritedFrom ? (
+                        <span className="mr-1 whitespace-nowrap text-11 text-secondary" data-testid="revisions-level-from">
+                          from {nameOf(inheritedFrom)}
+                        </span>
+                      ) : null}
                       <Button size="icon-row" variant="ghost" label="Move level up" disabled={i === 0} onClick={() => setRows(moved(rows, i, -1))}>
                         <ChevronUp />
                       </Button>
@@ -234,6 +239,23 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
         ) : (
           <p className="text-12 text-secondary">No levels yet. Add one to say what a revision looks like.</p>
         )}
+        {problems.length ? (
+          <ul className="flex flex-col gap-0.5 text-12 text-danger" role="alert" data-testid="revisions-findings">
+            {problems.map((d, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <span>
+                  {d.rule}: {d.message}
+                </span>
+                {/* The unsaved entity is not in the Problems panel's quick fixes, so the one for the separator is offered here. */}
+                {d.rule === "MQ8303" ? (
+                  <Button size="sm" variant="ghost" onClick={() => commit((j) => setOwnSeparator(j, "."))} data-testid="revisions-fix-separator">
+                    Use &quot;.&quot; as the separator
+                  </Button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
 
       <div className="grid max-w-xl grid-cols-2 gap-2">
@@ -244,9 +266,7 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
             onChange={(e) => commit((j) => setOwnSeparator(j, e.target.value === "default" ? undefined : e.target.value.slice(4)))}
           >
             <option value="default">
-              {merged.separatorFrom && merged.separatorFrom !== id
-                ? `Same as ${nameOf(merged.separatorFrom)} ("${merged.separator}")`
-                : `Default (".")`}
+              {merged.separatorFrom && merged.separatorFrom !== id ? `Same as ${nameOf(merged.separatorFrom)} ("${merged.separator}")` : `Default (".")`}
             </option>
             {separatorChoices(own?.separator).map((c) => (
               <option key={c.value} value={`sep:${c.value}`}>
@@ -264,11 +284,7 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
               : "The attribute that holds the current revision. Without one, your own system holds it."
           }
         >
-          <Select
-            id={`${dom}-revisions-held`}
-            value={held}
-            onChange={(e) => commit((j) => setOwnBoundAttribute(j, e.target.value || undefined))}
-          >
+          <Select id={`${dom}-revisions-held`} value={held} onChange={(e) => commit((j) => setOwnBoundAttribute(j, e.target.value || undefined))}>
             <option value="">Not held in an attribute</option>
             {heldKnown ? null : <option value={held}>(an attribute that does not fit)</option>}
             {choices.map((c) => (
@@ -297,16 +313,6 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
         )}
       </section>
 
-      {problems.length ? (
-        <ul className="text-12 text-danger" role="alert" data-testid="revisions-findings">
-          {problems.map((d, i) => (
-            <li key={i}>
-              {d.rule}: {d.message}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
       <WhenRevisedSection
         entityId={id}
         merged={merged}
@@ -318,13 +324,7 @@ export function EntityRevisionsTab({ id, json, edit, flush, diagnostics }: Edito
         attributes={attributes}
         keyIds={chain.flatMap((at) => (docOf(at) as EntityDoc | undefined)?.key?.attributes ?? [])}
         lifecycleBound={lifecycleBound}
-        ends={reachedEnds(
-          relationRows.flatMap((r) => {
-            const doc = relationDocs.byId.get(r.id)?.json as { ends?: { id: string; role: string }[] } | undefined;
-            if (!doc?.ends || !r.ends) return [];
-            return [{ name: r.name, ends: doc.ends, covers: r.ends.map((e) => chain.some((c) => endCoversEntity(e, c, (x) => lookup.byId.get(x)?.base))) }];
-          }),
-        )}
+        ends={ends}
       />
     </div>
   );

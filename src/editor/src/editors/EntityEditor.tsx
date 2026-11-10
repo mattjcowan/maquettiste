@@ -121,7 +121,7 @@ function EntityBody({ ctx, draft }: { ctx: EditorContext; draft: Parameters<type
           disabled: !hierarchy,
           title: hierarchy ? undefined : "This entity has no base entity and no entity derives from it.",
         },
-        { value: "revisions", label: EDITOR_TAB_LABELS.revisions, content: <EntityRevisionsTab {...ctx} /> },
+        { value: "revisions", label: EDITOR_TAB_LABELS.revisions, content: <EntityRevisionsTab {...ctx} />, compact: true },
         { value: "seed-data", label: EDITOR_TAB_LABELS.seedData, content: <SeedDataTab id={ctx.id} />, fill: true },
         { value: "references", label: EDITOR_TAB_LABELS.references, content: <References id={ctx.id} /> },
         codeGeneration,

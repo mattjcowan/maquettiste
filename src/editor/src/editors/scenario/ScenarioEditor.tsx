@@ -5,7 +5,16 @@ import { useState } from "react";
 import { Play, Plus } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useElement, useElements, useIndex } from "@/api/queries";
-import { setStepRevision, stepRevisionLevel, stepRevisionName, stepTakesLevel, stepTakesName, subjectLevelLabels, useMergedRevisions } from "./revisionFields";
+import {
+  revisionBefore,
+  setStepRevision,
+  stepRevisionLevel,
+  stepRevisionName,
+  stepTakesLevel,
+  stepTakesName,
+  subjectLevelLabels,
+  useMergedRevisions,
+} from "./revisionFields";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Field, Input, Select } from "@/components/ui/input";
@@ -237,6 +246,36 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
   const notices = hasNotices(processDoc) || scenario.steps.some((s) => s.expect?.notices);
   const participantOptions = (): GridOption[] => [none, ...(scenario.participants ?? []).map((p) => ({ value: p.id, label: p.name }))];
 
+  // Revise at and Revision sit right after the Event, and show once a step can take them (a revise verb, or an event whose move revises or labels).
+  const revisionStepColumns: GridColumn<StepRow>[] =
+    revisionsShown && scenario.steps.some((s) => s.revision !== undefined || stepTakesName(s, processDoc))
+      ? [
+          {
+            key: "revisionLevel",
+            label: "Revise at",
+            tooltip: "The level a revise step moves; leave empty for level 1, or choose a name instead",
+            kind: "select" as const,
+            width: "min-w-24",
+            value: (r: StepRow) => {
+              const n = stepRevisionLevel(step(r));
+              return n === undefined ? "" : (revisionLevels.find((l) => l.number === n)?.label ?? `Level ${n}`);
+            },
+            editValue: (r: StepRow) => String(stepRevisionLevel(step(r)) ?? ""),
+            options: () => [none, ...revisionLevels.map((l) => ({ value: String(l.number), label: l.label }))],
+            locked: (r: StepRow) => !stepTakesLevel(step(r)),
+          },
+          {
+            key: "revisionName",
+            label: "Revision",
+            tooltip: "A chosen name for the new revision: a later value of the sequence",
+            kind: "text" as const,
+            width: "min-w-20",
+            mono: true,
+            value: (r: StepRow) => stepRevisionName(step(r)),
+            locked: (r: StepRow) => !stepTakesName(step(r), processDoc),
+          },
+        ]
+      : [];
   const columns: GridColumn<StepRow>[] = [
     { key: "index", label: "#", kind: "readonly", width: "w-8", value: (r) => String(r.index + 1) },
     // Replay and the approval cells sit up front, so they stay in view when the expectations make the grid wider than its area.
@@ -244,14 +283,21 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
       key: "status",
       label: "Replay",
       kind: "readonly",
-      width: "w-16",
+      width: "min-w-16",
       value: (r) => replay.steps[r.index] ?? "not-run",
       render: (r) => {
         const s = replay.steps[r.index] ?? "not-run";
         return (
-          <Badge tone={STATUS_TONE[s]} data-testid="step-status" data-status={s}>
-            {s === "not-run" ? "not run" : s}
-          </Badge>
+          <span className="flex items-center gap-1">
+            <Badge tone={STATUS_TONE[s]} data-testid="step-status" data-status={s}>
+              {s === "not-run" ? "not run" : s}
+            </Badge>
+            {s === "passed" && step(r)?.expect?.revision ? (
+              <span className="font-mono text-11 text-secondary" title="The subject's revision after this step" data-testid="step-revision">
+                {step(r)?.expect?.revision}
+              </span>
+            ) : null}
+          </span>
         );
       },
     },
@@ -272,6 +318,7 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
               : (step(r)?.invoke ?? ""),
       options: (r) => (r.input === "event" ? events : r.input === "verb" ? verbOptions : invokes),
     },
+    ...revisionStepColumns,
     ...(scenario.participants?.length
       ? [
           {
@@ -480,30 +527,6 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
     ...(revisionsShown
       ? [
           {
-            key: "revisionLevel",
-            label: "Revise at",
-            tooltip: "The level a revise step moves; leave empty for level 1, or choose a name instead",
-            kind: "select" as const,
-            width: "min-w-24",
-            value: (r: StepRow) => {
-              const n = stepRevisionLevel(step(r));
-              return n === undefined ? "" : (revisionLevels.find((l) => l.number === n)?.label ?? `Level ${n}`);
-            },
-            editValue: (r: StepRow) => String(stepRevisionLevel(step(r)) ?? ""),
-            options: () => [none, ...revisionLevels.map((l) => ({ value: String(l.number), label: l.label }))],
-            locked: (r: StepRow) => !stepTakesLevel(step(r)),
-          },
-          {
-            key: "revisionName",
-            label: "Revision",
-            tooltip: "A chosen name for the new revision: a later value of the sequence",
-            kind: "text" as const,
-            width: "min-w-20",
-            mono: true,
-            value: (r: StepRow) => stepRevisionName(step(r)),
-            locked: (r: StepRow) => !stepTakesName(step(r), processDoc),
-          },
-          {
             key: "expectRevision",
             label: "Expect revision",
             tooltip: "The subject's revision after the step",
@@ -698,6 +721,9 @@ function StepsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: ScenarioDo
             r.failure,
             scenario.steps[r.failure.step],
             (id) => more.get(id) ?? lookup.byId.get(id)?.displayName ?? lookup.byId.get(id)?.name ?? null,
+            subjectRevisions !== undefined && stepTakesName(scenario.steps[r.failure.step], processDoc)
+              ? { current: revisionBefore(scenario, r.failure.step, subjectRevisions) }
+              : null,
           ),
         );
     } catch (e) {

@@ -1,4 +1,6 @@
 // The editor's copy of the revision sequence equals the engine's: both read tests/fixtures/revisions/sequence-cases.json.
+// Only a valid sequence is pinned: the preview also draws a `first` the engine refuses (a text on a numbers level, a letter outside the
+// alphabet), where the engine reports MQ8301 and builds nothing; the finding shows beside the preview, so the difference is cosmetic.
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
