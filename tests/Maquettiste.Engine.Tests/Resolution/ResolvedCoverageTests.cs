@@ -278,6 +278,10 @@ public sealed class ResolvedCoverageTests
         // validation and read by templates through the effective set (each object's stereotypes, implied ones with implied_by, and
         // the merged properties), not as members of the definition model.stereotypes lists (section 5.5).
         ("stereotype", "group"), ("stereotype", "requires"), ("stereotype", "conflicts"), ("stereotype", "implies"), ("stereotype", "parameters"),
+
+        // Revisions (revisions-design.md section 8), resolved in a later wave of the same item: an entity's revisions block, a
+        // transition's nextRevision, and a scenario object's and a step's revision.
+        ("entity", "revisions"), ("transition", "nextRevision"), ("scenario object", "revision"), ("step", "revision"),
     ];
 
     /// <summary>

@@ -251,7 +251,8 @@ export interface paths {
          *     - `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it
          *       names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),
          *       the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the
-         *       column of each attribute path) and the annotations.
+         *       column of each attribute path) and the annotations; `revisions`, merged through the bases, when the entity or a base has a
+         *       revisions block.
          *     - `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,
          *       `scenarios`: the matching record.
          *     - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards
@@ -3773,6 +3774,92 @@ export interface components {
             bindings?: components["schemas"]["EntityBindingRecord"][];
             /** @description The entity checks (next-phase-3-design.md section 3.1), the root base's first; absent for an entity without any. */
             checks?: components["schemas"]["EntityCheckRecord"][];
+            /**
+             * @description What revisions of the entity look like and what a revise does to an instance (revisions-design.md section 8), merged
+             *     through its bases: levels, separator and bound attribute from the nearest statement, entries added to the bases' and
+             *     replacing a base's entry for the same lifecycle, attribute or end. Absent when neither the entity nor a base has a
+             *     revisions block.
+             */
+            revisions?: components["schemas"]["RevisionsRecord"];
+        };
+        /** @description An entity's revisions, merged through its bases (revisions-design.md section 8); other elements by id. */
+        RevisionsRecord: {
+            /** @description The levels, from the most significant. */
+            levels: components["schemas"]["RevisionLevelRecord"][];
+            /** @description Written between two levels that both hold a value; `.` when neither the entity nor a base writes one. */
+            separator: string;
+            /** @description The sequence's start, which a new object takes, as text; empty when level 1 starts empty (no revision). */
+            firstRevision: string;
+            /** @description The id of the attribute that holds the current revision; null when the team's system holds it. */
+            boundAttribute: string | null;
+            /**
+             * @description Every lifecycle that governs the entity, with what a revise does to it. A lifecycle no entry names is filled in with
+             *     `restart` and `from` null, so a reader never needs to know the fallback.
+             */
+            lifecycles: components["schemas"]["RevisionLifecycleRecord"][];
+            /** @description Each attribute a revise doesn't copy, with what it does instead; an attribute not listed is copied. */
+            attributes: components["schemas"]["RevisionAttributeRecord"][];
+            /** @description Each relation end with a rule for its links on a revise; an end not listed is the team's. */
+            links: components["schemas"]["RevisionLinkRecord"][];
+        };
+        /** @description One level of an entity's revision sequence (revisions-design.md section 8). */
+        RevisionLevelRecord: {
+            /** @description The level's number, 1 to 3, by which lifecycles and steps name it. */
+            number: number;
+            /** @description The level's name; null when it has none. */
+            name: string | null;
+            /** @enum {string} */
+            format: "letters" | "numbers" | "list";
+            /** @description The list's values, in order; empty for letters and numbers. */
+            values: string[];
+            /** @description The first value as text; the format's default (the first letter not skipped, or 1) when the file gives none; a list's first value for a list. */
+            first: string;
+            /** @description The skipped letters; empty when none. */
+            skip: string[];
+            /** @description The width numbers are padded to; null when none. */
+            width: number | null;
+            /** @description Whether the level holds nothing at first, and again whenever a higher level moves. */
+            startEmpty: boolean;
+            /** @description The level's first five values on their own (all of a shorter list), for docs and the editor. */
+            examples: string[];
+        };
+        /** @description What a revise does to a lifecycle that governs the entity (revisions-design.md decision 33). */
+        RevisionLifecycleRecord: {
+            /** @description The lifecycle's id. */
+            lifecycle: string;
+            /**
+             * @description `restart`: back to the initial state; `keep`: the states stay as they are; `state`: the state `state` names.
+             * @enum {string}
+             */
+            onRevise: "restart" | "keep" | "state";
+            /** @description With `state`, the id of the state entered; null otherwise. */
+            state: string | null;
+            /** @description The id of the entity whose entry says it; null for the fallback (no entry names the lifecycle). */
+            from: string | null;
+        };
+        /** @description What a revise does to an attribute it doesn't copy (revisions-design.md decision 34). */
+        RevisionAttributeRecord: {
+            /** @description The attribute's id. */
+            attribute: string;
+            /**
+             * @description `reset`: the attribute's default, else empty; `clear`: empty.
+             * @enum {string}
+             */
+            onRevise: "reset" | "clear";
+            /** @description The id of the entity whose entry says it. */
+            from: string;
+        };
+        /** @description What a revise does to the links through a relation end the entity reaches (revisions-design.md decision 35). */
+        RevisionLinkRecord: {
+            /** @description The relation end's id. */
+            end: string;
+            /**
+             * @description `stay`: the earlier revision keeps the link; `move`: it goes with the new revision; `duplicate`: the new revision gets a link of its own.
+             * @enum {string}
+             */
+            onRevise: "stay" | "move" | "duplicate";
+            /** @description The id of the entity whose entry says it. */
+            from: string;
         };
         /** @description A resolved attribute. */
         AttributeRecord: components["schemas"]["ResolvedAnnotations"] & {
@@ -4567,6 +4654,12 @@ export interface components {
              *     neither names one.
              */
             verb?: string;
+            /**
+             * @description The revision level, 1 to 3, the move moves (revisions-design.md decision 19): on a move whose verb is `revise`, the level of
+             *     that revise; on any other move, the move gives the object its next revision at that level. Left out when the
+             *     transition names none.
+             */
+            nextRevision?: number;
         };
         /** @description An event. */
         EventRecord: components["schemas"]["ProcessNodeAnnotations"] & {
@@ -4909,7 +5002,7 @@ export interface components {
              * @description The refusal the step expects (rights-design.md decision 26); absent when the file gives none.
              * @enum {string}
              */
-            refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-excluded" | "gate-repeat" | "gate-not-signed" | "gate-reason" | "right" | "default" | "frozen" | "check";
+            refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-excluded" | "gate-repeat" | "gate-not-signed" | "gate-reason" | "right" | "default" | "frozen" | "revision" | "check";
             /** @description The id of the element the step expects to refuse it (rights-design.md decision 26); absent when the file gives none. */
             refusedBy?: string;
             /** @description The ids of the checks the step expects to warn, each once (trigger-points-design.md decision 28); absent when the file gives none. */
@@ -6864,6 +6957,12 @@ export interface components {
             /** @description With `end`, the id of the scenario object at the link's other end. Left out of a trace's echo when absent. */
             object?: string;
             /**
+             * @description The step's revision (revisions-design.md decision 40): on a verb step that names `revise`, a chosen name (a string, a later
+             *     value the sequence can form) or the level that moves (an integer, 1 to 3); on an event step, a chosen name only. Left out of
+             *     a trace's echo when absent.
+             */
+            revision?: string | number;
+            /**
              * @description The id of a participant of the run (actors-design.md decision 15); the engine works out the actor it acts as unless `actor` is
              *     given, and an event's signer defaults to its identity. A trace's echo gives the actor it acted as and the signer, and the trace's actsAs names that actor; it leaves participant out when absent.
              */
@@ -6959,6 +7058,11 @@ export interface components {
              */
             states?: components["schemas"]["Ulid"][];
             /**
+             * @description The object's current revision, a value of its entity's revision sequence (revisions-design.md decision 40), when its entity
+             *     has revisions and no bound revision attribute. Absent: the bound attribute's value or default, else the sequence's start.
+             */
+            revision?: string;
+            /**
              * @description Whether the object starts frozen (rights-design.md decision 16): `modify` and `delete` are refused, and so are `connect`
              *     and `disconnect` on its links, until a `thaw`. Only the subject's is read. False when absent.
              * @default false
@@ -7012,7 +7116,7 @@ export interface components {
              * @description Why the input was refused, the first check that failed (rights-design.md decision 12); null when accepted.
              * @enum {string|null}
              */
-            refusal: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-excluded" | "gate-repeat" | "gate-not-signed" | "gate-reason" | "right" | "default" | "frozen" | "check" | null;
+            refusal: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-excluded" | "gate-repeat" | "gate-not-signed" | "gate-reason" | "right" | "default" | "frozen" | "revision" | "check" | null;
             microsteps: components["schemas"]["MicrostepTrace"][];
             guards: components["schemas"]["GuardEvaluation"][];
             audit: components["schemas"]["GateAuditRecord"][];
@@ -7064,9 +7168,10 @@ export interface components {
             /**
              * @description The id of the element that refused the input (rights-design.md decision 12): the event or invoke whose actors leave the actor
              *     out, the right (an inline right, or the named right), the lifecycle whose default denies, the guard, or the gate or gate
-             *     policy, or the trigger point whose check refused (`check`, trigger-points-design.md decision 28). Written for a refused input
-             *     in a project that uses rights or trigger points, and for a step that expects it; left out otherwise, and for `no-transition`
-             *     and `frozen`, which no element refused.
+             *     policy, or the trigger point whose check refused (`check`, trigger-points-design.md decision 28), or for `revision` the entity
+             *     whose revisions block holds the sequence that can't give the revision (revisions-design.md decision 22). Written for a refused
+             *     input in a project that uses rights or trigger points, and for a step that expects it; left out otherwise, and for
+             *     `no-transition` and `frozen`, which no element refused.
              */
             refusedBy?: components["schemas"]["Ulid"];
             /**
@@ -7095,6 +7200,17 @@ export interface components {
              *     step makes them fall due. Left out when none did.
              */
             notices?: components["schemas"]["ApprovalNotice"][];
+            /** @description How the step moved the subject's revision (revisions-design.md decision 40), on a step that moved it; left out otherwise. */
+            revision?: components["schemas"]["RevisionChange"];
+        };
+        /** @description How a step moved the subject's revision, by a revise or by a move that labels the revision (revisions-design.md decision 40). */
+        RevisionChange: {
+            /** @description The revision before the step; empty for no revision. */
+            from: string;
+            /** @description The revision after it. */
+            to: string;
+            /** @description The level that moved, 1 to 3; null for a chosen name. */
+            level: number | null;
         };
         /**
          * @description A reminder or an escalation that fell due on an approval (signoff-design.md decisions 21 and 35). The running system sends it; it
@@ -8839,6 +8955,63 @@ export interface components {
             checks?: components["schemas"]["entityCheck"][];
             /** @default [] */
             attributes?: components["schemas"]["attribute"][];
+            /**
+             * Revisions
+             * @description What revisions of this entity look like and what a revise does to an instance (revisions-design.md decisions 1 to 11 and 32 to 36): one to three levels and a separator, optionally the attribute that holds the current revision, and per lifecycle, attribute and relation end what a revise does. A derived entity inherits its bases' block and overrides it item by item: levels, separator and boundAttribute from the nearest statement, entries added to its bases' and replacing a base's entry for the same lifecycle, attribute or end.
+             */
+            revisions?: {
+                /** @description One to three levels, from the most significant. Absent: a base's levels (MQ8301 when the family names none). */
+                levels?: {
+                    /** @description A label for templates, docs and the editor, unique among the levels (MQ8301); without one the level is level n. Lifecycles and steps name a level by its number. */
+                    name?: components["schemas"]["identifier"];
+                    /**
+                     * @description letters: upper case A to Z, then AA, AB and on, never running out; numbers: whole numbers from first, with no end.
+                     * @enum {unknown}
+                     */
+                    format?: "letters" | "numbers";
+                    /** @description A list of values, used in order; the level ends at its last value, where it can't move. */
+                    values?: string[];
+                    /** @description The level's first value: a letter run for letters (absent: the first letter not skipped), a whole number for numbers (absent: 1). Not beside values (MQ8301). */
+                    first?: string | number;
+                    /** @description Letters never used, at any position, for a letters level only (MQ8301). */
+                    skip?: string[];
+                    /** @description For a numbers level only (MQ8301): numbers are padded with zeros to this width, and a value past it grows. */
+                    width?: number;
+                    /** @description true: the level holds nothing at first, and again whenever a higher level moves; it takes its first value when it or a lower level moves. Every level below one that starts empty starts empty too (MQ8301). Absent: false. */
+                    startEmpty?: boolean;
+                }[];
+                /** @description Written between two levels that both hold a value. Absent: a base's, else ".". It may be empty only between a letters level and a numbers level, and never holds a letter or a digit (MQ8303). */
+                separator?: string;
+                /** @description The id of the attribute that holds the current revision (decision 10): a single-valued, non-derived string or text attribute the entity holds, which only revising moves (MQ8305). Absent: a base's, else the team's system holds it. */
+                boundAttribute?: components["schemas"]["id"];
+                /** @description What a revise does to each lifecycle that governs the entity. A lifecycle not listed starts over. */
+                lifecycles?: {
+                    /** @description The id of a lifecycle that governs the entity or a derived entity (MQ8312). */
+                    lifecycle: components["schemas"]["id"];
+                    /** @description restart: back to the initial state; keep: the states stay as they are; or the id of a state of the lifecycle, entered as a restart enters the initial one. */
+                    onRevise: ("restart" | "keep") | components["schemas"]["id"];
+                }[];
+                /** @description What a revise does to each listed attribute the entity holds. An attribute not listed is copied. */
+                attributes?: {
+                    /** @description The id of an attribute the entity holds: its own, an inherited one or one from a stereotype it carries (MQ8312). */
+                    attribute: components["schemas"]["id"];
+                    /**
+                     * @description reset: the attribute's default, else empty; clear: empty; copy: the earlier value, so a derived entity can undo a base's entry.
+                     * @enum {unknown}
+                     */
+                    onRevise: "copy" | "reset" | "clear";
+                }[];
+                /** @description What a revise does to the links through each listed relation end the entity reaches. An end not listed is left to the team. */
+                links?: {
+                    /** @description The id of a relation end the entity navigates to (MQ8312). */
+                    end: components["schemas"]["id"];
+                    /**
+                     * @description stay: the earlier revision keeps the link; move: the link goes with the new revision; duplicate: the new revision gets a link of its own (MQ8308 where the entity's own end has max 1).
+                     * @enum {unknown}
+                     */
+                    onRevise: "stay" | "move" | "duplicate";
+                }[];
+            };
             /**
              * @description How the entity reads from and writes to databases, one binding per database (erratum E43). A binding wins over any projection of the entity into its database.
              * @default []
@@ -11462,6 +11635,8 @@ export interface components {
              * @default []
              */
             targets?: components["schemas"]["idList"];
+            /** @description The revision level, 1 to 3, this move moves (revisions-design.md decision 19). On a move whose verb is revise, the level of that revise (absent: level 1); on any other move, the move gives the object its next revision at that level, keeping its states, values, freezing and links. Only on a lifecycle that governs an entity with revisions, which has the level (MQ8306). */
+            nextRevision?: number;
             /**
              * @description Actions run on the transition, in list order.
              * @default []
@@ -11748,6 +11923,8 @@ export interface components {
                      * @default []
                      */
                     targets?: components["schemas"]["idList"];
+                    /** @description The revision level, 1 to 3, this move moves (revisions-design.md decision 19). On a move whose verb is revise, the level of that revise (absent: level 1); on any other move, the move gives the object its next revision at that level, keeping its states, values, freezing and links. Only on a lifecycle that governs an entity with revisions, which has the level (MQ8306). */
+                    nextRevision?: number;
                     /**
                      * @description Actions run on the transition, in list order.
                      * @default []
@@ -12168,6 +12345,8 @@ export interface components {
              * @default []
              */
             states?: components["schemas"]["idList"];
+            /** @description The object's current revision, a value of its entity's revision sequence (revisions-design.md decision 40), when its entity has revisions and no bound revision attribute; with one, the value is in values (MQ9305). Absent: the bound attribute's value or default, else the sequence's start. */
+            revision?: string;
             /**
              * @description true: the object starts frozen, so modify and delete are refused, and so are connect and disconnect on its links, until a thaw. Only the subject's freezing is checked; another object's is kept but not read.
              * @default false
@@ -12255,6 +12434,8 @@ export interface components {
             end?: components["schemas"]["id"];
             /** @description With end: the id of the scenario object at the link's other end, linked to the subject through end except for connect (MQ9305). */
             object?: components["schemas"]["id"];
+            /** @description For a verb step that names revise on a subject whose entity has revisions: a chosen name, a later value the sequence can form (a string), or the level that moves (an integer, 1 to 3; absent: level 1). For an event step: a chosen name only, for an event that can take a revise move or a move with nextRevision (revisions-design.md decision 40; MQ9305). */
+            revision?: string | number;
             /**
              * @description Results for guards without an expression, by guard id, as true or false; and outcomes for checks the team writes (checks with no condition), by trigger point id, as pass, warning or error (MQ9305 for a word on any other key). A check with no entry passes.
              * @default {}
@@ -12273,8 +12454,8 @@ export interface components {
                  * @description With accepted false: why the step is refused, the first check that failed (MQ9308).
                  * @enum {unknown}
                  */
-                refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-excluded" | "gate-repeat" | "gate-not-signed" | "gate-reason" | "right" | "default" | "frozen" | "check";
-                /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, or the trigger point whose check refused (MQ9308). */
+                refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-excluded" | "gate-repeat" | "gate-not-signed" | "gate-reason" | "right" | "default" | "frozen" | "revision" | "check";
+                /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, the trigger point whose check refused, or, for revision, the entity whose revisions block holds the sequence (MQ9308). */
                 refusedBy?: components["schemas"]["id"];
                 /**
                  * @description The active atomic states, in document order.
@@ -12295,6 +12476,8 @@ export interface components {
                 values?: {
                     [key: string]: unknown;
                 };
+                /** @description The subject's revision after the step (revisions-design.md decision 40); absent checks nothing (MQ9312). Only on a subject whose entity has revisions (MQ9305). */
+                revision?: string;
                 /** @description The ids of exactly the checks that warned, each once, in the order it first warned (MQ9310). Absent checks nothing; empty expects none. */
                 checkWarnings?: components["schemas"]["idList"];
                 /** @description The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked. */
@@ -12401,6 +12584,8 @@ export interface components {
                      * @default []
                      */
                     states?: components["schemas"]["idList"];
+                    /** @description The object's current revision, a value of its entity's revision sequence (revisions-design.md decision 40), when its entity has revisions and no bound revision attribute; with one, the value is in values (MQ9305). Absent: the bound attribute's value or default, else the sequence's start. */
+                    revision?: string;
                     /**
                      * @description true: the object starts frozen, so modify and delete are refused, and so are connect and disconnect on its links, until a thaw. Only the subject's freezing is checked; another object's is kept but not read.
                      * @default false
@@ -12514,6 +12699,8 @@ export interface components {
                     end?: components["schemas"]["id"];
                     /** @description With end: the id of the scenario object at the link's other end, linked to the subject through end except for connect (MQ9305). */
                     object?: components["schemas"]["id"];
+                    /** @description For a verb step that names revise on a subject whose entity has revisions: a chosen name, a later value the sequence can form (a string), or the level that moves (an integer, 1 to 3; absent: level 1). For an event step: a chosen name only, for an event that can take a revise move or a move with nextRevision (revisions-design.md decision 40; MQ9305). */
+                    revision?: string | number;
                     /**
                      * @description Results for guards without an expression, by guard id, as true or false; and outcomes for checks the team writes (checks with no condition), by trigger point id, as pass, warning or error (MQ9305 for a word on any other key). A check with no entry passes.
                      * @default {}
@@ -12532,8 +12719,8 @@ export interface components {
                          * @description With accepted false: why the step is refused, the first check that failed (MQ9308).
                          * @enum {unknown}
                          */
-                        refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-excluded" | "gate-repeat" | "gate-not-signed" | "gate-reason" | "right" | "default" | "frozen" | "check";
-                        /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, or the trigger point whose check refused (MQ9308). */
+                        refusal?: "no-transition" | "guard" | "actor" | "gate-signer" | "gate-excluded" | "gate-repeat" | "gate-not-signed" | "gate-reason" | "right" | "default" | "frozen" | "revision" | "check";
+                        /** @description With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, the trigger point whose check refused, or, for revision, the entity whose revisions block holds the sequence (MQ9308). */
                         refusedBy?: components["schemas"]["id"];
                         /**
                          * @description The active atomic states, in document order.
@@ -12554,6 +12741,8 @@ export interface components {
                         values?: {
                             [key: string]: unknown;
                         };
+                        /** @description The subject's revision after the step (revisions-design.md decision 40); absent checks nothing (MQ9312). Only on a subject whose entity has revisions (MQ9305). */
+                        revision?: string;
                         /** @description The ids of exactly the checks that warned, each once, in the order it first warned (MQ9310). Absent checks nothing; empty expects none. */
                         checkWarnings?: components["schemas"]["idList"];
                         /** @description The ids of exactly the trigger points that ran, in run order, repeats included and skipped ones left out (MQ9310). Absent checks nothing; empty expects none. Recording writes it only when asked. */

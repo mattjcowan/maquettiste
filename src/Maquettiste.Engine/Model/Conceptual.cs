@@ -80,6 +80,13 @@ public sealed record Entity : Element, IPackaged
     public IReadOnlyList<ModelAttribute> Attributes { get; init; } = [];
 
     /// <summary>
+    /// What revisions of the entity look like and what a revise does to an instance (revisions-design.md decision 1), as written on this
+    /// entity; <see langword="null"/>, and left out of the file, when it says nothing. A derived entity inherits its bases' block.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EntityRevisions? Revisions { get; init; }
+
+    /// <summary>
     /// How the entity reads from and writes to databases, one binding per database (erratum E43). An entity with a binding to a
     /// database is never projected into it, whatever the database's convention or a mapping element says.
     /// </summary>

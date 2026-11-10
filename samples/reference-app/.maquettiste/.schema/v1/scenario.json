@@ -193,6 +193,7 @@
         "entity",
         "values",
         "states",
+        "revision",
         "frozen",
         "links",
         "owner"
@@ -223,6 +224,10 @@
           "description": "The object's states in lifecycles other than the one the scenario runs, by state id: at most one active configuration per lifecycle, of lifecycles that can govern the object (MQ9305). A compound state enters its default states. A lifecycle not given takes the state the object's bound value maps to, else its initial state.",
           "$ref": "common.json#/$defs/idList",
           "default": []
+        },
+        "revision": {
+          "description": "The object's current revision, a value of its entity's revision sequence (revisions-design.md decision 40), when its entity has revisions and no bound revision attribute; with one, the value is in values (MQ9305). Absent: the bound attribute's value or default, else the sequence's start.",
+          "type": "string"
         },
         "frozen": {
           "description": "true: the object starts frozen, so modify and delete are refused, and so are connect and disconnect on its links, until a thaw. Only the subject's freezing is checked; another object's is kept but not read.",
@@ -385,6 +390,7 @@
         "attributes",
         "end",
         "object",
+        "revision",
         "assume",
         "expect",
         "description"
@@ -492,6 +498,19 @@
           "description": "With end: the id of the scenario object at the link's other end, linked to the subject through end except for connect (MQ9305).",
           "$ref": "common.json#/$defs/id"
         },
+        "revision": {
+          "description": "For a verb step that names revise on a subject whose entity has revisions: a chosen name, a later value the sequence can form (a string), or the level that moves (an integer, 1 to 3; absent: level 1). For an event step: a chosen name only, for an event that can take a revise move or a move with nextRevision (revisions-design.md decision 40; MQ9305).",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3
+            }
+          ]
+        },
         "assume": {
           "description": "Results for guards without an expression, by guard id, as true or false; and outcomes for checks the team writes (checks with no condition), by trigger point id, as pass, warning or error (MQ9305 for a word on any other key). A check with no entry passes.",
           "type": "object",
@@ -519,6 +538,7 @@
             "states",
             "context",
             "values",
+            "revision",
             "checkWarnings",
             "triggerPoints",
             "signatures",
@@ -544,11 +564,12 @@
                 "right",
                 "default",
                 "frozen",
+                "revision",
                 "check"
               ]
             },
             "refusedBy": {
-              "description": "With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, or the trigger point whose check refused (MQ9308).",
+              "description": "With accepted false: the id of the element that refused the step: the event or invoke whose actors leave the actor out, the right (inline, or the named right), the lifecycle whose default denies, the guard, the gate or gate policy, the trigger point whose check refused, or, for revision, the entity whose revisions block holds the sequence (MQ9308).",
               "$ref": "common.json#/$defs/id"
             },
             "states": {
@@ -577,6 +598,10 @@
                 "description": "A value of the attribute's type."
               },
               "default": {}
+            },
+            "revision": {
+              "description": "The subject's revision after the step (revisions-design.md decision 40); absent checks nothing (MQ9312). Only on a subject whose entity has revisions (MQ9305).",
+              "type": "string"
             },
             "checkWarnings": {
               "description": "The ids of exactly the checks that warned, each once, in the order it first warned (MQ9310). Absent checks nothing; empty expects none.",

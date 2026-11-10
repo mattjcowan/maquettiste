@@ -298,7 +298,7 @@
   {
     "id": "MQ2020",
     "defaultSeverity": "error",
-    "description": "A reference from one package to another that its package does not depend on (dependsOn of the package or a parent). A relation end's entity entries in types count; its stereotype entries and anyEntity reach entities in any package and do not.",
+    "description": "A reference from one package to another that its package does not depend on (dependsOn of the package or a parent). A relation end's entity entries in types count; its stereotype entries and anyEntity reach entities in any package and do not. The entries of an entity's revisions block count too: the lifecycle, attribute or relation end each names.",
     "family": "MQ20xx",
     "familyLabel": "References and vocabularies",
     "canBeOff": true
@@ -2641,6 +2641,54 @@
     "canBeOff": true
   },
   {
+    "id": "MQ8301",
+    "defaultSeverity": "error",
+    "description": "A revision level's shape or values are wrong: neither or both of format and values; skip beside a format other than letters; width beside one other than numbers; first, skip or width beside values; two levels with one name; a level without startEmpty below one with it; a first that is not a value of its format (a skipped or lower-case letter, a negative number, letters in a numbers level); a list value that is empty, repeated or holds the separator; or a revisions block whose entity and bases name no levels. Fix the level, or give the block levels.",
+    "family": "MQ83xx",
+    "familyLabel": "Revisions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ8303",
+    "defaultSeverity": "error",
+    "description": "A revisions block writes revisions that can't be read back: an empty separator between two levels that are not one letters level and one numbers level, so two numbers would run together, or a separator that holds a letter or a digit. Give a separator, such as a dot.",
+    "family": "MQ83xx",
+    "familyLabel": "Revisions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ8305",
+    "defaultSeverity": "error",
+    "description": "A revisions block's boundAttribute does not fit: an attribute not typed string or text (directly or through a scalar type), a derived or multi-valued one, one the entity does not hold (its own, an inherited one or one from a stereotype it carries), a lifecycle's bound attribute, one whose default is not a value of the sequence, or one the block's attributes name. Hold the revision in a single-valued string attribute, or remove the key.",
+    "family": "MQ83xx",
+    "familyLabel": "Revisions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ8306",
+    "defaultSeverity": "error",
+    "description": "A transition's nextRevision does not fit: it names a level that an entity with revisions its lifecycle governs lacks, its lifecycle governs no entity with revisions, or it stands on an orchestration or a library, which hold no revisions. Name a level every governed entity has, add the level, or remove the key.",
+    "family": "MQ83xx",
+    "familyLabel": "Revisions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ8308",
+    "defaultSeverity": "error",
+    "description": "A revisions block duplicates the links through an end whose other end, the entity's own, has max 1: the object at the other end may link to one revised object, and would link to two (a part has one owner). Use move or stay.",
+    "family": "MQ83xx",
+    "familyLabel": "Revisions",
+    "canBeOff": true
+  },
+  {
+    "id": "MQ8312",
+    "defaultSeverity": "error",
+    "description": "A revisions block's entry can't stand: two entries for one lifecycle, attribute or end; a lifecycle that governs neither the entity nor a derived entity; a state that is not a state of that lifecycle, or is a history or choice state; an attribute the entity does not hold, a derived one, or a lifecycle's bound state attribute; reset or clear on one of the entity's key attributes, since a revision is the same item; an end neither the entity nor a derived entity reaches; or an end of a relation with more than two ends. Remove the entry.",
+    "family": "MQ83xx",
+    "familyLabel": "Revisions",
+    "canBeOff": true
+  },
+  {
     "id": "MQ9001",
     "defaultSeverity": "error",
     "description": "A compound state (or the process) whose initial is not one of its direct children, or an initial on a state that is not compound; set initial to a direct child, or remove it to use the first child.",
@@ -2994,7 +3042,7 @@
   {
     "id": "MQ9305",
     "defaultSeverity": "error",
-    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit (through a relation end with several types, the target's entity must be one the end covers) or that is frozen on an object other than the subject, or an owner beside its subject's owner field or that is not one of the scenario's participants, or states that name a state of a lifecycle that cannot govern the object, two states of one lifecycle that cannot be active together, the subject's state in the process the scenario runs, or a state that disagrees with the state the object's bound value maps to; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; or a verb step is inconsistent: no verb, a verb that is not an object, link or own verb (a move, signature or task verb), values beside a verb other than modify and create or beside an end, attributes beside a verb other than read, a values attribute a set could not set or a value that does not fit its type, an end that is not the subject's, an object not linked through it (except for connect), a connect through a relation end with several types to an object whose entity the end does not cover, or delete on a link; or an assume word (pass, warning or error) whose key is not a check the team writes of a lifecycle the step reaches, or that names a check with a condition (true and false, for guards, are not checked); or a response or signature on a step that is not an event step gated by an approval, a signature of another gate, or an expect.signatures key that is not a signature of the approval the step answers; or a delegation that does not fit: delegateTo without response delegate, delegate without delegateTo, delegate or onBehalfOf on an approval none of whose signatures has delegateTo or naming a signature without it, or delegate with onBehalfOf, since a delegation can't be passed on; or expect.refusal or expect.refusedBy beside accepted true; fix the step, the object or the participant.",
+    "description": "A scenario step's fields are inconsistent: an event the process does not declare, a time step without a positive duration, an invoke that is not pending, or a payload value that is not an attribute of the event or does not fit its type; or a scenario object is inconsistent: a value that does not fit its attribute, a subject whose entity is not a process subject (listed, derived from one, or carrying a listed stereotype), or a link whose end does not fit (through a relation end with several types, the target's entity must be one the end covers) or that is frozen on an object other than the subject, or an owner beside its subject's owner field or that is not one of the scenario's participants, or states that name a state of a lifecycle that cannot govern the object, two states of one lifecycle that cannot be active together, the subject's state in the process the scenario runs, or a state that disagrees with the state the object's bound value maps to; or a participant is inconsistent: an actor that is a role, group, organization or actor from the object, a holding that is not a plain role, group or organization, a within or object that is not one of the scenario's objects, or a step's participant that is not the scenario's or its actor that the participant does not satisfy; or a verb step is inconsistent: no verb, a verb that is not an object, link or own verb (a move, signature or task verb), values beside a verb other than modify and create or beside an end, attributes beside a verb other than read, a values attribute a set could not set or a value that does not fit its type, an end that is not the subject's, an object not linked through it (except for connect), a connect through a relation end with several types to an object whose entity the end does not cover, or delete on a link; or an assume word (pass, warning or error) whose key is not a check the team writes of a lifecycle the step reaches, or that names a check with a condition (true and false, for guards, are not checked); or a response or signature on a step that is not an event step gated by an approval, a signature of another gate, or an expect.signatures key that is not a signature of the approval the step answers; or a delegation that does not fit: delegateTo without response delegate, delegate without delegateTo, delegate or onBehalfOf on an approval none of whose signatures has delegateTo or naming a signature without it, or delegate with onBehalfOf, since a delegation can't be passed on; or expect.refusal or expect.refusedBy beside accepted true; or a revision that does not fit: an object's revision beside a bound revision attribute, on an entity without revisions, or not a value of its sequence, or a bound revision attribute's value in values that is not; a step's revision on a step that can't revise or label, an integer on an event step, a level its sequence lacks or a name its sequence can't form; a step's revision or an expect.revision on a subject whose entity has no revisions; or revise with end on a subject whose entity has revisions, since revise acts on objects; fix the step, the object or the participant.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true
@@ -3047,6 +3095,15 @@
     "id": "MQ9311",
     "defaultSeverity": "error",
     "description": "The signatures counted after a scenario step differ from expect.signatures (only the listed named signatures are compared), or the reminders and escalations due at it differ from expect.notices (compared as a set of signature and kind); fix the approval or the steps, or update the expectations from a replay.",
+    "family": "MQ93xx",
+    "familyLabel": "Scenarios",
+    "canBeOff": true,
+    "quickFix": "refresh-scenario"
+  },
+  {
+    "id": "MQ9312",
+    "defaultSeverity": "error",
+    "description": "The subject's revision after a scenario step differs from expect.revision; fix the revise steps, the moves' nextRevision or the revision sequence, or update the expectations from a replay.",
     "family": "MQ93xx",
     "familyLabel": "Scenarios",
     "canBeOff": true,
@@ -3271,7 +3328,7 @@
   {
     "id": "MQ9802",
     "defaultSeverity": "error",
-    "description": "A set's attribute is derived, or holds a lifecycle's state (a bound attribute of this process or of any lifecycle that governs the subject), which only its chart moves. Remove the set.",
+    "description": "A set's attribute is derived, or holds a lifecycle's state (a bound attribute of this process or of any lifecycle that governs the subject), which only its chart moves, or holds a revision (the bound attribute of the revisions of the subject's entity), which only revising moves. Remove the set.",
     "family": "MQ98xx",
     "familyLabel": "Object effects",
     "canBeOff": true

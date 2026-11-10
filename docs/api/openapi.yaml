@@ -867,7 +867,8 @@ paths:
         - `entities`: `EntityRecord`, each attribute resolved (`type` with the enum, value object, scalar or reference type it
           names, `default`, `length`, `precision`, `scale`, `isKey`; the base entity's attributes come first, marked `isInherited`),
           the key, alternate keys, `base` and `derived`, navigations, `relations`, one mapping per database (table key and the
-          column of each attribute path) and the annotations.
+          column of each attribute path) and the annotations; `revisions`, merged through the bases, when the entity or a base has a
+          revisions block.
         - `relations`, `enums`, `value-objects`, `scalar-types`, `packages`, `reference-types` (with every row), `seeds`, `actors`,
           `scenarios`: the matching record.
         - `processes`: `ProcessRecord`, every state at every depth with `parent` and `children`, the transitions, events, guards
@@ -9625,6 +9626,145 @@ components:
             description: The entity checks (next-phase-3-design.md section 3.1), the root base's first; absent for an entity without any.
             items:
               $ref: '#/components/schemas/EntityCheckRecord'
+          revisions:
+            description: |
+              What revisions of the entity look like and what a revise does to an instance (revisions-design.md section 8), merged
+              through its bases: levels, separator and bound attribute from the nearest statement, entries added to the bases' and
+              replacing a base's entry for the same lifecycle, attribute or end. Absent when neither the entity nor a base has a
+              revisions block.
+            $ref: '#/components/schemas/RevisionsRecord'
+    RevisionsRecord:
+      x-engine-record: Maquettiste.Engine.RevisionsRecord
+      description: An entity's revisions, merged through its bases (revisions-design.md section 8); other elements by id.
+      type: object
+      required: [levels, separator, firstRevision, boundAttribute, lifecycles, attributes, links]
+      properties:
+        levels:
+          type: array
+          description: The levels, from the most significant.
+          minItems: 1
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/RevisionLevelRecord'
+        separator:
+          type: string
+          description: Written between two levels that both hold a value; `.` when neither the entity nor a base writes one.
+        firstRevision:
+          type: string
+          description: The sequence's start, which a new object takes, as text; empty when level 1 starts empty (no revision).
+        boundAttribute:
+          type: [string, 'null']
+          description: The id of the attribute that holds the current revision; null when the team's system holds it.
+        lifecycles:
+          type: array
+          description: |
+            Every lifecycle that governs the entity, with what a revise does to it. A lifecycle no entry names is filled in with
+            `restart` and `from` null, so a reader never needs to know the fallback.
+          items:
+            $ref: '#/components/schemas/RevisionLifecycleRecord'
+        attributes:
+          type: array
+          description: Each attribute a revise doesn't copy, with what it does instead; an attribute not listed is copied.
+          items:
+            $ref: '#/components/schemas/RevisionAttributeRecord'
+        links:
+          type: array
+          description: Each relation end with a rule for its links on a revise; an end not listed is the team's.
+          items:
+            $ref: '#/components/schemas/RevisionLinkRecord'
+    RevisionLevelRecord:
+      x-engine-record: Maquettiste.Engine.RevisionLevelRecord
+      description: One level of an entity's revision sequence (revisions-design.md section 8).
+      type: object
+      required: [number, name, format, values, first, skip, width, startEmpty, examples]
+      properties:
+        number:
+          type: integer
+          description: The level's number, 1 to 3, by which lifecycles and steps name it.
+          minimum: 1
+          maximum: 3
+        name:
+          type: [string, 'null']
+          description: The level's name; null when it has none.
+        format:
+          type: string
+          enum: [letters, numbers, list]
+        values:
+          type: array
+          description: The list's values, in order; empty for letters and numbers.
+          items:
+            type: string
+        first:
+          type: string
+          description: The first value as text; the format's default (the first letter not skipped, or 1) when the file gives none; a list's first value for a list.
+        skip:
+          type: array
+          description: The skipped letters; empty when none.
+          items:
+            type: string
+        width:
+          type: [integer, 'null']
+          description: The width numbers are padded to; null when none.
+        startEmpty:
+          type: boolean
+          description: Whether the level holds nothing at first, and again whenever a higher level moves.
+        examples:
+          type: array
+          description: The level's first five values on their own (all of a shorter list), for docs and the editor.
+          maxItems: 5
+          items:
+            type: string
+    RevisionLifecycleRecord:
+      x-engine-record: Maquettiste.Engine.RevisionLifecycleRecord
+      description: What a revise does to a lifecycle that governs the entity (revisions-design.md decision 33).
+      type: object
+      required: [lifecycle, onRevise, state, from]
+      properties:
+        lifecycle:
+          type: string
+          description: The lifecycle's id.
+        onRevise:
+          type: string
+          description: '`restart`: back to the initial state; `keep`: the states stay as they are; `state`: the state `state` names.'
+          enum: [restart, keep, state]
+        state:
+          type: [string, 'null']
+          description: With `state`, the id of the state entered; null otherwise.
+        from:
+          type: [string, 'null']
+          description: The id of the entity whose entry says it; null for the fallback (no entry names the lifecycle).
+    RevisionAttributeRecord:
+      x-engine-record: Maquettiste.Engine.RevisionAttributeRecord
+      description: What a revise does to an attribute it doesn't copy (revisions-design.md decision 34).
+      type: object
+      required: [attribute, onRevise, from]
+      properties:
+        attribute:
+          type: string
+          description: The attribute's id.
+        onRevise:
+          type: string
+          description: '`reset`: the attribute''s default, else empty; `clear`: empty.'
+          enum: [reset, clear]
+        from:
+          type: string
+          description: The id of the entity whose entry says it.
+    RevisionLinkRecord:
+      x-engine-record: Maquettiste.Engine.RevisionLinkRecord
+      description: What a revise does to the links through a relation end the entity reaches (revisions-design.md decision 35).
+      type: object
+      required: [end, onRevise, from]
+      properties:
+        end:
+          type: string
+          description: The relation end's id.
+        onRevise:
+          type: string
+          description: '`stay`: the earlier revision keeps the link; `move`: it goes with the new revision; `duplicate`: the new revision gets a link of its own.'
+          enum: [stay, move, duplicate]
+        from:
+          type: string
+          description: The id of the entity whose entry says it.
     AttributeRecord:
       x-engine-record: Maquettiste.Engine.AttributeRecord
       description: A resolved attribute.
@@ -11114,6 +11254,14 @@ components:
               The key of the verb of the move (verbs-design.md section 6): the transition's own, else its event's. Left out when
               neither names one.
             type: string
+          nextRevision:
+            description: |
+              The revision level, 1 to 3, the move moves (revisions-design.md decision 19): on a move whose verb is `revise`, the level of
+              that revise; on any other move, the move gives the object its next revision at that level. Left out when the
+              transition names none.
+            type: integer
+            minimum: 1
+            maximum: 3
     EventRecord:
       x-engine-record: Maquettiste.Engine.EventRecord
       description: An event.
@@ -11737,7 +11885,7 @@ components:
         refusal:
           type: string
           description: The refusal the step expects (rights-design.md decision 26); absent when the file gives none.
-          enum: [no-transition, guard, actor, gate-signer, gate-excluded, gate-repeat, gate-not-signed, gate-reason, right, default, frozen, check]
+          enum: [no-transition, guard, actor, gate-signer, gate-excluded, gate-repeat, gate-not-signed, gate-reason, right, default, frozen, revision, check]
         refusedBy:
           type: string
           description: The id of the element the step expects to refuse it (rights-design.md decision 26); absent when the file gives none.
@@ -15512,6 +15660,12 @@ components:
         object:
           description: With `end`, the id of the scenario object at the link's other end. Left out of a trace's echo when absent.
           type: string
+        revision:
+          description: |
+            The step's revision (revisions-design.md decision 40): on a verb step that names `revise`, a chosen name (a string, a later
+            value the sequence can form) or the level that moves (an integer, 1 to 3); on an event step, a chosen name only. Left out of
+            a trace's echo when absent.
+          type: [string, integer]
         participant:
           description: |
             The id of a participant of the run (actors-design.md decision 15); the engine works out the actor it acts as unless `actor` is
@@ -15638,6 +15792,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Ulid'
+        revision:
+          description: |
+            The object's current revision, a value of its entity's revision sequence (revisions-design.md decision 40), when its entity
+            has revisions and no bound revision attribute. Absent: the bound attribute's value or default, else the sequence's start.
+          type: string
         frozen:
           description: |
             Whether the object starts frozen (rights-design.md decision 16): `modify` and `delete` are refused, and so are `connect`
@@ -15729,7 +15888,7 @@ components:
         refusal:
           description: Why the input was refused, the first check that failed (rights-design.md decision 12); null when accepted.
           type: [string, 'null']
-          enum: [no-transition, guard, actor, gate-signer, gate-excluded, gate-repeat, gate-not-signed, gate-reason, right, default, frozen, check, null]
+          enum: [no-transition, guard, actor, gate-signer, gate-excluded, gate-repeat, gate-not-signed, gate-reason, right, default, frozen, revision, check, null]
         microsteps:
           type: array
           items:
@@ -15801,9 +15960,10 @@ components:
           description: |
             The id of the element that refused the input (rights-design.md decision 12): the event or invoke whose actors leave the actor
             out, the right (an inline right, or the named right), the lifecycle whose default denies, the guard, or the gate or gate
-            policy, or the trigger point whose check refused (`check`, trigger-points-design.md decision 28). Written for a refused input
-            in a project that uses rights or trigger points, and for a step that expects it; left out otherwise, and for `no-transition`
-            and `frozen`, which no element refused.
+            policy, or the trigger point whose check refused (`check`, trigger-points-design.md decision 28), or for `revision` the entity
+            whose revisions block holds the sequence that can't give the revision (revisions-design.md decision 22). Written for a refused
+            input in a project that uses rights or trigger points, and for a step that expects it; left out otherwise, and for
+            `no-transition` and `frozen`, which no element refused.
           $ref: '#/components/schemas/Ulid'
         rights:
           description: |
@@ -15840,6 +16000,26 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ApprovalNotice'
+        revision:
+          description: How the step moved the subject's revision (revisions-design.md decision 40), on a step that moved it; left out otherwise.
+          $ref: '#/components/schemas/RevisionChange'
+    RevisionChange:
+      x-engine-record: Maquettiste.Engine.Processes.RevisionChange
+      description: How a step moved the subject's revision, by a revise or by a move that labels the revision (revisions-design.md decision 40).
+      type: object
+      required: [from, to, level]
+      properties:
+        from:
+          type: string
+          description: The revision before the step; empty for no revision.
+        to:
+          type: string
+          description: The revision after it.
+        level:
+          type: [integer, 'null']
+          description: The level that moved, 1 to 3; null for a chosen name.
+          minimum: 1
+          maximum: 3
     ApprovalNotice:
       x-engine-record: Maquettiste.Engine.Processes.ApprovalNotice
       description: |
