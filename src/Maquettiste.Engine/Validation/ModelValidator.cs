@@ -230,6 +230,7 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
                     StatusRules.Validate(context, report);
                     PackageRules.Validate(context, report);
                     ProcessRules.Validate(context, report);
+                    RevisionRules.Validate(context, report);
                     OperationRules.Validate(context, report);
                     ExpressionRules.Validate(context, report);
                     CustomRules.Validate(context, report);
@@ -651,6 +652,12 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         foreach (var peer in SeveralTypesPeers(context, element))
             yield return peer;
 
+        foreach (var id in RevisionPeers(model, element))
+        {
+            if (model.GetDocument(id) is { } peer)
+                yield return peer;
+        }
+
         // The files a default list reaches are judged on the effective set it gives (MQ2004, MQ2013 to MQ2015, MQ2018 and every rule
         // that reads stereotypes), and they are not the referrers of the package, database or stereotype (next-phase-2-design.md
         // section 3.1).
@@ -913,6 +920,88 @@ internal sealed class ModelValidator(EngineOptions options, ISchemaRegistry sche
         {
             if (linked.Exists(r => ObjectsReach(model, scenario, r)) && model.GetDocument(scenario.Id) is { } peer)
                 yield return peer;
+        }
+    }
+
+    /// <summary>
+    /// The files whose revision findings a change can move without referencing it (revisions-design.md section 7, "Incremental validation"),
+    /// and only while the model has a <c>revisions</c> block or a <c>nextRevision</c>. An entity brings the entities of its family with a
+    /// merged block (its bases, whose entries may name what only a derived entity holds, reaches or is governed by, and its derived entities,
+    /// whose merged blocks inherit from it), and the processes that govern it or a derived entity and name a <c>nextRevision</c> (MQ8306) or
+    /// a set (MQ9802), with the named trigger points with sets that cover them; the scenarios with an object of it or of a derived entity
+    /// (MQ9305) are already <see cref="ProcessPeers"/>'. A process brings the entities with a merged block it governs (MQ8305 and MQ8312 read
+    /// which lifecycles govern them and their bound state attributes). A relation brings the entities with a merged block that its ends cover
+    /// (MQ8308, MQ8312). A scalar type brings the entities whose merged bound attribute it types (MQ8305). The store adds the same peers worked
+    /// out on the model before the change, so an entity a process stopped governing, or one whose block went, is checked again too.
+    /// </summary>
+    /// <param name="model">The model.</param>
+    /// <param name="element">The changed element.</param>
+    /// <returns>The ids of the peers (duplicates possible).</returns>
+    internal static IEnumerable<string> RevisionPeers(ModelSnapshot model, Element element)
+    {
+        if (element is not (Entity or Process or Relation or ScalarType))
+            yield break;
+        var coverage = Revisions.RevisionCoverage.Of(model);
+        if (!coverage.Any && !RevisionRules.AnyNextRevision(model))
+            yield break;
+        switch (element)
+        {
+            case Entity entity:
+            {
+                var derived = RevisionRules.DerivedFrom(model, entity);
+                var bases = Processes.SubjectCoverage.Chain(model, entity).Skip(1).Select(id => model.Get<Entity>(id)).OfType<Entity>();
+                foreach (var member in derived.Concat(bases))
+                {
+                    if (coverage.For(member) is not null)
+                        yield return member.Id;
+                }
+
+                var reached = derived.Prepend(entity).ToList();
+                foreach (var process in model.All<Process>())
+                {
+                    if ((process.Transitions.Any(t => t.NextRevision is not null) || process.Actions.Any(a => a.Sets.Count > 0) || process.TriggerPoints.Any(t => t.Sets.Count > 0))
+                        && reached.Exists(e => Processes.SubjectCoverage.Governs(model, process, e)))
+                        yield return process.Id;
+                }
+
+                if (coverage.Any && Processes.NamedTriggerPoints.Of(model) is { Any: true } named)
+                {
+                    foreach (var point in named.All)
+                    {
+                        if (point.Sets.Count > 0 && named.Covers(point).Any(c => reached.Exists(e => string.Equals(e.Id, c.Id, StringComparison.Ordinal))))
+                            yield return point.Id;
+                    }
+                }
+
+                break;
+            }
+
+            case Process process when coverage.Any:
+                foreach (var entity in model.All<Entity>())
+                {
+                    if (coverage.For(entity) is not null && Processes.SubjectCoverage.Governs(model, process, entity))
+                        yield return entity.Id;
+                }
+
+                break;
+            case Relation relation when coverage.Any:
+                foreach (var entity in model.All<Entity>())
+                {
+                    if (coverage.For(entity) is not null && relation.Ends.Any(e => EndCoverage.Covers(model, e, entity.Id)))
+                        yield return entity.Id;
+                }
+
+                break;
+            case ScalarType scalar when coverage.Any:
+                foreach (var entity in model.All<Entity>())
+                {
+                    if (coverage.For(entity) is { BoundAttribute: { } bound } && model.TryGetEntry(bound, out var entry)
+                        && model.GetDocument(entry.OwnerId)?.Element is { } owner
+                        && ReferenceDataIndex.AttributesOf(owner).Any(a => string.Equals(a.Id, bound, StringComparison.Ordinal) && string.Equals(a.Type.Ref, scalar.Id, StringComparison.Ordinal)))
+                        yield return entity.Id;
+                }
+
+                break;
         }
     }
 

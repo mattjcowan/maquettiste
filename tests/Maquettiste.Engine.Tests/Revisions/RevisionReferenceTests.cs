@@ -98,7 +98,7 @@ public sealed class RevisionReferenceTests
 
         var parsed = store.ParseBatch(Encoding.UTF8.GetBytes("""
             { "operations": [
-              { "op": "create", "element": { "kind": "entity", "name": "Drawing", "package": "@package:Sales", "base": "@entity:Record",
+              { "op": "create", "element": { "kind": "entity", "name": "Drawing", "package": "@package:Sales", "base": "@entity:Part",
                   "attributes": [ { "as": "$rev", "name": "drawingRevision", "type": "string", "length": 20 } ],
                   "revisions": { "levels": [ { "format": "letters" } ], "boundAttribute": "$rev",
                     "lifecycles": [ { "lifecycle": "@process:Approval", "onRevise": "@state:Approval.Approved" }, { "lifecycle": "@process:Delivery", "onRevise": "keep" } ],

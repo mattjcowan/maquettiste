@@ -298,7 +298,7 @@
   {
     "id": "MQ2020",
     "defaultSeverity": "error",
-    "description": "A reference from one package to another that its package does not depend on (dependsOn of the package or a parent). A relation end's entity entries in types count; its stereotype entries and anyEntity reach entities in any package and do not. The entries of an entity's revisions block count too: the lifecycle, attribute or relation end each names.",
+    "description": "A reference from one package to another that its package does not depend on (dependsOn of the package or a parent). A relation end's entity entries in types count; its stereotype entries and anyEntity reach entities in any package and do not. An entity's revisions block counts too: its boundAttribute, and the lifecycle, state, attribute or relation end each entry names.",
     "family": "MQ20xx",
     "familyLabel": "References and vocabularies",
     "canBeOff": true
@@ -2643,7 +2643,7 @@
   {
     "id": "MQ8301",
     "defaultSeverity": "error",
-    "description": "A revision level's shape or values are wrong: neither or both of format and values; skip beside a format other than letters; width beside one other than numbers; first, skip or width beside values; two levels with one name; a level without startEmpty below one with it; a first that is not a value of its format (a skipped or lower-case letter, a negative number, letters in a numbers level); a list value that is empty, repeated or holds the separator; or a revisions block whose entity and bases name no levels. Fix the level, or give the block levels.",
+    "description": "A revision level's shape or values are wrong: neither or both of format and values; skip beside a format other than letters; width beside one other than numbers; first, skip or width beside values; two levels with one name; a level without startEmpty below one with it; a letters level that skips every letter; a first that is not a value of its format (a skipped or lower-case letter, or letters in a numbers level); a list value that holds the separator; or a revisions block whose entity and bases name no levels. Fix the level, or give the block levels.",
     "family": "MQ83xx",
     "familyLabel": "Revisions",
     "canBeOff": true

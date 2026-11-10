@@ -1208,7 +1208,7 @@ public sealed partial class ModelStore : IAsyncDisposable
         var changed = plan.ChangeByElement.Keys.Order(StringComparer.Ordinal).ToList();
         var placements = FormerPlacements(changed, before, candidate).Concat(FormerRowTables(changed, before, candidate)).Distinct(StringComparer.Ordinal).ToList();
         var followers = FormerFactFollowers(changed, before, candidate).Concat(FormerActorPeers(changed, before, candidate))
-            .Concat(FormerTypeCodePeers(changed, before, candidate)).ToList();
+            .Concat(FormerTypeCodePeers(changed, before, candidate)).Concat(FormerRevisionPeers(changed, before, candidate)).ToList();
         // A dry run counts the deletes too: what a deleted element had shows as removed.
         if ((preview is null ? plan.ChangedIds.Count : changed.Count) == 0 && placements.Count == 0 && followers.Count == 0)
             return [];
@@ -1393,6 +1393,26 @@ public sealed partial class ModelStore : IAsyncDisposable
         {
             if (candidate.GetDocument(id) is not null)
                 yield return id;
+        }
+    }
+
+    /// <summary>
+    /// The files whose revision findings a change may clear through what the model had before it (revisions-design.md section 7): the
+    /// revision peers of each changed entity, process, relation or scalar type worked out on the model before the change, such as an entity a
+    /// lifecycle stopped governing or a derived entity whose base's block went; the validator reaches the peers after the change. Nothing
+    /// while the model before the change has no revisions block and no <c>nextRevision</c>.
+    /// </summary>
+    private static IEnumerable<string> FormerRevisionPeers(IReadOnlyList<string> changedIds, ModelSnapshot before, ModelSnapshot candidate)
+    {
+        foreach (var id in changedIds)
+        {
+            if (before.GetDocument(id)?.Element is not { } element)
+                continue;
+            foreach (var peer in Validation.ModelValidator.RevisionPeers(before, element))
+            {
+                if (candidate.GetDocument(peer) is not null)
+                    yield return peer;
+            }
         }
     }
 
