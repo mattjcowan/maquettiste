@@ -277,9 +277,21 @@ public sealed class AgentSetupTests
     {
         using var repo = CliRepo.Empty();
         Directory.CreateDirectory(repo.RepoRoot);
-        repo.Write(".mcp.json", "{\n  // a comment\n  \"mcpServers\": { \"other\": { \"command\": \"x\", \"args\": [\"é\"] } },\n  \"extra\": 1,\n}\n");
+        // A file with comments or trailing commas is never rewritten: a rewrite would lose them. The line shows the entry to add.
+        const string Commented = "{\n  // a comment\n  \"mcpServers\": { \"other\": { \"command\": \"x\", \"args\": [\"é\"] } },\n  \"extra\": 1,\n}\n";
+        repo.Write(".mcp.json", Commented);
+        var commented = await repo.RunAsync("init", "--mcp");
+        Assert.Equal(0, commented.ExitCode);
+        Assert.Equal(Commented, repo.Read(".mcp.json"));
+        Assert.Contains("kept .mcp.json: it has comments or trailing commas, which init does not rewrite; add \"maquettiste\": "
+            + "{\"type\":\"stdio\",\"command\":\"maquettiste\",\"args\":[\"mcp\"]} under mcpServers by hand", commented.Error, StringComparison.Ordinal);
+
+        // Plain JSON is merged, in the file's own style: tabs and CRLF stay, and so does the missing final newline.
+        repo.Write(".mcp.json", "{\r\n\t\"mcpServers\": {\r\n\t\t\"other\": { \"command\": \"x\", \"args\": [\"é\"] }\r\n\t},\r\n\t\"extra\": 1\r\n}");
         var result = await repo.RunAsync("init", "--mcp");
         Assert.Equal(0, result.ExitCode);
+        Assert.StartsWith("{\r\n\t\"mcpServers\": {\r\n\t\t\"other\": {\r\n\t\t\t\"command\": \"x\",", repo.Read(".mcp.json"), StringComparison.Ordinal);
+        Assert.EndsWith("\r\n\t\"extra\": 1\r\n}", repo.Read(".mcp.json"), StringComparison.Ordinal);
         var root = JsonNode.Parse(repo.Read(".mcp.json"))!.AsObject();
         Assert.Equal(["mcpServers", "extra"], root.Select(p => p.Key));
         var servers = root["mcpServers"]!.AsObject();
@@ -331,7 +343,10 @@ public sealed class AgentSetupTests
     public void With_server_adds_the_members_object_when_it_is_missing_or_null()
     {
         var entry = AgentSetup.ServerEntry(local: false);
+        // The file had no final newline, so the merged one has none either.
         Assert.Null(AgentSetup.WithServer("{\"mcpServers\":null}", entry, replace: false, out var updated));
+        Assert.Equal(GlobalRegistration.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n'), updated);
+        Assert.Null(AgentSetup.WithServer("{\"mcpServers\":null}\n", entry, replace: false, out updated));
         Assert.Equal(GlobalRegistration.Replace("\r\n", "\n", StringComparison.Ordinal), updated);
         Assert.Null(AgentSetup.WithServer(null, entry, replace: false, out updated));
         Assert.Equal(GlobalRegistration.Replace("\r\n", "\n", StringComparison.Ordinal), updated);

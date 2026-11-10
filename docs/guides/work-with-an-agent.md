@@ -8,6 +8,8 @@ you to review.
 All three go through the engine's one write path, the same one the editor uses: the same documents, hashes, validation,
 plans and error codes. This guide sets them up for Spoke & Chain and shows what each can and cannot do.
 
+If your team uses other AI tools too, see [Use Maquettiste with your AI tool](ai-tools.md) for each tool's setup.
+
 ## 1. Register the agent server
 
 In the repository, run one of these:

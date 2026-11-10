@@ -11,7 +11,7 @@ namespace Maquettiste.Cli.Commands;
 
 /// <summary>
 /// <c>maquettiste init [--pack sql-ddl|csharp-dapper|none] [--name &lt;name&gt;] [--hooks] [--mcp] [--skill] [--agent-setup]
-/// [--docker &lt;image&gt; [--runtime docker|podman]] [--force]</c>, and <c>maquettiste init --skill --check</c> (engine-design.md section 16; SPEC sections 4, 11, 12 and 17).
+/// [--agents &lt;names&gt;|all] [--docker &lt;image&gt; [--runtime docker|podman]] [--force]</c>, and <c>maquettiste init --skill --check</c> (engine-design.md section 16; SPEC sections 4, 11, 12 and 17).
 /// <para>
 /// Creates <c>.maquettiste/</c> with the phase 1 folders, <c>maquettiste.json</c> (format 1, output roots <c>db</c> and
 /// <c>src/Generated</c>), the JSON schemas in <c>.schema/v1/</c> and the starter pack. The project is named by <c>--name</c>, else
@@ -25,9 +25,12 @@ namespace Maquettiste.Cli.Commands;
 /// <c>--gitignore</c> was removed in 0.5.5 and is refused with that hint. <c>--hooks</c> installs the post-checkout and post-merge hooks; <c>--mcp</c> registers <c>maquettiste mcp</c> in
 /// <c>.mcp.json</c>; <c>--skill</c> installs the modeling skill under <c>.claude/skills/</c>, refreshing a copy nobody edited and
 /// leaving one edited by hand alone (<c>SKILL.md.new</c> beside it) unless <c>--force</c>, and with <c>--check</c> only compares it
-/// (exit 2 when missing, stale or edited); <c>--agent-setup</c> does both; and
+/// (exit 2 when missing, stale or edited), refreshing and checking the copies under <c>.agents/skills/</c> and <c>.kiro/skills/</c> too
+/// when they exist; <c>--agent-setup</c> does both; <c>--agents</c> writes the MCP file and the skill of each AI tool it names
+/// (<see cref="AgentSetup.Tools"/>; <c>claude</c> writes the files of <c>--agent-setup</c>); and
 /// <c>--docker &lt;image&gt;</c> registers the server as a <c>docker run</c> of that image (<c>podman run</c> with <c>--runtime podman</c>)
-/// and removes the <c>mcp.sh</c> wrapper earlier versions wrote (<see cref="AgentSetup"/>).
+/// and removes the <c>mcp.sh</c> wrapper earlier versions wrote (<see cref="AgentSetup"/>). Without <c>--agents</c>, <c>--docker</c>
+/// implies <c>--mcp</c>; with it, <c>--docker</c> only picks the command the named tools' files run.
 /// </para>
 /// </summary>
 internal static class InitCommand
@@ -48,7 +51,7 @@ internal static class InitCommand
     /// <returns>The exit code.</returns>
     public static async Task<int> RunAsync(GlobalContext context, CancellationToken ct)
     {
-        context.Line.Expect("init", 1, "--pack", "--hooks", "--gitignore", "--mcp", "--skill", "--agent-setup", "--name", "--docker", "--runtime", "--force", "--check");
+        context.Line.Expect("init", 1, "--pack", "--hooks", "--gitignore", "--mcp", "--skill", "--agent-setup", "--agents", "--name", "--docker", "--runtime", "--force", "--check");
         if (context.Line.Has("--gitignore"))
         {
             throw new UsageException("--gitignore was removed in 0.5.5: init no longer touches .gitignore. To keep generated folders out of git, "
@@ -58,13 +61,14 @@ internal static class InitCommand
         var skill = context.Line.Has("--skill") || context.Line.Has("--agent-setup");
         if (context.Line.Has("--check"))
         {
-            if (!context.Line.Has("--skill") || new[] { "--pack", "--hooks", "--mcp", "--agent-setup", "--name", "--docker", "--runtime", "--force" }.Any(context.Line.Has))
+            if (!context.Line.Has("--skill") || new[] { "--pack", "--hooks", "--mcp", "--agent-setup", "--agents", "--name", "--docker", "--runtime", "--force" }.Any(context.Line.Has))
                 throw new UsageException("--check goes with --skill alone: maquettiste init --skill --check compares the modeling skill with this version's and writes nothing.");
             return await AgentSetup.CheckSkillAsync(context.Out, context.RepoRoot(search: false), ct).ConfigureAwait(false);
         }
 
-        if (context.Line.Has("--force") && !skill)
-            throw new UsageException("--force goes with --skill (or --agent-setup): it overwrites a modeling skill that was edited by hand.");
+        var agents = context.Line.Value("--agents") is { } names ? AgentSetup.ParseAgents(names) : [];
+        if (context.Line.Has("--force") && !skill && !agents.Any(a => a.SkillFolder is not null))
+            throw new UsageException("--force goes with --skill (or --agent-setup, or --agents with a tool that reads the skill): it overwrites a modeling skill that was edited by hand.");
         if (context.Line.Value("--name") is { } given && string.IsNullOrWhiteSpace(given))
             throw new UsageException("--name needs a project name.");
         var dockerImage = context.Line.Value("--docker");
@@ -83,6 +87,35 @@ internal static class InitCommand
 
         var options = context.EngineOptions(repo);
         var files = new GuardedFiles(new OutputPathPolicy(options, null));
+
+        // The MCP files, each once: .mcp.json for --mcp and --agent-setup (and --docker without --agents), then each named tool's.
+        var mcpFiles = new List<McpFile>();
+        if (context.Line.Has("--mcp") || context.Line.Has("--agent-setup") || (dockerImage is not null && agents.Count == 0))
+            mcpFiles.Add(AgentSetup.ProjectMcpFile);
+        foreach (var file in agents.SelectMany(a => a.McpFiles))
+        {
+            if (!mcpFiles.Contains(file))
+                mcpFiles.Add(file);
+        }
+
+        // The skill: --agent-setup writes the Claude Code copy; --skill writes it only when the engine owns no copy yet (so a team that
+        // set up other tools never gets one it did not ask for) and refreshes every copy the engine owns; --agents writes a copy in
+        // each named tool's folder and touches no other folder.
+        var skillFolders = new HashSet<string>(StringComparer.Ordinal);
+        if (context.Line.Has("--agent-setup") || (context.Line.Has("--skill") && !AgentSetup.AnyEngineCopy(repo)))
+            skillFolders.Add(AgentSetup.ClaudeSkills);
+        foreach (var agent in agents)
+        {
+            if (agent.SkillFolder is { } folder)
+                skillFolders.Add(folder);
+        }
+
+        var skillCopies = skillFolders.Count > 0 || skill ? AgentSetup.SkillCopies(repo, skillFolders, refreshExisting: skill) : [];
+
+        // Every agent setup path is checked before anything is written, so a refusal (exit 4) leaves the repository as it was.
+        foreach (var path in mcpFiles.Select(f => f.Path).Concat(skillCopies.Where(c => !c.Own).SelectMany(c => new[] { c.Path, c.Path + ".new" })))
+            files.Ensure(WriteTarget.Setup, Path.Combine(repo, path.Replace('/', Path.DirectorySeparatorChar)));
+
         var modelRoot = Path.Combine(repo, GlobalContext.ModelFolder);
         var report = new List<string>();
 
@@ -132,10 +165,9 @@ internal static class InitCommand
 
         if (context.Line.Has("--hooks"))
             await InstallHooksAsync(files, repo, report, ct).ConfigureAwait(false);
-        if (context.Line.Has("--mcp") || context.Line.Has("--agent-setup") || dockerImage is not null)
-            await AgentSetup.WriteMcpConfigAsync(files, repo, dockerImage, runtime, report, ct).ConfigureAwait(false);
-        if (skill)
-            await AgentSetup.WriteSkillAsync(files, repo, context.Line.Has("--force"), report, ct).ConfigureAwait(false);
+        await AgentSetup.WriteMcpFilesAsync(files, repo, mcpFiles, dockerImage, runtime, report, ct).ConfigureAwait(false);
+        if (skillCopies.Count > 0)
+            await AgentSetup.WriteSkillsAsync(files, repo, skillCopies, context.Line.Has("--force"), report, ct).ConfigureAwait(false);
 
         foreach (var line in report)
             context.Info(line);

@@ -280,6 +280,12 @@ Built in 0.7.0: the sidebar reads the whole model and proposes model changes as 
 - Let it run a plan and show the diff (apply stays a user action).
 - Drafting a template from an example output (the spec's last assist task) waits on pack writes.
 
+### Setting up other AI tools
+
+| Item | Requested | Status | Notes |
+| --- | --- | --- | --- |
+| `init --agents <names>` or `all`: set up AI tools other than Claude Code | yes (the owner) | Built, unreleased | For each tool named, init writes the file the tool reads to find the server and a copy of the modeling skill. Nine tools: Claude Code, Codex, GitHub Copilot, Cursor, Grok Build, Kiro, Junie, Devin and Amp. Nothing is written for a tool that is not named. `init --skill` refreshes, and `--skill --check` checks, every copy of the skill Maquettiste owns; a copy without its header is the team's own and is left alone. A JSON file with comments is never rewritten, and every path is checked before the first write. |
+
 ### Smaller items
 
 - **The store rescans every file per request.** Reading the model snapshot stats every model file each time (about

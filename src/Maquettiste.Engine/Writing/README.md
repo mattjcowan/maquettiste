@@ -32,8 +32,10 @@ Tests: `tests/Maquettiste.Engine.Tests/Writing/`.
   Matching is case-insensitive (denying more is the safe side). Globs match the whole repo-relative path, not a file name at any
   depth: write `**/*.pem`, not `*.pem`.
 - `CheckEngineWrite`: `Model` under `ModelRoot`, `Cache` under `CacheDirectory` or `JournalDirectory`, `Setup` exactly
-  `.git/hooks/post-checkout`, `.git/hooks/post-merge`, `.mcp.json`, `mcp.sh` (removed only) and
-  `.claude/skills/maquettiste-modeling/SKILL.md` and `SKILL.md.new` beside it (the new version when the skill was edited by hand;
+  `.git/hooks/post-checkout`, `.git/hooks/post-merge`, `.mcp.json`, `mcp.sh` (removed only), the project MCP files of the AI
+  tools `init --agents` names (`.codex/config.toml`, `.vscode/mcp.json`, `.github/mcp.json`, `.cursor/mcp.json`,
+  `.kiro/settings/mcp.json`, `.junie/mcp/mcp.json`, `.devin/mcp_config.json`, `.amp/settings.json`) and
+  `maquettiste-modeling/SKILL.md` in `.claude/skills`, `.agents/skills` and `.kiro/skills`, with `SKILL.md.new` beside each (the new version when the skill was edited by hand;
   never `CONVENTIONS.md` there, and never the repository's `.gitignore`: `allowGitignore` and `init --gitignore` were
   removed in 0.5.5, E42); the path must be absolute and strictly inside its folder,
   and links are resolved on both sides (a link cycle or an unreadable link is an `MQ6004` refusal, never an exception). `Output` maps the path to repo-relative and runs `Check`. A policy built with

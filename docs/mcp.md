@@ -54,7 +54,7 @@ When the repository's local tool manifest lists the `maquettiste` command, the e
 `"args": ["tool", "run", "maquettiste", "mcp"]` instead, so the pinned version runs. Every entry `init` writes names its transport, `"type": "stdio"`; an entry an older version wrote without it is kept as it is, so delete that entry and run `init --mcp` again to get the current form. There is no `--repo`: the client starts
 the server in the project folder, the server finds the repository from there, and the file can be committed. Other servers
 and members of an existing `.mcp.json` are kept in order; an existing `maquettiste` entry is never replaced (the Docker form below replaces it); a file that is not
-a JSON object (not valid JSON, duplicate keys, or an `mcpServers` that is not an object) is left alone with a hint and exit 0. `init --skill` writes the skill that ships with
+a JSON object (not valid JSON, duplicate keys, or an `mcpServers` that is not an object), or that has comments or trailing commas, is left alone with a hint and exit 0. A merged file keeps its line endings and indent. `init --skill` writes the skill that ships with
 the installed version and refreshes it when the tool is upgraded. Both files are setup writes of the engine's path policy
 (a symbolic link that leads out of the repository is refused, exit 4).
 
@@ -73,9 +73,11 @@ write:
 | anything else: edited by hand | leaves it alone, writes the new version to `SKILL.md.new` beside it and prints `skill not updated: ... was edited by hand; the new version is in SKILL.md.new (diff them, move your additions to CONVENTIONS.md, then run init --skill --force)`; exit 0 |
 
 `--force` overwrites an edited file. A leftover `SKILL.md.new` is removed once the skill is current (unless it was edited too).
-`init --skill --check` writes nothing (not even `.maquettiste/`), prints one line (`skill current`, `skill missing`, `skill stale`
-or `skill edited`) and exits 2 unless the skill is current, like `generate --check`. `--check` takes no other option, and `--force`
-needs `--skill` or `--agent-setup`. Without init, `claude mcp add maquettiste -- maquettiste mcp`
+`init --skill` also refreshes the copies under `.agents/skills/` and `.kiro/skills/` that carry the header (see
+[Other AI tools](#other-ai-tools-agents)); it never creates one there. `init --skill --check` writes nothing (not even
+`.maquettiste/`), prints one line per copy the engine owns (`skill current`, `skill stale` or `skill edited`; `skill missing` for
+the `.claude/skills/` copy when there is none at all) and exits 2 unless every copy is current, like `generate --check`. `--check` takes no other option, and `--force` needs `--skill`,
+`--agent-setup` or `--agents` with a tool that reads the skill. Without init, `claude mcp add maquettiste -- maquettiste mcp`
 registers the server for the current user only.
 
 Start `claude` in the repository, approve the project server when asked (or check with `/mcp`), and ask for a model change:
@@ -241,6 +243,60 @@ it lists the tools, finds `Invoice` with `get_model_index`, reads it with `get_e
 `amountDue` with `save_element` and the hash it read, checks the returned diagnostics, sees the old hash refused as a
 `conflict`, runs `validate` (0 errors), then `plan` and `get_plan_diff` on `src/Generated/Invoice.g.cs`, which shows the new
 name while nothing is written to the repository.
+
+## Other AI tools (`--agents`)
+
+`--agents` sets up other AI tools too. Give it tool names separated by commas, or `all`:
+
+```sh
+maquettiste init --agents codex,cursor   # only these two tools
+maquettiste init --agents all            # every tool below
+```
+
+For each tool it names, init writes the file that tool reads to find MCP servers, and a copy of the modeling skill in the folder
+the tool reads skills from. It writes nothing for a tool you do not name. `--agents claude` writes the same files as
+`--agent-setup`. Name the tools your team uses: some tools read more than one of these files, so `all` can show them the
+server twice.
+
+| Name | MCP file | Skill folder |
+| --- | --- | --- |
+| `claude` (Claude Code) | `.mcp.json` | `.claude/skills/` |
+| `codex` (Codex CLI, IDE extension and desktop app) | `.codex/config.toml` | `.agents/skills/` |
+| `copilot` (GitHub Copilot) | `.vscode/mcp.json` (VS Code) and `.github/mcp.json` (Copilot CLI) | `.agents/skills/` |
+| `cursor` | `.cursor/mcp.json` | `.agents/skills/` |
+| `grok` (Grok Build) | `.mcp.json` | `.claude/skills/` |
+| `kiro` | `.kiro/settings/mcp.json` | `.kiro/skills/` |
+| `junie` (JetBrains Junie) | `.junie/mcp/mcp.json` | none |
+| `devin` (Devin, formerly Windsurf) | `.devin/mcp_config.json` | `.agents/skills/` |
+| `amp` | `.amp/settings.json` | `.agents/skills/` |
+
+- Every file runs the same server command that `.mcp.json` gets: `maquettiste mcp`, the `dotnet tool run` form, or the container
+  line when you add `--docker <image>` (and `--runtime podman`). With `--agents`, `--docker` only picks that command; it writes
+  `.mcp.json` only when a named tool reads it (or with `--mcp`). The Windows form of the container line uses `${PWD}`, which
+  was checked with Claude Code only; other tools may not expand it.
+- The JSON files are merged the way `.mcp.json` is: other entries stay in order, the file keeps its line endings and indent,
+  and an existing `maquettiste` entry is kept (the container form replaces it). The servers sit under `servers` in
+  `.vscode/mcp.json`, under `amp.mcpServers` in `.amp/settings.json`, and under `mcpServers` elsewhere. The entry in
+  `.github/mcp.json` also lists `"tools": ["*"]`, as Copilot's own examples do.
+- A file with comments or trailing commas (common in `.vscode/mcp.json`) is never rewritten, since that would lose them. Neither
+  is a file init cannot read. Both are left alone, exit 0, with a line that shows the entry to add by hand. This applies to
+  `.mcp.json` too.
+- `.codex/config.toml` is TOML. init adds a `[mcp_servers.maquettiste]` table at the end, and never changes the rest. It adds
+  nothing when that exact header is there (the file is kept, even with `--docker`: change the table by hand). When the file
+  names `maquettiste` in any other way, or declares `[mcp_servers]` or `mcp_servers = ...` itself, it is left alone with the
+  table to add by hand.
+- Some tools ask first. Codex reads `.codex/config.toml` only in projects you trust, and Amp asks you to approve the server once
+  (`amp mcp approve maquettiste`); init's line for the file says so.
+- Every path is checked before anything is written. If one is refused (for example, a folder that is a link out of the
+  repository), init exits 4, names the path and writes nothing.
+- The skill copies are the same file, with the same header and rules as the `.claude/skills/` copy: init refreshes an untouched
+  copy, keeps an edited one (with `SKILL.md.new` beside it), and `--force` overwrites it. A copy in `.agents/skills/` or
+  `.kiro/skills/` without the header is your own: init leaves it alone and `--skill --check` skips it. The repository's
+  conventions stay in one place, `.claude/skills/maquettiste-modeling/CONVENTIONS.md`, whichever copy an agent reads.
+- `init --skill` refreshes every copy the engine owns. It creates the `.claude/skills/` copy only when there is no copy yet, so
+  a team that set up only other tools never gets one. `--agent-setup` always writes it.
+
+The [AI tools guide](guides/ai-tools.md) covers each tool in more detail, and the tools init does not set up.
 
 ## Tools
 

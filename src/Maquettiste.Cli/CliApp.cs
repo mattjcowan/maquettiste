@@ -133,9 +133,11 @@ public sealed class CliApp(CliEnvironment environment)
           init                  Create .maquettiste/, the schema files and a starter pack
                                   --pack sql-ddl|csharp-dapper|none (default sql-ddl), --hooks,
                                   --mcp (.mcp.json), --skill (.claude/skills), --agent-setup (both),
+                                  --agents <names>|all (the MCP file and skill of each AI tool named: claude, codex,
+                                  copilot, cursor, grok, kiro, junie, devin, amp; claude writes the --agent-setup files),
                                   --force (overwrite a skill edited by hand; else it goes to SKILL.md.new),
-                                  --skill --check (write nothing; exit 2 when the skill is missing, stale or edited),
-                                  --docker <image> (implies --mcp: .mcp.json runs the server in the image),
+                                  --skill --check (write nothing; exit 2 when a copy of the skill is missing, stale or edited),
+                                  --docker <image> (implies --mcp unless --agents: the files run the server in the image),
                                   --runtime docker|podman (the container command for --docker, default docker),
                                   --name <project name> (default: package.json name, git remote, folder)
           validate              Validate the model and packs

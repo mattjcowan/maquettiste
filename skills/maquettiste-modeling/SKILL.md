@@ -543,7 +543,8 @@ watcher, the server on its next call). Prefer small, reviewable changes: one ele
 
 ## This repository's conventions
 
-A repository keeps its own modeling conventions in `CONVENTIONS.md`, in the same folder as this file
-(`.claude/skills/maquettiste-modeling/`). When that file exists, read it after this one and follow it; where the two
+A repository keeps its own modeling conventions in `.claude/skills/maquettiste-modeling/CONVENTIONS.md`, whichever
+copy of this skill you are reading (the same skill can sit in `.agents/skills/` or `.kiro/skills/` too). When that file
+exists, read it after this one and follow it; where the two
 disagree, it wins. Over MCP, the `maquettiste://conventions` resource and the `modeling-conventions` prompt end with it.
 Add project rules there, never here: `maquettiste init --skill` rewrites this file and never touches `CONVENTIONS.md`.

@@ -78,6 +78,11 @@ internal sealed class GuardedFiles(IOutputPathPolicy policy)
         File.Delete(fullPath);
     }
 
+    /// <summary>Checks a path the way a write or a delete would, without touching the disk; a refusal throws.</summary>
+    /// <param name="target">The write target.</param>
+    /// <param name="fullPath">The absolute file path.</param>
+    public void Ensure(WriteTarget target, string fullPath) => Check(target, fullPath);
+
     private void Check(WriteTarget target, string fullPath)
     {
         var check = policy.CheckEngineWrite(target, fullPath);
