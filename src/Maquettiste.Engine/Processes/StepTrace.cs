@@ -385,6 +385,13 @@ public sealed record StepTrace(
     public RevisionChange? Revision { get; init; }
 
     /// <summary>
+    /// The subject's revision after the input, in a run whose subject's type has revisions: what <c>expect.revision</c> is compared with
+    /// (MQ9312). Not part of the trace's JSON.
+    /// </summary>
+    [JsonIgnore]
+    internal string? RevisionAfter { get; init; }
+
+    /// <summary>
     /// Whether the subject is frozen after the input (rights-design.md section 7): <see langword="true"/> from an accepted <c>freeze</c>, or a
     /// start with the subject <c>frozen</c>, until an accepted <c>thaw</c>. Left out of the JSON when false.
     /// </summary>

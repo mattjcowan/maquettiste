@@ -1,0 +1,286 @@
+{
+  "description": "One small scenario shared by the engine and the editor's mock (revisions-design.md section 17): a drawing released by a promote that gives the next letter (a labelling move, nextRevision 1), then revised at level 2 by a verb step, which starts its lifecycle over (the fallback), entering In Work again with its entry action, and resets approvedBy. Each expected trace lists only what both copies must agree on.",
+  "entity": {
+    "kind": "entity",
+    "id": "01JRVC00000000000000000001",
+    "name": "Drawing",
+    "package": "01JPKG00000000000000000001",
+    "key": {
+      "attributes": [
+        "01JRVC00000000000000000002"
+      ]
+    },
+    "attributes": [
+      {
+        "id": "01JRVC00000000000000000002",
+        "name": "id",
+        "type": "uuid"
+      },
+      {
+        "id": "01JRVC00000000000000000003",
+        "name": "revision",
+        "type": "string",
+        "length": 10
+      },
+      {
+        "id": "01JRVC00000000000000000004",
+        "name": "approvedBy",
+        "type": "string",
+        "length": 40
+      },
+      {
+        "id": "01JRVC00000000000000000005",
+        "name": "trail",
+        "type": "string",
+        "length": 40
+      }
+    ],
+    "revisions": {
+      "levels": [
+        {
+          "name": "major",
+          "format": "letters",
+          "skip": [
+            "I",
+            "O",
+            "Q",
+            "S",
+            "X",
+            "Z"
+          ]
+        },
+        {
+          "name": "minor",
+          "format": "numbers",
+          "startEmpty": true
+        }
+      ],
+      "boundAttribute": "01JRVC00000000000000000003",
+      "attributes": [
+        {
+          "attribute": "01JRVC00000000000000000004",
+          "onRevise": "reset"
+        }
+      ]
+    }
+  },
+  "process": {
+    "kind": "process",
+    "id": "01JRVP00000000000000000001",
+    "name": "DrawingLife",
+    "package": "01JPKG00000000000000000001",
+    "use": "lifecycle",
+    "subjects": [
+      {
+        "id": "01JRVB00000000000000000001",
+        "entity": "01JRVC00000000000000000001"
+      }
+    ],
+    "events": [
+      {
+        "id": "01JRVE00000000000000000001",
+        "name": "approve",
+        "verb": "promote"
+      },
+      {
+        "id": "01JRVE00000000000000000002",
+        "name": "release",
+        "verb": "promote"
+      }
+    ],
+    "actions": [
+      {
+        "id": "01JRVA00000000000000000001",
+        "name": "markEntry",
+        "sets": [
+          {
+            "id": "01JRVF00000000000000000001",
+            "attribute": "01JRVC00000000000000000005",
+            "value": {
+              "op": "concat",
+              "args": [
+                {
+                  "path": [
+                    "01JRVC00000000000000000005"
+                  ]
+                },
+                {
+                  "value": "i"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "states": [
+      {
+        "id": "01JRVS00000000000000000001",
+        "name": "InWork",
+        "entry": [
+          "01JRVA00000000000000000001"
+        ]
+      },
+      {
+        "id": "01JRVS00000000000000000002",
+        "name": "Approved"
+      },
+      {
+        "id": "01JRVS00000000000000000003",
+        "name": "Released"
+      }
+    ],
+    "initial": "01JRVS00000000000000000001",
+    "transitions": [
+      {
+        "id": "01JRVT00000000000000000001",
+        "source": "01JRVS00000000000000000001",
+        "event": "01JRVE00000000000000000001",
+        "targets": [
+          "01JRVS00000000000000000002"
+        ]
+      },
+      {
+        "id": "01JRVT00000000000000000002",
+        "source": "01JRVS00000000000000000002",
+        "event": "01JRVE00000000000000000002",
+        "targets": [
+          "01JRVS00000000000000000003"
+        ],
+        "nextRevision": 1
+      }
+    ]
+  },
+  "scenario": {
+    "objects": [
+      {
+        "id": "d1",
+        "name": "drawing",
+        "entity": "01JRVC00000000000000000001",
+        "values": {
+          "01JRVC00000000000000000004": "kim",
+          "01JRVC00000000000000000005": "-"
+        }
+      }
+    ],
+    "subject": "d1",
+    "steps": [
+      {
+        "event": "01JRVE00000000000000000001"
+      },
+      {
+        "event": "01JRVE00000000000000000002"
+      },
+      {
+        "input": "verb",
+        "verb": "revise",
+        "revision": 2
+      }
+    ]
+  },
+  "expected": [
+    {
+      "index": -1,
+      "accepted": true,
+      "configuration": [
+        "01JRVS00000000000000000001"
+      ],
+      "microsteps": [
+        {
+          "transitions": [],
+          "exited": [],
+          "entered": [
+            "01JRVS00000000000000000001"
+          ],
+          "actions": [
+            "01JRVA00000000000000000001"
+          ]
+        }
+      ],
+      "final": false,
+      "values": {
+        "01JRVC00000000000000000005": "-i"
+      }
+    },
+    {
+      "index": 0,
+      "accepted": true,
+      "configuration": [
+        "01JRVS00000000000000000002"
+      ],
+      "microsteps": [
+        {
+          "transitions": [
+            "01JRVT00000000000000000001"
+          ],
+          "exited": [
+            "01JRVS00000000000000000001"
+          ],
+          "entered": [
+            "01JRVS00000000000000000002"
+          ],
+          "actions": []
+        }
+      ],
+      "final": false
+    },
+    {
+      "index": 1,
+      "accepted": true,
+      "configuration": [
+        "01JRVS00000000000000000003"
+      ],
+      "microsteps": [
+        {
+          "transitions": [
+            "01JRVT00000000000000000002"
+          ],
+          "exited": [
+            "01JRVS00000000000000000002"
+          ],
+          "entered": [
+            "01JRVS00000000000000000003"
+          ],
+          "actions": []
+        }
+      ],
+      "final": false,
+      "revision": {
+        "from": "A",
+        "to": "B",
+        "level": 1
+      }
+    },
+    {
+      "index": 2,
+      "accepted": true,
+      "configuration": [
+        "01JRVS00000000000000000001"
+      ],
+      "microsteps": [
+        {
+          "transitions": [],
+          "exited": [
+            "01JRVS00000000000000000003"
+          ],
+          "entered": [
+            "01JRVS00000000000000000001"
+          ],
+          "actions": [
+            "01JRVA00000000000000000001"
+          ]
+        }
+      ],
+      "final": false,
+      "values": {
+        "01JRVC00000000000000000004": null,
+        "01JRVC00000000000000000005": "-ii"
+      },
+      "revision": {
+        "from": "B",
+        "to": "B.1",
+        "level": 2
+      }
+    }
+  ]
+}

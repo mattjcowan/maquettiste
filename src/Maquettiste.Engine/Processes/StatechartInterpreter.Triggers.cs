@@ -153,7 +153,9 @@ public sealed partial class StatechartInterpreter
             return null;
         var oldValues = new Dictionary<string, JsonElement>(_values, StringComparer.Ordinal);
         var sign = signRun is { IsEmpty: false } ? Prepare(signRun, null, _current, oldValues) : null;
-        var move = sign?.Refused is null && moveRun is { IsEmpty: false } ? Prepare(moveRun, sign?.Proposed, _current, oldValues) : null;
+        // On a revise move, the scratch copy holds the new revision's starting values (revisions-design.md section 9).
+        var start = moveRun is { IsEmpty: false } && verb == "revise" ? ReviseStart(t, external, sign?.Proposed) : null;
+        var move = sign?.Refused is null && moveRun is { IsEmpty: false } ? Prepare(moveRun, start ?? sign?.Proposed, _current, oldValues) : null;
         var refused = sign?.Refused is not null ? sign : move?.Refused is not null ? move : null;
         if (refused is not null)
         {
@@ -397,8 +399,9 @@ public sealed partial class StatechartInterpreter
         }
 
         var sets = TriggerSets(replace, _current, _values, prepared);
-        // Copy and revise make a new object the run doesn't hold: the trace shows the sets, and nothing is written.
-        if (replace.Verb is not ("copy" or "revise"))
+        // Copy and revise make a new object the run doesn't hold: the trace shows the sets, and nothing is written. A revise of an object whose
+        // type has revisions makes the new revision, which the run follows, so its replace's sets apply to it (revisions-design.md decision 16).
+        if (replace.Verb is not ("copy" or "revise") || (_scope.Revising && replace.Verb == "revise"))
             ApplyTrigger(sets);
         _scope.TriggerRuns.Add(Entry(replace, TriggerOutcome.Replaced, sets));
         prepared.Replaced = true;

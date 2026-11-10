@@ -4,6 +4,7 @@ using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Expressions;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.Revisions;
 using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Processes;
@@ -97,6 +98,9 @@ internal sealed class RunRights
     /// <summary>The model's evaluator.</summary>
     public RightsEvaluator Evaluator { get; }
 
+    /// <summary>The run's revisions: after a revise, other lifecycles answer in the states it gave them (revisions-design.md section 9).</summary>
+    public RunRevisions? Revisions { get; init; }
+
     /// <summary>Whether the project uses rights (decision 28).</summary>
     public bool Uses => Evaluator.Uses;
 
@@ -126,7 +130,7 @@ internal sealed class RunRights
     /// <returns>The answer, with notes and diagnostics.</returns>
     public RunCheckResult Check(RunCheck check)
     {
-        var cast = Participants.Current(_cast, check.Values);
+        var cast = Participants.Current(_cast, check.Values, Revisions);
         var obj = cast.Subject is { } subjectId ? cast.Objects.FirstOrDefault(o => string.Equals(o.Id, subjectId, StringComparison.Ordinal)) : null;
         var entity = obj is null ? null : _model.Get<Entity>(obj.Entity);
         var caller = check.Step.Participant is { } participantId && cast.Participant(participantId) is { } participant

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Maquettiste.Engine.Model;
 using Maquettiste.Engine.Resolution;
+using Maquettiste.Engine.Revisions;
 using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Processes;
@@ -43,8 +44,12 @@ internal sealed class RunTriggers
     /// <param name="process">The process that runs.</param>
     /// <param name="cast">The run's cast.</param>
     /// <returns>The run's trigger points.</returns>
-    public static RunTriggers? For(ProcessRuntime runtime, Process process, ScenarioCast cast) =>
-        TriggerSequences.Of(runtime.Model).Uses ? new RunTriggers(runtime, process, cast) : null;
+    /// <param name="revisions">The run's revisions, whose revise moves the other lifecycles (revisions-design.md section 9), or <see langword="null"/>.</param>
+    public static RunTriggers? For(ProcessRuntime runtime, Process process, ScenarioCast cast, RunRevisions? revisions = null) =>
+        TriggerSequences.Of(runtime.Model).Uses ? new RunTriggers(runtime, process, cast) { Revisions = revisions } : null;
+
+    /// <summary>The run's revisions: after a revise, other lifecycles read the states it gave them, over this run's cache.</summary>
+    public RunRevisions? Revisions { get; init; }
 
     /// <summary>The model's evaluator.</summary>
     public TriggerSequences Sequences { get; }
@@ -150,7 +155,7 @@ internal sealed class RunTriggers
     // The object's row to the depth an expression reads, with the values given and its states, the running lifecycle's being the live ones.
     private JsonElement RowOf(Prepared prepared, IReadOnlyDictionary<string, JsonElement> values, IReadOnlyList<string> running)
     {
-        var cast = Participants.Current(_cast, values);
+        var cast = Participants.Current(_cast, values, Revisions);
         var obj = cast.Objects.First(o => string.Equals(o.Id, _object!.Id, StringComparison.Ordinal));
         var runningChart = ProcessLibraries.Chart(_model, _process);
         var live = obj with { States = [.. obj.States.Where(s => !runningChart.ById.ContainsKey(s)), .. running] };
@@ -163,6 +168,9 @@ internal sealed class RunTriggers
     {
         if (_object is null || Entity is null)
             return null;
+        // A revise gave this lifecycle new states, which every later read takes over what was worked out before it.
+        if (Revisions?.States(lifecycle.Id) is { } revised)
+            return (revised, null);
         if (_states.TryGetValue(lifecycle.Id, out var known))
             return known;
         if (!SubjectCoverage.Governs(_model, lifecycle, Entity))

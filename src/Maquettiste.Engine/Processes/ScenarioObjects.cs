@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Revisions;
 using Maquettiste.Engine.Validation;
 
 namespace Maquettiste.Engine.Processes;
@@ -169,6 +170,9 @@ internal static class ScenarioObjects
                     return ($"Object '{obj.Name}': the value of '{attribute.Name}' does not fit its type ({why}); give a value of the attribute's type.", pointer + "/values");
             }
 
+            if ((obj.Revision is not null || RevisionCoverage.Of(model).Any) && RevisionProblem(model, obj, entity) is { } revision)
+                return (revision.Message, pointer + revision.Field);
+
             var chain = Chain(model, entity);
             for (var k = 0; k < obj.Links.Count; k++)
             {
@@ -221,6 +225,32 @@ internal static class ScenarioObjects
         }
 
         return null;
+    }
+
+    // Why an object's revision does not fit (MQ9305, revisions-design.md decision 40), or null: a revision beside a bound revision attribute,
+    // on an entity without revisions, or not a value of its sequence; a bound revision attribute's value that is not a value of the sequence.
+    private static (string Message, string Field)? RevisionProblem(ModelSnapshot model, ScenarioObject obj, Entity entity)
+    {
+        if (RevisionCoverage.Of(model).For(entity) is not { } merged)
+        {
+            return obj.Revision is null ? null
+                : ($"Object '{obj.Name}' gives a revision, but its entity '{entity.Name}' has no revisions; remove it, or give the entity a revisions block.", "/revision");
+        }
+
+        if (!RevisionSequence.TryCreate(merged.Levels, merged.Separator, out var sequence, out _))
+            return null;
+        if (merged.BoundAttribute is { } bound)
+        {
+            if (obj.Revision is not null)
+                return ($"Object '{obj.Name}' gives a revision, but entity '{entity.Name}' holds its revision in an attribute; give it in values instead.", "/revision");
+            if (obj.Values.TryGetValue(bound, out var held) && (held.ValueKind != JsonValueKind.String || !sequence.IsValue(held.GetString()!)))
+                return ($"Object '{obj.Name}' gives the revision {held.GetRawText()}, which is not a value of the revision sequence of '{entity.Name}'; give one such as '{sequence.Start}'.", "/values");
+            return null;
+        }
+
+        return obj.Revision is { } revision && !sequence.IsValue(revision)
+            ? ($"Object '{obj.Name}' gives the revision '{revision}', which is not a value of the revision sequence of '{entity.Name}'; give one such as '{sequence.Start}'.", "/revision")
+            : null;
     }
 
     // Why a link through a relation with an end of several types does not fit (MQ9305, several-types-design.md decision 18), or null: the object

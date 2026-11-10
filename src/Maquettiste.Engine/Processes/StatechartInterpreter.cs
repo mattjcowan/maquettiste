@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using Maquettiste.Engine.Diagnostics;
 using Maquettiste.Engine.Model;
+using Maquettiste.Engine.Revisions;
 
 namespace Maquettiste.Engine.Processes;
 
@@ -65,6 +66,12 @@ public sealed record InterpreterOptions
     /// tasks and verb steps run them in the fixed order. Without it, nothing runs and selection works as before trigger points.
     /// </summary>
     internal RunTriggers? Triggers { get; init; }
+
+    /// <summary>
+    /// The run's revisions (revisions-design.md section 9), set only in a project that uses them and only for a subject whose type has a block, or
+    /// a run with no subject object: revises and labels move the subject's revision. Without it, revise steps and moves run as before.
+    /// </summary>
+    internal RunRevisions? Revisions { get; init; }
 }
 
 /// <summary>
@@ -100,6 +107,9 @@ public sealed partial class StatechartInterpreter
     private int _frozeAt = -1;
     private readonly Dictionary<(string End, string Object), int> _frozenLinks = [];
     private Scope _scope = new(null);
+    // The run's revisions, and the start values Start was given, which a restart on a revise goes back to (revisions-design.md section 9).
+    private readonly RunRevisions? _revisions;
+    private IReadOnlyDictionary<string, JsonElement>? _startContext;
 
     /// <summary>Creates an interpreter for one instance of a chart.</summary>
     /// <param name="chart">The resolved chart.</param>
@@ -111,6 +121,7 @@ public sealed partial class StatechartInterpreter
         _root = new Instance(chart, null, null, 0);
         _subject = _options.Subject is { ValueKind: JsonValueKind.Object } subject ? subject : NoObject;
         _current = _subject;
+        _revisions = _options.Revisions;
         if (_options.Rights is { } rights)
         {
             _frozen = rights.StartsFrozen;
@@ -121,6 +132,9 @@ public sealed partial class StatechartInterpreter
 
     /// <summary>The values the run's sets gave the object so far, by attribute id (object-effects-design.md decision 4).</summary>
     internal IReadOnlyDictionary<string, JsonElement> Values => _values;
+
+    /// <summary>The run's revisions, which the cast each step reads lays over the subject (<see cref="Participants.Current"/>).</summary>
+    internal RunRevisions? Revisions => _revisions;
 
     /// <summary>The chart.</summary>
     public StatechartModel Chart => _root.Chart;
@@ -161,6 +175,7 @@ public sealed partial class StatechartInterpreter
         _started = true;
         Clock = at ?? DateTimeOffset.Parse(ScenarioStart.DefaultStart, CultureInfo.InvariantCulture);
         _scope = new Scope(null);
+        _startContext = context;
         InitContext(_root, context);
         var before = Snapshot();
         Macrostep(() =>
@@ -268,7 +283,8 @@ public sealed partial class StatechartInterpreter
             }
         }
 
-        _scope.Thaws = root && string.Equals(ev.Verb, "thaw", StringComparison.Ordinal);
+        // With a block, a revise counts as thawing for the frozen notes (revisions-design.md section 9): the new revision starts thawed.
+        _scope.Thaws = root && (string.Equals(ev.Verb, "thaw", StringComparison.Ordinal) || (ev.Verb == "revise" && _revisions is { Active: true }));
         _scope.Event = EventObject(ev.Name, input.Actor, ev.Payload, input.Payload);
         Macrostep(() =>
         {
@@ -287,11 +303,20 @@ public sealed partial class StatechartInterpreter
             }
 
             if (selection.Transitions.Count > 0)
+            {
+                _scope.OwnMove = true;
                 Microstep(target, selection.Transitions);
+                _scope.OwnMove = false;
+            }
+
             RunToCompletion(target);
             Propagate(target);
             return true;
         });
+
+        // An event step's chosen name applies to a move that revises or labels (revisions-design.md decision 40); otherwise it is ignored.
+        if (input.Revision is { } choice && _scope.Refusal is null && !_scope.ChoiceUsed && _revisions is { Active: true })
+            Note($"The move taken neither revises nor gives the next revision, so the step's revision '{choice.Name ?? choice.Level?.ToString(CultureInfo.InvariantCulture)}' was ignored.");
 
         // An accepted event that names freeze or thaw freezes or thaws the subject (decision 16), after its move.
         if (root && _scope.Refusal is null && ev.Verb is "freeze" or "thaw")
@@ -329,6 +354,9 @@ public sealed partial class StatechartInterpreter
             Macrostep(() =>
             {
                 if (Guard(next.Owner, next.Transition) != true)
+                    return true;
+                // Row 7b (revisions-design.md decision 22): a revision the sequence can't give skips the move.
+                if (RevisionRefused(next.Owner, next.Transition, own: false) is not null)
                     return true;
                 // Rows 8 and 9 right after the timer's guard (trigger-points-design.md decision 18): a refusing check skips its move.
                 if (TriggerCandidate(next.Owner, next.Transition, external: false) is not null)
@@ -432,7 +460,10 @@ public sealed partial class StatechartInterpreter
     // the rest are checked and recorded only.
     private void HandleVerb(ScenarioStep input)
     {
-        if (_root.Done || _deleted)
+        // A revise of an object whose type has revisions (revisions-design.md section 9) is accepted after the chart ended, when the running
+        // process is a lifecycle that governs the object.
+        var revising = input.Verb == "revise" && input.End is null && _revisions is { Active: true };
+        if (_deleted || (_root.Done && !(revising && _revisions!.Running is not null)))
         {
             Refuse(Refusals.NoTransition);
             return;
@@ -459,8 +490,35 @@ public sealed partial class StatechartInterpreter
             return;
         }
 
-        // The values a modify step on the subject, or a create step, gives (trigger-points-design.md decision 27), by attribute id with its name.
-        var own = new SortedDictionary<string, (string Name, JsonElement Value)>(StringComparer.Ordinal);
+        // Row 7b (revisions-design.md decision 22): the next revision at the step's level, or its chosen name, or the refusal revision.
+        string? nextRevision = null;
+        int? level = null;
+        var resets = new SortedDictionary<string, (string Name, JsonElement Value)>(StringComparer.Ordinal);
+        if (revising)
+        {
+            level = input.Revision?.Name is null ? input.Revision?.Level ?? 1 : null;
+            nextRevision = _revisions!.Next(level ?? 1, input.Revision?.Name);
+            if (nextRevision is null)
+            {
+                Refuse(Refusals.Revision, _revisions.RefusedBy);
+                return;
+            }
+
+            _scope.Thaws = true;
+            _scope.Revising = true;
+            foreach (var (id, name, value) in _revisions.Resets)
+                resets[id] = (name, value);
+        }
+        else if (verb == "revise" && input.End is null && _revisions is { Active: false })
+        {
+            Note("The run has no object, so the revise moved no revision: one lifecycle may govern types with different revisions, and the run can't know which apply.");
+        }
+
+        // The values a modify step on the subject, or a create step, gives (trigger-points-design.md decision 27), by attribute id with its name;
+        // on a revise, the new revision's starting values, which the scratch copy of rows 8 and 9 holds.
+        var own = new SortedDictionary<string, (string Name, JsonElement Value)>(resets, StringComparer.Ordinal);
+        if (revising && _revisions!.Bound is { } bound)
+            own[bound.Id] = (bound.Name, JsonSerializer.SerializeToElement(nextRevision));
         if ((verb == "modify" && input.End is null) || verb == "create")
         {
             foreach (var (id, value) in input.Values ?? ImmutableDictionary<string, JsonElement>.Empty)
@@ -476,6 +534,13 @@ public sealed partial class StatechartInterpreter
         {
             _scope.TriggerRuns.Add(refused);
             Refuse(Refusals.Check, refused.TriggerPoint);
+            return;
+        }
+
+        if (revising)
+        {
+            Revise(prepared, resets, nextRevision!, level);
+            RecordAct(_root, Person(), verb, null);
             return;
         }
 
@@ -842,11 +907,19 @@ public sealed partial class StatechartInterpreter
                         }
                     }
 
+                    // Row 7b (revisions-design.md decision 22): a revision the sequence can't give leaves the candidate out, and outranks a
+                    // gate as the reason.
+                    if (RevisionRefused(inst, t, external) is { } sequence)
+                    {
+                        Fail(Refusals.Revision, 3, sequence);
+                        continue;
+                    }
+
                     // Rows 8 and 9 (trigger-points-design.md decision 18): a refusing check leaves the candidate out, as a false guard does,
-                    // and outranks a gate as the reason.
+                    // and outranks a revision and a gate as the reason.
                     if (TriggerCandidate(inst, t, external) is { } refused)
                     {
-                        Fail(Refusals.Check, 3, refused.TriggerPoint, refused);
+                        Fail(Refusals.Check, 4, refused.TriggerPoint, refused);
                         continue;
                     }
 
@@ -893,6 +966,14 @@ public sealed partial class StatechartInterpreter
         {
             if (Guard(inst, t) == true)
             {
+                // Row 7b (revisions-design.md decision 22): a revision the sequence can't give outranks a guard as the reason.
+                if (RevisionRefused(inst, t, own) is { } sequence)
+                {
+                    if (reason is Refusals.NoTransition or Refusals.Guard)
+                        (reason, by, refusing) = (Refusals.Revision, sequence, null);
+                    continue;
+                }
+
                 // Rows 8 and 9 (trigger-points-design.md decision 18): a check outranks a guard as the reason, the first of each kept.
                 if (TriggerCandidate(inst, t, own) is { } refused)
                 {
@@ -1287,11 +1368,15 @@ public sealed partial class StatechartInterpreter
 
     // ---- microstep ----
 
-    private void Microstep(Instance inst, IReadOnlyList<ChartTransition> transitions, ChartState? initial = null)
+    private void Microstep(Instance inst, IReadOnlyList<ChartTransition> transitions, ChartState? initial = null, List<string>? left = null)
     {
         if (++_micro > _options.MaxMicrosteps)
             throw new MacrostepOverflowException();
-        var exited = new List<string>();
+        var exited = left ?? [];
+        // A move that revises or labels the subject's revision (revisions-design.md decision 19), only the running chart's; the states it
+        // leaves, which the earlier revision stays in.
+        var moving = _revisions is not null && initial is null && inst.Parent is null ? RevisionMove(transitions) : null;
+        var leaving = moving is { Revise: true } ? LiveStates() : null;
         var entered = new List<string>();
         var actions = new List<ActionRun>();
         // The points of the moves taken (trigger-points-design.md decision 18): listed once per microstep, and their proposed values written
@@ -1334,6 +1419,10 @@ public sealed partial class StatechartInterpreter
             inst.Config.Remove(s);
             exited.Add(s.Id);
         }
+
+        // The revision moves after the exit actions and before the transition actions (decision 19).
+        if (moving is { } revisionMove)
+            MoveRevision(revisionMove, taken, leaving);
 
         // Transition actions, in transition order.
         foreach (var t in transitions)
@@ -1659,10 +1748,14 @@ public sealed partial class StatechartInterpreter
             Notes = _scope.Notes.Count > 0 ? [.. _scope.Notes] : null,
             // Written in a project that uses rights, and for a step that expects it, so today's traces keep their members (decision 26).
             // ... and in a project that uses trigger points (trigger-points-design.md decision 28).
-            RefusedBy = _scope.RefusedBy is { } by && (_options.Rights is { Uses: true } || _options.Triggers is not null || _scope.Input?.Expect?.RefusedBy is not null) ? by : null,
+            // ... and for a refusal revision, which only a project with revisions has (revisions-design.md decision 22).
+            RefusedBy = _scope.RefusedBy is { } by && (_options.Rights is { Uses: true } || _options.Triggers is not null || _scope.Input?.Expect?.RefusedBy is not null
+                || _scope.Refusal == Refusals.Revision) ? by : null,
             Rights = _scope.Rights.Count > 0 ? [.. _scope.Rights] : null,
             TriggerPoints = _scope.TriggerRuns.Count + _scope.Queued.Count > 0 ? [.. _scope.TriggerRuns, .. _scope.Queued] : null,
             CheckWarnings = _scope.CheckWarnings.Count > 0 ? [.. _scope.CheckWarnings] : null,
+            Revision = _scope.Revision,
+            RevisionAfter = _revisions is { Active: true } revisions ? revisions.Revision : null,
             Frozen = _frozen,
             FrozenBy = _scope.Refusal == Refusals.Frozen ? FrozeBy(_scope.Input) : null,
             SignatureCounts = counts,
@@ -1826,6 +1919,12 @@ public sealed partial class StatechartInterpreter
         public List<RightEvaluation> Rights { get; } = [];
         public bool HumanTask { get; set; }
         public bool Thaws { get; set; }
+        // A revise verb step of a subject whose type has revisions (a replace on revise then applies its sets); the step's own move, whose
+        // chosen revision name applies; whether it did; and how the step moved the revision (revisions-design.md section 9).
+        public bool Revising { get; set; }
+        public bool OwnMove { get; set; }
+        public bool ChoiceUsed { get; set; }
+        public RevisionChange? Revision { get; set; }
         public string? Identity { get; init; }
         // The named signature picked with the participant's actor, and the approvals the step answered (signoff-design.md decisions 8 and 27).
         public string? Pick { get; init; }
