@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Resolved model",
-  "description": "One page of the resolved model, the model as code generation sees it, as `GET /api/model/resolved` and the MCP tool `get_resolved_model` answer it. Records are flat: other objects appear by id. Contract 0.23.0: until version 1 the contract is the Maquettiste release and may change in any release. The reference is resolved-model.md, next to this file.",
-  "x-contract": "0.23.0",
+  "description": "One page of the resolved model, the model as code generation sees it, as `GET /api/model/resolved` and the MCP tool `get_resolved_model` answer it. Records are flat: other objects appear by id. Contract 0.24.0: until version 1 the contract is the Maquettiste release and may change in any release. The reference is resolved-model.md, next to this file.",
+  "x-contract": "0.24.0",
   "x-scopes": {
     "packages": "packageRecord",
     "entities": "entityRecord",
@@ -65,7 +65,7 @@
     "contract": {
       "description": "The contract version the page follows: the version inside `resolved-model.json` of the same release. Until version 1 it is the Maquettiste release, and the contract may change in any release.",
       "type": "string",
-      "const": "0.23.0"
+      "const": "0.24.0"
     },
     "schema": {
       "description": "The file name of the JSON Schema that describes the page: `resolved-model.json`. A project holds it in `.maquettiste/.schema/v1/`; `GET /api/model/resolved/schema` and the MCP tool `get_schema` (`resolved-model`) return it.",
@@ -3338,7 +3338,7 @@
         "contract": {
           "description": "The contract version the page follows: the version inside `resolved-model.json` of the same release. Until version 1 it is the Maquettiste release, and the contract may change in any release.",
           "type": "string",
-          "const": "0.23.0"
+          "const": "0.24.0"
         },
         "schema": {
           "description": "The file name of the JSON Schema that describes the page: `resolved-model.json`. A project holds it in `.maquettiste/.schema/v1/`; `GET /api/model/resolved/schema` and the MCP tool `get_schema` (`resolved-model`) return it.",
@@ -3371,7 +3371,7 @@
         "contract": {
           "description": "The contract version the page follows: the version inside `resolved-model.json` of the same release. Until version 1 it is the Maquettiste release, and the contract may change in any release.",
           "type": "string",
-          "const": "0.23.0"
+          "const": "0.24.0"
         },
         "schema": {
           "description": "The file name of the JSON Schema that describes the page: `resolved-model.json`. A project holds it in `.maquettiste/.schema/v1/`; `GET /api/model/resolved/schema` and the MCP tool `get_schema` (`resolved-model`) return it.",

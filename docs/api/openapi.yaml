@@ -934,7 +934,7 @@ paths:
                 enums:
                   summary: GET /api/model/resolved?scope=enums on the billing fixture
                   value:
-                    contract: 0.23.0
+                    contract: 0.24.0
                     schema: resolved-model.json
                     items:
                       - id: 01J92P0V05WQDH2GZG539D9VG1
@@ -961,7 +961,7 @@ paths:
                 entity:
                   summary: GET /api/model/resolved?scope=entities&limit=1&cursor=... (Product, two of its five attributes shown)
                   value:
-                    contract: 0.23.0
+                    contract: 0.24.0
                     schema: resolved-model.json
                     items:
                       - id: 01J92P0V0JR8BE8253SKT29ZG7
