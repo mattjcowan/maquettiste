@@ -132,8 +132,23 @@ describe("the When revised conversions", () => {
     expect(choices.map((a) => a.id)).toEqual(["a6"]);
     expect(
       reachedEnds([
-        { name: "Docs", ends: [{ id: "e1", role: "owner" }, { id: "e2", role: "documents" }], covers: [true, false] },
-        { name: "Three", ends: [{ id: "x", role: "a" }, { id: "y", role: "b" }, { id: "z", role: "c" }], covers: [true, true, true] },
+        {
+          name: "Docs",
+          ends: [
+            { id: "e1", role: "owner" },
+            { id: "e2", role: "documents" },
+          ],
+          covers: [true, false],
+        },
+        {
+          name: "Three",
+          ends: [
+            { id: "x", role: "a" },
+            { id: "y", role: "b" },
+            { id: "z", role: "c" },
+          ],
+          covers: [true, true, true],
+        },
       ]),
     ).toEqual([{ id: "e2", label: "Docs.documents" }]);
   });
@@ -202,7 +217,13 @@ describe("the quick fixes of the revision rules", () => {
   it("MQ8312 removes the entry, and the block when nothing is left", () => {
     const two = revisionFix(
       "MQ8312",
-      entity({ levels: LEVELS, attributes: [{ attribute: "a", onRevise: "reset" }, { attribute: "b", onRevise: "clear" }] }),
+      entity({
+        levels: LEVELS,
+        attributes: [
+          { attribute: "a", onRevise: "reset" },
+          { attribute: "b", onRevise: "clear" },
+        ],
+      }),
       "/revisions/attributes/0/attribute",
     );
     expect(((two?.json.revisions as Json).attributes as Json[]).map((e) => e.attribute)).toEqual(["b"]);
@@ -215,10 +236,25 @@ describe("the mock's revision rules", () => {
   const entry = (json: Json): ModelEntry => ({ id: String(json.id), path: `${String(json.id)}.json`, json }) as unknown as ModelEntry;
   const find = (entries: ModelEntry[], id: string) => {
     const out: { rule: string; message: string; pointer: string }[] = [];
-    revisionDiagnostics(entries.find((e) => e.id === id)!, () => entries, (rule, _s, message, pointer) => out.push({ rule, message, pointer }));
+    revisionDiagnostics(
+      entries.find((e) => e.id === id)!,
+      () => entries,
+      (rule, _s, message, pointer) => out.push({ rule, message, pointer }),
+    );
     return out;
   };
-  const entity = (revisions: Json, extra: Json = {}) => entry({ kind: "entity", id: "E", name: "Drawing", attributes: [{ id: "rev", name: "revision", type: "string" }, { id: "n", name: "count", type: "int32" }], ...extra, revisions });
+  const entity = (revisions: Json, extra: Json = {}) =>
+    entry({
+      kind: "entity",
+      id: "E",
+      name: "Drawing",
+      attributes: [
+        { id: "rev", name: "revision", type: "string" },
+        { id: "n", name: "count", type: "int32" },
+      ],
+      ...extra,
+      revisions,
+    });
 
   it("MQ8301: both format and values, a list value with the separator, a family with no levels", () => {
     const found = find([entity({ levels: [{ format: "letters", values: ["A"] }, { values: ["a.b", "c"] }] })], "E");
@@ -240,13 +276,23 @@ describe("the mock's revision rules", () => {
   });
 
   it("MQ8305: a bound attribute that is not text", () => {
-    expect(find([entity({ levels: [{ format: "letters" }], boundAttribute: "n" })], "E")[0]).toMatchObject({ rule: "MQ8305", pointer: "/revisions/boundAttribute" });
+    expect(find([entity({ levels: [{ format: "letters" }], boundAttribute: "n" })], "E")[0]).toMatchObject({
+      rule: "MQ8305",
+      pointer: "/revisions/boundAttribute",
+    });
     expect(find([entity({ levels: [{ format: "letters" }], boundAttribute: "rev" })], "E")).toEqual([]);
   });
 
   it("MQ8312: two entries for one attribute, and a key attribute that is reset", () => {
     const e = entity(
-      { levels: [{ format: "letters" }], attributes: [{ attribute: "rev", onRevise: "reset" }, { attribute: "rev", onRevise: "clear" }, { attribute: "n", onRevise: "reset" }] },
+      {
+        levels: [{ format: "letters" }],
+        attributes: [
+          { attribute: "rev", onRevise: "reset" },
+          { attribute: "rev", onRevise: "clear" },
+          { attribute: "n", onRevise: "reset" },
+        ],
+      },
       { key: { attributes: ["n"] } },
     );
     const found = find([e], "E");
@@ -271,7 +317,15 @@ describe("the mock's revision rules", () => {
   });
 
   it("MQ9305: a scenario step's revision on a step that cannot revise, and an object's revision that is not a value", () => {
-    const process = entry({ kind: "process", id: "P", name: "P", use: "lifecycle", subjects: [{ id: "s", entity: "E" }], events: [], states: [{ id: "a", name: "a" }] });
+    const process = entry({
+      kind: "process",
+      id: "P",
+      name: "P",
+      use: "lifecycle",
+      subjects: [{ id: "s", entity: "E" }],
+      events: [],
+      states: [{ id: "a", name: "a" }],
+    });
     const scenario = entry({
       kind: "scenario",
       id: "S",
@@ -279,7 +333,10 @@ describe("the mock's revision rules", () => {
       process: "P",
       subject: "o",
       objects: [{ id: "o", name: "o", entity: "E", revision: "1" }],
-      steps: [{ id: "x", input: "verb", verb: "modify", revision: "B" }, { id: "y", input: "verb", verb: "revise", revision: 4 }],
+      steps: [
+        { id: "x", input: "verb", verb: "modify", revision: "B" },
+        { id: "y", input: "verb", verb: "revise", revision: 4 },
+      ],
     });
     const found = find([entity({ levels: [{ format: "letters" }] }), process, scenario], "S");
     expect(found.map((f) => f.pointer)).toEqual(["/objects/0/revision", "/steps/0/revision", "/steps/1/revision"]);
@@ -299,7 +356,14 @@ describe("the references and deletes of the block", () => {
       attributes: [{ attribute: "A1", onRevise: "reset" }],
     },
   };
-  const process: Json = { kind: "process", id: "L1", name: "Life", use: "lifecycle", subjects: [{ id: "s", entity: "E" }], states: [{ id: "01HZZZZZZZZZZZZZZZZZZZZZZ1", name: "S" }] };
+  const process: Json = {
+    kind: "process",
+    id: "L1",
+    name: "Life",
+    use: "lifecycle",
+    subjects: [{ id: "s", entity: "E" }],
+    states: [{ id: "01HZZZZZZZZZZZZZZZZZZZZZZ1", name: "S" }],
+  };
   const docs = new Map<string, CascadeDoc>([
     ["E", { id: "E", path: "E.json", json: entity }],
     ["L1", { id: "L1", path: "L1.json", json: process }],
@@ -307,7 +371,12 @@ describe("the references and deletes of the block", () => {
 
   it("lists the pointers into the block", () => {
     expect(referencesOf(entity).map((r) => r.pointer)).toEqual(
-      expect.arrayContaining(["/revisions/boundAttribute", "/revisions/lifecycles/0/lifecycle", "/revisions/lifecycles/0/onRevise", "/revisions/attributes/0/attribute"]),
+      expect.arrayContaining([
+        "/revisions/boundAttribute",
+        "/revisions/lifecycles/0/lifecycle",
+        "/revisions/lifecycles/0/onRevise",
+        "/revisions/attributes/0/attribute",
+      ]),
     );
   });
 

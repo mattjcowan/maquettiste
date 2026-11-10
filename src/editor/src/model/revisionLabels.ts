@@ -40,6 +40,7 @@ export function transitionRevisionText(nextRevision: number | undefined, verb: s
 /** The choices of the level picker: None, then each level; a level the types lack but the file names is kept, so it can be seen and fixed. */
 export function levelChoices(labels: readonly LevelLabel[], current: number | undefined): { value: string; label: string }[] {
   const choices = [{ value: "", label: "None" }, ...labels.map((l) => ({ value: String(l.number), label: l.label }))];
-  if (current !== undefined && !labels.some((l) => l.number === current)) choices.push({ value: String(current), label: `Level ${current} (no governed type has it)` });
+  if (current !== undefined && !labels.some((l) => l.number === current))
+    choices.push({ value: String(current), label: `Level ${current} (no governed type has it)` });
   return choices;
 }

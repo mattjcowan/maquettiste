@@ -342,7 +342,8 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
   const objectFields = useObjectFields([...new Set((scenario.objects ?? []).map((o) => o.entity))]);
   const objectNames = new Map((scenario.objects ?? []).map((o) => [o.id, o.name]));
   const revisions = useMergedRevisions([...new Set((scenario.objects ?? []).map((o) => o.entity))]);
-  const revisionsShown = [...revisions.values()].some((m) => m !== null && m.boundAttribute === null) || (scenario.objects ?? []).some((o) => o.revision !== undefined);
+  const revisionsShown =
+    [...revisions.values()].some((m) => m !== null && m.boundAttribute === null) || (scenario.objects ?? []).some((o) => o.revision !== undefined);
   const linkLabel = (l: { end: string; object: string }) => `${objectFields.nameOf(l.end)}: ${objectNames.get(l.object) ?? "?"}`;
   const rows: ObjectRow[] = (scenario.objects ?? []).map((o, i) => ({
     id: o.id,
@@ -421,7 +422,8 @@ export function ObjectsGrid({ ctx, scenario }: { ctx: EditorContext; scenario: S
           {
             key: "revision",
             label: "Revision",
-            tooltip: "The object's current revision, a value of its type's revision sequence. Empty: the sequence's start. A type whose revision is held in an attribute sets it in Values.",
+            tooltip:
+              "The object's current revision, a value of its type's revision sequence. Empty: the sequence's start. A type whose revision is held in an attribute sets it in Values.",
             kind: "text" as const,
             width: "min-w-20",
             mono: true,

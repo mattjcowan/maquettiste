@@ -1,14 +1,7 @@
 // The conversions behind the entity editor's Revisions tab (revisions-design.md section 12): a level as a row of fields and back,
 // the edits that write the entity's own block, the attributes the "Held in" picker may offer (decision 11) and the preview's runs.
 // Pure, so the tab's behaviour is tested without a screen.
-import {
-  firstRevision,
-  levelExamples,
-  nextRevision,
-  type MergedRevisions,
-  type RevisionSequence,
-  type SequenceLevel,
-} from "@/model/revisionSequence";
+import { firstRevision, levelExamples, nextRevision, type MergedRevisions, type RevisionSequence, type SequenceLevel } from "@/model/revisionSequence";
 
 export const MAX_LEVELS = 3;
 
@@ -50,7 +43,14 @@ export function parseSkip(text: string): string[] {
 
 /** The values of a list in a text: one per line, each trimmed, empty ones and repeats dropped. */
 export function parseListValues(text: string): string[] {
-  return [...new Set(text.split(/\r?\n/).map((v) => v.trim()).filter((v) => v !== ""))];
+  return [
+    ...new Set(
+      text
+        .split(/\r?\n/)
+        .map((v) => v.trim())
+        .filter((v) => v !== ""),
+    ),
+  ];
 }
 
 /** A row written as a level; fields that don't belong to its kind, and empty fields, are left out. */
@@ -76,8 +76,7 @@ export function rowToLevel(row: LevelRow): SequenceLevel {
 }
 
 /** A new level for the Add button: letters when it is the first, else numbers that start empty (the usual "A, A.1, A.2"). */
-export const newLevel = (existing: number): SequenceLevel =>
-  existing === 0 ? { format: "letters" } : { format: "numbers", startEmpty: true };
+export const newLevel = (existing: number): SequenceLevel => (existing === 0 ? { format: "letters" } : { format: "numbers", startEmpty: true });
 
 /** The sequence a set of levels and a separator write, for the preview. */
 export const sequenceOf = (levels: readonly SequenceLevel[], separator: string): RevisionSequence => ({ levels, separator });

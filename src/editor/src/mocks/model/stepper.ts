@@ -718,7 +718,7 @@ class Interpreter {
   revision = "";
   /** The start values the run was given: a revise that starts the chart over takes its context back to them. */
   private startContext: Json | undefined;
-  private prep =new Map<Edge, { sign: Prepared | null; move: Prepared | null }>();
+  private prep = new Map<Edge, { sign: Prepared | null; move: Prepared | null }>();
   private auditSeq = 0;
   private timerSeq = 0;
   private index = -1;
@@ -1246,7 +1246,11 @@ class Interpreter {
   /** A verb step (decision 25): rights first, then what the run does with it. */
   private handleVerb(input: SimInputJson) {
     // A revise of a subject with revisions is accepted after the lifecycle ended: it starts the chart again (revisions-design.md section 9, step 1).
-    const reviseAfterEnd = input.verb === "revise" && !!this.revisions && this.chart.doc.use === "lifecycle" && this.revisions.lifecycles.some((l) => l.lifecycle === this.chart.doc.id);
+    const reviseAfterEnd =
+      input.verb === "revise" &&
+      !!this.revisions &&
+      this.chart.doc.use === "lifecycle" &&
+      this.revisions.lifecycles.some((l) => l.lifecycle === this.chart.doc.id);
     if ((this.done && !reviseAfterEnd) || this.deleted) return this.refuse("no-transition");
     const verb = input.verb ?? null;
     const group = builtInVerbs.find((v) => v.key === verb)?.group;
@@ -1290,7 +1294,9 @@ class Interpreter {
       if (!next) return this.refuse("revision", this.revisions.levelsFrom);
       revise = { ...next, ...(({ values, expressions }) => ({ resets: values, expressions }))(reviseValues(this.revisions, this.attributesOf(entity))) };
     } else if (verb === "revise" && !input.end && !object && this.anyRevisions) {
-      this.scope.notes.push("The run has no object, so the revise moved no revision: one lifecycle may govern types with different revisions, and the run can't know which apply.");
+      this.scope.notes.push(
+        "The run has no object, so the revise moved no revision: one lifecycle may govern types with different revisions, and the run can't know which apply.",
+      );
     }
     // The values a modify (or a create, decision 27) step gives, by attribute id.
     const values: Json = {};
@@ -1394,7 +1400,9 @@ class Interpreter {
 
   /** What each lifecycle did at a revise, as one note, with the revisions it moved between. */
   private reviseNote(from: string, to: string, parts: string[]) {
-    const links = this.revisions?.links.length ? ` The type's rules for links (${this.revisions.links.length}) are not applied in a run: the links stay as they are.` : "";
+    const links = this.revisions?.links.length
+      ? ` The type's rules for links (${this.revisions.links.length}) are not applied in a run: the links stay as they are.`
+      : "";
     this.scope.notes.push(`Revised ${from || "none"} to ${to}${parts.length ? `: ${parts.join("; ")}` : ""}.${links}`);
   }
 
@@ -1497,7 +1505,9 @@ class Interpreter {
     if (!moves.length) return;
     if (!this.revisions) {
       if (this.anyRevisions && !this.subjectObject())
-        this.scope.notes.push("The run has no object, so the move gave no revision: one lifecycle may govern types with different revisions, and the run can't know which apply.");
+        this.scope.notes.push(
+          "The run has no object, so the move gave no revision: one lifecycle may govern types with different revisions, and the run can't know which apply.",
+        );
       return;
     }
     const revise = moves.some((x) => x.verb === "revise");
@@ -1505,11 +1515,14 @@ class Interpreter {
     const level = Math.min(...named);
     const input = this.scope.input;
     const chosen =
-      input?.input === "event" && typeof input.revision === "string" && moves.some((x) => x.trigger === "event" && x.key === input.event) ? input.revision : null;
+      input?.input === "event" && typeof input.revision === "string" && moves.some((x) => x.trigger === "event" && x.key === input.event)
+        ? input.revision
+        : null;
     const next = moveRevision(this.revisions, this.revision, level, chosen);
     if (!next) return;
     const from = this.revision;
-    if (named.some((n) => n !== named[0])) this.scope.notes.push(`Transitions taken together named different revision levels, so the revision moved once, at level ${level}.`);
+    if (named.some((n) => n !== named[0]))
+      this.scope.notes.push(`Transitions taken together named different revision levels, so the revision moved once, at level ${level}.`);
     this.setRevision(next.to, next.level);
     if (!revise) return;
     const set = new Set(transitions.flatMap((x) => (this.prep.get(x)?.move?.fills ?? []).flatMap((f) => Object.keys(f.sets))));
@@ -2936,7 +2949,9 @@ class Interpreter {
       ...(this.scope.actsAs ? { actsAs: this.scope.actsAs } : {}),
       ...(Object.keys(valuesChanged).length ? { valuesChanged: sorted(valuesChanged) } : {}),
       ...(this.scope.notes.length ? { notes: [...new Set(this.scope.notes)] } : {}),
-      ...(this.scope.refusal !== null && this.scope.refusedBy && (this.rightsOn || this.scope.refusal === "revision") ? { refusedBy: this.scope.refusedBy } : {}),
+      ...(this.scope.refusal !== null && this.scope.refusedBy && (this.rightsOn || this.scope.refusal === "revision")
+        ? { refusedBy: this.scope.refusedBy }
+        : {}),
       ...(this.scope.rights.length ? { rights: uniqueHoldings(this.scope.rights) } : {}),
       ...(this.frozenObject ? { frozen: true as const } : {}),
       ...(this.scope.triggerRuns.length || this.scope.queued.length ? { triggerPoints: [...this.scope.triggerRuns, ...this.scope.queued] } : {}),

@@ -29,7 +29,8 @@ export function lifecycleRows(merged: MergedRevisions): EntryRow<string>[] {
 /** The attribute rows: the merged entries, plus the entity's own `copy` entries (which undo a base's, and so show as Copied). */
 export function attributeRows(merged: MergedRevisions, own: RevisionsBlock | undefined, entityId: string): EntryRow<AttributeRule>[] {
   const rows: EntryRow<AttributeRule>[] = merged.attributes.map((a) => ({ id: a.attribute, rule: a.onRevise, from: a.from }));
-  for (const e of own?.attributes ?? []) if (e.onRevise === "copy" && !rows.some((r) => r.id === e.attribute)) rows.push({ id: e.attribute, rule: "copy", from: entityId });
+  for (const e of own?.attributes ?? [])
+    if (e.onRevise === "copy" && !rows.some((r) => r.id === e.attribute)) rows.push({ id: e.attribute, rule: "copy", from: entityId });
   return rows;
 }
 
@@ -112,10 +113,6 @@ export interface EndChoice {
  * The relation ends the type reaches (MQ8312): for a relation of two ends, the end whose other end covers the entity or a base of it.
  * `relations` gives each relation's name, its document's ends and the index row's ends in the same order.
  */
-export function reachedEnds(
-  relations: readonly { name: string; ends: { id: string; role: string }[]; covers: readonly boolean[] }[],
-): EndChoice[] {
-  return relations.flatMap((r) =>
-    r.ends.length !== 2 ? [] : r.ends.flatMap((e, i) => (r.covers[1 - i] ? [{ id: e.id, label: `${r.name}.${e.role}` }] : [])),
-  );
+export function reachedEnds(relations: readonly { name: string; ends: { id: string; role: string }[]; covers: readonly boolean[] }[]): EndChoice[] {
+  return relations.flatMap((r) => (r.ends.length !== 2 ? [] : r.ends.flatMap((e, i) => (r.covers[1 - i] ? [{ id: e.id, label: `${r.name}.${e.role}` }] : []))));
 }

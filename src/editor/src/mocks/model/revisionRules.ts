@@ -63,7 +63,8 @@ function entityRules(entity: Json, world: World, emit: Emit): void {
   const own = block.levels ?? [];
 
   // MQ8301: one message per fault.
-  if (!merged.levels.length) emit("MQ8301", "error", `'${who}' has a revisions block, but neither it nor a base names levels; give it a levels list.`, "/revisions", id);
+  if (!merged.levels.length)
+    emit("MQ8301", "error", `'${who}' has a revisions block, but neither it nor a base names levels; give it a levels list.`, "/revisions", id);
   const names = new Set<string>();
   own.forEach((level: SequenceLevel, i) => {
     const at = `/revisions/levels/${i}`;
@@ -78,7 +79,8 @@ function entityRules(entity: Json, world: World, emit: Emit): void {
       emit("MQ8301", "error", `${label} has width, which only a numbers level takes; remove it.`, `${at}/width`, id);
     if (hasValues)
       for (const key of ["first", "skip", "width"] as const)
-        if (level[key] !== undefined) emit("MQ8301", "error", `${label} has a list of values and ${key}; a list takes none of first, skip and width. Remove ${key}.`, `${at}/${key}`, id);
+        if (level[key] !== undefined)
+          emit("MQ8301", "error", `${label} has a list of values and ${key}; a list takes none of first, skip and width. Remove ${key}.`, `${at}/${key}`, id);
     if (level.name !== undefined) {
       if (names.has(level.name)) emit("MQ8301", "error", `${label} repeats the name '${level.name}'; give each level its own name.`, `${at}/name`, id);
       names.add(level.name);
@@ -98,7 +100,8 @@ function entityRules(entity: Json, world: World, emit: Emit): void {
         const vat = `${at}/values/${j}`;
         if (v === "") emit("MQ8301", "error", `${label} has an empty value; every value needs text.`, vat, id);
         else if (seen.has(v)) emit("MQ8301", "error", `${label} lists '${v}' twice; give each value once.`, vat, id);
-        else if (separator !== "" && v.includes(separator)) emit("MQ8301", "error", `${label} has the value '${v}', which holds the separator '${separator}'; change one of them.`, vat, id);
+        else if (separator !== "" && v.includes(separator))
+          emit("MQ8301", "error", `${label} has the value '${v}', which holds the separator '${separator}'; change one of them.`, vat, id);
         seen.add(v);
       });
     }
@@ -108,10 +111,18 @@ function entityRules(entity: Json, world: World, emit: Emit): void {
   if (own.length || block.separator !== undefined) {
     const levels = merged.levels;
     if (/[A-Za-z0-9]/.test(separator)) {
-      emit("MQ8303", "error", `'${who}' uses the separator '${separator}', which holds a letter or a digit, so its revisions cannot be read back; use another separator.`, "/revisions/separator", id);
+      emit(
+        "MQ8303",
+        "error",
+        `'${who}' uses the separator '${separator}', which holds a letter or a digit, so its revisions cannot be read back; use another separator.`,
+        "/revisions/separator",
+        id,
+      );
     } else if (separator === "") {
       const kind = (l: SequenceLevel) => (l.values ? "list" : l.format);
-      const bad = levels.findIndex((l, i) => i > 0 && !((kind(levels[i - 1]) === "letters" && kind(l) === "numbers") || (kind(levels[i - 1]) === "numbers" && kind(l) === "letters")));
+      const bad = levels.findIndex(
+        (l, i) => i > 0 && !((kind(levels[i - 1]) === "letters" && kind(l) === "numbers") || (kind(levels[i - 1]) === "numbers" && kind(l) === "letters")),
+      );
       if (bad > 0)
         emit(
           "MQ8303",
@@ -143,8 +154,10 @@ function entityRules(entity: Json, world: World, emit: Emit): void {
         }
         return false;
       };
-      if (attribute.derived) emit("MQ8305", "error", `Attribute '${aname}' of '${who}' is derived, so it cannot hold the revision; hold it in an attribute that is stored.`, at, id);
-      else if (attribute.collection === true) emit("MQ8305", "error", `Attribute '${aname}' of '${who}' holds many values; hold the revision in a single-valued attribute.`, at, id);
+      if (attribute.derived)
+        emit("MQ8305", "error", `Attribute '${aname}' of '${who}' is derived, so it cannot hold the revision; hold it in an attribute that is stored.`, at, id);
+      else if (attribute.collection === true)
+        emit("MQ8305", "error", `Attribute '${aname}' of '${who}' holds many values; hold the revision in a single-valued attribute.`, at, id);
       else if (!textual(type))
         emit(
           "MQ8305",
@@ -160,7 +173,13 @@ function entityRules(entity: Json, world: World, emit: Emit): void {
       else if (merged.attributes.some((a) => a.attribute === block.boundAttribute))
         emit("MQ8305", "error", `Attribute '${aname}' of '${who}' holds the revision and is also listed under attributes; remove the entry.`, at, id);
       else if (typeof attribute.default === "string" && merged.levels.length && !isRevisionValue({ levels: merged.levels, separator }, attribute.default))
-        emit("MQ8305", "error", `The default '${attribute.default}' of attribute '${aname}' of '${who}' is not a value of its revision sequence; change the default.`, at, id);
+        emit(
+          "MQ8305",
+          "error",
+          `The default '${attribute.default}' of attribute '${aname}' of '${who}' is not a value of its revision sequence; change the default.`,
+          at,
+          id,
+        );
     }
   }
 
@@ -187,9 +206,16 @@ function entityRules(entity: Json, world: World, emit: Emit): void {
         }
         return undefined;
       })(lifecycle.states);
-      if (!state) emit("MQ8312", "error", `'${onRevise}' is not a state of lifecycle '${lname}'; pick one of its states, or restart or keep.`, `${at}/onRevise`, id);
+      if (!state)
+        emit("MQ8312", "error", `'${onRevise}' is not a state of lifecycle '${lname}'; pick one of its states, or restart or keep.`, `${at}/onRevise`, id);
       else if (state.type === "history" || state.type === "choice")
-        emit("MQ8312", "error", `State '${String(state.name)}' of lifecycle '${lname}' is a ${String(state.type)} state, which a revise cannot go to; pick another state.`, `${at}/onRevise`, id);
+        emit(
+          "MQ8312",
+          "error",
+          `State '${String(state.name)}' of lifecycle '${lname}' is a ${String(state.type)} state, which a revise cannot go to; pick another state.`,
+          `${at}/onRevise`,
+          id,
+        );
     }
   });
   arr(block.attributes).forEach((e, i) => {
@@ -199,9 +225,16 @@ function entityRules(entity: Json, world: World, emit: Emit): void {
     if (seen.attributes.has(String(e.attribute))) emit("MQ8312", "error", `'${who}' has two entries for attribute '${aname}'; keep one.`, at, id);
     seen.attributes.add(String(e.attribute));
     if (!attribute) return emit("MQ8312", "error", `'${String(e.attribute)}' is not an attribute '${who}' holds; remove the entry.`, `${at}/attribute`, id);
-    if (attribute.derived) return emit("MQ8312", "error", `Attribute '${aname}' is derived, so a revise cannot reset it; remove the entry.`, `${at}/attribute`, id);
+    if (attribute.derived)
+      return emit("MQ8312", "error", `Attribute '${aname}' is derived, so a revise cannot reset it; remove the entry.`, `${at}/attribute`, id);
     if (world.lifecycles.some((l) => subjectsOf(l).some((s) => s.boundAttribute === e.attribute)))
-      return emit("MQ8312", "error", `Attribute '${aname}' is a lifecycle's bound state attribute, so a revise cannot reset it; remove the entry.`, `${at}/attribute`, id);
+      return emit(
+        "MQ8312",
+        "error",
+        `Attribute '${aname}' is a lifecycle's bound state attribute, so a revise cannot reset it; remove the entry.`,
+        `${at}/attribute`,
+        id,
+      );
     if (keyIds.has(String(e.attribute)) && e.onRevise !== "copy")
       emit("MQ8312", "error", `Attribute '${aname}' is part of the key of '${who}', so a revision can't reset it; remove the entry.`, `${at}/attribute`, id);
   });
@@ -226,10 +259,23 @@ function entityRules(entity: Json, world: World, emit: Emit): void {
     if (seen.links.has(String(e.end))) emit("MQ8312", "error", `'${who}' has two entries for end '${label}'; keep one.`, at, id);
     seen.links.add(String(e.end));
     if (!found) return emit("MQ8312", "error", `'${String(e.end)}' is not a relation end; remove the entry.`, `${at}/end`, id);
-    if (found.ends > 2) return emit("MQ8312", "error", `End '${label}' belongs to a relation of more than two ends, which a revise cannot say anything about yet; remove the entry.`, `${at}/end`, id);
+    if (found.ends > 2)
+      return emit(
+        "MQ8312",
+        "error",
+        `End '${label}' belongs to a relation of more than two ends, which a revise cannot say anything about yet; remove the entry.`,
+        `${at}/end`,
+        id,
+      );
     if (!found.own) return emit("MQ8312", "error", `'${who}' does not reach end '${label}'; remove the entry.`, `${at}/end`, id);
     if (e.onRevise === "duplicate" && found.own.max === 1)
-      emit("MQ8308", "error", `Revising '${who}' can't duplicate its '${String(found.end.role)}' links: each one has a single owner; use move or stay.`, `${at}/onRevise`, id);
+      emit(
+        "MQ8308",
+        "error",
+        `Revising '${who}' can't duplicate its '${String(found.end.role)}' links: each one has a single owner; use move or stay.`,
+        `${at}/onRevise`,
+        id,
+      );
   });
 }
 
@@ -249,7 +295,13 @@ function processRules(process: Json, world: World, emit: Emit): void {
     const label = `Transition ${String(t.id)}`;
     if (!lifecycle) return emit("MQ8306", "error", `${label} names a revision level, but '${name(process)}' is not a lifecycle; remove it.`, at, id);
     if (!withRevisions.length)
-      return emit("MQ8306", "error", `${label} names revision level ${t.nextRevision}, but '${name(process)}' governs no type with revisions; add revisions to the type, or remove it.`, at, id);
+      return emit(
+        "MQ8306",
+        "error",
+        `${label} names revision level ${t.nextRevision}, but '${name(process)}' governs no type with revisions; add revisions to the type, or remove it.`,
+        at,
+        id,
+      );
     const lacking = withRevisions.find((w) => w.merged.levels.length < (t.nextRevision as number));
     if (lacking) {
       const n = lacking.merged.levels.length;
@@ -279,14 +331,33 @@ function scenarioRules(scenario: Json, world: World, emit: Emit): void {
     if (o.revision !== undefined) {
       const at = `/objects/${i}/revision`;
       if (!m) emit("MQ9305", "error", `Object '${String(o.name)}' has a revision, but its entity has no revisions; remove it.`, at, id);
-      else if (m.boundAttribute) emit("MQ9305", "error", `Object '${String(o.name)}' has a revision, and its revision is held in an attribute; set the attribute in values instead.`, at, id);
+      else if (m.boundAttribute)
+        emit(
+          "MQ9305",
+          "error",
+          `Object '${String(o.name)}' has a revision, and its revision is held in an attribute; set the attribute in values instead.`,
+          at,
+          id,
+        );
       else if (!isRevisionValue({ levels: m.levels, separator: m.separator }, String(o.revision)))
-        emit("MQ9305", "error", `Object '${String(o.name)}' has revision '${String(o.revision)}', which is not a value of its entity's revision sequence; give a value of the sequence.`, at, id);
+        emit(
+          "MQ9305",
+          "error",
+          `Object '${String(o.name)}' has revision '${String(o.revision)}', which is not a value of its entity's revision sequence; give a value of the sequence.`,
+          at,
+          id,
+        );
     }
     // A bound revision attribute's value in values that is not a value of the sequence.
     const v = m?.boundAttribute ? (o.values as Json | undefined)?.[m.boundAttribute] : undefined;
     if (m && typeof v === "string" && !isRevisionValue({ levels: m.levels, separator: m.separator }, v))
-      emit("MQ9305", "error", `Object '${String(o.name)}' holds revision '${v}', which is not a value of its entity's revision sequence; give a value of the sequence.`, `/objects/${i}/values`, id);
+      emit(
+        "MQ9305",
+        "error",
+        `Object '${String(o.name)}' holds revision '${v}', which is not a value of its entity's revision sequence; give a value of the sequence.`,
+        `/objects/${i}/values`,
+        id,
+      );
   });
   const events = new Map(arr(process?.events).map((e) => [String(e.id), e]));
   arr(scenario.steps).forEach((s, i) => {
@@ -299,10 +370,19 @@ function scenarioRules(scenario: Json, world: World, emit: Emit): void {
         const event = events.get(String(s.event));
         const takes =
           (input === "verb" && s.verb === "revise") ||
-          (input === "event" && !!event && (event.verb === "revise" || arr(process?.transitions).some((t) => t.event === event.id && t.nextRevision !== undefined)));
+          (input === "event" &&
+            !!event &&
+            (event.verb === "revise" || arr(process?.transitions).some((t) => t.event === event.id && t.nextRevision !== undefined)));
         if (!takes) emit("MQ9305", "error", `Step ${i + 1} has a revision, but it cannot revise or label the revision; remove it.`, `${at}/revision`, id);
         else if (typeof s.revision === "number") {
-          if (input === "event") emit("MQ9305", "error", `Step ${i + 1} is an event step, which takes a revision name, not a level; give a name or remove it.`, `${at}/revision`, id);
+          if (input === "event")
+            emit(
+              "MQ9305",
+              "error",
+              `Step ${i + 1} is an event step, which takes a revision name, not a level; give a name or remove it.`,
+              `${at}/revision`,
+              id,
+            );
           else if (s.revision < 1 || s.revision > merged.levels.length)
             emit(
               "MQ9305",
@@ -312,12 +392,25 @@ function scenarioRules(scenario: Json, world: World, emit: Emit): void {
               id,
             );
         } else if (typeof s.revision === "string" && !readRevision(seq, s.revision))
-          emit("MQ9305", "error", `Step ${i + 1} names revision '${s.revision}', which the subject's revision sequence cannot form; give a value of the sequence.`, `${at}/revision`, id);
+          emit(
+            "MQ9305",
+            "error",
+            `Step ${i + 1} names revision '${s.revision}', which the subject's revision sequence cannot form; give a value of the sequence.`,
+            `${at}/revision`,
+            id,
+          );
       }
     }
-    if (expect?.revision !== undefined && !merged) emit("MQ9305", "error", `Step ${i + 1} expects a revision, but the subject's type has no revisions; remove it.`, `${at}/expect/revision`, id);
+    if (expect?.revision !== undefined && !merged)
+      emit("MQ9305", "error", `Step ${i + 1} expects a revision, but the subject's type has no revisions; remove it.`, `${at}/expect/revision`, id);
     if (s.input === "verb" && s.verb === "revise" && s.end !== undefined && merged)
-      emit("MQ9305", "error", `Step ${i + 1} revises with an end, but a subject whose type has revisions is revised as a whole; remove the end.`, `${at}/end`, id);
+      emit(
+        "MQ9305",
+        "error",
+        `Step ${i + 1} revises with an end, but a subject whose type has revisions is revised as a whole; remove the end.`,
+        `${at}/end`,
+        id,
+      );
   });
 }
 
@@ -331,7 +424,9 @@ export function revisionDiagnostics(entry: ModelEntry, all: () => Iterable<Model
   } else if (json.kind === "scenario") {
     const uses =
       arr(json.objects).some((o) => o.revision !== undefined) ||
-      arr(json.steps).some((s) => s.revision !== undefined || (s.expect as Json | undefined)?.revision !== undefined || (s.verb === "revise" && s.end !== undefined));
+      arr(json.steps).some(
+        (s) => s.revision !== undefined || (s.expect as Json | undefined)?.revision !== undefined || (s.verb === "revise" && s.end !== undefined),
+      );
     if (uses) scenarioRules(json, new World(all()), emit);
   }
 }

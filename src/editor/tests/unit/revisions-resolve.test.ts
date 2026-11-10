@@ -158,10 +158,7 @@ describe("the Revisions tab's conversions", () => {
     const json: Record<string, unknown> = { base: "part" };
     const rows = DRAWING_LEVELS.map(levelToRow);
     rows[1] = { ...rows[1], first: "0" };
-    setOwnLevels(
-      json,
-      rows.map(rowToLevel),
-    );
+    setOwnLevels(json, rows.map(rowToLevel));
     expect(json.revisions).toEqual({
       levels: [
         { name: "major", format: "letters", skip: ["I", "O", "Q", "S", "X", "Z"] },
@@ -197,7 +194,9 @@ describe("the Revisions tab's conversions", () => {
       width: 2,
       startEmpty: true,
     });
-    expect(rowToLevel({ name: "stage", kind: "list", first: "A", skip: "", width: "", startEmpty: false, values: "Prototype\nPilot run, phase 1\n\nProduction" })).toEqual({
+    expect(
+      rowToLevel({ name: "stage", kind: "list", first: "A", skip: "", width: "", startEmpty: false, values: "Prototype\nPilot run, phase 1\n\nProduction" }),
+    ).toEqual({
       name: "stage",
       values: ["Prototype", "Pilot run, phase 1", "Production"],
     });

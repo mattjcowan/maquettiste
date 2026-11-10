@@ -332,7 +332,10 @@ export function processHandlers(backend: MockBackend, kit: ProcessHandlerKit): H
       const reached = new Set<string>();
       for (const r of model.entries.values()) {
         const ends = (r.json.kind === "relation" ? r.json.ends : undefined) as { id: string }[] | undefined;
-        if (ends?.length === 2) ends.forEach((e, i) => { if (endCoversEntity(ends[1 - i] as never, entity, baseOf)) reached.add(String(e.id)); });
+        if (ends?.length === 2)
+          ends.forEach((e, i) => {
+            if (endCoversEntity(ends[1 - i] as never, entity, baseOf)) reached.add(String(e.id));
+          });
       }
       return resolveRevisions(entity, new Map(), (id) => model.entries.get(id)?.json as EntityWithRevisions, governing, reached);
     },

@@ -109,11 +109,7 @@ describe("a revise verb step", () => {
   });
 
   it("starts the running lifecycle over by default, and again after it ended", () => {
-    const trace = run(life(), [
-      { input: "event", event: "release" },
-      { input: "event", event: "release" },
-      verb({ revision: 1 }),
-    ]);
+    const trace = run(life(), [{ input: "event", event: "release" }, { input: "event", event: "release" }, verb({ revision: 1 })]);
     expect(trace[2].configuration).toEqual(["Released"]);
     expect(trace[3].configuration).toEqual(["InWork"]);
     expect(trace[3].microsteps[0]).toMatchObject({ transitions: [], exited: ["Released"], entered: ["InWork"] });
@@ -129,7 +125,15 @@ describe("a revise verb step", () => {
   });
 
   it("gives another lifecycle its outcome through the object's states", () => {
-    const other = { kind: "process", id: "M", name: "Delivery", use: "lifecycle", subjects: [{ id: "m", entity: "E" }], states: [st("Packed"), st("Shipped")], initial: "Packed" };
+    const other = {
+      kind: "process",
+      id: "M",
+      name: "Delivery",
+      use: "lifecycle",
+      subjects: [{ id: "m", entity: "E" }],
+      states: [st("Packed"), st("Shipped")],
+      initial: "Packed",
+    };
     const doc = life();
     const block = { ...DRAWING, lifecycles: [{ lifecycle: "M", onRevise: "Shipped" }] };
     const e = entity(block);
@@ -162,12 +166,22 @@ describe("a move that gives the next revision", () => {
 
   it("is refused with `revision` when the sequence cannot give it", () => {
     const list = { levels: [{ values: ["Only"] }] };
-    const trace = run(life(), [{ input: "event", event: "release" }, { input: "event", event: "release" }], list);
+    const trace = run(
+      life(),
+      [
+        { input: "event", event: "release" },
+        { input: "event", event: "release" },
+      ],
+      list,
+    );
     expect(trace[2]).toMatchObject({ accepted: false, refusal: "revision" });
   });
 
   it("takes a chosen name on the event step", () => {
-    const trace = run(life(), [{ input: "event", event: "release" }, { input: "event", event: "release", revision: "F" }]);
+    const trace = run(life(), [
+      { input: "event", event: "release" },
+      { input: "event", event: "release", revision: "F" },
+    ]);
     expect(trace[2].revision).toEqual({ from: "A", to: "F", level: null });
   });
 });
@@ -209,14 +223,22 @@ describe("a run with no subject object", () => {
   it("refuses with `revision` and names the entity that holds the sequence", () => {
     const list = { levels: [{ values: ["Only"] }] };
     const e = entity(list);
-    const trace = simulate(life(), null, [{ input: "event", event: "release" }, { input: "event", event: "release" }], {
-      lifecycles: [life()],
-      subjectEntity: "E",
-      attributesOf: () => attributes,
-      objects: [{ id: "o1", name: "o1", entity: "E" }],
-      subject: "o1",
-      revisionsOf: () => resolveRevisions("E", new Map(), () => e as never, ["L"]),
-    } as never).trace;
+    const trace = simulate(
+      life(),
+      null,
+      [
+        { input: "event", event: "release" },
+        { input: "event", event: "release" },
+      ],
+      {
+        lifecycles: [life()],
+        subjectEntity: "E",
+        attributesOf: () => attributes,
+        objects: [{ id: "o1", name: "o1", entity: "E" }],
+        subject: "o1",
+        revisionsOf: () => resolveRevisions("E", new Map(), () => e as never, ["L"]),
+      } as never,
+    ).trace;
     expect(trace[2]).toMatchObject({ accepted: false, refusal: "revision", refusedBy: "E" });
   });
 });
