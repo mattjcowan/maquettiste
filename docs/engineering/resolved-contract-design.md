@@ -1,6 +1,6 @@
 # The resolved-model contract: design
 
-Status: built, unreleased (pull request #78). Requested by the owner: "existing systems using maquettiste always have a
+Status: built, released in 0.24.0 (pull request #78). Requested by the owner: "existing systems using maquettiste always have a
 fresh reference that goes with their point release". The owner answered yes to both questions of section 9.
 
 The contract describes what `model export --resolved`, `GET /api/model/resolved` and MCP `get_resolved_model` answer: one
